@@ -197,7 +197,7 @@ func (s *OpsgenieSender) doRequest(
 	req.Header.Set("Authorization", "GenieKey "+apiKey)
 	req.Header.Set("User-Agent", productName)
 
-	client := &http.Client{Timeout: opsgenieTimeout}
+	client := newHTTPClient(opsgenieTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

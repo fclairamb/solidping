@@ -79,16 +79,20 @@ func useFakeTwilio(t *testing.T, srv *httptest.Server) {
 	t.Cleanup(func() { newTwilioClient = prev })
 }
 
-// recordingEmail counts SendMessage calls so tests can assert email
-// suppression under severity filters.
+// recordingEmail counts SendMessage calls and captures the last message so
+// tests can assert both email suppression under severity filters and the
+// rendered content (e.g. the escalation email's incident-number/no-UUID
+// acceptance criteria).
 type recordingEmail struct {
 	mu    sync.Mutex
 	count int
+	last  *email.Message
 }
 
-func (m *recordingEmail) Send(_ context.Context, _ *email.Message) (*email.SendResult, error) {
+func (m *recordingEmail) Send(_ context.Context, msg *email.Message) (*email.SendResult, error) {
 	m.mu.Lock()
 	m.count++
+	m.last = msg
 	m.mu.Unlock()
 
 	return &email.SendResult{Sent: true, MessageID: "mock"}, nil
@@ -99,6 +103,13 @@ func (m *recordingEmail) sends() int {
 	defer m.mu.Unlock()
 
 	return m.count
+}
+
+func (m *recordingEmail) lastMessage() *email.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.last
 }
 
 // phoneTestEnv seeds a SQLite DB with an org/check/incident and (optionally) a
@@ -157,11 +168,15 @@ func setupPhoneEnv(t *testing.T, withTwilio bool, voiceFrom string) *phoneTestEn
 	cfg.Server.BaseURL = "https://app.example.com"
 
 	emails := &recordingEmail{}
+
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
 	jctx := &jobdef.JobContext{
 		DBService: dbSvc,
 		Logger:    slog.Default(),
 		AppConfig: cfg,
-		Services:  &services.Registry{EmailSender: emails},
+		Services:  &services.Registry{EmailSender: emails, EmailFormatter: formatter},
 	}
 
 	return &phoneTestEnv{db: dbSvc, org: org, incident: incident, jctx: jctx, emails: emails}
@@ -248,6 +263,47 @@ func TestDispatch_EmailSlackBehavesAsToday(t *testing.T) {
 	r.Equal(0, phoneSent, "phone is never paged under {email, slack}")
 	r.Equal(0, fake.smsCount(), "no SMS under {email, slack}")
 	r.Equal(0, fake.callCount(), "no call under {email, slack}")
+}
+
+// TestDispatch_EscalationEmailShowsIncidentNumberNotUUID pins acceptance
+// criteria 2 and 3 for the escalation-policy email: it has an HTML part, and
+// it addresses the incident by its human-facing #N reference (in both
+// subject and body, HTML and text) rather than the raw 36-char UUID. Does not
+// touch the Twilio seam, so unlike its siblings in this file it is free to
+// run in parallel.
+func TestDispatch_EscalationEmailShowsIncidentNumberNotUUID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "")
+	// CreateIncident auto-assigns the org's next number (1 for a fresh org in
+	// this fixture); bump it in-memory so the assertions below distinguish the
+	// #N reference from a coincidental "#1" match. sendEscalationEmail reads
+	// Number off this in-memory struct, not a fresh DB read, so this is safe.
+	env.incident.Number = 42
+
+	run := newRun()
+	filter := map[string]bool{"email": true}
+
+	sent := run.dispatchRoute(ctx, env.jctx, slog.Default(), env.incident, emailRoute(), filter)
+	r.Equal(1, sent)
+
+	msg := env.emails.lastMessage()
+	r.NotNil(msg)
+	r.NotEmpty(msg.HTML, "escalation email must have an HTML part")
+	r.NotEmpty(msg.Text)
+
+	r.Contains(msg.Subject, "#42")
+	r.Contains(msg.HTML, "#42")
+	r.Contains(msg.Text, "#42")
+
+	// The dashboard link legitimately embeds the UID in its URL path — that's
+	// not the regression this guards against. What must not happen is the
+	// subject line naming the incident by UUID the way it used to
+	// ("[escalation] incident <uuid> requires attention").
+	r.NotContains(msg.Subject, env.incident.UID, "subject must not expose the raw incident UUID")
 }
 
 // TestDispatch_VoicePlacesCallWithoutSMS proves severity {voice} calls but

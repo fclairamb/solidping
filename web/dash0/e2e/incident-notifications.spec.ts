@@ -60,6 +60,38 @@ test.describe("Incident notifications", () => {
     await expect(page.getByTestId("notifications-card")).toBeVisible();
   });
 
+  // Deterministically seeded in test mode (server/test/testdata/testdata.go,
+  // createTestIncidentNotification): incident 00000000-...-13 always has
+  // exactly one notification row, for the incident.created event.
+  const SEEDED_INCIDENT_UID = "00000000-0000-0000-0000-000000000013";
+
+  test("Notifications card shows an Event column naming the notified event", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(`/dash0/orgs/test/incidents/${SEEDED_INCIDENT_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("notifications-card")).toBeVisible();
+
+    const row = page.getByTestId("notification-row").first();
+    await expect(row).toBeVisible();
+
+    // The Event column names the notified event — "Incident Created" — not
+    // just Time / Status / Target / Source / Channel.
+    //
+    // Scoped to the card, and exact: the Event Log table further down the same
+    // page has an "Event Type" header, which a loose page-wide substring match
+    // also resolves to (strict mode violation).
+    await expect(
+      page
+        .getByTestId("notifications-card")
+        .getByRole("columnheader", { name: "Event", exact: true }),
+    ).toBeVisible();
+    await expect(row.getByText("Incident Created")).toBeVisible();
+  });
+
   test("My pages route loads", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 

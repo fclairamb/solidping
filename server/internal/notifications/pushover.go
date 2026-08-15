@@ -76,7 +76,7 @@ func (s *PushoverSender) doRequest(ctx context.Context, data url.Values) error {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", productName)
 
-	client := &http.Client{Timeout: pushoverTimeout}
+	client := newHTTPClient(pushoverTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

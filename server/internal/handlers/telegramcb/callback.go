@@ -33,8 +33,8 @@ func (h *Handler) handleCallbackQuery(ctx context.Context, query *telegram.Callb
 		return
 	}
 
-	contacts := h.linkedContacts(ctx, chatID)
-	if len(contacts) == 0 {
+	orgs := h.linkedOrgs(ctx, chatID)
+	if len(orgs) == 0 {
 		// Same guard as the typed commands, and the same reason: an unlinked
 		// chat must not learn whether the incident behind this button exists.
 		h.log.InfoContext(ctx, "telegram ack callback from an unlinked chat", "chatId", chatID)
@@ -43,46 +43,55 @@ func (h *Handler) handleCallbackQuery(ctx context.Context, query *telegram.Callb
 		return
 	}
 
-	h.ackFromCallback(ctx, query, contacts[0], chatID, arg)
-}
-
-// ackFromCallback acknowledges the incident behind a pressed button and
-// rewrites the alert it was attached to.
-func (h *Handler) ackFromCallback(
-	ctx context.Context, query *telegram.CallbackQuery,
-	contact *models.UserContact, chatID, incidentUID string,
-) {
-	orgUID := contact.OrganizationUID
-
-	incident, err := h.db.GetIncident(ctx, orgUID, incidentUID)
-	if err != nil || incident == nil {
+	// Route by the incident UID the button carries, across EVERY org this chat
+	// is linked in — never by "whichever org sorts first". A button attached to
+	// org B's alert used to dead-end on "that incident is no longer available"
+	// whenever org A happened to be first, for an incident legitimately paged
+	// into this very chat.
+	org, incident := h.findIncidentAcrossOrgs(ctx, orgs, arg)
+	if incident == nil {
 		h.log.InfoContext(ctx, "telegram ack callback for an unknown incident",
-			"chatId", chatID, "incidentUid", incidentUID, "error", err)
+			"chatId", chatID, "incidentUid", arg)
 		h.answer(ctx, query.ID, "That incident is no longer available.")
 
 		return
 	}
+
+	h.ackFromCallback(ctx, query, org, qualifyRefs(orgs), chatID, incident)
+}
+
+// ackFromCallback acknowledges the incident behind a pressed button and
+// rewrites the alert it was attached to.
+//
+// org is the linked org the incident was actually found in, so the ack is
+// credited to THAT org's contact owner and the audit trail names the right user
+// row — not the row of whichever org happened to be listed first.
+func (h *Handler) ackFromCallback(
+	ctx context.Context, query *telegram.CallbackQuery,
+	org *linkedOrg, qualify bool, chatID string, incident *models.Incident,
+) {
+	orgUID := org.orgUID
 
 	// Idempotency, not an error: two people pressing the same button seconds
 	// apart is the normal case during an outage. Report the current state and
 	// still repaint the message, so the loser of the race also sees the truth.
 	if incident.State == models.IncidentStateResolved {
 		h.answer(ctx, query.ID, "Already resolved — nothing to acknowledge.")
-		h.repaintAcked(ctx, query, orgUID, incident)
+		h.repaintAcked(ctx, query, org, qualify, incident)
 
 		return
 	}
 
 	if incident.AcknowledgedAt != nil {
 		h.answer(ctx, query.ID, "Already acknowledged.")
-		h.repaintAcked(ctx, query, orgUID, incident)
+		h.repaintAcked(ctx, query, org, qualify, incident)
 
 		return
 	}
 
 	if h.acker == nil {
 		h.log.WarnContext(ctx, "telegram ack callback with no incident service wired",
-			"chatId", chatID, "incidentUid", incidentUID)
+			"chatId", chatID, "incidentUid", incident.UID)
 		h.answer(ctx, query.ID, "Acknowledging is not available on this instance.")
 
 		return
@@ -91,7 +100,7 @@ func (h *Handler) ackFromCallback(
 	actor := telegram.ActorLabel(callbackActorName(query))
 
 	acked, ackErr := h.acker.AcknowledgeIncidentFromTelegram(
-		ctx, orgUID, incident.UID, contact.UserUID, actor,
+		ctx, orgUID, incident.UID, org.contact.UserUID, actor,
 	)
 	if ackErr != nil {
 		h.log.ErrorContext(ctx, "failed to acknowledge incident from a telegram button",
@@ -104,21 +113,23 @@ func (h *Handler) ackFromCallback(
 	h.log.InfoContext(ctx, "incident acknowledged from a telegram button",
 		"chatId", chatID, "incidentUid", incident.UID, "orgUid", orgUID, "actor", actor)
 	h.answer(ctx, query.ID, "✅ Acknowledged")
-	h.repaintAcked(ctx, query, orgUID, acked)
+	h.repaintAcked(ctx, query, org, qualify, acked)
 }
 
 // repaintAcked rewrites the alert the button was attached to: the acknowledged
-// body, and NO buttons.
+// body, and the Acknowledge button GONE — but View stays, since a URL button is
+// never stale noise.
 //
 // The edit is the durable half of the interaction — the toast lasts two seconds
 // and only the presser sees it, while this is what the next person scrolling the
-// chat reads. Removing the keyboard needs an explicit EMPTY keyboard: Telegram
-// treats an absent reply_markup on an edit as "leave the buttons alone".
+// chat reads. Removing the Acknowledge button needs an explicit reply_markup:
+// Telegram treats an absent one on an edit as "leave the buttons alone".
 //
 // Best-effort by contract: the acknowledgement itself is already committed, so a
 // failed edit costs cosmetics, never correctness.
 func (h *Handler) repaintAcked(
-	ctx context.Context, query *telegram.CallbackQuery, orgUID string, incident *models.Incident,
+	ctx context.Context, query *telegram.CallbackQuery,
+	org *linkedOrg, qualify bool, incident *models.Incident,
 ) {
 	if h.sender == nil || query.Message == nil || query.Message.MessageID == 0 {
 		return
@@ -139,21 +150,21 @@ func (h *Handler) repaintAcked(
 		who = callbackActorName(query)
 	}
 
-	orgSlug := h.orgSlug(ctx, orgUID)
 	params := &telegram.AlertParams{
 		State:       incidentStateLabel(incident),
 		Number:      incident.Number,
 		IncidentUID: incident.UID,
-		CheckName:   h.checkName(ctx, orgUID, incident.CheckUID),
+		CheckName:   h.checkName(ctx, org.orgUID, incident.CheckUID),
 		Detail:      incidentDetailLine(incident),
-		OrgSlug:     orgSlug,
-		IncidentURL: h.incidentURL(orgSlug, incident.UID),
+		OrgSlug:     org.orgSlug,
+		QualifyRef:  qualify,
+		IncidentURL: h.incidentURL(org.orgSlug, incident.UID),
 	}
 
 	if err := h.sender.EditMessage(
 		ctx, chatID, query.Message.MessageID,
 		telegram.BuildAcknowledgedHTML(params, who, ackedAt),
-		telegram.EmptyInlineKeyboard(),
+		telegram.IncidentKeyboardForEdit(incident.UID, params.IncidentURL, false),
 	); err != nil {
 		h.log.InfoContext(ctx, "could not rewrite the acknowledged telegram alert",
 			"chatId", chatID, "incidentUid", incident.UID,

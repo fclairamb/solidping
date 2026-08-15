@@ -767,14 +767,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	oauthGroup.POST("/register", oauthHandler.Register)
 	oauthGroup.POST("/revoke", oauthHandler.Revoke)
 
-	// Job routes (auth required for org-scoped routes)
+	// Job routes. GET/DELETE are membership-gated; POST additionally requires
+	// org admin and only accepts allowlisted job types (spec 2026-08-15-04).
+	// The route table itself lives in the handler so the tests exercise this
+	// exact wiring rather than a parallel copy of it.
 	jobHandler := jobs.NewHandler(s.jobSvc)
-	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
-	orgJobsGroup.POST("", jobHandler.CreateJob)
-	orgJobsGroup.GET("", jobHandler.ListJobs)
-	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
-	orgJobsGroup.DELETE("/:uid", jobHandler.CancelJob)
+	jobHandler.RegisterRoutes(api, jobs.RouteMiddleware{
+		Shared: []httpx.Middleware{
+			orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess,
+		},
+		CreateOnly: []httpx.Middleware{authMiddleware.RequireOrgAdmin},
+	})
 
 	// Admin Jobs observability (spec 2026-06-15-05). Read-only views over the
 	// background-jobs queue and the check-schedule (check_jobs) table. Org
@@ -1090,7 +1093,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// by default; CreateTelegramLink refuses while the config is inactive.
 		usernotifications.WithTelegramConfig(&s.config.Telegram),
 	)
-	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
+	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
 	userNotifHandler := usernotifications.NewHandler(
 		userNotifService, s.config, emailAdapter, slackAdapter, s.services.WebPushOptions,
@@ -1171,6 +1174,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	membersService := members.NewService(s.dbService,
 		// Powers the admin "set up your paging" nudge email (spec 2026-08-12-03).
 		members.WithEmailSender(s.services.EmailSender),
+		members.WithEmailFormatter(s.services.EmailFormatter),
 		members.WithAppBaseURL(s.config.Server.BaseURL))
 	membersHandler := members.NewHandler(membersService, s.config)
 	orgMembers := orgGroup("/orgs/:org/members")
@@ -1196,6 +1200,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
+	systemService.SetEmailFormatter(s.services.EmailFormatter)
 
 	// JMAP inbox manager: long-running supervisor that connects to the
 	// configured JMAP server and dispatches incoming emails to handlers.
@@ -1336,7 +1341,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Fan published status updates out to confirmed status-page subscribers by
 	// email. The notifier runs detached (fire-and-forget) inside the service.
 	statusSubscriberNotifier := statussubscribers.NewNotifier(
-		s.dbService, s.services.EmailSender, s.config.Server.BaseURL, slog.Default())
+		s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config.Server.BaseURL, slog.Default())
 	statusUpdatesService.SetSubscriberNotifier(statusSubscriberNotifier)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
 	orgStatusUpdates := orgGroup("/orgs/:org/status-updates")
@@ -1378,7 +1383,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// down, outside RequireAuth).
 	statusSubscribersService := statussubscribers.NewService(s.dbService)
 	statusSubscribersHandler := statussubscribers.NewHandler(
-		statusSubscribersService, s.dbService, s.services.EmailSender, s.config)
+		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
 	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
 	orgStatusPages.DELETE("/:statusPageUid/subscribers/:uid", statusSubscribersHandler.RemoveSubscriber)

@@ -578,3 +578,33 @@ func TestIsNetworkError_NetError(t *testing.T) {
 		})
 	}
 }
+
+// TestEmailBuildMessageRawContentIsInternalOnly is the counterpart to the
+// public endpoint's allowlist (spec 2026-08-15-04): raw HTML/text must keep
+// flowing through verbatim for in-process callers — that path is why the
+// branch exists — while the only thing standing between it and the outside
+// world is jobdef.IsPubliclyCreatable refusing "email". Both halves are
+// asserted here so neither can be dropped without a failing test.
+func TestEmailBuildMessageRawContentIsInternalOnly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	run := &EmailJobRun{config: EmailJobConfig{
+		To:      []string{"ops@example.com"},
+		Subject: "Internal notice",
+		HTML:    "<p>raw html</p>",
+		Text:    "raw text",
+	}}
+
+	// No formatter, no template: the raw branch must still build a message.
+	msg, err := run.buildMessage(&jobdef.JobContext{})
+	r.NoError(err)
+	r.Equal("<p>raw html</p>", msg.HTML, "raw HTML must reach the message verbatim")
+	r.Equal("raw text", msg.Text)
+	r.Equal("Internal notice", msg.Subject)
+
+	// …and that same power must not be reachable from the public API.
+	r.False(jobdef.IsPubliclyCreatable(jobdef.JobTypeEmail),
+		"email must never be publicly creatable while buildMessage honors raw content")
+}

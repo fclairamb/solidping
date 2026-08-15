@@ -2,12 +2,12 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Activity, RefreshCw, Workflow } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimeAgoOrDash } from "@/components/ui/time-ago";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatTile, type StatTileTone } from "@/components/shared/stat-tile";
 import {
@@ -116,15 +116,6 @@ function checkStateVariant(state: CheckJobState): BadgeVariant {
       return "destructive";
     default:
       return "outline";
-  }
-}
-
-function relative(value: string | null | undefined): string {
-  if (!value) return "—";
-  try {
-    return formatDistanceToNow(new Date(value), { addSuffix: true });
-  } catch {
-    return "—";
   }
 }
 
@@ -451,13 +442,13 @@ function BackgroundJobsTable({
                 </TableCell>
               )}
               <TableCell className="text-xs text-muted-foreground">
-                {relative(job.scheduledAt)}
+                <TimeAgoOrDash date={job.scheduledAt} data-testid="job-scheduled-at" />
               </TableCell>
               <TableCell className="text-xs text-muted-foreground tabular-nums">
                 {job.retryCount}
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                {relative(job.updatedAt)}
+                <TimeAgoOrDash date={job.updatedAt} data-testid="job-updated-at" />
               </TableCell>
             </TableRow>
           ))}
@@ -543,7 +534,7 @@ function CheckScheduleTable({
                 {formatPeriod(row.periodSeconds)}
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                {relative(row.scheduledAt)}
+                <TimeAgoOrDash date={row.scheduledAt} data-testid="check-schedule-next-run" />
               </TableCell>
               <TableCell className="text-xs text-muted-foreground tabular-nums">
                 {row.leaseStarts}

@@ -1,0 +1,31 @@
+{{define "subject"}}[escalation] {{.CheckName}} incident escalated{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Escalated"}}{{end}}
+{{define "content"}}
+    <h1>Escalation policy fired</h1>
+    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong> was not acknowledged in time and has been escalated to you.</p>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td class="label">Check</td><td class="value">{{.CheckName}}</td></tr>
+        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
+        <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
+        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+    </table>
+    {{if .IncidentURL}}
+    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "Open incident" "Variant" "primary"}}</p>
+    {{end}}
+    <p class="meta">Open the dashboard to acknowledge or resolve.</p>
+{{end}}
+{{define "text"}}Escalation policy fired
+
+The incident for {{.CheckName}} was not acknowledged in time and has been escalated to you.
+
+Check: {{.CheckName}}
+Started at: {{.StartedAt}}
+Failure count: {{.FailureCount}}
+{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
+{{end}}{{if .IncidentURL}}Open incident: {{.IncidentURL}}
+{{end}}
+Open the dashboard to acknowledge or resolve.
+{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
+Docs: {{.DocsURL}}{{end}}
+{{end}}

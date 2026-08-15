@@ -138,79 +138,99 @@ function DependenciesIndexPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border">
-        {isLoading ? (
-          <div className="space-y-2 p-2">
-            {[...Array(6)].map((_, i) => (
-              <Skeleton key={i} className="h-12 rounded-lg" />
-            ))}
+      {isLoading ? (
+        <div className="space-y-2">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-12 rounded-lg" />
+          ))}
+        </div>
+      ) : rows.length > 0 ? (
+        <div className="overflow-hidden rounded-xl border bg-card shadow-card">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/30">
+                <TableRow>
+                  <TableHead>{t("dependencies:list.parent")}</TableHead>
+                  <TableHead className="w-12" />
+                  <TableHead>{t("dependencies:list.child")}</TableHead>
+                  <TableHead>{t("dependencies:list.kind")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow
+                    key={r.uid}
+                    data-testid="dependency-row"
+                    className="transition-colors hover:bg-muted/40"
+                  >
+                    <TableCell>
+                      {r.parent ? (
+                        <Link
+                          to="/orgs/$org/checks/$checkUid"
+                          params={{ org, checkUid: r.parent.uid }}
+                          search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
+                          className="font-medium text-foreground transition-colors hover:text-primary hover:underline"
+                        >
+                          {r.parent.name || r.parent.slug}
+                        </Link>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">→</TableCell>
+                    <TableCell>
+                      {r.child ? (
+                        <Link
+                          to="/orgs/$org/checks/$checkUid"
+                          params={{ org, checkUid: r.child.uid }}
+                          search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
+                          className="font-medium text-foreground transition-colors hover:text-primary hover:underline"
+                        >
+                          {r.child.name || r.child.slug}
+                        </Link>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          r.kind === "hard"
+                            ? "bg-red-500/10 text-red-500"
+                            : "bg-blue-500/10 text-blue-500"
+                        }
+                      >
+                        {r.kind === "hard"
+                          ? t("dependencies:kindHard")
+                          : t("dependencies:kindSoft")}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        ) : rows.length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
+        </div>
+      ) : graph && graph.edges.length > 0 ? (
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Search className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("dependencies:list.noMatch")}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <GitBranch className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
             {t("dependencies:list.empty")}
           </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("dependencies:list.parent")}</TableHead>
-                <TableHead className="w-12" />
-                <TableHead>{t("dependencies:list.child")}</TableHead>
-                <TableHead>{t("dependencies:list.kind")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.uid} data-testid="dependency-row">
-                  <TableCell>
-                    {r.parent ? (
-                      <Link
-                        to="/orgs/$org/checks/$checkUid"
-                        params={{ org, checkUid: r.parent.uid }}
-                        search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
-                        className="hover:underline"
-                      >
-                        {r.parent.name || r.parent.slug}
-                      </Link>
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">→</TableCell>
-                  <TableCell>
-                    {r.child ? (
-                      <Link
-                        to="/orgs/$org/checks/$checkUid"
-                        params={{ org, checkUid: r.child.uid }}
-                        search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
-                        className="hover:underline"
-                      >
-                        {r.child.name || r.child.slug}
-                      </Link>
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={
-                        r.kind === "hard"
-                          ? "bg-red-500/10 text-red-500"
-                          : "bg-blue-500/10 text-blue-500"
-                      }
-                    >
-                      {r.kind === "hard"
-                        ? t("dependencies:kindHard")
-                        : t("dependencies:kindSoft")}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

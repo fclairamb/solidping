@@ -14,23 +14,97 @@ func IncidentRef(number int64) string {
 	return "#" + strconv.FormatInt(number, 10)
 }
 
+// QualifiedIncidentRef renders the ORG-QUALIFIED reference, "#acme:42".
+//
+// Incident numbers are per-org sequential, so "#42" exists in every
+// organization. In a chat linked to several orgs the short form is genuinely
+// ambiguous — both to the human reading the alert and to the bot parsing the
+// `/ack 42` they type back — so such a chat gets the qualified form everywhere,
+// rendered AND accepted (see ParseIncidentRef).
+//
+// An empty slug degrades to the short form rather than rendering "#:42": a
+// missing slug is a cosmetic lookup failure, never a reason to emit a reference
+// nothing can parse.
+func QualifiedIncidentRef(orgSlug string, number int64) string {
+	slug := strings.TrimSpace(orgSlug)
+	if slug == "" {
+		return IncidentRef(number)
+	}
+
+	return "#" + slug + ":" + strconv.FormatInt(number, 10)
+}
+
+// incidentRefOf is the single decision point for "short or qualified". Every
+// renderer goes through it, so a multi-org chat cannot end up with one message
+// qualifying its reference and the next one not.
+func incidentRefOf(qualify bool, orgSlug string, number int64) string {
+	if qualify {
+		return QualifiedIncidentRef(orgSlug, number)
+	}
+
+	return IncidentRef(number)
+}
+
 // AckCallbackData is the callback_data of an Acknowledge button.
 func AckCallbackData(incidentUID string) string {
 	return CallbackActionAck + ":" + incidentUID
 }
 
-// AckKeyboard is the one-button inline keyboard attached to an open, unacked
-// alert. Returns nil when there is no incident to ack, so callers can pass the
-// result straight through to Message.ReplyMarkup.
-func AckKeyboard(incidentUID string) *InlineKeyboard {
-	if strings.TrimSpace(incidentUID) == "" {
+// IncidentKeyboard is the combined inline keyboard attached to anything that
+// can show an incident: `[✅ Acknowledge][🔎 View]` when both are available,
+// down to a single button when only one is, down to nil when neither is —
+// callers can pass the result straight through to Message.ReplyMarkup.
+//
+// The View button carries a `url`, never a `callback_data`: opening a link
+// needs no verb, no ParseCallbackData change, no dispatch change, and Telegram
+// opens it client-side without ever hitting the bot's webhook.
+func IncidentKeyboard(incidentUID, incidentURL string, canAck bool) *InlineKeyboard {
+	buttons := make([]InlineButton, 0, 2)
+
+	if canAck && strings.TrimSpace(incidentUID) != "" {
+		buttons = append(buttons, InlineButton{
+			Text:         "✅ Acknowledge",
+			CallbackData: AckCallbackData(incidentUID),
+		})
+	}
+
+	if url := strings.TrimSpace(incidentURL); url != "" {
+		buttons = append(buttons, InlineButton{Text: "🔎 View", URL: url})
+	}
+
+	if len(buttons) == 0 {
 		return nil
 	}
 
-	return NewInlineKeyboard(InlineButton{
-		Text:         "✅ Acknowledge",
-		CallbackData: AckCallbackData(incidentUID),
-	})
+	return NewInlineKeyboard(buttons...)
+}
+
+// IncidentKeyboardForEdit is IncidentKeyboard for an EDIT rather than a new
+// send. It never returns nil: Telegram treats a nil ReplyMarkup on an edit as
+// "leave the existing buttons in place" (see client.go's Edit.ReplyMarkup
+// doc), so when there is nothing left to show — no ack, no URL — this falls
+// back to the EmptyInlineKeyboard() removal marker instead, which is the only
+// way to actually take a stale Acknowledge button away.
+func IncidentKeyboardForEdit(incidentUID, incidentURL string, canAck bool) *InlineKeyboard {
+	if keyboard := IncidentKeyboard(incidentUID, incidentURL, canAck); keyboard != nil {
+		return keyboard
+	}
+
+	return EmptyInlineKeyboard()
+}
+
+// IncidentURL builds the dashboard deep link for an incident, or "" when
+// baseURL or orgSlug is missing — callers then simply ship without a link
+// rather than a broken one. The one builder every Telegram surface shares, so
+// the escalation alert path, the callback edit path and the /incidents,
+// /incident replies cannot drift into disagreeing URL shapes.
+func IncidentURL(baseURL, orgSlug, incidentUID string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if trimmed == "" || orgSlug == "" {
+		return ""
+	}
+
+	return trimmed + "/dash0/orgs/" + orgSlug + "/incidents/" + incidentUID
 }
 
 // FormatOpenFor renders how long an incident has been open, in the compact form
@@ -104,14 +178,27 @@ func BuildStatusHTML(view *StatusView) string {
 
 // IncidentLine is one row of the /incidents listing.
 type IncidentLine struct {
-	Number      int64
-	UID         string
-	CheckName   string
-	State       string
-	OpenFor     time.Duration
-	Acked       bool
-	AckedBy     string
+	Number int64
+	UID    string
+	// OrgSlug is the organization the incident belongs to; it only reaches the
+	// rendered row when QualifyRef is set.
+	OrgSlug string
+	// QualifyRef renders "#org:42" instead of "#42" — set when the destination
+	// chat is linked in more than one organization.
+	QualifyRef bool
+	CheckName  string
+	State      string
+	OpenFor    time.Duration
+	Acked      bool
+	AckedBy    string
+	// IncidentURL is the dashboard deep link, rendered as the View button
+	// rather than inline text — never both, so the row does not say it twice.
 	IncidentURL string
+}
+
+// Ref renders this row's reference in whichever form the destination chat needs.
+func (l *IncidentLine) Ref() string {
+	return incidentRefOf(l.QualifyRef, l.OrgSlug, l.Number)
 }
 
 // BuildIncidentsHTML renders the /incidents listing header. Each incident then
@@ -128,7 +215,7 @@ func BuildIncidentLineHTML(line *IncidentLine) string {
 	var body strings.Builder
 
 	body.WriteString("<b>")
-	body.WriteString(IncidentRef(line.Number))
+	body.WriteString(EscapeHTML(line.Ref()))
 	body.WriteString("</b> ")
 	body.WriteString(EscapeHTML(checkNameOr(line.CheckName)))
 	body.WriteString(" — ")
@@ -145,12 +232,6 @@ func BuildIncidentLineHTML(line *IncidentLine) string {
 		}
 	}
 
-	if link := strings.TrimSpace(line.IncidentURL); link != "" {
-		body.WriteString("\n<a href=\"")
-		body.WriteString(EscapeHTML(link))
-		body.WriteString("\">View incident →</a>")
-	}
-
 	return body.String()
 }
 
@@ -162,16 +243,27 @@ func BuildNoOpenIncidentsHTML(orgSlug string) string {
 
 // IncidentDetailView is the input to BuildIncidentDetailHTML.
 type IncidentDetailView struct {
-	Number      int64
-	CheckName   string
-	State       string
-	OpenFor     time.Duration
-	Regions     []string
-	LastError   string
-	AckedBy     string
-	AckedAt     *time.Time
-	ResolvedAt  *time.Time
+	Number int64
+	// OrgSlug / QualifyRef carry the same meaning as on IncidentLine.
+	OrgSlug    string
+	QualifyRef bool
+	CheckName  string
+	State      string
+	OpenFor    time.Duration
+	Regions    []string
+	LastError  string
+	AckedBy    string
+	AckedAt    *time.Time
+	ResolvedAt *time.Time
+	// IncidentURL is the dashboard deep link, rendered as the View button
+	// rather than inline text — never both, so the reply does not say it twice.
 	IncidentURL string
+}
+
+// Ref renders this view's reference in whichever form the destination chat
+// needs.
+func (v *IncidentDetailView) Ref() string {
+	return incidentRefOf(v.QualifyRef, v.OrgSlug, v.Number)
 }
 
 // BuildIncidentDetailHTML renders the /incident <#ref> answer.
@@ -181,7 +273,7 @@ func BuildIncidentDetailHTML(view *IncidentDetailView) string {
 	body.WriteString("<b>")
 	body.WriteString(StateEmoji(stateOr(view.State)))
 	body.WriteString(" ")
-	body.WriteString(IncidentRef(view.Number))
+	body.WriteString(EscapeHTML(view.Ref()))
 	body.WriteString(" — ")
 	body.WriteString(EscapeHTML(checkNameOr(view.CheckName)))
 	body.WriteString("</b>\n\n")
@@ -207,12 +299,6 @@ func BuildIncidentDetailHTML(view *IncidentDetailView) string {
 	}
 
 	writeAckLine(&body, view)
-
-	if link := strings.TrimSpace(view.IncidentURL); link != "" {
-		body.WriteString("\n<a href=\"")
-		body.WriteString(EscapeHTML(link))
-		body.WriteString("\">View incident →</a>")
-	}
 
 	return strings.TrimRight(body.String(), "\n")
 }
@@ -244,28 +330,83 @@ func writeAckLine(body *strings.Builder, view *IncidentDetailView) {
 }
 
 // BuildAckedHTML confirms a typed /ack.
-func BuildAckedHTML(number int64, checkName string) string {
+//
+// ref is a RENDERED reference (short or org-qualified) rather than a bare
+// number: in a multi-org chat the confirmation has to name which org's #42 was
+// just taken, or it confirms nothing.
+func BuildAckedHTML(ref, checkName string) string {
 	return fmt.Sprintf("✅ <b>%s</b> acknowledged — %s.",
-		IncidentRef(number), EscapeHTML(checkNameOr(checkName)))
+		EscapeHTML(ref), EscapeHTML(checkNameOr(checkName)))
 }
 
 // BuildAlreadyAckedHTML is the idempotent answer: acking twice is a no-op that
 // reports the state rather than an error. Two people pressing the same button
 // within a second of each other is the normal case during an outage, not an
 // exception.
-func BuildAlreadyAckedHTML(number int64, who string, ackedAt time.Time) string {
+func BuildAlreadyAckedHTML(ref, who string, ackedAt time.Time) string {
 	if who = strings.TrimSpace(who); who != "" {
 		return fmt.Sprintf("✅ %s was already acknowledged by %s at %s.",
-			IncidentRef(number), EscapeHTML(who), ackedAt.UTC().Format("15:04 UTC"))
+			EscapeHTML(ref), EscapeHTML(who), ackedAt.UTC().Format("15:04 UTC"))
 	}
 
 	return fmt.Sprintf("✅ %s was already acknowledged at %s.",
-		IncidentRef(number), ackedAt.UTC().Format("15:04 UTC"))
+		EscapeHTML(ref), ackedAt.UTC().Format("15:04 UTC"))
 }
 
 // BuildIncidentResolvedHTML is the answer to acking a closed incident.
-func BuildIncidentResolvedHTML(number int64) string {
-	return fmt.Sprintf("🟢 %s is already resolved — nothing to acknowledge.", IncidentRef(number))
+func BuildIncidentResolvedHTML(ref string) string {
+	return fmt.Sprintf("🟢 %s is already resolved — nothing to acknowledge.", EscapeHTML(ref))
+}
+
+// BuildNotConnectedToOrgHTML is the answer to a reference qualified with an org
+// slug this chat is not linked to.
+//
+// It deliberately does NOT say whether that organization exists: the only thing
+// it reveals is which orgs the chat itself is connected to, which its own user
+// already knows.
+func BuildNotConnectedToOrgHTML(orgSlug string) string {
+	return fmt.Sprintf(
+		"This chat isn't connected to <b>%s</b>. "+
+			"Use the connect link from that organization's dashboard (Account → Notifications).",
+		EscapeHTML(strings.TrimSpace(orgSlug)))
+}
+
+// BuildAmbiguousRefHTML is the answer to a BARE reference in a chat linked to
+// several organizations, when the number exists in more than one of them.
+//
+// Guessing is the one thing that must never happen here: acking the wrong org's
+// #42 silences a page nobody was looking at while the real outage stays
+// unclaimed, and it does so silently.
+func BuildAmbiguousRefHTML(command string, lines []IncidentLine) string {
+	var body strings.Builder
+
+	body.WriteString("That number exists in more than one of your organizations:\n")
+
+	for i := range lines {
+		body.WriteString("\n• <b>")
+		body.WriteString(EscapeHTML(QualifiedIncidentRef(lines[i].OrgSlug, lines[i].Number)))
+		body.WriteString("</b> — ")
+		body.WriteString(EscapeHTML(checkNameOr(lines[i].CheckName)))
+		body.WriteString(" (")
+		body.WriteString(EscapeHTML(stateOr(lines[i].State)))
+		body.WriteString(" ")
+		body.WriteString(FormatOpenFor(lines[i].OpenFor))
+		body.WriteString(")")
+	}
+
+	body.WriteString("\n\nSend <code>/")
+	body.WriteString(EscapeHTML(command))
+	body.WriteString(" ")
+
+	if len(lines) > 0 {
+		body.WriteString(EscapeHTML(QualifiedIncidentRef(lines[0].OrgSlug, lines[0].Number)))
+	} else {
+		body.WriteString("#org:42")
+	}
+
+	body.WriteString("</code> with the one you mean.")
+
+	return body.String()
 }
 
 // BuildIncidentNotFoundHTML is the answer to a reference nothing matches.
@@ -283,12 +424,20 @@ func BuildAckNeedsRefHTML(lines []IncidentLine) string {
 
 	for i := range lines {
 		body.WriteString("\n• <b>")
-		body.WriteString(IncidentRef(lines[i].Number))
+		body.WriteString(EscapeHTML(lines[i].Ref()))
 		body.WriteString("</b> ")
 		body.WriteString(EscapeHTML(checkNameOr(lines[i].CheckName)))
 	}
 
-	body.WriteString("\n\nSend <code>/ack #42</code> with the one you mean.")
+	body.WriteString("\n\nSend <code>/ack ")
+
+	if len(lines) > 0 {
+		body.WriteString(EscapeHTML(lines[0].Ref()))
+	} else {
+		body.WriteString("#42")
+	}
+
+	body.WriteString("</code> with the one you mean.")
 
 	return body.String()
 }

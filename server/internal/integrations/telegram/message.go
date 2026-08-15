@@ -14,12 +14,16 @@ const (
 // StateEmoji maps an incident state label to its leading emoji. An unknown
 // state degrades to the DOWN emoji rather than rendering nothing — an alert
 // with no color still has to look like an alert.
+//
+// These emoji are kept aligned with dash0's per-event-type registry
+// (web/dash0/src/components/dashboard/event-display.tsx, EVENT_TYPE_REGISTRY)
+// and msteamsbot.go: one emoji per event/state product-wide.
 func StateEmoji(state string) string {
 	switch state {
 	case StateResolved:
 		return "🟢"
 	case StateEscalated:
-		return "🟠"
+		return "⚠️"
 	default:
 		return "🔴"
 	}
@@ -45,7 +49,13 @@ type AlertParams struct {
 	Detail string
 	// OrgSlug is the organization the incident belongs to.
 	OrgSlug string
-	// IncidentURL is the dashboard deep link. Empty omits the link line.
+	// QualifyRef renders the headline reference as "#org:42" instead of "#42".
+	// Set when the destination chat is linked in more than one organization, so
+	// that the reference the reader types back is self-routing.
+	QualifyRef bool
+	// IncidentURL is the dashboard deep link. NOT rendered into the body —
+	// callers attach it as the View button (telegram.IncidentKeyboard)
+	// instead, so the message does not say it twice.
 	IncidentURL string
 }
 
@@ -94,12 +104,13 @@ func buildAlertHTML(params *AlertParams, prefix string) string {
 	body.WriteString(" ")
 	body.WriteString(headline)
 
-	// The short reference, right in the headline: it is what someone types back
-	// as `/ack #42` or `/incident #42`, so it has to be readable on a lock
-	// screen without opening the message.
+	// The reference, right in the headline: it is what someone types back as
+	// `/ack #42` or `/incident #42`, so it has to be readable on a lock screen
+	// without opening the message. In a chat linked to several orgs it is
+	// org-qualified, because "#42" exists in every one of them.
 	if params.Number > 0 {
 		body.WriteString(" ")
-		body.WriteString(IncidentRef(params.Number))
+		body.WriteString(EscapeHTML(incidentRefOf(params.QualifyRef, params.OrgSlug, params.Number)))
 	}
 
 	body.WriteString(" — ")
@@ -120,14 +131,6 @@ func buildAlertHTML(params *AlertParams, prefix string) string {
 		body.WriteString("<b>Org:</b> ")
 		body.WriteString(EscapeHTML(org))
 		body.WriteString("\n")
-	}
-
-	if link := strings.TrimSpace(params.IncidentURL); link != "" {
-		// The href is escaped too: a query string carrying '&' is the single
-		// most common way to produce an unparseable anchor entity.
-		body.WriteString("\n<a href=\"")
-		body.WriteString(EscapeHTML(link))
-		body.WriteString("\">View incident →</a>")
 	}
 
 	return strings.TrimRight(body.String(), "\n")

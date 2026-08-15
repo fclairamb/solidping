@@ -11,11 +11,11 @@ import (
 )
 
 // incidentNumberBackfillSQL is the backfill block of
-// 012_incident_number.up.sql. The `alter table` that precedes it in the
+// 012_v0_15_0.up.sql. The `alter table` that precedes it in the
 // migration is NOT re-runnable (SQLite has no ADD COLUMN IF NOT EXISTS), so
 // this test inlines just the backfill — exactly like
 // owner_backfill_migration_test.go does for 011.
-// Keep in sync with migrations/012_incident_number.up.sql.
+// Keep in sync with migrations/012_v0_15_0.up.sql.
 const incidentNumberBackfillSQL = `
 update incidents
 set number = (
@@ -182,7 +182,7 @@ func TestIncidentNumberMigrationNumbering(t *testing.T) {
 		seen[key] = name
 	}
 
-	for _, name := range []string{"012_incident_number.up.sql", "012_incident_number.down.sql"} {
+	for _, name := range []string{"012_v0_15_0.up.sql", "012_v0_15_0.down.sql"} {
 		_, readErr := migrationsFS.ReadFile("migrations/" + name)
 		r.NoError(readErr, "%s must be embedded", name)
 	}

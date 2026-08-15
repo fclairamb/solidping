@@ -4,10 +4,25 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, "Liberation Mono", monospace;
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-status-ok: var(--status-ok);
+  --color-status-ok-foreground: var(--status-ok-foreground);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-error: var(--status-error);
+  --color-status-error-foreground: var(--status-error-foreground);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-foreground: var(--status-neutral-foreground);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -31,6 +46,20 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Tinted elevation — shared with dash0 (web/dash0/src/index.css) so both
+     apps read as one product. Shadows carry subtle slate depth, which reads
+     as "premium" without visual clutter. */
+  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.04),
+    0 4px 12px -2px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 4px 6px -1px rgba(15, 23, 42, 0.06),
+    0 12px 24px -4px rgba(15, 23, 42, 0.08);
+  --shadow-primary: 0 8px 16px -4px
+      color-mix(in oklab, var(--primary) 15%, transparent),
+    0 4px 8px -4px color-mix(in oklab, var(--primary) 11%, transparent);
+  --shadow-primary-hover: 0 12px 24px -6px
+      color-mix(in oklab, var(--primary) 22%, transparent),
+    0 6px 12px -6px color-mix(in oklab, var(--primary) 14%, transparent);
 }
 
 :root {
@@ -45,42 +74,58 @@
   --brand-foreground: oklch(0.98 0.01 5);
   --brand-muted: oklch(0.92 0.05 5);
 
-  /* Accent: Lighter blue */
-  --accent: oklch(0.88 0.08 250);
+  /* Accent: Refined subtle blue */
+  --accent: oklch(0.93 0.025 250);
   --accent-foreground: oklch(0.25 0.08 250);
 
-  /* Background: Very light blue wash */
-  --background: oklch(0.98 0.008 250);
-  --foreground: oklch(0.15 0.02 250);
+  /* Background: crisp modern slate-neutral wash */
+  --background: oklch(0.978 0.005 250);
+  --foreground: oklch(0.18 0.02 250);
 
-  /* Card: Slightly more saturated than background */
-  --card: oklch(0.97 0.012 250);
-  --card-foreground: oklch(0.15 0.02 250);
+  /* Card: pure elevated white surface with crisp contrast */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 250);
 
-  /* Popover */
-  --popover: oklch(0.98 0.01 250);
-  --popover-foreground: oklch(0.15 0.02 250);
+  /* Popover: same elevated pure white */
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 250);
 
   /* Secondary */
-  --secondary: oklch(0.94 0.02 250);
+  --secondary: oklch(0.95 0.01 250);
   --secondary-foreground: oklch(0.25 0.04 250);
 
-  /* Muted: Soft blue-gray */
-  --muted: oklch(0.94 0.015 250);
-  --muted-foreground: oklch(0.45 0.02 250);
+  /* Muted: Clean neutral gray */
+  --muted: oklch(0.95 0.01 250);
+  --muted-foreground: oklch(0.48 0.02 250);
 
-  /* Border: Light blue border */
-  --border: oklch(0.9 0.025 250);
-  --input: oklch(0.9 0.025 250);
+  /* Border: Clean crisp border */
+  --border: oklch(0.91 0.009 250);
+  --input: oklch(0.91 0.009 250);
   --ring: oklch(0.55 0.18 250);
 
   /* Destructive: Red */
   --destructive: oklch(0.6 0.22 25);
 
-  /* Status colors */
+  /* Status colors. The `-foreground` pair is the darkened, AA-contrast text
+     tone used on the matching 15%-tint badge fill — the same soft-tint badge
+     recipe dash0 uses, instead of a saturated block of colour. `neutral` is
+     status0's own addition for "no data yet"; dash0 has no equivalent because
+     an operator console always has a live status to show. */
   --status-ok: oklch(0.65 0.2 145);
+  --status-ok-foreground: oklch(0.44 0.14 145);
   --status-warning: oklch(0.75 0.18 85);
+  --status-warning-foreground: oklch(0.47 0.12 80);
   --status-error: oklch(0.6 0.22 25);
+  --status-error-foreground: oklch(0.48 0.19 25);
+  --status-neutral: oklch(0.72 0.02 250);
+  --status-neutral-foreground: oklch(0.48 0.02 250);
+
+  /* Chart colors */
+  --chart-1: oklch(0.55 0.18 250);
+  --chart-2: oklch(0.65 0.2 145);
+  --chart-3: oklch(0.75 0.18 85);
+  --chart-4: oklch(0.6 0.22 25);
+  --chart-5: oklch(0.6 0.14 280);
 
   --radius: 0.625rem;
 }
@@ -119,8 +164,19 @@
   --destructive: oklch(0.65 0.2 25);
 
   --status-ok: oklch(0.7 0.18 145);
+  --status-ok-foreground: oklch(0.8 0.15 145);
   --status-warning: oklch(0.8 0.16 85);
+  --status-warning-foreground: oklch(0.85 0.13 85);
   --status-error: oklch(0.65 0.2 25);
+  --status-error-foreground: oklch(0.78 0.15 25);
+  --status-neutral: oklch(0.45 0.02 250);
+  --status-neutral-foreground: oklch(0.7 0.02 250);
+
+  --chart-1: oklch(0.65 0.16 250);
+  --chart-2: oklch(0.7 0.18 145);
+  --chart-3: oklch(0.8 0.16 85);
+  --chart-4: oklch(0.65 0.2 25);
+  --chart-5: oklch(0.65 0.12 280);
 }
 
 @layer base {

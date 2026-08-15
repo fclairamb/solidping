@@ -70,19 +70,22 @@ type UpdateEvent struct {
 
 // Notifier fans a published status update out to confirmed subscribers by email.
 type Notifier struct {
-	db      db.Service
-	sender  email.Sender
-	baseURL string
-	logger  *slog.Logger
+	db        db.Service
+	sender    email.Sender
+	formatter email.Formatter
+	baseURL   string
+	logger    *slog.Logger
 }
 
 // NewNotifier builds a subscriber fan-out notifier.
-func NewNotifier(dbService db.Service, sender email.Sender, baseURL string, logger *slog.Logger) *Notifier {
+func NewNotifier(
+	dbService db.Service, sender email.Sender, formatter email.Formatter, baseURL string, logger *slog.Logger,
+) *Notifier {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return &Notifier{db: dbService, sender: sender, baseURL: baseURL, logger: logger}
+	return &Notifier{db: dbService, sender: sender, formatter: formatter, baseURL: baseURL, logger: logger}
 }
 
 // notify sends one mail wave for the update to all confirmed page-scoped
@@ -90,7 +93,7 @@ func NewNotifier(dbService db.Service, sender email.Sender, baseURL string, logg
 // are logged, never returned — fan-out must never fail the originating status
 // update. Safe to call from a goroutine.
 func (n *Notifier) notify(ctx context.Context, event *UpdateEvent) {
-	if n == nil || n.sender == nil {
+	if n == nil || n.sender == nil || n.formatter == nil {
 		return
 	}
 
@@ -129,11 +132,27 @@ func (n *Notifier) sendOne(
 		data.LinkURL = *event.LinkURL
 	}
 
+	subject, htmlBody, textBody, err := n.formatter.Format("status-subscriber-update.html", map[string]any{
+		"Subject":                  kind.subject(data),
+		"Label":                    kind.label(),
+		"Title":                    data.Title,
+		"BodyMarkdown":             data.BodyMarkdown,
+		"LinkURL":                  data.LinkURL,
+		"PageName":                 data.PageName,
+		"SubscriberUnsubscribeURL": data.UnsubscribeURL,
+	})
+	if err != nil {
+		n.logger.ErrorContext(ctx, "status subscriber fan-out: failed to format mail",
+			"subscriberUid", sub.UID, "statusPageUid", event.StatusPageUID, "error", err)
+
+		return
+	}
+
 	msg := &email.Message{
 		Recipients: email.Recipients{To: []string{sub.Email}},
-		Subject:    kind.subject(data),
-		HTML:       kind.buildHTML(data),
-		Text:       kind.buildText(data),
+		Subject:    subject,
+		HTML:       htmlBody,
+		Text:       textBody,
 	}
 
 	if _, err := n.sender.Send(ctx, msg); err != nil {

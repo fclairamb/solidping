@@ -26,12 +26,24 @@ export interface ResponseTimePoint {
   status?: "up" | "down" | "timeout" | "error" | "created" | "running" | string;
 }
 
+// ResponseTimeSeries is one region's response-time points for a resource.
+// `region` is absent for results with no recorded region (NULL — legacy rows
+// from before regions were tracked, or a check with a single implicit
+// region).
+export interface ResponseTimeSeries {
+  region?: string;
+  points: ResponseTimePoint[];
+}
+
 export interface ResourceAvailabilityData {
   overallAvailabilityPct?: number;
   // dailyAvailability holds the per-bucket points; when bucketUnit is "hour"
   // these are 24 hourly buckets despite the legacy key name.
   dailyAvailability?: AvailabilityPoint[];
-  responseTimeData?: ResponseTimePoint[];
+  // responseTimeSeries holds one series per region the check has reported
+  // results from (spec 2026-08-14-04). Replaces the old flat
+  // `responseTimeData: ResponseTimePoint[]` field.
+  responseTimeSeries?: ResponseTimeSeries[];
   // period is the active history period ("24h"|"7d"|"30d"|"90d").
   period?: string;
   // bucketUnit is the granularity of each point: "day" or "hour".

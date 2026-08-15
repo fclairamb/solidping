@@ -22,6 +22,9 @@ func newTestStatus0FS() fstest.MapFS {
 		"status0res/index.html": &fstest.MapFile{
 			Data: []byte("<!doctype html><html><head><title>x</title></head><body></body></html>"),
 		},
+		// A real asset, so status0StaticAssetExists has a file to find and the
+		// asset-vs-SPA-route split is exercised rather than assumed.
+		"status0res/assets/app-abc123.js": &fstest.MapFile{Data: []byte("console.log(1)")},
 	}
 }
 
@@ -46,6 +49,9 @@ func TestIsCustomHostAPIAllowed(t *testing.T) {
 		"/api/v1/public/status-subscribers/confirm",
 		"/api/v1/orgs/acme/status-pages/uid/subscribers",
 		"/api/v1/orgs/acme/checks/web/badges/uptime",
+		// The status page footer renders the build it is talking to.
+		"/api/mgmt/version",
+		"/api/mgmt/health",
 	}
 	for _, p := range allowed {
 		r.True(isCustomHostAPIAllowed(p), "expected allowed: %s", p)
@@ -56,6 +62,15 @@ func TestIsCustomHostAPIAllowed(t *testing.T) {
 		"/api/v1/orgs/acme/incidents",
 		"/api/v1/auth/login",
 		"/api/v1/orgs/acme/status-pages/uid",
+		// /api/mgmt is allowlisted by EXACT path, never by prefix — these
+		// siblings must not ride along. /memory and /scheduling are
+		// super-admin; /limits and /report are simply not the SPA's business.
+		"/api/mgmt/memory",
+		"/api/mgmt/scheduling/cost-distribution",
+		"/api/mgmt/limits",
+		"/api/mgmt/report",
+		"/api/mgmt/version/extra",
+		"/api/mgmt",
 	}
 	for _, p := range denied {
 		r.False(isCustomHostAPIAllowed(p), "expected denied: %s", p)
@@ -88,6 +103,14 @@ func newCustomHostTestServer(t *testing.T) *Server {
 	api.GET("/status-pages/:org/:slug", func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("api-view"))
+
+		return nil
+	})
+
+	mgmt := main.NewGroup("/api/mgmt")
+	mgmt.GET("/version", func(w http.ResponseWriter, _ *http.Request) error {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("api-version"))
 
 		return nil
 	})
@@ -149,6 +172,38 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			wantStatus: http.StatusNotFound,
 		},
 		{
+			// Regression: this used to serve the bare shell (no sp-page), so the
+			// SPA rendered its generic "visit a specific status page" landing.
+			name: "custom host /status0/ serves the index WITH sp-page",
+			host: "status.acme.com", path: "/status0/",
+			wantStatus: http.StatusOK, wantBody: `name="sp-page" content="acme/main"`,
+		},
+		{
+			name: "custom host /status0 (no slash) serves the index with sp-page",
+			host: "status.acme.com", path: "/status0",
+			wantStatus: http.StatusOK, wantBody: `content="acme/main"`,
+		},
+		{
+			name: "custom host /status0/index.html is an entry point, not an asset",
+			host: "status.acme.com", path: "/status0/index.html",
+			wantStatus: http.StatusOK, wantBody: `content="acme/main"`,
+		},
+		{
+			name: "custom host deep SPA route under /status0 still gets sp-page",
+			host: "status.acme.com", path: "/status0/acme/main",
+			wantStatus: http.StatusOK, wantBody: `content="acme/main"`,
+		},
+		{
+			name: "custom host real asset is served raw, without sp-page",
+			host: "status.acme.com", path: "/status0/assets/app-abc123.js",
+			wantStatus: http.StatusOK, wantBody: "console.log(1)", wantNotBody: "sp-page",
+		},
+		{
+			name: "custom host version endpoint reaches the router",
+			host: "status.acme.com", path: "/api/mgmt/version",
+			wantStatus: http.StatusOK, wantBody: "api-version",
+		},
+		{
 			name: "custom host dash0 is 404",
 			host: "status.acme.com", path: "/dash0",
 			wantStatus: http.StatusNotFound,
@@ -194,6 +249,10 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			r.Equal(tc.wantStatus, rec.Code)
 			if tc.wantBody != "" {
 				r.Contains(rec.Body.String(), tc.wantBody)
+			}
+
+			if tc.wantNotBody != "" {
+				r.NotContains(rec.Body.String(), tc.wantNotBody)
 			}
 		})
 	}

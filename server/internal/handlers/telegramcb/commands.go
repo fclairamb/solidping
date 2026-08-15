@@ -40,53 +40,49 @@ func (h *Handler) linkedContacts(ctx context.Context, chatID string) []*models.U
 	return live
 }
 
-// requireLinked resolves the org a command runs against, or answers the
-// "link your account" message and reports false.
-//
-// One chat can legitimately be linked in several organizations. v1 answers for
-// the FIRST one rather than refusing or fanning out: refusing would break the
-// common single-org case over a rare one, and fanning out would let one /ack
-// touch an org the sender did not name.
-func (h *Handler) requireLinked(ctx context.Context, chatID string) (*models.UserContact, bool) {
-	contacts := h.linkedContacts(ctx, chatID)
-	if len(contacts) == 0 {
-		h.log.InfoContext(ctx, "telegram command from an unlinked chat", "chatId", chatID)
-		h.reply(ctx, chatID, telegram.BuildNotLinkedHTML())
-
-		return nil, false
-	}
-
-	return contacts[0], true
-}
-
 // handleHelp answers /help.
 func (h *Handler) handleHelp(ctx context.Context, chatID string) {
-	if _, ok := h.requireLinked(ctx, chatID); !ok {
+	if _, ok := h.requireLinkedOrgs(ctx, chatID); !ok {
 		return
 	}
 
 	h.reply(ctx, chatID, telegram.BuildHelpHTML())
 }
 
-// handleStatus answers /status with one line of org health.
-func (h *Handler) handleStatus(ctx context.Context, chatID string) {
-	contact, ok := h.requireLinked(ctx, chatID)
+// handleStatus answers /status [org] with one line of org health.
+//
+// /status is READ-ONLY, which is what makes fanning it out across every linked
+// org safe: a chat linked in three orgs gets three lines rather than one line
+// about whichever org happened to sort first. An optional org slug narrows it.
+func (h *Handler) handleStatus(ctx context.Context, chatID, arg string) {
+	orgs, ok := h.requireLinkedOrgs(ctx, chatID)
 	if !ok {
 		return
 	}
 
-	orgUID := contact.OrganizationUID
-	incidents := h.openIncidents(ctx, orgUID)
+	targets, scoped := h.scopeToOrg(ctx, chatID, orgs, arg)
+	if !scoped {
+		return
+	}
+
+	for i := range targets {
+		h.reply(ctx, chatID, telegram.BuildStatusHTML(h.statusView(ctx, &targets[i])))
+	}
+}
+
+// statusView counts one org's health.
+func (h *Handler) statusView(ctx context.Context, org *linkedOrg) *telegram.StatusView {
+	incidents := h.openIncidents(ctx, org.orgUID)
 
 	total := 0
-	if checks, _, err := h.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{}); err == nil {
+	if checks, _, err := h.db.ListChecks(ctx, org.orgUID, &models.ListChecksFilter{}); err == nil {
 		for _, check := range checks {
 			if check.Enabled {
 				total++
 			}
 		}
 	} else {
-		h.log.WarnContext(ctx, "failed to count checks for /status", "orgUid", orgUID, "error", err)
+		h.log.WarnContext(ctx, "failed to count checks for /status", "orgUid", org.orgUID, "error", err)
 	}
 
 	down := make(map[string]bool, len(incidents))
@@ -94,99 +90,114 @@ func (h *Handler) handleStatus(ctx context.Context, chatID string) {
 		down[incident.CheckUID] = true
 	}
 
-	h.reply(ctx, chatID, telegram.BuildStatusHTML(&telegram.StatusView{
-		OrgSlug:       h.orgSlug(ctx, orgUID),
+	return &telegram.StatusView{
+		OrgSlug:       org.orgSlug,
 		TotalChecks:   total,
 		ChecksDown:    len(down),
 		OpenIncidents: len(incidents),
-	}))
+	}
 }
 
-// handleIncidents answers /incidents: a header, then one message per open
-// incident so each can carry its own Acknowledge button.
-func (h *Handler) handleIncidents(ctx context.Context, chatID string) {
-	contact, ok := h.requireLinked(ctx, chatID)
+// handleIncidents answers /incidents [org]: per org, a header then one message
+// per open incident so each can carry its own Acknowledge button.
+//
+// The maxListedIncidents cap applies to the TOTAL across orgs, not per org: the
+// cap exists because each row is its own message and a hundred of them would hit
+// the per-chat rate limit — a budget that a multi-org chat shares rather than
+// multiplies.
+func (h *Handler) handleIncidents(ctx context.Context, chatID, arg string) {
+	orgs, ok := h.requireLinkedOrgs(ctx, chatID)
 	if !ok {
 		return
 	}
 
-	orgUID := contact.OrganizationUID
-	orgSlug := h.orgSlug(ctx, orgUID)
-	incidents := h.openIncidents(ctx, orgUID)
-
-	if len(incidents) == 0 {
-		h.reply(ctx, chatID, telegram.BuildNoOpenIncidentsHTML(orgSlug))
-
+	targets, scoped := h.scopeToOrg(ctx, chatID, orgs, arg)
+	if !scoped {
 		return
 	}
 
-	h.reply(ctx, chatID, telegram.BuildIncidentsHTML(orgSlug, len(incidents)))
+	qualify := qualifyRefs(orgs)
+	budget := maxListedIncidents
 
-	if len(incidents) > maxListedIncidents {
-		incidents = incidents[:maxListedIncidents]
+	for i := range targets {
+		budget = h.listOrgIncidents(ctx, chatID, &targets[i], qualify, budget)
+	}
+}
+
+// listOrgIncidents sends one org's section of an /incidents answer and returns
+// the remaining row budget.
+func (h *Handler) listOrgIncidents(
+	ctx context.Context, chatID string, org *linkedOrg, qualify bool, budget int,
+) int {
+	incidents := h.openIncidents(ctx, org.orgUID)
+
+	if len(incidents) == 0 {
+		h.reply(ctx, chatID, telegram.BuildNoOpenIncidentsHTML(org.orgSlug))
+
+		return budget
+	}
+
+	// The header always reports the TRUE count, even when the budget truncates
+	// the rows below it — a listing that silently under-reports how much is
+	// broken is worse than one that is visibly cut short.
+	h.reply(ctx, chatID, telegram.BuildIncidentsHTML(org.orgSlug, len(incidents)))
+
+	if len(incidents) > budget {
+		incidents = incidents[:max(budget, 0)]
 	}
 
 	for _, incident := range incidents {
-		line := h.incidentLine(ctx, orgUID, orgSlug, incident)
-
-		var keyboard *telegram.InlineKeyboard
-		if !line.Acked {
-			keyboard = telegram.AckKeyboard(incident.UID)
-		}
+		line := h.incidentLine(ctx, org, qualify, incident)
+		keyboard := telegram.IncidentKeyboard(incident.UID, line.IncidentURL, !line.Acked)
 
 		h.replyWithKeyboard(ctx, chatID, telegram.BuildIncidentLineHTML(&line), keyboard)
 	}
+
+	return budget - len(incidents)
 }
 
 // handleIncidentDetail answers /incident <#ref>.
 func (h *Handler) handleIncidentDetail(ctx context.Context, chatID, arg string) {
-	contact, ok := h.requireLinked(ctx, chatID)
+	orgs, ok := h.requireLinkedOrgs(ctx, chatID)
 	if !ok {
 		return
 	}
 
-	number, valid := telegram.ParseIncidentRef(arg)
-	if !valid {
-		h.reply(ctx, chatID, telegram.BuildBadRefHTML("incident"))
-
+	org, incident, resolved := h.resolveIncidentRef(ctx, chatID, orgs, "incident", arg)
+	if !resolved {
 		return
 	}
 
-	orgUID := contact.OrganizationUID
+	view := h.incidentDetailView(ctx, org, qualifyRefs(orgs), incident)
+	canAck := incident.State != models.IncidentStateResolved && incident.AcknowledgedAt == nil
+	keyboard := telegram.IncidentKeyboard(incident.UID, view.IncidentURL, canAck)
 
-	incident := h.incidentByNumber(ctx, orgUID, number)
-	if incident == nil {
-		h.reply(ctx, chatID, telegram.BuildIncidentNotFoundHTML(telegram.IncidentRef(number)))
-
-		return
-	}
-
-	h.reply(ctx, chatID, telegram.BuildIncidentDetailHTML(h.incidentDetailView(ctx, orgUID, incident)))
+	h.replyWithKeyboard(ctx, chatID, telegram.BuildIncidentDetailHTML(view), keyboard)
 }
 
 // handleAck answers /ack [#ref].
 //
-// With no argument it acks the single open incident. When several are open it
-// LISTS them instead of guessing: acking the wrong incident is silent — the
-// page stops and nobody notices the real one is still unclaimed.
+// With no argument it acks the single open incident — across every linked org,
+// because "the only thing that is broken" is a fact about the chat, not about
+// whichever org sorts first. When several are open it LISTS them instead of
+// guessing: acking the wrong incident is silent — the page stops and nobody
+// notices the real one is still unclaimed.
 func (h *Handler) handleAck(
 	ctx context.Context, msg *telegram.IncomingMessage, chatID, arg string,
 ) {
-	contact, ok := h.requireLinked(ctx, chatID)
+	orgs, ok := h.requireLinkedOrgs(ctx, chatID)
 	if !ok {
 		return
 	}
 
-	orgUID := contact.OrganizationUID
-
-	incident, resolved := h.resolveAckTarget(ctx, orgUID, chatID, arg)
+	org, incident, resolved := h.resolveAckTarget(ctx, chatID, orgs, arg)
 	if !resolved {
 		return
 	}
 
 	actor := telegram.ActorLabel(actorFirstName(msg))
 
-	acked, err := h.acknowledge(ctx, orgUID, incident, contact.UserUID, actor)
+	acked, err := h.acknowledge(ctx, org.orgUID, incident, org.contact.UserUID, actor)
 	if err != nil {
 		h.log.ErrorContext(ctx, "failed to acknowledge incident from telegram",
 			"chatId", chatID, "incidentUid", incident.UID, "error", err)
@@ -195,52 +206,44 @@ func (h *Handler) handleAck(
 		return
 	}
 
-	h.reply(ctx, chatID, h.ackOutcomeHTML(ctx, orgUID, acked, incident))
+	h.reply(ctx, chatID, h.ackOutcomeHTML(ctx, org, qualifyRefs(orgs), acked, incident))
 }
 
 // resolveAckTarget picks the incident a /ack refers to, answering the chat and
 // returning false when it cannot.
 func (h *Handler) resolveAckTarget(
-	ctx context.Context, orgUID, chatID, arg string,
-) (*models.Incident, bool) {
+	ctx context.Context, chatID string, orgs []linkedOrg, arg string,
+) (*linkedOrg, *models.Incident, bool) {
 	if strings.TrimSpace(arg) != "" {
-		number, valid := telegram.ParseIncidentRef(arg)
-		if !valid {
-			h.reply(ctx, chatID, telegram.BuildBadRefHTML("ack"))
-
-			return nil, false
-		}
-
-		incident := h.incidentByNumber(ctx, orgUID, number)
-		if incident == nil {
-			h.reply(ctx, chatID, telegram.BuildIncidentNotFoundHTML(telegram.IncidentRef(number)))
-
-			return nil, false
-		}
-
-		return incident, true
+		return h.resolveIncidentRef(ctx, chatID, orgs, "ack", arg)
 	}
 
-	open := h.openIncidents(ctx, orgUID)
+	open := make([]orgIncident, 0, len(orgs))
+
+	for i := range orgs {
+		for _, incident := range h.openIncidents(ctx, orgs[i].orgUID) {
+			open = append(open, orgIncident{org: orgs[i], incident: incident})
+		}
+	}
 
 	switch len(open) {
 	case 0:
 		h.reply(ctx, chatID, telegram.BuildNothingToAckHTML())
 
-		return nil, false
+		return nil, nil, false
 	case 1:
-		return open[0], true
+		return &open[0].org, open[0].incident, true
 	default:
-		orgSlug := h.orgSlug(ctx, orgUID)
+		qualify := qualifyRefs(orgs)
 		lines := make([]telegram.IncidentLine, 0, len(open))
 
-		for _, incident := range open {
-			lines = append(lines, h.incidentLine(ctx, orgUID, orgSlug, incident))
+		for i := range open {
+			lines = append(lines, h.incidentLine(ctx, &open[i].org, qualify, open[i].incident))
 		}
 
 		h.reply(ctx, chatID, telegram.BuildAckNeedsRefHTML(lines))
 
-		return nil, false
+		return nil, nil, false
 	}
 }
 
@@ -259,16 +262,20 @@ func (h *Handler) acknowledge(
 
 // ackOutcomeHTML renders the answer for an ack attempt, covering the three
 // idempotent outcomes: freshly acked, already acked, already resolved.
+//
+// The reference is rendered for THIS chat: in a multi-org chat the confirmation
+// has to name which org's #42 was just taken, or it confirms nothing.
 func (h *Handler) ackOutcomeHTML(
-	ctx context.Context, orgUID string, acked, before *models.Incident,
+	ctx context.Context, org *linkedOrg, qualify bool, acked, before *models.Incident,
 ) string {
 	if before.State == models.IncidentStateResolved {
-		return telegram.BuildIncidentResolvedHTML(before.Number)
+		return telegram.BuildIncidentResolvedHTML(refFor(qualify, org.orgSlug, before.Number))
 	}
 
 	if before.AcknowledgedAt != nil {
 		return telegram.BuildAlreadyAckedHTML(
-			before.Number, h.userLabel(ctx, before.AcknowledgedBy), *before.AcknowledgedAt,
+			refFor(qualify, org.orgSlug, before.Number),
+			h.userLabel(ctx, before.AcknowledgedBy), *before.AcknowledgedAt,
 		)
 	}
 
@@ -276,7 +283,10 @@ func (h *Handler) ackOutcomeHTML(
 		return telegram.BuildAckFailedHTML()
 	}
 
-	return telegram.BuildAckedHTML(acked.Number, h.checkName(ctx, orgUID, acked.CheckUID))
+	return telegram.BuildAckedHTML(
+		refFor(qualify, org.orgSlug, acked.Number),
+		h.checkName(ctx, org.orgUID, acked.CheckUID),
+	)
 }
 
 // openIncidents lists the org's open, non-suppressed incidents, oldest first —
@@ -315,23 +325,25 @@ func (h *Handler) incidentByNumber(ctx context.Context, orgUID string, number in
 
 // incidentLine builds one listing row.
 func (h *Handler) incidentLine(
-	ctx context.Context, orgUID, orgSlug string, incident *models.Incident,
+	ctx context.Context, org *linkedOrg, qualify bool, incident *models.Incident,
 ) telegram.IncidentLine {
 	return telegram.IncidentLine{
 		Number:      incident.Number,
 		UID:         incident.UID,
-		CheckName:   h.checkName(ctx, orgUID, incident.CheckUID),
+		OrgSlug:     org.orgSlug,
+		QualifyRef:  qualify,
+		CheckName:   h.checkName(ctx, org.orgUID, incident.CheckUID),
 		State:       incidentStateLabel(incident),
 		OpenFor:     time.Since(incident.StartedAt),
 		Acked:       incident.AcknowledgedAt != nil,
 		AckedBy:     h.userLabel(ctx, incident.AcknowledgedBy),
-		IncidentURL: h.incidentURL(orgSlug, incident.UID),
+		IncidentURL: h.incidentURL(org.orgSlug, incident.UID),
 	}
 }
 
 // incidentDetailView assembles the /incident answer.
 func (h *Handler) incidentDetailView(
-	ctx context.Context, orgUID string, incident *models.Incident,
+	ctx context.Context, org *linkedOrg, qualify bool, incident *models.Incident,
 ) *telegram.IncidentDetailView {
 	openFor := time.Since(incident.StartedAt)
 	if incident.ResolvedAt != nil {
@@ -340,7 +352,9 @@ func (h *Handler) incidentDetailView(
 
 	return &telegram.IncidentDetailView{
 		Number:      incident.Number,
-		CheckName:   h.checkName(ctx, orgUID, incident.CheckUID),
+		OrgSlug:     org.orgSlug,
+		QualifyRef:  qualify,
+		CheckName:   h.checkName(ctx, org.orgUID, incident.CheckUID),
 		State:       incidentStateLabel(incident),
 		OpenFor:     openFor,
 		Regions:     incidentRegions(incident),
@@ -348,7 +362,7 @@ func (h *Handler) incidentDetailView(
 		AckedBy:     h.userLabel(ctx, incident.AcknowledgedBy),
 		AckedAt:     incident.AcknowledgedAt,
 		ResolvedAt:  incident.ResolvedAt,
-		IncidentURL: h.incidentURL(h.orgSlug(ctx, orgUID), incident.UID),
+		IncidentURL: h.incidentURL(org.orgSlug, incident.UID),
 	}
 }
 
@@ -456,12 +470,7 @@ func (h *Handler) incidentURL(orgSlug, incidentUID string) string {
 		return ""
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(h.cfg.Server.BaseURL), "/")
-	if baseURL == "" || orgSlug == "" {
-		return ""
-	}
-
-	return baseURL + "/dash0/orgs/" + orgSlug + "/incidents/" + incidentUID
+	return telegram.IncidentURL(h.cfg.Server.BaseURL, orgSlug, incidentUID)
 }
 
 // actorFirstName is the display name of whoever typed the command.

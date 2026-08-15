@@ -297,7 +297,7 @@ func (s *MSTeamsBotSender) followUpText(payload *Payload) string {
 	checkName := getCheckName(payload.Check)
 
 	if payload.EventType == eventTypeIncidentReopened {
-		return fmt.Sprintf("🔴 %s is down again (relapse #%d).", checkName, payload.Incident.RelapseCount)
+		return fmt.Sprintf("🔁 %s is down again (relapse #%d).", checkName, payload.Incident.RelapseCount)
 	}
 
 	if payload.Incident.ResolvedAt != nil {
@@ -336,6 +336,11 @@ func (s *MSTeamsBotSender) buildCardActivity(payload *Payload) *msteams.Activity
 }
 
 // titleAndColor maps the event to the card's headline and semantic color.
+//
+// The emoji here are the ones dash0's per-event-type registry
+// (web/dash0/src/components/dashboard/event-display.tsx, EVENT_TYPE_REGISTRY)
+// and the Telegram integration are kept aligned to: one emoji per event type,
+// product-wide. Changing one here means changing it everywhere.
 func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (string, string) {
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
@@ -345,7 +350,7 @@ func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (st
 	case eventTypeIncidentEscalated:
 		return "⚠️ " + checkName + " ESCALATED", msteams.CardColorWarning
 	case eventTypeIncidentReopened:
-		return fmt.Sprintf("🔴 %s REOPENED (relapse #%d)", checkName, payload.Incident.RelapseCount),
+		return fmt.Sprintf("🔁 %s REOPENED (relapse #%d)", checkName, payload.Incident.RelapseCount),
 			msteams.CardColorAttention
 	default:
 		return "ℹ️ " + checkName, ""

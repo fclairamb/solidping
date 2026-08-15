@@ -32,6 +32,7 @@ import {
 } from "@/lib/notifications";
 import { useTranslation } from "react-i18next";
 import { channelTypeLabel, failureReasonLabel } from "@/lib/channel-labels";
+import { EventTypeBadge } from "@/components/dashboard/event-display";
 
 export const Route = createFileRoute(
   "/orgs/$org/notifications/$notificationUid",
@@ -256,6 +257,7 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
 
 function NotificationDetailPage() {
   const { t } = useTranslation("common");
+  const { t: tEvents } = useTranslation("events");
   const navigate = useNavigate();
   const { org, notificationUid } = Route.useParams();
   const { from } = Route.useSearch();
@@ -342,9 +344,7 @@ function NotificationDetailPage() {
         {data.channelType && data.channelType !== "none" && (
           <Badge variant="outline">{channelTypeLabel(t, data.channelType)}</Badge>
         )}
-        <code className="font-mono text-sm text-muted-foreground">
-          {data.eventType}
-        </code>
+        <EventTypeBadge eventType={data.eventType} t={tEvents} />
       </div>
 
       <Card>

@@ -40,6 +40,15 @@ const (
 	// cached, so the dashboard poll does not hit storage on every request while
 	// still reflecting a fresh issuance quickly.
 	certStatusCacheTTL = 30 * time.Second
+	// servableCacheTTL bounds how long a POSITIVE "this host is ours" answer is
+	// reused. It is the knob behind the documented "serving stops within the
+	// cache TTL" behavior after a domain is unmapped, and it keeps a busy
+	// status page from doing a database lookup on every TLS handshake.
+	//
+	// Negative answers are deliberately NOT cached: a domain that was just
+	// verified in the dashboard must start serving on the very next request,
+	// and an unknown host is refused before any expensive work anyway.
+	servableCacheTTL = 30 * time.Second
 	// readHeaderTimeout bounds slow-header attacks on the two extra listeners.
 	readHeaderTimeout = 10 * time.Second
 	// httpRedirectStatus is the permanent redirect used for plain HTTP.
@@ -115,6 +124,9 @@ type Edge struct {
 	// statusCache is a tiny TTL cache over the storage lookup behind
 	// CertStatus.
 	statusCache map[string]certStatusEntry
+	// servableCache memoizes positive hostIsLocal answers only — see
+	// servableCacheTTL.
+	servableCache map[string]time.Time
 }
 
 type certStatusEntry struct {
@@ -138,11 +150,12 @@ func New(opts *Options) (*Edge, error) {
 	}
 
 	edge := &Edge{
-		opts:        *opts,
-		log:         log,
-		store:       NewStorage(opts.DB),
-		lastErr:     make(map[string]time.Time),
-		statusCache: make(map[string]certStatusEntry),
+		opts:          *opts,
+		log:           log,
+		store:         NewStorage(opts.DB),
+		lastErr:       make(map[string]time.Time),
+		statusCache:   make(map[string]certStatusEntry),
+		servableCache: make(map[string]time.Time),
 	}
 
 	edge.buildCertmagic()
@@ -235,7 +248,69 @@ func (e *Edge) hostIsLocal(ctx context.Context, host string) bool {
 		}
 	}
 
-	return e.opts.CustomDomainServable(ctx, host)
+	if e.servableCached(host) {
+		return true
+	}
+
+	servable := e.opts.CustomDomainServable(ctx, host)
+	if servable {
+		e.mu.Lock()
+		e.servableCache[host] = time.Now().Add(servableCacheTTL)
+		e.mu.Unlock()
+	}
+
+	return servable
+}
+
+// servableCached reports a still-valid positive answer for host.
+func (e *Edge) servableCached(host string) bool {
+	e.mu.RLock()
+	expiresAt, ok := e.servableCache[host]
+	e.mu.RUnlock()
+
+	return ok && time.Now().Before(expiresAt)
+}
+
+// ForgetDomain drops every trace of a hostname from this edge: the positive
+// servable cache, the certificate-status cache, the last-error note, and the
+// certificate itself (in-memory cache and persistent storage).
+//
+// Call it the moment a domain stops being ours — unmapped by an operator, or
+// demoted by the re-verification sweep. Without it the certificate keeps
+// sitting in tls_storage until natural expiry, and even though hostIsLocal now
+// refuses to serve it, leaving a live key for a domain someone else may control
+// is not something to keep around.
+func (e *Edge) ForgetDomain(ctx context.Context, domain string) {
+	host := normalizeHost(domain)
+	if host == "" {
+		return
+	}
+
+	e.mu.Lock()
+	delete(e.servableCache, host)
+	delete(e.statusCache, host)
+	delete(e.lastErr, host)
+	e.mu.Unlock()
+
+	// Drop it from the in-memory cache first, so a handshake racing this call
+	// cannot still be handed the cached certificate.
+	cached := e.cache.AllMatchingCertificates(host)
+	hashes := make([]string, 0, len(cached))
+
+	for i := range cached {
+		hashes = append(hashes, cached[i].Hash())
+	}
+
+	e.cache.Remove(hashes)
+
+	if err := e.store.DeleteSite(ctx, e.issuer.IssuerKey(), host); err != nil {
+		e.log.WarnContext(ctx, "tlsedge: could not delete stored certificate for an unmapped domain",
+			"domain", host, "error", err)
+
+		return
+	}
+
+	e.log.InfoContext(ctx, "tlsedge: dropped the certificate for a domain we no longer serve", "domain", host)
 }
 
 // Decide exposes the decision func for tests and for callers that want to check
@@ -296,10 +371,49 @@ func (e *Edge) invalidateStatus(domain string) {
 // TLSConfig returns the tls.Config that terminates connections with on-demand
 // certificates. It keeps the ACME-TLS-ALPN protocol intact so TLS-ALPN-01
 // challenges can be solved on the same listener.
-func (e *Edge) TLSConfig() *tls.Config {
+func (e *Edge) TLSConfig(ctx context.Context) *tls.Config {
 	cfg := e.magic.TLSConfig()
 	cfg.MinVersion = tls.VersionTLS12
 	cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1")
+
+	// Gate SERVING on the same predicate that gates issuance.
+	//
+	// decide() only runs when certmagic needs to OBTAIN a certificate. Once one
+	// is in the cache or in tls_storage, certmagic hands it out without asking
+	// anyone — so a domain that was unmapped, or demoted by the re-verification
+	// sweep, kept completing handshakes with a valid publicly-trusted
+	// certificate for up to 90 days. Worse, with no custom-domain mapping left,
+	// the request fell through to the instance's own-host routing and served
+	// the dashboard SPA on a hostname this installation no longer claims. The
+	// custom-host path allowlist that 404s /dash0 only applies while the
+	// mapping exists.
+	//
+	// Refusing here closes the connection instead, which is the behavior
+	// "serving stops" in the takeover-protection docs always described. It also
+	// covers the window before any storage cleanup runs, which is why it is the
+	// half that actually matters.
+	issue := cfg.GetCertificate
+	cfg.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		// The edge's lifetime context is used rather than hello.Context().
+		// The per-handshake context would give us cancellation when a client
+		// disconnects mid-handshake, but it is not derived from ours, and a
+		// synthetic hello (tests, or any caller building one by hand) reports
+		// nil — which would panic the moment it reached a database call. The
+		// lookup behind this is a single indexed query, memoized by
+		// servableCache, so losing that cancellation costs nothing.
+		host := normalizeHost(hello.ServerName)
+		if host == "" {
+			return nil, fmt.Errorf("%w: no SNI", ErrHostNotAllowed)
+		}
+
+		if !e.hostIsLocal(ctx, host) {
+			e.log.WarnContext(ctx, "tlsedge: refusing to serve a host we do not own", "host", host)
+
+			return nil, fmt.Errorf("%w: %s", ErrHostNotAllowed, host)
+		}
+
+		return issue(hello)
+	}
 
 	return cfg
 }
@@ -330,7 +444,7 @@ func (e *Edge) Start(ctx context.Context) error {
 	e.httpsSrv = &http.Server{
 		Addr:              e.opts.ACME.ListenHTTPS,
 		Handler:           e.opts.Handler,
-		TLSConfig:         e.TLSConfig(),
+		TLSConfig:         e.TLSConfig(ctx),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

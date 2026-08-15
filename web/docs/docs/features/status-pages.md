@@ -131,8 +131,13 @@ handful of them re-themes the whole page without touching a single selector:
 
 Colors accept any CSS color syntax (`#rrggbb`, `rgb()`, `oklch()`, …).
 
-Rules placed inside a `.dark { … }` block apply to visitors whose browser or OS
-requests dark mode; rules in `:root { … }` apply to light mode. You are not
+Rules placed inside a `.dark { … }` block apply when the page is in dark mode;
+rules in `:root { … }` apply to light mode. A visitor lands in dark mode
+either because they explicitly picked it with the sun/moon toggle in the page
+header (their choice is remembered on that browser) or, absent a stored
+choice, because their OS/browser requests it. Either way SolidPing adds a
+`dark` class to `<html>` before the page paints, so `.dark { … }` overrides
+apply consistently regardless of which of the two triggered it. You are not
 limited to variables — any CSS you write is applied to the live page.
 
 ### Element hooks
@@ -146,9 +151,22 @@ generated markup, these will not change under you.
 |-------|---------|
 | `sp-logo` | Header logo wrapper (the `<img>` sits inside it) |
 | `sp-page-name` | Status page name shown next to the logo |
+| `sp-page-title` | Page heading (`<h1>`) at the top of the body |
+| `sp-page-description` | Page description under the heading |
+| `sp-status-banner` | Overall-status banner strip below the heading |
 | `sp-footer` | Footer container |
 | `sp-powered-by` | "Powered by SolidPing" outbound link |
 | `sp-version` | Version line (`v1.2.3`) |
+
+The page also carries a `dark` class on its `<html>` ancestor whenever the
+visitor is in dark mode (see [CSS variables](#css-variables) above) — you can
+target it directly, e.g. `.dark .sp-logo img { content: url(...); }` for a
+logo variant with better contrast on dark backgrounds. Most custom CSS never
+needs this: an override written against the `--*` variables (`--brand`,
+`--card`, `--status-ok`, …) already applies correctly in both modes, since the
+tokens themselves swap value inside `.dark`. Reach for `.dark <selector>` only
+when an override needs to differ structurally between modes — not just in
+color — such as swapping an image asset.
 
 #### Replacing the logo
 

@@ -244,6 +244,20 @@ SolidPing clears the verification. Serving stops, certificate renewal stops, and
 the `allowed` endpoint starts answering `404`. Restore the `CNAME` and click
 **Verify** again to bring it back.
 
+"Serving stops" is enforced at the TLS handshake, not merely in the router: a
+hostname that is neither one of the installation's own hosts nor a currently
+verified, enabled, public custom domain is refused before a certificate is
+handed out — **including one already issued and cached**. Without that, an
+unmapped hostname would keep completing handshakes until its certificate
+expired, and with no mapping left to scope it, the request would fall through
+to the installation's own-host routing and serve the dashboard on a domain you
+no longer control. Clearing or changing a custom domain also deletes its
+certificate and private key from `tls_storage`.
+
+The decision is memoized for 30 seconds, so a domain you remove can still be
+served for up to that long. Only *positive* answers are cached: a domain you
+have just verified starts serving on the very next request.
+
 The re-verification sweep only ever *demotes*: it never promotes an unverified
 domain on its own — that always takes an explicit **Verify**.
 

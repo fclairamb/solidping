@@ -27,6 +27,9 @@ const (
 	// incident lifetime, but bounded so the state table cannot grow without
 	// limit.
 	telegramThreadTTL = 7 * 24 * time.Hour
+	// telegramThreadMessageIDField is the key holding the anchor message id
+	// inside a thread-anchor state entry.
+	telegramThreadMessageIDField = "messageId"
 )
 
 // pageTelegram delivers an escalation alert to a user's connected Telegram chat
@@ -87,9 +90,9 @@ func (r *EscalationStepJobRun) pageTelegram(
 		return 0
 	}
 
-	params := r.telegramAlertParams(ctx, jctx, log, incident)
+	params := telegramAlertParams(ctx, jctx, log, incident)
 
-	messageID, err := r.sendTelegramAlert(ctx, jctx, log, client, incident, contact.Value, params)
+	messageID, err := sendTelegramAlert(ctx, jctx, log, client, incident, contact.Value, params)
 	if err != nil {
 		reason := telegram.FailureReason(err)
 
@@ -145,32 +148,35 @@ func (r *EscalationStepJobRun) reserveTelegram(
 // telegramAlertParams assembles the RAW (unescaped) alert values. Escaping
 // happens exactly once, inside telegram.BuildAlertHTML — pre-escaping here
 // would double-escape and render "&amp;amp;".
-func (r *EscalationStepJobRun) telegramAlertParams(
+//
+// A plain function rather than a method on the escalation run: nothing here
+// reads run state, and the resolution-notice job needs the very same values, so
+// both callers share ONE definition of what a Telegram message says.
+func telegramAlertParams(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, incident *models.Incident,
 ) *telegram.AlertParams {
-	orgSlug := r.orgSlugFor(ctx, jctx, log, incident.OrganizationUID)
+	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
 
 	return &telegram.AlertParams{
 		State:       telegramStateLabel(incident),
 		Number:      incident.Number,
 		IncidentUID: incident.UID,
-		CheckName:   r.phoneCheckName(ctx, jctx, incident),
+		CheckName:   incidentCheckName(ctx, jctx, incident),
 		Detail:      telegramDetail(incident),
 		OrgSlug:     orgSlug,
-		IncidentURL: telegramIncidentURL(appBaseURL(jctx), orgSlug, incident.UID),
+		IncidentURL: telegram.IncidentURL(appBaseURL(jctx), orgSlug, incident.UID),
 	}
 }
 
-// telegramAckKeyboard attaches the Acknowledge button to an alert — but only
-// while there is something to acknowledge. A resolved or already-acked incident
-// ships without one: a button that answers "already done" is noise, and worse,
-// an alert still offering it reads as an unclaimed page.
-func telegramAckKeyboard(incident *models.Incident) *telegram.InlineKeyboard {
-	if incident.State == models.IncidentStateResolved || incident.AcknowledgedAt != nil {
-		return nil
-	}
+// telegramAlertKeyboard attaches the combined keyboard to an alert: View is on
+// EVERY alert (open, acked, resolved) — unlike Ack, a URL button is never
+// stale noise, and viewing a resolved incident's history is legitimate. Ack
+// attaches only while there is something to acknowledge: a resolved or
+// already-acked incident offering it reads as an unclaimed page.
+func telegramAlertKeyboard(incident *models.Incident, incidentURL string) *telegram.InlineKeyboard {
+	canAck := incident.State != models.IncidentStateResolved && incident.AcknowledgedAt == nil
 
-	return telegram.AckKeyboard(incident.UID)
+	return telegram.IncidentKeyboard(incident.UID, incidentURL, canAck)
 }
 
 // sendTelegramAlert sends the alert, threading it under the incident's first
@@ -179,14 +185,45 @@ func telegramAckKeyboard(incident *models.Incident) *telegram.InlineKeyboard {
 // Threading is a nicety and may NEVER cost a delivery: a missing or expired
 // thread anchor sends standalone, and a reply id Telegram rejects (the user
 // deleted the original) is retried immediately without it.
-func (r *EscalationStepJobRun) sendTelegramAlert(
+//
+// Threading, that degradation, the resolution edit and the retry_after handling
+// live here exactly once: the escalation step and the resolution-notice job both
+// go through this function, because duplicating any of it is how the two paths
+// would drift into disagreeing about what a resolved incident looks like.
+func sendTelegramAlert(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	client *telegram.Client, incident *models.Incident, chatID string,
 	params *telegram.AlertParams,
 ) (int64, error) {
+	return sendTelegramAlertTo(
+		ctx, jctx, log, client, incident, chatID, params,
+		telegramThreadAnchor(ctx, jctx, log, incident, chatID),
+	)
+}
+
+// sendTelegramAlertTo is sendTelegramAlert with an EXPLICIT reply target
+// (0 = standalone).
+//
+// It exists because the resolution-notice job claims a chat by deleting its
+// anchor before sending — by then the stored anchor is gone, but the message id
+// it held is still exactly what the notice must thread under and rewrite.
+func sendTelegramAlertTo(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	client *telegram.Client, incident *models.Incident, chatID string,
+	params *telegram.AlertParams, replyTo int64,
+) (int64, error) {
+	// Decide reference qualification HERE, per destination chat, because this is
+	// the single funnel both the escalation step and the resolution-notice job
+	// go through and the only place that knows which chat the message is for.
+	// The resolution job builds ONE params for every chat it notifies, so the
+	// copy is load-bearing: mutating the caller's struct would leak one chat's
+	// decision into the next one's message.
+	perChat := *params
+	perChat.QualifyRef = telegramChatQualifiesRefs(ctx, jctx, log, chatID)
+	params = &perChat
+
 	body := telegram.BuildAlertHTML(params)
-	keyboard := telegramAckKeyboard(incident)
-	replyTo := r.telegramThreadAnchor(ctx, jctx, log, incident, chatID)
+	keyboard := telegramAlertKeyboard(incident, params.IncidentURL)
 
 	messageID, err := sendTelegramHonoringRetryAfter(ctx, log, client, &telegram.Message{
 		ChatID:           chatID,
@@ -198,7 +235,7 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	if err != nil && replyTo != 0 && errors.Is(err, telegram.ErrReplyTargetMissing) {
 		log.InfoContext(ctx, "telegram thread anchor is gone; sending standalone",
 			"incidentUID", incident.UID, "chatId", chatID)
-		r.clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
+		clearTelegramThreadAnchor(ctx, jctx, log, incident, chatID)
 
 		messageID, err = sendTelegramHonoringRetryAfter(
 			ctx, log, client, &telegram.Message{ChatID: chatID, HTML: body, ReplyMarkup: keyboard},
@@ -212,13 +249,16 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	if replyTo != 0 && params.State == telegram.StateResolved {
 		// Best effort: rewrite the original so someone scrolling back does not
 		// read a stale red alert as live, and TAKE ITS ACKNOWLEDGE BUTTON AWAY —
-		// a resolved incident has nothing left to ack. An absent reply_markup
-		// would leave the old keyboard in place, so the empty one is explicit.
+		// a resolved incident has nothing left to ack. View stays: viewing a
+		// resolved incident's history is legitimate. An absent reply_markup
+		// would leave the old keyboard in place, so an explicit one is required
+		// either way — IncidentKeyboardForEdit falls back to the empty marker
+		// when there is no URL to keep View around for.
 		if editErr := client.EditMessage(ctx, &telegram.Edit{
 			ChatID:      chatID,
 			MessageID:   replyTo,
 			HTML:        telegram.BuildResolvedOriginalHTML(params),
-			ReplyMarkup: telegram.EmptyInlineKeyboard(),
+			ReplyMarkup: telegram.IncidentKeyboardForEdit(incident.UID, params.IncidentURL, false),
 		}); editErr != nil {
 			log.InfoContext(ctx, "could not mark the original telegram alert resolved",
 				"incidentUID", incident.UID, "chatId", chatID, "error", editErr)
@@ -226,6 +266,45 @@ func (r *EscalationStepJobRun) sendTelegramAlert(
 	}
 
 	return messageID, nil
+}
+
+// telegramChatQualifiesRefs reports whether messages to this chat must carry
+// ORG-QUALIFIED incident references ("#acme:42" rather than "#42").
+//
+// True exactly when the chat is verified-linked in two or more organizations.
+// Incident numbers are per-org sequential, so "#42" exists in every org: in such
+// a chat the short reference is genuinely ambiguous, both for the human reading
+// the alert and for the bot parsing the `/ack 42` they type back. A single-org
+// chat — the overwhelming majority — keeps the short form and notices nothing.
+//
+// A lookup failure degrades to the short form: an unqualified reference is the
+// pre-existing behavior, whereas failing the send would cost a page.
+func telegramChatQualifiesRefs(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, chatID string,
+) bool {
+	contacts, err := jctx.DBService.ListUserContactsByTypeValue(
+		ctx, models.UserContactTypeTelegram, chatID,
+	)
+	if err != nil {
+		log.InfoContext(ctx, "could not count the orgs linked to a telegram chat; sending a short ref",
+			"chatId", chatID, "error", err)
+
+		return false
+	}
+
+	orgs := make(map[string]bool, len(contacts))
+
+	for _, contact := range contacts {
+		// Unverified rows are revoked or blocked links: they receive nothing, so
+		// they must not make an otherwise single-org chat read as multi-org.
+		if contact.VerifiedAt == nil {
+			continue
+		}
+
+		orgs[contact.OrganizationUID] = true
+	}
+
+	return len(orgs) > 1
 }
 
 // telegramMaxRetryAfter bounds how long a single send will wait out a Telegram
@@ -279,7 +358,7 @@ func telegramThreadKey(incidentUID, chatID string) string {
 
 // telegramThreadAnchor returns the message id to reply to, or 0 when this is
 // the first alert for the incident in this chat (or the anchor expired).
-func (r *EscalationStepJobRun) telegramThreadAnchor(
+func telegramThreadAnchor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) int64 {
@@ -294,16 +373,25 @@ func (r *EscalationStepJobRun) telegramThreadAnchor(
 		return 0
 	}
 
+	return telegramAnchorMessageID(entry)
+}
+
+// telegramAnchorMessageID reads the stored message id out of a thread-anchor
+// entry. Shared with the resolution-notice job, which gets its entries from a
+// prefix listing rather than a single lookup.
+func telegramAnchorMessageID(entry *models.StateEntry) int64 {
 	if entry == nil || entry.Value == nil {
 		return 0
 	}
 
 	// JSONMap round-trips numbers as float64 through JSON.
-	switch id := (*entry.Value)["messageId"].(type) {
+	switch id := (*entry.Value)[telegramThreadMessageIDField].(type) {
 	case float64:
 		return int64(id)
 	case int64:
 		return id
+	case int:
+		return int64(id)
 	default:
 		return 0
 	}
@@ -324,12 +412,12 @@ func (r *EscalationStepJobRun) recordTelegramThread(
 	orgUID := incident.OrganizationUID
 	key := telegramThreadKey(incident.UID, chatID)
 
-	if existing := r.telegramThreadAnchor(ctx, jctx, log, incident, chatID); existing != 0 {
+	if existing := telegramThreadAnchor(ctx, jctx, log, incident, chatID); existing != 0 {
 		return
 	}
 
 	ttl := telegramThreadTTL
-	value := &models.JSONMap{"messageId": messageID}
+	value := &models.JSONMap{telegramThreadMessageIDField: messageID}
 
 	if err := jctx.DBService.SetStateEntry(ctx, &orgUID, key, value, &ttl); err != nil {
 		// Threading is cosmetic; losing the anchor only means the next alert
@@ -341,7 +429,7 @@ func (r *EscalationStepJobRun) recordTelegramThread(
 
 // clearTelegramThreadAnchor drops an anchor Telegram no longer accepts, so the
 // next alert does not pay the same rejected round-trip again.
-func (r *EscalationStepJobRun) clearTelegramThreadAnchor(
+func clearTelegramThreadAnchor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, chatID string,
 ) {
@@ -410,14 +498,4 @@ func telegramDetail(incident *models.Incident) string {
 	}
 
 	return detail
-}
-
-// telegramIncidentURL builds the dashboard deep link, or "" when the instance
-// has no base URL configured (the alert then simply ships without a link).
-func telegramIncidentURL(baseURL, orgSlug, incidentUID string) string {
-	if baseURL == "" || orgSlug == "" {
-		return ""
-	}
-
-	return strings.TrimRight(baseURL, "/") + "/dash0/orgs/" + orgSlug + "/incidents/" + incidentUID
 }

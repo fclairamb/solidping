@@ -1,0 +1,39 @@
+{
+  "title": "Statusaktualisierungen",
+  "subtitle": "Veröffentlichen Sie narrative Updates auf Ihren Statusseiten.",
+  "newStatusUpdate": "Neue Statusaktualisierung",
+  "editStatusUpdate": "Statusaktualisierung bearbeiten",
+  "noStatusUpdates": "Noch keine Statusaktualisierungen",
+  "noMatch": "Keine Statusaktualisierung entspricht Ihren Filtern",
+  "searchPlaceholder": "Nach Titel suchen…",
+  "viewPublic": "Öffentliche Aktualisierung ansehen",
+  "table": {
+    "title": "Titel",
+    "kind": "Art",
+    "date": "Datum"
+  },
+  "filters": {
+    "allPages": "Alle Seiten",
+    "allSections": "Alle Abschnitte",
+    "allChecks": "Alle Checks",
+    "allKinds": "Alle Arten"
+  },
+  "kinds": {
+    "investigating": "Untersuchung läuft",
+    "identified": "Identifiziert",
+    "monitoring": "Überwachung",
+    "resolved": "Behoben",
+    "maintenance": "Wartung",
+    "info": "Info"
+  },
+  "deleteDialog": {
+    "title": "Statusaktualisierung löschen?",
+    "description": "Dies entfernt die Aktualisierung von der Statusseite. Diese Aktion kann nicht rückgängig gemacht werden."
+  },
+  "toast": {
+    "created": "Statusaktualisierung erstellt",
+    "updated": "Statusaktualisierung gespeichert",
+    "deleted": "Statusaktualisierung gelöscht",
+    "deleteFailed": "Statusaktualisierung konnte nicht gelöscht werden"
+  }
+}

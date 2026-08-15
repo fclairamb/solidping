@@ -131,6 +131,33 @@ test.describe("Notification delivery detail", () => {
     await expect(page.getByText("Delivery timeline")).toBeVisible();
   });
 
+  // Deterministically seeded in test mode (server/test/testdata/testdata.go,
+  // createTestIncidentNotification): a fixed incident.created notification.
+  const SEEDED_INCIDENT_UID = "00000000-0000-0000-0000-000000000013";
+  const SEEDED_NOTIF_UID = "00000000-0000-0000-0000-000000000014";
+
+  // Event-type identity (spec 2026-08-15-02): the bare `<code>{eventType}</code>`
+  // is gone, replaced by the same EventTypeBadge (emoji + translated label)
+  // used everywhere else an event type renders.
+  test("shows the labeled event badge instead of the bare event-type code", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(
+      `/dash0/orgs/test/notifications/${SEEDED_NOTIF_UID}?from=incident:${SEEDED_INCIDENT_UID}`,
+    );
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
+
+    // The translated label is visible...
+    await expect(page.getByText("Incident Created")).toBeVisible();
+    // ...and the raw event-type string is no longer rendered as a bare <code>
+    // element (it still lives in the badge's title attribute for debugging).
+    await expect(page.locator("code", { hasText: "incident.created" })).toHaveCount(0);
+  });
+
   // Legacy redirect: the old nested URL forwards to the flat route.
   test("old nested notification URL redirects to flat route", async ({
     authenticatedPage,

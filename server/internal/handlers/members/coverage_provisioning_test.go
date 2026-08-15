@@ -49,8 +49,13 @@ func newMemberFixture(ctx context.Context, t *testing.T, slug string) *memberFix
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	mailer := &capturingEmailSender{}
+
+	formatter, err := email.NewFormatter()
+	r.NoError(err)
+
 	svc := members.NewService(dbSvc,
 		members.WithEmailSender(mailer),
+		members.WithEmailFormatter(formatter),
 		members.WithAppBaseURL("https://solidping.example/"))
 
 	return &memberFixture{svc: svc, dbSvc: dbSvc, org: org, mailer: mailer}

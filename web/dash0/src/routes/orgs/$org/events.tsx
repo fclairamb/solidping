@@ -3,14 +3,11 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, Calendar, RefreshCw, User, Cpu } from "lucide-react";
 import { useEvents } from "@/api/hooks";
 import {
+  EventTypeBadge,
   getEventCheckName,
-  getEventLabel,
-  getEventTone,
 } from "@/components/dashboard/event-display";
 import { DurationAgo } from "@/components/shared/relative-time";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -170,15 +167,7 @@ function EventsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "gap-1.5 text-xs font-medium",
-                          getEventTone(event.eventType),
-                        )}
-                      >
-                        {getEventLabel(event.eventType, t)}
-                      </Badge>
+                      <EventTypeBadge eventType={event.eventType} t={t} />
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

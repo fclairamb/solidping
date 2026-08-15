@@ -24,17 +24,21 @@ type Handler struct {
 	svc       *Service
 	dbService db.Service
 	sender    email.Sender
+	formatter email.Formatter
 	cfg       *config.Config
 	logger    *slog.Logger
 }
 
 // NewHandler creates a new status subscribers handler.
-func NewHandler(service *Service, dbService db.Service, sender email.Sender, cfg *config.Config) *Handler {
+func NewHandler(
+	service *Service, dbService db.Service, sender email.Sender, formatter email.Formatter, cfg *config.Config,
+) *Handler {
 	return &Handler{
 		HandlerBase: base.NewHandlerBase(cfg),
 		svc:         service,
 		dbService:   dbService,
 		sender:      sender,
+		formatter:   formatter,
 		cfg:         cfg,
 		logger:      slog.Default(),
 	}
@@ -78,7 +82,7 @@ func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error
 // sendConfirmMail renders and sends the double opt-in confirmation. Failure is
 // logged but never surfaced to the public caller (no PII echoes).
 func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) {
-	if h.sender == nil {
+	if h.sender == nil || h.formatter == nil {
 		return
 	}
 
@@ -87,11 +91,23 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 		ConfirmURL: confirmURL(h.baseURL(), result.Subscriber.ConfirmToken),
 	}
 
+	subject, htmlBody, textBody, err := h.formatter.Format("status-subscriber-confirm.html", map[string]any{
+		"Subject":    MailKindConfirm.subject(data),
+		"PageName":   data.PageName,
+		"ConfirmURL": data.ConfirmURL,
+	})
+	if err != nil {
+		h.logger.ErrorContext(ctx, "status subscriber confirm mail formatting failed",
+			"subscriberUid", result.Subscriber.UID, "error", err)
+
+		return
+	}
+
 	msg := &email.Message{
 		Recipients: email.Recipients{To: []string{result.Subscriber.Email}},
-		Subject:    MailKindConfirm.subject(data),
-		HTML:       MailKindConfirm.buildHTML(data),
-		Text:       MailKindConfirm.buildText(data),
+		Subject:    subject,
+		HTML:       htmlBody,
+		Text:       textBody,
 	}
 
 	if _, err := h.sender.Send(ctx, msg); err != nil {

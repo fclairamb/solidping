@@ -6,6 +6,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { routeTree } from "./routeTree.gen";
 import { ApiError, NetworkError } from "@/api/client";
 import i18n from "./i18n";
+// Self-hosted variable fonts, same pair dash0 loads — no external font CDN, so
+// a status page stays renderable (and privacy-clean) even when the visitor's
+// network blocks third-party origins.
+import "@fontsource-variable/inter/index.css";
+import "@fontsource-variable/jetbrains-mono/index.css";
 import "./index.css";
 
 const basepath = import.meta.env.VITE_BASE_URL || "";

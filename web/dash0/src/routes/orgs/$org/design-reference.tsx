@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { getEventTone } from "@/components/dashboard/event-display";
+import { EventTypeBadge, getEventTone } from "@/components/dashboard/event-display";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
@@ -53,6 +53,7 @@ import {
 import { DnsRecordRow } from "@/components/shared/dns-record-row";
 import { DocsLink } from "@/components/shared/docs-link";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -155,6 +156,7 @@ export const Route = createFileRoute("/orgs/$org/design-reference")({
 // "N ago" showcase below stays a pure render — see the LiveDurationAgo
 // example.
 const RELATIVE_TIME_DEMO_SINCE = new Date(Date.now() - 5 * 60_000).toISOString();
+const TIME_AGO_DEMO_DATE = new Date(Date.now() - 46 * 60_000).toISOString();
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -1171,6 +1173,38 @@ function ButtonsBadgesSection() {
             </span>
           }
           importLine={`import { LiveDurationAgo } from "@/components/shared/relative-time";\n\n{agent.lastSeenAt ? (\n  <span title={new Date(agent.lastSeenAt).toLocaleString()}>\n    <LiveDurationAgo since={agent.lastSeenAt} />\n  </span>\n) : (\n  t("privateLocations.agents.never", "never")\n)}`}
+        />
+
+        <h3 className="text-sm font-medium">TimeAgo (hover/tap + click-to-copy)</h3>
+        <p className="text-sm text-muted-foreground">
+          The incidents list, incident detail (timeline, comments, header) and jobs
+          pages' timestamp. Unlike <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveDurationAgo</code> above,
+          the absolute time isn't just a passive <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code>{" "}
+          — hovering (or tapping, on touch) opens a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Tooltip</code> with both local and
+          UTC time, and clicking copies the UTC time as ISO&nbsp;8601 (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">2026-08-14T09:31:07Z</code>)
+          to the clipboard — the format that pastes cleanly into a log query. All instances
+          share a single 30s re-render timer (not one <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">setInterval</code> per
+          row) so long-lived tabs don't drift.
+        </p>
+        <ExampleRow
+          preview={
+            <span className="text-sm">
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">tooltip</code> (default,
+              dense lists): <TimeAgo date={TIME_AGO_DEMO_DATE} data-testid="design-ref-time-ago-tooltip" />
+            </span>
+          }
+          importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Dense lists (incidents index, jobs): compact relative text, absolute\n// time behind hover/tap.\n{incident.startedAt ? <TimeAgo date={incident.startedAt} /> : "-"}`}
+        />
+        <ExampleRow
+          preview={
+            <span className="text-sm">
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">inline</code> (incident
+              detail — several timestamps compared at once):{" "}
+              <TimeAgo date={TIME_AGO_DEMO_DATE} variant="inline" data-testid="design-ref-time-ago-inline" />
+            </span>
+          }
+          importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Incident detail (timeline, comments, header): absolute time shown\n// inline instead of hidden behind hover.\n<TimeAgo date={u.publishedAt} variant="inline" />`}
         />
 
         <h3 className="text-sm font-medium">Session card</h3>
@@ -2418,6 +2452,35 @@ const EVENT_TONE_SAMPLES: { type: string; label: string }[] = [
   { type: "something.unmapped", label: "Unmapped" },
 ];
 
+// EVENT_BADGE_SAMPLES demonstrates the canonical per-event-type registry
+// (EVENT_TYPE_REGISTRY in event-display.tsx) — the emoji+tone pairing that is
+// binding across dash0 AND the backend chat integrations (msteamsbot.go,
+// Telegram, Slack). The last two rows are deliberately NOT in the registry,
+// to show the family fallback still renders a sane badge.
+const EVENT_BADGE_SAMPLES: { type: string; label: string }[] = [
+  { type: "incident.created", label: "Incident Created" },
+  { type: "incident.reopened", label: "Incident Reopened" },
+  { type: "incident.escalated", label: "Incident Escalated" },
+  { type: "incident.escalation_failed", label: "Escalation Failed" },
+  { type: "incident.resolved", label: "Incident Resolved" },
+  { type: "incident.acknowledged", label: "Incident Acknowledged" },
+  { type: "incident.unacknowledged", label: "Incident Unacknowledged" },
+  { type: "incident.snoozed", label: "Incident Snoozed" },
+  { type: "check.updated", label: "Check Updated" },
+  { type: "something.unmapped", label: "Unmapped" },
+];
+
+// designReferenceEventT is a stand-in for the real `t` from
+// useTranslation("events") — this page is a static catalog, not localized —
+// resolving `types.<eventType>` from the sample labels above and otherwise
+// behaving like i18next's own `defaultValue` fallback.
+function designReferenceEventT(key: string, options?: Record<string, unknown>): string {
+  const sample = EVENT_BADGE_SAMPLES.find((s) => key === `types.${s.type}`);
+  if (sample) return sample.label;
+  const fallback = options?.defaultValue;
+  return typeof fallback === "string" ? fallback : key;
+}
+
 function EventToneSection() {
   return (
     <Section
@@ -2445,6 +2508,32 @@ function EventToneSection() {
             </div>
           }
           importLine={`import { getEventLabel, getEventTone } from "@/components/dashboard/event-display";\n\n<Badge\n  variant="outline"\n  className={cn("gap-1.5 text-xs font-medium", getEventTone(event.eventType))}\n>\n  {getEventLabel(event.eventType, t)}\n</Badge>\n\n// Pair it with a relative timestamp rather than a full locale string —\n// DurationAgo (non-ticking) is the right one for a historical log:\n//   <span title={new Date(event.createdAt).toLocaleString()}>\n//     <DurationAgo since={event.createdAt} />\n//   </span>`}
+        />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Per-event-type badge (emoji + label + tone)</h3>
+        <p className="text-xs text-muted-foreground">
+          <code>EventTypeBadge</code> is the canonical rendering of "which event was this" —
+          used in notification lists (incident detail, notification detail), the events page,
+          the dashboard feed, and the incident timeline. It layers a per-type emoji (from the
+          EVENT_TYPE_REGISTRY map in event-display.tsx) on top of the same tone + label as
+          above; a type with no registry entry (last two rows) still renders a plain badge via
+          the family fallback. The emoji pairing is binding product-wide — msteamsbot.go,
+          Telegram, and Slack are kept aligned to the same emoji per event type.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-2">
+              {EVENT_BADGE_SAMPLES.map((sample) => (
+                <EventTypeBadge
+                  key={sample.type}
+                  eventType={sample.type}
+                  t={designReferenceEventT}
+                />
+              ))}
+            </div>
+          }
+          importLine={`import { EventTypeBadge } from "@/components/dashboard/event-display";\n\n<EventTypeBadge eventType={row.eventType} t={t} />`}
         />
       </div>
     </Section>

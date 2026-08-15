@@ -787,6 +787,14 @@ func (r *EscalationStepJobRun) auditPhoneSkip(
 func (r *EscalationStepJobRun) orgSlugFor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string,
 ) string {
+	return orgSlugForOrg(ctx, jctx, log, orgUID)
+}
+
+// orgSlugForOrg is the run-independent form of orgSlugFor, shared with the
+// incident-resolution-notice job.
+func orgSlugForOrg(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string,
+) string {
 	org, err := jctx.DBService.GetOrganization(ctx, orgUID)
 	if err != nil || org == nil {
 		log.WarnContext(ctx, "failed to load org slug for phone ack URL", "orgUid", orgUID, "error", err)
@@ -819,6 +827,14 @@ func (r *EscalationStepJobRun) buildPhoneAckToken(
 // phoneCheckName returns the incident's check name, falling back to the
 // incident UID when the check has been deleted.
 func (r *EscalationStepJobRun) phoneCheckName(
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
+) string {
+	return incidentCheckName(ctx, jctx, incident)
+}
+
+// incidentCheckName is the run-independent form of phoneCheckName, shared with
+// the incident-resolution-notice job.
+func incidentCheckName(
 	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
 ) string {
 	check, err := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
@@ -1120,15 +1136,17 @@ func (r *EscalationStepJobRun) adminFallbackEmail(
 	)
 }
 
-// sendEscalationEmail sends a minimal escalation email directly via the
-// email service. Returns 1 on success, 0 otherwise. V1 body is plain
-// text — richer formatting can come later by routing through a
-// per-user notification connection.
+// sendEscalationEmail sends the escalation-policy email directly via the
+// email service, rendered through the shared formatter (escalation.html) so
+// it gets the same branding/HTML part as every other transactional email and
+// addresses the incident by its human-facing #N reference instead of the raw
+// UUID. Returns 1 on success, 0 otherwise.
 func (r *EscalationStepJobRun) sendEscalationEmail(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, recipient, userUID, source string,
 ) int {
-	if jctx.Services == nil || jctx.Services.EmailSender == nil || recipient == "" {
+	if jctx.Services == nil || jctx.Services.EmailSender == nil ||
+		jctx.Services.EmailFormatter == nil || recipient == "" {
 		return 0
 	}
 
@@ -1143,16 +1161,21 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 		log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 
-	subject := fmt.Sprintf("[escalation] incident %s requires attention", incident.UID)
-	body := fmt.Sprintf(
-		"Escalation policy fired for incident %s.\n\nOpen the dashboard to acknowledge or resolve.",
-		incident.UID,
-	)
+	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident)
+
+	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format("escalation.html", viewModel)
+	if err != nil {
+		log.WarnContext(ctx, "failed to format escalation email", "error", err)
+		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
+
+		return 0
+	}
 
 	msg := &email.Message{
 		Recipients: email.Recipients{To: []string{recipient}},
 		Subject:    subject,
-		Text:       body,
+		HTML:       htmlBody,
+		Text:       textBody,
 	}
 
 	result, err := jctx.Services.EmailSender.Send(ctx, msg)
@@ -1171,6 +1194,113 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), messageID)
 
 	return 1
+}
+
+// buildEscalationEmailViewModel assembles the escalation.html view-model.
+// Check/org lookups are best-effort (mirrors emitEscalationFailed): a check
+// deleted since the incident opened must not block the page, it just loses
+// its name/link.
+func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
+) map[string]any {
+	baseURL := appBaseURL(jctx)
+
+	orgSlug := ""
+	if org, err := jctx.DBService.GetOrganization(ctx, incident.OrganizationUID); err == nil && org != nil {
+		orgSlug = org.Slug
+	}
+
+	checkName := escalationUnknownCheckName
+	var checkURL string
+
+	check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
+	if checkErr == nil && check != nil {
+		checkName = escalationCheckName(check)
+		checkURL = escalationCheckURL(baseURL, orgSlug, check)
+	}
+
+	return map[string]any{
+		viewModelKeyCheckName: checkName,
+		"CheckURL":            checkURL,
+		"IncidentNumber":      incident.Number,
+		"IncidentURL":         escalationIncidentURL(baseURL, orgSlug, incident),
+		"StartedAt":           incident.StartedAt.Format("2006-01-02 15:04:05"),
+		"FailureCount":        incident.FailureCount,
+		"DashboardURL":        escalationDashboardRootURL(baseURL),
+		"DocsURL":             escalationDocsURL(baseURL),
+	}
+}
+
+// escalationUnknownCheckName is the fallback check name when the check has
+// been deleted since the incident opened (or has neither Name nor Slug).
+const escalationUnknownCheckName = "Unknown check"
+
+// viewModelKeyCheckName is the escalation.html view-model key for the check
+// name — pulled into a constant alongside escalationUnknownCheckName so
+// goconst doesn't flag the literal (job_email_test.go uses the same "CheckName"
+// string in unrelated template-data fixtures elsewhere in this package).
+const viewModelKeyCheckName = "CheckName"
+
+// escalationCheckName returns the check name from Name or Slug, falling back
+// to escalationUnknownCheckName — mirrors notifications.getCheckName,
+// duplicated locally to avoid an import cycle (notifications already imports
+// jobtypes' sibling packages) for one small helper.
+func escalationCheckName(check *models.Check) string {
+	if check == nil {
+		return escalationUnknownCheckName
+	}
+
+	if check.Name != nil && *check.Name != "" {
+		return *check.Name
+	}
+
+	if check.Slug != nil && *check.Slug != "" {
+		return *check.Slug
+	}
+
+	return escalationUnknownCheckName
+}
+
+// escalationCheckURL builds the dashboard URL for a check's detail page.
+// Returns "" when any required component is missing.
+func escalationCheckURL(baseURL, orgSlug string, check *models.Check) string {
+	if baseURL == "" || orgSlug == "" || check == nil || check.Slug == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", strings.TrimRight(baseURL, "/"), orgSlug, *check.Slug)
+}
+
+// escalationIncidentURL builds the dashboard URL for an incident's detail
+// page. Returns "" when any required component is missing.
+func escalationIncidentURL(baseURL, orgSlug string, incident *models.Incident) string {
+	if baseURL == "" || orgSlug == "" || incident == nil || incident.UID == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/dash0/orgs/%s/incidents/%s", strings.TrimRight(baseURL, "/"), orgSlug, incident.UID)
+}
+
+// escalationDashboardRootURL returns the dash0 root URL for the email footer
+// link, or "" when baseURL is empty.
+func escalationDashboardRootURL(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" {
+		return ""
+	}
+
+	return baseURL + "/dash0"
+}
+
+// escalationDocsURL returns the documentation root URL for the email footer
+// link, or "" when baseURL is empty.
+func escalationDocsURL(baseURL string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" {
+		return ""
+	}
+
+	return baseURL + "/docs"
 }
 
 // emitEscalationFailed records a soft failure for the timeline.

@@ -11,6 +11,7 @@ import enAccount from "./locales/en/account.json";
 import enOrg from "./locales/en/org.json";
 import enServer from "./locales/en/server.json";
 import enStatusPages from "./locales/en/statusPages.json";
+import enStatusUpdates from "./locales/en/statusUpdates.json";
 import enBadges from "./locales/en/badges.json";
 import enDashboard from "./locales/en/dashboard.json";
 import enFeedback from "./locales/en/feedback.json";
@@ -31,6 +32,7 @@ import frAccount from "./locales/fr/account.json";
 import frOrg from "./locales/fr/org.json";
 import frServer from "./locales/fr/server.json";
 import frStatusPages from "./locales/fr/statusPages.json";
+import frStatusUpdates from "./locales/fr/statusUpdates.json";
 import frBadges from "./locales/fr/badges.json";
 import frDashboard from "./locales/fr/dashboard.json";
 import frFeedback from "./locales/fr/feedback.json";
@@ -51,6 +53,7 @@ import deAccount from "./locales/de/account.json";
 import deOrg from "./locales/de/org.json";
 import deServer from "./locales/de/server.json";
 import deStatusPages from "./locales/de/statusPages.json";
+import deStatusUpdates from "./locales/de/statusUpdates.json";
 import deBadges from "./locales/de/badges.json";
 import deDashboard from "./locales/de/dashboard.json";
 import deFeedback from "./locales/de/feedback.json";
@@ -71,6 +74,7 @@ import esAccount from "./locales/es/account.json";
 import esOrg from "./locales/es/org.json";
 import esServer from "./locales/es/server.json";
 import esStatusPages from "./locales/es/statusPages.json";
+import esStatusUpdates from "./locales/es/statusUpdates.json";
 import esBadges from "./locales/es/badges.json";
 import esDashboard from "./locales/es/dashboard.json";
 import esFeedback from "./locales/es/feedback.json";
@@ -98,6 +102,7 @@ i18n
         org: enOrg,
         server: enServer,
         statusPages: enStatusPages,
+        statusUpdates: enStatusUpdates,
         badges: enBadges,
         dashboard: enDashboard,
         feedback: enFeedback,
@@ -120,6 +125,7 @@ i18n
         org: frOrg,
         server: frServer,
         statusPages: frStatusPages,
+        statusUpdates: frStatusUpdates,
         badges: frBadges,
         dashboard: frDashboard,
         feedback: frFeedback,
@@ -142,6 +148,7 @@ i18n
         org: deOrg,
         server: deServer,
         statusPages: deStatusPages,
+        statusUpdates: deStatusUpdates,
         badges: deBadges,
         dashboard: deDashboard,
         feedback: deFeedback,
@@ -164,6 +171,7 @@ i18n
         org: esOrg,
         server: esServer,
         statusPages: esStatusPages,
+        statusUpdates: esStatusUpdates,
         badges: esBadges,
         dashboard: esDashboard,
         feedback: esFeedback,

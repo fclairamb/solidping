@@ -18,7 +18,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
-const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 characters, " +
+// Kept in step with slugRegex, which migration 009 widened to 3-100 characters
+// (the message still claimed 3-40 long after).
+const slugValidationMsg = "Slug must start with a lowercase letter, be 3-100 characters, " +
 	"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed."
 
 // visibilityPublic is the status_pages.visibility value that makes a page

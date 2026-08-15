@@ -367,9 +367,14 @@ func TestAuditEscalationUserSend(t *testing.T) {
 	r.NoError(err)
 
 	mockSender := &mockEmailSender{}
+
+	formatter, err := email.NewFormatter()
+	r.NoError(err)
+
 	svcList := &services.Registry{
-		EmailSender: mockSender,
-		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier(), nil),
+		EmailSender:    mockSender,
+		EmailFormatter: formatter,
+		Jobs:           jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier(), nil),
 	}
 
 	// Build a fake job row for the context.

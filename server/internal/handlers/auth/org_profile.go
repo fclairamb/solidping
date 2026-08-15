@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
 
 // Organization-profile errors.
@@ -206,7 +207,7 @@ func (s *Service) buildOrgProfileUpdate(
 
 	if req.Slug != nil && *req.Slug != org.Slug {
 		slug := *req.Slug
-		if !orgSlugRegex.MatchString(slug) {
+		if !orgslug.IsValid(slug) {
 			return update, "", ErrInvalidOrgSlug
 		}
 

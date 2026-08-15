@@ -5,15 +5,35 @@ check-job queues.
 
 ## Org jobs
 
-Job management for background tasks. Routes are registered without
-authentication middleware at the router level (auth may be checked in
-handlers).
+Job management for background tasks. Every route below is registered behind
+`RequireAuth` + `RequireOrgAccess` (org membership) at the router level; the
+create route adds `RequireOrgAdmin` on top. The route table and its guards live
+in one place — `jobs.Handler.RegisterRoutes`, called from `app/server.go`.
 
 ### GET /api/v1/orgs/:org/jobs
 List jobs. Auth: required
 
 ### POST /api/v1/orgs/:org/jobs
-Create a job. Auth: required
+Create a job. Auth: **admin**
+
+Only **allowlisted job types** can be created through this endpoint, and the
+allowlist is `sleep` only (`jobdef.IsPubliclyCreatable`). Anything else — and
+that includes `email`, `webhook`, `notification`, `aggregation` and the
+discovery family — is refused with **403 / `FORBIDDEN`**, naming the type.
+
+Why: the job registry is generic, so an open create endpoint means any caller
+can send **arbitrary email** through the deployment's own SMTP sender (the
+`email` type accepts raw HTML, which leaves with the deployment's From: address
+and its SPF/DKIM alignment, to arbitrary recipients) and can make the server
+issue **arbitrary outbound HTTP requests** (`webhook` takes any URL, method,
+headers and body — SSRF against cloud metadata endpoints and cluster-internal
+services). Neither type has a first-party caller on this endpoint: SolidPing
+enqueues them internally through the job service, which is deliberately not
+subject to the allowlist.
+
+Status codes: 403 for a non-admin caller or a blocked type; 400 /
+`VALIDATION_ERROR` for an unknown type or a config that is invalid for the
+requested type; 500 only for genuine infrastructure failures.
 
 ### GET /api/v1/orgs/:org/jobs/:uid
 Get a job. Auth: required

@@ -12,14 +12,22 @@ const badgeVariants = cva(
           "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
         secondary:
           "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        // Status variants use the soft-tint recipe shared with dash0
+        // (web/dash0/src/components/ui/badge.tsx): a 15% fill of the status
+        // hue, a 25% border, and the darkened `-foreground` tone for the text.
+        // Replaces the previous saturated `bg-green-500`-style blocks, which
+        // shouted louder than the availability bars they sat next to and had
+        // no dark-mode story.
         destructive:
-          "border-transparent bg-destructive text-white shadow hover:bg-destructive/80",
+          "border-status-error/25 bg-status-error/15 text-status-error-foreground",
         outline: "text-foreground",
         success:
-          "border-transparent bg-green-500 text-white shadow hover:bg-green-500/80",
+          "border-status-ok/25 bg-status-ok/15 text-status-ok-foreground",
         warning:
-          "border-transparent bg-yellow-500 text-white shadow hover:bg-yellow-500/80",
-        info: "border-transparent bg-blue-500 text-white shadow hover:bg-blue-500/80",
+          "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
+        // status0-only: the page-level "under maintenance" rollup. Blue rather
+        // than amber — maintenance is planned, not a fault.
+        info: "border-primary/25 bg-primary/15 text-primary",
       },
     },
     defaultVariants: {

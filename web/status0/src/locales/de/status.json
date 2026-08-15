@@ -24,6 +24,9 @@
   "uptime": "Verfügbarkeit",
   "noData": "Keine Daten",
   "responseTime": "Antwortzeit",
+  "unknownRegion": "Unbekannte Region",
+  "switchToDarkMode": "Zum dunklen Modus wechseln",
+  "switchToLightMode": "Zum hellen Modus wechseln",
   "status": {
     "up": "Verfügbar",
     "down": "Ausgefallen",
@@ -42,5 +45,6 @@
     "checkInbox": "Fast geschafft! Überprüfen Sie Ihren Posteingang, um Ihr Abonnement zu bestätigen.",
     "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
     "feedLink": "Per RSS abonnieren"
-  }
+  },
+  "servicesOperational": "{{ok}} von {{total}} Diensten betriebsbereit"
 }

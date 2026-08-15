@@ -416,7 +416,7 @@ func TestViewStatusPage_GroupWeightedAvailability(t *testing.T) {
 	r.InDelta(100.0*101.0/102.0, *avail.OverallAvailabilityPct, 0.01)
 
 	// No per-member response-time series is published for a group.
-	r.Empty(avail.ResponseTimeData)
+	r.Empty(avail.ResponseTimeSeries)
 }
 
 // TestViewStatusPage_GroupMaintenance pins that a group component reads "in

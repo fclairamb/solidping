@@ -211,8 +211,8 @@ func (h *Handler) dispatch(ctx context.Context, update *telegram.Update) {
 //
 // /start and /stop are the linking lifecycle and answer in ANY chat. Everything
 // else reads or changes org data and is therefore gated on the chat being
-// linked — see requireLinked, which answers identically for every command so an
-// unlinked chat cannot use the bot to probe what exists.
+// linked — see requireLinkedOrgs (resolver.go), which answers identically for
+// every command so an unlinked chat cannot use the bot to probe what exists.
 func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessage) {
 	chatID := telegram.ChatIDString(msg.Chat.ID)
 	command, arg := telegram.Command(msg.Text)
@@ -225,9 +225,9 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 	case "help":
 		h.handleHelp(ctx, chatID)
 	case "status":
-		h.handleStatus(ctx, chatID)
+		h.handleStatus(ctx, chatID, arg)
 	case "incidents":
-		h.handleIncidents(ctx, chatID)
+		h.handleIncidents(ctx, chatID, arg)
 	case "ack":
 		h.handleAck(ctx, msg, chatID, arg)
 	case "incident":

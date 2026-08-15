@@ -464,17 +464,18 @@ func (s *EmailSender) buildIncidentViewModel(
 	checkName string, payload *Payload, ackURL, unsubURL string,
 ) map[string]any {
 	viewModel := map[string]any{
-		"CheckName":    checkName,
-		"CheckType":    payload.Check.Type,
-		"CheckURL":     checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check),
-		"StartedAt":    payload.Incident.StartedAt.Format("2006-01-02 15:04:05"),
-		"IncidentUID":  payload.Incident.UID,
-		"IncidentURL":  incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
-		"AckURL":       ackURL,
-		"FailureCount": payload.Incident.FailureCount,
-		"RelapseCount": payload.Incident.RelapseCount,
-		"DashboardURL": dashboardRootURL(payload.AppBaseURL),
-		"DocsURL":      docsURL(payload.AppBaseURL),
+		"CheckName":      checkName,
+		"CheckType":      payload.Check.Type,
+		"CheckURL":       checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check),
+		"StartedAt":      payload.Incident.StartedAt.Format("2006-01-02 15:04:05"),
+		"IncidentUID":    payload.Incident.UID,
+		"IncidentNumber": payload.Incident.Number,
+		"IncidentURL":    incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
+		"AckURL":         ackURL,
+		"FailureCount":   payload.Incident.FailureCount,
+		"RelapseCount":   payload.Incident.RelapseCount,
+		"DashboardURL":   dashboardRootURL(payload.AppBaseURL),
+		"DocsURL":        docsURL(payload.AppBaseURL),
 	}
 
 	if payload.Incident.ResolvedAt != nil {

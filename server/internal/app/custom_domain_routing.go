@@ -23,6 +23,11 @@ const (
 	routeDash0   = "/dash0"
 	routeDocs    = "/docs"
 	routeMetrics = "/metrics"
+
+	// Unauthenticated management endpoints the status0 SPA needs on a custom
+	// host (the footer renders the build it is talking to).
+	routeMgmtVersion = "/api/mgmt/version"
+	routeMgmtHealth  = "/api/mgmt/health"
 )
 
 // resolvedCustomDomain is the cached resolution of a custom host to a servable
@@ -198,8 +203,21 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 	switch {
 	case reqPath == routeStatus0 || strings.HasPrefix(reqPath, routeStatus0+"/"):
 		// The SPA is built with the /status0 base, so its asset URLs keep working
-		// on the custom host. Serve them as normal static assets.
-		_ = s.serveStatus0Static(writer, req)
+		// on the custom host. Real files are served as normal static assets.
+		//
+		// Anything under /status0 that is NOT a file is an SPA route, and must go
+		// through the index handler below so it gets the sp-page bootstrap tag.
+		// Serving it statically returns the bare shell, and the SPA — finding no
+		// tag to tell it which page it is on — falls back to its generic
+		// "Visit a specific status page" landing. That is what made
+		// https://<custom-host>/status0/ render an empty page while "/" worked.
+		if s.status0StaticAssetExists(reqPath) {
+			_ = s.serveStatus0Static(writer, req)
+
+			return
+		}
+
+		s.serveStatus0IndexForCustomHost(writer, req, page)
 	case strings.HasPrefix(reqPath, "/api/"):
 		if isCustomHostAPIAllowed(reqPath) {
 			s.router.ServeHTTP(writer, req)
@@ -222,6 +240,17 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 // middleware, so they answer 401 rather than leaking data.
 func isCustomHostAPIAllowed(reqPath string) bool {
 	switch {
+	// The status page footer renders the build it is talking to
+	// (status-page-view.tsx -> useVersion), so the SPA needs these two on a
+	// custom host as much as on the installation's own. Both are already
+	// unauthenticated on every host and carry no per-org data.
+	//
+	// Matched exactly rather than by an /api/mgmt/ prefix: that group also
+	// holds /limits, POST /report and the super-admin /memory and
+	// /scheduling/* endpoints, and a prefix would quietly expose whatever is
+	// added there next.
+	case reqPath == routeMgmtVersion, reqPath == routeMgmtHealth:
+		return true
 	case strings.HasPrefix(reqPath, "/api/v1/status-pages/"):
 		return true
 	case strings.HasPrefix(reqPath, "/api/v1/public/status-subscribers/"):
@@ -234,6 +263,29 @@ func isCustomHostAPIAllowed(reqPath string) bool {
 	default:
 		return false
 	}
+}
+
+// status0StaticAssetExists reports whether a /status0 path maps to a real file
+// in the embedded SPA bundle. It is how an asset request is told apart from an
+// SPA route, without guessing from file extensions.
+//
+// index.html is deliberately excluded: requesting it directly is an SPA entry
+// point, not an asset fetch, so it needs the sp-page tag injected like any
+// other route.
+func (s *Server) status0StaticAssetExists(reqPath string) bool {
+	rel := strings.TrimPrefix(reqPath, routeStatus0)
+	rel = strings.TrimPrefix(rel, "/")
+
+	if rel == "" || rel == "index.html" {
+		return false
+	}
+
+	info, err := fs.Stat(s.status0FSOrDefault(), path.Join("status0res", rel))
+	if err != nil {
+		return false
+	}
+
+	return !info.IsDir()
 }
 
 // isCustomHostForbidden reports whether a path must always 404 on a custom host

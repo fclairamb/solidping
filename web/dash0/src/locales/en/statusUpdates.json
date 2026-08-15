@@ -1,0 +1,39 @@
+{
+  "title": "Status Updates",
+  "subtitle": "Publish narrative updates on your status pages.",
+  "newStatusUpdate": "New Status Update",
+  "editStatusUpdate": "Edit status update",
+  "noStatusUpdates": "No status updates yet",
+  "noMatch": "No status updates match your filters",
+  "searchPlaceholder": "Search by title…",
+  "viewPublic": "View public update",
+  "table": {
+    "title": "Title",
+    "kind": "Kind",
+    "date": "Date"
+  },
+  "filters": {
+    "allPages": "All pages",
+    "allSections": "All sections",
+    "allChecks": "All checks",
+    "allKinds": "All kinds"
+  },
+  "kinds": {
+    "investigating": "Investigating",
+    "identified": "Identified",
+    "monitoring": "Monitoring",
+    "resolved": "Resolved",
+    "maintenance": "Maintenance",
+    "info": "Info"
+  },
+  "deleteDialog": {
+    "title": "Delete status update?",
+    "description": "This will remove the update from the status page. This action cannot be undone."
+  },
+  "toast": {
+    "created": "Status update created",
+    "updated": "Status update saved",
+    "deleted": "Status update deleted",
+    "deleteFailed": "Failed to delete status update"
+  }
+}

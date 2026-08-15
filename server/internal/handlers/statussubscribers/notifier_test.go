@@ -46,6 +46,18 @@ func (f *fakeSender) sent() []*email.Message {
 	return out
 }
 
+// testFormatter builds a real formatter for notifier tests — the notifier now
+// renders through the shared template pipeline instead of hand-rolled
+// strings, so tests need a working *email.TemplateFormatter, not a stub.
+func testFormatter(t *testing.T) email.Formatter {
+	t.Helper()
+
+	formatter, err := email.NewFormatter()
+	require.NoError(t, err)
+
+	return formatter
+}
+
 // confirmedSubscriber creates and confirms a page-scoped subscriber, returning it.
 func confirmedSubscriber(t *testing.T, s *subSetup, email string) {
 	t.Helper()
@@ -66,7 +78,7 @@ func TestNotifierFanOutToConfirmedOnly(t *testing.T) {
 	_ = s.subscribe(t, "unconfirmed@example.com") // not confirmed
 
 	sender := &fakeSender{}
-	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, "https://status.example.com", nil)
+	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil)
 
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
 		s.page.UID, nil, string(models.StatusUpdateKindInfo), "Heads up", "Body", nil, "Acme Status", 0))
@@ -88,7 +100,7 @@ func TestNotifierResolvedTemplate(t *testing.T) {
 	confirmedSubscriber(t, s, "ops@example.com")
 
 	sender := &fakeSender{}
-	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, "https://status.example.com", nil)
+	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil)
 
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
 		s.page.UID, nil, string(models.StatusUpdateKindResolved),
@@ -111,7 +123,7 @@ func TestNotifierIncidentOpenedTemplate(t *testing.T) {
 
 	incidentUID := "incident-123"
 	sender := &fakeSender{}
-	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, "https://status.example.com", nil)
+	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil)
 
 	// First update for the incident (count 0) -> incident-opened.
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
@@ -133,7 +145,7 @@ func TestNotifierMailFailureDoesNotPanic(t *testing.T) {
 	confirmedSubscriber(t, s, "ops@example.com")
 
 	sender := &fakeSender{fail: true}
-	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, "https://status.example.com", nil)
+	notifier := statussubscribers.NewNotifier(s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil)
 
 	// Must not panic or block despite the send error.
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
@@ -148,7 +160,7 @@ func TestNotifierNilSenderNoop(t *testing.T) {
 	r := require.New(t)
 	s := newSubSetup(t)
 
-	notifier := statussubscribers.NewNotifier(s.dbSvc, nil, "https://status.example.com", nil)
+	notifier := statussubscribers.NewNotifier(s.dbSvc, nil, testFormatter(t), "https://status.example.com", nil)
 	r.NotPanics(func() {
 		notifier.NotifyStatusUpdate(t.Context(), statussubscribers.UpdateEventFor(
 			s.page.UID, nil, "info", "x", "y", nil, "Acme Status", 0))

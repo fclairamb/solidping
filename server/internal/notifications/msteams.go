@@ -71,7 +71,7 @@ func (s *MSTeamsSender) Send(ctx context.Context, _ *jobdef.JobContext, payload 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", productName)
 
-	client := &http.Client{Timeout: msTeamsTimeout}
+	client := newHTTPClient(msTeamsTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

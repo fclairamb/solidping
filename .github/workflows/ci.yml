@@ -130,6 +130,7 @@ jobs:
   status0:
     name: Status0 Build
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
       run:
@@ -145,6 +146,23 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      # Errors fail the job; warnings do not (eslint's default exit code).
+      # The baseline here is 0 errors + 9 pre-existing
+      # react-refresh/only-export-components warnings on the route files, so
+      # --max-warnings 0 would land red on day one. Same treatment as the
+      # `dash` job's lint step.
+      - name: Run lint
+        run: bun run lint
+
+      # Scoped to ./src on purpose: a bare `bun test` also collects e2e/*.spec.ts,
+      # and those are Playwright specs (`@playwright/test` describe/test), which
+      # blow up under the bun test runner. The unit suites are run by `bun test`
+      # rather than through `tsc -b` because tsconfig.app.json deliberately
+      # excludes src/**/*.test.ts — bun-types' ambient globals collide with that
+      # project's DOM lib.
+      - name: Run unit tests
+        run: bun test ./src
 
       - name: Build
         run: bun run build
@@ -349,17 +367,40 @@ jobs:
           CI: "true"
 
       # status0's public status page has its own Playwright suite. Only the
-      # translate-resilience spec runs here: it is the regression guard for the
-      # recurring "Failed to execute 'removeChild' on 'Node'" crash (spec
-      # 2026-08-01-05) and resolves its own org, so it works against this
-      # SP_RUNMODE=test server. The older status0 specs still assume the
-      # `default` org that `make dev` seeds, so they would fail here.
-      - name: Run status0 translate-resilience E2E test
+      # server-data-independent specs run here:
+      #   - translate-resilience: regression guard for the recurring "Failed to
+      #     execute 'removeChild' on 'Node'" crash (spec 2026-08-01-05); it
+      #     resolves its own org, so it works against this SP_RUNMODE=test server.
+      #   - response-time-chart (spec 2026-08-14-04) and dark-mode (spec
+      #     2026-08-14-05): both stub `**/api/v1/status-pages/:org/:slug` with
+      #     page.route and navigate to a synthetic org, so they need the server
+      #     only to serve the /status0 SPA shell — no seeded data at all.
+      # The remaining status0 specs still assume the `default` org that
+      # `make dev` seeds, so they would fail here and stay out.
+      #
+      # Same browser-install guard as the dash0 step above: no --with-deps, plus
+      # a per-attempt `timeout` so a hung download can't eat the job budget.
+      - name: Run status0 E2E tests
         working-directory: web/status0
         run: |
           bun install
-          bunx playwright install chromium
-          bunx playwright test translate-resilience.spec.ts --reporter=list
+          for attempt in 1 2 3; do
+            if timeout 90 bunx playwright install chromium; then
+              installed=1
+              break
+            fi
+            echo "Playwright browser download attempt $attempt failed or timed out; retrying after 10s..."
+            sleep 10
+          done
+          if [[ -z "${installed:-}" ]]; then
+            echo "Playwright browser download failed after 3 attempts"
+            exit 1
+          fi
+          bunx playwright test \
+            translate-resilience.spec.ts \
+            response-time-chart.spec.ts \
+            dark-mode.spec.ts \
+            --reporter=list
         env:
           CI: "true"
           E2E_BASE_URL: "http://localhost:4000"
@@ -436,6 +477,8 @@ jobs:
           path: |
             web/dash0/playwright-report/
             web/dash0/test-results/
+            web/status0/playwright-report/
+            web/status0/test-results/
             solidping-server.log
             solidping-sidecar.log
           retention-days: 7

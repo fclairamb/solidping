@@ -50,7 +50,11 @@ func TestBuildAlertHTML_EscapesEveryInterpolatedValue(t *testing.T) {
 	r.Contains(body, "A &amp; B &lt;script&gt;")
 	r.Contains(body, "Service &lt;Unavailable&gt; &amp; angry")
 	r.Contains(body, "acme&amp;co")
-	r.Contains(body, "incidents/abc?a=1&amp;b=2")
+
+	// IncidentURL is NOT rendered into the body — it ships as the View button
+	// (telegram.IncidentKeyboard) instead, so the message does not say it twice.
+	r.NotContains(body, "incidents/abc")
+	r.NotContains(body, "<a href")
 
 	// ...and no raw script tag or bare ampersand survived anywhere.
 	r.NotContains(body, "<script>")
@@ -179,7 +183,7 @@ func TestBuildAlertHTML_StatesAndOptionalFields(t *testing.T) {
 	r.NotContains(down, "<a href")
 
 	escalated := telegram.BuildAlertHTML(&telegram.AlertParams{State: telegram.StateEscalated, CheckName: "api"})
-	r.Contains(escalated, "🟠 Incident — api")
+	r.Contains(escalated, "⚠️ Incident — api")
 	r.Contains(escalated, "<b>Status:</b> ESCALATED")
 
 	resolved := telegram.BuildAlertHTML(&telegram.AlertParams{State: telegram.StateResolved, CheckName: "api"})
@@ -214,7 +218,7 @@ func TestStateEmoji(t *testing.T) {
 	r := require.New(t)
 
 	r.Equal("🔴", telegram.StateEmoji(telegram.StateDown))
-	r.Equal("🟠", telegram.StateEmoji(telegram.StateEscalated))
+	r.Equal("⚠️", telegram.StateEmoji(telegram.StateEscalated))
 	r.Equal("🟢", telegram.StateEmoji(telegram.StateResolved))
 	r.Equal("🔴", telegram.StateEmoji("something-new"))
 }
@@ -244,4 +248,33 @@ func TestBuildConversationalBodies(t *testing.T) {
 	group := telegram.BuildGroupNotSupportedHTML()
 	r.Contains(group, "direct chat")
 	assertWellFormedTelegramHTML(t, group)
+}
+
+// TestBuildAlertHTML_QualifiesTheHeadlineRef is the positive control both ways:
+// the same alert renders "#42" for a single-org chat and "#acme:42" for a chat
+// linked in several orgs — where "#42" would be genuinely ambiguous, since the
+// number is per-org sequential and exists in every one of them.
+func TestBuildAlertHTML_QualifiesTheHeadlineRef(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	params := &telegram.AlertParams{
+		State:     telegram.StateDown,
+		Number:    42,
+		CheckName: "API health",
+		OrgSlug:   "acme",
+	}
+
+	short := telegram.BuildAlertHTML(params)
+	r.Contains(short, "#42 — API health")
+	r.NotContains(short, "#acme:42")
+
+	params.QualifyRef = true
+	qualified := telegram.BuildAlertHTML(params)
+	r.Contains(qualified, "#acme:42 — API health")
+
+	// The derived bodies inherit the flag, so a resolution or an acknowledgement
+	// cannot disagree with the alert it rewrites.
+	r.Contains(telegram.BuildResolvedOriginalHTML(params), "#acme:42")
 }

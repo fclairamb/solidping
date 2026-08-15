@@ -24,6 +24,9 @@
   "uptime": "de disponibilidad",
   "noData": "Sin datos",
   "responseTime": "Tiempo de respuesta",
+  "unknownRegion": "Región desconocida",
+  "switchToDarkMode": "Cambiar a modo oscuro",
+  "switchToLightMode": "Cambiar a modo claro",
   "status": {
     "up": "Disponible",
     "down": "Caído",
@@ -42,5 +45,6 @@
     "checkInbox": "¡Casi listo! Revisa tu bandeja de entrada para confirmar tu suscripción.",
     "error": "Algo salió mal. Inténtalo de nuevo.",
     "feedLink": "Suscribirse por RSS"
-  }
+  },
+  "servicesOperational": "{{ok}} de {{total}} servicios operativos"
 }

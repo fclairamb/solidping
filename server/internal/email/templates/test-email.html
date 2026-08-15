@@ -1,0 +1,10 @@
+{{define "subject"}}{{.Subject}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h2>{{.Heading}}</h2>
+    <p>{{.Body}}</p>
+{{end}}
+{{define "text"}}{{.Heading}}
+
+{{.Body}}
+{{end}}

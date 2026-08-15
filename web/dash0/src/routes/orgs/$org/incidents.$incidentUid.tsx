@@ -7,7 +7,6 @@ import {
   Bell,
   BellOff,
   CheckCircle,
-  Clock,
   Eye,
   EyeOff,
   ExternalLink,
@@ -16,10 +15,8 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  RotateCcw,
   Trash2,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
   useIncident,
@@ -45,9 +42,11 @@ import {
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
 import {
+  EventTypeBadge,
   getCommentSource,
   getCommentText,
   getCommentSlackAuthor,
+  getEventIcon,
 } from "@/components/dashboard/event-display";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
@@ -84,6 +83,7 @@ import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimeAgo } from "@/components/ui/time-ago";
 import {
   Card,
   CardContent,
@@ -105,6 +105,8 @@ import {
   sourceLabel,
 } from "@/lib/notifications";
 import { channelTypeLabel } from "@/lib/channel-labels";
+import { cn } from "@/lib/utils";
+import { statusUpdateKindTone } from "@/lib/status-update-kind";
 
 export const Route = createFileRoute("/orgs/$org/incidents/$incidentUid")({
   component: IncidentDetailPage,
@@ -164,7 +166,11 @@ function TimelineItem({
       <div className="flex-1">
         <div className="font-medium">{label}</div>
         <div className="text-sm text-muted-foreground">
-          {timestamp ? new Date(timestamp).toLocaleString() : "-"}
+          {timestamp ? (
+            <TimeAgo date={timestamp} variant="inline" data-testid="incident-timeline-time" />
+          ) : (
+            "-"
+          )}
         </div>
       </div>
     </div>
@@ -182,22 +188,14 @@ const STATUS_UPDATE_KINDS = [
   { value: "info", label: "Info" },
 ];
 
-const KIND_COLORS: Record<string, string> = {
-  investigating: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  identified: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  monitoring: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  resolved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  maintenance: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  info: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
-};
-
 function KindBadgeInline({ kind }: { kind: string }) {
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${KIND_COLORS[kind] ?? "bg-gray-100 text-gray-800"}`}
+    <Badge
+      variant="outline"
+      className={cn("font-medium capitalize", statusUpdateKindTone(kind))}
     >
       {kind}
-    </span>
+    </Badge>
   );
 }
 
@@ -427,7 +425,11 @@ function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: st
                   <div className="min-w-0">
                     <div className="font-medium text-sm truncate">{u.title}</div>
                     <div className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(u.publishedAt), { addSuffix: true })}
+                      <TimeAgo
+                        date={u.publishedAt}
+                        variant="inline"
+                        data-testid="status-update-time"
+                      />
                     </div>
                   </div>
                 </div>
@@ -572,9 +574,11 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground">
-                    {c.createdAt
-                      ? formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })
-                      : ""}
+                    {c.createdAt ? (
+                      <TimeAgo date={c.createdAt} variant="inline" data-testid="comment-time" />
+                    ) : (
+                      ""
+                    )}
                   </span>
                 </div>
                 <p className="whitespace-pre-wrap break-words text-sm">
@@ -619,6 +623,7 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
 
 function IncidentDetailPage() {
   const { t } = useTranslation("incidents");
+  const { t: tEvents } = useTranslation("events");
   const { org, incidentUid } = Route.useParams();
   const navigate = useNavigate();
 
@@ -942,34 +947,34 @@ function IncidentDetailPage() {
               <TimelineItem
                 label={t("timeline.started")}
                 timestamp={incident.startedAt}
-                icon={<AlertTriangle className="h-4 w-4 text-yellow-500" />}
+                icon={getEventIcon("incident.created")}
               />
               {incident.acknowledgedAt && (
                 <TimelineItem
                   label={t("timeline.acknowledged")}
                   timestamp={incident.acknowledgedAt}
-                  icon={<Clock className="h-4 w-4 text-blue-400" />}
+                  icon={getEventIcon("incident.acknowledged")}
                 />
               )}
               {incident.escalatedAt && (
                 <TimelineItem
                   label={t("timeline.escalated")}
                   timestamp={incident.escalatedAt}
-                  icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
+                  icon={getEventIcon("incident.escalated")}
                 />
               )}
               {incident.lastReopenedAt && (
                 <TimelineItem
                   label={t("timeline.reopenedRelapse", { count: relapseCount })}
                   timestamp={incident.lastReopenedAt}
-                  icon={<RotateCcw className="h-4 w-4 text-orange-500" />}
+                  icon={getEventIcon("incident.reopened")}
                 />
               )}
               {incident.resolvedAt && (
                 <TimelineItem
                   label={t("timeline.resolved")}
                   timestamp={incident.resolvedAt}
-                  icon={<CheckCircle className="h-4 w-4 text-green-500" />}
+                  icon={getEventIcon("incident.resolved")}
                 />
               )}
             </div>
@@ -1037,9 +1042,7 @@ function IncidentDetailPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {event.eventType}
-                      </Badge>
+                      <EventTypeBadge eventType={event.eventType} t={tEvents} />
                     </TableCell>
                     <TableCell className="text-sm capitalize">
                       {event.actorType || "-"}
@@ -1314,6 +1317,7 @@ function NotificationsCard({
   incidentUid: string;
 }) {
   const { t } = useTranslation("common");
+  const { t: tEvents } = useTranslation("events");
   const navigate = useNavigate();
   const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
 
@@ -1351,6 +1355,7 @@ function NotificationsCard({
             <TableHeader>
               <TableRow>
                 <TableHead>Time</TableHead>
+                <TableHead>Event</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Target</TableHead>
                 <TableHead>Source</TableHead>
@@ -1376,6 +1381,9 @@ function NotificationsCard({
                 >
                   <TableCell className="text-sm whitespace-nowrap" title={row.createdAt}>
                     {new Date(row.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <EventTypeBadge eventType={row.eventType} t={tEvents} />
                   </TableCell>
                   <TableCell>
                     <Badge variant={notificationStatusVariant(row.status)} className="text-xs capitalize">

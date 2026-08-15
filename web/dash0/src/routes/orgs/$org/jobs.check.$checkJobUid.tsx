@@ -1,11 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Activity, ArrowLeft } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimeAgoOrDash } from "@/components/ui/time-ago";
 import {
   Card,
   CardContent,
@@ -41,15 +41,6 @@ function checkStateVariant(state: CheckJobState): BadgeVariant {
       return "destructive";
     default:
       return "outline";
-  }
-}
-
-function relative(value: string | null | undefined): string {
-  if (!value) return "—";
-  try {
-    return formatDistanceToNow(new Date(value), { addSuffix: true });
-  } catch {
-    return "—";
   }
 }
 
@@ -139,7 +130,9 @@ function CheckJobDetailPage() {
             </MetaRow>
             <MetaRow label={t("columns.type")}>{row.type}</MetaRow>
             <MetaRow label={t("columns.period")}>{formatPeriod(row.periodSeconds)}</MetaRow>
-            <MetaRow label={t("columns.nextRun")}>{relative(row.scheduledAt)}</MetaRow>
+            <MetaRow label={t("columns.nextRun")}>
+              <TimeAgoOrDash date={row.scheduledAt} data-testid="check-schedule-next-run" />
+            </MetaRow>
             <MetaRow label={t("columns.state")}>
               <Badge variant={checkStateVariant(row.state)}>
                 {t(`state.${row.state}`, row.state)}
@@ -148,9 +141,13 @@ function CheckJobDetailPage() {
             <MetaRow label={t("columns.leaseWorker")}>
               {row.leaseWorkerUid ?? t("labels.none")}
             </MetaRow>
-            <MetaRow label={t("columns.leaseExpiry")}>{relative(row.leaseExpiresAt)}</MetaRow>
+            <MetaRow label={t("columns.leaseExpiry")}>
+              <TimeAgoOrDash date={row.leaseExpiresAt} />
+            </MetaRow>
             <MetaRow label={t("columns.attempts")}>{row.leaseStarts}</MetaRow>
-            <MetaRow label={t("columns.updated")}>{relative(row.updatedAt)}</MetaRow>
+            <MetaRow label={t("columns.updated")}>
+              <TimeAgoOrDash date={row.updatedAt} data-testid="check-schedule-updated-at" />
+            </MetaRow>
           </dl>
         </CardContent>
       </Card>

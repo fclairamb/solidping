@@ -241,6 +241,11 @@ func (s *Service) setCustomDomain(
 		return writeErr
 	}
 
+	// Moving to a different hostname leaves the previous one unmapped, so drop
+	// its TLS material the same way clearing does. The unchanged-domain case
+	// returned earlier, so reaching here always means the old one is gone.
+	s.forget(ctx, page.CustomDomain)
+
 	return nil
 }
 
@@ -250,7 +255,17 @@ func (s *Service) clearCustomDomain(ctx context.Context, page *models.StatusPage
 		return nil
 	}
 
-	return s.db.UpdateStatusPageCustomDomain(ctx, page.UID, &models.StatusPageCustomDomainUpdate{})
+	if err := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, &models.StatusPageCustomDomainUpdate{}); err != nil {
+		return err
+	}
+
+	// Drop the certificate and private key too. The edge already refuses to
+	// serve a host with no mapping, so this is not what stops the domain
+	// working — it is so we do not keep a live key for a hostname that may now
+	// belong to someone else.
+	s.forget(ctx, page.CustomDomain)
+
+	return nil
 }
 
 // VerifyCustomDomain runs the DNS checks synchronously and stamps the result.

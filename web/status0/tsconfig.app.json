@@ -22,5 +22,11 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // *.test.ts(x) files use `bun:test` (bun's built-in test runner, run
+  // directly via `bun test`, not through this project's `tsc -b`/vite build).
+  // Excluded here the same way e2e/*.spec.ts (Playwright) already sits
+  // outside this project entirely — mixing bun-types' ambient ~test globals
+  // into the DOM-lib app project risks unrelated global-type collisions.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

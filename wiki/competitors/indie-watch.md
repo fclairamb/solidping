@@ -106,13 +106,15 @@ for ~a month"; six days is not that. `track: true` retained, still not used in
 copy — a solo maintainer's quiet stretch is not a shutdown. Re-check next poll.
 
 ### Kuvasz — https://kuvasz-uptime.dev  ·  github.com/kuvasz-uptime/kuvasz
-Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 34 forks,
-created 2020-07 and still shipping (v4.0.1 2026-06-17, **v4.1.0 2026-07-14**, repo
-pushed the day it was surfaced). A mature rival the listening pipeline had simply
-never surfaced before 2026-07-28 — it predates most of this page.
+Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 37 forks,
+created 2020-07 and still shipping (v4.0.1 2026-06-17, v4.1.0 2026-07-14,
+**v4.2.0 2026-08-10**, repo pushed 2026-08-12). A mature rival the listening
+pipeline had simply never surfaced before 2026-07-28 — it predates most of this page.
 **Ships:** HTTP monitoring (adjustable intervals, custom headers, keyword matching,
 expected status codes, response-time thresholds); daily SSL-certificate expiry
-checks; push/"cron" heartbeat monitors; ICMP ping monitors — **4 check types**.
+checks; push/"cron" heartbeat monitors; ICMP ping monitors; **TCP monitors** and
+**DNS monitors** (both added in v4.2.0) — **6 check types** (was 4 before
+2026-08-10).
 Per-monitor notification routing across email / Slack / Discord / Telegram /
 PagerDuty / custom webhooks. Public **and private** brandable status pages,
 maintenance windows, full REST API, monitors declared as YAML (IaC), **Prometheus
@@ -127,7 +129,23 @@ self-hosted monitor with an MCP server, so the qualifier no longer separates us:
 MCP belongs in the feature list, not in the positioning. Same arc as multi-probe
 consensus (UpWatch, 2026-07-27) — two candidate differentiators commoditised in
 five weeks.
-**Where SolidPing holds:** 38 check types vs 4; distributed multi-region workers
+**v4.2.0 (2026-08-10) — the check-type count moved, 4 → 6.**
+- **TCP monitors:** periodically opens a connection to any `host:port` (database,
+  SMTP, SSH, broker, game server), measuring reachability and connect latency,
+  DOWN on timeout or on an optional latency threshold.
+- **DNS monitors:** assert on resolved records (`A`, `AAAA`, `CNAME`, `MX`, `NS`,
+  `TXT`, `SOA`, `SRV`, `CAA`, `PTR`) matched `EXACT` / `CONTAINS` / `REGEX`, with
+  an expected response code (so *"this name must not resolve"* works), a custom
+  nameserver over UDP or TCP, and opt-in **drift detection** that notifies on
+  record changes without flipping the monitor DOWN.
+- Rest of the release is polish: UI facelift, empty states, batched status-page
+  uptime queries, ICMP latest-latency gauge fixed under partial packet loss,
+  case-insensitive sorting, SMTP env-var docs.
+The DNS-drift behaviour is worth noting on its own — *notify without alerting* is
+a distinct alert class, not just a check type. **Still single-node:** nothing in
+4.2.0 touches remote or multi-node probing, so our structural gap holds.
+
+**Where SolidPing holds:** 38 check types vs 6; distributed multi-region workers
 and private/deported locations (Kuvasz probes only from the single node it runs
 on — no cross-region confirmation); built-in on-call schedules and multi-step
 escalation (Kuvasz hands off to PagerDuty).
@@ -137,7 +155,53 @@ almost nowhere. Kuvasz is genuinely ahead only on OTLP export (we expose
 Prometheus) and the Home Assistant integration.
 *Watch:* multi-node / remote probing (would close our last structural gap), and
 the MCP server leaving experimental. Surfaced 2026-07-28 via @selfhosted_bot
-Mastodon repost (bot-announced → intel, not a lead).
+Mastodon repost (bot-announced → intel, not a lead). v4.2.0 surfaced 2026-08-13
+via @KuvaszUptime's own Mastodon post on techhub.social.
+
+### URLGuardian — https://urlguardian.app
+Native **macOS desktop app** for uptime monitoring: "Real-time uptime monitoring,
+detailed DNS analysis, and instant outage alerts right from your native Mac app."
+Launched as a 1-point, 0-comment Show HN on 2026-08-12
+([49277497](https://news.ycombinator.com/item?id=49277497), by `madospace`).
+Landing page is a JS-rendered shell; no pricing, no docs, no check-type list
+published at the time of writing — the meta description above is essentially the
+whole disclosed spec.
+**Not in our lane, and the reason is structural, not size.** The probe is the
+user's laptop: it monitors only while the Mac is awake, online, and running the
+app, from exactly one vantage point that moves with its owner. That is a
+different product category from an always-on server-side monitor — closer to a
+developer utility than to SolidPing, Uptime Kuma, or Kuvasz. It cannot page
+someone at 03:00, which is the entire job.
+`track: false`. Logged so the name resolves if it reappears, and as the third
+data point in a pattern this page should keep counting: the *"uptime monitoring"*
+keyword now attracts launches from adjacent categories (Mac utility here, AI
+content farm the same day — see the OpsMate entry below), which
+inflates the raw mention count without adding a single real rival.
+
+### "OpsMate" — no verifiable product (2026-08-13)
+Surfaced as a dev.to post, *"OpsMate vs BetterStack: Latency, Status Pages, and
+Alerting for Global SaaS"*, which reads as a normal competitor launch: free tier
+of 1 site + 1 server, **$9/mo for 5 servers**, HTTP/HTTPS + SSL expiry + keyword
++ Linux CPU/RAM/disk checks, 2–3 probe locations against Better Stack's 30+,
+built-in status page, Slack/webhook/digest alerting, and the claim of
+*"90% of the monitoring functionality for 30% of the price"* without
+*"enterprise bloat"*.
+**No such product could be found.** The canonical link points at a blog path on
+`yunshao.aicreditsapi.com` (403 to fetchers); `opsmate.io` is an unclaimed Framer
+404, `opsmate.app` and `getopsmate.com` do not resolve, `opsmate.dev` returns a
+Cloudflare 523 (origin unreachable), and `opsmate.com` is **Opsmate, Inc.** —
+SSLMate's certificate-transparency company, an unrelated business. Web search for
+the product returns nothing.
+**Recorded as an artifact, not a competitor.** No registry entry, no `track` flag.
+Its value is as evidence for a measurement problem this page has to live with:
+the *"X vs BetterStack"* comparison genre — the exact genre of our twelve pending
+`/vs/` pages — is now being generated at volume by AI content mills, complete
+with plausible pricing tables for products that do not appear to exist. Two
+consequences. (1) **Never enter a competitor number sourced from a comparison
+article into `comparison.md`** — verify against the vendor's own site or an
+implementation, the same rule OneUptime#2937 forced on advertised intervals.
+(2) It strengthens, again, the 2026-08-01/08-10 conclusion: our comparison pages
+cannot win on volume, only on being first-hand, dated, and verifiable.
 
 ### OneUptime — https://oneuptime.com
 Open-source observability platform (uptime + APM + status pages + incident mgmt +
@@ -250,6 +314,62 @@ Solo-dev SaaS positioned on "fewer false alerts" — competes with SolidPing's
 incident grouping / adaptive resolution. SolidPing counters with self-host,
 multi-protocol, on-call. Surfaced 2026-04-18 (HN 47819121). *Update 2026-07-12:*
 still live; pricing unverified.
+
+### Larm — https://larm.dev  (added 2026-08-10)
+
+SaaS uptime monitoring, EU-hosted, one-person product (About page signed
+"Johanna", ex-on-call engineer; stated motivation is alert blindness from false
+positives). Surfaced via the author's own comment in *Ask HN: What are you
+working on? (August 2026)* — [HN 49235194](https://news.ycombinator.com/item?id=49235194),
+author `shintoist`.
+
+**The closest architectural match in this catalogue.** Independently built, but
+the same design as SolidPing: an Elixir/Phoenix control plane on a 3-node
+cluster, with the actual probes as **small Go binaries spread across multiple
+hosting providers worldwide**, plus synthetic checks running in per-check
+Playwright sandboxes.
+
+| | |
+|---|---|
+| Check types advertised | HTTP, TCP, DNS, Heartbeat (4) + synthetic/browser |
+| Alerting model | Multi-region **majority vote** before alerting |
+| Depth | **Per-check request traces**: DNS → TCP connect → TLS handshake → TTFB → content transfer, per phase, per location, trended |
+| AI | MCP server |
+| Hosting | EU; "EU-only probe control" gated to the top tier |
+| Self-host | **No** — SaaS only |
+
+Pricing verified 2026-08-10 (annual billing):
+
+| Tier | Price | Monitors | Interval | Retention |
+|---|---|---|---|---|
+| Free | $0 (free for commercial use) | 15 | 3 min | 90 days |
+| Pro | $19/mo ($228/yr) | 100 | 1 min | 1 year |
+| Business | $49/mo ($588/yr) | 500 | **30 sec** | 2 years |
+
+Heartbeat interval floors at 10 s on Business. Full API access on every tier
+including Free.
+
+**Where SolidPing wins, on verifiable facts:** protocol breadth (38 check types
+vs 4 + synthetic); self-hosting (Larm has none); and check interval — Larm's
+floor is 30 s *and* paywalled at $588/yr, against SolidPing's 10 s self-hosted,
+unlimited and not tier-gated. See the Axis 5 confirmation in `positioning.md`:
+Larm is the strongest evidence for that axis precisely *because* it built the
+same distributed architecture and still did not go below 30 s.
+
+**Where Larm is genuinely ahead — flagged for engineering, not for copy.**
+Phase-level per-check request traces (DNS/TCP/TLS/TTFB/transfer, per location,
+trended) are real depth SolidPing does not match. It is the substantive version
+of "not just up or down", and it is the kind of capability that takes
+implementation rather than a landing-page sentence — i.e. by our own rule, an
+axis Larm could legitimately hold. Worth sizing.
+
+Larm's homepage names Uptime Kuma directly — *"Unlike single-location monitors
+like Uptime Kuma, Larm confirms from multiple regions before alerting"* — so it
+is fishing in the same Kuma migration pool. `track: true`.
+
+*Consensus tally: Larm is the 4th product in ~6 weeks to headline multi-probe
+consensus, after Vigilmon (06-28), UptimeMonitoring.com (07-21) and UpWatch
+(07-27). The claim is settled commodity copy.*
 
 ### New self-hosted entrants (added 2026-07-12)
 Surfaced during the 2026-07-12 refresh via "Uptime Kuma alternative" roundups and
@@ -401,7 +521,6 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   monitor runs beside the app it watches. Re-check for a repo, licence and pricing;
   flip to `track: true` only on external probing plus real traction.
 
-
 ### Overcheck — github.com/overcheck/overcheck
 Self-hosted uptime monitoring, TypeScript, AGPL-3.0, created 2026-07-07, last
 push 2026-07-20, **0★**, no repo description. Show HN launch surfaced 2026-08-05
@@ -432,3 +551,29 @@ If it gains traction, the strategic call for SolidPing is whether
 upstream-dependency awareness belongs in the product at all or is honestly a
 different product. Recording the angle now so the decision is not made under
 time pressure later.
+
+### WatchCat — https://watchcat.io  (added 2026-08-10)
+SaaS uptime + cron/heartbeat monitoring, Rails, EU-hosted. Surfaced in the same
+*Ask HN: What are you working on?* thread
+([49234346](https://news.ycombinator.com/item?id=49234346), author `_spl`).
+Uptime checks from multiple regions, cron/heartbeat monitoring, incidents,
+status pages, notifications (Slack, Discord, Telegram, Google Chat, webhooks,
+email), API, and "manage monitors from your AI agent". The author's own framing
+is accurate: *"Nothing revolutionary — the goal is to make the familiar stuff
+simple, reliable, and pleasant to use."*
+
+Pricing verified 2026-08-10: Free €0 (5 monitors, 3 min, 7-day retention, 1
+status page) · Pro €19/mo excl. VAT (50 monitors, 1 min, 90-day, 3 status
+pages) · Team €49/mo excl. VAT (200 monitors, 1 min, 365-day, 10 status pages).
+**Check frequency floors at 1 minute on every tier, including the top one** — a
+6× gap against SolidPing's unpaywalled self-hosted 10 s.
+
+`track: false` — SaaS-only, no self-host, nothing SolidPing loses a deal to in
+its lane. Catalogued for the **positioning pattern**, not the product: WatchCat
+is the purest example of EU data residency being sold as the headline rather
+than a feature ("a clear data path, not vague residency promises", plus a
+published compliance brief). That pattern — three products in two weeks, with
+Tindra (07-28) and Larm — is analysed in `positioning.md` under *Axis 6
+candidate*, where it is **rejected as an axis for SolidPing** (any EU vendor
+writes the same sentence next week) and kept as demand signal for jurisdiction
+control, which self-hosting answers as a superset.

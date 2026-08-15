@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
 
 // SecretTokenHeader is the header Telegram echoes on every webhook delivery
@@ -207,24 +209,50 @@ func ParseCallbackData(data string) (string, string) {
 	return action, strings.TrimSpace(arg)
 }
 
-// ParseIncidentRef reads a short incident reference — "#42" or "42" — and
-// reports whether it was one. The leading '#' is optional because phone
-// keyboards bury it, and accepted because copy-pasting "#42" out of a Slack
-// message is the other half of the same workflow; both must work.
-func ParseIncidentRef(s string) (int64, bool) {
+// ParseIncidentRef reads an incident reference and reports whether it was one.
+//
+// Four forms are accepted:
+//
+//	42          bare number
+//	#42         bare number, the way it is rendered
+//	acme:42     org-qualified
+//	#acme:42    org-qualified, the way it is rendered
+//
+// The leading '#' is optional because phone keyboards bury it, and accepted
+// because copy-pasting "#42" out of a Slack message is the other half of the
+// same workflow; both must work. The org slug is matched case-insensitively —
+// autocapitalize on a phone keyboard would otherwise break every qualified
+// reference typed on mobile — and returned lowercased, which is the only form
+// an org slug is ever stored in. An empty returned slug means a bare reference,
+// which the caller resolves against whichever orgs the chat is linked to.
+func ParseIncidentRef(s string) (string, int64, bool) {
 	trimmed := strings.TrimSpace(s)
 	trimmed = strings.TrimPrefix(trimmed, "#")
 
 	if trimmed == "" {
-		return 0, false
+		return "", 0, false
+	}
+
+	orgSlug := ""
+
+	if slug, rest, qualified := strings.Cut(trimmed, ":"); qualified {
+		// The slug rule is owned by internal/orgslug, deliberately not restated
+		// here: this parser and org creation must accept exactly the same set,
+		// or organizations become silently unable to use qualified references.
+		orgSlug = strings.ToLower(strings.TrimSpace(slug))
+		if !orgslug.IsValid(orgSlug) {
+			return "", 0, false
+		}
+
+		trimmed = strings.TrimSpace(rest)
 	}
 
 	number, err := strconv.ParseInt(trimmed, 10, 64)
 	if err != nil || number <= 0 {
-		return 0, false
+		return "", 0, false
 	}
 
-	return number, true
+	return orgSlug, number, true
 }
 
 // DisplayLabel builds the human label stored on a Telegram contact: the

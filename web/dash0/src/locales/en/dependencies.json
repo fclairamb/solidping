@@ -35,6 +35,7 @@
     "title": "Dependency graph",
     "subtitle": "All directed dependencies between checks in this organization.",
     "empty": "No dependencies in this organization yet.",
+    "noMatch": "No dependencies match your filter",
     "filter": "Filter by check name",
     "parent": "Parent",
     "child": "Child",

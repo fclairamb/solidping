@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +27,132 @@ import (
 
 // slugRegex validates slug format: lowercase letter, then 2-99 lowercase letters/digits/hyphens.
 var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,99}$`)
+
+// slugInvalidCharsRegex matches every character a slug may not contain.
+var slugInvalidCharsRegex = regexp.MustCompile(`[^a-z0-9-]`)
+
+const (
+	// minSlugLen and maxSlugLen mirror slugRegex, which is itself kept in step
+	// with the `status_pages_slug_check` / `status_page_sections_slug_check`
+	// database constraints (migration 009).
+	minSlugLen = 3
+	maxSlugLen = 100
+
+	// maxSlugSuffix bounds the -2, -3, ... disambiguation walk for generated
+	// slugs. Past this we would rather surface a conflict than keep probing.
+	maxSlugSuffix = 99
+
+	// Fallbacks for names that normalize away entirely ("###", "…", "ok").
+	// Both satisfy slugRegex by construction, which is what makes
+	// generateSlug total.
+	slugFallbackPage    = "status-page"
+	slugFallbackSection = "section"
+)
+
+// generateSlug derives a slug from a display name. It is TOTAL: every input,
+// including "" and strings made purely of punctuation, yields a string that
+// satisfies slugRegex — see TestGenerateSlugAlwaysValid.
+//
+// That totality is the point. Both create paths used to pass an absent slug
+// straight through to the insert, where the CHECK constraint rejected it and
+// the driver error surfaced as a 500 with a raw SQLSTATE in the body.
+func generateSlug(name, fallback string) string {
+	slug := strings.ToLower(name)
+	slug = slugInvalidCharsRegex.ReplaceAllString(slug, "-")
+
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+
+	slug = strings.Trim(slug, "-")
+
+	// A slug has to START with a letter. Trimming the leading digits reads
+	// better than prefixing a filler character would ("2024 Recap" becomes
+	// "recap", not "x2024-recap").
+	slug = strings.TrimLeft(slug, "0123456789-")
+
+	if len(slug) > maxSlugLen {
+		slug = strings.TrimRight(slug[:maxSlugLen], "-")
+	}
+
+	if len(slug) < minSlugLen {
+		return fallback
+	}
+
+	return slug
+}
+
+// suffixSlug appends "-<n>", shortening the base first so the result still
+// fits maxSlugLen. The base stays >= minSlugLen because the longest suffix
+// this is called with is 3 characters against a 100-character budget.
+func suffixSlug(base string, n int) string {
+	suffix := "-" + strconv.Itoa(n)
+
+	if len(base)+len(suffix) > maxSlugLen {
+		base = strings.TrimRight(base[:maxSlugLen-len(suffix)], "-")
+	}
+
+	return base + suffix
+}
+
+// slugTaken reports whether a candidate slug is already used within a scope.
+type slugTaken func(ctx context.Context, slug string) (bool, error)
+
+// resolveGeneratedSlug walks base, base-2, base-3, ... until one is free.
+// Only ever used for slugs WE generated: a slug the caller supplied must
+// collide loudly (ErrSlugConflict) rather than be silently renamed.
+func resolveGeneratedSlug(ctx context.Context, base string, taken slugTaken) (string, error) {
+	slug := base
+
+	for i := 2; i <= maxSlugSuffix+1; i++ {
+		used, err := taken(ctx, slug)
+		if err != nil {
+			return "", err
+		}
+
+		if !used {
+			return slug, nil
+		}
+
+		slug = suffixSlug(base, i)
+	}
+
+	return "", ErrSlugConflict
+}
+
+// resolveCreateSlug settles the slug for a newly created page or section.
+//
+// The two branches deliberately differ on collision. A slug the caller typed
+// is part of their request, so a clash is an error they need to see
+// (ErrSlugConflict); silently storing something else would be a surprise. A
+// slug we generated carries no such intent, so it is disambiguated with a
+// numeric suffix instead.
+//
+// Only a wholly absent slug ("") is generated. Whitespace ("   ") still fails
+// validation as it does today — it is far more likely a mistake than an
+// intent to auto-name, and turning it into a silent success would hide that.
+func (s *Service) resolveCreateSlug(
+	ctx context.Context, requested, name, fallback string, taken slugTaken,
+) (string, error) {
+	if requested == "" {
+		return resolveGeneratedSlug(ctx, generateSlug(name, fallback), taken)
+	}
+
+	if err := validateSlug(requested); err != nil {
+		return "", err
+	}
+
+	used, err := taken(ctx, requested)
+	if err != nil {
+		return "", err
+	}
+
+	if used {
+		return "", ErrSlugConflict
+	}
+
+	return requested, nil
+}
 
 var (
 	// ErrOrganizationNotFound is returned when an organization is not found.
@@ -202,6 +330,9 @@ type Service struct {
 	// proxy, or acme.enabled = false), in which case the response simply omits
 	// customDomainCertStatus.
 	certStatus CertStatusProvider
+	// forgetDomain drops TLS state for a domain that stopped being ours. Same
+	// object as certStatus when the edge is running; nil otherwise.
+	forgetDomain DomainForgetter
 	// analytics receives the status_page_published product event. Injectable
 	// for tests: nil means "use the process-wide client" (the no-op unless
 	// PostHog is configured), while a test attaches its OWN recorder here.
@@ -224,10 +355,40 @@ type CertStatusProvider interface {
 	CertStatus(domain string) string
 }
 
+// DomainForgetter drops every trace of a hostname the instance no longer
+// serves — the cached certificate, its private key and the memoized "this host
+// is ours" answer. Implemented by internal/tlsedge.
+//
+// This is hygiene, not the security boundary: the edge refuses to serve any
+// host that is not currently mapped, whether or not the material was cleaned
+// up. It exists so a private key for a domain someone else may now control does
+// not sit in tls_storage until natural expiry.
+type DomainForgetter interface {
+	ForgetDomain(ctx context.Context, domain string)
+}
+
 // SetCertStatusProvider wires the in-server ACME edge into the custom-domain
 // responses. Safe to skip entirely — a nil provider just omits the field.
+//
+// The same object is picked up as a DomainForgetter when it implements one,
+// which avoids a second injection point in the app wiring for what is always
+// the same edge.
 func (s *Service) SetCertStatusProvider(provider CertStatusProvider) {
 	s.certStatus = provider
+
+	if forgetter, ok := provider.(DomainForgetter); ok {
+		s.forgetDomain = forgetter
+	}
+}
+
+// forget drops edge state for a domain that stopped being ours. No-op when
+// in-server TLS is off, which is the default.
+func (s *Service) forget(ctx context.Context, domain *string) {
+	if s.forgetDomain == nil || domain == nil || *domain == "" {
+		return
+	}
+
+	s.forgetDomain.ForgetDomain(ctx, *domain)
 }
 
 // NewService creates a new status pages service. cfg may be nil (e.g. the MCP
@@ -420,7 +581,14 @@ type ResourceAvailabilityData struct {
 	// kept for back-compat even when BucketUnit is "hour" (hourly buckets); read
 	// BucketUnit/Period to label the axis correctly.
 	DailyAvailability []AvailabilityPoint `json:"dailyAvailability,omitempty"`
-	ResponseTimeData  []ResponseTimePoint `json:"responseTimeData,omitempty"`
+	// ResponseTimeSeries holds one series per region the check has reported
+	// results from (spec 2026-08-14-04). Replaces the old flat
+	// `responseTimeData: []ResponseTimePoint` field, which interleaved every
+	// region's points into one meaningless saw-tooth series — status0 (the
+	// SPA and the embed widget) was the only consumer of that field and this
+	// substructure was never documented in openapi.yaml, so it is dropped
+	// rather than kept alongside.
+	ResponseTimeSeries []ResponseTimeSeries `json:"responseTimeSeries,omitempty"`
 	// Period is the active history period ("24h"|"7d"|"30d"|"90d").
 	Period string `json:"period,omitempty"`
 	// BucketUnit is the granularity of each point: "day" or "hour".
@@ -445,6 +613,14 @@ type ResponseTimePoint struct {
 	// Status indicates the check's outcome at this point: "up", "down",
 	// "timeout", "error", or "" when not applicable.
 	Status string `json:"status,omitempty"`
+}
+
+// ResponseTimeSeries is one region's response-time points for a resource.
+// Region is nil for results with no recorded region (NULL — legacy rows from
+// before regions were tracked, or a check with a single implicit region).
+type ResponseTimeSeries struct {
+	Region *string             `json:"region,omitempty"`
+	Points []ResponseTimePoint `json:"points"`
 }
 
 // --- Request types ---
@@ -687,10 +863,6 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, ErrOrganizationNotFound
 	}
 
-	if errSlug := validateSlug(req.Slug); errSlug != nil {
-		return StatusPageResponse{}, errSlug
-	}
-
 	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
 		return StatusPageResponse{}, errPeriod
 	}
@@ -703,16 +875,21 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errThresholds
 	}
 
-	// Check slug conflict
-	existing, err := s.db.GetStatusPageBySlug(ctx, org.UID, req.Slug)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return StatusPageResponse{}, err
-	}
-	if existing != nil {
-		return StatusPageResponse{}, ErrSlugConflict
+	taken := func(ctx context.Context, slug string) (bool, error) {
+		existing, errGet := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
+		if errGet != nil && !errors.Is(errGet, sql.ErrNoRows) {
+			return false, errGet
+		}
+
+		return existing != nil, nil
 	}
 
-	page := models.NewStatusPage(org.UID, req.Name, req.Slug)
+	slug, err := s.resolveCreateSlug(ctx, req.Slug, req.Name, slugFallbackPage, taken)
+	if err != nil {
+		return StatusPageResponse{}, err
+	}
+
+	page := models.NewStatusPage(org.UID, req.Name, slug)
 	applyCreateFields(page, req)
 
 	// Check if this should be default (first page or explicitly set)
@@ -1000,17 +1177,18 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	if errSlug := validateSlug(req.Slug); errSlug != nil {
-		return StatusPageSectionResponse{}, errSlug
+	taken := func(ctx context.Context, slug string) (bool, error) {
+		existing, errGet := s.db.GetStatusPageSectionBySlug(ctx, page.UID, slug)
+		if errGet != nil && !errors.Is(errGet, sql.ErrNoRows) {
+			return false, errGet
+		}
+
+		return existing != nil, nil
 	}
 
-	// Check slug conflict within the page
-	existing, errGet := s.db.GetStatusPageSectionBySlug(ctx, page.UID, req.Slug)
-	if errGet != nil && !errors.Is(errGet, sql.ErrNoRows) {
-		return StatusPageSectionResponse{}, errGet
-	}
-	if existing != nil {
-		return StatusPageSectionResponse{}, ErrSlugConflict
+	slug, err := s.resolveCreateSlug(ctx, req.Slug, req.Name, slugFallbackSection, taken)
+	if err != nil {
+		return StatusPageSectionResponse{}, err
 	}
 
 	position, err := s.resolveSectionPosition(ctx, page.UID, req.Position)
@@ -1018,7 +1196,7 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	section := models.NewStatusPageSection(page.UID, req.Name, req.Slug, position)
+	section := models.NewStatusPageSection(page.UID, req.Name, slug, position)
 
 	if errCreate := s.db.CreateStatusPageSection(ctx, section); errCreate != nil {
 		return StatusPageSectionResponse{}, errCreate
@@ -1762,7 +1940,8 @@ func (s *Service) enrichWithAvailability(
 	}
 }
 
-// resourceRecentResults returns the response-time series for a resource.
+// resourceRecentResults returns the per-region response-time results for a
+// resource, keyed by region ("" for a NULL/legacy region).
 //
 // A GROUP resource gets NO series: interleaving several members' p95 points
 // into one chart produces a meaningless plot, and it would publish per-member
@@ -1770,8 +1949,8 @@ func (s *Service) enrichWithAvailability(
 // availability bar is the group's public performance surface (spec
 // 2026-08-01-03).
 func resourceRecentResults(
-	recentByCheck map[string][]*models.Result, resource *StatusPageResourceResponse, memberUIDs []string,
-) []*models.Result {
+	recentByCheck map[string]map[string][]*models.Result, resource *StatusPageResourceResponse, memberUIDs []string,
+) map[string][]*models.Result {
 	if resource.CheckGroupUID != nil || len(memberUIDs) != 1 {
 		return nil
 	}
@@ -1779,15 +1958,26 @@ func resourceRecentResults(
 	return recentByCheck[memberUIDs[0]]
 }
 
-// fetchRecentResults loads the last responseTimeLimit results per check (any
-// period type) for the response-time chart. Returns an empty map when the
-// response-time chart is disabled. This is unchanged from the previous behavior
-// and is kept separate from the availability bucketing (Q4: the response-time
-// path is not affected by the data-source unification).
+// regionFanoutCap generously bounds the number of distinct regions
+// fetchRecentResults assumes per check when sizing its query's row limit, so
+// that the per-(check,region) point budget below can't be starved by another
+// region's rows dominating the interleaved fetch. Real deployments run a
+// handful of regions (2-5 is typical for a multi-region check); this mirrors
+// uptimebar.capMaxRegionsPerCheck's "generous, never bites under realistic
+// topology" reasoning for the same class of problem.
+const regionFanoutCap = 20
+
+// fetchRecentResults loads the last responseTimeLimit results per
+// (check, region) pair (any period type) for the response-time chart.
+// Returns an empty map when the response-time chart is disabled. The region
+// key is "" for a NULL/legacy region (spec 2026-08-14-04 — previously this
+// budget was shared across every region interleaved on one check, so a check
+// running in N regions got roughly 100/N points per region instead of 100
+// each).
 func (s *Service) fetchRecentResults(
 	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool,
-) map[string][]*models.Result {
-	recentByCheck := make(map[string][]*models.Result)
+) map[string]map[string][]*models.Result {
+	recentByCheck := make(map[string]map[string][]*models.Result)
 
 	if !showResponseTime {
 		return recentByCheck
@@ -1798,7 +1988,7 @@ func (s *Service) fetchRecentResults(
 	recentFilter := &models.ListResultsFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       checkUIDs,
-		Limit:           responseTimeLimit * len(checkUIDs),
+		Limit:           responseTimeLimit * regionFanoutCap * len(checkUIDs),
 		// The response-time chart plots duration/status only, so the
 		// metrics/output blobs never reach the page (spec 2026-07-24-02 §5).
 		SkipBlobs: true,
@@ -1809,9 +1999,20 @@ func (s *Service) fetchRecentResults(
 		return recentByCheck
 	}
 
-	for _, r := range recentResp.Results {
-		if len(recentByCheck[r.CheckUID]) < responseTimeLimit {
-			recentByCheck[r.CheckUID] = append(recentByCheck[r.CheckUID], r)
+	for _, result := range recentResp.Results {
+		regionKey := ""
+		if result.Region != nil {
+			regionKey = *result.Region
+		}
+
+		byRegion := recentByCheck[result.CheckUID]
+		if byRegion == nil {
+			byRegion = make(map[string][]*models.Result)
+			recentByCheck[result.CheckUID] = byRegion
+		}
+
+		if len(byRegion[regionKey]) < responseTimeLimit {
+			byRegion[regionKey] = append(byRegion[regionKey], result)
 		}
 	}
 
@@ -1869,7 +2070,8 @@ func (s *Service) enrichHourly(
 // Buckets absent from byBucket (no rows) get status "noData". The overall
 // weighted average matches the daily path.
 func buildHourlyAvailabilityData(
-	byBucket map[time.Time]uptimebar.BucketStats, recentResults []*models.Result, bucketStart time.Time,
+	byBucket map[time.Time]uptimebar.BucketStats, recentResultsByRegion map[string][]*models.Result,
+	bucketStart time.Time,
 	showAvailability, showResponseTime bool, upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
 	data := &ResourceAvailabilityData{}
@@ -1913,7 +2115,7 @@ func buildHourlyAvailabilityData(
 	}
 
 	if showResponseTime {
-		data.ResponseTimeData = buildResponseTimeData(recentResults)
+		data.ResponseTimeSeries = buildResponseTimeSeries(recentResultsByRegion)
 	}
 
 	return data
@@ -1926,7 +2128,7 @@ func buildHourlyAvailabilityData(
 // oldest bucket is (historyDays-1) days earlier, matching the BucketAvailability
 // call in enrichWithAvailability.
 func buildAvailabilityData(
-	byBucket map[time.Time]uptimebar.BucketStats, recentResults []*models.Result,
+	byBucket map[time.Time]uptimebar.BucketStats, recentResultsByRegion map[string][]*models.Result,
 	todayStart time.Time, historyDays int, showAvailability, showResponseTime bool,
 	upThreshold, degradedThreshold float64,
 ) *ResourceAvailabilityData {
@@ -1971,10 +2173,74 @@ func buildAvailabilityData(
 	}
 
 	if showResponseTime {
-		data.ResponseTimeData = buildResponseTimeData(recentResults)
+		data.ResponseTimeSeries = buildResponseTimeSeries(recentResultsByRegion)
 	}
 
 	return data
+}
+
+// buildResponseTimeSeries groups a resource's recent results into one series
+// per region (spec 2026-08-14-04), replacing the old single-series flattening
+// that interleaved every region's points. Region keys are sorted so the
+// output order is stable; the empty-string key (NULL/legacy region) sorts
+// first automatically and needs no special-casing.
+//
+// A region group with NO real duration signal at all is dropped entirely —
+// this matters because every check gets one lifecycle "created" marker result
+// (CreateCheck) with no region and no duration. Pre-region-splitting, that
+// marker was harmless: one more null-duration entry lost in a single combined
+// list. Post-splitting it would otherwise manufacture a phantom one-point
+// "unknown region" series (and legend entry) for every single-region check. A
+// region group that mixes the marker with real data keeps it, exactly as the
+// old single-series behavior always did.
+func buildResponseTimeSeries(recentResultsByRegion map[string][]*models.Result) []ResponseTimeSeries {
+	if len(recentResultsByRegion) == 0 {
+		return nil
+	}
+
+	regionKeys := make([]string, 0, len(recentResultsByRegion))
+	for key := range recentResultsByRegion {
+		regionKeys = append(regionKeys, key)
+	}
+
+	sort.Strings(regionKeys)
+
+	series := make([]ResponseTimeSeries, 0, len(regionKeys))
+
+	for _, key := range regionKeys {
+		points := buildResponseTimeData(recentResultsByRegion[key])
+		if !responseTimePointsHaveSignal(points) {
+			continue
+		}
+
+		var region *string
+		if key != "" {
+			regionValue := key
+			region = &regionValue
+		}
+
+		series = append(series, ResponseTimeSeries{Region: region, Points: points})
+	}
+
+	if len(series) == 0 {
+		return nil
+	}
+
+	return series
+}
+
+// responseTimePointsHaveSignal reports whether at least one point carries a
+// real duration — false for a region group made up entirely of lifecycle
+// markers (e.g. the check-creation "created" result) or other durationless
+// rows.
+func responseTimePointsHaveSignal(points []ResponseTimePoint) bool {
+	for i := range points {
+		if points[i].DurationP95 != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {

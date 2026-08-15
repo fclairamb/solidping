@@ -24,6 +24,7 @@ import {
   type IncidentNotification,
 } from "@/api/hooks";
 import { integrationIconComponent } from "@/components/integrations/integration-icon";
+import { EventTypeBadge } from "@/components/dashboard/event-display";
 import { PageHeader } from "@/components/shared/page-header";
 import {
   IntegrationForm,
@@ -62,6 +63,7 @@ function RecentNotificationsSection({
   integrationUid: string;
 }) {
   const navigate = useNavigate();
+  const { t: tEvents } = useTranslation("events");
   const { data: rows, isLoading, error } = useIntegrationNotifications(
     org,
     integrationUid,
@@ -126,8 +128,8 @@ function RecentNotificationsSection({
                   <TableCell className="text-sm capitalize">
                     {row.channelType}
                   </TableCell>
-                  <TableCell className="text-sm font-mono">
-                    {row.eventType}
+                  <TableCell>
+                    <EventTypeBadge eventType={row.eventType} t={tEvents} />
                   </TableCell>
                   <TableCell className="text-sm">
                     {row.user ? (

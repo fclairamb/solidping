@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/orgslug"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
@@ -2649,7 +2650,9 @@ type OrgResponse struct {
 	TokenType    string  `json:"tokenType"`
 }
 
-var orgSlugRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$`)
+// The org-slug rule itself lives in internal/orgslug — see orgslug.IsValid.
+// Do not restate the pattern here: it is also consulted by the Telegram
+// org-qualified-reference parser, and a second copy would drift silently.
 
 // CreateOrg creates a new organization, makes the caller its OWNER, and mints a
 // session scoped to the new org — mirroring SwitchOrg, since this is
@@ -2669,7 +2672,7 @@ func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
 	// Validate slug
-	if !orgSlugRegex.MatchString(req.Slug) {
+	if !orgslug.IsValid(req.Slug) {
 		return nil, ErrInvalidOrgSlug
 	}
 

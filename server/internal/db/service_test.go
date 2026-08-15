@@ -122,6 +122,68 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("GetOrCreateSystemParameter", func(t *testing.T) {
 		testGetOrCreateSystemParameter(ctx, t, svc)
 	})
+
+	t.Run("UserContactsByTypeValueOrdering", func(t *testing.T) {
+		testUserContactsByTypeValueOrdering(ctx, t, svc)
+	})
+}
+
+// testUserContactsByTypeValueOrdering is the cross-engine parity guard for the
+// deterministic ordering of ListUserContactsByTypeValue.
+//
+// One Telegram chat can legitimately be linked in several organizations, and
+// every caller that still has to pick a single row picks contacts[0]. Without an
+// explicit ORDER BY that row is whatever the storage engine felt like returning
+// first, so WHICH org answered /status could flip between two consecutive
+// commands. Oldest link first, UID as the tiebreaker — on both engines.
+func testUserContactsByTypeValueOrdering(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 10)
+	chatID := "tg-order-" + suffix
+
+	orgOld := models.NewOrganization("uco-old-"+suffix[len(suffix)-6:], "Old Org")
+	r.NoError(svc.CreateOrganization(ctx, orgOld))
+
+	orgNew := models.NewOrganization("uco-new-"+suffix[len(suffix)-6:], "New Org")
+	r.NoError(svc.CreateOrganization(ctx, orgNew))
+
+	userOld := models.NewUser("uco-old-" + suffix + "@example.com")
+	r.NoError(svc.CreateUser(ctx, userOld))
+
+	userNew := models.NewUser("uco-new-" + suffix + "@example.com")
+	r.NoError(svc.CreateUser(ctx, userNew))
+
+	now := time.Now()
+
+	// Insert the NEWER link first: an unordered query would very plausibly hand
+	// this one back first, which is exactly the bug being pinned.
+	newer := models.NewUserContact(
+		userNew.UID, orgNew.UID, models.UserContactTypeTelegram, chatID, "@new",
+	)
+	newer.CreatedAt = now
+	r.NoError(svc.UpsertUserContact(ctx, newer))
+
+	older := models.NewUserContact(
+		userOld.UID, orgOld.UID, models.UserContactTypeTelegram, chatID, "@old",
+	)
+	older.CreatedAt = now.Add(-time.Hour)
+	r.NoError(svc.UpsertUserContact(ctx, older))
+
+	contacts, err := svc.ListUserContactsByTypeValue(ctx, models.UserContactTypeTelegram, chatID)
+	r.NoError(err)
+	r.Len(contacts, 2)
+	r.Equal(orgOld.UID, contacts[0].OrganizationUID, "the oldest link must sort first")
+	r.Equal(orgNew.UID, contacts[1].OrganizationUID)
+
+	// And it is stable: repeating the query cannot reshuffle it.
+	again, err := svc.ListUserContactsByTypeValue(ctx, models.UserContactTypeTelegram, chatID)
+	r.NoError(err)
+	r.Len(again, 2)
+	r.Equal(contacts[0].UID, again[0].UID)
+	r.Equal(contacts[1].UID, again[1].UID)
 }
 
 // testGetOrCreateSystemParameter is the cross-engine parity guard for the

@@ -6,6 +6,7 @@ import { useIncidents, type IncidentDetail } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TimeAgo } from "@/components/ui/time-ago";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -85,22 +86,6 @@ function IncidentDuration({ incident }: { incident: IncidentDetail }) {
     return formatDuration(now - new Date(incident.startedAt).getTime());
   }
   return "-";
-}
-
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-
-  if (diffDay > 30) return date.toLocaleDateString();
-  if (diffDay > 0) return `${diffDay}d ago`;
-  if (diffHour > 0) return `${diffHour}h ago`;
-  if (diffMin > 0) return `${diffMin}m ago`;
-  return "just now";
 }
 
 function IncidentsIndexPage() {
@@ -286,9 +271,10 @@ function IncidentsIndexPage() {
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground font-mono">
                     {incident.startedAt ? (
-                      <span title={new Date(incident.startedAt).toLocaleString()}>
-                        {formatRelativeTime(incident.startedAt)}
-                      </span>
+                      <TimeAgo
+                        date={incident.startedAt}
+                        data-testid="incident-started-at"
+                      />
                     ) : "-"}
                   </TableCell>
                   <TableCell className="text-xs font-mono font-medium">

@@ -10,8 +10,72 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
+
+// capturingSender is a fake email.Sender that records the last message
+// instead of dialing SMTP, so EmailSenderAdapter's rendering can be asserted
+// directly.
+type capturingSender struct {
+	last *email.Message
+}
+
+func (c *capturingSender) Send(_ context.Context, msg *email.Message) (*email.SendResult, error) {
+	c.last = msg
+
+	return &email.SendResult{Sent: true, MessageID: "test-msg-id"}, nil
+}
+
+// TestEmailSenderAdapter_SendTestEmail_RendersThroughFormatter proves the
+// user-notification test-send email (usernotifications senders.go, site 4 of
+// the email-formatter migration) renders through test-email.html — including
+// getting an HTML part, which the old hand-rolled version never had at all.
+// The negative control matters: a test that only checks "non-empty" would
+// pass against the old text-only code too.
+func TestEmailSenderAdapter_SendTestEmail_RendersThroughFormatter(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := email.NewFormatter()
+	r.NoError(err)
+
+	sender := &capturingSender{}
+	adapter := NewEmailSenderAdapter(sender, formatter)
+
+	err = adapter.SendTestEmail(context.Background(), "someone@example.com")
+	r.NoError(err)
+
+	r.NotNil(sender.last)
+	msg := sender.last
+
+	r.Equal([]string{"someone@example.com"}, msg.Recipients.To)
+	r.Equal("Test notification from SolidPing", msg.Subject)
+	r.NotEmpty(msg.HTML, "must have an HTML part — the old version was text-only")
+	r.NotEmpty(msg.Text, "must have a text part")
+	r.Contains(msg.HTML, "Test notification from SolidPing")
+	r.Contains(msg.HTML, "delivery is working correctly")
+
+	// Negative control: the pre-migration code never set msg.HTML at all
+	// (Text-only), and never wrapped anything in the shared base.html
+	// branding. Confirm this is the real template, not a fragment.
+	r.Contains(msg.HTML, "SolidPing</span>", "must include the shared base.html header branding")
+}
+
+// TestEmailSenderAdapter_SendTestEmail_NilFormatterGuard proves the
+// nil-formatter guard added when SendTestEmail was migrated to the shared
+// formatter is real, not just assumed.
+func TestEmailSenderAdapter_SendTestEmail_NilFormatterGuard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	adapter := NewEmailSenderAdapter(&capturingSender{}, nil) // formatter never wired
+
+	err := adapter.SendTestEmail(context.Background(), "someone@example.com")
+	r.ErrorIs(err, ErrEmailFormatterNotConfigured)
+}
 
 // sendersTestVAPIDKeys generates a throwaway VAPID keypair.
 func sendersTestVAPIDKeys(t *testing.T) (string, string) {

@@ -189,7 +189,18 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 			msg.Subject = subject
 		}
 	} else {
-		// Use raw content
+		// Raw content: the caller's HTML/Text is used verbatim, bypassing
+		// email.Formatter (no layout, no sanitizing, no branding).
+		//
+		// This branch is INTERNAL-ONLY BY CONSTRUCTION. It stays because
+		// in-process callers legitimately compose their own bodies, but it is
+		// a phishing primitive if it can be driven from outside: the message
+		// leaves with the deployment's own From: address and its SPF/DKIM
+		// alignment, to arbitrary recipients. What keeps it out of reach is
+		// the public create endpoint's job-type allowlist
+		// (jobdef.IsPubliclyCreatable — "email" is not on it), enforced in
+		// jobs.Handler.CreateJob. Do not add "email" to that allowlist, and do
+		// not route untrusted input into this branch (spec 2026-08-15-04).
 		msg.HTML = r.config.HTML
 		msg.Text = r.config.Text
 	}

@@ -597,6 +597,75 @@ test.describe("Notification Channels", () => {
   });
 });
 
+// Event-type identity on the integration detail page's "Recent
+// notifications" table (spec 2026-08-15-02, sections B/C). The deliveries
+// endpoint is mocked because there is no deterministic way to make a real
+// notification land against a freshly-created channel from this test's
+// reach — same mocking pattern used for the suppressions section below.
+test.describe("Integration detail — recent notifications", () => {
+  test("Event column shows the labeled badge instead of a bare eventType code", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const webhookResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/integrations`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "webhook",
+          name: `E2E Recent Notifs ${Date.now()}`,
+          settings: { url: "https://example.com/webhook" },
+        },
+      },
+    );
+    const webhook = await webhookResp.json();
+
+    await page.route(
+      (url) =>
+        url.pathname === "/api/v1/orgs/test/notifications" &&
+        url.searchParams.get("connectionUid") === webhook.uid,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: [
+              {
+                uid: "33333333-3333-3333-3333-333333333333",
+                incidentUid: "11111111-1111-1111-1111-111111111111",
+                eventType: "incident.resolved",
+                source: "check_connection",
+                channelType: "webhook",
+                status: "sent",
+                createdAt: "2026-06-02T10:00:00Z",
+                sentAt: "2026-06-02T10:00:02Z",
+                user: null,
+                connection: { uid: webhook.uid, name: webhook.name ?? "Webhook", type: "webhook" },
+              },
+            ],
+          }),
+        });
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${webhook.uid}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByText("Recent notifications")).toBeVisible();
+
+    // The translated, emoji-bearing label is visible...
+    await expect(page.getByText("Incident Resolved")).toBeVisible();
+    // ...and the raw eventType is no longer rendered as a bare mono-styled
+    // table cell (it still lives in the badge's title attribute for
+    // debugging, same as the notification detail page).
+    await expect(page.locator("td.font-mono", { hasText: "incident.resolved" })).toHaveCount(0);
+
+    await deleteConnection(page, token, webhook.uid);
+  });
+});
+
 // Suppressions section on the email integration edit page (spec
 // 2026-07-05-10, D4). Creation is always recipient-initiated via the public
 // /unsubscribe page (never through this authenticated API), so there is no

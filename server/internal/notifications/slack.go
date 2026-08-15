@@ -519,7 +519,7 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":white_check_mark: %s%s — incident resolved after %s.",
+		":large_green_circle: %s%s — incident resolved after %s.",
 		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName), duration,
 	)
 
@@ -577,7 +577,7 @@ func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName s
 			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
 				Type:  slack.BlockTypePlainText,
-				Text:  ":rotating_light: " + incidentRefPrefix(payload.Incident) + "Incident escalated: " + checkName,
+				Text:  ":warning: " + incidentRefPrefix(payload.Incident) + "Incident escalated: " + checkName,
 				Emoji: true,
 			},
 		},
@@ -618,7 +618,7 @@ func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName s
 			Elements: []any{
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
-					Text: slackLink(incidentURL, ":rotating_light: Escalated") + "  " + slackLink(incidentURL, ":warning: Incident"),
+					Text: slackLink(incidentURL, ":warning: Escalated") + "  " + slackLink(incidentURL, ":warning: Incident"),
 				},
 			},
 		},
@@ -722,7 +722,7 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
 				Type: slack.BlockTypePlainText,
-				Text: fmt.Sprintf(":white_check_mark: %sAutomatically resolved %s incident",
+				Text: fmt.Sprintf(":large_green_circle: %sAutomatically resolved %s incident",
 					incidentRefPrefix(payload.Incident), checkName),
 				Emoji: true,
 			},
@@ -739,7 +739,7 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 			Elements: []any{
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
-					Text: slackLink(incidentURL, ":white_check_mark: Resolved") +
+					Text: slackLink(incidentURL, ":large_green_circle: Resolved") +
 						"  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
 				},
 			},
@@ -818,7 +818,7 @@ func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":warning: %s%s — incident reopened (relapse #%d). "+
+		":repeat: %s%s — incident reopened (relapse #%d). "+
 			"Recovery requires the check to stay up for %d seconds.",
 		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
 		relapseCount, payload.Check.RecoveryPeriodSeconds,
@@ -857,7 +857,7 @@ func (s *SlackSender) buildReopenedUpdateMessage(payload *Payload) *slack.Messag
 			Elements: []any{
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
-					Text: slackLink(incidentURL, ":warning: Reopened") + "  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
+					Text: slackLink(incidentURL, ":repeat: Reopened") + "  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
 				},
 			},
 		},

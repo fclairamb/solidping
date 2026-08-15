@@ -596,6 +596,7 @@ function ChecksTable({
   onChangeGroup,
   groups,
   checksByUid,
+  elevated = false,
 }: {
   checks: Check[];
   org: string;
@@ -603,37 +604,52 @@ function ChecksTable({
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
   checksByUid: Map<string, Check>;
+  /** True for a table standing directly on the page background (the
+   * ungrouped section) — gives it the shadow-card "list surface" treatment
+   * from maintenance-windows/design-reference. False (default) for a table
+   * nested inside a CheckGroupSection/HostSection, which already supplies
+   * its own bordered rounded-lg card — stacking another elevated card inside
+   * it would double the framing. */
+  elevated?: boolean;
 }) {
   const { t } = useTranslation("checks");
-  return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t("table.name")}</TableHead>
-            <TableHead>{t("table.type")}</TableHead>
-            <TableHead>{t("table.target")}</TableHead>
-            <TableHead>{t("table.status")}</TableHead>
-            <TableHead>{t("table.response")}</TableHead>
-            <TableHead className="w-[50px]" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {checks.map((check) => (
-            <CheckRow
-              key={check.uid}
-              check={check}
-              org={org}
-              onDelete={onDelete}
-              onChangeGroup={onChangeGroup}
-              groups={groups}
-              checksByUid={checksByUid}
-            />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+  const table = (
+    <Table>
+      <TableHeader className="bg-muted/30">
+        <TableRow>
+          <TableHead>{t("table.name")}</TableHead>
+          <TableHead>{t("table.type")}</TableHead>
+          <TableHead>{t("table.target")}</TableHead>
+          <TableHead>{t("table.status")}</TableHead>
+          <TableHead>{t("table.response")}</TableHead>
+          <TableHead className="w-[50px]" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {checks.map((check) => (
+          <CheckRow
+            key={check.uid}
+            check={check}
+            org={org}
+            onDelete={onDelete}
+            onChangeGroup={onChangeGroup}
+            groups={groups}
+            checksByUid={checksByUid}
+          />
+        ))}
+      </TableBody>
+    </Table>
   );
+
+  if (elevated) {
+    return (
+      <div className="overflow-hidden rounded-xl border bg-card shadow-card">
+        <div className="overflow-x-auto">{table}</div>
+      </div>
+    );
+  }
+
+  return <div className="rounded-md border">{table}</div>;
 }
 
 // Presentational: the checks it shows come from the page-level batched query
@@ -934,7 +950,7 @@ function UngroupedChecksSection({
           {t("failedToLoadChecks")}
         </div>
       ) : checks.length > 0 ? (
-        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} checksByUid={checksByUid} />
+        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} checksByUid={checksByUid} elevated />
       ) : isLoading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
@@ -1633,8 +1649,13 @@ function ChecksIndexPage() {
           </div>
 
           {hostBuckets.length === 0 && !checksStreaming && !isFiltering && (
-            <div className="text-center py-10 text-muted-foreground text-sm">
-              {t("noChecksAtAll")}
+            <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <ListChecks className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                {t("noChecksAtAll")}
+              </p>
             </div>
           )}
         </div>

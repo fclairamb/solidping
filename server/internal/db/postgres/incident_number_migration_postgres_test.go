@@ -50,7 +50,7 @@ func TestIncidentNumberBackfillOrdersByStartedAt_Postgres(t *testing.T) {
 
 	// The backfill block is read straight out of the shipped migration rather
 	// than retyped, so the test cannot drift from the SQL that actually runs.
-	migration, err := migrationsFS.ReadFile("migrations/012_incident_number.up.sql")
+	migration, err := migrationsFS.ReadFile("migrations/012_v0_15_0.up.sql")
 	r.NoError(err)
 
 	backfill := backfillBlock(t, string(migration))
@@ -117,7 +117,7 @@ func backfillBlock(t *testing.T, migration string) string {
 	t.Helper()
 
 	parts := strings.Split(migration, "--bun:split")
-	require.Len(t, parts, 3, "012_incident_number.up.sql must stay three --bun:split blocks")
+	require.Len(t, parts, 3, "012_v0_15_0.up.sql must stay three --bun:split blocks")
 
 	return parts[1]
 }
@@ -154,7 +154,7 @@ func TestIncidentNumberMigrationNumbering_Postgres(t *testing.T) {
 		seen[key] = name
 	}
 
-	for _, name := range []string{"012_incident_number.up.sql", "012_incident_number.down.sql"} {
+	for _, name := range []string{"012_v0_15_0.up.sql", "012_v0_15_0.down.sql"} {
 		_, readErr := migrationsFS.ReadFile("migrations/" + name)
 		r.NoError(readErr, "%s must be embedded", name)
 	}
