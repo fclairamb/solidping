@@ -339,3 +339,58 @@ setting) must be confirmed against the live OVH API console
 (`https://eu.api.ovh.com/console/?section=/sms&branch=v1`) during
 implementation. This is a lookup for the implementer, not a question for the
 user — but per the spec, **do not guess it**.
+
+## Implementation Plan
+
+Ordered so each step lands as its own commit and a later failure never strands
+the earlier ones.
+
+**Research item resolved up front (§4).** The OVH API schema
+(`https://eu.api.ovh.com/1.0/sms.json`, fetched during implementation) shows
+`POST /sms/{serviceName}/jobs` accepts exactly: `charset`, `class`, `coding`,
+`differedPeriod`, `message`, `noStopClause`, `priority`, `receivers`,
+`receiversDocumentUrl`, `receiversSlotId`, `sender`, `senderForResponse`,
+`tag`, `validityPeriod`. **There is no per-job callback field.** The DLR
+callback is a *service-level* setting: `callBack` on the `sms.Account` model
+(`PUT /sms/{serviceName}`), documented as "URL called when state of a sent SMS
+changes". So §5's "per instance, rotated" token is not a fallback — it is the
+only shape the OVH API supports. OVH appends `id`, `ptt`, `date`,
+`description`, `descriptionDlr` to the callback query string; `ptt` 4 =
+delivered, 3 = accepted, 1/2 = intermediate retry, everything else = failure
+(OVH docs `tout_savoir_sur_les_utilisateurs_sms`).
+
+1. **Config (§1).** `SMSConfig` + `VoiceConfig` in `config.go`, mirroring
+   `WhatsAppConfig` (kill switch, secrets env/SSM only, one `Active()` rule).
+   Manual env readers in `applySMSEnv` / `applyVoiceEnv` + `SMSEnvVarNames` /
+   `VoiceEnvVarNames` wired into `envvars.go` (koanf multi-word quirk).
+2. **OVH client (§4).** `internal/integrations/ovhsms`: signed-request scheme,
+   `/auth/time` delta cached at construction, `SendSMS` with
+   `noStopClause: true` always, `VerifyCredentials`, `ValidEndpoint`.
+3. **`sms.Sender` seam (§2).** `internal/integrations/sms`: `Sender`,
+   `SendParams`, `SendResult`, a Twilio adapter constructible from *either*
+   instance config or per-org decrypted settings, an OVH adapter, and
+   `NewInstanceSender` built once at startup.
+4. **Capabilities + resolution (§3, §7).** `CanSendSMS` / `CanPlaceCall` on
+   `models.Capabilities`; `sms.Resolver` returning a `Resolution{Mode, Sender,
+   Voice, Conn}` — per-org Twilio integration first, instance config second.
+5. **Guards (§6).** Instance-wide hourly cap and destination-country
+   allow-list on the entitlements service, applied **only** on the
+   server-credential path; loud logging plus a per-org breach counter surfaced
+   on the Usage API.
+6. **Send-path rewiring.** `job_escalation_step.go` (`pagePhone`,
+   `sendPhoneSMS`, `placePhoneCall`), `usernotifications` verify + test SMS,
+   and `twiliocb` (instance-credential voice callbacks) move onto the seam;
+   the `newTwilioClient` package vars go away.
+7. **OVH DLR (§5).** `/api/v1/integrations/ovhsms/dlr/{token}`, constant-time
+   token compare, 404 on mismatch, idempotent, untrusted payload.
+8. **Docs (§8).** `configuration/twilio.md` → provider-neutral `sms.md`
+   (both providers, both modes, AF2M charter, opt-out content preserved).
+9. **UI (§8).** SMS mode panel on the org integrations surface explaining the
+   effective mode and what overrides what, from the design reference.
+10. **Tests (§9)** land alongside each step; the negative controls
+    (`noStopClause`, disallowed country refused, unknown DLR token 404, BYO
+    never touches instance credentials or the global cap) are acceptance
+    criteria.
+
+Also in scope, wording only: `entitlements/defaults.go` drops the
+"bring-your-own Twilio" framing (no limit value changes).
