@@ -105,6 +105,8 @@ import {
   sourceLabel,
 } from "@/lib/notifications";
 import { channelTypeLabel } from "@/lib/channel-labels";
+import { cn } from "@/lib/utils";
+import { statusUpdateKindTone } from "@/lib/status-update-kind";
 
 export const Route = createFileRoute("/orgs/$org/incidents/$incidentUid")({
   component: IncidentDetailPage,
@@ -186,22 +188,14 @@ const STATUS_UPDATE_KINDS = [
   { value: "info", label: "Info" },
 ];
 
-const KIND_COLORS: Record<string, string> = {
-  investigating: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  identified: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  monitoring: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  resolved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  maintenance: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  info: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
-};
-
 function KindBadgeInline({ kind }: { kind: string }) {
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${KIND_COLORS[kind] ?? "bg-gray-100 text-gray-800"}`}
+    <Badge
+      variant="outline"
+      className={cn("font-medium capitalize", statusUpdateKindTone(kind))}
     >
       {kind}
-    </span>
+    </Badge>
   );
 }
 

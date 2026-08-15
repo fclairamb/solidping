@@ -35,6 +35,7 @@
     "title": "Graphe de dépendances",
     "subtitle": "Toutes les dépendances dirigées entre les contrôles de cette organisation.",
     "empty": "Aucune dépendance dans cette organisation pour le moment.",
+    "noMatch": "Aucune dépendance ne correspond à votre filtre",
     "filter": "Filtrer par nom de contrôle",
     "parent": "Parent",
     "child": "Enfant",

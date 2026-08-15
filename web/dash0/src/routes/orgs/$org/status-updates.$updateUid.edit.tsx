@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useStatusUpdate, useUpdateStatusUpdate } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import {
   StatusUpdateForm,
@@ -16,6 +18,7 @@ export const Route = createFileRoute(
 });
 
 function EditStatusUpdatePage() {
+  const { t } = useTranslation(["statusUpdates", "common"]);
   const { org, updateUid } = Route.useParams();
   const navigate = useNavigate();
 
@@ -34,7 +37,7 @@ function EditStatusUpdatePage() {
       sectionUid: data.sectionUid !== "none" ? data.sectionUid : undefined,
       checkUid: data.checkUid !== "none" ? data.checkUid : undefined,
     });
-    toast.success("Status update saved");
+    toast.success(t("statusUpdates:toast.updated"));
     navigate({ to: "/orgs/$org/status-updates", params: { org } });
   };
 
@@ -50,14 +53,24 @@ function EditStatusUpdatePage() {
   }
 
   if (isLoading || !update) {
-    return <div className="p-6 text-muted-foreground">Loading…</div>;
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10 rounded" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <Skeleton className="h-96 rounded-lg" />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-start justify-between gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">Edit status update</h1>
-        <Button asChild variant="ghost" size="icon" aria-label="Back">
+        <h1 className="text-3xl font-bold tracking-tight">
+          {t("statusUpdates:editStatusUpdate")}
+        </h1>
+        <Button asChild variant="ghost" size="icon" aria-label={t("common:back")}>
           <Link to="/orgs/$org/status-updates" params={{ org }}>
             <ArrowLeft />
           </Link>

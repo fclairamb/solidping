@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateStatusUpdate } from "@/api/hooks";
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/orgs/$org/status-updates/new")({
 });
 
 function NewStatusUpdatePage() {
+  const { t } = useTranslation(["statusUpdates", "common"]);
   const { org } = Route.useParams();
   const navigate = useNavigate();
   const createMutation = useCreateStatusUpdate(org);
@@ -30,15 +32,17 @@ function NewStatusUpdatePage() {
       sectionUid: data.sectionUid !== "none" ? data.sectionUid : undefined,
       checkUid: data.checkUid !== "none" ? data.checkUid : undefined,
     });
-    toast.success("Status update created");
+    toast.success(t("statusUpdates:toast.created"));
     navigate({ to: "/orgs/$org/status-updates", params: { org } });
   };
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-start justify-between gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">New status update</h1>
-        <Button asChild variant="ghost" size="icon" aria-label="Back">
+        <h1 className="text-3xl font-bold tracking-tight">
+          {t("statusUpdates:newStatusUpdate")}
+        </h1>
+        <Button asChild variant="ghost" size="icon" aria-label={t("common:back")}>
           <Link to="/orgs/$org/status-updates" params={{ org }}>
             <ArrowLeft />
           </Link>

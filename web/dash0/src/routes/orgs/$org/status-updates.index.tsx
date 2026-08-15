@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   Megaphone,
   Plus,
@@ -19,6 +20,7 @@ import {
 } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -48,6 +50,8 @@ import {
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
 import { useDebounce } from "@/lib/use-debounce";
+import { cn } from "@/lib/utils";
+import { STATUS_UPDATE_KINDS, statusUpdateKindTone } from "@/lib/status-update-kind";
 
 interface StatusUpdatesIndexSearch {
   q?: string;
@@ -60,34 +64,15 @@ export const Route = createFileRoute("/orgs/$org/status-updates/")({
   }),
 });
 
-const STATUS_UPDATE_KINDS = [
-  { value: "investigating", label: "Investigating" },
-  { value: "identified", label: "Identified" },
-  { value: "monitoring", label: "Monitoring" },
-  { value: "resolved", label: "Resolved" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "info", label: "Info" },
-];
-
-const KIND_COLORS: Record<string, string> = {
-  investigating:
-    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  identified:
-    "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  monitoring: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  resolved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  maintenance:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  info: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
-};
-
 function KindBadge({ kind }: { kind: string }) {
+  const { t } = useTranslation("statusUpdates");
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${KIND_COLORS[kind] ?? "bg-gray-100 text-gray-800"}`}
+    <Badge
+      variant="outline"
+      className={cn("font-medium capitalize", statusUpdateKindTone(kind))}
     >
-      {kind}
-    </span>
+      {t(`kinds.${kind}`, kind)}
+    </Badge>
   );
 }
 
@@ -102,13 +87,17 @@ function StatusUpdateRow({
   publicSlug?: string;
   onDelete: (uid: string) => void;
 }) {
+  const { t } = useTranslation(["statusUpdates", "common"]);
   return (
-    <TableRow data-testid="status-update-row">
+    <TableRow
+      className="hover:bg-muted/40 transition-colors"
+      data-testid="status-update-row"
+    >
       <TableCell>
         <Link
           to="/orgs/$org/status-updates/$updateUid/edit"
           params={{ org, updateUid: update.uid }}
-          className="font-medium text-foreground hover:underline"
+          className="font-medium text-foreground hover:text-primary hover:underline transition-colors"
           data-testid="status-update-row-title"
         >
           {update.title}
@@ -130,8 +119,8 @@ function StatusUpdateRow({
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              aria-label="View public update"
-              title="View public update"
+              aria-label={t("statusUpdates:viewPublic")}
+              title={t("statusUpdates:viewPublic")}
             >
               <a
                 href={`/status0/${org}/${publicSlug}#update-${update.uid}`}
@@ -148,7 +137,8 @@ function StatusUpdateRow({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            aria-label="Edit"
+            aria-label={t("common:edit")}
+            title={t("common:edit")}
           >
             <Link
               to="/orgs/$org/status-updates/$updateUid/edit"
@@ -163,7 +153,8 @@ function StatusUpdateRow({
             size="icon"
             className="h-8 w-8 text-destructive hover:text-destructive"
             onClick={() => onDelete(update.uid)}
-            aria-label="Delete"
+            aria-label={t("common:delete")}
+            title={t("common:delete")}
             data-testid="status-update-row-delete"
           >
             <Trash2 className="h-4 w-4" />
@@ -175,6 +166,7 @@ function StatusUpdateRow({
 }
 
 function StatusUpdatesIndexPage() {
+  const { t } = useTranslation(["statusUpdates", "common"]);
   const { org } = Route.useParams();
   const { q: qParam } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -271,9 +263,9 @@ function StatusUpdatesIndexPage() {
     if (!deleteUid) return;
     try {
       await deleteMutation.mutateAsync(deleteUid);
-      toast.success("Status update deleted");
+      toast.success(t("statusUpdates:toast.deleted"));
     } catch {
-      toast.error("Failed to delete status update");
+      toast.error(t("statusUpdates:toast.deleteFailed"));
     } finally {
       setDeleteUid(null);
     }
@@ -281,32 +273,38 @@ function StatusUpdatesIndexPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <PageHeader
         icon={Megaphone}
-        title="Status updates"
-        description="Publish narrative updates on your status pages."
+        title={t("statusUpdates:title")}
+        description={t("statusUpdates:subtitle")}
+        docsHref="/docs/features/status-pages"
         actions={
-          <Button asChild>
-            <Link
-              to="/orgs/$org/status-updates/new"
-              params={{ org }}
-              data-testid="status-updates-new"
+          <>
+            <Button
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+              aria-label={t("common:refresh")}
             >
-              <Plus className="mr-2 h-4 w-4" />
-              New update
+              <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{t("common:refresh")}</span>
+            </Button>
+            <Link to="/orgs/$org/status-updates/new" params={{ org }}>
+              <Button data-testid="status-updates-new">
+                <Plus className="mr-2 h-4 w-4" />
+                {t("statusUpdates:newStatusUpdate")}
+              </Button>
             </Link>
-          </Button>
+          </>
         }
         className="flex-wrap"
       />
 
-      {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by title…"
+            placeholder={t("statusUpdates:searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 w-48"
@@ -318,10 +316,10 @@ function StatusUpdatesIndexPage() {
             className="w-44"
             data-testid="status-updates-page-filter"
           >
-            <SelectValue placeholder="All pages" />
+            <SelectValue placeholder={t("statusUpdates:filters.allPages")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All pages</SelectItem>
+            <SelectItem value="all">{t("statusUpdates:filters.allPages")}</SelectItem>
             {(pages ?? []).map((p) => (
               <SelectItem key={p.uid} value={p.uid}>
                 {p.name}
@@ -336,10 +334,10 @@ function StatusUpdatesIndexPage() {
               className="w-44"
               data-testid="status-updates-section-filter"
             >
-              <SelectValue placeholder="All sections" />
+              <SelectValue placeholder={t("statusUpdates:filters.allSections")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All sections</SelectItem>
+              <SelectItem value="all">{t("statusUpdates:filters.allSections")}</SelectItem>
               {sections.map((s) => (
                 <SelectItem key={s.uid} value={s.uid}>
                   {s.name}
@@ -355,10 +353,10 @@ function StatusUpdatesIndexPage() {
               className="w-44"
               data-testid="status-updates-check-filter"
             >
-              <SelectValue placeholder="All checks" />
+              <SelectValue placeholder={t("statusUpdates:filters.allChecks")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All checks</SelectItem>
+              <SelectItem value="all">{t("statusUpdates:filters.allChecks")}</SelectItem>
               {checkOptions.map((r) => (
                 <SelectItem key={r.checkUid} value={r.checkUid}>
                   {r.check?.name ?? r.checkUid.slice(0, 8)}
@@ -373,52 +371,36 @@ function StatusUpdatesIndexPage() {
             className="w-36"
             data-testid="status-updates-kind-filter"
           >
-            <SelectValue placeholder="All kinds" />
+            <SelectValue placeholder={t("statusUpdates:filters.allKinds")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All kinds</SelectItem>
-            {STATUS_UPDATE_KINDS.map((k) => (
-              <SelectItem key={k.value} value={k.value}>
-                {k.label}
+            <SelectItem value="all">{t("statusUpdates:filters.allKinds")}</SelectItem>
+            {STATUS_UPDATE_KINDS.map((kind) => (
+              <SelectItem key={kind} value={kind}>
+                {t(`statusUpdates:kinds.${kind}`)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-
-        <Button
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          aria-label="Refresh"
-        >
-          <RefreshCw
-            className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
-          />
-          <span className="hidden sm:inline">Refresh</span>
-        </Button>
       </div>
 
-      {error && (
+      {error ? (
         <QueryErrorView error={error} org={org} onRetry={() => refetch()} />
-      )}
-
-      {isLoading ? (
-        <div className="rounded-md border">
-          <div className="space-y-2 p-4">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
+      ) : isLoading ? (
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-12 rounded-lg" />
+          ))}
         </div>
       ) : filtered.length > 0 ? (
-        <div className="rounded-md border">
+        <div className="rounded-xl border bg-card shadow-card overflow-hidden">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Kind</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="w-[100px]" />
+                <TableHead>{t("statusUpdates:table.title")}</TableHead>
+                <TableHead>{t("statusUpdates:table.kind")}</TableHead>
+                <TableHead>{t("statusUpdates:table.date")}</TableHead>
+                <TableHead className="w-[100px] text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -434,10 +416,15 @@ function StatusUpdatesIndexPage() {
             </TableBody>
           </Table>
         </div>
+      ) : updates && updates.length > 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <p>{t("statusUpdates:noMatch")}</p>
+        </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
           <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>No status updates yet.</p>
+          <p>{t("statusUpdates:noStatusUpdates")}</p>
         </div>
       )}
 
@@ -447,19 +434,18 @@ function StatusUpdatesIndexPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete status update?</AlertDialogTitle>
+            <AlertDialogTitle>{t("statusUpdates:deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the update from the status page. This action
-              cannot be undone.
+              {t("statusUpdates:deleteDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("common:delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,0 +1,39 @@
+{
+  "title": "Actualizaciones de estado",
+  "subtitle": "Publica actualizaciones narrativas en tus páginas de estado.",
+  "newStatusUpdate": "Nueva actualización de estado",
+  "editStatusUpdate": "Editar actualización de estado",
+  "noStatusUpdates": "Todavía no hay actualizaciones de estado",
+  "noMatch": "Ninguna actualización coincide con tus filtros",
+  "searchPlaceholder": "Buscar por título…",
+  "viewPublic": "Ver actualización pública",
+  "table": {
+    "title": "Título",
+    "kind": "Tipo",
+    "date": "Fecha"
+  },
+  "filters": {
+    "allPages": "Todas las páginas",
+    "allSections": "Todas las secciones",
+    "allChecks": "Todos los checks",
+    "allKinds": "Todos los tipos"
+  },
+  "kinds": {
+    "investigating": "Investigando",
+    "identified": "Identificado",
+    "monitoring": "Monitoreando",
+    "resolved": "Resuelto",
+    "maintenance": "Mantenimiento",
+    "info": "Info"
+  },
+  "deleteDialog": {
+    "title": "¿Eliminar la actualización de estado?",
+    "description": "Esto eliminará la actualización de la página de estado. Esta acción no se puede deshacer."
+  },
+  "toast": {
+    "created": "Actualización de estado creada",
+    "updated": "Actualización de estado guardada",
+    "deleted": "Actualización de estado eliminada",
+    "deleteFailed": "Error al eliminar la actualización de estado"
+  }
+}
