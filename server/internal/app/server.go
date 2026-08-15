@@ -1511,7 +1511,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// early-registered one is 403-only until the secret is known.
 	if s.config.Telegram.Configured() {
 		telegramHandler := telegramcb.NewHandler(s.dbService, s.config,
-			telegramcb.WithAcknowledger(incidentsService))
+			telegramcb.WithAcknowledger(incidentsService),
+			telegramcb.WithCommenter(incidentsService))
 		telegramIntegration := api.NewGroup("/integrations/telegram")
 		// Path kept in sync with TelegramWebhookPath, which the boot-time
 		// self-registration uses.

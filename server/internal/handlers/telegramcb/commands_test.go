@@ -35,7 +35,8 @@ func setupCommandEnv(t *testing.T, link bool) *cmdEnv {
 
 	// Rebuild the handler with the acknowledger wired in; setupEnv's plain one
 	// cannot ack.
-	env.handler = NewHandler(env.db, env.handler.cfg, WithSender(env.sender), WithAcknowledger(svc))
+	env.handler = NewHandler(env.db, env.handler.cfg, WithSender(env.sender),
+		WithAcknowledger(svc), WithCommenter(svc))
 
 	if link {
 		contact := models.NewUserContact(
@@ -100,7 +101,10 @@ func (e *cmdEnv) pressAck(t *testing.T, incidentUID, firstName string) {
 func TestCommands_UnlinkedChatIsRefused(t *testing.T) {
 	t.Parallel()
 
-	for _, text := range []string{"/status", "/incidents", "/ack", "/ack #1", "/incident #1", "/help"} {
+	for _, text := range []string{
+		"/status", "/incidents", "/ack", "/ack #1", "/incident #1", "/help",
+		"/comment", "/comment note", "/comment #1 note",
+	} {
 		t.Run(text, func(t *testing.T) {
 			t.Parallel()
 

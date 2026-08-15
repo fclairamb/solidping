@@ -112,13 +112,23 @@ type Acknowledger interface {
 	) (*models.Incident, error)
 }
 
+// Commenter is the incident-service seam /comment needs. Split from
+// Acknowledger so a deployment that wires one can wire the other without
+// either becoming a hard dependency of this package.
+type Commenter interface {
+	AddCommentFromTelegram(
+		ctx context.Context, orgUID, incidentUID, text, userUID, actor, chatID string,
+	) (*models.Event, error)
+}
+
 // Handler serves the inbound Telegram webhook.
 type Handler struct {
-	db     db.Service
-	cfg    *config.Config
-	log    *slog.Logger
-	sender Sender
-	acker  Acknowledger
+	db        db.Service
+	cfg       *config.Config
+	log       *slog.Logger
+	sender    Sender
+	acker     Acknowledger
+	commenter Commenter
 }
 
 // Option customizes a Handler at construction.
@@ -135,6 +145,13 @@ func WithSender(sender Sender) Option {
 // read-only commands — it simply cannot acknowledge.
 func WithAcknowledger(acker Acknowledger) Option {
 	return func(h *Handler) { h.acker = acker }
+}
+
+// WithCommenter injects the incident service used by /comment. Without it the
+// bot answers /comment with a "not available" notice rather than pretending
+// the note was saved.
+func WithCommenter(commenter Commenter) Option {
+	return func(h *Handler) { h.commenter = commenter }
 }
 
 // NewHandler builds a Telegram webhook handler.
@@ -232,6 +249,8 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 		h.handleAck(ctx, msg, chatID, arg)
 	case "incident":
 		h.handleIncidentDetail(ctx, chatID, arg)
+	case "comment":
+		h.handleComment(ctx, msg, chatID, arg)
 	case "":
 		h.log.InfoContext(ctx, "ignoring non-command telegram message", "chatId", chatID)
 	default:
