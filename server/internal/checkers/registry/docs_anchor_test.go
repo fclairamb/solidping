@@ -41,7 +41,7 @@ func headingAnchorsInDocs(t *testing.T, root string) map[string]bool {
 
 	path := filepath.Join(root, "web", "docs", "docs", "features", "check-types.md")
 
-	content, err := os.ReadFile(path) //nolint:gosec // fixed test-relative path
+	content, err := os.ReadFile(path)
 	require.NoError(t, err, "reading %s", path)
 
 	re := regexp.MustCompile(`(?m)^###\s.*\{#([a-z0-9-]+)\}\s*$`)
@@ -64,7 +64,7 @@ func frontendAnchorMap(t *testing.T, root string) map[string]string {
 		root, "web", "dash0", "src", "components", "shared", "check-type-docs-anchors.ts",
 	)
 
-	content, err := os.ReadFile(path) //nolint:gosec // fixed test-relative path
+	content, err := os.ReadFile(path)
 	require.NoError(t, err, "reading %s", path)
 
 	// Matches lines like:  http: "httphttps",

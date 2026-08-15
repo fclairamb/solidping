@@ -1,5 +1,3 @@
-import type { CheckType } from "@/components/checks/form/types/common";
-
 // checkTypeDocsAnchors maps each monitorable check type to its explicit
 // heading anchor in web/docs/docs/features/check-types.md
 // (`### Heading {#anchor}`). Anchors are pinned to the slug Docusaurus
@@ -13,11 +11,19 @@ import type { CheckType } from "@/components/checks/form/types/common";
 // server/internal/checkers/CLAUDE.md) and has no docs section — it is
 // intentionally omitted here.
 //
+// Keyed by the raw backend check-type string (server/internal/checkers/
+// checkerdef.CheckType), not the frontend's `CheckType` union in
+// components/checks/form/types/common.ts — the two lists can diverge (e.g.
+// `kubernetes` has a backend checker and a docs section but is not yet a
+// creatable type in this form), so this map intentionally uses a plain
+// string key to stay in sync with the backend registry, the actual source
+// of truth for "which check types exist".
+//
 // KEEP THIS IN SYNC with the check-type registry
 // (server/internal/checkers/checkerdef/types.go) and the markdown headings.
 // server/internal/checkers/registry/docs_anchor_test.go fails the build if
 // this map drifts from either.
-export const checkTypeDocsAnchors: Partial<Record<CheckType, string>> = {
+export const checkTypeDocsAnchors: Partial<Record<string, string>> = {
   http: "httphttps",
   tcp: "tcp",
   udp: "udp",
@@ -67,6 +73,6 @@ const checkTypesDocsBaseHref = "/docs/features/check-types";
  * synthetic `sleep` type).
  */
 export function docsHrefForType(type: string | undefined): string {
-  const anchor = type ? checkTypeDocsAnchors[type as CheckType] : undefined;
+  const anchor = type ? checkTypeDocsAnchors[type] : undefined;
   return anchor ? `${checkTypesDocsBaseHref}#${anchor}` : checkTypesDocsBaseHref;
 }
