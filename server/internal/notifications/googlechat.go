@@ -49,7 +49,7 @@ func (s *GoogleChatSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", productName)
 
-	client := &http.Client{Timeout: googleChatTimeout}
+	client := newHTTPClient(googleChatTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

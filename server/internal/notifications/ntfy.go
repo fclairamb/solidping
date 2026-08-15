@@ -52,7 +52,7 @@ func (s *NtfySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Pa
 		req.Header.Set("Authorization", "Bearer "+settings.AccessToken)
 	}
 
-	client := &http.Client{Timeout: ntfyTimeout}
+	client := newHTTPClient(ntfyTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

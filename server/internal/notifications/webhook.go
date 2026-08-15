@@ -215,7 +215,7 @@ func buildWebhookRequest(
 // stripped of its query string and credentials before being recorded; the
 // signing secret and any auth/custom headers are never stored.
 func (s *WebhookSender) sendAndCapture(req *http.Request, url string, body []byte, payload *Payload) error {
-	client := &http.Client{Timeout: webhookTimeout}
+	client := newHTTPClient(webhookTimeout)
 
 	details := &models.DeliveryDetails{
 		RequestURL:  redactURL(url),
