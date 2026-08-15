@@ -3289,7 +3289,21 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     post:
       tags: [Jobs]
-      summary: Create a job
+      summary: Create a job (org admin, allowlisted types only)
+      description: |
+        Enqueues a background job. **Requires org admin** — a member with the
+        `user` or `viewer` role is refused with 403.
+
+        Only allowlisted job types may be created through this endpoint, and
+        the allowlist currently contains **`sleep`** alone. Every other type
+        (`email`, `webhook`, `aggregation`, `notification`, the discovery
+        family, …) is refused with 403: they are internal plumbing enqueued by
+        SolidPing itself, and exposing them would hand any caller an arbitrary
+        mail sender (`email`) and arbitrary server-side HTTP requests
+        (`webhook`).
+
+        An unknown job type, or a `config` that is invalid for the requested
+        type, is a 400 — never a 500.
       operationId: createJob
       security:
         - bearerAuth: []
@@ -3310,6 +3324,14 @@ paths:
                 $ref: "#/components/schemas/JobResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "403":
+          description: |
+            Caller is not an org admin, or the job type is not on the
+            public-creation allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/orgs/{org}/jobs/{uid}:
     get:
@@ -9561,6 +9583,10 @@ components:
       properties:
         type:
           type: string
+          description: |
+            Job type. Only allowlisted types may be created through the public
+            endpoint — currently `sleep` only. Anything else is refused with
+            403.
         config:
           type: object
 
