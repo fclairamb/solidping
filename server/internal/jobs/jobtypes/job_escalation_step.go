@@ -1210,33 +1210,44 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		orgSlug = org.Slug
 	}
 
-	checkName := "Unknown check"
+	checkName := escalationUnknownCheckName
 	var checkURL string
 
-	if check, err := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); err == nil && check != nil {
+	check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
+	if checkErr == nil && check != nil {
 		checkName = escalationCheckName(check)
 		checkURL = escalationCheckURL(baseURL, orgSlug, check)
 	}
 
 	return map[string]any{
-		"CheckName":      checkName,
-		"CheckURL":       checkURL,
-		"IncidentNumber": incident.Number,
-		"IncidentURL":    escalationIncidentURL(baseURL, orgSlug, incident),
-		"StartedAt":      incident.StartedAt.Format("2006-01-02 15:04:05"),
-		"FailureCount":   incident.FailureCount,
-		"DashboardURL":   escalationDashboardRootURL(baseURL),
-		"DocsURL":        escalationDocsURL(baseURL),
+		viewModelKeyCheckName: checkName,
+		"CheckURL":            checkURL,
+		"IncidentNumber":      incident.Number,
+		"IncidentURL":         escalationIncidentURL(baseURL, orgSlug, incident),
+		"StartedAt":           incident.StartedAt.Format("2006-01-02 15:04:05"),
+		"FailureCount":        incident.FailureCount,
+		"DashboardURL":        escalationDashboardRootURL(baseURL),
+		"DocsURL":             escalationDocsURL(baseURL),
 	}
 }
 
+// escalationUnknownCheckName is the fallback check name when the check has
+// been deleted since the incident opened (or has neither Name nor Slug).
+const escalationUnknownCheckName = "Unknown check"
+
+// viewModelKeyCheckName is the escalation.html view-model key for the check
+// name — pulled into a constant alongside escalationUnknownCheckName so
+// goconst doesn't flag the literal (job_email_test.go uses the same "CheckName"
+// string in unrelated template-data fixtures elsewhere in this package).
+const viewModelKeyCheckName = "CheckName"
+
 // escalationCheckName returns the check name from Name or Slug, falling back
-// to "Unknown check" — mirrors notifications.getCheckName, duplicated locally
-// to avoid an import cycle (notifications already imports jobtypes' sibling
-// packages) for one small helper.
+// to escalationUnknownCheckName — mirrors notifications.getCheckName,
+// duplicated locally to avoid an import cycle (notifications already imports
+// jobtypes' sibling packages) for one small helper.
 func escalationCheckName(check *models.Check) string {
 	if check == nil {
-		return "Unknown check"
+		return escalationUnknownCheckName
 	}
 
 	if check.Name != nil && *check.Name != "" {
@@ -1247,7 +1258,7 @@ func escalationCheckName(check *models.Check) string {
 		return *check.Slug
 	}
 
-	return "Unknown check"
+	return escalationUnknownCheckName
 }
 
 // escalationCheckURL builds the dashboard URL for a check's detail page.

@@ -9,93 +9,50 @@ const (
 	fixtureDashboardURL   = "https://solidping.example/dash0"
 	fixtureIncidentUID    = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
 	fixtureIncidentNumber = 42
+	fixtureCheckName      = "Production API"
 
 	keyOrgName      = "OrgName"
 	keyDashboardURL = "DashboardURL"
+	keySubject      = "Subject"
 )
 
-// fixtureFor returns the preview fixture data for a shipped template, and
-// whether the name was recognized. Kept as one table so the supported list
-// is discoverable by reading the source rather than probing at runtime — and
-// so a template that ships without a fixture here is a build-time-obvious
+// fixtureBuilders maps a shipped template name to the function that returns
+// its preview fixture data. Kept as one table (a map, not a switch — the
+// switch form tripped cyclop once enough templates existed) so the supported
+// list is discoverable by reading the source rather than probing at runtime —
+// and so a template that ships without a fixture here is a build-time-obvious
 // omission (caught by TestPreview_AllShippedTemplatesRender in this
 // package's handler_test.go, which enumerates the shipped template list).
+//
+//nolint:gochecknoglobals // read-only dispatch table, not mutable state.
+var fixtureBuilders = map[string]func() map[string]any{
+	"incident-created.html":            incidentFixture,
+	"incident-escalated.html":          incidentFixture,
+	"incident-reopened.html":           incidentFixture,
+	"incident-resolved.html":           resolvedIncidentFixture,
+	"escalation.html":                  escalationFixture,
+	"test-email.html":                  testEmailFixture,
+	"paging-nudge.html":                pagingNudgeFixture,
+	"status-subscriber-confirm.html":   statusSubscriberConfirmFixture,
+	"status-subscriber-update.html":    statusSubscriberUpdateFixture,
+	"registration.html":                registrationFixture,
+	"password-reset.html":              passwordResetFixture,
+	"invitation.html":                  invitationFixture,
+	"welcome.html":                     welcomeFixture,
+	"password-changed.html":            passwordChangedFixture,
+	"membership_request_new.html":      membershipRequestNewFixture,
+	"membership_request_decision.html": membershipRequestDecisionFixture,
+}
+
+// fixtureFor returns the preview fixture data for a shipped template, and
+// whether the name was recognized.
 func fixtureFor(templateName string) (map[string]any, bool) {
-	switch templateName {
-	case "incident-created.html", "incident-escalated.html", "incident-reopened.html":
-		return incidentFixture(), true
-	case "incident-resolved.html":
-		return resolvedIncidentFixture(), true
-	case "escalation.html":
-		return escalationFixture(), true
-	case "test-email.html":
-		return map[string]any{
-			"Subject": "SolidPing Test Email",
-			"Heading": "SolidPing Test Email",
-			"Body":    "This is a test email from SolidPing. If you received this, your email configuration is working correctly.",
-		}, true
-	case "paging-nudge.html":
-		return map[string]any{
-			keyOrgName:         fixtureOrgName,
-			"NotificationsURL": "https://solidping.example/dash0/orgs/acme/account/notifications",
-		}, true
-	case "status-subscriber-confirm.html":
-		return map[string]any{
-			"Subject":    "Confirm your subscription to Acme Status",
-			"PageName":   "Acme Status",
-			"ConfirmURL": "https://solidping.example/api/v1/public/status-subscribers/confirm?token=preview-token",
-		}, true
-	case "status-subscriber-update.html":
-		return map[string]any{
-			"Subject":                  "[Acme Status] New incident: Elevated error rates",
-			"Label":                    "New incident",
-			"Title":                    "Elevated error rates",
-			"BodyMarkdown":             "We are investigating elevated error rates on the API.",
-			"LinkURL":                  "https://solidping.example/status0/acme/acme-status",
-			"PageName":                 "Acme Status",
-			"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/unsubscribe?token=preview-token",
-		}, true
-	case "registration.html":
-		return map[string]any{
-			"ConfirmURL": "https://solidping.example/api/v1/auth/confirm?token=preview-token",
-		}, true
-	case "password-reset.html":
-		return map[string]any{
-			"ResetURL": "https://solidping.example/dash0/reset-password?token=preview-token",
-		}, true
-	case "invitation.html":
-		return map[string]any{
-			keyOrgName:    fixtureOrgName,
-			"Role":        "admin",
-			"InviterName": "Alice Admin",
-			"InviteURL":   "https://solidping.example/dash0/invitations/preview-token",
-		}, true
-	case "welcome.html":
-		return map[string]any{
-			keyDashboardURL: fixtureDashboardURL,
-		}, true
-	case "password-changed.html":
-		return map[string]any{
-			"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
-		}, true
-	case "membership_request_new.html":
-		return map[string]any{
-			keyOrgName:       fixtureOrgName,
-			"RequesterName":  "Bob Builder",
-			"RequesterEmail": "bob@example.com",
-			"Message":        "I'd like to help monitor our new services.",
-			"RequestsURL":    "https://solidping.example/dash0/orgs/acme/organization/membership-requests",
-		}, true
-	case "membership_request_decision.html":
-		return map[string]any{
-			keyOrgName:      fixtureOrgName,
-			"Decision":      "approved",
-			"Role":          "viewer",
-			keyDashboardURL: fixtureDashboardURL + "/orgs/acme",
-		}, true
-	default:
+	builder, ok := fixtureBuilders[templateName]
+	if !ok {
 		return nil, false
 	}
+
+	return builder(), true
 }
 
 // incidentFixture is shared by created/escalated/reopened — they read the
@@ -107,7 +64,7 @@ func incidentFixture() map[string]any {
 		fixtureIncidentUID + "/ack?token=preview-token"
 
 	return map[string]any{
-		"CheckName":            "Production API",
+		"CheckName":            fixtureCheckName,
 		"CheckType":            "http",
 		"CheckURL":             "https://solidping.example/dash0/orgs/acme/checks/prod-api",
 		"StartedAt":            "2026-07-05 10:00:00",
@@ -120,26 +77,7 @@ func incidentFixture() map[string]any {
 		keyDashboardURL:        fixtureDashboardURL,
 		"DocsURL":              "https://solidping.example/docs",
 		"UnsubscribeURL":       "https://solidping.example/unsubscribe?token=preview-unsub-token",
-		"UnsubscribeCheckName": "Production API",
-	}
-}
-
-// escalationFixture is the fixture for the escalation-policy email
-// (job_escalation_step.go's sendEscalationEmail) — a smaller view-model than
-// the four incident-lifecycle templates: no ack/unsubscribe (it's an internal
-// paging email, not a per-recipient incident notification).
-func escalationFixture() map[string]any {
-	incidentURL := "https://solidping.example/dash0/orgs/acme/incidents/" + fixtureIncidentUID
-
-	return map[string]any{
-		"CheckName":      "Production API",
-		"CheckURL":       "https://solidping.example/dash0/orgs/acme/checks/prod-api",
-		"IncidentNumber": fixtureIncidentNumber,
-		"IncidentURL":    incidentURL,
-		"StartedAt":      "2026-07-05 10:00:00",
-		"FailureCount":   3,
-		keyDashboardURL:  fixtureDashboardURL,
-		"DocsURL":        "https://solidping.example/docs",
+		"UnsubscribeCheckName": fixtureCheckName,
 	}
 }
 
@@ -153,4 +91,121 @@ func resolvedIncidentFixture() map[string]any {
 	fx["Duration"] = "15m0s"
 
 	return fx
+}
+
+// escalationFixture is the fixture for the escalation-policy email
+// (job_escalation_step.go's sendEscalationEmail) — a smaller view-model than
+// the four incident-lifecycle templates: no ack/unsubscribe (it's an internal
+// paging email, not a per-recipient incident notification).
+func escalationFixture() map[string]any {
+	incidentURL := "https://solidping.example/dash0/orgs/acme/incidents/" + fixtureIncidentUID
+
+	return map[string]any{
+		"CheckName":      fixtureCheckName,
+		"CheckURL":       "https://solidping.example/dash0/orgs/acme/checks/prod-api",
+		"IncidentNumber": fixtureIncidentNumber,
+		"IncidentURL":    incidentURL,
+		"StartedAt":      "2026-07-05 10:00:00",
+		"FailureCount":   3,
+		keyDashboardURL:  fixtureDashboardURL,
+		"DocsURL":        "https://solidping.example/docs",
+	}
+}
+
+// testEmailFixture covers the admin and user-notification test-send emails
+// (system.Service.TestEmail, usernotifications.EmailSenderAdapter.SendTestEmail),
+// which share test-email.html.
+func testEmailFixture() map[string]any {
+	return map[string]any{
+		keySubject: "SolidPing Test Email",
+		"Heading":  "SolidPing Test Email",
+		"Body": "This is a test email from SolidPing. " +
+			"If you received this, your email configuration is working correctly.",
+	}
+}
+
+// pagingNudgeFixture covers members.Service.SendPagingNudge's paging-nudge.html.
+func pagingNudgeFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:         fixtureOrgName,
+		"NotificationsURL": "https://solidping.example/dash0/orgs/acme/account/notifications",
+	}
+}
+
+// statusSubscriberConfirmFixture covers the double opt-in confirmation email
+// (statussubscribers.Handler.sendConfirmMail).
+func statusSubscriberConfirmFixture() map[string]any {
+	return map[string]any{
+		keySubject:   "Confirm your subscription to Acme Status",
+		"PageName":   "Acme Status",
+		"ConfirmURL": "https://solidping.example/api/v1/public/status-subscribers/confirm?token=preview-token",
+	}
+}
+
+// statusSubscriberUpdateFixture covers the incident-opened/update/resolved
+// fan-out email (statussubscribers.Notifier.sendOne) — one template for all
+// three kinds, distinguished by Label/Title/Subject.
+func statusSubscriberUpdateFixture() map[string]any {
+	return map[string]any{
+		keySubject:     "[Acme Status] New incident: Elevated error rates",
+		"Label":        "New incident",
+		"Title":        "Elevated error rates",
+		"BodyMarkdown": "We are investigating elevated error rates on the API.",
+		"LinkURL":      "https://solidping.example/status0/acme/acme-status",
+		"PageName":     "Acme Status",
+		"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/" +
+			"unsubscribe?token=preview-token",
+	}
+}
+
+func registrationFixture() map[string]any {
+	return map[string]any{
+		"ConfirmURL": "https://solidping.example/api/v1/auth/confirm?token=preview-token",
+	}
+}
+
+func passwordResetFixture() map[string]any {
+	return map[string]any{
+		"ResetURL": "https://solidping.example/dash0/reset-password?token=preview-token",
+	}
+}
+
+func invitationFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:    fixtureOrgName,
+		"Role":        "admin",
+		"InviterName": "Alice Admin",
+		"InviteURL":   "https://solidping.example/dash0/invitations/preview-token",
+	}
+}
+
+func welcomeFixture() map[string]any {
+	return map[string]any{
+		keyDashboardURL: fixtureDashboardURL,
+	}
+}
+
+func passwordChangedFixture() map[string]any {
+	return map[string]any{
+		"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
+	}
+}
+
+func membershipRequestNewFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:       fixtureOrgName,
+		"RequesterName":  "Bob Builder",
+		"RequesterEmail": "bob@example.com",
+		"Message":        "I'd like to help monitor our new services.",
+		"RequestsURL":    "https://solidping.example/dash0/orgs/acme/organization/membership-requests",
+	}
+}
+
+func membershipRequestDecisionFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:      fixtureOrgName,
+		"Decision":      "approved",
+		"Role":          "viewer",
+		keyDashboardURL: fixtureDashboardURL + "/orgs/acme",
+	}
 }
