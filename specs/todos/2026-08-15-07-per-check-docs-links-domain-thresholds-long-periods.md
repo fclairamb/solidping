@@ -124,3 +124,61 @@ revisit that if something concretely breaks.
 
 **Decision:** Frontend map plus the drift-detecting sync test. Do **not**
 change the check-type metadata API.
+
+## Implementation Plan
+
+1. **Docs anchors (Part 1)**
+   - Pin explicit `{#anchor}` heading IDs on every `###` check-type section in
+     `web/docs/docs/features/check-types.md`, computed with the actual
+     `github-slugger` package (the one Docusaurus uses) so they match today's
+     auto-generated slugs exactly (verified via a throwaway node script).
+   - Add `web/dash0/src/components/shared/check-type-docs-anchors.ts`
+     exporting a `CheckType → anchor` map plus a `docsHrefForType(type)`
+     helper. `sleep` and any other non-monitorable/no-docs-section type are
+     omitted (helper falls back to the bare page).
+   - Wire `check-form.tsx`'s single `<DocsLink href="/docs/features/check-types" />`
+     to `docsHrefForType(type)`.
+   - Go sync test (`server/internal/checkers/registry/docs_anchor_test.go`):
+     walks `checkerdef.ListCheckTypeMetas()`, and for every type not in an
+     explicit allow-list (sleep), asserts a matching `{#anchor}` exists in
+     `web/docs/docs/features/check-types.md`. Also asserts the frontend map
+     covers exactly the same set of types (parses the .ts map file). Verify
+     the test fails by temporarily breaking one mapping.
+
+2. **Domain warning/critical days (Part 2)**
+   - Port the checkssl config pattern to `checkdomain/config.go`: add
+     `WarningDays`/`CriticalDays` fields, keep `ThresholdDays` as the legacy
+     alias (decoded, and used as `CriticalDays` when `criticalDays` absent),
+     `validateThresholds` (warning >= critical >= 0, sane cap), and an
+     `effectiveThresholds()` helper mirroring checkssl.
+   - Update `checkdomain/checker.go`'s `Execute` to call
+     `checkerdef.GradedExpiryStatus` instead of the single-threshold
+     comparison, and emit a `severity` output field like checkssl.
+   - Update `checkerdef/expiry.go`'s doc comment (drop the "in a follow-up"
+     wording).
+   - Backward-compat test: an old stored config with only `threshold_days`
+     round-trips to the same Down-at-threshold behavior as before.
+   - Frontend: add Warning/Critical (days) inputs to `domainModule` in
+     `web/dash0/src/components/checks/form/types/dns.tsx`, mirroring
+     `sslModule` in `misc.tsx` (same labels/placeholders/defaults).
+   - Update the Domain Expiration section of `check-types.md` (mirror the SSL
+     section's Warning/Critical Days row).
+
+3. **Longer periods (Part 3)**
+   - Extend `buildIntervalOptions` in `check-form.tsx` with 1 week
+     (`168:00:00`), 2 weeks (`336:00:00`), 30 days (`720:00:00`) entries;
+     they're filtered by the existing min/max logic, no registry changes.
+   - Verify (research task, backend agent dispatched in parallel) whether
+     hmsToSeconds/secondsToHMS/formatPeriod, backend period parsing/
+     validation, the scheduler, staleness detection, confirmation/recovery
+     estimates, results aggregation, and availability math handle periods
+     ≫ 24h correctly. Add a Go test creating/scheduling a domain check with a
+     2-week period end-to-end (config validate + job scheduling), and a
+     dash0 unit test round-tripping `336:00:00` through the HMS helpers.
+     Fix any genuine bugs found; document surprising-but-OK behavior in the
+     final report instead of "fixing" what isn't broken.
+
+4. **QA**: `make build-backend lint-back test`, `make build-dash0 && bun run
+   lint` (dash0), `make build-docs`; add/extend a Playwright spec under
+   `web/dash0/e2e/` for docs anchor + domain threshold fields + long period
+   options.
