@@ -198,7 +198,7 @@ Secret-bearing fields in `checks.config`, `integration_connections.settings`, an
 - **Results aggregation**: Results table holds both raw rows and rolled-up aggregations (hour/day/month) in the same shape, distinguished by `period_type`
 - **Configuration management**: Flexible key-value config per organization via `parameters` table
 - **Real-time monitoring**: Sub-minute check frequencies with immediate alerting
-- **Domain Expiration Monitoring**: WHOIS-based domain expiration tracking with configurable alert thresholds (days remaining)
+- **Domain Expiration Monitoring**: RDAP-based domain expiration tracking (WHOIS fallback) with configurable alert thresholds (days remaining)
 
 ## Error Handling
 

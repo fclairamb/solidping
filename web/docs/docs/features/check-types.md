@@ -200,13 +200,21 @@ Monitor SSL/TLS certificate expiration and validity.
 
 ### Domain Expiration
 
-Monitor domain name registration expiration via WHOIS lookup.
+Monitor domain name registration expiration. Lookups go through RDAP
+(RFC 7480–7484), the structured, HTTPS-based successor to WHOIS, with an
+automatic fallback to WHOIS when RDAP can't answer (no RDAP service for the
+TLD, a request error, or a response with no expiration date).
 
 | Option | Description | Example |
 |--------|-------------|---------|
 | Domain | Domain name to check | `example.com` |
 | Warning Days | Days before expiry to warn | `30` |
 | Critical Days | Days before expiry to alert | `7` |
+| Lookup method (Advanced) | `auto` (default, RDAP first with WHOIS fallback), `rdap` (RDAP only, no fallback), or `whois` (WHOIS only) | `auto` |
+
+The check result reports which path answered via a `method` field
+(`"rdap"` or `"whois"`) alongside the existing `expiry_date`, `days_remaining`,
+and `registrar` fields.
 
 ### DNSBL (DNS Blocklist)
 
