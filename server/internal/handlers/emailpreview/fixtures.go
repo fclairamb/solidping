@@ -28,6 +28,12 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 		return resolvedIncidentFixture(), true
 	case "escalation.html":
 		return escalationFixture(), true
+	case "test-email.html":
+		return map[string]any{
+			"Subject": "SolidPing Test Email",
+			"Heading": "SolidPing Test Email",
+			"Body":    "This is a test email from SolidPing. If you received this, your email configuration is working correctly.",
+		}, true
 	case "registration.html":
 		return map[string]any{
 			"ConfirmURL": "https://solidping.example/api/v1/auth/confirm?token=preview-token",

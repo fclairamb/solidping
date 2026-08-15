@@ -25,6 +25,7 @@ func shippedTemplates() []string {
 		"incident-escalated.html",
 		"incident-reopened.html",
 		"escalation.html",
+		"test-email.html",
 		"registration.html",
 		"password-reset.html",
 		"invitation.html",

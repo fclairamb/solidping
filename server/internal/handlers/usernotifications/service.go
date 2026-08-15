@@ -23,15 +23,16 @@ import (
 
 // Service errors.
 var (
-	ErrOrgNotFound              = errors.New("organization not found")
-	ErrRouteNotFound            = errors.New("notification route not found")
-	ErrContactNotFound          = errors.New("notification contact not found")
-	ErrUserNotFound             = errors.New("user not found")
-	ErrRouteNotFoundAfterCreate = errors.New("route not found after creation")
-	ErrEmailSenderNotConfigured = errors.New("email sender not configured")
-	ErrNoSlackChannelForOrg     = errors.New("no Slack channel configured for this organization")
-	ErrSlackClientNotConfigured = errors.New("slack client not configured")
-	ErrWebPushNotConfigured     = errors.New("web push not configured on this server")
+	ErrOrgNotFound                 = errors.New("organization not found")
+	ErrRouteNotFound               = errors.New("notification route not found")
+	ErrContactNotFound             = errors.New("notification contact not found")
+	ErrUserNotFound                = errors.New("user not found")
+	ErrRouteNotFoundAfterCreate    = errors.New("route not found after creation")
+	ErrEmailSenderNotConfigured    = errors.New("email sender not configured")
+	ErrEmailFormatterNotConfigured = errors.New("email formatter not configured")
+	ErrNoSlackChannelForOrg        = errors.New("no Slack channel configured for this organization")
+	ErrSlackClientNotConfigured    = errors.New("slack client not configured")
+	ErrWebPushNotConfigured        = errors.New("web push not configured on this server")
 	// ErrInvalidWhatsAppNumber is returned when a WhatsApp contact value is not
 	// a syntactically valid E.164 number.
 	ErrInvalidWhatsAppNumber = errors.New("WhatsApp number must be in E.164 format (e.g. +15551234567)")

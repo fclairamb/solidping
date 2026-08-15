@@ -40,8 +40,9 @@ type JMAPInboxManager interface {
 
 // Service provides business logic for system parameter operations.
 type Service struct {
-	db    db.Service
-	inbox JMAPInboxManager
+	db        db.Service
+	inbox     JMAPInboxManager
+	formatter email.Formatter
 }
 
 // NewService creates a new system service.
@@ -55,6 +56,14 @@ func NewService(dbService db.Service) *Service {
 // from app/server.go after the manager has been constructed.
 func (s *Service) SetEmailInboxManager(m JMAPInboxManager) {
 	s.inbox = m
+}
+
+// SetEmailFormatter wires the shared email.Formatter into the service, used
+// to render the admin test email through test-email.html instead of a
+// hand-rolled string. Called from app/server.go alongside the other service
+// wiring.
+func (s *Service) SetEmailFormatter(f email.Formatter) {
+	s.formatter = f
 }
 
 // ParameterResponse represents a system parameter in API responses.
@@ -304,16 +313,28 @@ func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailRe
 		return &TestEmailResponse{Sent: false, Message: "From address is not configured."}, nil
 	}
 
+	if s.formatter == nil {
+		return &TestEmailResponse{Sent: false, Message: "Email formatter not configured."}, nil
+	}
+
 	// Create a temporary sender with current settings
 	sender := email.NewSender(emailCfg, slog.Default())
 
-	testBody := "This is a test email from SolidPing. " +
-		"If you received this, your email configuration is working correctly."
+	subject, htmlBody, textBody, err := s.formatter.Format("test-email.html", map[string]any{
+		"Subject": "SolidPing Test Email",
+		"Heading": "SolidPing Test Email",
+		"Body": "This is a test email from SolidPing. " +
+			"If you received this, your email configuration is working correctly.",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to format test email: %w", err)
+	}
+
 	msg := &email.Message{
 		Recipients: email.Recipients{To: []string{recipient}},
-		Subject:    "SolidPing Test Email",
-		Text:       testBody,
-		HTML:       "<h2>SolidPing Test Email</h2><p>" + testBody + "</p>",
+		Subject:    subject,
+		Text:       textBody,
+		HTML:       htmlBody,
 	}
 
 	result, err := sender.Send(ctx, msg)

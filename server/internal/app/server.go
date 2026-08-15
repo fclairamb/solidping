@@ -1090,7 +1090,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// by default; CreateTelegramLink refuses while the config is inactive.
 		usernotifications.WithTelegramConfig(&s.config.Telegram),
 	)
-	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
+	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
 	userNotifHandler := usernotifications.NewHandler(
 		userNotifService, s.config, emailAdapter, slackAdapter, s.services.WebPushOptions,
@@ -1196,6 +1196,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
+	systemService.SetEmailFormatter(s.services.EmailFormatter)
 
 	// JMAP inbox manager: long-running supervisor that connects to the
 	// configured JMAP server and dispatches incoming emails to handlers.

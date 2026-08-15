@@ -11,24 +11,41 @@ import (
 
 // EmailSenderAdapter wraps the core email.Sender to implement EmailSender.
 type EmailSenderAdapter struct {
-	inner email.Sender
+	inner     email.Sender
+	formatter email.Formatter
 }
 
 // NewEmailSenderAdapter builds an adapter.
-func NewEmailSenderAdapter(s email.Sender) *EmailSenderAdapter {
-	return &EmailSenderAdapter{inner: s}
+func NewEmailSenderAdapter(s email.Sender, formatter email.Formatter) *EmailSenderAdapter {
+	return &EmailSenderAdapter{inner: s, formatter: formatter}
 }
 
-// SendTestEmail sends a plain "Test notification" email.
+// SendTestEmail sends a "Test notification" email, rendered through the
+// shared formatter (test-email.html) so it gets an HTML part alongside the
+// plaintext one instead of shipping text-only.
 func (a *EmailSenderAdapter) SendTestEmail(ctx context.Context, recipient string) error {
 	if a == nil || a.inner == nil {
 		return ErrEmailSenderNotConfigured
 	}
 
+	if a.formatter == nil {
+		return ErrEmailFormatterNotConfigured
+	}
+
+	subject, htmlBody, textBody, err := a.formatter.Format("test-email.html", map[string]any{
+		"Subject": "Test notification from SolidPing",
+		"Heading": "Test notification from SolidPing",
+		"Body":    "This is a test notification from SolidPing. Your email delivery is working correctly.",
+	})
+	if err != nil {
+		return fmt.Errorf("format test email: %w", err)
+	}
+
 	msg := &email.Message{
 		Recipients: email.Recipients{To: []string{recipient}},
-		Subject:    "Test notification from SolidPing",
-		Text:       "This is a test notification from SolidPing. Your email delivery is working correctly.",
+		Subject:    subject,
+		HTML:       htmlBody,
+		Text:       textBody,
 	}
 
 	if _, err := a.inner.Send(ctx, msg); err != nil {
