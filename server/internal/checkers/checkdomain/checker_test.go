@@ -27,9 +27,10 @@ func TestDomainChecker_Validate(t *testing.T) {
 	checker := &DomainChecker{}
 
 	tests := []struct {
-		name    string
-		spec    *checkerdef.CheckSpec
-		wantErr bool
+		name     string
+		spec     *checkerdef.CheckSpec
+		wantErr  bool
+		wantSlug string
 	}{
 		{
 			name: "valid config",
@@ -39,6 +40,9 @@ func TestDomainChecker_Validate(t *testing.T) {
 				},
 			},
 			wantErr: false,
+			// The checker itself does not sanitize dots; that happens later
+			// in the service's sanitizeSlug/ensureUniqueSlug pass.
+			wantSlug: "domain-google.com",
 		},
 		{
 			name: "missing domain",
@@ -80,6 +84,9 @@ func TestDomainChecker_Validate(t *testing.T) {
 				require.NoError(t, err)
 				require.NotEmpty(t, tt.spec.Name)
 				require.NotEmpty(t, tt.spec.Slug)
+				if tt.wantSlug != "" {
+					require.Equal(t, tt.wantSlug, tt.spec.Slug)
+				}
 			}
 		})
 	}
