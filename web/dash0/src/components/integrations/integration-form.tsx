@@ -1293,6 +1293,8 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
 
       <MentionOnCallSwitch settings={settings} onChange={onChange} />
 
+      <CommentIngestionSwitch settings={settings} onChange={onChange} />
+
       {org && channelUid && (
         <SlackMemberMapping
           org={org}
@@ -1348,6 +1350,57 @@ function MentionOnCallSwitch({
           onChange({ ...settings, mention_on_call: value })
         }
         data-testid="slack-mention-on-call"
+      />
+    </div>
+  );
+}
+
+// ---- Inbound comment ingestion ----
+
+interface CommentIngestionSwitchProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}
+
+/**
+ * Chooses how inbound Slack thread replies are treated. Off (the default, and
+ * the meaning of an absent value) is "explicit": only `/comment` creates an
+ * incident comment. On restores the historical capture-every-reply behavior.
+ */
+function CommentIngestionSwitch({
+  settings,
+  onChange,
+}: CommentIngestionSwitchProps) {
+  const { t } = useTranslation("integrations");
+
+  const checked = settings.comment_ingestion === "all";
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded border bg-background p-3">
+      <div>
+        <Label htmlFor="slack-comment-ingestion" className="font-medium">
+          {t(
+            "form.slackCommentIngestion",
+            "Capture every thread reply as a comment",
+          )}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.slackCommentIngestionHelp",
+            "Off (recommended): only an explicit /comment becomes an incident comment, so triage chatter stays chatter. On: every human reply in a tracked incident thread is saved to the incident timeline.",
+          )}
+        </p>
+      </div>
+      <Switch
+        id="slack-comment-ingestion"
+        checked={checked}
+        onCheckedChange={(value) =>
+          onChange({
+            ...settings,
+            comment_ingestion: value ? "all" : "explicit",
+          })
+        }
+        data-testid="slack-comment-ingestion"
       />
     </div>
   );

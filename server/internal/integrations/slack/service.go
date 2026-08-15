@@ -38,6 +38,13 @@ type IncidentService interface {
 	AddCommentFromSlack(
 		ctx context.Context, orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID, slackTs string,
 	) (*models.Event, error)
+	// AddCommentFromSlackCommand appends a comment posted with the `/comment`
+	// slash command. Separate from AddCommentFromSlack because a slash command
+	// posts nothing visible in the channel, so — unlike a thread reply — the
+	// originating workspace MUST still receive the fan-out.
+	AddCommentFromSlackCommand(
+		ctx context.Context, orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID string,
+	) (*models.Event, error)
 }
 
 var (

@@ -151,6 +151,34 @@ type SlackSettings struct {
 	// integrations get `true` written explicitly by the install flow (see
 	// slack.Service.createOrUpdateConnection).
 	MentionOnCall bool `json:"mention_on_call"`
+	// CommentIngestion selects how inbound Slack thread replies are treated:
+	//
+	//   - SlackCommentIngestionExplicit (default, and the meaning of an empty
+	//     value): only an explicit `/comment` becomes an incident comment.
+	//     Triage chatter in the thread — "lunch?", "who's on call?" — stays
+	//     chatter instead of becoming permanent incident-timeline content.
+	//   - SlackCommentIngestionAll: every human thread reply is ingested, the
+	//     historical behavior, kept for teams that want it.
+	//
+	// Zero value is deliberately the safe one: an integration stored before
+	// this field existed decodes to "" and therefore stops over-capturing,
+	// which is the whole point of the change.
+	CommentIngestion string `json:"comment_ingestion,omitempty"`
+}
+
+// Slack comment-ingestion modes. See SlackSettings.CommentIngestion.
+const (
+	// SlackCommentIngestionExplicit ingests only `/comment` invocations.
+	SlackCommentIngestionExplicit = "explicit"
+	// SlackCommentIngestionAll ingests every human thread reply.
+	SlackCommentIngestionAll = "all"
+)
+
+// IngestsAllThreadReplies reports whether this Slack integration captures
+// every human thread reply as an incident comment. Anything other than an
+// explicit "all" — including an absent value on a pre-existing row — means no.
+func (s *SlackSettings) IngestsAllThreadReplies() bool {
+	return s != nil && s.CommentIngestion == SlackCommentIngestionAll
 }
 
 // ToJSONMap converts SlackSettings to JSONMap for storage.

@@ -24,8 +24,9 @@ type recordedComment struct {
 // fakeIncidentService records AddCommentFromSlack calls; the other interface
 // methods are unused by the message-handler tests.
 type fakeIncidentService struct {
-	comments []recordedComment
-	err      error
+	comments        []recordedComment
+	commandComments []recordedComment
+	err             error
 }
 
 func (f *fakeIncidentService) AcknowledgeIncidentFromSlack(
@@ -40,6 +41,20 @@ func (f *fakeIncidentService) GetIncidentByUID(_ context.Context, _, _ string) (
 
 func (f *fakeIncidentService) GetCheckByUID(_ context.Context, _, _ string) (*models.Check, error) {
 	return nil, errFakeUnused
+}
+
+func (f *fakeIncidentService) AddCommentFromSlackCommand(
+	_ context.Context, orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID string,
+) (*models.Event, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+
+	f.commandComments = append(f.commandComments, recordedComment{
+		orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID, "",
+	})
+
+	return &models.Event{UID: "evt-cmd"}, nil
 }
 
 func (f *fakeIncidentService) AddCommentFromSlack(
@@ -77,7 +92,29 @@ func seedIncidentThread(t *testing.T, svc *Service) (string, string) {
 		&models.JSONMap{ThreadIncidentUIDKey: incidentUID, ThreadOrgUIDKey: org.UID}, nil)
 	r.NoError(err)
 
+	seedSlackConnection(t, svc, org.UID, models.SlackCommentIngestionAll)
+
 	return org.UID, incidentUID
+}
+
+// seedSlackConnection creates the workspace's Slack channel row in the given
+// comment-ingestion mode. Required by every ingest test: the handler resolves
+// the mode from this row and fails closed (explicit) when it cannot.
+func seedSlackConnection(t *testing.T, svc *Service, orgUID, mode string) *models.Integration {
+	t.Helper()
+	r := require.New(t)
+
+	conn := models.NewIntegration(orgUID, models.ConnectionTypeSlack, "workspace")
+	conn.Enabled = true
+	conn.Settings = models.JSONMap{
+		"team_id":           msgTeamID,
+		"access_token":      "xoxb-test",
+		"channel_id":        msgChannel,
+		"comment_ingestion": mode,
+	}
+	r.NoError(svc.db.CreateChannel(t.Context(), conn))
+
+	return conn
 }
 
 // threadReply builds a human thread-reply message event under the seeded

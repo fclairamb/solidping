@@ -2318,6 +2318,16 @@ type AddCommentRequest struct {
 	SlackUserName string
 	SlackTeamID   string
 	SlackTs       string
+	// EchoOriginTeamID names the Slack workspace where this comment is ALREADY
+	// visible, and is therefore the workspace the fan-out must skip. Set only
+	// by the thread-reply ingest path: the author typed the message into the
+	// incident's own thread, so re-posting it there repeats their words back
+	// at them.
+	//
+	// Deliberately NOT set for `/comment`: a slash command posts nothing
+	// visible, so suppressing the origin workspace would mean the channel that
+	// asked for the comment is the one channel that never sees it.
+	EchoOriginTeamID string
 	// Telegram attribution (telegram source). ActorUID carries the identity;
 	// these two are display/provenance detail for the timeline.
 	TelegramChatID string
@@ -2346,13 +2356,33 @@ func (s *Service) AddCommentFromSlack(
 	ctx context.Context, orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID, slackTs string,
 ) (*models.Event, error) {
 	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:      incidentUID,
+		Text:             text,
+		Source:           CommentSourceSlack,
+		SlackUserID:      slackUserID,
+		SlackUserName:    slackUserName,
+		SlackTeamID:      slackTeamID,
+		SlackTs:          slackTs,
+		EchoOriginTeamID: slackTeamID,
+	})
+}
+
+// AddCommentFromSlackCommand appends a comment posted with the `/comment`
+// slash command. Same attribution as a thread reply, with one deliberate
+// difference: no echo origin. A slash command leaves nothing in the channel,
+// so the workspace that typed it must receive the fan-out like everyone else —
+// otherwise the one place that asked for the comment is the one place it never
+// appears.
+func (s *Service) AddCommentFromSlackCommand(
+	ctx context.Context, orgUID, incidentUID, text, slackUserID, slackUserName, slackTeamID string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
 		IncidentUID:   incidentUID,
 		Text:          text,
 		Source:        CommentSourceSlack,
 		SlackUserID:   slackUserID,
 		SlackUserName: slackUserName,
 		SlackTeamID:   slackTeamID,
-		SlackTs:       slackTs,
 	})
 }
 
@@ -2597,7 +2627,7 @@ func isCommentEchoOrigin(conn *models.Integration, req *AddCommentRequest) bool 
 		return false
 	}
 
-	if req.SlackTeamID == "" {
+	if req.EchoOriginTeamID == "" {
 		return false
 	}
 
@@ -2606,7 +2636,7 @@ func isCommentEchoOrigin(conn *models.Integration, req *AddCommentRequest) bool 
 		return false
 	}
 
-	return settings.TeamID == req.SlackTeamID
+	return settings.TeamID == req.EchoOriginTeamID
 }
 
 // enqueueCommentNotificationJob is enqueueNotificationJob with the comment

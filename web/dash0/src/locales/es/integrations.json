@@ -112,6 +112,8 @@
     "msteamsBotDownloadFailed": "No se pudo descargar el paquete de aplicación de Teams",
     "msteamsBotLinkFirst": "Conecta primero un inquilino de Microsoft 365: los canales aparecerán aquí cuando se añada el bot.",
     "msteamsBotUninstalledTitle": "La aplicación de Teams fue eliminada",
+    "slackCommentIngestion": "Registrar cada respuesta del hilo como comentario",
+    "slackCommentIngestionHelp": "Desactivado (recomendado): solo un /comment explícito se convierte en comentario del incidente, la conversación de triaje sigue siendo conversación. Activado: cada respuesta humana en un hilo de incidente rastreado se guarda en la cronología.",
     "slackMentionOnCall": "Mencionar a la persona de guardia en las alertas",
     "slackMentionOnCallHelp": "Los mensajes de incidencias nuevas y escaladas empiezan mencionando con @ a quien la política de escalado avisa primero. Los miembros sin cuenta de Slack asociada se nombran en texto plano.",
     "slackMemberMapping": "Asignación de miembros",

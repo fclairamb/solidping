@@ -119,6 +119,8 @@
     "msteamsBotDownloadFailed": "Could not download the Teams app package",
     "msteamsBotLinkFirst": "Connect a Microsoft 365 tenant first — channels appear here once the bot is added to them.",
     "msteamsBotUninstalledTitle": "The Teams app was removed",
+    "slackCommentIngestion": "Capture every thread reply as a comment",
+    "slackCommentIngestionHelp": "Off (recommended): only an explicit /comment becomes an incident comment, so triage chatter stays chatter. On: every human reply in a tracked incident thread is saved to the incident timeline.",
     "slackMentionOnCall": "Mention the on-call person in alerts",
     "slackMentionOnCallHelp": "New and escalated incident messages start by @-mentioning whoever the escalation policy pages first. Members without a mapped Slack account are named in plain text.",
     "slackMemberMapping": "Member mapping",

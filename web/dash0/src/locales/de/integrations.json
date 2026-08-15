@@ -112,6 +112,8 @@
     "msteamsBotDownloadFailed": "Teams-App-Paket konnte nicht heruntergeladen werden",
     "msteamsBotLinkFirst": "Verbinden Sie zuerst einen Microsoft-365-Mandanten — Kanäle erscheinen hier, sobald der Bot hinzugefügt wurde.",
     "msteamsBotUninstalledTitle": "Die Teams-App wurde entfernt",
+    "slackCommentIngestion": "Jede Thread-Antwort als Kommentar erfassen",
+    "slackCommentIngestionHelp": "Aus (empfohlen): Nur ein explizites /comment wird zu einem Vorfallkommentar, Triage-Geplauder bleibt Geplauder. Ein: Jede menschliche Antwort in einem verfolgten Vorfall-Thread landet in der Zeitleiste.",
     "slackMentionOnCall": "Bereitschaftsperson in Warnmeldungen erwähnen",
     "slackMentionOnCallHelp": "Neue und eskalierte Vorfallsmeldungen beginnen mit einer @-Erwähnung der Person, die die Eskalationsrichtlinie zuerst alarmiert. Mitglieder ohne zugeordnetes Slack-Konto werden als reiner Text genannt.",
     "slackMemberMapping": "Mitgliederzuordnung",
