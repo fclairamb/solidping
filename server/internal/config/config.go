@@ -350,6 +350,8 @@ type Config struct {
 	MSTeams      MSTeamsConfig        `koanf:"msteams"`
 	WhatsApp     WhatsAppConfig       `koanf:"whatsapp"`
 	Telegram     TelegramConfig       `koanf:"telegram"`
+	SMS          SMSConfig            `koanf:"sms"`
+	Voice        VoiceConfig          `koanf:"voice"`
 	Google       GoogleOAuthConfig    `koanf:"google"`
 	GitHub       GitHubOAuthConfig    `koanf:"github"`
 	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
@@ -1471,6 +1473,8 @@ func Load() (*Config, error) {
 	applyPostHogEnv(&cfg.PostHog)
 	applyWhatsAppEnv(&cfg.WhatsApp)
 	applyTelegramEnv(&cfg.Telegram)
+	applySMSEnv(&cfg.SMS)
+	applyVoiceEnv(&cfg.Voice)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)

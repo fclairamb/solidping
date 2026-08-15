@@ -223,14 +223,20 @@ func manualReaderPlatformEnvVars() []string {
 	// applyTelegramEnv — same quirk: telegram.enabled is koanf-reachable, every
 	// other Telegram key (bot_token, bot_username, webhook_secret, base_url) has
 	// a snake_case segment. applyEntitlementsEnv contributes the runaway caps.
+	// applySMSEnv / applyVoiceEnv — same quirk again, and more thoroughly:
+	// almost every SP_SMS_*/SP_VOICE_* key has a snake_case segment
+	// (SP_SMS_TWILIO_ACCOUNT_SID would land on sms.twilio.account.sid), so the
+	// whole block is bound by hand and listed here.
 	whatsAppNames := WhatsAppEnvVarNames()
 	telegramNames := TelegramEnvVarNames()
-	out := make([]string, 0, len(names)+len(whatsAppNames)+len(telegramNames)+2)
+	smsNames := AllSMSEnvVarNames()
+	out := make([]string, 0, len(names)+len(whatsAppNames)+len(telegramNames)+len(smsNames)+2)
 	out = append(out, names...)
 	out = append(out, whatsAppNames...)
 	out = append(out, EnvEntitlementsWhatsAppRunaway)
 	out = append(out, telegramNames...)
 	out = append(out, EnvEntitlementsTelegramRunaway)
+	out = append(out, smsNames...)
 
 	return out
 }
