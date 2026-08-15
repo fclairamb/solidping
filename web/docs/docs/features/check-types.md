@@ -216,6 +216,13 @@ The check result reports which path answered via a `method` field
 (`"rdap"` or `"whois"`) alongside the existing `expiry_date`, `days_remaining`,
 and `registrar` fields.
 
+Expiry is graduated across two tiers, exactly like the SSL/TLS check: at or
+below **Critical Days** the check goes **down** (pages); between Critical and
+**Warning Days** it reports **warning** (amber, counts as up, no incident).
+Existing checks that only set the legacy single threshold keep working
+unchanged — it's treated as Critical Days, with Warning Days defaulting to
+the same value.
+
 ### DNSBL (DNS Blocklist) {#dnsbl-dns-blocklist}
 
 Check whether an IP address or hostname is listed on DNS-based blocklists (DNSBLs) such as Spamhaus, SpamCop, Barracuda, or UCEPROTECT. This is essential for monitoring the reputation of mail servers and public IPs.
