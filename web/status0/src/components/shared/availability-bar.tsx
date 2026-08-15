@@ -57,13 +57,20 @@ export function AvailabilityBar({
 
   return (
     <div className="mt-2">
-      <div className="flex gap-px">
+      {/* `py-1` reserves room for the hover lift below so a grown segment is
+          not clipped by the card's own overflow. */}
+      <div className="flex gap-[3px] py-1">
         {dailyAvailability.map((point) => (
           <Tooltip key={point.time ?? point.date}>
             <TooltipTrigger asChild>
               <div
                 data-testid="availability-bar-segment"
-                className={`h-7 flex-1 rounded-sm ${getBarColor(point.status)} transition-opacity hover:opacity-80`}
+                // rounded-[2px], not rounded-sm: --radius is 10px here, so
+                // rounded-sm (6px) turned these ~20px-wide segments into blobs.
+                // Hover grows the segment instead of fading it — the old
+                // opacity fade desaturated the status color, which is the one
+                // thing on this page that has to stay readable.
+                className={`h-7 flex-1 origin-center rounded-[2px] ${getBarColor(point.status)} transition-transform duration-150 ease-out hover:scale-y-[1.18]`}
               />
             </TooltipTrigger>
             {/* translate="no" — this whole subtree is poll-driven text whose
@@ -72,15 +79,24 @@ export function AvailabilityBar({
                 into <font> wrappers and React's next commit then fails with
                 "removeChild on Node". See NO_TRANSLATE in status-page-view.tsx. */}
             <TooltipContent translate="no">
-              <p className="font-medium">
+              {/* Status is carried by a dot rather than by the tooltip's own
+                  background, so the surface stays neutral in both themes and
+                  the color still says up / degraded / down at a glance. */}
+              <p className="flex items-center gap-1.5 font-medium">
+                <span
+                  aria-hidden="true"
+                  className={`inline-block size-2 shrink-0 rounded-full ${getBarColor(point.status)}`}
+                />
                 {isHourly ? formatHour(point) : formatDate(point.date)}
               </p>
               {point.status !== "noData" ? (
-                <p className="text-xs">
+                <p className="mt-0.5 pl-3.5 text-muted-foreground tabular-nums">
                   {point.availabilityPct.toFixed(2)}% {t("uptime")}
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">{t("noData")}</p>
+                <p className="mt-0.5 pl-3.5 text-muted-foreground">
+                  {t("noData")}
+                </p>
               )}
             </TooltipContent>
           </Tooltip>

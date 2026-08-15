@@ -56,20 +56,26 @@ function StatusBar({
       <TooltipTrigger asChild>
         <div
           className={cn(
-            "h-6 w-1.5 rounded-sm transition-all hover:scale-y-125 cursor-pointer",
+            // rounded-[2px] — see uptime-strip.tsx: a 6px-wide bar with the
+            // theme radius renders as a lozenge, not a timeline tick.
+            "h-6 w-1.5 rounded-[2px] origin-center transition-transform duration-150 ease-out hover:scale-y-125 cursor-pointer",
             bgClass
           )}
         />
       </TooltipTrigger>
-      <TooltipContent className="bg-gray-900 text-white border-gray-700">
+      {/* No color override — see uptime-strip.tsx: the shared popover surface
+          themes correctly, the old gray-900 slab did not. */}
+      <TooltipContent>
         <div className="text-xs space-y-0.5">
           <p className="font-medium capitalize flex items-center gap-1.5">
             <span className={cn("inline-block h-2 w-2 rounded-full", dotClass)} />
             {status}
           </p>
-          <p className="text-gray-400">{timeStr}</p>
+          <p className="text-muted-foreground tabular-nums">{timeStr}</p>
           {latency !== undefined && (
-            <p className="text-gray-400">{Math.round(latency)}ms</p>
+            <p className="text-muted-foreground tabular-nums">
+              {Math.round(latency)}ms
+            </p>
           )}
         </div>
       </TooltipContent>
