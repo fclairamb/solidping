@@ -164,20 +164,19 @@ func telegramAlertParams(
 		CheckName:   incidentCheckName(ctx, jctx, incident),
 		Detail:      telegramDetail(incident),
 		OrgSlug:     orgSlug,
-		IncidentURL: telegramIncidentURL(appBaseURL(jctx), orgSlug, incident.UID),
+		IncidentURL: telegram.IncidentURL(appBaseURL(jctx), orgSlug, incident.UID),
 	}
 }
 
-// telegramAckKeyboard attaches the Acknowledge button to an alert — but only
-// while there is something to acknowledge. A resolved or already-acked incident
-// ships without one: a button that answers "already done" is noise, and worse,
-// an alert still offering it reads as an unclaimed page.
-func telegramAckKeyboard(incident *models.Incident) *telegram.InlineKeyboard {
-	if incident.State == models.IncidentStateResolved || incident.AcknowledgedAt != nil {
-		return nil
-	}
+// telegramAlertKeyboard attaches the combined keyboard to an alert: View is on
+// EVERY alert (open, acked, resolved) — unlike Ack, a URL button is never
+// stale noise, and viewing a resolved incident's history is legitimate. Ack
+// attaches only while there is something to acknowledge: a resolved or
+// already-acked incident offering it reads as an unclaimed page.
+func telegramAlertKeyboard(incident *models.Incident, incidentURL string) *telegram.InlineKeyboard {
+	canAck := incident.State != models.IncidentStateResolved && incident.AcknowledgedAt == nil
 
-	return telegram.AckKeyboard(incident.UID)
+	return telegram.IncidentKeyboard(incident.UID, incidentURL, canAck)
 }
 
 // sendTelegramAlert sends the alert, threading it under the incident's first
@@ -224,7 +223,7 @@ func sendTelegramAlertTo(
 	params = &perChat
 
 	body := telegram.BuildAlertHTML(params)
-	keyboard := telegramAckKeyboard(incident)
+	keyboard := telegramAlertKeyboard(incident, params.IncidentURL)
 
 	messageID, err := sendTelegramHonoringRetryAfter(ctx, log, client, &telegram.Message{
 		ChatID:           chatID,
@@ -250,13 +249,16 @@ func sendTelegramAlertTo(
 	if replyTo != 0 && params.State == telegram.StateResolved {
 		// Best effort: rewrite the original so someone scrolling back does not
 		// read a stale red alert as live, and TAKE ITS ACKNOWLEDGE BUTTON AWAY —
-		// a resolved incident has nothing left to ack. An absent reply_markup
-		// would leave the old keyboard in place, so the empty one is explicit.
+		// a resolved incident has nothing left to ack. View stays: viewing a
+		// resolved incident's history is legitimate. An absent reply_markup
+		// would leave the old keyboard in place, so an explicit one is required
+		// either way — IncidentKeyboardForEdit falls back to the empty marker
+		// when there is no URL to keep View around for.
 		if editErr := client.EditMessage(ctx, &telegram.Edit{
 			ChatID:      chatID,
 			MessageID:   replyTo,
 			HTML:        telegram.BuildResolvedOriginalHTML(params),
-			ReplyMarkup: telegram.EmptyInlineKeyboard(),
+			ReplyMarkup: telegram.IncidentKeyboardForEdit(incident.UID, params.IncidentURL, false),
 		}); editErr != nil {
 			log.InfoContext(ctx, "could not mark the original telegram alert resolved",
 				"incidentUID", incident.UID, "chatId", chatID, "error", editErr)
@@ -496,14 +498,4 @@ func telegramDetail(incident *models.Incident) string {
 	}
 
 	return detail
-}
-
-// telegramIncidentURL builds the dashboard deep link, or "" when the instance
-// has no base URL configured (the alert then simply ships without a link).
-func telegramIncidentURL(baseURL, orgSlug, incidentUID string) string {
-	if baseURL == "" || orgSlug == "" {
-		return ""
-	}
-
-	return strings.TrimRight(baseURL, "/") + "/dash0/orgs/" + orgSlug + "/incidents/" + incidentUID
 }

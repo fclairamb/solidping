@@ -148,11 +148,7 @@ func (h *Handler) listOrgIncidents(
 
 	for _, incident := range incidents {
 		line := h.incidentLine(ctx, org, qualify, incident)
-
-		var keyboard *telegram.InlineKeyboard
-		if !line.Acked {
-			keyboard = telegram.AckKeyboard(incident.UID)
-		}
+		keyboard := telegram.IncidentKeyboard(incident.UID, line.IncidentURL, !line.Acked)
 
 		h.replyWithKeyboard(ctx, chatID, telegram.BuildIncidentLineHTML(&line), keyboard)
 	}
@@ -172,9 +168,11 @@ func (h *Handler) handleIncidentDetail(ctx context.Context, chatID, arg string) 
 		return
 	}
 
-	h.reply(ctx, chatID, telegram.BuildIncidentDetailHTML(
-		h.incidentDetailView(ctx, org, qualifyRefs(orgs), incident),
-	))
+	view := h.incidentDetailView(ctx, org, qualifyRefs(orgs), incident)
+	canAck := incident.State != models.IncidentStateResolved && incident.AcknowledgedAt == nil
+	keyboard := telegram.IncidentKeyboard(incident.UID, view.IncidentURL, canAck)
+
+	h.replyWithKeyboard(ctx, chatID, telegram.BuildIncidentDetailHTML(view), keyboard)
 }
 
 // handleAck answers /ack [#ref].
@@ -472,12 +470,7 @@ func (h *Handler) incidentURL(orgSlug, incidentUID string) string {
 		return ""
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(h.cfg.Server.BaseURL), "/")
-	if baseURL == "" || orgSlug == "" {
-		return ""
-	}
-
-	return baseURL + "/dash0/orgs/" + orgSlug + "/incidents/" + incidentUID
+	return telegram.IncidentURL(h.cfg.Server.BaseURL, orgSlug, incidentUID)
 }
 
 // actorFirstName is the display name of whoever typed the command.

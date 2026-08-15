@@ -117,12 +117,13 @@ func (h *Handler) ackFromCallback(
 }
 
 // repaintAcked rewrites the alert the button was attached to: the acknowledged
-// body, and NO buttons.
+// body, and the Acknowledge button GONE — but View stays, since a URL button is
+// never stale noise.
 //
 // The edit is the durable half of the interaction — the toast lasts two seconds
 // and only the presser sees it, while this is what the next person scrolling the
-// chat reads. Removing the keyboard needs an explicit EMPTY keyboard: Telegram
-// treats an absent reply_markup on an edit as "leave the buttons alone".
+// chat reads. Removing the Acknowledge button needs an explicit reply_markup:
+// Telegram treats an absent one on an edit as "leave the buttons alone".
 //
 // Best-effort by contract: the acknowledgement itself is already committed, so a
 // failed edit costs cosmetics, never correctness.
@@ -163,7 +164,7 @@ func (h *Handler) repaintAcked(
 	if err := h.sender.EditMessage(
 		ctx, chatID, query.Message.MessageID,
 		telegram.BuildAcknowledgedHTML(params, who, ackedAt),
-		telegram.EmptyInlineKeyboard(),
+		telegram.IncidentKeyboardForEdit(incident.UID, params.IncidentURL, false),
 	); err != nil {
 		h.log.InfoContext(ctx, "could not rewrite the acknowledged telegram alert",
 			"chatId", chatID, "incidentUid", incident.UID,

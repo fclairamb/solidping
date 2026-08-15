@@ -53,7 +53,9 @@ type AlertParams struct {
 	// Set when the destination chat is linked in more than one organization, so
 	// that the reference the reader types back is self-routing.
 	QualifyRef bool
-	// IncidentURL is the dashboard deep link. Empty omits the link line.
+	// IncidentURL is the dashboard deep link. NOT rendered into the body —
+	// callers attach it as the View button (telegram.IncidentKeyboard)
+	// instead, so the message does not say it twice.
 	IncidentURL string
 }
 
@@ -129,14 +131,6 @@ func buildAlertHTML(params *AlertParams, prefix string) string {
 		body.WriteString("<b>Org:</b> ")
 		body.WriteString(EscapeHTML(org))
 		body.WriteString("\n")
-	}
-
-	if link := strings.TrimSpace(params.IncidentURL); link != "" {
-		// The href is escaped too: a query string carrying '&' is the single
-		// most common way to produce an unparseable anchor entity.
-		body.WriteString("\n<a href=\"")
-		body.WriteString(EscapeHTML(link))
-		body.WriteString("\">View incident →</a>")
 	}
 
 	return strings.TrimRight(body.String(), "\n")

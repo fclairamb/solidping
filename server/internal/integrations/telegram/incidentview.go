@@ -64,6 +64,63 @@ func AckKeyboard(incidentUID string) *InlineKeyboard {
 	})
 }
 
+// IncidentKeyboard is the combined inline keyboard attached to anything that
+// can show an incident: `[✅ Acknowledge][🔎 View]` when both are available,
+// down to a single button when only one is, down to nil when neither is —
+// callers can pass the result straight through to Message.ReplyMarkup.
+//
+// The View button carries a `url`, never a `callback_data`: opening a link
+// needs no verb, no ParseCallbackData change, no dispatch change, and Telegram
+// opens it client-side without ever hitting the bot's webhook.
+func IncidentKeyboard(incidentUID, incidentURL string, canAck bool) *InlineKeyboard {
+	buttons := make([]InlineButton, 0, 2)
+
+	if canAck && strings.TrimSpace(incidentUID) != "" {
+		buttons = append(buttons, InlineButton{
+			Text:         "✅ Acknowledge",
+			CallbackData: AckCallbackData(incidentUID),
+		})
+	}
+
+	if url := strings.TrimSpace(incidentURL); url != "" {
+		buttons = append(buttons, InlineButton{Text: "🔎 View", URL: url})
+	}
+
+	if len(buttons) == 0 {
+		return nil
+	}
+
+	return NewInlineKeyboard(buttons...)
+}
+
+// IncidentKeyboardForEdit is IncidentKeyboard for an EDIT rather than a new
+// send. It never returns nil: Telegram treats a nil ReplyMarkup on an edit as
+// "leave the existing buttons in place" (see client.go's Edit.ReplyMarkup
+// doc), so when there is nothing left to show — no ack, no URL — this falls
+// back to the EmptyInlineKeyboard() removal marker instead, which is the only
+// way to actually take a stale Acknowledge button away.
+func IncidentKeyboardForEdit(incidentUID, incidentURL string, canAck bool) *InlineKeyboard {
+	if keyboard := IncidentKeyboard(incidentUID, incidentURL, canAck); keyboard != nil {
+		return keyboard
+	}
+
+	return EmptyInlineKeyboard()
+}
+
+// IncidentURL builds the dashboard deep link for an incident, or "" when
+// baseURL or orgSlug is missing — callers then simply ship without a link
+// rather than a broken one. The one builder every Telegram surface shares, so
+// the escalation alert path, the callback edit path and the /incidents,
+// /incident replies cannot drift into disagreeing URL shapes.
+func IncidentURL(baseURL, orgSlug, incidentUID string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if trimmed == "" || orgSlug == "" {
+		return ""
+	}
+
+	return trimmed + "/dash0/orgs/" + orgSlug + "/incidents/" + incidentUID
+}
+
 // FormatOpenFor renders how long an incident has been open, in the compact form
 // an on-call person reads at a glance ("23m", "3h12m", "2d4h").
 func FormatOpenFor(elapsed time.Duration) string {
@@ -142,12 +199,14 @@ type IncidentLine struct {
 	OrgSlug string
 	// QualifyRef renders "#org:42" instead of "#42" — set when the destination
 	// chat is linked in more than one organization.
-	QualifyRef  bool
-	CheckName   string
-	State       string
-	OpenFor     time.Duration
-	Acked       bool
-	AckedBy     string
+	QualifyRef bool
+	CheckName  string
+	State      string
+	OpenFor    time.Duration
+	Acked      bool
+	AckedBy    string
+	// IncidentURL is the dashboard deep link, rendered as the View button
+	// rather than inline text — never both, so the row does not say it twice.
 	IncidentURL string
 }
 
@@ -187,12 +246,6 @@ func BuildIncidentLineHTML(line *IncidentLine) string {
 		}
 	}
 
-	if link := strings.TrimSpace(line.IncidentURL); link != "" {
-		body.WriteString("\n<a href=\"")
-		body.WriteString(EscapeHTML(link))
-		body.WriteString("\">View incident →</a>")
-	}
-
 	return body.String()
 }
 
@@ -206,16 +259,18 @@ func BuildNoOpenIncidentsHTML(orgSlug string) string {
 type IncidentDetailView struct {
 	Number int64
 	// OrgSlug / QualifyRef carry the same meaning as on IncidentLine.
-	OrgSlug     string
-	QualifyRef  bool
-	CheckName   string
-	State       string
-	OpenFor     time.Duration
-	Regions     []string
-	LastError   string
-	AckedBy     string
-	AckedAt     *time.Time
-	ResolvedAt  *time.Time
+	OrgSlug    string
+	QualifyRef bool
+	CheckName  string
+	State      string
+	OpenFor    time.Duration
+	Regions    []string
+	LastError  string
+	AckedBy    string
+	AckedAt    *time.Time
+	ResolvedAt *time.Time
+	// IncidentURL is the dashboard deep link, rendered as the View button
+	// rather than inline text — never both, so the reply does not say it twice.
 	IncidentURL string
 }
 
@@ -258,12 +313,6 @@ func BuildIncidentDetailHTML(view *IncidentDetailView) string {
 	}
 
 	writeAckLine(&body, view)
-
-	if link := strings.TrimSpace(view.IncidentURL); link != "" {
-		body.WriteString("\n<a href=\"")
-		body.WriteString(EscapeHTML(link))
-		body.WriteString("\">View incident →</a>")
-	}
 
 	return strings.TrimRight(body.String(), "\n")
 }
