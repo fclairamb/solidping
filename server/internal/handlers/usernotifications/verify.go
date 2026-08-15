@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
-	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
 )
 
 // Phone-verification tuning.
@@ -59,14 +59,6 @@ var (
 //nolint:gochecknoglobals // process-wide per-contact resend throttle.
 var resendTracker = newResendLimiter()
 
-// newTwilioClient is the client constructor seam used when sending a
-// verification code. Takes an explicit base URL so the connection's region
-// (twilio.BaseURLForRegion) decides which Twilio host is hit. Overridden in
-// tests to target an httptest fake.
-//
-//nolint:gochecknoglobals // test seam for the outbound Twilio client.
-var newTwilioClient = twilio.NewClientWithBaseURL
-
 // codeTransport delivers one verification code to one destination. Resolved
 // per contact type so the shared issue/confirm machinery below stays
 // channel-agnostic: only the transport is new for WhatsApp.
@@ -80,17 +72,13 @@ func (s *Service) resolveCodeTransport(
 ) (codeTransport, error) {
 	switch contactType {
 	case models.UserContactTypePhone:
-		_, settings, err := twilioconn.ResolveDefault(ctx, s.db, s.creds, orgUID)
+		sender, err := s.resolveSMSSender(ctx, orgUID)
 		if err != nil {
-			if errors.Is(err, twilioconn.ErrNoTwilioConnection) {
-				return nil, ErrNoProvider
-			}
-
-			return nil, fmt.Errorf("resolve twilio connection: %w", err)
+			return nil, err
 		}
 
 		return func(ctx context.Context, to, code string) error {
-			return sendVerificationSMS(ctx, settings, to, code)
+			return sendVerificationSMS(ctx, sender, to, code)
 		}, nil
 	case models.UserContactTypeWhatsApp:
 		sender, err := s.whatsAppCodeSender()
@@ -249,19 +237,17 @@ func hashCode(code string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// sendVerificationSMS sends the code through the resolved Twilio connection.
+// sendVerificationSMS sends the code through the org's resolved SMS provider,
+// whichever mode it is in.
 func sendVerificationSMS(
-	ctx context.Context, settings *models.TwilioSettings, toNumber, code string,
+	ctx context.Context, sender smssvc.Sender, toNumber, code string,
 ) error {
-	if settings.AccountSID == "" || settings.AuthToken == "" {
+	if sender == nil {
 		return ErrNoProvider
 	}
 
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
-	_, err := client.SendSMS(ctx, &twilio.SendSMSParams{
-		To:                  toNumber,
-		From:                settings.FromNumber,
-		MessagingServiceSID: settings.MessagingServiceSID,
+	_, err := sender.SendSMS(ctx, &smssvc.SendParams{
+		To: toNumber,
 		Body: fmt.Sprintf("[SolidPing] Your verification code is %s (valid 10 minutes).", code) +
 			twilio.FirstContactFooter,
 	})

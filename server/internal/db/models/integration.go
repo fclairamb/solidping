@@ -46,20 +46,31 @@ type Capabilities struct {
 	// CanSource reports whether the integration provides data that checks
 	// read from (e.g. the Freebox line-quality source).
 	CanSource bool
+	// CanSendSMS / CanPlaceCall report the two PHONE capabilities, resolved
+	// independently of each other. They are separate because the providers
+	// are: OVHcloud sells SMS but has no voice API, so an instance can run OVH
+	// for SMS and Twilio for voice at the same time. Binding them would mean
+	// giving up escalation calls in exchange for cheaper SMS.
+	CanSendSMS   bool
+	CanPlaceCall bool
 }
 
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
 // mattermost, msteams, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
-// (CanSource) and cannot receive notifications. The default branch
-// intentionally covers every current notification-sink type, so only data
-// sources need an explicit case.
+// (CanSource) and cannot receive notifications. Twilio additionally carries
+// the two phone capabilities — it is the only connection type that is a
+// bring-your-own SMS *and* voice account. The default branch intentionally
+// covers every current notification-sink type, so only data sources and the
+// phone type need an explicit case.
 //
 //nolint:exhaustive // default branch handles all notification-sink types.
 func CapabilitiesFor(t ConnectionType) Capabilities {
 	switch t {
 	case ConnectionTypeFreebox, ConnectionTypeKubernetes:
 		return Capabilities{CanSource: true}
+	case ConnectionTypeTwilio:
+		return Capabilities{CanNotify: true, CanSendSMS: true, CanPlaceCall: true}
 	default: // all current notification sinks
 		return Capabilities{CanNotify: true}
 	}

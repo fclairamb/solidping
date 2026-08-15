@@ -100,6 +100,7 @@ import (
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/msteams"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -364,8 +365,33 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		),
 		entitlementsapi.WithWhatsAppRunawayCap(cfg.Entitlements.WhatsAppRunawayPerHour),
 		entitlementsapi.WithTelegramRunawayCap(cfg.Entitlements.TelegramRunawayPerHour),
+		// Instance-SPEND guards. Unlike the per-org caps above, these two apply
+		// only to sends made on the server's own SMS credentials: they exist to
+		// bound this instance's bill, and a bring-your-own send is billed to the
+		// customer's own account.
+		entitlementsapi.WithInstanceSMSGuards(
+			cfg.SMS.ResolvedGlobalRunawayPerHour(), cfg.SMS.AllowedCountryCodes(),
+		),
 	)
 	svcList.Entitlements = entitlementsService
+
+	// Instance-level SMS/voice providers, built ONCE here and shared by every
+	// org that has not brought its own account. A misconfiguration (unknown
+	// provider, bad region, unreachable OVH endpoint) must surface as a startup
+	// error rather than as a failed page during the first incident.
+	instanceSMSSender, err := smssvc.NewInstanceSender(ctx, &cfg.SMS)
+	if err != nil {
+		return nil, fmt.Errorf("build instance SMS sender: %w", err)
+	}
+
+	instanceVoiceCaller, err := smssvc.NewInstanceVoiceCaller(&cfg.Voice)
+	if err != nil {
+		return nil, fmt.Errorf("build instance voice caller: %w", err)
+	}
+
+	svcList.SMS = smssvc.NewResolver(
+		dbService, credSvc, instanceSMSSender, instanceVoiceCaller, cfg.SMS.Sender,
+	)
 
 	// Create auth service. The entitlements service gates SSO membership
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
@@ -1092,6 +1118,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// Instance-level Telegram credentials power the connect-link flow. Off
 		// by default; CreateTelegramLink refuses while the config is inactive.
 		usernotifications.WithTelegramConfig(&s.config.Telegram),
+		// Two-mode SMS: the org's own Twilio integration when it has one, the
+		// instance provider otherwise.
+		usernotifications.WithSMSResolver(s.services.SMS),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()

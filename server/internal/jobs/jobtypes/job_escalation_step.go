@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
-	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/webpush"
@@ -25,14 +25,6 @@ import (
 // phoneAckTokenTTL bounds the SMS/voice ack magic-link lifetime (mirrors the
 // email ack TTL: 7 days from incident start).
 const phoneAckTokenTTL = 7 * 24 * time.Hour
-
-// newTwilioClient is the client constructor seam used by the phone dispatch
-// path. Takes an explicit base URL so the resolved connection's region
-// (twilio.BaseURLForRegion) decides which Twilio host is hit. Overridden in
-// tests to target an httptest fake without hitting Twilio.
-//
-//nolint:gochecknoglobals // test seam for the outbound Twilio client.
-var newTwilioClient = twilio.NewClientWithBaseURL
 
 // Escalation step errors.
 var (
@@ -301,15 +293,17 @@ func (r *EscalationStepJobRun) connectionPassesSeverityFilter(
 		return false
 	}
 
-	// Twilio's type string ("twilio") is not a severity token; it delivers
-	// SMS/voice, so it passes when either of those is requested.
-	if conn.Type == models.ConnectionTypeTwilio {
-		if filter[channelTokenSMS] || filter[channelTokenVoice] {
+	// A phone connection's type string ("twilio") is not a severity token; it
+	// delivers SMS and/or voice, so it passes when either of those is
+	// requested. Asked as a CAPABILITY rather than a type comparison, so a
+	// second phone integration type would need no change here.
+	if caps := models.CapabilitiesFor(conn.Type); caps.CanSendSMS || caps.CanPlaceCall {
+		if (caps.CanSendSMS && filter[channelTokenSMS]) || (caps.CanPlaceCall && filter[channelTokenVoice]) {
 			return true
 		}
 
-		log.InfoContext(ctx, "severity skipped twilio connection — neither sms nor voice in set",
-			"connectionUID", *target.TargetUID)
+		log.InfoContext(ctx, "severity skipped phone connection — neither sms nor voice in set",
+			"connectionUID", *target.TargetUID, "channelType", string(conn.Type))
 
 		return false
 	}
@@ -681,26 +675,43 @@ func (r *EscalationStepJobRun) pagePhone(
 		return 0
 	}
 
-	var creds credentials.Service
-	if jctx.Services != nil {
-		creds = jctx.Services.Credentials
+	if jctx.Services == nil || jctx.Services.SMS == nil {
+		log.InfoContext(ctx, "sms resolver not wired; skipping phone route",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
+
+		return 0
 	}
 
-	conn, settings, err := twilioconn.ResolveDefault(ctx, jctx.DBService, creds, incident.OrganizationUID)
+	// Two-step resolution, per capability: the org's own Twilio integration
+	// first (bring-your-own), then the instance-level provider. An org with no
+	// integration of its own is NOT left resolving to nothing — that is the
+	// whole point of the server-provided default.
+	resolution, err := jctx.Services.SMS.Resolve(ctx, incident.OrganizationUID)
 	if err != nil {
-		// No provider / undecryptable → keep today's info-log skip; never fail
-		// the escalation step over a missing SMS provider.
-		log.InfoContext(ctx, "no usable twilio connection; skipping phone route",
+		// An org integration exists but could not be opened → keep today's
+		// info-log skip; never fail the escalation step over a provider.
+		log.InfoContext(ctx, "could not resolve a phone provider; skipping phone route",
 			"contactUID", contact.UID, "orgUID", incident.OrganizationUID, "error", err)
 
 		return 0
 	}
 
-	// Voice needs a configured voice_from_number.
-	if wantVoice && settings.VoiceFromNumber == "" {
-		log.InfoContext(ctx, "voice requested but no voice_from_number configured; skipping call",
-			"connectionUID", conn.UID)
+	if wantSMS && !resolution.SMSAvailable() {
+		log.InfoContext(ctx, "sms requested but no provider available; skipping",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
+
+		wantSMS = false
+	}
+
+	if wantVoice && !resolution.VoiceAvailable() {
+		log.InfoContext(ctx, "voice requested but no caller ID configured; skipping call",
+			"contactUID", contact.UID, "orgUID", incident.OrganizationUID)
+
 		wantVoice = false
+	}
+
+	if !wantSMS && !wantVoice {
+		return 0
 	}
 
 	baseURL := appBaseURL(jctx)
@@ -709,16 +720,57 @@ func (r *EscalationStepJobRun) pagePhone(
 
 	sent := 0
 	if wantSMS && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS) &&
-		r.sendPhoneSMS(ctx, jctx, log, incident, route, conn, settings, baseURL, orgSlug, ackToken) {
+		r.reserveInstanceSMSSpend(ctx, jctx, log, incident, resolution, contact.Value) &&
+		r.sendPhoneSMS(ctx, jctx, log, incident, route, resolution, baseURL, orgSlug, ackToken) {
 		sent++
 	}
 
 	if wantVoice && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindVoice) &&
-		r.placePhoneCall(ctx, jctx, log, incident, route, conn, settings, baseURL, ackToken) {
+		r.placePhoneCall(ctx, jctx, log, incident, route, resolution, baseURL, ackToken) {
 		sent++
 	}
 
 	return sent
+}
+
+// reserveInstanceSMSSpend applies the INSTANCE-SPEND guards — the
+// instance-wide hourly cap and the destination-country allow-list — and
+// returns true when the send may proceed.
+//
+// It applies to server-credential sends ONLY. A bring-your-own send bills the
+// customer's own account, so it neither consumes the shared cap nor is gated
+// by an allow-list chosen for this instance's bill; the per-org runaway guard
+// in reservePhoneChannel still applies to it, as today's safety belt.
+//
+// A breach logs loudly and records a skipped audit row: it must never fail
+// silently, because what it silently drops is an alert.
+func (r *EscalationStepJobRun) reserveInstanceSMSSpend(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, resolution *smssvc.Resolution, phone string,
+) bool {
+	if !resolution.InstanceCredentialsForSMS() {
+		return true
+	}
+
+	if jctx.Services == nil || jctx.Services.Entitlements == nil {
+		return true
+	}
+
+	err := jctx.Services.Entitlements.ReserveInstanceSMS(ctx, incident.OrganizationUID, phone)
+	if err == nil {
+		return true
+	}
+
+	jctx.Services.Entitlements.LogInstanceSMSBreach(ctx, log, incident.OrganizationUID, err)
+
+	reason := "sms_instance_runaway"
+	if errors.Is(err, entitlements.ErrCountryNotAllowed) {
+		reason = "sms_country_not_allowed"
+	}
+
+	r.auditPhoneSkip(ctx, jctx, log, incident, reason)
+
+	return false
 }
 
 // reservePhoneChannel enforces per-run dedup and the SMS/voice quota + runaway
@@ -845,13 +897,18 @@ func incidentCheckName(
 	return incident.UID
 }
 
-// twilioStatusCallbackURL builds the delivery-status callback URL for a send.
-func twilioStatusCallbackURL(baseURL, connUID string) string {
-	if baseURL == "" {
+// twilioStatusCallbackURL builds the delivery-status callback URL for a send
+// made through a per-org Twilio integration. conn is nil for a
+// server-credential send, which has no per-org connection to sign against —
+// Twilio's callback signature is verified with the connection's own auth
+// token, so an instance send simply requests no status callback and the
+// timeline falls back to the sent-at timestamp.
+func twilioStatusCallbackURL(baseURL string, conn *models.Integration) string {
+	if baseURL == "" || conn == nil {
 		return ""
 	}
 
-	return strings.TrimRight(baseURL, "/") + "/api/v1/integrations/twilio/status?cid=" + url.QueryEscape(connUID)
+	return strings.TrimRight(baseURL, "/") + "/api/v1/integrations/twilio/status?cid=" + url.QueryEscape(conn.UID)
 }
 
 // sendPhoneSMS sends one escalation SMS to the contact's number. Returns true
@@ -859,8 +916,7 @@ func twilioStatusCallbackURL(baseURL, connUID string) string {
 func (r *EscalationStepJobRun) sendPhoneSMS(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, route *models.UserNotificationRoute,
-	conn *models.Integration, settings *models.TwilioSettings,
-	baseURL, orgSlug, ackToken string,
+	resolution *smssvc.Resolution, baseURL, orgSlug, ackToken string,
 ) bool {
 	name := r.phoneCheckName(ctx, jctx, incident)
 	body := fmt.Sprintf("[SolidPing] %s: %s needs attention (escalated).", orgSlug, name)
@@ -871,22 +927,19 @@ func (r *EscalationStepJobRun) sendPhoneSMS(
 
 	body += twilio.OptOutFooter
 
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
-	res, err := client.SendSMS(ctx, &twilio.SendSMSParams{
-		To:                  route.Contact.Value,
-		From:                settings.FromNumber,
-		MessagingServiceSID: settings.MessagingServiceSID,
-		Body:                body,
-		StatusCallback:      twilioStatusCallbackURL(baseURL, conn.UID),
+	res, err := resolution.Sender.SendSMS(ctx, &smssvc.SendParams{
+		To:             route.Contact.Value,
+		Body:           body,
+		StatusCallback: twilioStatusCallbackURL(baseURL, resolution.Conn),
 	})
 	if err != nil {
 		log.WarnContext(ctx, "failed to send escalation SMS",
-			"contactUID", route.Contact.UID, "error", err)
+			"contactUID", route.Contact.UID, "mode", string(resolution.SMSMode), "error", err)
 
 		return false
 	}
 
-	r.auditPhoneSend(ctx, jctx, log, incident, route.UserUID, "sms", messageSID(res))
+	r.auditPhoneSend(ctx, jctx, log, incident, route.UserUID, "sms", providerMessageID(res))
 
 	return true
 }
@@ -896,8 +949,7 @@ func (r *EscalationStepJobRun) sendPhoneSMS(
 func (r *EscalationStepJobRun) placePhoneCall(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, route *models.UserNotificationRoute,
-	conn *models.Integration, settings *models.TwilioSettings,
-	baseURL, ackToken string,
+	resolution *smssvc.Resolution, baseURL, ackToken string,
 ) bool {
 	if baseURL == "" {
 		log.WarnContext(ctx, "no app base URL configured; cannot place voice call",
@@ -906,27 +958,39 @@ func (r *EscalationStepJobRun) placePhoneCall(
 		return false
 	}
 
-	twimlURL := fmt.Sprintf("%s/api/v1/integrations/twilio/voice?cid=%s&iid=%s&token=%s",
+	twimlURL := fmt.Sprintf("%s/api/v1/integrations/twilio/voice?cid=%s&oid=%s&iid=%s&token=%s",
 		strings.TrimRight(baseURL, "/"),
-		url.QueryEscape(conn.UID), url.QueryEscape(incident.UID), url.QueryEscape(ackToken))
+		url.QueryEscape(voiceCallbackConnID(resolution)),
+		url.QueryEscape(incident.OrganizationUID),
+		url.QueryEscape(incident.UID), url.QueryEscape(ackToken))
 
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
-	res, err := client.CreateCall(ctx, twilio.CreateCallParams{
+	res, err := resolution.Voice.PlaceCall(ctx, &smssvc.CallParams{
 		To:             route.Contact.Value,
-		From:           settings.VoiceFromNumber,
 		TwiMLURL:       twimlURL,
-		StatusCallback: twilioStatusCallbackURL(baseURL, conn.UID),
+		StatusCallback: twilioStatusCallbackURL(baseURL, resolution.Conn),
 	})
 	if err != nil {
 		log.WarnContext(ctx, "failed to place escalation voice call",
-			"contactUID", route.Contact.UID, "error", err)
+			"contactUID", route.Contact.UID, "mode", string(resolution.VoiceMode), "error", err)
 
 		return false
 	}
 
-	r.auditPhoneSend(ctx, jctx, log, incident, route.UserUID, "voice", messageSID(res))
+	r.auditPhoneSend(ctx, jctx, log, incident, route.UserUID, "voice", providerMessageID(res))
 
 	return true
+}
+
+// voiceCallbackConnID returns the `cid` the TwiML callback should carry: the
+// org integration's UID for a bring-your-own call, or the instance sentinel
+// for a server-credential one. The callback middleware uses it to pick which
+// auth token validates Twilio's signature.
+func voiceCallbackConnID(resolution *smssvc.Resolution) string {
+	if resolution.VoiceMode == smssvc.ModeBringYourOwn && resolution.Conn != nil {
+		return resolution.Conn.UID
+	}
+
+	return smssvc.InstanceCallbackID
 }
 
 // auditPhoneSend records a sent incident_notifications row for an SMS/voice
@@ -952,13 +1016,14 @@ func (r *EscalationStepJobRun) auditPhoneSend(
 	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), messageID)
 }
 
-// messageSID safely extracts the Twilio SID from a result.
-func messageSID(res *twilio.Result) string {
+// providerMessageID safely extracts the provider's message identifier (a
+// Twilio SID, an OVH job id) from a send result.
+func providerMessageID(res *smssvc.SendResult) string {
 	if res == nil {
 		return ""
 	}
 
-	return res.SID
+	return res.ProviderMessageID
 }
 
 // postSlackDM sends a DM to slackUserID using the org's Slack bot token.

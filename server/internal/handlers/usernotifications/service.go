@@ -14,9 +14,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
-	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
 	"github.com/fclairamb/solidping/server/internal/integrations/whatsapp"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
@@ -104,6 +104,17 @@ type Service struct {
 	// telegramCfg is the instance-level Telegram configuration used to mint
 	// connect links. Zero value = feature off.
 	telegramCfg config.TelegramConfig
+	// smsResolver picks, per org, whether an SMS goes through the org's own
+	// Twilio integration (bring-your-own) or the instance-level provider
+	// (server-provided, the default). Nil when the phone paths are not
+	// exercised.
+	smsResolver *smssvc.Resolver
+}
+
+// WithSMSResolver supplies the provider resolver used by the phone
+// verification and test-send paths.
+func WithSMSResolver(resolver *smssvc.Resolver) Option {
+	return func(s *Service) { s.smsResolver = resolver }
 }
 
 // Option customizes a Service at construction.
@@ -528,29 +539,18 @@ func (s *Service) dispatchTestTelegram(ctx context.Context, chatID string) error
 	return nil
 }
 
-// dispatchTestSMS sends a plain test SMS through the org's default Twilio
-// connection — the same transport a verification code rides, so a working
+// dispatchTestSMS sends a plain test SMS through whichever provider this org
+// resolves to — its own Twilio integration if it has one, the instance
+// provider otherwise. Same transport a verification code rides, so a working
 // verify flow implies a working test.
 func (s *Service) dispatchTestSMS(ctx context.Context, orgUID, toNumber string) error {
-	_, settings, err := twilioconn.ResolveDefault(ctx, s.db, s.creds, orgUID)
+	sender, err := s.resolveSMSSender(ctx, orgUID)
 	if err != nil {
-		if errors.Is(err, twilioconn.ErrNoTwilioConnection) {
-			return ErrNoProvider
-		}
-
-		return fmt.Errorf("resolve twilio connection: %w", err)
+		return err
 	}
 
-	if settings.AccountSID == "" || settings.AuthToken == "" {
-		return ErrNoProvider
-	}
-
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
-
-	if _, err := client.SendSMS(ctx, &twilio.SendSMSParams{
-		To:                  toNumber,
-		From:                settings.FromNumber,
-		MessagingServiceSID: settings.MessagingServiceSID,
+	if _, err := sender.SendSMS(ctx, &smssvc.SendParams{
+		To: toNumber,
 		Body: "[SolidPing] Test notification. Your SMS delivery is working correctly." +
 			twilio.OptOutFooter,
 	}); err != nil {
@@ -558,6 +558,25 @@ func (s *Service) dispatchTestSMS(ctx context.Context, orgUID, toNumber string) 
 	}
 
 	return nil
+}
+
+// resolveSMSSender returns the org's effective SMS sender, or ErrNoProvider
+// when neither a per-org integration nor the instance configuration can send.
+func (s *Service) resolveSMSSender(ctx context.Context, orgUID string) (smssvc.Sender, error) {
+	if s.smsResolver == nil {
+		return nil, ErrNoProvider
+	}
+
+	resolution, err := s.smsResolver.Resolve(ctx, orgUID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sms provider: %w", err)
+	}
+
+	if !resolution.SMSAvailable() {
+		return nil, ErrNoProvider
+	}
+
+	return resolution.Sender, nil
 }
 
 // dispatchTestWhatsApp sends a test through the approved alert template — the

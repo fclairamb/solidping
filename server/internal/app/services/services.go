@@ -6,6 +6,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/realtime"
@@ -38,6 +39,11 @@ type Registry struct {
 	// WebPushOptions holds VAPID credentials for Web Push dispatch. Zero
 	// value means "not configured" — callers check VAPIDPublicKey != "".
 	WebPushOptions webpush.Options
+	// SMS resolves, per org and per capability, whether a phone send goes
+	// through the org's own Twilio integration (bring-your-own) or the
+	// instance-level provider (server-provided, the default). Nil only in
+	// tests that never page a phone.
+	SMS *sms.Resolver
 }
 
 // NewRegistry creates a new services registry.
