@@ -26,11 +26,11 @@ test.describe("Status Updates", () => {
       fullPage: true,
     });
 
-    // The "New update" button shows its label at all widths (aligned with the
-    // status-pages "New status page" button) — not hidden on mobile.
+    // The "New Status Update" button shows its label at all widths (aligned
+    // with the status-pages "New Status Page" button) — not hidden on mobile.
     const newUpdateButton = page.getByTestId("status-updates-new");
     await expect(newUpdateButton).toBeVisible();
-    await expect(newUpdateButton).toContainText("New update");
+    await expect(newUpdateButton).toContainText("New Status Update");
 
     // Navigate to create page
     await newUpdateButton.click();
