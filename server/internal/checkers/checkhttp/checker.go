@@ -110,7 +110,7 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 		// Set slug to hostname with dots replaced by hyphens if empty
 		if spec.Slug == "" {
-			spec.Slug = strings.ReplaceAll(hostname, ".", "-")
+			spec.Slug = "http-" + strings.ReplaceAll(hostname, ".", "-")
 		}
 	}
 

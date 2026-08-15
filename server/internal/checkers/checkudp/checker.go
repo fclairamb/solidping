@@ -58,7 +58,7 @@ func (c *UDPChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	if spec.Slug == "" {
-		spec.Slug = strings.ReplaceAll(cfg.Host, ".", "-")
+		spec.Slug = "udp-" + strings.ReplaceAll(cfg.Host, ".", "-")
 	}
 
 	return nil

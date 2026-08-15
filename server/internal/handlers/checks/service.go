@@ -1245,11 +1245,6 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		return CheckResponse{}, err
 	}
 
-	// If slug was not user-provided, generate a slug based on the checker type and detected slug
-	if !userProvidedSlug {
-		spec.Slug = string(checker.Type()) + "-" + spec.Slug
-	}
-
 	// Handle slug conflicts
 	finalSlug, err := s.ensureUniqueSlug(ctx, org.UID, spec.Slug, userProvidedSlug)
 	if err != nil {

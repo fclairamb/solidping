@@ -90,6 +90,10 @@ func (c *DNSChecker) Validate(spec *checkerdef.CheckSpec) error {
 		return checkerdef.NewConfigError("expected_values", "cannot specify both expected_ips and expected_values")
 	}
 
+	if spec.Slug == "" {
+		spec.Slug = "dns-" + strings.ReplaceAll(cfg.Host, ".", "-")
+	}
+
 	return nil
 }
 
