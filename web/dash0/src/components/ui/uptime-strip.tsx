@@ -49,14 +49,20 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
       <TooltipTrigger asChild>
         <div
           className={cn(
-            "h-6 flex-1 min-w-[2px] rounded-sm transition-all hover:scale-y-125 cursor-pointer",
+            // rounded-[2px], not rounded-sm: at this cell width the theme's
+            // radius rounded the cells into pills and the strip stopped
+            // reading as a continuous timeline.
+            "h-6 flex-1 min-w-[2px] rounded-[2px] origin-center transition-transform duration-150 ease-out hover:scale-y-125 cursor-pointer",
             cellClass(bucket.availabilityPct),
           )}
         />
       </TooltipTrigger>
-      <TooltipContent className="bg-gray-900 text-white border-gray-700">
+      {/* No color override: the tooltip rides the shared popover surface so it
+          themes with the app (the old hardcoded gray-900 slab stayed dark in
+          light mode and washed out in dark mode). */}
+      <TooltipContent>
         <div className="text-xs space-y-0.5">
-          <p className="font-medium flex items-center gap-1.5">
+          <p className="font-medium flex items-center gap-1.5 tabular-nums">
             <span
               className={cn(
                 "inline-block h-2 w-2 rounded-full",
@@ -65,9 +71,11 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
             />
             {availLabel}
           </p>
-          <p className="text-gray-400">{hourStr}</p>
+          <p className="text-muted-foreground tabular-nums">{hourStr}</p>
           {bucket.durationMs !== undefined && (
-            <p className="text-gray-400">{Math.round(bucket.durationMs)}ms</p>
+            <p className="text-muted-foreground tabular-nums">
+              {Math.round(bucket.durationMs)}ms
+            </p>
           )}
         </div>
       </TooltipContent>

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Calendar, Cpu, Rocket } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -48,15 +49,48 @@ export function getEventEmoji(eventType?: string): string | undefined {
   return EVENT_TYPE_REGISTRY[eventType]?.emoji;
 }
 
+// The two *circle* emojis in the registry are drawn as CSS dots instead of
+// being set as glyphs. Apple Color Emoji renders 🟢 as a glossy sphere — a
+// white highlight, a gradient body and a dark rim — while 🔴 is a flat disc,
+// so a feed mixing "incident opened" and "incident resolved" rows showed two
+// dots that did not look like they belonged to the same set. A dot we draw
+// ourselves is flat in both colors, tracks the theme, and stays crisp at any
+// zoom. The registry entries themselves are untouched: the emoji are still the
+// binding identity shared with the Slack/Teams/Telegram messages.
+const EMOJI_DOT_TONE: Record<string, string> = {
+  "🔴": "bg-destructive",
+  "🟢": "bg-emerald-500",
+};
+
+// Every event mark — dot, emoji or lucide icon — is boxed to the same 16px
+// square, so the label column starts at the same x on every row. Emoji glyphs
+// are wider than 16px at `text-base`, which is what made the old feed's left
+// edge ragged.
+function EventMarkBox({ children }: { children: ReactNode }) {
+  return (
+    <span
+      className="inline-flex size-4 shrink-0 items-center justify-center leading-none"
+      aria-hidden="true"
+    >
+      {children}
+    </span>
+  );
+}
+
 export function getEventIcon(eventType?: string) {
   if (!eventType) return <Calendar className="h-4 w-4" />;
 
   const emoji = getEventEmoji(eventType);
   if (emoji) {
+    const dotTone = EMOJI_DOT_TONE[emoji];
     return (
-      <span className="text-base leading-none" aria-hidden="true">
-        {emoji}
-      </span>
+      <EventMarkBox>
+        {dotTone ? (
+          <span className={cn("size-2.5 rounded-full", dotTone)} />
+        ) : (
+          <span className="text-[13px]">{emoji}</span>
+        )}
+      </EventMarkBox>
     );
   }
 
@@ -132,6 +166,7 @@ export function EventTypeBadge({
   className?: string;
 }) {
   const emoji = getEventEmoji(eventType);
+  const dotTone = emoji ? EMOJI_DOT_TONE[emoji] : undefined;
 
   return (
     <Badge
@@ -139,7 +174,17 @@ export function EventTypeBadge({
       className={cn("gap-1.5 text-xs font-medium", getEventTone(eventType), className)}
       title={eventType}
     >
-      {emoji && <span aria-hidden="true">{emoji}</span>}
+      {/* Same substitution as getEventIcon: the circle emojis become drawn
+          dots so they read as one set with the badge's own tint. */}
+      {emoji &&
+        (dotTone ? (
+          <span
+            className={cn("size-2 shrink-0 rounded-full", dotTone)}
+            aria-hidden="true"
+          />
+        ) : (
+          <span aria-hidden="true">{emoji}</span>
+        ))}
       <span>{getEventLabel(eventType, t)}</span>
     </Badge>
   );

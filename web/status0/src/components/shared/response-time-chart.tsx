@@ -29,6 +29,51 @@ function formatTick(isoStr: string, spansDays: boolean, locale: string) {
   });
 }
 
+// Recharts puts one tick per category by default, so a multi-day window
+// sampled every few hours printed the *same* day-only label over and over
+// ("Aug 9  Aug 9  Aug 9  Aug 10 …"). Pick a small, evenly spaced tick set
+// ourselves instead of letting the tick count follow the sample count.
+const MAX_TICKS = 5;
+
+function pickTicks(times: string[]): string[] {
+  if (times.length <= MAX_TICKS) return times;
+  const step = (times.length - 1) / (MAX_TICKS - 1);
+  const picked = Array.from(
+    { length: MAX_TICKS },
+    (_, i) => times[Math.round(i * step)],
+  );
+  return [...new Set(picked)];
+}
+
+// Label the picked ticks, falling back to a time-of-day label whenever a tick
+// would repeat the day printed by the tick before it — so the axis reads
+// "Jul 28 · Aug 3 · Aug 9 · Aug 11 · 18:00" rather than the same date twice.
+function buildTickLabels(
+  ticks: string[],
+  spansDays: boolean,
+  locale: string,
+): Record<string, string> {
+  const labels: Record<string, string> = {};
+  let previousDay = "";
+  for (const tick of ticks) {
+    const date = new Date(tick);
+    if (!spansDays) {
+      labels[tick] = formatTick(tick, false, locale);
+      continue;
+    }
+    const day = date.toLocaleDateString(locale, {
+      month: "short",
+      day: "numeric",
+    });
+    labels[tick] =
+      day === previousDay
+        ? date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })
+        : day;
+    previousDay = day;
+  }
+  return labels;
+}
+
 function formatDuration(ms: number) {
   if (ms >= 1000) {
     return `${(ms / 1000).toFixed(2)}s`;
@@ -137,6 +182,9 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
         d.status === "down" || d.status === "timeout" || d.status === "error",
     );
 
+    const ticks = pickTicks(data.map((d) => d.time));
+    const tickLabels = buildTickLabels(ticks, spansDays, i18n.language);
+
     return (
       <div className="mt-3">
         <p className="mb-1 text-xs text-muted-foreground">
@@ -159,7 +207,10 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
             </defs>
             <XAxis
               dataKey="time"
-              tickFormatter={(v) => formatTick(v, spansDays, i18n.language)}
+              ticks={ticks}
+              tickFormatter={(v) =>
+                tickLabels[v] ?? formatTick(v, spansDays, i18n.language)
+              }
               tick={{ fontSize: 10 }}
               tickLine={false}
               axisLine={false}
@@ -226,6 +277,9 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
       row.status === "error",
   );
 
+  const ticks = pickTicks(rows.map((row) => row.time));
+  const tickLabels = buildTickLabels(ticks, spansDays, i18n.language);
+
   const regionLabel = (region?: string) =>
     region || t("unknownRegion", { defaultValue: "Unknown region" });
 
@@ -278,7 +332,10 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
           </defs>
           <XAxis
             dataKey="time"
-            tickFormatter={(v) => formatTick(v, spansDays, i18n.language)}
+            ticks={ticks}
+            tickFormatter={(v) =>
+              tickLabels[v] ?? formatTick(v, spansDays, i18n.language)
+            }
             tick={{ fontSize: 10 }}
             tickLine={false}
             axisLine={false}

@@ -298,13 +298,16 @@ export function StatusPageView({
           continuous document; the status banner below uses status
           colors only. */}
       <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        {/* h-12 (48px), not py-3 around a 32px logo (56px): this bar carries a
+            logo, a name and two icon buttons, and the page repeats the name as
+            an <h1> right below it — it does not need the height of a nav bar. */}
+        <div className="mx-auto flex h-12 max-w-3xl items-center justify-between px-4">
+          <div className="flex items-center gap-2.5">
             {/* `sp-logo` is added by <Logo> itself; `sp-page-name` here.
                 Both are documented custom-CSS hooks (public API) — see
                 web/docs/docs/features/status-pages.md. Do not rename. */}
-            <Logo size={32} />
-            <span className="sp-page-name font-semibold text-base tracking-tight">
+            <Logo size={26} />
+            <span className="sp-page-name text-sm font-semibold tracking-tight">
               {page.name}
             </span>
           </div>
