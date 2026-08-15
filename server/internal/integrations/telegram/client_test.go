@@ -385,7 +385,7 @@ func TestSendMessage_CarriesTheInlineKeyboard(t *testing.T) {
 	_, err := client.SendMessage(context.Background(), &telegram.Message{
 		ChatID:      "987654",
 		HTML:        "<b>alert</b>",
-		ReplyMarkup: telegram.AckKeyboard("inc-1"),
+		ReplyMarkup: telegram.IncidentKeyboard("inc-1", "", true),
 	})
 	r.NoError(err)
 

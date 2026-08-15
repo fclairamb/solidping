@@ -50,20 +50,6 @@ func AckCallbackData(incidentUID string) string {
 	return CallbackActionAck + ":" + incidentUID
 }
 
-// AckKeyboard is the one-button inline keyboard attached to an open, unacked
-// alert. Returns nil when there is no incident to ack, so callers can pass the
-// result straight through to Message.ReplyMarkup.
-func AckKeyboard(incidentUID string) *InlineKeyboard {
-	if strings.TrimSpace(incidentUID) == "" {
-		return nil
-	}
-
-	return NewInlineKeyboard(InlineButton{
-		Text:         "✅ Acknowledge",
-		CallbackData: AckCallbackData(incidentUID),
-	})
-}
-
 // IncidentKeyboard is the combined inline keyboard attached to anything that
 // can show an incident: `[✅ Acknowledge][🔎 View]` when both are available,
 // down to a single button when only one is, down to nil when neither is —

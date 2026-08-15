@@ -208,22 +208,6 @@ func TestEmptyInlineKeyboardSerializesAsRemoval(t *testing.T) {
 	r.JSONEq(`{"inline_keyboard":[]}`, string(encoded))
 }
 
-// TestAckKeyboard covers the button itself.
-func TestAckKeyboard(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-
-	r.Nil(telegram.AckKeyboard("  "), "no incident means no button")
-
-	keyboard := telegram.AckKeyboard("inc-1")
-	r.NotNil(keyboard)
-	r.Len(keyboard.InlineKeyboard, 1)
-	r.Len(keyboard.InlineKeyboard[0], 1)
-	r.Equal("ack:inc-1", keyboard.InlineKeyboard[0][0].CallbackData)
-	r.Contains(keyboard.InlineKeyboard[0][0].Text, "Acknowledge")
-}
-
 // TestIncidentKeyboard covers every combination of the combined keyboard: both
 // buttons, either one alone, and neither.
 func TestIncidentKeyboard(t *testing.T) {
