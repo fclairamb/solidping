@@ -941,7 +941,13 @@ Supported interval formats:
 
 - Seconds: `10s`, `30s`, `60s`
 - Minutes: `1m`, `5m`, `15m`
-- Hours: `1h`, `6h`, `24h`
+- Hours: `1h`, `6h`, `24h`, `168h` (1 week), `336h` (2 weeks), `720h` (30 days)
+
+The dashboard's interval picker offers 1 week / 2 weeks / 30 days for any
+check type whose `MaxPeriod` allows it (uncapped by default — see the table
+below), useful for slow-moving checks like domain expiration. Every region
+you select still runs the check at the full interval — see
+[Multiple regions](#multiple-regions).
 
 ### Minimum intervals
 

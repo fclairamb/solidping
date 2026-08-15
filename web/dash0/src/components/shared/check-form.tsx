@@ -117,7 +117,7 @@ function isPassiveType(t: CheckType): boolean {
   return t === "heartbeat" || t === "email";
 }
 
-type PeriodUnit = "minutes" | "hours" | "days" | "weeks";
+export type PeriodUnit = "minutes" | "hours" | "days" | "weeks";
 
 const periodUnits: { value: PeriodUnit; label: string }[] = [
   { value: "minutes", label: "Minutes" },
@@ -126,7 +126,7 @@ const periodUnits: { value: PeriodUnit; label: string }[] = [
   { value: "weeks", label: "Weeks" },
 ];
 
-function parsePeriod(period: string): { value: number; unit: PeriodUnit } {
+export function parsePeriod(period: string): { value: number; unit: PeriodUnit } {
   const [h, m, s] = period.split(":").map(Number);
   const totalSeconds = h * 3600 + m * 60 + s;
   if (totalSeconds % (7 * 86400) === 0) return { value: totalSeconds / (7 * 86400), unit: "weeks" };
@@ -135,7 +135,7 @@ function parsePeriod(period: string): { value: number; unit: PeriodUnit } {
   return { value: Math.max(1, Math.round(totalSeconds / 60)), unit: "minutes" };
 }
 
-function formatPeriod(value: number, unit: PeriodUnit): string {
+export function formatPeriod(value: number, unit: PeriodUnit): string {
   const multipliers = { minutes: 60, hours: 3600, days: 86400, weeks: 604800 };
   const totalSeconds = value * multipliers[unit];
   const h = Math.floor(totalSeconds / 3600);
@@ -144,14 +144,14 @@ function formatPeriod(value: number, unit: PeriodUnit): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function secondsToHMS(seconds: number): string {
+export function secondsToHMS(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function hmsToSeconds(hms: string): number {
+export function hmsToSeconds(hms: string): number {
   const [h, m, s] = hms.split(":").map(Number);
   return h * 3600 + m * 60 + s;
 }
@@ -189,7 +189,7 @@ function parseRegionSpread(hms: string): { value: string; unit: RegionSpreadUnit
   return { value: String(totalSeconds), unit: "seconds" };
 }
 
-function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
+export function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
   const allOptions = [
     { seconds: 5, value: "00:00:05", label: "5 seconds" },
     { seconds: 10, value: "00:00:10", label: "10 seconds" },
@@ -202,6 +202,9 @@ function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: 
     { seconds: 21600, value: "06:00:00", label: "6 hours" },
     { seconds: 43200, value: "12:00:00", label: "12 hours" },
     { seconds: 86400, value: "24:00:00", label: "24 hours" },
+    { seconds: 604800, value: "168:00:00", label: "1 week" },
+    { seconds: 1209600, value: "336:00:00", label: "2 weeks" },
+    { seconds: 2592000, value: "720:00:00", label: "30 days" },
   ];
 
   return allOptions

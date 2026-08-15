@@ -240,6 +240,17 @@ func TestValidatePeriodForType(t *testing.T) {
 			wantErr: "period for dnsbl checks must be at least 15m",
 		},
 		{name: "sleep is exempt", checkType: "sleep", period: time.Second},
+		{
+			// domain has MinPeriod 6h and no MaxPeriod (0 = uncapped) — a
+			// 2-week period must pass, proving long periods survive
+			// validation for types the registry allows.
+			name:      "domain accepts a 2-week period (uncapped MaxPeriod)",
+			checkType: "domain", period: 14 * 24 * time.Hour,
+		},
+		{
+			name: "domain below its 6h floor", checkType: "domain", period: time.Hour,
+			wantErr: "period for domain checks must be at least 6h",
+		},
 		{name: "internal checks are exempt", checkType: "browser", period: time.Second, internal: true},
 		{name: "absent period (0) passes — default applies", checkType: "browser", period: 0},
 		{
