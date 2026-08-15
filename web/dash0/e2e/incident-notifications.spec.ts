@@ -80,7 +80,15 @@ test.describe("Incident notifications", () => {
 
     // The Event column names the notified event — "Incident Created" — not
     // just Time / Status / Target / Source / Channel.
-    await expect(page.getByRole("columnheader", { name: "Event" })).toBeVisible();
+    //
+    // Scoped to the card, and exact: the Event Log table further down the same
+    // page has an "Event Type" header, which a loose page-wide substring match
+    // also resolves to (strict mode violation).
+    await expect(
+      page
+        .getByTestId("notifications-card")
+        .getByRole("columnheader", { name: "Event", exact: true }),
+    ).toBeVisible();
     await expect(row.getByText("Incident Created")).toBeVisible();
   });
 
