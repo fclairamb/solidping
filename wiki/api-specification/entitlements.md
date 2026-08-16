@@ -139,6 +139,22 @@ resend both on every PATCH, or use PUT.
 - `entitlements.upgrade_url_template` — template URL with `{org}` placed
   for the slug; surfaced on GET as `upgradeUrl` so the frontend can
   render an upgrade affordance. Empty in self-hosted.
+- `entitlements.billing_inbound_secret` — the shared **bearer** credential
+  presented on service calls between this instance and the billing service
+  (its `BILLING_INBOUND_SECRET`). It is a bearer **only**. It is still
+  accepted as the upgrade-token signing key while
+  `entitlements.billing_upgrade_token_secret` is unset, purely so an
+  unconfigured install keeps working. Seeded from
+  `SP_ENTITLEMENTS_BILLING_INBOUND_SECRET`.
+- `entitlements.billing_upgrade_token_secret` — the dedicated HS256 key that
+  signs the `#bt=` upgrade token appended to `upgradeUrl`. Mirrors the billing
+  service's `BILLING_UPGRADE_TOKEN_SECRET`; seeded from
+  `SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET`. Deliberately **not** the
+  inbound bearer: a bearer travels on every service call, and leaking it must
+  not also be the power to mint an upgrade token for any org. While this
+  parameter is unset the minter falls back to the bearer and logs a WARN once
+  per process. If both are set to the *same* value, boot logs an ERROR (and
+  still starts) — equal secrets are indistinguishable from the unsplit state.
 - `entitlements.stale_after_days` — days before a billing-service row is
   considered stale and the resolver falls back to defaults. Default 0
   (no stale fallback) in self-hosted.

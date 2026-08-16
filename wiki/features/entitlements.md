@@ -224,7 +224,45 @@ System parameters: `entitlements.service_signing_keys`,
 `entitlements.allow_legacy_service_token`, `entitlements.service_token`
 (legacy), `entitlements.admin_writes_enabled`,
 `entitlements.upgrade_url_template`, `entitlements.stale_after_days`,
-`entitlements.billing_inbound_secret`.
+`entitlements.billing_inbound_secret`,
+`entitlements.billing_upgrade_token_secret`.
+
+### The `#bt=` upgrade token has its own secret
+
+`entitlements.billing_inbound_secret` (env
+`SP_ENTITLEMENTS_BILLING_INBOUND_SECRET`) is a **bearer only** — a credential
+that travels on service calls. The HS256 key that signs the `#bt=` upgrade
+token appended to `upgradeUrl` is the separate
+`entitlements.billing_upgrade_token_secret` (env
+`SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET`), mirroring the billing
+service's `BILLING_UPGRADE_TOKEN_SECRET`.
+
+They are deliberately distinct: leaking a bearer must not also be the power to
+mint an upgrade token for **any** org. Collapsing them back into one value is a
+security regression, not a simplification.
+
+While the dedicated parameter is unset the minter falls back to the bearer —
+that is what keeps a self-hosted install and a not-yet-reconfigured SaaS
+working unchanged — and logs a WARN once per process (once, not per URL build:
+this sits on a dashboard read path). If both parameters are set to the **same**
+value, boot logs an ERROR naming the vulnerability and still starts; equal
+secrets are indistinguishable from the unsplit state, but a hard failure on a
+value that is merely unrotated would strand an otherwise healthy boot.
+
+Operator migration (both ends prefer-new / accept-old, so deploy order does not
+matter and no restart has to be coordinated):
+
+1. Deploy. Nothing moves — the parameter is unset, the fallback mints as before.
+2. Generate one new secret; set it on both sides
+   (`SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET` here,
+   `BILLING_UPGRADE_TOKEN_SECRET` on billing).
+3. Confirm billing's fallback warning has stopped. Any token still arriving on
+   the old secret means an instance has not picked up the new value.
+4. Set `BILLING_ALLOW_LEGACY_UPGRADE_TOKEN_SECRET=false` on billing.
+
+**Step 4 is what closes the vulnerability.** Steps 1–3 only make it closeable —
+worth stating plainly, because it is exactly the kind of migration that stops
+at step 2 and is remembered as done.
 
 ## Audit log
 
