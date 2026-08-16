@@ -128,7 +128,9 @@ describe("prometheusModule.fromConfig", () => {
         { key: "dc", value: "eu" },
       ]),
     );
-    expect(state.headers).toEqual([{ key: "Authorization", value: "Bearer t" }]);
+    expect(state.headers).toEqual([
+      { key: "Authorization", value: "Bearer t" },
+    ]);
 
     // And back out unchanged.
     expect(prometheusModule.toConfig(state).config).toMatchObject(config);

@@ -60,7 +60,11 @@ export const snmpModule: CheckTypeModule<SnmpState> = {
   Fields: SnmpFields,
 };
 
-function SnmpFields({ state, onChange, errors }: CheckTypeFieldsProps<SnmpState>) {
+function SnmpFields({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<SnmpState>) {
   return (
     <>
       <div className="space-y-2">
@@ -225,7 +229,9 @@ function DockerFields({
           type="text"
           placeholder="postgres"
           value={state.containerName}
-          onChange={(e) => onChange({ ...state, containerName: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...state, containerName: e.target.value })
+          }
           className={cn(
             getFieldError(errors, "containerName") && "border-destructive",
           )}
@@ -278,8 +284,8 @@ function DockerFields({
             <p className="text-xs text-muted-foreground">
               Flag a running container as crash-looping when it has restarted at
               least N times and (re)started within the recency window. Leave Min
-              Restarts empty (or 0) to disable. A detected loop reports a Warning
-              (amber) — it counts as up and does not page.
+              Restarts empty (or 0) to disable. A detected loop reports a
+              Warning (amber) — it counts as up and does not page.
             </p>
             <div className="space-y-1">
               <Label htmlFor="restartLoopMinRestarts">
@@ -448,8 +454,12 @@ function FreeboxLineFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="xdsl">{t("freeboxLine.linkTypeXdsl")}</SelectItem>
-            <SelectItem value="ftth">{t("freeboxLine.linkTypeFtth")}</SelectItem>
+            <SelectItem value="xdsl">
+              {t("freeboxLine.linkTypeXdsl")}
+            </SelectItem>
+            <SelectItem value="ftth">
+              {t("freeboxLine.linkTypeFtth")}
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -996,7 +1006,8 @@ function PrometheusFields({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              An ambiguous selector is reported rather than resolved by guessing.
+              An ambiguous selector is reported rather than resolved by
+              guessing.
             </p>
           </div>
           <div className="space-y-2">
