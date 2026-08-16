@@ -43,7 +43,8 @@ func liveWorker(t *testing.T, dbSvc *sqlite.Service, slug, region string, v6 *bo
 	ctx := t.Context()
 
 	worker, err := dbSvc.RegisterOrUpdateWorker(ctx, &models.Worker{
-		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region, EgressIPv6: v6,
+		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region,
+		Capabilities: capsForV6(v6),
 	})
 	r.NoError(err)
 
@@ -137,8 +138,8 @@ func TestCapabilitySurvivesHeartbeatCycle(t *testing.T) {
 	incapable := liveWorker(t, dbSvc, "wrk-us", "us-east-1", yes(false))
 
 	for range 3 {
-		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, capable.UID, models.WorkerEgress{IPv6: yes(true)}))
-		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, incapable.UID, models.WorkerEgress{IPv6: yes(false)}))
+		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, capable.UID, capsForV6(yes(true))))
+		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, incapable.UID, capsForV6(yes(false))))
 
 		resp, err := svc.ListOrgRegions(ctx, org.Slug)
 		r.NoError(err)
@@ -165,7 +166,7 @@ func TestHeartbeatWithoutCapabilityKeepsStoredValue(t *testing.T) {
 
 	worker := liveWorker(t, dbSvc, "wrk-eu", "eu-west-1", yes(true))
 
-	r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, worker.UID, models.WorkerEgress{}))
+	r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, worker.UID, nil))
 
 	resp, err := svc.ListOrgRegions(ctx, org.Slug)
 	r.NoError(err)
@@ -193,6 +194,23 @@ func TestReRegistrationWithoutCapabilityKeepsStoredValue(t *testing.T) {
 		Slug: "wrk-eu", Name: "wrk-eu",
 	})
 	r.NoError(err)
-	r.NotNil(again.EgressIPv6)
-	r.True(*again.EgressIPv6, "a capability-less re-registration must not erase a known value")
+	r.Equal(models.CapabilityStatePresent, again.Capability(models.CapabilityIPv6),
+		"a capability-less re-registration must not erase a known set")
+}
+
+// capsForV6 translates the tests' legacy three-state IPv6 pointer into the
+// capability set a worker now reports: nil = never reported (a nil, i.e.
+// unknown, set), true = a v4+v6 host, false = a v4-only host. `false` maps to a
+// NON-EMPTY set on purpose — a v4-only host still reports ipv4, and the set
+// being non-nil is what makes "no ipv6" a real answer rather than an absence.
+func capsForV6(v6 *bool) []string {
+	if v6 == nil {
+		return nil
+	}
+
+	if *v6 {
+		return []string{models.CapabilityIPv4, models.CapabilityIPv6}
+	}
+
+	return []string{models.CapabilityIPv4}
 }

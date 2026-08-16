@@ -55,7 +55,7 @@ func (b *claimFailBackend) Register(_ context.Context, worker *models.Worker) (*
 	return worker, nil
 }
 
-func (b *claimFailBackend) Heartbeat(context.Context, string, models.WorkerEgress) error {
+func (b *claimFailBackend) Heartbeat(context.Context, string, []string) error {
 	return nil
 }
 

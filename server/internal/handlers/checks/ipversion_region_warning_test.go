@@ -50,7 +50,8 @@ func (e *warnEnv) worker(slug, region string, v6 *bool) {
 	ctx := e.t.Context()
 
 	worker, err := e.dbSvc.RegisterOrUpdateWorker(ctx, &models.Worker{
-		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region, EgressIPv6: v6,
+		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region,
+		Capabilities: capsForV6(v6),
 	})
 	r.NoError(err)
 
@@ -76,7 +77,7 @@ func (e *warnEnv) agent(orgUID, regionSlug, name string, v6 *bool) {
 
 	worker, err := e.dbSvc.RegisterOrUpdateWorker(ctx, &models.Worker{
 		UID: agent.UID, Slug: agentcrypto.WorkerSlug(agent.UID),
-		Name: "agent:" + name, EgressIPv6: v6,
+		Name: "agent:" + name, Capabilities: capsForV6(v6),
 	})
 	r.NoError(err)
 
@@ -255,4 +256,21 @@ func TestPrivateLocationWarningIsOrgScoped(t *testing.T) {
 	r.True(resp.Valid)
 	r.Len(resp.Warnings, 1, "another org's IPv6-capable location must not silence this warning")
 	r.Contains(resp.Warnings[0].Message, "Head office")
+}
+
+// capsForV6 translates the tests' legacy three-state IPv6 pointer into the
+// capability set a worker now reports: nil = never reported (a nil, i.e.
+// unknown, set), true = a v4+v6 host, false = a v4-only host. `false` maps to a
+// NON-EMPTY set on purpose — a v4-only host still reports ipv4, and the set
+// being non-nil is what makes "no ipv6" a real answer rather than an absence.
+func capsForV6(v6 *bool) []string {
+	if v6 == nil {
+		return nil
+	}
+
+	if *v6 {
+		return []string{models.CapabilityIPv4, models.CapabilityIPv6}
+	}
+
+	return []string{models.CapabilityIPv4}
 }
