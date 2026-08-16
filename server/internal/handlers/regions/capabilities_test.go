@@ -214,3 +214,108 @@ func capsForV6(v6 *bool) []string {
 
 	return []string{models.CapabilityIPv4}
 }
+
+// capsLiveWorker registers a live cloud worker with an explicit capability set,
+// so a test can distinguish "reported nothing" (nil) from "reported an empty
+// set" — the distinction the whole spec turns on.
+func capsLiveWorker(t *testing.T, dbSvc *sqlite.Service, slug, region string, caps []string) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	worker, err := dbSvc.RegisterOrUpdateWorker(ctx, &models.Worker{
+		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region,
+		Capabilities: caps,
+	})
+	r.NoError(err)
+
+	_, err = dbSvc.DB().NewUpdate().Model((*models.Worker)(nil)).
+		Set("last_active_at = ?", time.Now()).
+		Where("uid = ?", worker.UID).Exec(ctx)
+	r.NoError(err)
+}
+
+// TestRegionListResponseGainsOnlyTheIPv4Key is the API-shape guard for the
+// spec's resolved open question: the regions response is unchanged versus the
+// boolean implementation EXCEPT for the addition of an `ipv4` key.
+//
+// `ipv6` must be bit-for-bit what the booleans produced for the same fixture —
+// a v6 worker in eu, a v4-only worker in us — and no other key, name or value
+// may move. Adding `ipv4` was not licence to restructure anything else.
+func TestRegionListResponseGainsOnlyTheIPv4Key(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, org := newRegionAPI(t)
+
+	capsLiveWorker(t, dbSvc, "wrk-eu", "eu-west-1", []string{"ipv4", "ipv6"})
+	capsLiveWorker(t, dbSvc, "wrk-us", "us-east-1", []string{"ipv4"})
+
+	resp, err := svc.ListOrgRegions(t.Context(), org.Slug)
+	r.NoError(err)
+
+	encoded, err := json.Marshal(resp)
+	r.NoError(err)
+
+	var decoded struct {
+		Data []struct {
+			Slug         string            `json:"slug"`
+			Emoji        string            `json:"emoji"`
+			Name         string            `json:"name"`
+			Capabilities map[string]string `json:"capabilities"`
+		} `json:"data"`
+	}
+	r.NoError(json.Unmarshal(encoded, &decoded))
+
+	byslug := map[string]map[string]string{}
+	for _, region := range decoded.Data {
+		byslug[region.Slug] = region.Capabilities
+	}
+
+	// The pre-2026-08-16 payload for this fixture, plus exactly one new key.
+	r.Equal(map[string]string{"ipv6": "yes", "ipv4": "yes"}, byslug["eu"])
+	r.Equal(map[string]string{"ipv6": "no", "ipv4": "yes"}, byslug["us"])
+}
+
+// TestRegionListIPv4CarriesAllThreeStates: the new key is a first-class
+// three-state verdict, and — the regression that matters — a worker that never
+// reported yields `unknown`, never `no`.
+func TestRegionListIPv4CarriesAllThreeStates(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		caps []string
+		want string
+	}{
+		{"never-reported-is-unknown", nil, regions.CapabilityUnknown},
+		{"empty-set-is-no", []string{}, regions.CapabilityNo},
+		{"reported-is-yes", []string{"ipv4"}, regions.CapabilityYes},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			svc, dbSvc, org := newRegionAPI(t)
+
+			capsLiveWorker(t, dbSvc, "wrk-eu", "eu-west-1", tc.caps)
+
+			resp, err := svc.ListOrgRegions(t.Context(), org.Slug)
+			r.NoError(err)
+
+			for _, region := range resp.Data {
+				if region.Slug != "eu" {
+					continue
+				}
+
+				r.Equal(tc.want, region.Capabilities[regions.CapabilityIPv4])
+
+				if tc.caps == nil {
+					r.NotEqual(regions.CapabilityNo, region.Capabilities[regions.CapabilityIPv4],
+						"an unreported ipv4 must never be advertised as a NO")
+				}
+			}
+		})
+	}
+}

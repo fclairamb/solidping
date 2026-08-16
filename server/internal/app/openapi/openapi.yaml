@@ -10450,6 +10450,13 @@ components:
         heartbeats at read time, never configured. Additive: a client that
         ignores this object behaves exactly as before it existed.
       properties:
+        ipv4:
+          type: string
+          enum: ["yes", "no", "unknown"]
+          description: >
+            Whether checks pinned to `ipVersion: ipv4` can leave this region.
+            Same three states and the same any-not-all rule as `ipv6` below;
+            `unknown` is a real state and MUST NOT be rendered as `no`.
         ipv6:
           type: string
           enum: ["yes", "no", "unknown"]

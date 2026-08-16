@@ -370,3 +370,132 @@ func capsForV6(v6 *bool) []string {
 
 	return []string{models.CapabilityIPv4}
 }
+
+// capsWorker registers a live cloud worker with an explicit capability set —
+// the raw form, so a test can say "reported NOTHING" (nil) as distinct from
+// "reported an EMPTY set" (non-nil, len 0).
+func (e *capEnv) capsWorker(slug, region string, caps []string) *models.Worker {
+	e.t.Helper()
+
+	r := require.New(e.t)
+
+	worker, err := e.dbSvc.RegisterOrUpdateWorker(e.t.Context(), &models.Worker{
+		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region,
+		Capabilities: caps,
+	})
+	r.NoError(err)
+
+	e.setLastActive(worker.UID, time.Now())
+
+	return worker
+}
+
+// capsOf runs the global annotation and returns the whole verdict map.
+func (e *capEnv) capsOf(ctx context.Context, slug string) map[string]string {
+	e.t.Helper()
+
+	defs := []regions.RegionDefinition{{Slug: slug, Name: slug}}
+	require.NoError(e.t, e.svc.AnnotateGlobalCapabilities(ctx, defs))
+
+	return defs[0].Capabilities
+}
+
+// TestAggregationDistinguishesNullFromEmptySet is the heart of spec
+// 2026-08-16-02 and its most important negative control.
+//
+// NULL and '{}' must NOT aggregate to the same verdict. A NULL set is
+// "unknown" — nothing was ever reported — and rendering it as "no" is exactly
+// the lie spec 2026-08-15-11 removed. An EMPTY set is a real report of "none"
+// and IS a "no". If a refactor ever collapses the two, this test is what
+// catches it; the "yes" case is the positive control proving the other two
+// assertions are not passing vacuously.
+func TestAggregationDistinguishesNullFromEmptySet(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		caps []string
+		ipv4 string
+		ipv6 string
+	}{
+		{"never-reported", nil, regions.CapabilityUnknown, regions.CapabilityUnknown},
+		{"reported-none", []string{}, regions.CapabilityNo, regions.CapabilityNo},
+		{"reported-v4-only", []string{"ipv4"}, regions.CapabilityYes, regions.CapabilityNo},
+		{"reported-v6-only", []string{"ipv6"}, regions.CapabilityNo, regions.CapabilityYes},
+		{"reported-both", []string{"ipv4", "ipv6"}, regions.CapabilityYes, regions.CapabilityYes},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			env := newCapEnv(t)
+
+			env.capsWorker("wrk-"+tc.name, "eu-west-1", tc.caps)
+
+			caps := env.capsOf(t.Context(), "eu")
+			r.Equal(tc.ipv4, caps[regions.CapabilityIPv4], "ipv4 verdict")
+			r.Equal(tc.ipv6, caps[regions.CapabilityIPv6], "ipv6 verdict")
+
+			if tc.caps == nil {
+				r.NotEqual(regions.CapabilityNo, caps[regions.CapabilityIPv6],
+					"a worker that never reported must never be rendered as a NO")
+				r.NotEqual(regions.CapabilityNo, caps[regions.CapabilityIPv4])
+			}
+		})
+	}
+}
+
+// TestCapabilityMapPublishesExactlyIPv4AndIPv6 pins the published key set. The
+// spec's resolved open question allows the region response to gain exactly ONE
+// key (`ipv4`) and nothing else; a stray key here is a silent API change.
+func TestCapabilityMapPublishesExactlyIPv4AndIPv6(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newCapEnv(t)
+
+	env.capsWorker("wrk-keys", "eu-west-1", []string{"ipv4", "ipv6", "udp"})
+
+	caps := env.capsOf(t.Context(), "eu")
+	r.Equal(map[string]string{
+		regions.CapabilityIPv4: regions.CapabilityYes,
+		regions.CapabilityIPv6: regions.CapabilityYes,
+	}, caps, "an unpublished capability a worker reports must not leak into the API")
+}
+
+// TestIPv4CapabilityAccessorMirrorsIPv6: the new accessor carries all three
+// states, and an unannotated definition defaults to unknown rather than no.
+func TestIPv4CapabilityAccessorMirrorsIPv6(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal(regions.CapabilityUnknown, regions.RegionDefinition{}.IPv4Capability())
+	r.Equal(regions.CapabilityUnknown, regions.RegionDefinition{
+		Capabilities: map[string]string{},
+	}.IPv4Capability())
+	r.Equal(regions.CapabilityYes, regions.RegionDefinition{
+		Capabilities: map[string]string{regions.CapabilityIPv4: regions.CapabilityYes},
+	}.IPv4Capability())
+	r.Equal(regions.CapabilityNo, regions.RegionDefinition{
+		Capabilities: map[string]string{regions.CapabilityIPv4: regions.CapabilityNo},
+	}.IPv4Capability())
+}
+
+// TestAggregationIsAnyNotAllPerCapability: the ANY-not-ALL rule holds
+// independently for each capability, and one reporting worker is enough to turn
+// unknown into a real answer.
+func TestAggregationIsAnyNotAllPerCapability(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newCapEnv(t)
+
+	env.capsWorker("wrk-quiet", "eu-west-1", nil)
+	env.capsWorker("wrk-v4", "eu-west-2", []string{"ipv4"})
+	env.capsWorker("wrk-v6", "eu-west-3", []string{"ipv6"})
+
+	caps := env.capsOf(t.Context(), "eu")
+	r.Equal(regions.CapabilityYes, caps[regions.CapabilityIPv4])
+	r.Equal(regions.CapabilityYes, caps[regions.CapabilityIPv6])
+}
