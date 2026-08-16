@@ -75,7 +75,7 @@ func metricsServer(t *testing.T, body string) (*httptest.Server, func() http.Hea
 }
 
 // run validates and executes a config against the checker.
-func run(t *testing.T, ctx context.Context, cfg *checkprometheus.PrometheusConfig) *checkerdef.Result {
+func run(ctx context.Context, t *testing.T, cfg *checkprometheus.PrometheusConfig) *checkerdef.Result {
 	t.Helper()
 
 	r := require.New(t)
@@ -194,7 +194,7 @@ func TestScrape_Grading(t *testing.T) {
 
 			r := require.New(t)
 
-			result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+			result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 				URL: server.URL, Metric: tt.metric, Operator: tt.operator,
 				WarningValue: tt.warning, CriticalValue: tt.critical,
 			})
@@ -217,12 +217,12 @@ func TestScrape_ZeroWarningIsHonored(t *testing.T) {
 
 	server, _ := metricsServer(t, "# TYPE free_slots gauge\nfree_slots 0\n")
 
-	withZero := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	withZero := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "free_slots", Operator: "<=", WarningValue: f64(0),
 	})
 	r.Equal(checkerdef.StatusWarning, withZero.Status, "warningValue: 0 must be a live threshold")
 
-	withoutWarning := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	withoutWarning := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "free_slots", Operator: "<=", CriticalValue: f64(-1),
 	})
 	r.Equal(checkerdef.StatusUp, withoutWarning.Status, "positive control: no warning tier, no warning")
@@ -260,7 +260,7 @@ func TestScrape_LabelSubsetMatching(t *testing.T) {
 
 			r := require.New(t)
 
-			result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+			result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 				URL: server.URL, Metric: "queue_depth", Labels: tt.labels,
 				Operator: ">", CriticalValue: f64(1e9),
 			})
@@ -304,7 +304,7 @@ func TestScrape_MultiSeriesMatch(t *testing.T) {
 
 			r := require.New(t)
 
-			result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+			result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 				URL: server.URL, Metric: "queue_depth", Match: tt.match,
 				Operator: ">", CriticalValue: f64(1e9),
 			})
@@ -361,7 +361,7 @@ func TestScrape_HistogramAndSummaryFlattening(t *testing.T) {
 
 			r := require.New(t)
 
-			result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+			result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 				URL: server.URL, Metric: tt.metric, Labels: tt.labels,
 				Operator: ">", CriticalValue: f64(1e9),
 			})
@@ -394,7 +394,7 @@ func TestScrape_OnMissing(t *testing.T) {
 
 			r := require.New(t)
 
-			result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+			result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 				URL: server.URL, Metric: "nope_not_here", OnMissing: tt.onMissing,
 				Operator: ">", CriticalValue: f64(1),
 			})
@@ -421,14 +421,14 @@ func TestScrape_BodyOverCapIsRefusedNotTruncated(t *testing.T) {
 		_, _ = w.Write([]byte("# TYPE canary gauge\ncanary 1\n"))
 
 		// Pad well past the cap with valid, ignorable comment lines.
-		padding := strings.Repeat("# padding padding padding padding padding padding\n", 40000)
+		padding := strings.Repeat("# filler comment line that the exposition parser ignores entirely\n", 40000)
 		for range 3 {
 			_, _ = w.Write([]byte(padding))
 		}
 	}))
 	t.Cleanup(server.Close)
 
-	result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "canary", Operator: ">", CriticalValue: f64(1e9),
 	})
 
@@ -438,6 +438,7 @@ func TestScrape_BodyOverCapIsRefusedNotTruncated(t *testing.T) {
 	message := fmt.Sprint(result.Output[checkerdef.OutputKeyError])
 	r.Contains(message, "5 MB")
 	r.Contains(message, "refused")
+	r.Contains(message, "promql")
 }
 
 // TestScrape_UnderCapStillWorks is the positive control for the cap: a body
@@ -448,12 +449,12 @@ func TestScrape_UnderCapStillWorks(t *testing.T) {
 	r := require.New(t)
 
 	body := "# TYPE canary gauge\ncanary 7\n" +
-		strings.Repeat("# padding padding padding padding padding padding\n", 40000)
+		strings.Repeat("# filler comment line that the exposition parser ignores entirely\n", 40000)
 	r.Less(len(body), checkprometheus.MaxScrapeBytes)
 
 	server, _ := metricsServer(t, body)
 
-	result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "canary", Operator: ">", CriticalValue: f64(1e9),
 	})
 
@@ -471,9 +472,9 @@ func TestScrape_HeadersAreSent(t *testing.T) {
 
 	server, lastHeader := metricsServer(t, sampleExposition)
 
-	result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "process_open_fds", Operator: ">", CriticalValue: f64(1e9),
-		Headers: map[string]string{"Authorization": "Bearer s3cret", "X-Scope-OrgID": "team-a"},
+		Headers: map[string]string{"Authorization": "Bearer s3cret", "X-Scope-Orgid": "team-a"},
 	})
 
 	r.Equal(checkerdef.StatusUp, result.Status)
@@ -481,7 +482,7 @@ func TestScrape_HeadersAreSent(t *testing.T) {
 	header := lastHeader()
 	r.NotNil(header)
 	r.Equal("Bearer s3cret", header.Get("Authorization"))
-	r.Equal("team-a", header.Get("X-Scope-OrgID"))
+	r.Equal("team-a", header.Get("X-Scope-Orgid"))
 	r.NotEmpty(header.Get("User-Agent"))
 }
 
@@ -504,13 +505,13 @@ func TestScrape_HeadersAreRequired(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	withoutHeader := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	withoutHeader := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "process_open_fds", Operator: ">", CriticalValue: f64(1e9),
 	})
 	r.Equal(checkerdef.StatusDown, withoutHeader.Status)
 	r.Contains(fmt.Sprint(withoutHeader.Output[checkerdef.OutputKeyError]), "401")
 
-	withHeader := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	withHeader := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "process_open_fds", Operator: ">", CriticalValue: f64(1e9),
 		Headers: map[string]string{"Authorization": "Bearer s3cret"},
 	})
@@ -530,7 +531,7 @@ func TestScrape_TransportFailures(t *testing.T) {
 		}))
 		t.Cleanup(server.Close)
 
-		result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+		result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 			URL: server.URL, Metric: "m", Operator: ">", CriticalValue: f64(1),
 		})
 		r.Equal(checkerdef.StatusDown, result.Status)
@@ -544,7 +545,7 @@ func TestScrape_TransportFailures(t *testing.T) {
 
 		server, _ := metricsServer(t, "this is definitely { not } exposition format\n")
 
-		result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+		result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 			URL: server.URL, Metric: "m", Operator: ">", CriticalValue: f64(1),
 		})
 		r.Equal(checkerdef.StatusDown, result.Status)
@@ -560,7 +561,7 @@ func TestScrape_TransportFailures(t *testing.T) {
 		url := server.URL
 		server.Close()
 
-		result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+		result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 			URL: url, Metric: "process_open_fds", Operator: ">", CriticalValue: f64(1),
 		})
 		r.Equal(checkerdef.StatusDown, result.Status)
@@ -607,7 +608,7 @@ func TestExecute_ContextCancellation(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
 
-			result := run(t, ctx, tt.cfg(server.URL))
+			result := run(ctx, t, tt.cfg(server.URL))
 			r.NotEqual(checkerdef.StatusUp, result.Status)
 			r.NotEmpty(result.Output[checkerdef.OutputKeyError])
 		})
@@ -742,7 +743,7 @@ func TestPromQL_Results(t *testing.T) {
 
 			server, lastQuery := promServer(t, tt.status, tt.body)
 
-			result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+			result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 				URL: server.URL, Mode: checkprometheus.ModePromQL,
 				Query: `sum(rate(http_requests_total{code=~"5.."}[5m]))`,
 				Match: tt.match, OnMissing: tt.onMissing,
@@ -790,7 +791,7 @@ func TestPromQL_BaseURLWithPathPrefix(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	result := run(t, t.Context(), &checkprometheus.PrometheusConfig{
+	result := run(t.Context(), t, &checkprometheus.PrometheusConfig{
 		URL: server.URL + "/prom", Mode: checkprometheus.ModePromQL, Query: "up",
 		Operator: ">", CriticalValue: f64(1e9),
 	})
@@ -825,7 +826,7 @@ func TestExecute_HonorsTunnelDialer(t *testing.T) {
 
 	ctx := checkerdef.WithTunnelDialer(t.Context(), dialer)
 
-	result := run(t, ctx, &checkprometheus.PrometheusConfig{
+	result := run(ctx, t, &checkprometheus.PrometheusConfig{
 		URL: server.URL, Metric: "process_open_fds", Operator: ">", CriticalValue: f64(1e9),
 	})
 

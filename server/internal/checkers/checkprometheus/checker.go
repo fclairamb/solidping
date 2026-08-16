@@ -196,7 +196,7 @@ func fetchScrape(ctx context.Context, cfg *PrometheusConfig) (*resolution, error
 		return nil, fmt.Errorf("%w: %d", errNon200, resp.StatusCode)
 	}
 
-	body, err := readCapped(resp.Body)
+	body, err := readCapped(resp.Body, capHintScrape)
 	if err != nil {
 		return nil, err
 	}
@@ -225,23 +225,31 @@ func fetchScrape(ctx context.Context, cfg *PrometheusConfig) (*resolution, error
 // body still parses, and the check would then grade a wrong value while looking
 // perfectly healthy. One byte past the cap is read purely to detect the
 // overflow.
-func readCapped(body io.Reader) ([]byte, error) {
+func readCapped(body io.Reader, hint string) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(body, MaxScrapeBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	const bytesPerMB = 1024 * 1024
+
 	if len(data) > MaxScrapeBytes {
 		return nil, fmt.Errorf(
-			"%w: exceeds the %d MB scrape limit; the body was refused, not truncated "+
-				"(a truncated exposition body would parse into wrong values) — "+
-				"narrow the endpoint or use promql mode",
-			errBodyTooBig, MaxScrapeBytes/(1024*1024),
+			"%w: exceeds the %d MB limit; the body was refused, not truncated "+
+				"(a truncated exposition body would parse into wrong values) — %s",
+			errBodyTooBig, MaxScrapeBytes/bytesPerMB, hint,
 		)
 	}
 
 	return data, nil
 }
+
+// Hints appended to the over-cap error, so the fix names the mode the operator
+// is actually in.
+const (
+	capHintScrape = "narrow the endpoint or switch to promql mode"
+	capHintPromQL = "make the query return fewer series"
+)
 
 // resolveMatched applies the multi-series strategy to the matched series.
 func resolveMatched(cfg *PrometheusConfig, matched []series) (*resolution, error) {
@@ -327,7 +335,7 @@ func missingResult(cfg *PrometheusConfig, duration time.Duration) *checkerdef.Re
 func gradeResult(
 	cfg *PrometheusConfig, resolved *resolution, duration time.Duration,
 ) *checkerdef.Result {
-	op := cfg.EffectiveOperator()
+	operator := cfg.EffectiveOperator()
 	value := resolved.Value
 
 	status := checkerdef.StatusUp
@@ -337,25 +345,25 @@ func gradeResult(
 	var threshold *float64
 
 	switch {
-	case cfg.CriticalValue != nil && breaches(value, op, *cfg.CriticalValue):
+	case cfg.CriticalValue != nil && breaches(value, operator, *cfg.CriticalValue):
 		status = checkerdef.StatusDown
 		tier = tierCritical
 		threshold = cfg.CriticalValue
-	case cfg.WarningValue != nil && breaches(value, op, *cfg.WarningValue):
+	case cfg.WarningValue != nil && breaches(value, operator, *cfg.WarningValue):
 		status = checkerdef.StatusWarning
 		tier = tierWarning
 		threshold = cfg.WarningValue
 	}
 
 	if threshold != nil {
-		message = fmt.Sprintf("%g %s %s threshold %g", value, op, tier, *threshold)
+		message = fmt.Sprintf("%g %s %s threshold %g", value, operator, tier, *threshold)
 	}
 
 	out := baseOutput(cfg, map[string]any{
 		outputKeyValue:         value,
 		outputKeyMatchedCount:  resolved.Matched,
 		outputKeyMatchedLabels: resolved.Labels,
-		outputKeyOperator:      op,
+		outputKeyOperator:      operator,
 		outputKeyTier:          tier,
 		outputKeyMessage:       message,
 	})
@@ -374,8 +382,8 @@ func gradeResult(
 }
 
 // breaches reports whether `value <operator> threshold` holds.
-func breaches(value float64, op string, threshold float64) bool {
-	switch op {
+func breaches(value float64, operator string, threshold float64) bool {
+	switch operator {
 	case OpGreater:
 		return value > threshold
 	case OpGreaterEqual:

@@ -12,6 +12,7 @@ package checkprometheus
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -161,8 +162,6 @@ type PrometheusConfig struct {
 }
 
 // FromMap populates the configuration from a map (the JSONB `config` shape).
-//
-//nolint:cyclop // straight-line key decoding
 func (c *PrometheusConfig) FromMap(configMap map[string]any) error {
 	for key, target := range map[string]*string{
 		keyURL:       &c.URL,
@@ -199,11 +198,11 @@ func (c *PrometheusConfig) FromMap(configMap map[string]any) error {
 
 	c.Headers = headers
 
-	if c.WarningValue, err = readFloatPtr(configMap, keyWarningValue); err != nil {
+	if c.WarningValue, err = readThreshold(configMap, keyWarningValue); err != nil {
 		return err
 	}
 
-	if c.CriticalValue, err = readFloatPtr(configMap, keyCriticalValue); err != nil {
+	if c.CriticalValue, err = readThreshold(configMap, keyCriticalValue); err != nil {
 		return err
 	}
 
@@ -224,63 +223,82 @@ func (c *PrometheusConfig) FromMap(configMap map[string]any) error {
 	return nil
 }
 
+// errThresholdAbsent is the sentinel meaning "the key is simply not present"
+// — distinct from "the key is present but not a number", which is a real
+// config error. Presence is the whole point here: 0 is a legal threshold, so
+// absence can never be signaled by the zero value.
+var errThresholdAbsent = errors.New("threshold key absent")
+
 // readFloatPtr reads a numeric key, returning nil when the key is absent.
 // The pointer return is what makes `warningValue: 0` distinguishable from
 // "warningValue not set".
 func readFloatPtr(configMap map[string]any, key string) (*float64, error) {
 	raw, present := configMap[key]
 	if !present || raw == nil {
-		return nil, nil //nolint:nilnil // absent key is legitimately (nil, nil)
+		return nil, errThresholdAbsent
 	}
 
-	switch v := raw.(type) {
+	switch value := raw.(type) {
 	case float64:
-		return &v, nil
+		return &value, nil
 	case float32:
-		f := float64(v)
+		converted := float64(value)
 
-		return &f, nil
+		return &converted, nil
 	case int:
-		f := float64(v)
+		converted := float64(value)
 
-		return &f, nil
+		return &converted, nil
 	case int64:
-		f := float64(v)
+		converted := float64(value)
 
-		return &f, nil
+		return &converted, nil
 	case json.Number:
-		f, err := v.Float64()
+		converted, err := value.Float64()
 		if err != nil {
 			return nil, checkerdef.NewConfigError(key, "must be a number")
 		}
 
-		return &f, nil
+		return &converted, nil
 	default:
 		return nil, checkerdef.NewConfigError(key, "must be a number")
 	}
 }
 
+// readThreshold adapts readFloatPtr's sentinel back to "(nil, nil) means
+// absent" for the caller.
+func readThreshold(configMap map[string]any, key string) (*float64, error) {
+	value, err := readFloatPtr(configMap, key)
+	if errors.Is(err, errThresholdAbsent) {
+		return nil, nil //nolint:nilnil // absence is the documented outcome here
+	}
+
+	return value, err
+}
+
 // readStringMap reads a map[string]string-shaped key, tolerating the
-// map[string]any shape JSON decoding produces.
+// map[string]any shape JSON decoding produces. An absent key yields an empty
+// map — every caller tests it with len(), so "absent" and "empty" mean the
+// same thing here.
 func readStringMap(configMap map[string]any, key string) (map[string]string, error) {
 	raw, present := configMap[key]
 	if !present || raw == nil {
-		return nil, nil
+		return map[string]string{}, nil
 	}
 
-	switch v := raw.(type) {
+	switch typed := raw.(type) {
 	case map[string]string:
-		return v, nil
+		return typed, nil
 	case map[string]any:
-		out := make(map[string]string, len(v))
+		out := make(map[string]string, len(typed))
 
-		for k, val := range v {
-			s, ok := val.(string)
+		for name, val := range typed {
+			str, ok := val.(string)
 			if !ok {
-				return nil, checkerdef.NewConfigErrorf(key, "value for %q must be a string", k)
+				return nil, checkerdef.NewConfigErrorf(key, "value for %q must be a string", name)
 			}
 
-			out[k] = s
+			out[name] = str
 		}
 
 		return out, nil
@@ -390,8 +408,8 @@ func (c *PrometheusConfig) validateTarget() error {
 //   - `==` / `!=` accept criticalValue only — a "warning tier" for an equality
 //     test is meaningless (there is no ordering between two equality targets).
 func (c *PrometheusConfig) validateThresholds() error {
-	op := c.EffectiveOperator()
-	if !slices.Contains(validOperators, op) {
+	operator := c.EffectiveOperator()
+	if !slices.Contains(validOperators, operator) {
 		return checkerdef.NewConfigErrorf(keyOperator, "must be one of %s", strings.Join(validOperators, " "))
 	}
 
@@ -401,10 +419,11 @@ func (c *PrometheusConfig) validateThresholds() error {
 		)
 	}
 
-	if slices.Contains(equalityOps, op) {
+	if slices.Contains(equalityOps, operator) {
 		if c.WarningValue != nil {
 			return checkerdef.NewConfigErrorf(
-				keyWarningValue, "is not supported with the %q operator; use %s only", op, keyCriticalValue,
+				keyWarningValue, "is not supported with the %q operator; use %s only",
+				operator, keyCriticalValue,
 			)
 		}
 
@@ -417,15 +436,17 @@ func (c *PrometheusConfig) validateThresholds() error {
 
 	warning, critical := *c.WarningValue, *c.CriticalValue
 
-	if slices.Contains(orderedGreaters, op) && critical < warning {
+	if slices.Contains(orderedGreaters, operator) && critical < warning {
 		return checkerdef.NewConfigError(keyCriticalValue, fmt.Sprintf(
-			"must be >= %s (%g) for the %q operator, got %g", keyWarningValue, warning, op, critical,
+			"must be >= %s (%g) for the %q operator, got %g",
+			keyWarningValue, warning, operator, critical,
 		))
 	}
 
-	if slices.Contains(orderedLessers, op) && critical > warning {
+	if slices.Contains(orderedLessers, operator) && critical > warning {
 		return checkerdef.NewConfigError(keyCriticalValue, fmt.Sprintf(
-			"must be <= %s (%g) for the %q operator, got %g", keyWarningValue, warning, op, critical,
+			"must be <= %s (%g) for the %q operator, got %g",
+			keyWarningValue, warning, operator, critical,
 		))
 	}
 

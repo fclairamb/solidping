@@ -85,7 +85,7 @@ func fetchPromQL(ctx context.Context, cfg *PrometheusConfig) (*resolution, error
 
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := readCapped(resp.Body)
+	body, err := readCapped(resp.Body, capHintPromQL)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,9 @@ func resolvePromQLVector(cfg *PrometheusConfig, raw json.RawMessage) (*resolutio
 
 	matched := make([]series, 0, len(samples))
 
-	for _, sample := range samples {
+	for idx := range samples {
+		sample := &samples[idx]
+
 		value, err := sampleValue(sample.Value)
 		if err != nil {
 			return nil, err
@@ -169,8 +171,10 @@ func resolvePromQLVector(cfg *PrometheusConfig, raw json.RawMessage) (*resolutio
 // sampleValue extracts the numeric half of a [timestamp, "value"] pair. The
 // Prometheus API serializes the value as a JSON string.
 func sampleValue(raw []json.RawMessage) (float64, error) {
-	//nolint:mnd // the API pair is exactly [timestamp, "value"]
-	if len(raw) != 2 {
+	// The API pair is exactly [timestamp, "value"].
+	const pairLen = 2
+
+	if len(raw) != pairLen {
 		return 0, fmt.Errorf("%w: expected [timestamp, value], got %d elements", errPromQLSample, len(raw))
 	}
 

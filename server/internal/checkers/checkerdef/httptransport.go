@@ -50,7 +50,7 @@ func BuildHTTPTransport(
 	if skipTLSVerify {
 		// InsecureSkipVerify is only set when the operator explicitly
 		// opted out of verification via verifySsl: false.
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit opt-out
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	return transport

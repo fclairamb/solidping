@@ -71,7 +71,8 @@ func labelsOf(metric *dto.Metric) map[string]string {
 // flattenSummary expands a summary into `_sum`, `_count` and per-quantile
 // series, exactly as the exposition format renders them.
 func flattenSummary(name string, base map[string]string, summary *dto.Summary) []series {
-	out := make([]series, 0, len(summary.GetQuantile())+2) //nolint:mnd // _sum + _count
+	// +2 for the _sum and _count series.
+	out := make([]series, 0, len(summary.GetQuantile())+2)
 
 	out = append(out,
 		series{Name: name + "_sum", Labels: copyLabels(base), Value: summary.GetSampleSum()},
@@ -92,7 +93,8 @@ func flattenSummary(name string, base map[string]string, summary *dto.Summary) [
 func flattenHistogram(name string, base map[string]string, histogram *dto.Histogram) []series {
 	// The parsed bucket list already carries the +Inf bucket when the target
 	// exposes one; synthesizing another would double-match `le="+Inf"`.
-	out := make([]series, 0, len(histogram.GetBucket())+2) //nolint:mnd // _sum + _count
+	// +2 for the _sum and _count series.
+	out := make([]series, 0, len(histogram.GetBucket())+2)
 
 	out = append(out,
 		series{Name: name + "_sum", Labels: copyLabels(base), Value: histogram.GetSampleSum()},
@@ -134,16 +136,16 @@ func formatFloat(f float64) string {
 func selectSeries(all []series, metric string, wanted map[string]string) []series {
 	matched := make([]series, 0, 1)
 
-	for _, s := range all {
-		if s.Name != metric {
+	for idx := range all {
+		if all[idx].Name != metric {
 			continue
 		}
 
-		if !labelsMatch(s.Labels, wanted) {
+		if !labelsMatch(all[idx].Labels, wanted) {
 			continue
 		}
 
-		matched = append(matched, s)
+		matched = append(matched, all[idx])
 	}
 
 	return matched
@@ -166,8 +168,8 @@ func labelsMatch(have, wanted map[string]string) bool {
 // turns that into an explicit ambiguity error.
 func aggregate(matched []series, match string) (float64, error) {
 	values := make([]float64, 0, len(matched))
-	for _, s := range matched {
-		values = append(values, s.Value)
+	for idx := range matched {
+		values = append(values, matched[idx].Value)
 	}
 
 	switch match {
