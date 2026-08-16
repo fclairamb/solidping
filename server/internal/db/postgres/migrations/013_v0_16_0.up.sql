@@ -56,6 +56,15 @@ comment on column workers.capabilities is
 --      elements (rendered `{a,NULL}` — uppercase, out of charset) and
 --      multi-dimensional arrays (`{{a}}`). Any element needing quoting fails,
 --      which is precisely the set of elements that are not bare slugs.
+--
+--      THE NAME `null` IS THEREBY RESERVED, AND THAT IS DELIBERATE. `array_out`
+--      quotes any element equal to "NULL" case-insensitively, so the *string*
+--      "null" renders as `{"null"}` and this regex refuses it — which is the
+--      only thing that keeps the rendering unambiguous, since a BARE `NULL` in
+--      the text form is how an actual NULL element is spelled. A capability
+--      literally named `null` is not plausible, and both the SQLite triggers
+--      and models.ValidateCapabilitySet reject it explicitly so all three
+--      layers agree; see `dbcaptest.SharedCases`.
 --   2. duplicates — a back-reference regex: some element, delimited by `{` or
 --      `,`, occurring again later in the same array.
 --

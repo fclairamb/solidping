@@ -55,6 +55,21 @@ func SharedCases() []Case {
 		{"empty-string-among-others", `'{ipv4,""}'`, `'["ipv4",""]'`, false},
 		{"null-element", "array['a', null]", `'["a",null]'`, false},
 
+		// --- rejected: the reserved name `null` ---
+		//
+		// THE CROSS-DIALECT TRAP, AND WHY THIS TABLE EXISTS. Postgres quotes any
+		// element equal to "NULL" case-insensitively, because a bare `NULL` in
+		// an array's text form IS the NULL element — so `array['null']` renders
+		// `{"null"}` and the shape regex refuses it. Nothing in the JSON
+		// representation would stop SQLite storing `["null"]`, so the triggers
+		// reject it explicitly. Without these cases an agent reporting a
+		// capability named `null` would pass the Go guard, store on SQLite and
+		// hard-fail the Postgres write — taking last_active_at with it.
+		{"reserved-name-null", "array['null']", `'["null"]'`, false},
+		{"reserved-name-null-among-others", "array['ipv4', 'null']", `'["ipv4","null"]'`, false},
+		{"reserved-name-null-uppercase", "array['NULL']", `'["NULL"]'`, false},
+		{"null-is-only-reserved-exactly", "'{nullx,xnull}'", `'["nullx","xnull"]'`, true},
+
 		// --- rejected: out of charset ---
 		{"uppercase", "'{IPv6}'", `'["IPv6"]'`, false},
 		{"underscore", "'{ip_v6}'", `'["ip_v6"]'`, false},

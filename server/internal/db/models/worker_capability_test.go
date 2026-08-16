@@ -50,6 +50,15 @@ func TestValidateCapabilitySetMirrorsTheDatabase(t *testing.T) {
 		{"empty-among-others", []string{"ipv4", ""}, false},
 		{"duplicate", []string{"ipv4", "ipv4"}, false},
 		{"duplicate-separated", []string{"ipv4", "ipv6", "ipv4"}, false},
+		// The reserved name. Postgres quotes any element equal to "NULL"
+		// case-insensitively (a bare NULL in an array's text form IS the NULL
+		// element), so its CHECK refuses the name; SQLite would happily store
+		// it. Rejecting it here is what stops a set that passes this guard from
+		// hard-failing the Postgres write and taking last_active_at with it.
+		{"reserved-null", []string{"null"}, false},
+		{"reserved-null-among-others", []string{"ipv4", "null"}, false},
+		{"reserved-null-uppercase", []string{"NULL"}, false},
+		{"null-is-only-reserved-exactly", []string{"nullx", "xnull"}, true},
 		{"uppercase", []string{"IPv6"}, false},
 		{"underscore", []string{"ip_v6"}, false},
 		{"dot", []string{"tls.13"}, false},

@@ -37,6 +37,12 @@ alter table workers add column capabilities text
 --   * no empty-string element
 --   * names limited to the `[a-z0-9-]` slug charset (rejects `IPv6`, `ip_v6`,
 --     `a,b`, ` `)
+--   * the name `null` is RESERVED — see the Postgres file: `array_out` quotes
+--     any element equal to "NULL" case-insensitively, so Postgres cannot store
+--     the string "null" without it looking like the NULL element. Nothing here
+--     would stop it, which is exactly the cross-dialect divergence the parity
+--     table exists to catch, so it is rejected explicitly. `lower()` is
+--     belt-and-braces: the charset rule already forces lowercase.
 --   * no duplicates
 create trigger workers_capabilities_shape_insert
 before insert on workers
@@ -48,6 +54,7 @@ begin
     where json_each.type <> 'text'
        or json_each.value = ''
        or json_each.value glob '*[^a-z0-9-]*'
+       or lower(json_each.value) = 'null'
   )
   or (select count(*) from json_each(new.capabilities))
      <> (select count(distinct json_each.value) from json_each(new.capabilities));
@@ -65,6 +72,7 @@ begin
     where json_each.type <> 'text'
        or json_each.value = ''
        or json_each.value glob '*[^a-z0-9-]*'
+       or lower(json_each.value) = 'null'
   )
   or (select count(*) from json_each(new.capabilities))
      <> (select count(distinct json_each.value) from json_each(new.capabilities));

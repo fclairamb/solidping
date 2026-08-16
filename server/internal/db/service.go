@@ -201,9 +201,13 @@ type Service interface {
 	// Returns the registered/updated worker.
 	RegisterOrUpdateWorker(ctx context.Context, worker *models.Worker) (*models.Worker, error)
 	// UpdateWorkerHeartbeat updates the worker's last_active_at and updated_at
-	// timestamps, and refreshes the self-reported egress families carried by
-	// egress. A nil field in egress leaves that column untouched — an executor
-	// that cannot answer never overwrites a known value with a guess.
+	// timestamps, and refreshes its self-reported capability set.
+	//
+	// THE SET IS THREE-STATE. A NIL slice means "not reported" and leaves the
+	// stored column exactly as it was — an executor that cannot answer never
+	// overwrites a known set with a guess. A NON-NIL EMPTY slice is a different
+	// statement, "I reported, and I have none of them", and IS written. Anything
+	// that collapses the two turns "unknown" into "no".
 	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, capabilities []string) error
 
 	// Deported-agent operations (spec 2026-07-16-02).

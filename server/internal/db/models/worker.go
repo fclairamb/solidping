@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -116,6 +117,17 @@ func ValidateCapabilitySet(capabilities []string) error {
 			}
 		}
 
+		// `null` is RESERVED, not merely discouraged. Postgres renders any
+		// element equal to "NULL" case-insensitively in quotes (`{"null"}`),
+		// because a BARE `NULL` in an array's text form IS the NULL element —
+		// so the `text[]` CHECK constraint refuses the name outright. Without
+		// this branch a set containing it would pass here, store fine on
+		// SQLite, and hard-fail the Postgres write, taking last_active_at down
+		// with it: precisely the liveness failure this validator prevents.
+		if strings.EqualFold(name, reservedCapabilityNull) {
+			return fmt.Errorf("%w: %q is reserved", ErrInvalidCapabilitySet, name)
+		}
+
 		if _, dup := seen[name]; dup {
 			return fmt.Errorf("%w: %q reported twice", ErrInvalidCapabilitySet, name)
 		}
@@ -128,6 +140,10 @@ func ValidateCapabilitySet(capabilities []string) error {
 
 // ErrInvalidCapabilitySet is returned by ValidateCapabilitySet.
 var ErrInvalidCapabilitySet = errors.New("invalid capability set")
+
+// reservedCapabilityNull is the one name no dialect may store — see
+// ValidateCapabilitySet for why Postgres cannot represent it unambiguously.
+const reservedCapabilityNull = "null"
 
 // NewWorker creates a new worker with generated UID.
 func NewWorker(slug, name string) *Worker {
