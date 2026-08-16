@@ -31,23 +31,10 @@ const smsAckTokenTTL = 7 * 24 * time.Hour
 // list on the connection. Per-user phone paging goes through the escalation
 // dispatcher, not this sender.
 type TwilioSender struct {
-	// BaseURL overrides the Twilio API base for tests. Empty = the real API.
+	// BaseURL overrides the Twilio API base for tests. Empty = the real API,
+	// in which case the connection's region decides the host (see
+	// sms.TwilioBaseURL, which owns that precedence for every send path).
 	BaseURL string
-}
-
-// resolveBaseURL decides which Twilio host a send goes to. Precedence: the
-// test override (BaseURL) wins when set — it exists only so tests can point
-// the sender at an httptest fake, and a test that sets it always wants that
-// exact host regardless of the connection's region. In real operation
-// BaseURL is always empty, so the connection's region decides:
-// twilio.BaseURLForRegion("") still resolves to twilio.DefaultBaseURL, so a
-// connection with no region behaves exactly as before this field existed.
-func (s *TwilioSender) resolveBaseURL(region string) string {
-	if s.BaseURL != "" {
-		return s.BaseURL
-	}
-
-	return twilio.BaseURLForRegion(region)
 }
 
 // Send delivers an SMS to every configured shared recipient.

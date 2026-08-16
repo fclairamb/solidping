@@ -67,12 +67,18 @@ type codeTransport func(ctx context.Context, to, code string) error
 // resolveCodeTransport picks the delivery transport for a contact type and
 // fails early when the provider it needs is unavailable — we must never stamp
 // a code we cannot deliver.
+//
+// `to` is the destination the code will go to. It is needed here, before a
+// code is stamped, because the SMS path clears the instance-spend guards at
+// this point: a verification code is an outbound SMS on the same bill as an
+// escalation page, and refusing it after stamping would burn a code and a
+// resend slot for a message that was never going to be sent.
 func (s *Service) resolveCodeTransport(
-	ctx context.Context, orgUID, contactType string,
+	ctx context.Context, orgUID, contactType, to string,
 ) (codeTransport, error) {
 	switch contactType {
 	case models.UserContactTypePhone:
-		sender, err := s.resolveSMSSender(ctx, orgUID)
+		sender, err := s.resolveGuardedSMSSender(ctx, orgUID, to)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +129,7 @@ func (s *Service) VerifyContact(
 	}
 
 	// Resolve the provider first so we don't stamp a code we can't deliver.
-	send, err := s.resolveCodeTransport(ctx, orgUID, contact.Type)
+	send, err := s.resolveCodeTransport(ctx, orgUID, contact.Type, contact.Value)
 	if err != nil {
 		return err
 	}

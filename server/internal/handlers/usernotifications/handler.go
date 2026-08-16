@@ -236,8 +236,13 @@ func (h *Handler) handleVerifyError(writer http.ResponseWriter, err error) error
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrNoProvider), errors.Is(err, ErrNoWhatsAppProvider):
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, err.Error())
-	case errors.Is(err, ErrResendTooSoon), errors.Is(err, ErrTooManyAttempts):
-		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeValidationError, err.Error())
+	case errors.Is(err, ErrSMSDestinationNotAllowed):
+		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			ErrSMSDestinationNotAllowed.Error())
+	case errors.Is(err, ErrResendTooSoon), errors.Is(err, ErrTooManyAttempts),
+		errors.Is(err, ErrSMSInstanceCapReached):
+		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeValidationError,
+			http429Message(err))
 	case errors.Is(err, ErrNotAPhoneContact),
 		errors.Is(err, ErrAlreadyVerified),
 		errors.Is(err, ErrNoPendingCode),
@@ -262,12 +267,42 @@ func (h *Handler) TestRoute(writer http.ResponseWriter, req *http.Request) error
 		req.Context(), httpx.Param(req, "org"), user, routeUID, h.emailSender, h.slackSender, h.webPushOptions,
 	)
 	if err != nil {
+		// An instance-spend guard refusal is a rate limit, not a misconfigured
+		// provider, and its wrapped cause carries operator-side detail (the cap
+		// figure) that a member of one organization has no business reading.
+		if errors.Is(err, ErrSMSInstanceCapReached) {
+			return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeValidationError,
+				"test failed: "+ErrSMSInstanceCapReached.Error())
+		}
+
+		if errors.Is(err, ErrSMSDestinationNotAllowed) {
+			return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+				"test failed: "+ErrSMSDestinationNotAllowed.Error())
+		}
+
 		// 422 for "provider not configured" style errors.
 		errMsg := "test failed: " + err.Error()
+
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, errMsg)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
 
 	return nil
+}
+
+// http429Message keeps a rate-limit response to the sentinel's own wording:
+// the wrapped cause carries operator-side detail (a country code, a cap
+// figure) that a member of one organization has no business reading.
+func http429Message(err error) string {
+	switch {
+	case errors.Is(err, ErrSMSInstanceCapReached):
+		return ErrSMSInstanceCapReached.Error()
+	case errors.Is(err, ErrResendTooSoon):
+		return ErrResendTooSoon.Error()
+	case errors.Is(err, ErrTooManyAttempts):
+		return ErrTooManyAttempts.Error()
+	default:
+		return err.Error()
+	}
 }

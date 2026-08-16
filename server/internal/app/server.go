@@ -1134,6 +1134,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// Two-mode SMS: the org's own Twilio integration when it has one, the
 		// instance provider otherwise.
 		usernotifications.WithSMSResolver(s.services.SMS),
+		// Verification codes and the test button are outbound SMS on the same
+		// bill as an escalation page, so the instance-spend guards apply to
+		// them too — otherwise they would be the unguarded way to spend the
+		// instance's money on a premium-rate destination.
+		usernotifications.WithEntitlements(s.services.Entitlements),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
