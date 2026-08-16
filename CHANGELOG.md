@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.0](https://github.com/fclairamb/solidping/compare/v0.15.1...v0.16.0) (2026-08-16)
+
+
+### Features
+
+* prometheus checks, RDAP domain expiry, instance-level SMS and three-state region capabilities ([#226](https://github.com/fclairamb/solidping/issues/226)) ([a5ee7c4](https://github.com/fclairamb/solidping/commit/a5ee7c4397499f9d5d216164b6bba12859c464b0))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#222](https://github.com/fclairamb/solidping/issues/222)) ([55b475c](https://github.com/fclairamb/solidping/commit/55b475c9702c06b88656f01b8021fb8f488e19cd))
+* **deps:** update module github.com/oapi-codegen/runtime to v1.7.0 ([#228](https://github.com/fclairamb/solidping/issues/228)) ([27a5b78](https://github.com/fclairamb/solidping/commit/27a5b78cbdbd2d579dd5640adf9e4408447eab54))
+* **deps:** update module github.com/slack-go/slack to v0.29.0 ([#227](https://github.com/fclairamb/solidping/issues/227)) ([2b82ed8](https://github.com/fclairamb/solidping/commit/2b82ed85de6f1c1f434bbd7ed66cfe52b71583cd))
+* status page dark mode and per-region graphs, Telegram follow-through, shared email templates ([#224](https://github.com/fclairamb/solidping/issues/224)) ([54b97bd](https://github.com/fclairamb/solidping/commit/54b97bd0491f31191d8a444a4252de1b9308a337))
+* **ui:** clean up tooltips, trim the top bars, draw event dots ([#225](https://github.com/fclairamb/solidping/issues/225)) ([668d157](https://github.com/fclairamb/solidping/commit/668d157793a22a771969dd4ae844bd665b6f480f))
+
 ## [Unreleased]
 
 ### Security — ⚠ Breaking
