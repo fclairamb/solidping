@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/fclairamb/solidping/compare/v0.16.0...v0.16.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/urfave/cli/v3 to v3.11.0 ([#229](https://github.com/fclairamb/solidping/issues/229)) ([ef34e53](https://github.com/fclairamb/solidping/commit/ef34e53a414ec27c780e0079787cb1f7a8c7d917))
+
 ## [0.16.0](https://github.com/fclairamb/solidping/compare/v0.15.1...v0.16.0) (2026-08-16)
 
 
