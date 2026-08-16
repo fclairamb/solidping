@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Tooltip,
@@ -6,6 +7,20 @@ import {
 } from "@/components/ui/tooltip";
 import type { AvailabilityPoint } from "@/api/hooks";
 import { statusStyle } from "@/lib/status-style";
+import { segmentGeometry } from "@/lib/segment-layout";
+
+// Preferred gap between two segments, in CSS pixels.
+const TARGET_GAP_PX = 3;
+// Height of the bar, and the corner radius of a segment. Both live here rather
+// than in classes because the segments are SVG shapes now — see
+// lib/segment-layout.ts for why the bar is drawn instead of laid out.
+const BAR_HEIGHT_PX = 28;
+const SEGMENT_RADIUS_PX = 2;
+// Width assumed before the row has been measured. `preserveAspectRatio="none"`
+// scales the drawing to the real width either way, so a stale or placeholder
+// value shifts nothing visually except the corner radius, and only until the
+// first measurement lands.
+const ASSUMED_ROW_WIDTH_PX = 1000;
 
 function getBarColor(status: string) {
   // noData keeps its distinct light-gray bar; every other status (including
@@ -13,6 +28,15 @@ function getBarColor(status: string) {
   if (status === "noData" || status === "unknown")
     return "bg-status-neutral/40";
   return statusStyle(status).color;
+}
+
+// Segment fill for the drawn bar. noData keeps the muted, half-strength
+// treatment its `bg-status-neutral/40` class gave it; every other status takes
+// the solid colour straight from the shared style table.
+function getSegmentFill(status: string): { fill: string; opacity: number } {
+  if (status === "noData" || status === "unknown")
+    return { fill: "var(--status-neutral)", opacity: 0.4 };
+  return { fill: statusStyle(status).barFill, opacity: 1 };
 }
 
 interface AvailabilityBarProps {
@@ -34,6 +58,30 @@ export function AvailabilityBar({
   const { t, i18n } = useTranslation();
 
   const isHourly = bucketUnit === "hour";
+
+  // Measure the row so the drawing's user units are CSS pixels — that keeps the
+  // corner radius round and the geometry exact. Nothing breaks if the
+  // measurement is stale: the SVG just scales.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [rowWidth, setRowWidth] = useState(0);
+
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const measure = () => setRowWidth(el.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const viewWidth = rowWidth > 0 ? rowWidth : ASSUMED_ROW_WIDTH_PX;
+  const geometry = segmentGeometry(
+    viewWidth,
+    dailyAvailability.length,
+    TARGET_GAP_PX,
+  );
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + "T00:00:00");
@@ -59,48 +107,70 @@ export function AvailabilityBar({
     <div className="mt-2">
       {/* `py-1` reserves room for the hover lift below so a grown segment is
           not clipped by the card's own overflow. */}
-      <div className="flex gap-[3px] py-1">
-        {dailyAvailability.map((point) => (
-          <Tooltip key={point.time ?? point.date}>
-            <TooltipTrigger asChild>
-              <div
-                data-testid="availability-bar-segment"
-                // rounded-[2px], not rounded-sm: --radius is 10px here, so
-                // rounded-sm (6px) turned these ~20px-wide segments into blobs.
-                // Hover grows the segment instead of fading it — the old
-                // opacity fade desaturated the status color, which is the one
-                // thing on this page that has to stay readable.
-                className={`h-7 flex-1 origin-center rounded-[2px] ${getBarColor(point.status)} transition-transform duration-150 ease-out hover:scale-y-[1.18]`}
-              />
-            </TooltipTrigger>
-            {/* translate="no" — this whole subtree is poll-driven text whose
-                shape changes between renders (the noData branch swaps one <p>
-                for another). A machine translator re-parents those text nodes
-                into <font> wrappers and React's next commit then fails with
-                "removeChild on Node". See NO_TRANSLATE in status-page-view.tsx. */}
-            <TooltipContent translate="no">
-              {/* Status is carried by a dot rather than by the tooltip's own
-                  background, so the surface stays neutral in both themes and
-                  the color still says up / degraded / down at a glance. */}
-              <p className="flex items-center gap-1.5 font-medium">
-                <span
-                  aria-hidden="true"
-                  className={`inline-block size-2 shrink-0 rounded-full ${getBarColor(point.status)}`}
-                />
-                {isHourly ? formatHour(point) : formatDate(point.date)}
-              </p>
-              {point.status !== "noData" ? (
-                <p className="mt-0.5 pl-3.5 text-muted-foreground tabular-nums">
-                  {point.availabilityPct.toFixed(2)}% {t("uptime")}
-                </p>
-              ) : (
-                <p className="mt-0.5 pl-3.5 text-muted-foreground">
-                  {t("noData")}
-                </p>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        ))}
+      <div ref={rowRef} className="py-1">
+        {geometry && (
+          <svg
+            width="100%"
+            height={BAR_HEIGHT_PX}
+            viewBox={`0 0 ${viewWidth} ${BAR_HEIGHT_PX}`}
+            // "none": the drawing is stretched to the row's real width, so the
+            // segments stay identical to each other whatever that width is.
+            preserveAspectRatio="none"
+            className="block"
+          >
+            {dailyAvailability.map((point, index) => {
+              const { fill, opacity } = getSegmentFill(point.status);
+              return (
+              <Tooltip key={point.time ?? point.date}>
+                <TooltipTrigger asChild>
+                  <rect
+                    data-testid="availability-bar-segment"
+                    x={index * geometry.pitch}
+                    y={0}
+                    width={geometry.width}
+                    height={BAR_HEIGHT_PX}
+                    rx={SEGMENT_RADIUS_PX}
+                    fill={fill}
+                    fillOpacity={opacity}
+                    // Hover grows the segment instead of fading it — the old
+                    // opacity fade desaturated the status color, which is the
+                    // one thing on this page that has to stay readable.
+                    // fill-box scopes the scale to the rect itself; without it
+                    // an SVG child scales about the whole canvas.
+                    className="origin-center [transform-box:fill-box] transition-transform duration-150 ease-out hover:scale-y-[1.18]"
+                  />
+                </TooltipTrigger>
+                {/* translate="no" — this whole subtree is poll-driven text whose
+                    shape changes between renders (the noData branch swaps one <p>
+                    for another). A machine translator re-parents those text nodes
+                    into <font> wrappers and React's next commit then fails with
+                    "removeChild on Node". See NO_TRANSLATE in status-page-view.tsx. */}
+                <TooltipContent translate="no">
+                  {/* Status is carried by a dot rather than by the tooltip's own
+                      background, so the surface stays neutral in both themes and
+                      the color still says up / degraded / down at a glance. */}
+                  <p className="flex items-center gap-1.5 font-medium">
+                    <span
+                      aria-hidden="true"
+                      className={`inline-block size-2 shrink-0 rounded-full ${getBarColor(point.status)}`}
+                    />
+                    {isHourly ? formatHour(point) : formatDate(point.date)}
+                  </p>
+                  {point.status !== "noData" ? (
+                    <p className="mt-0.5 pl-3.5 text-muted-foreground tabular-nums">
+                      {point.availabilityPct.toFixed(2)}% {t("uptime")}
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 pl-3.5 text-muted-foreground">
+                      {t("noData")}
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+              );
+            })}
+          </svg>
+        )}
       </div>
       {/* Same reasoning: every label here is recomputed from poll data, and the
           middle span appears/disappears with it. */}

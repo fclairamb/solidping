@@ -177,6 +177,61 @@ test.describe("Public status page — response-time chart", () => {
     expect(statuses).toEqual(["up", "down", "up"]);
   });
 
+  test("regions sampling on staggered timestamps still draw one line each", async ({
+    page,
+  }) => {
+    // Every region checks once a minute, but each on its own second of the
+    // minute — which is what real workers do. Keyed on the raw timestamp that
+    // pivots into one row per region-sample, each row holding a single value
+    // and nulls for the others; with connectNulls={false} no Area then has two
+    // adjacent points to draw a segment between, and the chart renders
+    // completely BLANK. This asserts the curves actually exist.
+    const phases = [58, 8, 26, 31, 43];
+    const regions = ["jp1", "us1", "aws-paris", "default", "eu2"];
+    const base = Date.now() - 20 * 60_000;
+    const series = regions.map((region, r) => ({
+      region,
+      points: Array.from({ length: 12 }, (_, i) => ({
+        time: new Date(
+          Math.floor(base / 60_000) * 60_000 + i * 60_000 + phases[r] * 1000,
+        ).toISOString(),
+        durationP95: 20 + r * 40,
+        status: "up",
+      })),
+    }));
+    await mockStatusPage(page, series);
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.getByTestId("response-time-chart-legend-item"),
+    ).toHaveCount(regions.length, { timeout: 10000 });
+
+    // One drawn curve per region, each one an actual multi-point path rather
+    // than an empty/degenerate `d`.
+    const paths = await page
+      .locator(".recharts-area-curve")
+      .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("d") ?? ""));
+    expect(paths).toHaveLength(regions.length);
+    for (const d of paths) {
+      // "M x,y C …" — a curve through every sample. A blank series yields ""
+      // or a single moveto.
+      expect(d.length).toBeGreaterThan(20);
+      expect(d).toContain("C");
+    }
+
+    // The five regions sit at clearly different response times, so the drawn
+    // curves must occupy five different bands of the plot — a sanity check
+    // that they are all really on screen, not stacked at zero.
+    const midYs = await page
+      .locator(".recharts-area-curve")
+      .evaluateAll((nodes) =>
+        nodes.map((n) => (n as SVGPathElement).getBoundingClientRect().y),
+      );
+    expect(new Set(midYs.map((y) => Math.round(y))).size).toBe(regions.length);
+  });
+
   test("two-region legend stays compact on a mobile viewport", async ({
     page,
   }) => {

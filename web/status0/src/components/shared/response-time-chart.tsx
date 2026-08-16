@@ -147,6 +147,37 @@ function CustomTooltip({
   );
 }
 
+// connectNulls={false} is deliberate — a gap in the data must read as a gap,
+// not as a straight line across an outage. Its cost is that a sample whose
+// neighbours are both null draws no line segment and so renders as nothing at
+// all. Recharts has no "dot only where the line can't reach" mode, so decide
+// per point: an isolated sample gets a dot, everything else stays clean.
+interface DotRenderProps {
+  cx?: number;
+  cy?: number;
+  index?: number;
+  // recharts types this as React.Key | null; it is only forwarded, never read.
+  key?: React.Key | null;
+}
+
+function isolatedDot(rows: readonly unknown[], key: string, color: string) {
+  const hasValue = (index: number) =>
+    (rows[index] as Record<string, unknown> | undefined)?.[key] != null;
+
+  return function IsolatedDot(props: DotRenderProps) {
+    const { cx, cy, index } = props;
+    const i = index ?? -1;
+    const isolated =
+      cx != null && cy != null && hasValue(i) && !hasValue(i - 1) && !hasValue(i + 1);
+    // An empty <g>, not null: recharts expects an element back from a dot
+    // renderer.
+    if (!isolated) return <g key={props.key} />;
+    return (
+      <circle key={props.key} cx={cx} cy={cy} r={2} fill={color} stroke="none" />
+    );
+  };
+}
+
 // Stable per-series chart color, cycling through the shared 5-color chart
 // palette (same tokens dash0's response-time chart uses) in series order —
 // the backend already returns series sorted by region, so this order is
@@ -231,6 +262,7 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
               strokeWidth={1.5}
               fill="url(#colorP95)"
               connectNulls={false}
+              dot={isolatedDot(data, "durationP95", "var(--primary)")}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -410,6 +442,7 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
               strokeWidth={1.5}
               fill={`url(#colorRegion${index})`}
               connectNulls={false}
+              dot={isolatedDot(rows, pointKey(index), seriesColor(index))}
             />
           ))}
         </AreaChart>

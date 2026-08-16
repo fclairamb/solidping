@@ -18,8 +18,12 @@ export type BadgeVariant =
   | "info";
 
 export interface StatusStyle {
-  // Tailwind background class for solid swatches (dots, availability bars).
+  // Tailwind background class for solid swatches (dots, badges).
   color: string;
+  // The same solid colour as a CSS colour value, for SVG `fill`. The
+  // availability bar is drawn rather than laid out (see lib/segment-layout.ts),
+  // and an SVG shape cannot wear a `bg-*` class.
+  barFill: string;
   // recharts / inline SVG fill colour (hex), neutral when not down.
   chartColor: string;
   // Badge variant from components/ui/badge.tsx.
@@ -55,6 +59,7 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "operational":
       return {
         color: "bg-status-ok",
+        barFill: "var(--status-ok)",
         chartColor: NEUTRAL_CHART,
         badgeVariant: "success",
         labelKey: "operational",
@@ -66,6 +71,7 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "warning":
       return {
         color: "bg-status-warning",
+        barFill: "var(--status-warning)",
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "warning",
@@ -77,6 +83,7 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "degraded":
       return {
         color: "bg-status-warning",
+        barFill: "var(--status-warning)",
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "degraded",
@@ -89,6 +96,7 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "down":
       return {
         color: "bg-status-error",
+        barFill: "var(--status-error)",
         chartColor: DOWN_CHART,
         badgeVariant: "destructive",
         labelKey: "outage",
@@ -105,6 +113,7 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
     case "maintenance":
       return {
         color: "bg-primary",
+        barFill: "var(--primary)",
         chartColor: NEUTRAL_CHART,
         badgeVariant: "info",
         labelKey: "underMaintenance",
@@ -121,6 +130,7 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
       // "unknown" for the per-resource case.
       return {
         color: "bg-status-neutral",
+        barFill: "var(--status-neutral)",
         chartColor: NEUTRAL_CHART,
         badgeVariant: "secondary",
         labelKey: "unknown",
