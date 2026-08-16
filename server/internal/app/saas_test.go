@@ -30,11 +30,11 @@ func newSaaSSeedServer(ctx context.Context, t *testing.T) (*Server, *sqlite.Serv
 	return &Server{dbService: dbSvc, config: cfg}, dbSvc
 }
 
-// paramString reads back a seeded string system parameter ("" when absent).
-func paramString(ctx context.Context, t *testing.T, dbSvc *sqlite.Service, key string) string {
+// upgradeTokenParam reads back the seeded upgrade-token secret ("" when absent).
+func upgradeTokenParam(ctx context.Context, t *testing.T, dbSvc *sqlite.Service) string {
 	t.Helper()
 
-	param, err := dbSvc.GetSystemParameter(ctx, key)
+	param, err := dbSvc.GetSystemParameter(ctx, entitlements.ParamBillingUpgradeTokenSecret)
 	require.NoError(t, err)
 	if param == nil {
 		return ""
@@ -56,12 +56,12 @@ func TestSeedUpgradeTokenSecretAbsentLeavesParameterUntouched(t *testing.T) {
 
 	// Nothing set at all → parameter stays absent.
 	r.NoError(srv.SeedSaaSEntitlements(ctx))
-	r.Empty(paramString(ctx, t, dbSvc, entitlements.ParamBillingUpgradeTokenSecret))
+	r.Empty(upgradeTokenParam(ctx, t, dbSvc))
 
 	// A value set out of band survives a re-seed with the env var unset.
 	r.NoError(dbSvc.SetSystemParameter(ctx, entitlements.ParamBillingUpgradeTokenSecret, "set-via-api", true))
 	r.NoError(srv.SeedSaaSEntitlements(ctx))
-	r.Equal("set-via-api", paramString(ctx, t, dbSvc, entitlements.ParamBillingUpgradeTokenSecret))
+	r.Equal("set-via-api", upgradeTokenParam(ctx, t, dbSvc))
 }
 
 // TestSeedUpgradeTokenSecretPresentUpserts covers the seeding path.
@@ -74,12 +74,12 @@ func TestSeedUpgradeTokenSecretPresentUpserts(t *testing.T) {
 
 	r.NoError(srv.SeedSaaSEntitlements(ctx))
 	r.Equal("dedicated-upgrade-token-secret",
-		paramString(ctx, t, dbSvc, entitlements.ParamBillingUpgradeTokenSecret))
+		upgradeTokenParam(ctx, t, dbSvc))
 
 	// A later env change upserts rather than duplicating.
 	t.Setenv(envEntitlementsUpgradeTokenSecret, "rotated-secret")
 	r.NoError(srv.SeedSaaSEntitlements(ctx))
-	r.Equal("rotated-secret", paramString(ctx, t, dbSvc, entitlements.ParamBillingUpgradeTokenSecret))
+	r.Equal("rotated-secret", upgradeTokenParam(ctx, t, dbSvc))
 }
 
 // TestSeedSaaSEntitlementsNoOpOutsideSaaS pins that self-hosted installs never
@@ -93,7 +93,7 @@ func TestSeedSaaSEntitlementsNoOpOutsideSaaS(t *testing.T) {
 	t.Setenv(envEntitlementsUpgradeTokenSecret, "dedicated-upgrade-token-secret")
 
 	r.NoError(srv.SeedSaaSEntitlements(ctx))
-	r.Empty(paramString(ctx, t, dbSvc, entitlements.ParamBillingUpgradeTokenSecret))
+	r.Empty(upgradeTokenParam(ctx, t, dbSvc))
 }
 
 // captureLogs swaps the default slog handler for the duration of the test and

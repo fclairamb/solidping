@@ -17,6 +17,8 @@ import (
 //
 // Deliberately NOT t.Parallel: it resets the process-wide sync.Once, and Go runs
 // sequential tests to completion before any parallel test resumes.
+//
+//nolint:paralleltest // resets the process-wide sync.Once; must run in the sequential phase
 func TestWarnUpgradeTokenFallbackLogsOncePerProcess(t *testing.T) {
 	warnUpgradeTokenFallbackOnce = sync.Once{}
 	t.Cleanup(func() { warnUpgradeTokenFallbackOnce = sync.Once{} })

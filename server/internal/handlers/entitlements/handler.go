@@ -538,7 +538,7 @@ func warnUpgradeTokenFallback(ctx context.Context) {
 // bearer produced the secret — the operator-visible signal that the split of
 // the two credentials is still pending. Empty secret means no billing is
 // configured at all (self-hosted).
-func (h *Handler) upgradeTokenSecret(ctx context.Context) (secret string, viaFallback bool, err error) {
+func (h *Handler) upgradeTokenSecret(ctx context.Context) (string, bool, error) {
 	dedicated, err := h.systemParameterString(ctx, ParamBillingUpgradeTokenSecret)
 	if err != nil {
 		return "", false, err

@@ -498,7 +498,7 @@ func TestUpgradeTokenUsesDedicatedSecret(t *testing.T) {
 }
 
 // TestUpgradeTokenFallsBackToInboundSecret pins acceptance criterion 2: with
-// the dedicated parameter unset, behaviour is exactly what it is today.
+// the dedicated parameter unset, behavior is exactly what it is today.
 func TestUpgradeTokenFallsBackToInboundSecret(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
