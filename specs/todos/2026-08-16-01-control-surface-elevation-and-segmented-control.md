@@ -210,3 +210,32 @@ Consequences of deferring, both of which apply:
 §C (segmented control) and §D (design reference) are unchanged and remain in
 scope, including extracting a `SegmentedControl` primitive and pointing all
 three call sites at it.
+
+## Implementation Plan
+
+1. **Token (§A).** Add `--control` to `web/dash0/src/index.css`: light
+   `oklch(1 0 0)` next to `--card`, dark `oklch(0.16 0.018 250)` in the `.dark`
+   block (between `--background` 0.14 and `--card` 0.18). Expose it via
+   `@theme inline` as `--color-control: var(--control)` so `bg-control` exists.
+   No `--input-background`; `--input` stays the border color.
+2. **Apply `bg-control` to the 5 primitives**: `input.tsx`, `textarea.tsx`,
+   `code-textarea.tsx`, `select.tsx` (`SelectTrigger`), `button.tsx` (`outline`).
+3. **De-hand-roll the 3 copies**: `label-input.tsx` switches to the `Input`
+   primitive; `CommandMenu.tsx` (⌘K trigger) and `token-chips-input.tsx` are
+   wrapper elements that no primitive fits, so they take `bg-control` directly.
+4. **`SegmentedControl` primitive (§C)** in `web/dash0/src/components/ui/`:
+   track `inline-flex rounded-lg border bg-muted p-0.5 dark:bg-background`,
+   selected segment `variant="ghost"` + `bg-card shadow-sm hover:bg-card`,
+   unselected plain `ghost`. Options carry `label`, optional `tooltip` and
+   `data-testid`; `aria-pressed` and `data-testid` are preserved verbatim
+   (E2E asserts on them). Point `checks.index.tsx`, `jobs.index.tsx` and
+   `design-reference.tsx` at it.
+5. **Design reference (§D)**: add `--control` and `--input` (documented as a
+   *border* color) to `COLOR_TOKENS`; rewrite the segmented-toggle section to
+   teach raised-pill-on-recessed-track and the dark `bg-muted → bg-background`
+   flip and why (dark `--muted` 0.22 > dark `--card` 0.18).
+6. **Verification**: Playwright spec reading `getComputedStyle` background in
+   light and dark, asserting page < control ≤ card and track < pill; grep that
+   `bg-background` left the 8 control sites; `make build-dash0` + dash0 lint.
+7. **Out of scope**: §B light-ramp re-spacing is deferred; the switch thumb
+   stays `bg-background`.
