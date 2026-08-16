@@ -20,6 +20,11 @@ const (
 	envEntitlementsUpgradeURL    = "SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE"
 	envEntitlementsAdminWrites   = "SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED"
 	envEntitlementsBillingSecret = "SP_ENTITLEMENTS_BILLING_INBOUND_SECRET"
+	// envEntitlementsUpgradeTokenSecret carries the DEDICATED HS256 key that
+	// signs the `#bt=` upgrade token. Deliberately distinct from the inbound
+	// bearer above: a leak of a bearer must not also be the power to mint an
+	// upgrade token for any org. Mirrors billing's BILLING_UPGRADE_TOKEN_SECRET.
+	envEntitlementsUpgradeTokenSecret = "SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET"
 	// Ordered {id, secret} JSON key sets for the signed service channels, one
 	// per direction (see internal/servicesig). The billing service holds the
 	// mirror image as BILLING_SIGNING_KEYS_OUTBOUND / _INBOUND.
@@ -68,9 +73,21 @@ func (s *Server) SeedSaaSEntitlements(ctx context.Context) error {
 			"key", entitlements.ParamBillingInboundSecret)
 	}
 
+	if secret := os.Getenv(envEntitlementsUpgradeTokenSecret); secret != "" {
+		if err := s.dbService.SetSystemParameter(
+			ctx, entitlements.ParamBillingUpgradeTokenSecret, secret, true,
+		); err != nil {
+			return err
+		}
+		slog.InfoContext(ctx, "SaaS: seeded entitlements billing upgrade token secret",
+			"key", entitlements.ParamBillingUpgradeTokenSecret)
+	}
+
 	if err := s.seedSigningKeys(ctx); err != nil {
 		return err
 	}
+
+	s.checkBillingSecretsAreDistinct(ctx)
 
 	if raw := os.Getenv(envEntitlementsAdminWrites); raw != "" {
 		enabled, parseErr := strconv.ParseBool(raw)
@@ -88,6 +105,44 @@ func (s *Server) SeedSaaSEntitlements(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// checkBillingSecretsAreDistinct logs an ERROR when the upgrade-token secret
+// and the inbound bearer hold the same value. Equal secrets are
+// indistinguishable from the unsplit state, and a deployment that believes it
+// has split when it has not is worse than one that knows it has not.
+//
+// Deliberately NOT a startup failure: the value is "correct but not yet
+// rotated", and a hard failure there would strand an otherwise healthy prod
+// boot.
+func (s *Server) checkBillingSecretsAreDistinct(ctx context.Context) {
+	upgrade := s.systemParameterString(ctx, entitlements.ParamBillingUpgradeTokenSecret)
+	inbound := s.systemParameterString(ctx, entitlements.ParamBillingInboundSecret)
+
+	if upgrade == "" || inbound == "" || upgrade != inbound {
+		return
+	}
+
+	slog.ErrorContext(ctx, "SaaS: SECURITY: "+entitlements.ParamBillingUpgradeTokenSecret+
+		" is set to the SAME value as "+entitlements.ParamBillingInboundSecret+
+		"; the upgrade token is still forgeable by anyone holding the service bearer. "+
+		"Generate a distinct secret and set it on both sides "+
+		"(SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET here, BILLING_UPGRADE_TOKEN_SECRET on billing)",
+		"upgradeTokenParam", entitlements.ParamBillingUpgradeTokenSecret,
+		"inboundParam", entitlements.ParamBillingInboundSecret)
+}
+
+// systemParameterString reads a string-valued system parameter, returning ""
+// when it is absent, unreadable or not a string.
+func (s *Server) systemParameterString(ctx context.Context, key string) string {
+	param, err := s.dbService.GetSystemParameter(ctx, key)
+	if err != nil || param == nil {
+		return ""
+	}
+
+	value, _ := param.Value["value"].(string)
+
+	return value
 }
 
 // seedSigningKeys wires the two request-signing key sets and the legacy-bearer
