@@ -53,7 +53,7 @@ require (
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/miekg/dns v1.1.72
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
-	github.com/oapi-codegen/runtime v1.6.0
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/ohler55/ojg v1.28.4
 	github.com/pires/go-proxyproto v0.15.0
 	github.com/pkg/sftp v1.13.11
