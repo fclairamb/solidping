@@ -1,7 +1,7 @@
--- Down migration for the worker egress capability. Teardown/parity only.
+-- Down migration for the worker capability set. Teardown/parity only.
 
-alter table workers drop column if exists egress_ipv6;
+alter table workers drop constraint if exists workers_capabilities_shape;
 
 --bun:split
 
-alter table workers drop column if exists egress_ipv4;
+alter table workers drop column if exists capabilities;
