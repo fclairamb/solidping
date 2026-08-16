@@ -223,3 +223,55 @@ above. Do **not** reach for JSONB or any key/value shape. If a capability ever
 genuinely needs a value, encode it as a slug within the existing charset (e.g.
 `tls13`) or migrate to a richer shape at that point; that is explicitly out of
 scope here.
+
+## Implementation Plan
+
+1. **Migration `013_v0_16_0` rewritten in place, both dialects, both directions.**
+   Drop `egress_ipv4` / `egress_ipv6`; add `capabilities`.
+   - Postgres: `capabilities text[]` + a named `CHECK` constraint. Postgres
+     forbids subqueries in `CHECK`, so the shape is enforced with pure
+     expressions: `array_position(capabilities, NULL) IS NULL` (no NULL
+     elements), a regex over `array_to_string(capabilities, ',')` for the
+     `[a-z0-9-]+` charset and non-empty elements, and a back-reference regex for
+     duplicates.
+   - SQLite: `capabilities text` holding a JSON array, with a column `CHECK`
+     for `json_valid` + `json_type = 'array'`, plus BEFORE INSERT / BEFORE
+     UPDATE triggers that `RAISE(ABORT)` over `json_each` for non-text
+     elements, empty strings, out-of-charset names and duplicates. SQLite also
+     forbids subqueries in `CHECK`, and `json_each` is table-valued, so the
+     element rules live in triggers — that is what makes the two dialects
+     reject exactly the same values.
+
+2. **Model** (`internal/db/models/worker.go`). `Capabilities []string` with
+   `bun:"capabilities,type:text[],array,nullzero"` (the proven `Check.Regions`
+   pattern: pgdialect array on Postgres, JSON text on SQLite; `nullzero` maps a
+   nil slice to SQL NULL while a non-nil empty slice still writes `{}` / `[]`).
+   Delete `WorkerEgress` — the carrier becomes a plain `[]string` where nil
+   means "not reported". Add capability-name constants (`ipv4`, `ipv6`) and a
+   tri-state `Worker.Capability(name) CapabilityState` helper so no caller can
+   read "unknown" as "no".
+
+3. **Wire** (`internal/agents/protocol.go`). Replace `egressIpv4` / `egressIpv6`
+   with `capabilities []string`, deliberately **without** `omitempty` — an empty
+   non-nil set is a real answer ("I have none") and `omitempty` would erase the
+   difference between that and "not reported".
+
+4. **Persistence** (`postgres.go`, `sqlite.go`). One `capabilities` branch in
+   `RegisterOrUpdateWorker`, one in `UpdateWorkerHeartbeat(ctx, uid, []string)`.
+   Both switch to a model-driven `UPDATE ... Column(...)` so the field's bun tag
+   drives the per-dialect encoding. nil still means "do not touch".
+
+5. **Aggregation** (`internal/regions/capabilities.go`). `aggregateIPv6` becomes
+   `aggregate(workers, name)` on the same ANY-not-ALL rule. `capabilitiesFor`
+   emits both `ipv4` and `ipv6`; `IPv4Capability()` mirrors `IPv6Capability()`.
+   Pre-existing keys keep their exact names and values.
+
+6. **Producers.** `egressreport.Current()/From()` return `[]string`;
+   `checkworker.registerWorker`, `backend.WSBackend.claim` and the agent claim
+   handler carry the set.
+
+7. **Tests.** Three-state proofs at the DB level (NULL vs `{}` vs `{"ipv6"}`) on
+   both dialects, heartbeat-preserves-a-known-set, migration `CHECK`/trigger
+   rejection parity across dialects, and a regions-API fixture proving the
+   response is unchanged except for the new `ipv4` key, with `ipv4` itself
+   carrying all three states.
