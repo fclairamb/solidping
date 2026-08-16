@@ -455,7 +455,21 @@ func (h *Handler) recordAgentEgress(
 
 	state.egressWrittenAt = now
 
-	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, frame.Capabilities); err != nil {
+	// The set is untrusted remote input and the column is CHECK-constrained, so
+	// a malformed array would fail this UPDATE — and take last_active_at down
+	// with it, quietly starving the region of liveness while the agent happily
+	// keeps running checks. Drop the bad set instead and still write the
+	// heartbeat: nil means "not reported", which leaves whatever is stored
+	// exactly as it was.
+	capabilities := frame.Capabilities
+	if err := models.ValidateCapabilitySet(capabilities); err != nil {
+		h.logger.WarnContext(ctx, "agent reported an unstorable capability set; ignoring it",
+			"error", err, "agent", state.agent.UID)
+
+		capabilities = nil
+	}
+
+	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities); err != nil {
 		h.logger.WarnContext(ctx, "failed to refresh agent worker row",
 			"error", err, "agent", state.agent.UID)
 	}

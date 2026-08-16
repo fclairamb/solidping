@@ -1,6 +1,8 @@
 package models
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 	"time"
 
@@ -85,6 +87,47 @@ func (w *Worker) Capability(name string) CapabilityState {
 
 	return CapabilityStateAbsent
 }
+
+// ValidateCapabilitySet reports whether a reported set is storable: every name
+// a lowercase `[a-z0-9-]+` slug, and no duplicates. It is the Go mirror of the
+// database CHECK constraint (Postgres) and triggers (SQLite).
+//
+// IT EXISTS TO PROTECT LIVENESS, NOT TO REPLACE THE DATABASE. A capability set
+// arrives from a remote agent, so it is untrusted input on a code path that
+// also refreshes last_active_at. Letting a malformed array fail the whole
+// UPDATE would take the region's liveness down with it — the agent would still
+// be running checks while its region quietly went stale. Callers reject the set
+// (falling back to "not reported", which changes nothing) and still write the
+// heartbeat. The database remains the authority that garbage is never stored.
+//
+// A nil set is valid: it means "not reported".
+func ValidateCapabilitySet(capabilities []string) error {
+	seen := make(map[string]struct{}, len(capabilities))
+
+	for _, name := range capabilities {
+		if name == "" {
+			return fmt.Errorf("%w: empty capability name", ErrInvalidCapabilitySet)
+		}
+
+		for _, char := range name {
+			if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '-' {
+				return fmt.Errorf("%w: %q is not a lowercase [a-z0-9-] slug",
+					ErrInvalidCapabilitySet, name)
+			}
+		}
+
+		if _, dup := seen[name]; dup {
+			return fmt.Errorf("%w: %q reported twice", ErrInvalidCapabilitySet, name)
+		}
+
+		seen[name] = struct{}{}
+	}
+
+	return nil
+}
+
+// ErrInvalidCapabilitySet is returned by ValidateCapabilitySet.
+var ErrInvalidCapabilitySet = errors.New("invalid capability set")
 
 // NewWorker creates a new worker with generated UID.
 func NewWorker(slug, name string) *Worker {
