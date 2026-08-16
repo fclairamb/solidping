@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/fclairamb/solidping/compare/v0.16.1...v0.16.2) (2026-08-16)
+
+
+### Bug Fixes
+
+* **status0:** draw the availability bar and align staggered per-region series ([#233](https://github.com/fclairamb/solidping/issues/233)) ([e66443e](https://github.com/fclairamb/solidping/commit/e66443e7a2e8c12786f436279b232305ba462d8b))
+
 ## [0.16.1](https://github.com/fclairamb/solidping/compare/v0.16.0...v0.16.1) (2026-08-16)
 
 
