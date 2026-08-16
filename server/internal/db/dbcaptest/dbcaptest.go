@@ -28,7 +28,7 @@ type Case struct {
 // SharedCases are the values both dialects can represent, with the verdict both
 // must agree on.
 //
-// Note that `{1}` is deliberately absent: in Postgres a `text[]` has no
+// `{1}` is deliberately absent from this list: in Postgres a `text[]` has no
 // non-string elements, so `'{1}'` IS the perfectly legal slug "1" — it is not a
 // value Postgres "refuses", it is one it cannot even express differently. The
 // JSON-typed hazards it stands for are covered by SQLiteOnlyCases below, and

@@ -26,11 +26,11 @@ func newCapDB(t *testing.T) *Service {
 	return svc
 }
 
-func seedCapWorker(t *testing.T, svc *Service, slug string) *models.Worker {
+func seedCapWorker(ctx context.Context, t *testing.T, svc *Service, slug string) *models.Worker {
 	t.Helper()
 
 	region := "eu-west-1"
-	worker, err := svc.RegisterOrUpdateWorker(t.Context(), &models.Worker{
+	worker, err := svc.RegisterOrUpdateWorker(ctx, &models.Worker{
 		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region,
 	})
 	require.NoError(t, err)
@@ -40,12 +40,12 @@ func seedCapWorker(t *testing.T, svc *Service, slug string) *models.Worker {
 
 // reloadCaps reads the column back through the model, which is the only thing
 // that proves the round trip preserves the nil/empty distinction.
-func reloadCaps(t *testing.T, svc *Service, uid string) *models.Worker {
+func reloadCaps(ctx context.Context, t *testing.T, svc *Service, uid string) *models.Worker {
 	t.Helper()
 
 	var row models.Worker
 	require.NoError(t, svc.DB().NewSelect().Model(&row).
-		Where("uid = ?", uid).Scan(t.Context()))
+		Where("uid = ?", uid).Scan(ctx))
 
 	return &row
 }
@@ -62,9 +62,9 @@ func TestWorkerCapabilitiesThreeStatesRoundTrip(t *testing.T) {
 	svc := newCapDB(t)
 	ctx := t.Context()
 
-	unknown := seedCapWorker(t, svc, "wrk-unknown")
-	none := seedCapWorker(t, svc, "wrk-none")
-	both := seedCapWorker(t, svc, "wrk-both")
+	unknown := seedCapWorker(ctx, t, svc, "wrk-unknown")
+	none := seedCapWorker(ctx, t, svc, "wrk-none")
+	both := seedCapWorker(ctx, t, svc, "wrk-both")
 
 	// A worker that never reports: nothing is written at all.
 	r.NoError(svc.UpdateWorkerHeartbeat(ctx, unknown.UID, nil))
@@ -91,18 +91,18 @@ func TestWorkerCapabilitiesThreeStatesRoundTrip(t *testing.T) {
 	r.Equal(`["ipv4","ipv6"]`, *rawBoth)
 
 	// And the same three states come back through the model.
-	r.Nil(reloadCaps(t, svc, unknown.UID).Capabilities)
-	r.Equal([]string{}, reloadCaps(t, svc, none.UID).Capabilities)
-	r.Equal([]string{"ipv4", "ipv6"}, reloadCaps(t, svc, both.UID).Capabilities)
+	r.Nil(reloadCaps(ctx, t, svc, unknown.UID).Capabilities)
+	r.Equal([]string{}, reloadCaps(ctx, t, svc, none.UID).Capabilities)
+	r.Equal([]string{"ipv4", "ipv6"}, reloadCaps(ctx, t, svc, both.UID).Capabilities)
 
 	// Which is what the tri-state accessor reports.
 	r.Equal(models.CapabilityStateUnknown,
-		reloadCaps(t, svc, unknown.UID).Capability(models.CapabilityIPv6))
+		reloadCaps(ctx, t, svc, unknown.UID).Capability(models.CapabilityIPv6))
 	r.Equal(models.CapabilityStateAbsent,
-		reloadCaps(t, svc, none.UID).Capability(models.CapabilityIPv6),
+		reloadCaps(ctx, t, svc, none.UID).Capability(models.CapabilityIPv6),
 		"an empty REPORTED set is a real no, not an unknown")
 	r.Equal(models.CapabilityStatePresent,
-		reloadCaps(t, svc, both.UID).Capability(models.CapabilityIPv6))
+		reloadCaps(ctx, t, svc, both.UID).Capability(models.CapabilityIPv6))
 }
 
 // TestWorkerCapabilitiesHeartbeatWithoutReportKeepsSet: a heartbeat that says
@@ -114,12 +114,12 @@ func TestWorkerCapabilitiesHeartbeatWithoutReportKeepsSet(t *testing.T) {
 	svc := newCapDB(t)
 	ctx := t.Context()
 
-	worker := seedCapWorker(t, svc, "wrk-keep")
+	worker := seedCapWorker(ctx, t, svc, "wrk-keep")
 	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{"ipv4", "ipv6"}))
 
 	for range 3 {
 		r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, nil))
-		r.Equal([]string{"ipv4", "ipv6"}, reloadCaps(t, svc, worker.UID).Capabilities)
+		r.Equal([]string{"ipv4", "ipv6"}, reloadCaps(ctx, t, svc, worker.UID).Capabilities)
 	}
 
 	// The registration path carries the same guarantee — an agent hits it on
@@ -130,7 +130,7 @@ func TestWorkerCapabilitiesHeartbeatWithoutReportKeepsSet(t *testing.T) {
 
 	// But an EXPLICIT empty report is a real statement and does overwrite.
 	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{}))
-	r.Equal([]string{}, reloadCaps(t, svc, worker.UID).Capabilities)
+	r.Equal([]string{}, reloadCaps(ctx, t, svc, worker.UID).Capabilities)
 }
 
 // TestWorkerCapabilitiesConstraintParitySQLite runs the shared verdict table
@@ -138,15 +138,18 @@ func TestWorkerCapabilitiesHeartbeatWithoutReportKeepsSet(t *testing.T) {
 func TestWorkerCapabilitiesConstraintParitySQLite(t *testing.T) {
 	t.Parallel()
 
-	svc := newCapDB(t)
-	ctx := t.Context()
-
 	cases := append(dbcaptest.SharedCases(), dbcaptest.SQLiteOnlyCases()...)
 
 	for i, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
+			// One in-memory database per case: cheap here, and it keeps the
+			// cases independent so a rejected write cannot affect another.
+			svc := newCapDB(t)
+			ctx := t.Context()
 			slug := fmt.Sprintf("cap-%03d", i)
-			worker := seedCapWorker(t, svc, slug)
+			worker := seedCapWorker(ctx, t, svc, slug)
 
 			// UPDATE exercises the update trigger…
 			err := rawSetCaps(ctx, svc, "update workers set capabilities = "+

@@ -242,7 +242,7 @@ func capsLiveWorker(t *testing.T, dbSvc *sqlite.Service, slug, region string, ca
 //
 // `ipv6` must be bit-for-bit what the booleans produced for the same fixture —
 // a v6 worker in eu, a v4-only worker in us — and no other key, name or value
-// may move. Adding `ipv4` was not licence to restructure anything else.
+// may move. Adding `ipv4` did not license restructuring anything else.
 func TestRegionListResponseGainsOnlyTheIPv4Key(t *testing.T) {
 	t.Parallel()
 

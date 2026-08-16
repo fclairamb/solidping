@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -47,11 +48,11 @@ func newCapPG(t *testing.T, port uint32) *Service {
 	return svc
 }
 
-func seedCapWorkerPG(t *testing.T, svc *Service, slug string) *models.Worker {
+func seedCapWorkerPG(ctx context.Context, t *testing.T, svc *Service, slug string) *models.Worker {
 	t.Helper()
 
 	region := "eu-west-1"
-	worker, err := svc.RegisterOrUpdateWorker(t.Context(), &models.Worker{
+	worker, err := svc.RegisterOrUpdateWorker(ctx, &models.Worker{
 		UID: uuid.New().String(), Slug: slug, Name: slug, Region: &region,
 	})
 	require.NoError(t, err)
@@ -59,12 +60,12 @@ func seedCapWorkerPG(t *testing.T, svc *Service, slug string) *models.Worker {
 	return worker
 }
 
-func reloadCapsPG(t *testing.T, svc *Service, uid string) *models.Worker {
+func reloadCapsPG(ctx context.Context, t *testing.T, svc *Service, uid string) *models.Worker {
 	t.Helper()
 
 	var row models.Worker
 	require.NoError(t, svc.DB().NewSelect().Model(&row).
-		Where("uid = ?", uid).Scan(t.Context()))
+		Where("uid = ?", uid).Scan(ctx))
 
 	return &row
 }
@@ -79,9 +80,18 @@ func TestWorkerCapabilities_Postgres(t *testing.T) {
 
 	svc := newCapPG(t, portWorkerCapabilities)
 
-	t.Run("three-states-round-trip", func(t *testing.T) { capThreeStatesPG(t, svc) })
-	t.Run("heartbeat-keeps-set", func(t *testing.T) { capHeartbeatKeepsSetPG(t, svc) })
-	t.Run("constraint-parity", func(t *testing.T) { capConstraintParityPG(t, svc) })
+	t.Run("three-states-round-trip", func(t *testing.T) {
+		t.Parallel()
+		capThreeStatesPG(t, svc)
+	})
+	t.Run("heartbeat-keeps-set", func(t *testing.T) {
+		t.Parallel()
+		capHeartbeatKeepsSetPG(t, svc)
+	})
+	t.Run("constraint-parity", func(t *testing.T) {
+		t.Parallel()
+		capConstraintParityPG(t, svc)
+	})
 }
 
 func capThreeStatesPG(t *testing.T, svc *Service) {
@@ -90,9 +100,9 @@ func capThreeStatesPG(t *testing.T, svc *Service) {
 	r := require.New(t)
 	ctx := t.Context()
 
-	unknown := seedCapWorkerPG(t, svc, "cap-unknown")
-	none := seedCapWorkerPG(t, svc, "cap-none")
-	both := seedCapWorkerPG(t, svc, "cap-both")
+	unknown := seedCapWorkerPG(ctx, t, svc, "cap-unknown")
+	none := seedCapWorkerPG(ctx, t, svc, "cap-none")
+	both := seedCapWorkerPG(ctx, t, svc, "cap-both")
 
 	r.NoError(svc.UpdateWorkerHeartbeat(ctx, unknown.UID, nil))
 	r.NoError(svc.UpdateWorkerHeartbeat(ctx, none.UID, []string{}))
@@ -123,17 +133,17 @@ func capThreeStatesPG(t *testing.T, svc *Service) {
 		r.Equal(spec.text, *raw)
 	}
 
-	r.Nil(reloadCapsPG(t, svc, unknown.UID).Capabilities)
-	r.Equal([]string{}, reloadCapsPG(t, svc, none.UID).Capabilities,
+	r.Nil(reloadCapsPG(ctx, t, svc, unknown.UID).Capabilities)
+	r.Equal([]string{}, reloadCapsPG(ctx, t, svc, none.UID).Capabilities,
 		"'{}' must decode to a NON-NIL empty slice, or the empty set silently becomes unknown")
-	r.Equal([]string{"ipv4", "ipv6"}, reloadCapsPG(t, svc, both.UID).Capabilities)
+	r.Equal([]string{"ipv4", "ipv6"}, reloadCapsPG(ctx, t, svc, both.UID).Capabilities)
 
 	r.Equal(models.CapabilityStateUnknown,
-		reloadCapsPG(t, svc, unknown.UID).Capability(models.CapabilityIPv6))
+		reloadCapsPG(ctx, t, svc, unknown.UID).Capability(models.CapabilityIPv6))
 	r.Equal(models.CapabilityStateAbsent,
-		reloadCapsPG(t, svc, none.UID).Capability(models.CapabilityIPv6))
+		reloadCapsPG(ctx, t, svc, none.UID).Capability(models.CapabilityIPv6))
 	r.Equal(models.CapabilityStatePresent,
-		reloadCapsPG(t, svc, both.UID).Capability(models.CapabilityIPv6))
+		reloadCapsPG(ctx, t, svc, both.UID).Capability(models.CapabilityIPv6))
 }
 
 // capHeartbeatKeepsSetPG: a silent heartbeat never downgrades a known set, an
@@ -144,12 +154,12 @@ func capHeartbeatKeepsSetPG(t *testing.T, svc *Service) {
 	r := require.New(t)
 	ctx := t.Context()
 
-	worker := seedCapWorkerPG(t, svc, "cap-keep")
+	worker := seedCapWorkerPG(ctx, t, svc, "cap-keep")
 	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{"ipv4", "ipv6"}))
 
 	for range 3 {
 		r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, nil))
-		r.Equal([]string{"ipv4", "ipv6"}, reloadCapsPG(t, svc, worker.UID).Capabilities)
+		r.Equal([]string{"ipv4", "ipv6"}, reloadCapsPG(ctx, t, svc, worker.UID).Capabilities)
 	}
 
 	again, err := svc.RegisterOrUpdateWorker(ctx, &models.Worker{Slug: "cap-keep", Name: "cap-keep"})
@@ -157,7 +167,7 @@ func capHeartbeatKeepsSetPG(t *testing.T, svc *Service) {
 	r.Equal([]string{"ipv4", "ipv6"}, again.Capabilities)
 
 	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{}))
-	r.Equal([]string{}, reloadCapsPG(t, svc, worker.UID).Capabilities)
+	r.Equal([]string{}, reloadCapsPG(ctx, t, svc, worker.UID).Capabilities)
 }
 
 // capConstraintParityPG runs the SAME shared verdict table as the SQLite twin.
@@ -167,13 +177,15 @@ func capHeartbeatKeepsSetPG(t *testing.T, svc *Service) {
 func capConstraintParityPG(t *testing.T, svc *Service) {
 	t.Helper()
 
-	ctx := t.Context()
 	cases := append(dbcaptest.SharedCases(), dbcaptest.PostgresOnlyCases()...)
 
 	for i, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := t.Context()
 			slug := fmt.Sprintf("shape-%03d", i)
-			worker := seedCapWorkerPG(t, svc, slug)
+			worker := seedCapWorkerPG(ctx, t, svc, slug)
 
 			_, err := svc.DB().ExecContext(ctx,
 				"update workers set capabilities = "+tc.PostgresLiteral+" where uid = ?",

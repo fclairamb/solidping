@@ -1252,7 +1252,7 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 	existing.LastActiveAt = &now
 	existing.UpdatedAt = now
 
-	columns := []string{"last_active_at", "updated_at"}
+	columns := workerLivenessColumns()
 
 	if worker.Capabilities != nil {
 		existing.Capabilities = worker.Capabilities
@@ -1284,6 +1284,12 @@ func (s *Service) ListLiveWorkers(ctx context.Context, since time.Time) ([]*mode
 	return workers, err
 }
 
+// workerLivenessColumns are the columns every worker registration and
+// heartbeat refreshes, whatever else it does or does not report.
+func workerLivenessColumns() []string {
+	return []string{"last_active_at", "updated_at"}
+}
+
 func (s *Service) UpdateWorkerHeartbeat(
 	ctx context.Context, workerUID string, capabilities []string,
 ) error {
@@ -1292,7 +1298,7 @@ func (s *Service) UpdateWorkerHeartbeat(
 	// Model-driven rather than Set("capabilities = ?", …): see the Postgres
 	// twin — the field tag, not the raw argument path, picks the encoding.
 	worker := &models.Worker{UID: workerUID, LastActiveAt: &now, UpdatedAt: now}
-	columns := []string{"last_active_at", "updated_at"}
+	columns := workerLivenessColumns()
 
 	// nil means "not reported" and must not touch the stored set. An empty
 	// non-nil slice is a real report of "none" and is written.
