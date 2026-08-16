@@ -171,3 +171,93 @@ truncated exposition body would parse into wrong values, which is worse than
 an error. The limit applies to `scrape` mode; `promql` responses are bounded
 by the query itself. Add a test proving a body over the cap is refused rather
 than partially parsed.
+
+## Implementation Plan
+
+### Backend
+
+1. **`checkerdef` — lift the HTTP transport helper.** Move `buildTransport` /
+   `familyDialContext` out of `checkhttp` into
+   `checkerdef.BuildHTTPTransport(dialer, skipTLSVerify, version)` /
+   `checkerdef.FamilyDialContext(version)`. `checkhttp.buildTransport` becomes a
+   one-line delegate so its existing tests keep passing untouched. This is the
+   "does it transfer cleanly?" gate from the resolved open question — it does,
+   so `prometheus` gets both `SupportsTunnel` **and** `SupportsIPVersion` for
+   free (the `ipVersion` config key is wired generically in
+   `checkworker/worker.go` + `handlers/checks/ipversion.go`, gated purely on the
+   registry flag).
+
+2. **`checkerdef/types.go`** — add `CheckTypePrometheus = "prometheus"`, the
+   `checkTypesRegistry` entry (`labelSafe`, `labelStandalone`,
+   `labelCatInfrastructure`, `SupportsTunnel: true`, `SupportsIPVersion: true`,
+   `DefaultPeriod: 1m`) and the `ListCheckTypes` entry (needed for
+   `GetAllSampleConfigs`).
+
+3. **`checkers/checkprometheus/config.go`** — `PrometheusConfig` with
+   `url`, `mode`, `metric`, `labels`, `query`, `operator`, `warningValue`,
+   `criticalValue`, `match`, `onMissing`, `headers`, `timeout`.
+   **Thresholds are `*float64`** — explicit presence tracking, because `0` is a
+   legal threshold (the `checkdomain` zero-value convention is deliberately NOT
+   reused). `FromMap` accepts `float64`/`int`/`json.Number`. `Validate`:
+   url required + http(s) scheme; mode ∈ {scrape, promql}; `metric` required in
+   scrape / `query` required in promql; operator ∈ {`>`,`>=`,`<`,`<=`,`==`,`!=`}
+   (empty defaults to `>`); at least one threshold set; ordering
+   (`>`/`>=` ⇒ critical ≥ warning, `<`/`<=` ⇒ critical ≤ warning);
+   `==`/`!=` reject a `warningValue`; `match` ∈ {single,min,max,sum,avg};
+   `onMissing` ∈ {down,warning,up}.
+
+4. **`checkers/checkprometheus/checker.go`** — `Validate` also fills a default
+   `Name`/`Slug` (`prometheus` / `prometheus-<host>`). `Execute`:
+   - one `http.Client` whose transport comes from
+     `checkerdef.BuildHTTPTransport(checkerdef.TunnelDialerFrom(ctx), false,
+     checkerdef.IPVersionFrom(ctx))`;
+   - **scrape**: `GET url`, non-200 → `StatusDown`; body read through a
+     `5 MB` cap — an over-cap body is **refused** with an `Output` naming the
+     cap, never truncated (a truncated exposition body parses into wrong
+     values); parse with `expfmt.TextParser`; flatten every family into
+     `(name, labels, value)` series so histogram/summary are addressed through
+     `_sum` / `_count` / `_bucket{le=…}` / `{quantile=…}` with no special
+     casing; select by exact metric name + label-subset match.
+   - **promql**: `GET {url}/api/v1/query?query=…`; accept `scalar` and
+     `vector`; `matrix` rejected; API `status != success` → `StatusDown`.
+   - series resolution: 0 matches → `onMissing`; >1 with `match: single` →
+     `StatusDown` (ambiguous selector); otherwise min/max/sum/avg.
+   - grading: critical breached → `StatusDown`; else warning breached →
+     `StatusWarning`; else `StatusUp`. **Warning-only configs are valid and can
+     never page.**
+   - `Metrics: {"value": <float64>}` (unsuffixed float ⇒ averaged by the
+     aggregation job, so the check page graphs the monitored value);
+     `Output`: mode, url, metric/query, matched labels, matched count,
+     the operator + threshold that fired (or "within thresholds").
+
+5. **`checkers/checkprometheus/samples.go`** — one scrape sample and one promql
+   sample, both with a non-empty `Slug` (the checkdnsbl/checksip audit gap).
+
+6. **`checkers/registry/registry.go`** — `GetChecker` + `ParseConfig` cases.
+
+7. **Tests** (`config_test.go`, `checker_test.go`, table-driven, `httptest`):
+   within/warning/critical for `>` and `<`; `==`/`!=` single threshold;
+   `warningValue: 0` honoured as SET (the pointer trap); multi-series ×
+   {single, min, max, sum, avg}; missing metric × {down, warning, up};
+   empty promql vector; scalar promql; matrix rejected; label-subset matching;
+   headers actually sent (positive control); context cancellation; over-5 MB
+   body refused **and not partially parsed** (positive control: the truncated
+   prefix contains a series that would have matched).
+
+### Frontend (dash0)
+
+8. `common.ts` `CheckType` union, `check-form.tsx` type list,
+   `checks/form/types/infra.tsx` `prometheusModule` (+ registry entry in
+   `types/index.ts`), built from design-reference primitives
+   (`Input`/`Label`/`Select`/`Textarea`), mobile-friendly, with mode-dependent
+   fields and an Advanced disclosure for `match` / `onMissing` / `headers`.
+9. `web/dash0/e2e/` Playwright create/edit round-trip for both modes.
+
+### Docs
+
+10. New `## Metrics` section in `web/docs/docs/features/check-types.md` with a
+    pinned `### Prometheus Metric {#prometheus-metric}` heading, plus the
+    matching entry in `web/dash0/src/components/shared/check-type-docs-anchors.ts`
+    so `registry/docs_anchor_test.go` stays green. Documents both modes,
+    threshold semantics with a `<`-operator free-disk example, `onMissing`,
+    the 5 MB cap, and the counter/rate caveat pointing at promql mode.
