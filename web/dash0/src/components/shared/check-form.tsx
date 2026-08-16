@@ -1,9 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
-import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
+import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
+import { useCheckValidationResult, getFieldError } from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
 import { resolveCheckRefLabel } from "@/lib/dependency-graph";
+import {
+  Ipv6CapabilityBadge,
+  ipv6Capability,
+  type Ipv6Capability,
+} from "@/components/shared/ipv6-capability";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -567,6 +572,28 @@ export function CheckForm({
         })
       : null;
 
+  // Advertised per-region IPv6 egress (spec 2026-08-15-11). Purely a hint:
+  // when the check is pinned to `ipv6` we surface which regions currently say
+  // they can do it and float those to the top, but every region stays listed,
+  // selectable and submittable — the run-time probe is the authority, and an
+  // "unknown" region may well be capable.
+  const pinnedIpv6 = supportsIpVersion && ipVersion === "ipv6";
+  const orderedRegions = useMemo(() => {
+    const list = availableRegions ?? [];
+
+    if (!pinnedIpv6) {
+      return list;
+    }
+
+    // "yes" first, then "unknown", then "no" — never removing anything. Stable
+    // within each bucket so the picker keeps the server's ordering otherwise.
+    const rank: Record<Ipv6Capability, number> = { yes: 0, unknown: 1, no: 2 };
+
+    return [...list].sort(
+      (a, b) => rank[ipv6Capability(a.capabilities)] - rank[ipv6Capability(b.capabilities)]
+    );
+  }, [availableRegions, pinnedIpv6]);
+
   const activeModule = checkTypeRegistry[type];
   const ActiveFields = activeModule.Fields;
   const authSection = authFieldsRegistry[type];
@@ -615,7 +642,7 @@ export function CheckForm({
     ipVersion,
   ]);
 
-  const fieldErrors = useCheckValidation(
+  const { errors: fieldErrors, warnings: fieldWarnings } = useCheckValidationResult(
     org,
     type,
     currentConfig,
@@ -1067,19 +1094,55 @@ export function CheckForm({
                 <div className="space-y-2">
                   <Label>Regions</Label>
                   <div className="grid grid-cols-2 gap-2">
-                    {availableRegions?.map((region) => (
-                      <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50" data-testid={`region-option-${region.slug}`}>
-                        <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
-                        <span className="text-sm">{region.emoji} {region.name}</span>
-                        {region.private && (
-                          <Badge variant="secondary" className="ml-auto text-[10px]" title="Runs on your own deported agents">
-                            Private
-                          </Badge>
-                        )}
-                      </label>
-                    ))}
+                    {orderedRegions.map((region) => {
+                      const ipv6 = ipv6Capability(region.capabilities);
+                      // De-emphasise only when the check is pinned to ipv6 and
+                      // the region does not advertise it. Never disabled, never
+                      // hidden — the advertised value is a hint, not a gate.
+                      const deemphasised = pinnedIpv6 && ipv6 !== "yes";
+
+                      return (
+                        <label
+                          key={region.slug}
+                          className={cn(
+                            "flex flex-wrap items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50",
+                            deemphasised && "opacity-60"
+                          )}
+                          data-testid={`region-option-${region.slug}`}
+                          data-ipv6={ipv6}
+                        >
+                          <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
+                          <span className="text-sm">{region.emoji} {region.name}</span>
+                          <span className="ml-auto flex items-center gap-1">
+                            {region.private && (
+                              <Badge variant="secondary" className="text-[10px]" title="Runs on your own deported agents">
+                                Private
+                              </Badge>
+                            )}
+                            {/* "yes" is always marked; "no" is always shown so
+                                its absence can never be misread. "unknown" gets
+                                a neutral badge only while ipv6 is pinned, where
+                                the distinction actually matters. */}
+                            <Ipv6CapabilityBadge
+                              capability={ipv6}
+                              hideUnknown={!pinnedIpv6}
+                              className="text-[10px]"
+                              data-testid={`region-ipv6-${region.slug}`}
+                            />
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                   <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
+                  {pinnedIpv6 && (
+                    <p className="text-xs text-muted-foreground" data-testid="regions-ipv6-hint">
+                      {t("form.regionsIpv6Hint", {
+                        defaultValue:
+                          "This check is pinned to IPv6. Regions whose live workers report IPv6 egress are listed first — the others stay selectable, and a region marked “IPv6 unknown” has simply not reported yet.",
+                      })}
+                    </p>
+                  )}
                   {selectedRegions.length > 1 && regionPeriodSeconds > 0 && (
                     <p className="text-xs text-muted-foreground" data-testid="regions-period-hint">
                       {hasRegionSpreadInput && !regionSpreadError
@@ -1418,6 +1481,22 @@ export function CheckForm({
                     <p className="text-xs text-destructive">
                       {getFieldError(fieldErrors, "ipVersion")}
                     </p>
+                  )}
+                  {/* Advisory only (spec 2026-08-15-11): the selected regions
+                      currently report no IPv6 egress. It never blocks submit —
+                      the advertised value lags, and the run-time probe is the
+                      authority. */}
+                  {getFieldError(fieldWarnings, "ipVersion") && (
+                    <Alert
+                      variant="warning"
+                      className="mt-2"
+                      data-testid="check-ip-version-warning"
+                    >
+                      <AlertTriangle />
+                      <AlertDescription>
+                        {getFieldError(fieldWarnings, "ipVersion")}
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </div>
               )}

@@ -135,6 +135,10 @@ export interface RegionDefinition {
   name: string;
   /** Org-private region served by the customer's own deported agents. */
   private?: boolean;
+  /** What the region's LIVE workers report they can do — today only `ipv6`,
+   * three-state ("yes" / "no" / "unknown"). Omitted entirely by older servers;
+   * an absent map means "unknown", never "no" (spec 2026-08-15-11). */
+  capabilities?: Record<string, string>;
 }
 
 export interface CreateCheckRequest {
@@ -5297,6 +5301,9 @@ export interface PrivateRegion {
   /** Stored region string, org-relative, e.g. `@dc1`. */
   region: string;
   agentCount: number;
+  /** Egress families this location's LIVE agents report — today only `ipv6`,
+   * three-state ("yes" / "no" / "unknown"). See spec 2026-08-15-11. */
+  capabilities?: Record<string, string>;
 }
 
 export interface AgentInfo {

@@ -62,6 +62,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
+import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1087,6 +1088,31 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">IPv6 capability badge</h3>
+        <p className="text-sm text-muted-foreground">
+          What a region's <strong>live</strong> workers report about their IPv6 egress
+          (spec 2026-08-15-11). Three states, three renderings —{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">unknown</code> means
+          "not reported yet" (no live worker, or an older agent) and must{" "}
+          <strong>never</strong> be rendered as{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">no</code>. The value is a
+          hint only: it never hides, disables or filters a region, because the run-time egress
+          probe is the authority. Use{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">hideUnknown</code> on dense
+          inline surfaces (the region picker) — "no" always renders, so a missing badge can
+          never be misread as a negative.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <Ipv6CapabilityBadge capability="yes" />
+              <Ipv6CapabilityBadge capability="no" />
+              <Ipv6CapabilityBadge capability="unknown" />
+            </>
+          }
+          importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
         />
 
         <h3 className="text-sm font-medium">Check group status header</h3>
