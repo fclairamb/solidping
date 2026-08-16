@@ -148,6 +148,36 @@ All three are independent — enabling one does not enable any other.
 - **Dash0**: Playwright E2E in `web/dash0/e2e/` (see `web/dash0/CLAUDE.md`)
 - Comprehensive coverage expected for new features
 
+## Never name a real company — use `acme`
+
+**No real company name ever appears in this repository.** Not in specs, tests, fixtures,
+sample data, code comments, doc examples, commit messages, changelog entries, PR
+descriptions, wiki pages, or issue reports. This applies to every third party: employers,
+customers, vendors, and the organizations of people who report bugs.
+
+Replace the name with **`acme`**, keeping the shape of whatever you're replacing so the
+example still reads naturally:
+
+| Instead of | Use |
+|---|---|
+| a company name | `acme` |
+| an org slug / handle | `acmetech`, `@acmetech/aws-paris` |
+| a domain | `acme.com`, `status.acme.com` |
+| an email | `alice@acme.com` |
+| a person at a company | `alice` / `bob` (no surname, no employer) |
+
+Why: this repository is public, and a bug report or a realistic-looking test fixture is a
+poor place to disclose who a customer is, what they run, or that they had an outage. A
+name that reaches a released tag cannot be recalled — scrubbing the working tree later
+does not rewrite published history. So the rule is enforced at the point of writing, not
+by a later cleanup pass.
+
+Two things this rule does *not* mean: it does not apply to the names of the technologies,
+libraries and services SolidPing genuinely integrates with (Slack, Telegram, OVH,
+Prometheus, Cloudflare and so on — naming those is unavoidable and correct), and it is not
+a reason to strip a real name from something that is already published. If you find a real
+name in the repo, replace it and say so; do not quietly rewrite history around it.
+
 ## Specs
 - Filename format: `YYYY-MM-DD-NN-title.md` (`NN` unique per day across `specs/todos/` and `specs/done/YYYY/MM/`)
 - Active: `specs/todos/`, Done: `specs/done/YYYY/MM/`, Backlog: `specs/backlog/`, Cancelled: `specs/cancelled/`
