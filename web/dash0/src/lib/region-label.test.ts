@@ -26,25 +26,25 @@ describe("sortRegionSlugs", () => {
   const MIXED_REGIONS = [
     { slug: "default", emoji: "🇪🇺", name: "EU1 (default)" },
     { slug: "us-1", emoji: "🇺🇸", name: "US1" },
-    { slug: "@stonaltech/s3ns-paris", emoji: "🇫🇷", name: "S3NS Paris prod", private: true },
-    { slug: "@stonaltech/aws-lyon", emoji: "🇫🇷", name: "AWS Lyon", private: true },
+    { slug: "@acmetech/s3ns-paris", emoji: "🇫🇷", name: "S3NS Paris prod", private: true },
+    { slug: "@acmetech/aws-lyon", emoji: "🇫🇷", name: "AWS Lyon", private: true },
   ];
 
   it("puts standard regions before custom/private regions", () => {
     expect(
-      sortRegionSlugs(MIXED_REGIONS, ["@stonaltech/s3ns-paris", "default"]),
-    ).toEqual(["default", "@stonaltech/s3ns-paris"]);
+      sortRegionSlugs(MIXED_REGIONS, ["@acmetech/s3ns-paris", "default"]),
+    ).toEqual(["default", "@acmetech/s3ns-paris"]);
   });
 
   it("no longer lets an @-prefixed slug jump the queue via plain string sort", () => {
-    // Plain Array.prototype.sort() would put '@stonaltech/s3ns-paris' before
+    // Plain Array.prototype.sort() would put '@acmetech/s3ns-paris' before
     // 'default' and 'us-1' because '@' < ASCII letters. The canonical order
     // must keep standard regions first regardless of slug spelling.
-    const slugs = ["@stonaltech/s3ns-paris", "us-1", "default"];
+    const slugs = ["@acmetech/s3ns-paris", "us-1", "default"];
     expect(sortRegionSlugs(MIXED_REGIONS, slugs)).toEqual([
       "default",
       "us-1",
-      "@stonaltech/s3ns-paris",
+      "@acmetech/s3ns-paris",
     ]);
   });
 
@@ -60,23 +60,23 @@ describe("sortRegionSlugs", () => {
 
     expect(
       sortRegionSlugs(MIXED_REGIONS, [
-        "@stonaltech/s3ns-paris",
-        "@stonaltech/aws-lyon",
+        "@acmetech/s3ns-paris",
+        "@acmetech/aws-lyon",
       ]),
-    ).toEqual(["@stonaltech/aws-lyon", "@stonaltech/s3ns-paris"]);
+    ).toEqual(["@acmetech/aws-lyon", "@acmetech/s3ns-paris"]);
   });
 
   it("groups slugs with no matching definition after defined customs, sorted by raw slug", () => {
     expect(
       sortRegionSlugs(MIXED_REGIONS, [
         "zz-unknown",
-        "@stonaltech/s3ns-paris",
+        "@acmetech/s3ns-paris",
         "default",
         "aa-unknown",
       ]),
     ).toEqual([
       "default",
-      "@stonaltech/s3ns-paris",
+      "@acmetech/s3ns-paris",
       "aa-unknown",
       "zz-unknown",
     ]);

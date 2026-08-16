@@ -26,19 +26,19 @@ security boundary (`MatchesRegion`, `server/internal/regions/regions.go:273`;
 The org rename flow (`server/internal/handlers/auth/org_profile.go` +
 `organization_previous_slugs`, spec 2026-08-08-11) only handles URL/API
 redirects. It never rewrites the denormalized region strings — and it
-shouldn't have to. After renaming `stonaltech` → `stonal`:
+shouldn't have to. After renaming `acmetech` → `acme`:
 
-- the agent stays bound to `@stonaltech/aws-paris`;
-- pre-rename checks keep `@stonaltech/aws-paris` and continue to work (both
+- the agent stays bound to `@acmetech/aws-paris`;
+- pre-rename checks keep `@acmetech/aws-paris` and continue to work (both
   sides are stale, so they still match each other);
 - the regions API and dashboard now advertise the canonical
-  `@stonal/aws-paris`, so **every new check targets a region string no agent
+  `@acme/aws-paris`, so **every new check targets a region string no agent
   is bound to** and sits in `validating` forever, with no error surfaced
   anywhere.
 
-Observed live on solidping.k8xp.com org `stonal`: check
-`http-dbbat-tools-stonal-io` pinned to `@stonal/aws-paris` was never picked up
-while the `@stonaltech/aws-paris` agent polled healthily the whole time.
+Observed live on solidping.k8xp.com org `acme`: check
+`http-dbbat-tools-acme-io` pinned to `@acme/aws-paris` was never picked up
+while the `@acmetech/aws-paris` agent polled healthily the whole time.
 (Worked around by patching the check to the stale spelling; the migration
 below normalizes that away.)
 

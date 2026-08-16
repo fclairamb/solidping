@@ -11,8 +11,8 @@ Radix `Select` fed by a single list fetch capped at the endpoint maximum:
 - [web/dash0/src/routes/orgs/$org/badges.tsx:464-469](../../web/dash0/src/routes/orgs/$org/badges.tsx) —
   the `Select` itself (`data-testid="badge-check-select"`).
 
-On an org with more than 100 checks — e.g. `stonaltech` on the k8xp dev deploy
-(`https://solidping.k8xp.com/dash0/orgs/stonaltech/badges`) — this breaks down:
+On an org with more than 100 checks — e.g. `acmetech` on the k8xp dev deploy
+(`https://solidping.k8xp.com/dash0/orgs/acmetech/badges`) — this breaks down:
 
 1. **Checks beyond the first 100 cannot be selected at all.** They simply are
    not in the dropdown.

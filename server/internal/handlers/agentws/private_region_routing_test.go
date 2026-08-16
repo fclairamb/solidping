@@ -69,9 +69,9 @@ func regionRowSnapshot(ctx context.Context, t *testing.T, e *env) map[string]int
 // TestAgentEnrolledBeforeRenameServesChecksCreatedAfter is the headline
 // regression of spec 2026-08-13-01, reproduced end to end.
 //
-// Before the fix: the agent froze on `@stonaltech/aws-paris` at enrollment, the
+// Before the fix: the agent froze on `@acmetech/aws-paris` at enrollment, the
 // rename rewrote nothing, and the regions API then advertised
-// `@stonal/aws-paris` — so a check created after the rename targeted a string
+// `@acme/aws-paris` — so a check created after the rename targeted a string
 // no agent was bound to and sat in `validating` forever, silently.
 //
 // After the fix both sides speak `@aws-paris`, so the rename is a pure metadata

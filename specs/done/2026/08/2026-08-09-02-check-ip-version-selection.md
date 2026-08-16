@@ -61,7 +61,7 @@ family they happened to pick. It is never an input. Note that the three checkers
 already reporting it are exactly the ones where users most expect to control it.
 
 This is now load-bearing: check `c0437dd8-65bd-4767-9956-6c899eef8b5b`
-(org `stonaltech`) exists specifically to validate IPv6 reachability, and today it
+(org `acmetech`) exists specifically to validate IPv6 reachability, and today it
 can only do so because its target is IPv6-*only*. The moment a target is
 dual-stack, the check silently stops testing IPv6.
 

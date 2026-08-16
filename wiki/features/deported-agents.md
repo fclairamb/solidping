@@ -89,7 +89,7 @@ What all three have in common is that they try to run something *inside the
 agent container*. Nothing has to: **enroll in a throwaway Pod where an ordinary
 `alpine` sidecar shares an `emptyDir` with the agent, and read the keys file
 from the sidecar.** Verified in production on 2026-08-13 while standing up the
-`@stonal/s3ns-paris` agent on a GKE Autopilot cluster:
+`@acme/s3ns-paris` agent on a GKE Autopilot cluster:
 
 ```bash
 kubectl exec solidping-agent-enroll -c extract \

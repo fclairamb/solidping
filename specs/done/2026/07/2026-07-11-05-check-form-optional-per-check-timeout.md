@@ -3,7 +3,7 @@
 ## Problem
 
 The edit-check form (e.g.
-`/dash0/orgs/stonaltech/checks/5b39634d-…/edit`, a TCP check) offers no way
+`/dash0/orgs/acmetech/checks/5b39634d-…/edit`, a TCP check) offers no way
 to set a per-check timeout. The shared form's **General** section
 (`web/dash0/src/components/shared/check-form.tsx:2490`) exposes only
 Enabled, Check Interval, Name, and Slug; no check type surfaces a timeout

@@ -809,6 +809,38 @@ function AddContactForm({
           </p>
         )}
 
+        {/* Carrier-required (CTIA / A2P 10DLC) disclosure. This is the consent
+            control for the SMS programme, so the four disclosures — message
+            type, frequency, rates, and STOP/HELP — have to sit next to it and
+            be visible before the user submits the number. Mirrored publicly at
+            solidping.io/legal/sms-opt-in so campaign reviewers can inspect a
+            flow that otherwise lives behind a login. */}
+        {type === "phone" && (
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid="sms-consent-notice"
+          >
+            {t("notifications.smsConsentNotice")}{" "}
+            <a
+              href="https://www.solidping.io/legal/messaging"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              {t("notifications.smsConsentPolicyLink")}
+            </a>
+            {" · "}
+            <a
+              href="https://www.solidping.io/saas/privacy"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              {t("notifications.smsConsentPrivacyLink")}
+            </a>
+          </p>
+        )}
+
         {error && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />

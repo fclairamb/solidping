@@ -8,7 +8,7 @@ effort: low
 ## Problem
 
 The check detail page (`/orgs/$org/checks/$checkUid`, e.g.
-https://solidping.k8xp.com/dash0/orgs/stonal/checks/c607678d-d713-429a-add6-ff927753d102)
+https://solidping.k8xp.com/dash0/orgs/acme/checks/c607678d-d713-429a-add6-ff927753d102)
 renders a `DocsLink` icon (`BookOpen` → `/docs/features/check-types`) in its
 header toolbar, between the back arrow and the Edit/Pause buttons:
 

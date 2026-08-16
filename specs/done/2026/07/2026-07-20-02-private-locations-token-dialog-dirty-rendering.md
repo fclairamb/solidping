@@ -8,7 +8,7 @@ effort: high
 ## Problem
 
 On `/dash0/orgs/$org/organization/private-locations` (observed on the k8xp dev
-deploy, `https://solidping.k8xp.com/dash0/orgs/stonaltech/organization/private-locations`),
+deploy, `https://solidping.k8xp.com/dash0/orgs/acmetech/organization/private-locations`),
 opening the **Enrollment token** dialog (minted via the `KeyRound` row action)
 produces visibly broken rendering. A screenshot shows:
 

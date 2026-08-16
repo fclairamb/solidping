@@ -590,12 +590,12 @@ func TestMicrosoftCallbackRefusesNonMatchingEmail(t *testing.T) {
 		org := setupMicrosoftTestOrg(ctx, t, svc)
 
 		// Seed a member so the org is past bootstrap, and set the pattern.
-		seed := models.NewUser("seed@stonal.example")
+		seed := models.NewUser("seed@acme.example")
 		require.NoError(t, svc.db.CreateUser(ctx, seed))
 		require.NoError(t, svc.db.CreateOrganizationMember(
 			ctx, models.NewOrganizationMember(org.UID, seed.UID, models.MemberRoleAdmin)))
 		require.NoError(t, svc.db.SetOrgParameter(
-			ctx, org.UID, "registration.email_pattern", `@stonal\.example$`, false))
+			ctx, org.UID, "registration.email_pattern", `@acme\.example$`, false))
 
 		tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -625,13 +625,13 @@ func TestMicrosoftCallbackRefusesNonMatchingEmail(t *testing.T) {
 
 		// Graph returned an empty `mail`, so the flow falls back to the
 		// tenant UPN — the exact shape of the reported incident.
-		result, svc, org, ctx := run(t, "", "patrice@stonal.onmicrosoft.example")
+		result, svc, org, ctx := run(t, "", "patrice@acme.onmicrosoft.example")
 
 		require.True(t, result.Pending, "a non-matching account must not be admitted")
 		require.Empty(t, result.RefreshToken, "no org-scoped session may be minted")
 		require.NotEmpty(t, result.AccessToken, "the user is authenticated, just not a member")
 
-		user, err := svc.db.GetUserByEmail(ctx, "patrice@stonal.onmicrosoft.example")
+		user, err := svc.db.GetUserByEmail(ctx, "patrice@acme.onmicrosoft.example")
 		require.NoError(t, err)
 
 		_, memberErr := svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
@@ -650,12 +650,12 @@ func TestMicrosoftCallbackRefusesNonMatchingEmail(t *testing.T) {
 	t.Run("matching email joins", func(t *testing.T) {
 		t.Parallel()
 
-		result, svc, org, ctx := run(t, "alice@stonal.example", "alice@stonal.onmicrosoft.example")
+		result, svc, org, ctx := run(t, "alice@acme.example", "alice@acme.onmicrosoft.example")
 
 		require.False(t, result.Pending)
 		require.NotEmpty(t, result.RefreshToken, "an admitted user gets a full org-scoped session")
 
-		user, err := svc.db.GetUserByEmail(ctx, "alice@stonal.example")
+		user, err := svc.db.GetUserByEmail(ctx, "alice@acme.example")
 		require.NoError(t, err)
 
 		member, memberErr := svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
@@ -673,12 +673,12 @@ func TestGoogleCallbackRefusesNonMatchingEmail(t *testing.T) {
 	svc, ctx := setupGoogleTestService(t)
 	org := setupTestOrg(ctx, t, svc)
 
-	seed := models.NewUser("seed@stonal.example")
+	seed := models.NewUser("seed@acme.example")
 	require.NoError(t, svc.db.CreateUser(ctx, seed))
 	require.NoError(t, svc.db.CreateOrganizationMember(
 		ctx, models.NewOrganizationMember(org.UID, seed.UID, models.MemberRoleAdmin)))
 	require.NoError(t, svc.db.SetOrgParameter(
-		ctx, org.UID, "registration.email_pattern", `@stonal\.example$`, false))
+		ctx, org.UID, "registration.email_pattern", `@acme\.example$`, false))
 
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -34,11 +34,11 @@ and the members list.
 
 This is not theoretical — it happened on the k8xp instance on 2026-08-07:
 
-- Org `stonaltech` has `registration.email_pattern = @stonal\.com$`.
-- `patrice.cavezzan@stonal.onmicrosoft.com` (Microsoft Graph profile with an
+- Org `acmetech` has `registration.email_pattern = @acme\.com$`.
+- `patrice.cavezzan@acme.onmicrosoft.com` (Microsoft Graph profile with an
   empty `mail` field, so the code fell back to the `userPrincipalName` —
   [`microsoft_service.go:156-159`](../../server/internal/handlers/auth/microsoft_service.go))
-  clicked "Sign in with Microsoft" on the stonaltech login page at
+  clicked "Sign in with Microsoft" on the acmetech login page at
   15:08 UTC and became a member despite not matching the pattern.
 - Earlier gmail.com members of the same org joined through the same hole via
   the Google/GitHub/Discord flows.
@@ -109,7 +109,7 @@ Notes / constraints:
 - Keep the `MaxUsers` cap enforcement in the shared method (single place).
 - The duplicate-account aspect of the incident (Graph `mail` empty → UPN
   fallback creates a second user instead of linking the existing
-  `@stonal.com` account) is a **separate problem** — note it in code near the
+  `@acme.com` account) is a **separate problem** — note it in code near the
   fallback but do not expand scope here.
 - No config flag to disable the gate: an org with an empty
   `registration.email_pattern` simply has no rule-4 path, so unknown users

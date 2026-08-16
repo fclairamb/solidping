@@ -7,7 +7,7 @@ effort: high
 
 ## Problem
 
-A common real-world pattern (see the stonaltech config export) is 2–4 checks of
+A common real-world pattern (see the acmetech config export) is 2–4 checks of
 different types probing the *same* host — TCP :443, HTTP, TLS-certificate expiry,
 RDP. When that host dies they all fail together, and the natural mental model is
 "one thing is down", not "four things are down".

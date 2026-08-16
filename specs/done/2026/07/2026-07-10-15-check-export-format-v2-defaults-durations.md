@@ -76,7 +76,7 @@ Target shape:
 {
   "version": 2,
   "exportedAt": "2026-07-10T17:24:30Z",
-  "organization": "stonaltech",
+  "organization": "acmetech",
   "secrets": "stripped",
   "defaults": {
     "regions": ["default"],
@@ -90,10 +90,10 @@ Target shape:
   },
   "checks": [
     {
-      "name": "api.stonal.io (dnsbl)",
-      "slug": "dnsbl-stonal-io",
+      "name": "api.acme.io (dnsbl)",
+      "slug": "dnsbl-acme-io",
       "type": "dnsbl",
-      "config": { "target": "api.stonal.io" },
+      "config": { "target": "api.acme.io" },
       "regions": ["default", "eu-2", "us-1"],
       "period": "1h",
       "reopenCooldownMultiplier": 5,

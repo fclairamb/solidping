@@ -2,7 +2,7 @@
 
 ## Problem
 
-Reported on `https://solidping.k8xp.com/dash0/orgs/stonaltech/checks/new?checkType=dns`:
+Reported on `https://solidping.k8xp.com/dash0/orgs/acmetech/checks/new?checkType=dns`:
 loading a DNS sample ("Load sample…" → e.g. *Google DNS A Record*) fills the
 name/slug/interval but leaves the **Domain** field empty, so the sample
 produces an invalid check. Digging in, the DNS form has three related defects:
