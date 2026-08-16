@@ -1,6 +1,7 @@
 # Changelog
 
-## [Unreleased]
+## [0.16.0](https://github.com/fclairamb/solidping/compare/v0.15.1...v0.16.0) (2026-08-16)
+
 
 ### Security — ⚠ Breaking
 
@@ -12,7 +13,7 @@
 
 ### Features
 
-* **checks:** a new **prometheus** check type, in two modes. *Scrape* pulls a metrics endpoint and grades a named metric; *promql* runs a query against a Prometheus server and grades the result. Both support graded warning/critical thresholds in either direction, so "under 10 is critical" reads as naturally as "over 90 is critical", and the response body is capped at 5 MB so a runaway exposition page cannot exhaust a worker
+* **checks:** a new **prometheus** check type, in two modes. *Scrape* pulls a metrics endpoint and grades a named metric; *promql* runs a query against a Prometheus server and grades the result. Both support graded warning/critical thresholds in either direction, so "under 10 is critical" reads as naturally as "over 90 is critical", and the response body is capped at 5 MB so a runaway exposition page cannot exhaust a worker ([#226](https://github.com/fclairamb/solidping/issues/226)) ([a5ee7c4](https://github.com/fclairamb/solidping/commit/a5ee7c4397499f9d5d216164b6bba12859c464b0))
 * **checks:** domain expiration is resolved over **RDAP**, falling back to WHOIS only when RDAP is unavailable. RDAP returns structured JSON with a real date field, where WHOIS is unstructured text whose layout differs per registry — which is why expiry parsing was the fragile part of the check. The lookup method is selectable per check from an Advanced field, and domain checks gained the same warning/critical day tiers the SSL check already had, so "expires in 30 days" can warn long before it becomes an outage
 * **checks:** check periods can exceed 24 hours — one week, two weeks and 30 days join the existing intervals. Certificate and domain-expiry checks do not need to run every minute, and the scheduler, aggregation and availability calculations were each proven against long periods rather than assumed to handle them
 * **regions:** workers self-probe their IPv4 and IPv6 egress and report it, and a region's capability is aggregated from its live workers as a genuine **three state** — yes, no, or *unknown*. Unknown never collapses into no: a region served by an agent that predates capability reporting would otherwise be advertised as IPv6-incapable, and users would avoid regions that work perfectly well. A check targeting IPv6 from a region reporting no v6 egress **warns and still runs** — the capability is advertisory, and nothing about it gates execution. The dashboard surfaces the advertised egress at the point where the region is actually chosen
@@ -21,7 +22,7 @@
 * **sms:** outbound SMS carries the A2P 10DLC opt-out disclosure required for US messaging
 * **entitlements:** the SaaS free-tier check rate rises to 10 per minute
 * **dash0:** form controls have their own `--control` surface token instead of rendering the exact same colour as the page behind them, and the segmented control was extracted into a shared `SegmentedControl` primitive — a raised pill on a recessed track, so the active segment reads as raised rather than as the darker one
-* **status0:** the public status page has a dark mode, which the rest of the site has had all along. It follows the system preference on first paint and can be overridden from a header toggle that persists the choice. The default is resolved before first paint rather than after hydration — a status page is the one surface people open at 3am specifically because something is broken, and a white flash on a dark phone is a poor way to greet them. `theme-color` metas are set for both schemes so the browser chrome matches, and the response-time colouring and the subscribe widget's success and error states were moved onto design tokens so they stay legible in both themes instead of being hard-coded for light
+* **status0:** the public status page has a dark mode, which the rest of the site has had all along. It follows the system preference on first paint and can be overridden from a header toggle that persists the choice. The default is resolved before first paint rather than after hydration — a status page is the one surface people open at 3am specifically because something is broken, and a white flash on a dark phone is a poor way to greet them. `theme-color` metas are set for both schemes so the browser chrome matches, and the response-time colouring and the subscribe widget's success and error states were moved onto design tokens so they stay legible in both themes instead of being hard-coded for light ([#224](https://github.com/fclairamb/solidping/issues/224)) ([54b97bd](https://github.com/fclairamb/solidping/commit/54b97bd0491f31191d8a444a4252de1b9308a337))
 * **status-pages:** response-time graphs plot one series per region instead of averaging every region into a single line. A check running from three continents was previously drawn as one curve, which hid exactly the thing a multi-region check exists to reveal — that one region is slow while the others are fine. Grouping happens server-side within the same point budget, so a page with many regions stays as cheap to render as before, and the incident strip rolls a period up by worst-status-wins rather than by whichever result happened to be last
 * **status0:** the status page hero, header and typography were restyled to match the rest of the product
 * **integrations:** Telegram contacts paged for an incident are now told when it ends. Being woken by an alert and never hearing that the outage resolved is the failure mode that teaches people to stop trusting the pager. The resolution notice is delivered to each chat that was actually paged, anchored to the original message's thread, and is exempt from the sweep that cancels an incident's pending ack/snooze/resolve jobs — a resolution notice cancelled along with the paging cycle it belongs to would never be sent at all
@@ -41,6 +42,9 @@
 * **custom-domains:** a status page served on a custom domain now answers `/status0` SPA routes and `/api/mgmt/version`, so deep links and the version probe work there as they do on the primary host
 * **tlsedge:** an instance refuses to serve a host it no longer owns rather than continuing to answer for it
 * **status-pages:** creating a status page without a slug generates one instead of failing validation
+* **deps:** update go dependencies (non-major) ([#222](https://github.com/fclairamb/solidping/issues/222)) ([55b475c](https://github.com/fclairamb/solidping/commit/55b475c9702c06b88656f01b8021fb8f488e19cd))
+* **deps:** update module github.com/oapi-codegen/runtime to v1.7.0 ([#228](https://github.com/fclairamb/solidping/issues/228)) ([27a5b78](https://github.com/fclairamb/solidping/commit/27a5b78cbdbd2d579dd5640adf9e4408447eab54))
+* **deps:** update module github.com/slack-go/slack to v0.29.0 ([#227](https://github.com/fclairamb/solidping/issues/227)) ([2b82ed8](https://github.com/fclairamb/solidping/commit/2b82ed85de6f1c1f434bbd7ed66cfe52b71583cd))
 
 ## [0.15.1](https://github.com/fclairamb/solidping/compare/v0.15.0...v0.15.1) (2026-08-14)
 
