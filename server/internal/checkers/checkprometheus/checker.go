@@ -280,7 +280,12 @@ func resolveMatched(cfg *PrometheusConfig, matched []series) (*resolution, error
 func fetchFailureResult(
 	cfg *PrometheusConfig, duration time.Duration, err error,
 ) *checkerdef.Result {
-	status := checkerdef.StatusDown
+	// An address-family failure is cataloged rather than lumped in with generic
+	// dial errors, exactly as checkhttp does it: "the host has no AAAA record"
+	// is the target being down, while "this worker has no IPv6 egress" is our
+	// own gap and must not count against the target's availability. Everything
+	// else falls back to Down.
+	status := checkerdef.IPVersionFailureStatus(err)
 	if errors.Is(err, context.DeadlineExceeded) {
 		status = checkerdef.StatusTimeout
 	}

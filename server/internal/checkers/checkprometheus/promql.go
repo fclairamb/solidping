@@ -85,6 +85,14 @@ func fetchPromQL(ctx context.Context, cfg *PrometheusConfig) (*resolution, error
 
 	defer func() { _ = resp.Body.Close() }()
 
+	// Deliberate, documented deviation from the spec's resolved open question,
+	// which scoped the 5 MB cap to scrape mode ("promql responses are bounded
+	// by the query"). That reasoning is right for a well-formed instant query,
+	// but it is a property of the query rather than a guarantee from the
+	// server, so the same cap is applied here as defense-in-depth against a
+	// pathological response — it costs nothing on any realistic query, and the
+	// over-cap error hint is mode-specific (capHintPromQL) so the operator is
+	// told to narrow the query, not the endpoint.
 	body, err := readCapped(resp.Body, capHintPromQL)
 	if err != nil {
 		return nil, err
