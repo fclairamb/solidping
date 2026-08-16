@@ -54,6 +54,12 @@ type ValidateCheckRequest struct {
 type ValidateCheckResponse struct {
 	Valid  bool                        `json:"valid"`
 	Fields []base.ValidationErrorField `json:"fields,omitempty"`
+	// Warnings are advisory, per-field notes that do NOT make the config
+	// invalid — `valid` stays true and the write path accepts it. Today the
+	// only source is the IPv6-in-a-region-that-reports-no-IPv6 hint (spec
+	// 2026-08-15-11), which is deliberately never a rejection: the advertised
+	// capability lags reality and the run-time probe is the authority.
+	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
 }
 
 // eventPayloadCheckUIDKey is the JSON key used in check.* event payloads
@@ -457,7 +463,15 @@ func (s *Service) ValidateCheck(
 		return ValidateCheckResponse{Valid: false, Fields: depFields}, nil
 	}
 
-	return ValidateCheckResponse{Valid: true}, nil
+	// Advisory only, and evaluated LAST so it can never mask a real error: the
+	// config is valid, we just have reason to think one of its regions cannot
+	// currently do IPv6.
+	var warnings []base.ValidationErrorField
+	if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
+		warnings = s.ipVersionRegionWarnings(ctx, org.UID, req.Type, req.Config, req.Regions)
+	}
+
+	return ValidateCheckResponse{Valid: true, Warnings: warnings}, nil
 }
 
 // validateDependsOn runs the same edge validators (parent existence, self,
@@ -692,11 +706,16 @@ type CheckResponse struct {
 	// (agent enrolled or revoked since the write), or that could not be sealed
 	// at write time. Fix: re-save the check's credentials. Nil when the check
 	// targets no private region.
-	NeedsReseal *bool    `json:"needsReseal,omitempty"`
-	Regions     []string `json:"regions,omitempty"`
-	Enabled     *bool    `json:"enabled,omitempty"`
-	Internal    *bool    `json:"internal,omitempty"`
-	Period      *string  `json:"period,omitempty"`
+	NeedsReseal *bool `json:"needsReseal,omitempty"`
+	// Warnings are advisory notes attached to a successful create/update — the
+	// check WAS written and will run. Today the only one is "you pinned IPv6 in
+	// a region whose live workers report no IPv6 egress" (spec 2026-08-15-11).
+	// Never populated on read paths, and never a reason to reject a write.
+	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
+	Regions  []string                    `json:"regions,omitempty"`
+	Enabled  *bool                       `json:"enabled,omitempty"`
+	Internal *bool                       `json:"internal,omitempty"`
+	Period   *string                     `json:"period,omitempty"`
 	// RegionSpread is the resolved inter-region scheduling offset override
 	// (spec 2026-07-20-05), a duration string (HH:MM:SS). Omitted when the
 	// check uses the default period/region_count spread.
@@ -1414,6 +1433,10 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		response.Labels = req.Labels
 	}
 
+	// The check is already written at this point — the IPv6/region mismatch is
+	// reported, never enforced.
+	response.Warnings = s.ipVersionRegionWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
+
 	return response, nil
 }
 
@@ -1741,6 +1764,12 @@ func (s *Service) UpdateCheck(
 
 	// Convert to response
 	response := s.convertCheckToResponse(updatedCheck)
+
+	// Same advisory as on create: the update is already persisted, this only
+	// tells the user what the region last reported about IPv6.
+	response.Warnings = s.ipVersionRegionWarnings(
+		ctx, org.UID, updatedCheck.Type, updatedCheck.Config, updatedCheck.Regions,
+	)
 
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)

@@ -180,6 +180,48 @@ func (s *Service) AnnotatePrivateCapabilities(
 	return nil
 }
 
+// CapabilityIndex returns every region an organization can target — cloud
+// regions plus its own private locations — annotated with capabilities and
+// keyed by the slug actually stored on a check (`@<slug>` for a private
+// location). It is the lookup the check-validation warning uses.
+//
+// An org with no access to another org's private locations simply never sees
+// them here: the private half comes from this org's `custom_regions` and is
+// resolved through this org's agents.
+func (s *Service) CapabilityIndex(ctx context.Context, orgUID string) (map[string]RegionDefinition, error) {
+	globalDefs, err := s.GetGlobalRegions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if capErr := s.AnnotateGlobalCapabilities(ctx, globalDefs); capErr != nil {
+		return nil, capErr
+	}
+
+	privateDefs, err := s.GetOrgCustomRegions(ctx, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if capErr := s.AnnotatePrivateCapabilities(ctx, orgUID, privateDefs); capErr != nil {
+		return nil, capErr
+	}
+
+	index := make(map[string]RegionDefinition, len(globalDefs)+len(privateDefs))
+
+	for i := range globalDefs {
+		index[globalDefs[i].Slug] = globalDefs[i]
+	}
+
+	for i := range privateDefs {
+		def := privateDefs[i]
+		def.Slug = PrivateRegionSlug(def.Slug)
+		index[def.Slug] = def
+	}
+
+	return index, nil
+}
+
 // IPv6Capability reads the IPv6 verdict off a definition, defaulting to
 // "unknown" for a definition nobody annotated. Callers must treat the absence
 // of an answer as unknown, never as "no".
