@@ -1245,13 +1245,27 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 		return worker, nil
 	}
 
-	// Worker exists, update last_active_at
+	// Worker exists, update last_active_at (and the egress capability when this
+	// registration reported one — a nil field keeps the stored value, so a
+	// caller that cannot answer never downgrades a known capability to null).
 	existing.LastActiveAt = &now
 	existing.UpdatedAt = now
 
+	columns := []string{"last_active_at", "updated_at"}
+
+	if worker.EgressIPv4 != nil {
+		existing.EgressIPv4 = worker.EgressIPv4
+		columns = append(columns, "egress_ipv4")
+	}
+
+	if worker.EgressIPv6 != nil {
+		existing.EgressIPv6 = worker.EgressIPv6
+		columns = append(columns, "egress_ipv6")
+	}
+
 	_, err = s.db.NewUpdate().
 		Model(&existing).
-		Column("last_active_at", "updated_at").
+		Column(columns...).
 		Where("uid = ?", existing.UID).
 		Exec(ctx)
 	if err != nil {
@@ -1261,14 +1275,37 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 	return &existing, nil
 }
 
-func (s *Service) UpdateWorkerHeartbeat(ctx context.Context, workerUID string) error {
+func (s *Service) ListLiveWorkers(ctx context.Context, since time.Time) ([]*models.Worker, error) {
+	var workers []*models.Worker
+
+	err := s.db.NewSelect().
+		Model(&workers).
+		Where("deleted_at IS NULL").
+		Where("last_active_at IS NOT NULL").
+		Where("last_active_at >= ?", since).
+		Scan(ctx)
+
+	return workers, err
+}
+
+func (s *Service) UpdateWorkerHeartbeat(
+	ctx context.Context, workerUID string, egress models.WorkerEgress,
+) error {
 	now := time.Now()
-	_, err := s.db.NewUpdate().
+	query := s.db.NewUpdate().
 		Model((*models.Worker)(nil)).
 		Set("last_active_at = ?", now).
-		Set("updated_at = ?", now).
-		Where("uid = ?", workerUID).
-		Exec(ctx)
+		Set("updated_at = ?", now)
+
+	if egress.IPv4 != nil {
+		query = query.Set("egress_ipv4 = ?", *egress.IPv4)
+	}
+
+	if egress.IPv6 != nil {
+		query = query.Set("egress_ipv6 = ?", *egress.IPv6)
+	}
+
+	_, err := query.Where("uid = ?", workerUID).Exec(ctx)
 
 	return err
 }

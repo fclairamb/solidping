@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
+	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -194,8 +195,10 @@ func (b *WSBackend) Register(ctx context.Context, _ *models.Worker) (*models.Wor
 	}, nil
 }
 
-// Heartbeat is a no-op: the server refreshes last_seen_at on pings and frames.
-func (b *WSBackend) Heartbeat(_ context.Context, _ string) error {
+// Heartbeat is a no-op: the server refreshes last_seen_at on pings and frames,
+// and the agent's egress capability rides the claim frame (see claim) for the
+// same reason.
+func (b *WSBackend) Heartbeat(_ context.Context, _ string, _ models.WorkerEgress) error {
 	return nil
 }
 
@@ -234,10 +237,19 @@ func (b *WSBackend) ClaimJobsForCheck(
 func (b *WSBackend) claim(
 	ctx context.Context, maxJobs int, checkUID string,
 ) ([]*models.CheckJob, time.Duration, error) {
+	// The claim frame doubles as this agent's capability report: it is the only
+	// frame an idle-but-connected agent sends regularly, and Heartbeat below is
+	// a no-op. The probe behind Current() is cached for well under a heartbeat,
+	// so a claim-per-second costs nothing while a host that gains or loses IPv6
+	// still converges without a restart.
+	egress := egressreport.Current()
+
 	resp, err := b.request(ctx, &agents.ClientFrame{
-		Type:     agents.MsgTypeClaim,
-		MaxJobs:  maxJobs,
-		CheckUID: checkUID,
+		Type:       agents.MsgTypeClaim,
+		MaxJobs:    maxJobs,
+		CheckUID:   checkUID,
+		EgressIPv4: egress.IPv4,
+		EgressIPv6: egress.IPv6,
 	})
 	if err != nil {
 		return nil, 0, err

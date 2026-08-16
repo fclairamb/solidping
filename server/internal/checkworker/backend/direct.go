@@ -61,11 +61,12 @@ func (b *DirectBackend) Register(
 	return b.dbService.RegisterOrUpdateWorker(ctx, worker)
 }
 
-// Heartbeat updates the worker's last_active_at timestamp.
+// Heartbeat updates the worker's last_active_at timestamp and the reported
+// egress families.
 func (b *DirectBackend) Heartbeat(
-	ctx context.Context, workerUID string,
+	ctx context.Context, workerUID string, egress models.WorkerEgress,
 ) error {
-	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID)
+	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID, egress)
 }
 
 // ClaimJobs claims up to fastLimit jobs for the given worker with the slow

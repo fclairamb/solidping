@@ -784,7 +784,11 @@ func (m *mockDBService) RegisterOrUpdateWorker(_ context.Context, _ *models.Work
 	panic("not implemented")
 }
 
-func (m *mockDBService) UpdateWorkerHeartbeat(_ context.Context, _ string) error {
+func (m *mockDBService) UpdateWorkerHeartbeat(_ context.Context, _ string, _ models.WorkerEgress) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListLiveWorkers(_ context.Context, _ time.Time) ([]*models.Worker, error) {
 	panic("not implemented")
 }
 

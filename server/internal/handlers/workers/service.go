@@ -62,11 +62,13 @@ func NewService(
 	}
 }
 
-// Heartbeat updates the worker's last_active_at.
+// Heartbeat updates the worker's last_active_at and, when the executor
+// reported them, its egress families (spec 2026-08-15-11). A zero WorkerEgress
+// leaves the capability columns untouched.
 func (s *Service) Heartbeat(
-	ctx context.Context, workerUID string,
+	ctx context.Context, workerUID string, egress models.WorkerEgress,
 ) error {
-	return s.db.UpdateWorkerHeartbeat(ctx, workerUID)
+	return s.db.UpdateWorkerHeartbeat(ctx, workerUID, egress)
 }
 
 // SubmitResultRequest is the input for SubmitResult.

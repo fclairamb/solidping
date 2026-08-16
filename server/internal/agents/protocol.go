@@ -43,6 +43,18 @@ type ClientFrame struct {
 	// claim
 	MaxJobs  int    `json:"maxJobs,omitempty"`
 	CheckUID string `json:"checkUid,omitempty"`
+	// EgressIPv4 / EgressIPv6 are the agent's self-probed egress families
+	// (spec 2026-08-15-11), reported on the claim frame because that is the
+	// agent's real heartbeat — WSBackend.Heartbeat is a no-op and the server
+	// refreshes liveness from frames. Pointers, and OPTIONAL ON BOTH SIDES: an
+	// older agent omits them and the server leaves the columns null, which
+	// means "unknown" and must never be rendered as "no IPv6". That is what
+	// makes the agent/server rollout order irrelevant.
+	//
+	// This is advertised capability — a hint for the region picker. It never
+	// gates execution; the per-run egress pre-flight remains the authority.
+	EgressIPv4 *bool `json:"egressIpv4,omitempty"`
+	EgressIPv6 *bool `json:"egressIpv6,omitempty"`
 
 	// result
 	JobUID   string         `json:"jobUid,omitempty"`
