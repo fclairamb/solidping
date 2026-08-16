@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -445,3 +446,79 @@ func TestPerOrgCapRefusesSendInBothModes(t *testing.T) {
 		})
 	}
 }
+
+// monthlySMSCount reads the org's durable monthly SMS counter for the current
+// UTC month — the figure a metered plan is billed on.
+func monthlySMSCount(t *testing.T, env *phoneTestEnv) int {
+	t.Helper()
+
+	now := time.Now().UTC()
+	period := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+
+	count, err := env.db.GetMonthlyUsage(
+		t.Context(), env.org.UID, models.UsageCounterKindSMS, period,
+	)
+	require.NoError(t, err)
+
+	return count
+}
+
+// TestInstanceGuardRefusalDoesNotChargeMonthlyQuota pins the ORDER of the two
+// reservations, which is a billing correctness property rather than a style
+// choice.
+//
+// ReserveSMS consumes the hourly bucket AND writes the durable monthly
+// counter, and nothing releases it. So if the per-org reservation ran first
+// and the instance guard refused second, the org would have been charged
+// monthly quota for a message that was never sent — silently, and on a metered
+// plan. The instance guard therefore runs first, before any per-org state is
+// mutated.
+//
+// This test fails against the inverted ordering.
+func TestInstanceGuardRefusalDoesNotChargeMonthlyQuota(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := setupPhoneEnv(t, false, "") // server-provided mode
+	instanceFake, instanceSrv := newFakeTwilio(t)
+	env.useInstanceSender(instanceTwilioSender(t, instanceSrv.URL), nil, "+15550001111")
+
+	// A SaaS org has a real monthly cap, so the counter is actually written.
+	entSvc := entitlements.NewService(
+		env.db, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0,
+		entitlements.WithInstanceSMSGuards(100, []string{"33"}), // +1 destination is refused
+	)
+	r.NoError(entSvc.Set(ctx, env.org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxSmsPerMonth: intPtr(50)},
+	}, "test", "monthly cap so the counter is written"))
+	env.jctx.Services.Entitlements = entSvc
+
+	before := monthlySMSCount(t, env)
+
+	sent := newRun().dispatchRoute(ctx, env.jctx, slog.Default(), env.incident,
+		verifiedPhoneRoute(env.org.UID), smsFilter())
+
+	r.Equal(0, sent, "a disallowed destination must be refused")
+	r.Equal(0, instanceFake.smsCount(), "nothing may reach the provider")
+	r.Equal(before, monthlySMSCount(t, env),
+		"a send refused by an instance-spend guard must not consume monthly quota: "+
+			"the reservation has no compensating release, so the order of the two "+
+			"guards is what keeps the org from being billed for a message never sent")
+
+	// Positive control: with the destination allowed, the same send goes out
+	// AND does consume one unit of monthly quota — so the assertion above is
+	// about the refusal, not about the counter never moving.
+	env.jctx.Services.Entitlements = entitlements.NewService(
+		env.db, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0,
+		entitlements.WithInstanceSMSGuards(100, []string{"1"}),
+	)
+
+	r.Equal(1, newRun().dispatchRoute(ctx, env.jctx, slog.Default(), env.incident,
+		verifiedPhoneRoute(env.org.UID), smsFilter()))
+	r.Equal(1, instanceFake.smsCount())
+	r.Equal(before+1, monthlySMSCount(t, env))
+}
+
+func intPtr(n int) *int { return &n }

@@ -687,8 +687,13 @@ func (r *EscalationStepJobRun) pagePhone(
 	ackToken := r.buildPhoneAckToken(jctx, incident, contact.Value)
 
 	sent := 0
-	if wantSMS && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS) &&
-		r.reserveInstanceSMSSpend(ctx, jctx, log, incident, resolution, contact.Value) &&
+	// ORDER IS LOAD-BEARING: the instance-spend guards run BEFORE the per-org
+	// reservation. reservePhoneChannel consumes the hourly bucket and writes
+	// the durable monthly counter, and there is no compensating release — so
+	// reserving first and refusing second would charge the org monthly quota
+	// for a message that was never sent. Silently, and on a metered plan.
+	if wantSMS && r.reserveInstanceSMSSpend(ctx, jctx, log, incident, resolution, contact.Value) &&
+		r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS) &&
 		r.sendPhoneSMS(ctx, jctx, log, incident, route, resolution, baseURL, orgSlug, ackToken) {
 		sent++
 	}
