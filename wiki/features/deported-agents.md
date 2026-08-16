@@ -256,6 +256,53 @@ No separate binary. Same container, different role:
 treat it as a secret: back it up as one, mount it as one, and rotate by
 re-enrolling if it leaks.
 
+### IPv6 egress
+
+Shipped by spec `2026-08-15-11`. An agent **self-probes its own egress** on
+every report (heartbeat / claim frame, memoized behind a short TTL) and sends
+`egressIpv4` / `egressIpv6` on the wire. The server stores them on the worker
+row (`workers.egress_ipv4` / `egress_ipv6`, both **nullable**) and aggregates
+them per region.
+
+**Giving an agent IPv6.** Nothing in SolidPing turns IPv6 on — the agent
+reports whatever its host can do, so this is a host/network job:
+
+- The host needs a **default IPv6 route**, not just an address. The probe is a
+  route lookup towards an off-link documentation address (`2001:db8::1`), so a
+  link-local-only or loopback-only stack reports `false`.
+- **Docker**: IPv6 is off by default. Enable it on the daemon
+  (`"ipv6": true` plus a `fixed-cidr-v6`, or an IPv6-enabled user-defined
+  network), or run the agent with `--network host` on a v6-capable host.
+- **Kubernetes**: the pod needs a dual-stack (or v6) pod CIDR; `hostNetwork:
+  true` is the shortcut when the node has v6 and the cluster does not.
+- **Cloud VPS**: most images ship v4-only unless you explicitly attach the
+  provider's IPv6 block and accept its router advertisements.
+
+The change takes effect **within one TTL plus one heartbeat** — no agent
+restart, because the probe runs at report time rather than at process start.
+
+**Reading the advertised capability.** The value is exposed as
+`capabilities: {"ipv6": "yes" | "no" | "unknown"}` on `GET /private-regions`
+and on the region list, and rendered as a badge on the private-locations page
+and in the check form's region picker.
+
+| Value | Means |
+|---|---|
+| `yes` | At least one **live** worker in the region reports IPv6 egress. Any-not-all: a job lands on one worker, so one capable worker is enough. |
+| `no` | Live workers reported, and none of them has IPv6. |
+| `unknown` | **Not reported yet** — no live worker at all, or only workers running a build predating this report. It is *not* "no": such a region may be perfectly capable. |
+
+"Live" is `last_seen_at` inside `regions.WorkerLivenessWindow` (5 min), so a
+region whose only v6 agent goes away stops advertising `yes` on its own.
+
+> **The advertised value never gates execution.** It is a UI hint only. Pinning
+> `ipVersion: ipv6` in a region advertising `no` produces a **warning, not a
+> rejection**, the check is created, and it runs: the per-run
+> `DialEgressProbe` pre-flight (`checkerdef/ipversion.go`) stays the sole
+> authority. A region that regained IPv6 since its last heartbeat works
+> immediately; one that lost it still fails with `ErrWorkerNoEgress` — *"run
+> this check from a region with IPv6 egress"* — rather than a false DOWN.
+
 ### Surfaces
 
 - **Admin API** (under `/api/v1/orgs/:org`): `GET|POST /private-regions`,
@@ -457,12 +504,15 @@ Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../..
 | System-token seeding | `server/internal/app/systemagents.go` |
 | Fleet GC | `server/internal/jobs/jobtypes/job_agent_gc.go` |
 | Region rules | `server/internal/regions/regions.go` |
+| Egress self-probe | `server/internal/checkers/checkerdef/egress.go` (built on `ipversion.go`'s `DialEgressProbe`) |
+| Region capability aggregation | `server/internal/regions/capabilities.go` |
+| Capability badge (UI) | `web/dash0/src/components/shared/ipv6-capability.tsx` |
 | Sealing | `server/internal/crypto/credentials/sealing.go` |
 | Models | `server/internal/db/models/agent.go` |
 | Migrations | `server/internal/db/{postgres,sqlite}/migrations/006_v0_5_0.up.sql`, `008_v0_7_0.up.sql` |
 | Fly deploy reference | `deploy/fly/` |
 | Dashboard | `web/dash0/src/routes/orgs/$org/organization.private-locations*.tsx` |
-| E2E | `web/dash0/e2e/private-locations.spec.ts`, `deported-agent-wizard.spec.ts` |
+| E2E | `web/dash0/e2e/private-locations.spec.ts`, `deported-agent-wizard.spec.ts`, `check-region-ipv6-capability.spec.ts` |
 
 ## Related
 
