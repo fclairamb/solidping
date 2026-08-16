@@ -1,6 +1,12 @@
 import { describe, test, expect } from "bun:test";
 import type { ResponseTimeSeries } from "@/api/hooks";
-import { buildCombinedRows, severityRank, STATUS_SEVERITY } from "./response-time-rollup";
+import {
+  buildCombinedRows,
+  pointKey,
+  samplingInterval,
+  severityRank,
+  STATUS_SEVERITY,
+} from "./response-time-rollup";
 
 // Direct unit coverage for the "worst status wins" incident-strip rollup
 // (spec 2026-08-14-04, Proposal item 5). The E2E suite
@@ -133,5 +139,182 @@ describe("buildCombinedRows — worst-status-wins rollup", () => {
     const byTime = new Map(rows.map((r) => [r.time, r]));
     expect(byTime.get(T0)?.status).toBe("error");
     expect(byTime.get(T1)?.status).toBe("up");
+  });
+});
+
+describe("buildCombinedRows — staggered regions land in shared slots", () => {
+  // Real worker phases, taken from a live 5-region check: every region samples
+  // once a minute but each on its own second-of-the-minute, spread over 45s.
+  const PHASE_SECONDS = [58, 8, 26, 31, 43];
+  const REGIONS = ["jp1", "us1", "aws-paris", "default", "eu2"];
+  const SAMPLES = 10;
+
+  function staggeredSeries(): ResponseTimeSeries[] {
+    return REGIONS.map((region, r) => ({
+      region,
+      points: Array.from({ length: SAMPLES }, (_, i) => ({
+        // jp1 fires at :25:58 — i.e. BEFORE the minute the others report in —
+        // so this also pins that a slot is not just "same minute".
+        time: new Date(
+          Date.UTC(2026, 7, 16, 18, 26 + i, PHASE_SECONDS[r] - (r === 0 ? 60 : 0)),
+        ).toISOString(),
+        durationP95: 10 + r,
+        status: "up",
+      })),
+    }));
+  }
+
+  test("one row per sample, every region present — not one row per region-sample", () => {
+    const rows = buildCombinedRows(staggeredSeries());
+
+    // The bug this pins: keyed on the raw timestamp these 50 points pivot into
+    // 50 rows holding ONE value each, and connectNulls={false} then draws
+    // nothing at all.
+    expect(rows).toHaveLength(SAMPLES);
+    for (const row of rows) {
+      for (let r = 0; r < REGIONS.length; r++) {
+        expect(row[pointKey(r)]).toBe(10 + r);
+      }
+    }
+  });
+
+  test("every region has an unbroken run of values, so every line renders", () => {
+    const rows = buildCombinedRows(staggeredSeries());
+
+    for (let r = 0; r < REGIONS.length; r++) {
+      let longestRun = 0;
+      let run = 0;
+      for (const row of rows) {
+        run = row[pointKey(r)] != null ? run + 1 : 0;
+        longestRun = Math.max(longestRun, run);
+      }
+      // A run of 1 draws no line segment — that is exactly the blank chart.
+      expect(longestRun).toBe(SAMPLES);
+    }
+  });
+
+  test("slots stay time-ordered and never merge two samples of one region", () => {
+    const rows = buildCombinedRows(staggeredSeries());
+
+    const times = rows.map((r) => Date.parse(r.time));
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+
+    // Every region contributed all of its samples: none was overwritten by a
+    // later sample of the same region landing in the same slot.
+    const total = rows.reduce(
+      (sum, row) =>
+        sum +
+        REGIONS.filter((_, r) => row[pointKey(r)] != null).length,
+      0,
+    );
+    expect(total).toBe(REGIONS.length * SAMPLES);
+  });
+
+  test("a region sampling far apart is NOT dragged into a neighbour's slot", () => {
+    // fast: every minute. slow: every 5 minutes, on the same wall clock.
+    const fast: ResponseTimeSeries = {
+      region: "fast",
+      points: Array.from({ length: 10 }, (_, i) => ({
+        time: new Date(Date.UTC(2026, 7, 16, 18, i, 2)).toISOString(),
+        durationP95: 10,
+        status: "up",
+      })),
+    };
+    const slow: ResponseTimeSeries = {
+      region: "slow",
+      points: [0, 5].map((m) => ({
+        time: new Date(Date.UTC(2026, 7, 16, 18, m, 9)).toISOString(),
+        durationP95: 90,
+        status: "up",
+      })),
+    };
+
+    const rows = buildCombinedRows([fast, slow]);
+
+    // The finest interval (60s) sets the slot size, so the slow region keeps
+    // exactly two points, aligned with the fast region's 18:00 and 18:05.
+    expect(rows).toHaveLength(10);
+    expect(rows.filter((r) => r[pointKey(1)] != null)).toHaveLength(2);
+    expect(rows[0][pointKey(1)]).toBe(90);
+    expect(rows[5][pointKey(1)]).toBe(90);
+  });
+
+  test("worst-status rollup still applies inside a slot, not just on exact ties", () => {
+    const series: ResponseTimeSeries[] = [
+      {
+        region: "eu2",
+        points: [{ time: "2026-08-16T18:26:03Z", durationP95: 40, status: "up" }],
+      },
+      {
+        region: "us1",
+        points: [
+          // 9s later — a different timestamp, the same slot.
+          { time: "2026-08-16T18:26:12Z", durationP95: 999, status: "down" },
+        ],
+      },
+      {
+        region: "jp1",
+        points: [
+          { time: "2026-08-16T18:25:03Z", durationP95: 40, status: "up" },
+          { time: "2026-08-16T18:26:07Z", durationP95: 40, status: "up" },
+        ],
+      },
+    ];
+
+    const rows = buildCombinedRows(series);
+    const slot = rows.find((r) => r[pointKey(0)] != null);
+    expect(slot?.status).toBe("down");
+  });
+});
+
+describe("samplingInterval", () => {
+  test("returns the finest median interval across series", () => {
+    const series: ResponseTimeSeries[] = [
+      {
+        region: "slow",
+        points: [0, 300, 600].map((s) => ({
+          time: new Date(Date.UTC(2026, 7, 16, 18, 0, s)).toISOString(),
+          durationP95: 1,
+          status: "up",
+        })),
+      },
+      {
+        region: "fast",
+        points: [0, 60, 120].map((s) => ({
+          time: new Date(Date.UTC(2026, 7, 16, 18, 0, s)).toISOString(),
+          durationP95: 1,
+          status: "up",
+        })),
+      },
+    ];
+
+    expect(samplingInterval(series)).toBe(60_000);
+  });
+
+  test("one isolated gap does not stretch the interval (median, not mean)", () => {
+    const series: ResponseTimeSeries[] = [
+      {
+        region: "eu2",
+        points: [0, 60, 120, 3600].map((s) => ({
+          time: new Date(Date.UTC(2026, 7, 16, 18, 0, s)).toISOString(),
+          durationP95: 1,
+          status: "up",
+        })),
+      },
+    ];
+
+    expect(samplingInterval(series)).toBe(60_000);
+  });
+
+  test("null when no series has two points — callers fall back to exact grouping", () => {
+    expect(samplingInterval([])).toBeNull();
+    expect(
+      samplingInterval([
+        {
+          region: "eu2",
+          points: [{ time: "2026-08-16T18:00:00Z", durationP95: 1, status: "up" }],
+        },
+      ]),
+    ).toBeNull();
   });
 });
