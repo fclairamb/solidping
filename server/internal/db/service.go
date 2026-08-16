@@ -204,7 +204,7 @@ type Service interface {
 	// timestamps, and refreshes the self-reported egress families carried by
 	// egress. A nil field in egress leaves that column untouched — an executor
 	// that cannot answer never overwrites a known value with a guess.
-	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, egress models.WorkerEgress) error
+	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, capabilities []string) error
 
 	// Deported-agent operations (spec 2026-07-16-02).
 	// CreateAgentEnrollmentToken persists a one-shot enrollment token.

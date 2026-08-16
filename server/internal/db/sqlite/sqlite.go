@@ -1245,22 +1245,18 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 		return worker, nil
 	}
 
-	// Worker exists, update last_active_at (and the egress capability when this
-	// registration reported one — a nil field keeps the stored value, so a
-	// caller that cannot answer never downgrades a known capability to null).
+	// Worker exists, update last_active_at (and the capability set when this
+	// registration reported one — a nil set keeps the stored value, so a caller
+	// that cannot answer never downgrades a known set to NULL. An empty non-nil
+	// set is a real report of "none" and IS written).
 	existing.LastActiveAt = &now
 	existing.UpdatedAt = now
 
 	columns := []string{"last_active_at", "updated_at"}
 
-	if worker.EgressIPv4 != nil {
-		existing.EgressIPv4 = worker.EgressIPv4
-		columns = append(columns, "egress_ipv4")
-	}
-
-	if worker.EgressIPv6 != nil {
-		existing.EgressIPv6 = worker.EgressIPv6
-		columns = append(columns, "egress_ipv6")
+	if worker.Capabilities != nil {
+		existing.Capabilities = worker.Capabilities
+		columns = append(columns, "capabilities")
 	}
 
 	_, err = s.db.NewUpdate().
@@ -1289,23 +1285,27 @@ func (s *Service) ListLiveWorkers(ctx context.Context, since time.Time) ([]*mode
 }
 
 func (s *Service) UpdateWorkerHeartbeat(
-	ctx context.Context, workerUID string, egress models.WorkerEgress,
+	ctx context.Context, workerUID string, capabilities []string,
 ) error {
 	now := time.Now()
-	query := s.db.NewUpdate().
-		Model((*models.Worker)(nil)).
-		Set("last_active_at = ?", now).
-		Set("updated_at = ?", now)
 
-	if egress.IPv4 != nil {
-		query = query.Set("egress_ipv4 = ?", *egress.IPv4)
+	// Model-driven rather than Set("capabilities = ?", …): see the Postgres
+	// twin — the field tag, not the raw argument path, picks the encoding.
+	worker := &models.Worker{UID: workerUID, LastActiveAt: &now, UpdatedAt: now}
+	columns := []string{"last_active_at", "updated_at"}
+
+	// nil means "not reported" and must not touch the stored set. An empty
+	// non-nil slice is a real report of "none" and is written.
+	if capabilities != nil {
+		worker.Capabilities = capabilities
+		columns = append(columns, "capabilities")
 	}
 
-	if egress.IPv6 != nil {
-		query = query.Set("egress_ipv6 = ?", *egress.IPv6)
-	}
-
-	_, err := query.Where("uid = ?", workerUID).Exec(ctx)
+	_, err := s.db.NewUpdate().
+		Model(worker).
+		Column(columns...).
+		Where("uid = ?", workerUID).
+		Exec(ctx)
 
 	return err
 }

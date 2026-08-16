@@ -62,11 +62,11 @@ func (b *DirectBackend) Register(
 }
 
 // Heartbeat updates the worker's last_active_at timestamp and the reported
-// egress families.
+// capability set.
 func (b *DirectBackend) Heartbeat(
-	ctx context.Context, workerUID string, egress models.WorkerEgress,
+	ctx context.Context, workerUID string, capabilities []string,
 ) error {
-	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID, egress)
+	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID, capabilities)
 }
 
 // ClaimJobs claims up to fastLimit jobs for the given worker with the slow

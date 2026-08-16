@@ -346,15 +346,12 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		region = r.config.Server.CheckWorker.Region
 	}
 
-	egress := egressreport.Current()
-
 	worker := &models.Worker{
-		UID:        uuid.New().String(),
-		Slug:       identity.Slug,
-		Name:       identity.Name,
-		Region:     &region,
-		EgressIPv4: egress.IPv4,
-		EgressIPv6: egress.IPv6,
+		UID:          uuid.New().String(),
+		Slug:         identity.Slug,
+		Name:         identity.Name,
+		Region:       &region,
+		Capabilities: egressreport.Current(),
 	}
 
 	registeredWorker, err := r.backend.Register(ctx, worker)

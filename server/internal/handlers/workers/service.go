@@ -63,12 +63,12 @@ func NewService(
 }
 
 // Heartbeat updates the worker's last_active_at and, when the executor
-// reported them, its egress families (spec 2026-08-15-11). A zero WorkerEgress
-// leaves the capability columns untouched.
+// reported one, its capability set (specs 2026-08-15-11, 2026-08-16-02). A nil
+// set leaves the stored capabilities untouched.
 func (s *Service) Heartbeat(
-	ctx context.Context, workerUID string, egress models.WorkerEgress,
+	ctx context.Context, workerUID string, capabilities []string,
 ) error {
-	return s.db.UpdateWorkerHeartbeat(ctx, workerUID, egress)
+	return s.db.UpdateWorkerHeartbeat(ctx, workerUID, capabilities)
 }
 
 // SubmitResultRequest is the input for SubmitResult.

@@ -43,18 +43,25 @@ type ClientFrame struct {
 	// claim
 	MaxJobs  int    `json:"maxJobs,omitempty"`
 	CheckUID string `json:"checkUid,omitempty"`
-	// EgressIPv4 / EgressIPv6 are the agent's self-probed egress families
-	// (spec 2026-08-15-11), reported on the claim frame because that is the
-	// agent's real heartbeat — WSBackend.Heartbeat is a no-op and the server
-	// refreshes liveness from frames. Pointers, and OPTIONAL ON BOTH SIDES: an
-	// older agent omits them and the server leaves the columns null, which
-	// means "unknown" and must never be rendered as "no IPv6". That is what
-	// makes the agent/server rollout order irrelevant.
+	// Capabilities is the agent's self-reported capability set — the names of
+	// what it CAN do, today the egress families it self-probed (specs
+	// 2026-08-15-11, 2026-08-16-02). Reported on the claim frame because that
+	// is the agent's real heartbeat — WSBackend.Heartbeat is a no-op and the
+	// server refreshes liveness from frames.
+	//
+	// OPTIONAL ON BOTH SIDES, AND THREE-STATE. `null`/absent means "not
+	// reported": an older agent omits the field and the server leaves the
+	// column NULL, which means "unknown" and must never be rendered as "no
+	// IPv6" — that is what makes the agent/server rollout order irrelevant.
+	// `[]` is a DIFFERENT answer: "I reported, and I have none of them".
+	//
+	// DELIBERATELY NOT `omitempty`: omitempty erases an empty non-nil slice,
+	// which would make "I have none" indistinguishable from "I did not report"
+	// and silently collapse the three states back to two on the wire.
 	//
 	// This is advertised capability — a hint for the region picker. It never
 	// gates execution; the per-run egress pre-flight remains the authority.
-	EgressIPv4 *bool `json:"egressIpv4,omitempty"`
-	EgressIPv6 *bool `json:"egressIpv6,omitempty"`
+	Capabilities []string `json:"capabilities"`
 
 	// result
 	JobUID   string         `json:"jobUid,omitempty"`

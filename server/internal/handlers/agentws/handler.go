@@ -437,12 +437,14 @@ const agentEgressReportInterval = 50 * time.Second
 
 // recordAgentEgress refreshes the agent's workers row from a claim frame: its
 // last_active_at (which is what region aggregation reads as liveness) and its
-// self-reported egress families.
+// self-reported capability set.
 //
-// An agent predating the fields sends neither, and WorkerEgress then leaves
-// both columns untouched — they stay null, i.e. "unknown", which must never be
-// rendered as "this location has no IPv6". That is the whole reason the columns
-// are nullable, and it is what makes the agent/server rollout order irrelevant.
+// An agent predating the field sends nothing, the decoded slice is nil, and the
+// column is left untouched — it stays NULL, i.e. "unknown", which must never be
+// rendered as "this location has no IPv6". That is the whole reason the column
+// is nullable, and it is what makes the agent/server rollout order irrelevant.
+// An agent sending `[]` is a DIFFERENT statement — "I have none" — and is
+// written as such.
 func (h *Handler) recordAgentEgress(
 	ctx context.Context, state *connState, frame *agentcrypto.ClientFrame,
 ) {
@@ -453,8 +455,7 @@ func (h *Handler) recordAgentEgress(
 
 	state.egressWrittenAt = now
 
-	egress := models.WorkerEgress{IPv4: frame.EgressIPv4, IPv6: frame.EgressIPv6}
-	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, egress); err != nil {
+	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, frame.Capabilities); err != nil {
 		h.logger.WarnContext(ctx, "failed to refresh agent worker row",
 			"error", err, "agent", state.agent.UID)
 	}

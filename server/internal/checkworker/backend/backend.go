@@ -60,7 +60,10 @@ type WorkerBackend interface {
 	// heartbeat rather than at process start is what lets a host that gains or
 	// loses IPv6 converge within one beat instead of needing a restart. The
 	// value is advertised as a hint only — it never gates execution.
-	Heartbeat(ctx context.Context, workerUID string, egress models.WorkerEgress) error
+	// Heartbeat refreshes liveness and, when the executor reported one, its
+	// capability set. A nil set means "not reported" and leaves the stored set
+	// untouched; an empty non-nil set is a real report of "none".
+	Heartbeat(ctx context.Context, workerUID string, capabilities []string) error
 
 	// ClaimJobs claims due jobs with per-lane reservation (fastLimit is the
 	// total capacity, slowLimit the slow-lane budget — see

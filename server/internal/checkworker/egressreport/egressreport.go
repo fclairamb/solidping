@@ -33,22 +33,31 @@ var shared = checkerdef.NewEgressCache(cacheTTL) //nolint:gochecknoglobals // de
 // per-run pre-flight in checkerdef stays the authority, so a host whose IPv6
 // route came back runs immediately and one that lost it still fails with
 // ErrWorkerNoEgress instead of a false DOWN.
-func Current() models.WorkerEgress {
+func Current() []string {
 	return From(shared.Get())
 }
 
-// From renders a probe result as the stored capability. Every family present in
-// the map yields a non-nil pointer; a family the probe did not answer for stays
-// nil, i.e. "unknown", never "no".
-func From(families map[checkerdef.IPVersion]bool) models.WorkerEgress {
-	out := models.WorkerEgress{}
-
-	if v, ok := families[checkerdef.IPVersionIPv4]; ok {
-		out.IPv4 = &v
+// From renders a probe result as the stored capability set: the names of the
+// families this host HAS.
+//
+// THE NIL/EMPTY DISTINCTION IS LOAD-BEARING. A probe that answered for no
+// family at all yields nil — "unknown", which must never be rendered as "no
+// IPv6". A probe that answered and found nothing yields a non-nil EMPTY slice —
+// a real "none". Everything else yields the subset that came back true, and
+// absence from that non-nil slice means "no".
+func From(families map[checkerdef.IPVersion]bool) []string {
+	if len(families) == 0 {
+		return nil
 	}
 
-	if v, ok := families[checkerdef.IPVersionIPv6]; ok {
-		out.IPv6 = &v
+	out := make([]string, 0, len(families))
+
+	if families[checkerdef.IPVersionIPv4] {
+		out = append(out, models.CapabilityIPv4)
+	}
+
+	if families[checkerdef.IPVersionIPv6] {
+		out = append(out, models.CapabilityIPv6)
 	}
 
 	return out

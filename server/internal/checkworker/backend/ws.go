@@ -196,9 +196,9 @@ func (b *WSBackend) Register(ctx context.Context, _ *models.Worker) (*models.Wor
 }
 
 // Heartbeat is a no-op: the server refreshes last_seen_at on pings and frames,
-// and the agent's egress capability rides the claim frame (see claim) for the
+// and the agent's capability set rides the claim frame (see claim) for the
 // same reason.
-func (b *WSBackend) Heartbeat(_ context.Context, _ string, _ models.WorkerEgress) error {
+func (b *WSBackend) Heartbeat(_ context.Context, _ string, _ []string) error {
 	return nil
 }
 
@@ -242,14 +242,11 @@ func (b *WSBackend) claim(
 	// a no-op. The probe behind Current() is cached for well under a heartbeat,
 	// so a claim-per-second costs nothing while a host that gains or loses IPv6
 	// still converges without a restart.
-	egress := egressreport.Current()
-
 	resp, err := b.request(ctx, &agents.ClientFrame{
-		Type:       agents.MsgTypeClaim,
-		MaxJobs:    maxJobs,
-		CheckUID:   checkUID,
-		EgressIPv4: egress.IPv4,
-		EgressIPv6: egress.IPv6,
+		Type:         agents.MsgTypeClaim,
+		MaxJobs:      maxJobs,
+		CheckUID:     checkUID,
+		Capabilities: egressreport.Current(),
 	})
 	if err != nil {
 		return nil, 0, err

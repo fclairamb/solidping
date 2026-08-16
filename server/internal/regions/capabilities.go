@@ -11,10 +11,18 @@ import (
 
 // Capability names. A map key rather than a struct field so the next capability
 // is purely additive on the wire (spec 2026-08-15-11 non-goals).
+//
+// The names themselves live on the model, because they are the values stored
+// verbatim in workers.capabilities and a producer must be able to name one
+// without importing this package. Re-exported here unchanged: these are the
+// keys of the public regions API response.
 const (
+	// CapabilityIPv4 reports whether checks pinned to `ipVersion: ipv4` can
+	// actually leave this region.
+	CapabilityIPv4 = models.CapabilityIPv4
 	// CapabilityIPv6 reports whether checks pinned to `ipVersion: ipv6` can
 	// actually leave this region.
-	CapabilityIPv6 = "ipv6"
+	CapabilityIPv6 = models.CapabilityIPv6
 )
 
 // Capability values. THREE states, deliberately — not a boolean.
@@ -41,29 +49,28 @@ const (
 // advertising what a departed worker used to provide.
 const WorkerLivenessWindow = 5 * time.Minute
 
-// aggregateIPv6 folds a set of workers into the region's advertised IPv6
-// capability.
+// aggregate folds a set of workers into the region's advertised verdict for one
+// capability name.
 //
 // ANY, NOT ALL: a job lands on exactly one worker, so a single live worker with
-// IPv6 makes an IPv6 check in this region succeed. Requiring all of them would
-// under-advertise a region that works.
+// the capability makes such a check in this region succeed. Requiring all of
+// them would under-advertise a region that works.
 //
-// Workers reporting nothing (null columns) contribute nothing in either
+// Workers reporting nothing (a NULL set) contribute nothing in either
 // direction — they can neither create a "yes" nor turn an otherwise-unreported
-// region into a "no".
-func aggregateIPv6(workers []*models.Worker) string {
+// region into a "no". A worker that reported a set WITHOUT this name is a real
+// "no": a non-nil set is closed.
+func aggregate(workers []*models.Worker, name string) string {
 	reported := false
 
 	for _, worker := range workers {
-		if worker.EgressIPv6 == nil {
-			continue
-		}
-
-		if *worker.EgressIPv6 {
+		switch worker.Capability(name) {
+		case models.CapabilityStatePresent:
 			return CapabilityYes
+		case models.CapabilityStateAbsent:
+			reported = true
+		case models.CapabilityStateUnknown:
 		}
-
-		reported = true
 	}
 
 	if reported {
@@ -73,11 +80,22 @@ func aggregateIPv6(workers []*models.Worker) string {
 	return CapabilityUnknown
 }
 
+// aggregatedCapabilities is every capability the region layer publishes a
+// verdict for. Adding one is a pure string addition — no migration, no column,
+// no new aggregation function.
+var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the published capability registry
+	CapabilityIPv4,
+	CapabilityIPv6,
+}
+
 // capabilitiesFor renders the capability map for a worker set.
 func capabilitiesFor(workers []*models.Worker) map[string]string {
-	return map[string]string{
-		CapabilityIPv6: aggregateIPv6(workers),
+	out := make(map[string]string, len(aggregatedCapabilities))
+	for _, name := range aggregatedCapabilities {
+		out[name] = aggregate(workers, name)
 	}
+
+	return out
 }
 
 // liveWorkers loads every worker that has checked in inside the liveness
@@ -222,17 +240,27 @@ func (s *Service) CapabilityIndex(ctx context.Context, orgUID string) (map[strin
 	return index, nil
 }
 
-// IPv6Capability reads the IPv6 verdict off a definition, defaulting to
-// "unknown" for a definition nobody annotated. Callers must treat the absence
-// of an answer as unknown, never as "no".
-func (d RegionDefinition) IPv6Capability() string {
+// CapabilityFor reads one verdict off a definition, defaulting to "unknown" for
+// a definition nobody annotated or a capability nobody published. Callers must
+// treat the absence of an answer as unknown, never as "no".
+func (d RegionDefinition) CapabilityFor(name string) string {
 	if d.Capabilities == nil {
 		return CapabilityUnknown
 	}
 
-	if value, ok := d.Capabilities[CapabilityIPv6]; ok && value != "" {
+	if value, ok := d.Capabilities[name]; ok && value != "" {
 		return value
 	}
 
 	return CapabilityUnknown
+}
+
+// IPv4Capability reads the IPv4 verdict off a definition.
+func (d RegionDefinition) IPv4Capability() string {
+	return d.CapabilityFor(CapabilityIPv4)
+}
+
+// IPv6Capability reads the IPv6 verdict off a definition.
+func (d RegionDefinition) IPv6Capability() string {
+	return d.CapabilityFor(CapabilityIPv6)
 }
