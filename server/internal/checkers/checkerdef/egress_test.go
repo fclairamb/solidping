@@ -36,7 +36,7 @@ func TestProbeEgressV4OnlyHost(t *testing.T) {
 
 	families := checkerdef.ProbeEgressWith(func(version checkerdef.IPVersion, _ net.IP) error {
 		if version == checkerdef.IPVersionIPv6 {
-			return errors.New("network is unreachable")
+			return errors.New("network is unreachable") //nolint:err113 // fake probe diagnostic
 		}
 
 		return nil

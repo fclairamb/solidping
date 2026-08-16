@@ -86,7 +86,7 @@ func (e *warnEnv) agent(orgUID, regionSlug, name string, v6 *bool) {
 	r.NoError(err)
 }
 
-// setRegions installs the global region catalogue for the test.
+// setRegions installs the global region catalog for the test.
 func (e *warnEnv) setRegions(defs []regions.RegionDefinition) {
 	e.t.Helper()
 

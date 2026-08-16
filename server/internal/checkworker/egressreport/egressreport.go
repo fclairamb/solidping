@@ -24,7 +24,7 @@ import (
 const cacheTTL = 30 * time.Second
 
 // shared is the process-wide cache. One worker process has one egress.
-var shared = checkerdef.NewEgressCache(cacheTTL)
+var shared = checkerdef.NewEgressCache(cacheTTL) //nolint:gochecknoglobals // deliberate process-lifetime cache
 
 // Current probes (or reuses a fresh probe of) this host's egress families and
 // renders them for the worker row.

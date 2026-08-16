@@ -68,7 +68,7 @@ func (e *capEnv) cloudWorker(slug, region string, v6 *bool, lastActive time.Time
 // agentWorker seeds an org agent bound to a private region plus the workers row
 // the WS handler would have registered for it (region NULL, matching
 // production: an org agent's routing never goes through the workers row).
-func (e *capEnv) agentWorker(orgUID, region, name string, v6 *bool, lastActive time.Time) *models.Agent {
+func (e *capEnv) agentWorker(orgUID, region, name string, v6 *bool, lastActive time.Time) {
 	e.t.Helper()
 
 	r := require.New(e.t)
@@ -85,8 +85,6 @@ func (e *capEnv) agentWorker(orgUID, region, name string, v6 *bool, lastActive t
 	r.NoError(err)
 
 	e.setLastActive(worker.UID, lastActive)
-
-	return agent
 }
 
 func (e *capEnv) setLastActive(workerUID string, at time.Time) {

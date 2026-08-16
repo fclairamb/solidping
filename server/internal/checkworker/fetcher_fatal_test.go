@@ -54,9 +54,11 @@ func (b *claimFailBackend) ClaimJobs(
 func (b *claimFailBackend) Register(_ context.Context, worker *models.Worker) (*models.Worker, error) {
 	return worker, nil
 }
+
 func (b *claimFailBackend) Heartbeat(context.Context, string, models.WorkerEgress) error {
 	return nil
 }
+
 func (b *claimFailBackend) ClaimJobsForCheck(
 	context.Context, string, *string, string,
 ) ([]*models.CheckJob, error) {

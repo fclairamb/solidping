@@ -44,7 +44,7 @@ func TestAdvertisedNoDoesNotBlockARealIPv6Run(t *testing.T) {
 	// fail, so the assertion above is about the run-time probe being the only
 	// authority — not about a probe that never runs.
 	deadProbe := func(_ checkerdef.IPVersion, _ net.IP) error {
-		return errWorkerNoEgress(errors.New("network is unreachable"))
+		return errWorkerNoEgress(errors.New("network is unreachable")) //nolint:err113 // fake probe diagnostic
 	}
 
 	_, deadErr := checkerdef.SelectIPAddrWithProbe(
@@ -73,7 +73,9 @@ func TestLosingIPv6BetweenHeartbeatsStillReportsWorkerNoEgress(t *testing.T) {
 			return nil
 		}
 
-		return errors.New("dial udp6 " + ip.String() + ": connect: " + syscall.ENETUNREACH.Error())
+		return errors.New( //nolint:err113 // fake probe diagnostic, mirrors the kernel string
+			"dial udp6 " + ip.String() + ": connect: " + syscall.ENETUNREACH.Error(),
+		)
 	}
 
 	// Wrapped exactly as the production probe wraps it, so the sentinel and the

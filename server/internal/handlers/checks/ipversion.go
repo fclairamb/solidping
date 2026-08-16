@@ -156,7 +156,8 @@ func regionLabel(def regions.RegionDefinition) string {
 func ipv6CapableRegions(index map[string]regions.RegionDefinition) []string {
 	capable := make([]string, 0, len(index))
 
-	for _, def := range index {
+	for slug := range index {
+		def := index[slug]
 		if def.IPv6Capability() == regions.CapabilityYes {
 			capable = append(capable, regionLabel(def))
 		}

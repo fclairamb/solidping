@@ -14,7 +14,7 @@ import (
 // are OFF-LINK: the lookup then has to consult the host's default route for
 // that family instead of matching loopback or a link-local shortcut, which is
 // exactly the property "can this worker originate IPv6 at all" depends on.
-var egressProbeTargets = map[IPVersion]net.IP{
+var egressProbeTargets = map[IPVersion]net.IP{ //nolint:gochecknoglobals // constant lookup table of probe targets
 	IPVersionIPv4: net.ParseIP("192.0.2.1"),
 	IPVersionIPv6: net.ParseIP("2001:db8::1"),
 }
