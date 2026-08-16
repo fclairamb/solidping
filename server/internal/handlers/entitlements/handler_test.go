@@ -396,3 +396,197 @@ func TestGetNonAdminOmitsUpgradeURL(t *testing.T) {
 	_, ok := getUpgradeURL(t, rec)
 	r.False(ok, "non-admin must not receive an upgradeUrl")
 }
+
+// doForOrg issues a request as an admin of an arbitrary org, so a token minted
+// for one org can be compared against another org's slug.
+func (h *entHandlerSetup) doForOrg(
+	t *testing.T, method, path, orgSlug string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	ctx := context.WithValue(t.Context(), base.ContextKeyUser, h.user)
+	ctx = context.WithValue(ctx, base.ContextKeyClaims, &authpkg.Claims{
+		UserUID: h.user.UID,
+		OrgSlug: orgSlug,
+		Role:    "admin",
+	})
+	req := httptest.NewRequestWithContext(ctx, method, path, nil)
+	rec := httptest.NewRecorder()
+	h.router.ServeHTTP(rec, req)
+
+	return rec
+}
+
+// fragmentToken returns the `#bt=` fragment of the admin upgrade URL, failing
+// the test when it is absent.
+func (h *entHandlerSetup) fragmentToken(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	r := require.New(t)
+
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+	upgradeURL, ok := getUpgradeURL(t, rec)
+	r.True(ok, "admin must receive an upgradeUrl")
+
+	_, frag, found := strings.Cut(upgradeURL, "#bt=")
+	r.True(found, "upgradeUrl must carry a #bt= token fragment: %s", upgradeURL)
+	r.NotEmpty(frag)
+
+	return frag
+}
+
+// seedUpgradeTemplate configures the upgrade URL template used by every
+// upgrade-token test.
+func (h *entHandlerSetup) seedUpgradeTemplate(t *testing.T) {
+	t.Helper()
+	require.NoError(t, h.dbSvc.SetSystemParameter(t.Context(), enthandler.ParamUpgradeURLTemplate,
+		"https://billing.example.com/upgrade?org={org}", false))
+}
+
+// keyFunc builds a jwt.Keyfunc for a fixed HS256 secret.
+func keyFunc(secret string) jwt.Keyfunc {
+	return func(token *jwt.Token) (any, error) {
+		if _, isHMAC := token.Method.(*jwt.SigningMethodHMAC); !isHMAC {
+			return nil, jwt.ErrSignatureInvalid
+		}
+
+		return []byte(secret), nil
+	}
+}
+
+// TestUpgradeTokenUsesDedicatedSecret is the regression test for the spec: with
+// entitlements.billing_upgrade_token_secret set, the `#bt=` token must verify
+// against THAT secret and must FAIL against the inbound bearer. If the fallback
+// ordering were reversed (bearer preferred), the second assertion breaks.
+func TestUpgradeTokenUsesDedicatedSecret(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	const (
+		bearer         = "inbound-bearer-secret"
+		upgradeSigning = "dedicated-upgrade-token-secret"
+	)
+	h.seedUpgradeTemplate(t)
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamBillingInboundSecret, bearer, true))
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamBillingUpgradeTokenSecret, upgradeSigning, true))
+
+	frag := h.fragmentToken(t, h.do(t, http.MethodGet, h.path(), nil))
+
+	// Negative: the leaked bearer must NOT verify the token.
+	_, err := jwt.Parse(frag, keyFunc(bearer))
+	r.Error(err, "a token minted with the dedicated secret must not verify against the inbound bearer")
+	r.ErrorIs(err, jwt.ErrSignatureInvalid)
+
+	// Positive: it verifies against the dedicated secret, with unchanged claims.
+	parsed, err := jwt.Parse(frag, keyFunc(upgradeSigning))
+	r.NoError(err)
+	r.True(parsed.Valid)
+
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	r.True(ok)
+	r.Equal("billing", claims["purpose"])
+	r.Equal(h.org.Slug, claims["org"])
+	r.Equal(h.user.UID, claims["sub"])
+	r.Equal(h.user.Email, claims["email"])
+
+	iat, ok := claims["iat"].(float64)
+	r.True(ok)
+	exp, ok := claims["exp"].(float64)
+	r.True(ok)
+	r.InDelta(3600, exp-iat, 5)
+}
+
+// TestUpgradeTokenFallsBackToInboundSecret pins acceptance criterion 2: with
+// the dedicated parameter unset, behaviour is exactly what it is today.
+func TestUpgradeTokenFallsBackToInboundSecret(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	const bearer = "inbound-bearer-secret"
+	h.seedUpgradeTemplate(t)
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamBillingInboundSecret, bearer, true))
+	// entitlements.billing_upgrade_token_secret deliberately NOT set.
+
+	frag := h.fragmentToken(t, h.do(t, http.MethodGet, h.path(), nil))
+
+	parsed, err := jwt.Parse(frag, keyFunc(bearer))
+	r.NoError(err, "with the dedicated secret unset the token must still verify against the bearer")
+	r.True(parsed.Valid)
+}
+
+// TestUpgradeTokenDedicatedSecretAloneIsEnough covers the split-completed state:
+// only the dedicated secret is configured, no bearer at all.
+func TestUpgradeTokenDedicatedSecretAloneIsEnough(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	const upgradeSigning = "dedicated-upgrade-token-secret"
+	h.seedUpgradeTemplate(t)
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamBillingUpgradeTokenSecret, upgradeSigning, true))
+
+	frag := h.fragmentToken(t, h.do(t, http.MethodGet, h.path(), nil))
+
+	parsed, err := jwt.Parse(frag, keyFunc(upgradeSigning))
+	r.NoError(err)
+	r.True(parsed.Valid)
+}
+
+// TestUpgradeTokenNeitherSecretHasNoFragment pins acceptance criterion 5.
+func TestUpgradeTokenNeitherSecretHasNoFragment(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	h.seedUpgradeTemplate(t)
+	// Neither billing secret configured.
+
+	rec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	upgradeURL, ok := getUpgradeURL(t, rec)
+	r.True(ok)
+	r.Equal("https://billing.example.com/upgrade?org="+h.org.Slug, upgradeURL)
+	r.NotContains(upgradeURL, "#bt=")
+}
+
+// TestUpgradeTokenCarriesTheRequestedOrgOnly checks the org claim is the org
+// the URL was built for — billing enforces the match, but the claim has to be
+// right on this side.
+func TestUpgradeTokenCarriesTheRequestedOrgOnly(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	const upgradeSigning = "dedicated-upgrade-token-secret"
+	h.seedUpgradeTemplate(t)
+	r.NoError(h.dbSvc.SetSystemParameter(ctx, enthandler.ParamBillingUpgradeTokenSecret, upgradeSigning, true))
+
+	other := models.NewOrganization("ent-h-other", "Other Org")
+	r.NoError(h.dbSvc.CreateOrganization(ctx, other))
+	r.NoError(h.dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(other.UID, h.user.UID, models.MemberRoleAdmin)))
+	r.NotEqual(h.org.Slug, other.Slug)
+
+	orgClaim := func(rec *httptest.ResponseRecorder) string {
+		parsed, err := jwt.Parse(h.fragmentToken(t, rec), keyFunc(upgradeSigning))
+		r.NoError(err)
+		claims, ok := parsed.Claims.(jwt.MapClaims)
+		r.True(ok)
+		slug, ok := claims["org"].(string)
+		r.True(ok)
+
+		return slug
+	}
+
+	firstPath := "/api/v1/orgs/" + h.org.Slug + "/entitlements"
+	otherPath := "/api/v1/orgs/" + other.Slug + "/entitlements"
+
+	r.Equal(h.org.Slug, orgClaim(h.doForOrg(t, http.MethodGet, firstPath, h.org.Slug)))
+	r.Equal(other.Slug, orgClaim(h.doForOrg(t, http.MethodGet, otherPath, other.Slug)))
+}

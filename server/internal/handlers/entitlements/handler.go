@@ -495,13 +495,7 @@ func (h *Handler) adminUpgradeURL(ctx context.Context, orgSlug string) (string, 
 	}
 
 	if viaFallback {
-		warnUpgradeTokenFallbackOnce.Do(func() {
-			slog.WarnContext(ctx, "minting the billing upgrade token with the deprecated "+
-				ParamBillingInboundSecret+" fallback; set "+ParamBillingUpgradeTokenSecret+
-				" (SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET) to a dedicated value, then set "+
-				"BILLING_ALLOW_LEGACY_UPGRADE_TOKEN_SECRET=false on the billing service",
-				"missingParam", ParamBillingUpgradeTokenSecret)
-		})
+		warnUpgradeTokenFallback(ctx)
 	}
 
 	user, ok := middleware.GetUserFromContext(ctx)
@@ -524,6 +518,19 @@ func (h *Handler) adminUpgradeURL(ctx context.Context, orgSlug string) (string, 
 // process: adminUpgradeURL runs on a dashboard read path, so logging per URL
 // build would be pure noise.
 var warnUpgradeTokenFallbackOnce sync.Once //nolint:gochecknoglobals // process-wide one-shot log guard
+
+// warnUpgradeTokenFallback emits the deprecation warning at most once per
+// process. It mirrors the billing service's own fallback-acceptance message so
+// the two logs read as one migration.
+func warnUpgradeTokenFallback(ctx context.Context) {
+	warnUpgradeTokenFallbackOnce.Do(func() {
+		slog.WarnContext(ctx, "minting the billing upgrade token with the deprecated "+
+			ParamBillingInboundSecret+" fallback; set "+ParamBillingUpgradeTokenSecret+
+			" (SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET) to a dedicated value, then set "+
+			"BILLING_ALLOW_LEGACY_UPGRADE_TOKEN_SECRET=false on the billing service",
+			"missingParam", ParamBillingUpgradeTokenSecret)
+	})
+}
 
 // upgradeTokenSecret resolves the HS256 key used to sign the `#bt=` upgrade
 // token: the dedicated ParamBillingUpgradeTokenSecret when set, otherwise the
