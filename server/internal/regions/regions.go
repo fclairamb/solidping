@@ -18,8 +18,10 @@ type RegionDefinition struct {
 	Emoji string `json:"emoji"`
 	Name  string `json:"name"`
 	// Capabilities carries what the region's live workers say they can do,
-	// keyed by capability name (today only CapabilityIPv6). It is a MAP rather
-	// than a field so the next capability is additive, and it is omit-empty so
+	// keyed by capability name (today CapabilityIPv4 and CapabilityIPv6). It is
+	// a MAP rather than a field so the next capability is additive — and it is
+	// generic all the way down to storage since spec 2026-08-16-02, so adding
+	// one costs a string and nothing else. It is omit-empty so
 	// a definition round-tripped through the stored `regions` / `custom_regions`
 	// parameter stays byte-identical for an older binary that never sets it.
 	//

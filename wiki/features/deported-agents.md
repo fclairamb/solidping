@@ -258,11 +258,17 @@ re-enrolling if it leaks.
 
 ### IPv6 egress
 
-Shipped by spec `2026-08-15-11`. An agent **self-probes its own egress** on
-every report (heartbeat / claim frame, memoized behind a short TTL) and sends
-`egressIpv4` / `egressIpv6` on the wire. The server stores them on the worker
-row (`workers.egress_ipv4` / `egress_ipv6`, both **nullable**) and aggregates
-them per region.
+Shipped by specs `2026-08-15-11` and `2026-08-16-02`. An agent **self-probes
+its own egress** on every report (heartbeat / claim frame, memoized behind a
+short TTL) and sends a generic `capabilities` array of the names it HAS (e.g.
+`["ipv4","ipv6"]`) on the wire. The server stores it on the worker row
+(`workers.capabilities`, **nullable**) and aggregates it per region.
+
+The column carries **three** states, and NULL is the only unknown:
+`null`/absent = never reported, `[]` = reported and has none, a populated array
+= reported this exact set. A non-NULL array is authoritative and closed, so
+absence from it means "no", never "unknown". Adding a capability is a pure
+string addition — no migration, no column.
 
 **Giving an agent IPv6.** Nothing in SolidPing turns IPv6 on — the agent
 reports whatever its host can do, so this is a host/network job:
@@ -282,7 +288,7 @@ The change takes effect **within one TTL plus one heartbeat** — no agent
 restart, because the probe runs at report time rather than at process start.
 
 **Reading the advertised capability.** The value is exposed as
-`capabilities: {"ipv6": "yes" | "no" | "unknown"}` on `GET /private-regions`
+`capabilities: {"ipv4": …, "ipv6": "yes" | "no" | "unknown"}` on `GET /private-regions`
 and on the region list, and rendered as a badge on the private-locations page
 and in the check form's region picker.
 
