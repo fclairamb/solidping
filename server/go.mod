@@ -53,7 +53,7 @@ require (
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/miekg/dns v1.1.72
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
-	github.com/oapi-codegen/runtime v1.6.0
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/ohler55/ojg v1.28.4
 	github.com/pires/go-proxyproto v0.15.0
 	github.com/pkg/sftp v1.13.11
@@ -67,7 +67,7 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/sijms/go-ora/v3 v3.0.1
-	github.com/slack-go/slack v0.27.0
+	github.com/slack-go/slack v0.29.0
 	github.com/stretchr/testify v1.11.1
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
