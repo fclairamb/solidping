@@ -13,7 +13,7 @@ import (
 func baseValidDocument() *ExportDocument {
 	return &ExportDocument{
 		Version:      ExportVersionV2,
-		Organization: "stonaltech",
+		Organization: "acmetech",
 		Secrets:      SecretsMarkerStripped,
 		Checks: []ExportCheck{
 			{
@@ -24,22 +24,22 @@ func baseValidDocument() *ExportDocument {
 				Labels: map[string]string{"app": "rabbitmq", "cluster": "aws-prod"},
 			},
 			{
-				Name:   "api.stonal.io (http)",
-				Slug:   "http-api-stonal-io",
+				Name:   "api.acme.io (http)",
+				Slug:   "http-api-acme-io",
 				Type:   "http",
-				Config: map[string]any{"expectedStatus": 401, "url": "https://api.stonal.io"},
+				Config: map[string]any{"expectedStatus": 401, "url": "https://api.acme.io"},
 				Labels: map[string]string{"environment": "prod", "stack": "prod"},
 			},
 			{
-				Name: "api.stonal.io/datalake (http)",
-				Slug: "http-api-stonal-io-datalake",
+				Name: "api.acme.io/datalake (http)",
+				Slug: "http-api-acme-io-datalake",
 				Type: "http",
 				Config: map[string]any{
-					"url": "https://api.stonal.io/datalake/mgmt/version",
+					"url": "https://api.acme.io/datalake/mgmt/version",
 				},
 				Labels: map[string]string{"app": "datalake", "environment": "prod", "stack": "prod"},
 				DependsOn: []ExportedDependency{
-					{ParentSlug: "http-api-stonal-io", Kind: "hard"},
+					{ParentSlug: "http-api-acme-io", Kind: "hard"},
 					{ParentSlug: "rabbitmq-aws-prod", Kind: "hard"},
 				},
 			},
@@ -202,7 +202,7 @@ func TestValidateDocumentGenericRuleViolations(t *testing.T) {
 			name: "duplicate parent",
 			mutate: func(doc *ExportDocument) {
 				doc.Checks[2].DependsOn = append(doc.Checks[2].DependsOn,
-					ExportedDependency{ParentSlug: "http-api-stonal-io", Kind: "hard"})
+					ExportedDependency{ParentSlug: "http-api-acme-io", Kind: "hard"})
 			},
 			expected: "twice",
 		},
@@ -217,7 +217,7 @@ func TestValidateDocumentGenericRuleViolations(t *testing.T) {
 			name: "dependency cycle",
 			mutate: func(doc *ExportDocument) {
 				doc.Checks[1].DependsOn = []ExportedDependency{
-					{ParentSlug: "http-api-stonal-io-datalake", Kind: "hard"},
+					{ParentSlug: "http-api-acme-io-datalake", Kind: "hard"},
 				}
 			},
 			expected: "dependency cycle",

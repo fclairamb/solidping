@@ -7,8 +7,8 @@ effort: high
 
 ## Problem
 
-Observed on the `secnum-abyla-cup` check in org `stonaltech`
-(https://solidping.k8xp.com/dash0/orgs/stonaltech/checks/secnum-abyla-cup),
+Observed on the `secnum-abyla-cup` check in org `acmetech`
+(https://solidping.k8xp.com/dash0/orgs/acmetech/checks/secnum-abyla-cup),
 configured with **confirmation period 30s** and **recovery period 300s**
 (≈10 checks at the 30s interval):
 

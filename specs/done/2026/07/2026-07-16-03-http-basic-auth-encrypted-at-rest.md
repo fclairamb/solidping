@@ -7,7 +7,7 @@ effort: high
 
 ## Problem
 
-`https://solidping.k8xp.com/dash0/orgs/stonaltech/checks/rabbitmq-aws-nonprod`
+`https://solidping.k8xp.com/dash0/orgs/acmetech/checks/rabbitmq-aws-nonprod`
 renders its config as:
 
 ```

@@ -39,8 +39,8 @@ yet the exec routes being broken makes it the de-facto only Kubernetes path.
 The genuinely correct pattern is the opposite one: **never extract the keys**.
 Persist `/data` on a volume, let the agent generate its identity in-pod on first
 start, and leave `SP_AGENT_KEYS` unset. This has been validated in production —
-see `~/code/stonal/exp-devops/solidping/agent-deployment-s3ns-prod.yaml`
-(the `@stonal/s3ns-prod` private location), which hit exactly this wall and moved
+see `~/code/acme/exp-devops/solidping/agent-deployment-s3ns-prod.yaml`
+(the `@acme/s3ns-prod` private location), which hit exactly this wall and moved
 to a PVC. That manifest also surfaces a detail the docs never mention: distroless
 `:nonroot` runs as **uid 65532**, so the pod needs `securityContext.fsGroup:
 65532` or the agent cannot write `agent-keys.json` (mode `0600`) onto the mounted

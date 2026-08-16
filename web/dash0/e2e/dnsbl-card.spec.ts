@@ -33,7 +33,7 @@ test.describe("DNSBL result card", () => {
     const page = authenticatedPage;
 
     // A .254 = "public/open resolver refused" reply — the exact false-positive
-    // scenario (api.stonal.io on an AWS resolver) this card exists to explain.
+    // scenario (api.acme.io on an AWS resolver) this card exists to explain.
     await page.route("**/api/v1/orgs/*/checks/*/results/*", (route) =>
       route.fulfill({
         status: 200,

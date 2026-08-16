@@ -149,7 +149,7 @@ k8xp repo and live dev deployment ("there's no actual production" — confirmed
 
 - Seeded admin entitlement overrides (direct SQL against the live
   `solidping_dev` Postgres, `org_entitlements` table) for all three real orgs
-  with active checks, *before* flipping the mode — `stonaltech` (the `$org` in
+  with active checks, *before* flipping the mode — `acmetech` (the `$org` in
   this spec, 52 checks/~41 per min) got 200 checks/120 per min/unlimited SSO,
   "Team" 🚀; `webingenia` (29 checks) and `default` (12 checks) got the same
   treatment proactively, since both would have exceeded the new 10-check Free
@@ -168,7 +168,7 @@ k8xp repo and live dev deployment ("there's no actual production" — confirmed
 - **Live-verified** via the API (`GET /api/v1/orgs/:org/entitlements`) post-deploy:
   - Scratch orgs (`test`, `test2`, no override row) →
     `{"limits":{"maxChecks":10,"maxChecksPerMinute":6},"source":"default","displayName":"Free","displayEmoji":"🆓"}`
-  - `stonaltech` → `{"limits":{"maxChecks":200,"maxChecksPerMinute":120},"source":"admin","displayName":"Team","displayEmoji":"🚀"}`
+  - `acmetech` → `{"limits":{"maxChecks":200,"maxChecksPerMinute":120},"source":"admin","displayName":"Team","displayEmoji":"🚀"}`
     (its own override, not throttled)
   - `webingenia`/`default` → same 100/80/"Team"🚀 override, also not throttled
   - Pod healthy post-rollout, no errors in logs.

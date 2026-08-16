@@ -7,8 +7,8 @@ The DNSBL checker reports a target as **Down** whenever a blocklist zone returns
 other DNSBLs) for **error/status replies**, not real listings. Treating those as
 listings produces false "blocklisted" alerts and flapping checks.
 
-Observed in production: check `api.stonal.io (dnsbl)`
-(`14ccfb28-d549-4992-bfbd-6f5a69a91958`, org `stonaltech`) sits **Down** with:
+Observed in production: check `api.acme.io (dnsbl)`
+(`14ccfb28-d549-4992-bfbd-6f5a69a91958`, org `acmetech`) sits **Down** with:
 
 ```json
 "clean":     ["b.barracudacentral.org", "bl.spamcop.net", "dnsbl-1.uceprotect.net"],
@@ -22,7 +22,7 @@ Three of four lists are clean; the only "hit" is `zen.spamhaus.org` returning
 workers run in AWS and use the default VPC / public resolver, so Spamhaus
 refuses to serve `zen.spamhaus.org` results and returns the error code. Real
 listings live in `127.0.0.x` (`.2` SBL, `.3` CSS, `.4–.7` XBL, `.9` DROP,
-`.10/.11` PBL). `api.stonal.io` is not actually listed.
+`.10/.11` PBL). `api.acme.io` is not actually listed.
 
 Spamhaus reserved error/status codes:
 

@@ -5,7 +5,7 @@
 The public status-page Atom feed is (still) broken on the Postgres deployment:
 
 ```
-GET https://solidping.k8xp.com/api/v1/status-pages/stonaltech/abyla-windows-vms/feed.xml
+GET https://solidping.k8xp.com/api/v1/status-pages/acmetech/abyla-windows-vms/feed.xml
 {"title":"Internal server error","code":"INTERNAL_ERROR","detail":"ERROR: there is no parameter $1 (SQLSTATE=42P02)"}
 ```
 

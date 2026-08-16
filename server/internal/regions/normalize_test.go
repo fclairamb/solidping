@@ -33,12 +33,12 @@ func newNormalizeFixture(t *testing.T) *normalizeFixture {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	// `stonal`, formerly `stonaltech` and before that `stonalv0` — the live
+	// `acme`, formerly `acmetech` and before that `acmev0` — the live
 	// incident's shape, with two generations of previous slugs.
-	org := models.NewOrganization("stonal", "Stonal")
+	org := models.NewOrganization("acme", "Acme")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
-	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "stonaltech"))
-	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "stonalv0"))
+	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "acmetech"))
+	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "acmev0"))
 
 	other := models.NewOrganization("evilcorp", "Evil Corp")
 	r.NoError(dbSvc.CreateOrganization(ctx, other))
@@ -62,7 +62,7 @@ func TestNormalizeAcceptsOwnCurrentAndPreviousSlugs(t *testing.T) {
 	r := require.New(t)
 	f := newNormalizeFixture(t)
 
-	for _, in := range []string{"@stonal/aws-paris", "@stonaltech/aws-paris", "@stonalv0/aws-paris"} {
+	for _, in := range []string{"@acme/aws-paris", "@acmetech/aws-paris", "@acmev0/aws-paris"} {
 		out, err := f.svc.NormalizeRegionsForOrg(f.ctx, f.org.UID, []string{in})
 		r.NoErrorf(err, "%q must be accepted", in)
 		r.Equalf([]string{"@aws-paris"}, out, "%q must normalize to the org-relative form", in)
@@ -71,7 +71,7 @@ func TestNormalizeAcceptsOwnCurrentAndPreviousSlugs(t *testing.T) {
 	// Cloud regions and already-normalized private regions pass through
 	// untouched, and the order of the set is preserved.
 	out, err := f.svc.NormalizeRegionsForOrg(
-		f.ctx, f.org.UID, []string{"eu-west-1", "@stonaltech/aws-paris", "default"},
+		f.ctx, f.org.UID, []string{"eu-west-1", "@acmetech/aws-paris", "default"},
 	)
 	r.NoError(err)
 	r.Equal([]string{"eu-west-1", "@aws-paris", "default"}, out)
@@ -101,7 +101,7 @@ func TestNormalizeRejectsForeignOrgSlug(t *testing.T) {
 	r.ErrorIs(err, regions.ErrForeignPrivateRegion)
 
 	// And the reverse direction holds: the OTHER org may not claim ours.
-	_, err = f.svc.NormalizeRegionsForOrg(f.ctx, f.other.UID, []string{"@stonaltech/aws-paris"})
+	_, err = f.svc.NormalizeRegionsForOrg(f.ctx, f.other.UID, []string{"@acmetech/aws-paris"})
 	r.ErrorIs(err, regions.ErrForeignPrivateRegion)
 }
 
@@ -115,7 +115,7 @@ func TestNormalizeCollapsesBothSpellingsToOneEntry(t *testing.T) {
 	f := newNormalizeFixture(t)
 
 	out, err := f.svc.NormalizeRegionsForOrg(f.ctx, f.org.UID, []string{
-		"@stonaltech/aws-paris", "@stonal/aws-paris", "@aws-paris", "eu-west-1", "eu-west-1",
+		"@acmetech/aws-paris", "@acme/aws-paris", "@aws-paris", "eu-west-1", "eu-west-1",
 	})
 	r.NoError(err)
 	r.Equal([]string{"@aws-paris", "eu-west-1"}, out)
@@ -129,7 +129,7 @@ func TestResolveRegionsForCheckNormalizesCallerInput(t *testing.T) {
 	r := require.New(t)
 	f := newNormalizeFixture(t)
 
-	out, err := f.svc.ResolveRegionsForCheck(f.ctx, []string{"@stonaltech/aws-paris"}, f.org.UID)
+	out, err := f.svc.ResolveRegionsForCheck(f.ctx, []string{"@acmetech/aws-paris"}, f.org.UID)
 	r.NoError(err)
 	r.Equal([]string{"@aws-paris"}, out)
 
@@ -149,7 +149,7 @@ func TestResolveRegionsForCheckNormalizesStoredOrgDefaults(t *testing.T) {
 
 	r.NoError(f.dbSvc.SetOrgParameter(
 		f.ctx, f.org.UID, regions.ParamDefaultRegions,
-		[]string{"@stonaltech/aws-paris", "@stonal/aws-paris", "default"}, false,
+		[]string{"@acmetech/aws-paris", "@acme/aws-paris", "default"}, false,
 	))
 
 	out, err := f.svc.ResolveRegionsForCheck(f.ctx, nil, f.org.UID)

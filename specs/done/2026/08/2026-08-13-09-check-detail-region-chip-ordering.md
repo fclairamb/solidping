@@ -8,7 +8,7 @@ effort: medium
 ## Problem
 
 On the check detail page (e.g.
-`/dash0/orgs/stonal/checks/3efe4bcb-dc44-4046-8dda-a4af7d376595`), the same
+`/dash0/orgs/acme/checks/3efe4bcb-dc44-4046-8dda-a4af7d376595`), the same
 set of regions is presented in a different order in the two places that show
 region chips:
 
@@ -26,7 +26,7 @@ The two lists are derived independently and each picked a different ordering:
 - The Recent Results filter uses `Array.from(set).sort()`
   ([checks.$checkUid.index.tsx:613-619](web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx:613)),
   i.e. **plain alphabetical by slug**. Org-relative private-region slugs start
-  with `@` (e.g. `@stonaltech/s3ns-paris`), and `@` sorts before letters —
+  with `@` (e.g. `@acmetech/s3ns-paris`), and `@` sorts before letters —
   which is why the custom "S3NS Paris prod" region lands *before* the standard
   `eu1` region there.
 

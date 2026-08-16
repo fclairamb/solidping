@@ -54,7 +54,7 @@ func NewService(dbService db.Service) *Service {
 // normalizeRegionFilter canonicalizes a caller-supplied `?region=` list.
 //
 // Without this, a bookmarked or shared link carrying the pre-2026-08-13
-// spelling (`?region=@stonaltech/aws-paris`) silently returns an EMPTY series
+// spelling (`?region=@acmetech/aws-paris`) silently returns an EMPTY series
 // once migration 012 has rewritten the rows — the same unexplained-nothing
 // failure mode this whole spec exists to remove. A foreign org slug is a hard
 // 400 rather than an empty chart: an explicit error beats a silent nothing, and

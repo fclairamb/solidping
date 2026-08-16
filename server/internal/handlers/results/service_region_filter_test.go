@@ -26,10 +26,10 @@ func TestListResultsNormalizesLegacyRegionFilter(t *testing.T) {
 	r := require.New(t)
 	dbSvc, ctx := newNeighborsTestDB(t)
 
-	// `stonal`, formerly `stonaltech` — the live incident's org.
-	org := models.NewOrganization("stonal", "Stonal")
+	// `acme`, formerly `acmetech` — the live incident's org.
+	org := models.NewOrganization("acme", "Acme")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
-	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "stonaltech"))
+	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "acmetech"))
 
 	other := models.NewOrganization("evilcorp", "Evil Corp")
 	r.NoError(dbSvc.CreateOrganization(ctx, other))
@@ -74,13 +74,13 @@ func TestListResultsNormalizesLegacyRegionFilter(t *testing.T) {
 
 	// The legacy spelling — current slug AND the recorded previous slug — must
 	// return the SAME series, not an empty one.
-	r.Equal(canonical, countFor([]string{"@stonal/aws-paris"}),
+	r.Equal(canonical, countFor([]string{"@acme/aws-paris"}),
 		"the legacy spelling with the org's CURRENT slug must return the same series")
-	r.Equal(canonical, countFor([]string{"@stonaltech/aws-paris"}),
+	r.Equal(canonical, countFor([]string{"@acmetech/aws-paris"}),
 		"the legacy spelling with a PREVIOUS slug must return the same series")
 
 	// Mixing both spellings of one region must not double-count or drop rows.
-	r.Equal(canonical, countFor([]string{"@stonaltech/aws-paris", "@aws-paris"}))
+	r.Equal(canonical, countFor([]string{"@acmetech/aws-paris", "@aws-paris"}))
 
 	// A foreign org slug is rejected outright — an explicit 400 beats an
 	// unexplained empty chart, and it matches what a check write does.
@@ -103,9 +103,9 @@ func TestGetResultNormalizesLegacyRegionFilter(t *testing.T) {
 	r := require.New(t)
 	dbSvc, ctx := newNeighborsTestDB(t)
 
-	org := models.NewOrganization("stonal", "Stonal")
+	org := models.NewOrganization("acme", "Acme")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
-	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "stonaltech"))
+	r.NoError(dbSvc.AddOrganizationPreviousSlug(ctx, org.UID, "acmetech"))
 
 	check := newBareCheck(ctx, dbSvc, r, org.UID, "private-check")
 
@@ -144,7 +144,7 @@ func TestGetResultNormalizesLegacyRegionFilter(t *testing.T) {
 
 	// Both legacy spellings resolve the identical neighbor pair. Without
 	// normalization the filter matches no row and both come back empty.
-	for _, legacy := range []string{"@stonal/aws-paris", "@stonaltech/aws-paris"} {
+	for _, legacy := range []string{"@acme/aws-paris", "@acmetech/aws-paris"} {
 		legacyPrev, legacyNext := neighbors([]string{legacy})
 		r.Equalf(prev, legacyPrev, "legacy %q must resolve the same previous neighbor", legacy)
 		r.Equalf(next, legacyNext, "legacy %q must resolve the same next neighbor", legacy)

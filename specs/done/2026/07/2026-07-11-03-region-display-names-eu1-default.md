@@ -6,7 +6,7 @@ On the k8xp deployment (`solidping.k8xp.com`), the main server's region is
 displayed as the bare string `default` in two places:
 
 1. **Check edit page**
-   (`/dash0/orgs/stonaltech/checks/$checkUid/edit`) — the Regions
+   (`/dash0/orgs/acmetech/checks/$checkUid/edit`) — the Regions
    checkbox list renders `{emoji} {name}` from the org regions API
    (`web/dash0/src/components/shared/check-form.tsx:2674`), so the label comes
    straight from the region definition's `name`. On k8xp the default region's
@@ -14,7 +14,7 @@ displayed as the bare string `default` in two places:
    main server physically runs in the EU).
 
 2. **Server performance page**
-   (`/dash0/orgs/stonaltech/server/performance`) — the per-worker lane-load
+   (`/dash0/orgs/acmetech/server/performance`) — the per-worker lane-load
    card renders the worker's **raw region slug** as a badge:
    `{w.region && <Badge variant="outline">{w.region}</Badge>}`
    (`web/dash0/src/routes/orgs/$org/server.performance.tsx:306`). The backend
