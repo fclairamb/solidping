@@ -103,6 +103,9 @@
     "verifiedBadge": "Verifiziert",
     "unverifiedBadge": "Nicht verifiziert — verifizieren, um SMS-/Sprachbenachrichtigungen zu erhalten",
     "phoneAfterAddHint": "Verifizieren Sie die Nummer nach dem Hinzufügen, um SMS-/Sprachbenachrichtigungen zu erhalten.",
+    "smsConsentNotice": "Mit dem Hinzufügen dieser Nummer stimmen Sie zu, SolidPing-Benachrichtigungen von Webingenia per SMS zu erhalten: Störungs-, Eskalations- und Wiederherstellungsmeldungen zu den von Ihnen konfigurierten Checks sowie Verifizierungscodes und selbst ausgelöste Testnachrichten. Die Nachrichtenhäufigkeit richtet sich nach den Vorfällen. Es können Nachrichten- und Datengebühren anfallen. Antworten Sie STOP zum Abbestellen, HELP für Hilfe.",
+    "smsConsentPolicyLink": "SMS-Richtlinie",
+    "smsConsentPrivacyLink": "Datenschutzerklärung",
     "noProviderHint": "Für diese Organisation ist noch kein SMS-Anbieter konfiguriert. Sie können die Nummer hinzufügen, aber sie erhält keine SMS- oder Sprachbenachrichtigungen, bis ein Administrator Twilio einrichtet.",
     "verify": {
       "dialogTitle": "Telefonnummer verifizieren",
