@@ -731,6 +731,144 @@ subjects:
 
 > Kubernetes discovery (enumerating workloads automatically) builds on this same connection and additionally needs `get`/`list` on `services`, `endpoints`, and `ingresses` (and `nodes`); grant those too if you plan to use it.
 
+## Metrics
+
+### Prometheus Metric {#prometheus-metric}
+
+Alert on a **number a target reports about itself** rather than on whether it
+answers. Every other check type answers "is it up?"; this one answers "is the
+value still acceptable?" — a queue depth, a free-disk gauge, an open-file-descriptor
+count, an error rate. It works against any endpoint that speaks the Prometheus
+text exposition format (most Go, Java, Python and Rust services expose one at
+`/metrics`), and against a Prometheus server itself via PromQL. No Prometheus +
+Alertmanager stack is required.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| URL | Metrics endpoint (scrape) or Prometheus server base URL (promql) | - (required) |
+| Mode | `scrape` or `promql` | `scrape` |
+| Metric | Series name to select (scrape mode) | - (required in `scrape`) |
+| Labels | Label/value pairs the series must carry (subset match, scrape mode) | none |
+| Query | PromQL instant query (promql mode) | - (required in `promql`) |
+| Operator | `>`, `>=`, `<`, `<=`, `==`, `!=` | `>` |
+| Warning Value | Threshold that yields **Warning** (amber, counts as up, never pages) | unset |
+| Critical Value | Threshold that yields **Down** (pages) | unset |
+| Match | What to do when several series match: `single`, `min`, `max`, `sum`, `avg` | `single` |
+| On Missing | Status when nothing matches: `down`, `warning`, `up` | `down` |
+| Headers | Extra request headers (bearer / basic auth) | none |
+| Timeout | Per-execution request timeout (max 60s) | `15s` |
+
+At least one of **Warning Value** / **Critical Value** must be set. `0` is a
+perfectly legal threshold — "alert when free slots reach 0" is written as
+`warningValue: 0`, and it is honoured as a real threshold, not read as "unset".
+
+#### Modes
+
+**`scrape`** fetches the URL, parses the exposition format, and picks the series
+named by **Metric** whose labels contain every configured label/value pair
+(extra labels on the series are fine). Histograms and summaries need no special
+handling: address them through the flattened series names Prometheus itself
+exposes — `<name>_sum`, `<name>_count`, `<name>_bucket` (with an `le` label), or
+`<name>` with a `quantile` label.
+
+```json
+{
+  "url": "https://app.example.com/metrics",
+  "mode": "scrape",
+  "metric": "process_open_fds",
+  "labels": { "instance": "app-1" },
+  "operator": ">",
+  "warningValue": 800,
+  "criticalValue": 1000
+}
+```
+
+**`promql`** treats the URL as a Prometheus server base URL and runs an instant
+query against `{url}/api/v1/query`. Scalar and instant-vector results are
+accepted; a **matrix (range) result is rejected** — a range returns a series of
+points over time, not one current value, so use an instant query.
+
+```json
+{
+  "url": "https://prometheus.example.com",
+  "mode": "promql",
+  "query": "sum(rate(http_requests_total{code=~\"5..\"}[5m]))",
+  "operator": ">",
+  "warningValue": 1,
+  "criticalValue": 10
+}
+```
+
+#### Threshold semantics
+
+The check fires when `value <operator> threshold` is true:
+
+- **Critical breached → Down** (pages, opens an incident).
+- Otherwise **warning breached → Warning** (amber; counts as up for availability,
+  aggregates to Degraded, does **not** open an incident).
+- Otherwise **Up**.
+
+A check with only a **Warning Value** is valid and can never page — the same
+contract as `warningDays` on the [Domain](#domain-expiration) and
+[SSL](#ssltls-certificate) checks. Use it for "I want to see this, not be woken
+by it".
+
+The operator points the thresholds. For `>` / `>=` (something growing too big),
+Critical must be **greater than or equal to** Warning. For `<` / `<=` (something
+shrinking too far) the ordering reverses — this is the free-disk shape:
+
+```json
+{
+  "url": "https://app.example.com/metrics",
+  "mode": "scrape",
+  "metric": "node_filesystem_avail_bytes",
+  "labels": { "mountpoint": "/" },
+  "operator": "<",
+  "warningValue": 10737418240,
+  "criticalValue": 2147483648
+}
+```
+
+That check warns below 10 GiB free and pages below 2 GiB. `==` and `!=` accept a
+**Critical Value only** — there is no ordering between two equality targets, so a
+warning tier would be meaningless and is rejected at validation time.
+
+#### Multiple matching series
+
+By default (`match: single`) a selector that matches more than one series is an
+error result, not a silent pick — an ambiguous selector is a configuration bug,
+and guessing would grade an arbitrary series. Either narrow the selector with
+labels, or choose an explicit aggregation: `min`, `max`, `sum` or `avg`.
+
+#### Missing metrics
+
+`onMissing` decides what an absent metric (or an empty PromQL vector) means.
+The default is `down`: a metric that vanished usually means the target is
+broken, not healthy. Use `warning` when the metric is expected to be absent
+occasionally, or `up` when its absence is genuinely fine.
+
+#### Counters and rates
+
+This check reads whatever value is exposed, right now. It performs **no
+client-side rate computation** — a rate needs state between executions, which is
+explicitly out of scope. A raw counter (`http_requests_total`) only ever grows,
+so thresholding it directly is rarely what you want. For rates, use `promql`
+mode and let Prometheus do the work: `rate(http_requests_total[5m])`.
+
+#### Graphing
+
+Every execution records the resolved value as a `value` metric, so the check
+page graphs the monitored number over time and rolls it up like any latency
+metric — that history is half the point of the check type.
+
+#### Limits
+
+Scrape responses are capped at **5 MB**. A larger body is **refused** with an
+explicit error naming the cap — never truncated: a half-read exposition body
+still parses, and would then be graded as a wrong-but-plausible value. If your
+`/metrics` output is that big, narrow the endpoint or switch to `promql` mode,
+where the query bounds the response.
+
 ## Special Check Types
 
 ### Heartbeat {#heartbeat}

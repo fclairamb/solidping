@@ -55,6 +55,7 @@ export const checkTypeDocsAnchors: Partial<Record<string, string>> = {
   sip: "sip-voip",
   ntp: "ntp-time-server",
   snmp: "snmp",
+  prometheus: "prometheus-metric",
   docker: "docker",
   a2s: "a2s-game-server-source--steam",
   minecraft: "minecraft",
