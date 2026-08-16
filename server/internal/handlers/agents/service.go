@@ -72,6 +72,12 @@ type PrivateRegionResponse struct {
 	Region string `json:"region"`
 	// AgentCount is how many active agents currently serve this region.
 	AgentCount int `json:"agentCount"`
+	// Capabilities reports what this location's LIVE agents say they can do —
+	// today `ipv6`, three-state ("yes" / "no" / "unknown"). This page is where
+	// it matters most: a private location is the one case where the user can
+	// actually FIX a missing family, by enabling IPv6 on the host they own
+	// (spec 2026-08-15-11).
+	Capabilities map[string]string `json:"capabilities,omitempty"`
 }
 
 // ListPrivateRegionsResponse wraps the private-region list.
@@ -108,6 +114,10 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 		return nil, err
 	}
 
+	if capErr := s.regions.AnnotatePrivateCapabilities(ctx, org.UID, defs); capErr != nil {
+		return nil, capErr
+	}
+
 	data := make([]PrivateRegionResponse, 0, len(defs))
 
 	for i := range defs {
@@ -119,11 +129,12 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 		}
 
 		data = append(data, PrivateRegionResponse{
-			Slug:       defs[i].Slug,
-			Name:       defs[i].Name,
-			Emoji:      defs[i].Emoji,
-			Region:     full,
-			AgentCount: len(active),
+			Slug:         defs[i].Slug,
+			Name:         defs[i].Name,
+			Emoji:        defs[i].Emoji,
+			Region:       full,
+			AgentCount:   len(active),
+			Capabilities: defs[i].Capabilities,
 		})
 	}
 
