@@ -21,7 +21,7 @@ const CodeTextarea = React.forwardRef<
       autoCorrect="off"
       autoComplete="off"
       className={cn(
-        "flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2",
+        "flex min-h-[60px] w-full rounded-md border border-input bg-control px-3 py-2",
         "font-mono text-xs leading-relaxed shadow-sm placeholder:text-muted-foreground",
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         "disabled:cursor-not-allowed disabled:opacity-50",

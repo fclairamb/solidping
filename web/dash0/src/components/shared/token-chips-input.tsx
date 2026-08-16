@@ -129,7 +129,7 @@ export function TokenChipsInput({
 
   return (
     <div
-      className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring"
+      className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-control px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring"
       data-testid={testid}
       onClick={() => inputRef.current?.focus()}
     >

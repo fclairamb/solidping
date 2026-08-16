@@ -13,8 +13,8 @@ import {
 } from "@/components/shared/label-shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 
 export type LabelInputProps = {
   org: string;
@@ -178,7 +178,7 @@ function SuggestionCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <input
+        <Input
           ref={inputRef}
           type="text"
           value={inputValue}
@@ -195,11 +195,7 @@ function SuggestionCombobox({
             }
           }}
           placeholder={placeholder}
-          className={cn(
-            "h-9 w-40 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm",
-            "focus:outline-none focus:ring-2 focus:ring-ring",
-            "disabled:cursor-not-allowed disabled:opacity-50"
-          )}
+          className="w-40 text-sm"
           data-testid={`label-${mode}-input`}
         />
       </PopoverTrigger>

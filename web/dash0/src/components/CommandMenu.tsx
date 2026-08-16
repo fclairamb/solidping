@@ -288,7 +288,7 @@ export function CommandMenuTrigger({ onOpen }: CommandMenuTriggerProps) {
       data-testid="command-menu-trigger"
       onClick={onOpen}
       aria-label={t("command.searchPlaceholder")}
-      className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-2 sm:px-3 h-9 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
+      className="inline-flex items-center gap-2 rounded-md border border-input bg-control px-2 sm:px-3 h-9 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
     >
       <Search className="h-4 w-4" />
       <span className="hidden md:inline text-muted-foreground text-xs">⌘K</span>
