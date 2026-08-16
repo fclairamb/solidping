@@ -90,7 +90,9 @@ func flattenSummary(name string, base map[string]string, summary *dto.Summary) [
 // flattenHistogram expands a histogram into `_sum`, `_count` and
 // `_bucket{le=…}` series (including the `+Inf` bucket).
 func flattenHistogram(name string, base map[string]string, histogram *dto.Histogram) []series {
-	out := make([]series, 0, len(histogram.GetBucket())+3) //nolint:mnd // _sum + _count + +Inf
+	// The parsed bucket list already carries the +Inf bucket when the target
+	// exposes one; synthesizing another would double-match `le="+Inf"`.
+	out := make([]series, 0, len(histogram.GetBucket())+2) //nolint:mnd // _sum + _count
 
 	out = append(out,
 		series{Name: name + "_sum", Labels: copyLabels(base), Value: histogram.GetSampleSum()},
@@ -104,12 +106,6 @@ func flattenHistogram(name string, base map[string]string, histogram *dto.Histog
 			Name: name + "_bucket", Labels: labels, Value: float64(bucket.GetCumulativeCount()),
 		})
 	}
-
-	infLabels := copyLabels(base)
-	infLabels[labelLE] = "+Inf"
-	out = append(out, series{
-		Name: name + "_bucket", Labels: infLabels, Value: float64(histogram.GetSampleCount()),
-	})
 
 	return out
 }

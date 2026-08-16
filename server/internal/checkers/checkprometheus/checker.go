@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -157,7 +158,12 @@ func doGet(ctx context.Context, cfg *PrometheusConfig, target string) (*http.Res
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", version.UserAgent)
+	// Only override the User-Agent when the binary actually carries one:
+	// Header.Set with an empty value SUPPRESSES the header entirely, which
+	// would make our probes anonymous rather than identified.
+	if version.UserAgent != "" {
+		req.Header.Set("User-Agent", version.UserAgent)
+	}
 
 	for key, value := range cfg.Headers {
 		req.Header.Set(key, value)
@@ -195,7 +201,11 @@ func fetchScrape(ctx context.Context, cfg *PrometheusConfig) (*resolution, error
 		return nil, err
 	}
 
-	var parser expfmt.TextParser
+	// The parser must be constructed with an explicit name-validation scheme
+	// — the zero-value TextParser panics. UTF8 is the modern default and the
+	// permissive one, so a target exposing UTF-8 metric names is read rather
+	// than rejected.
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 
 	families, err := parser.TextToMetricFamilies(bytes.NewReader(body))
 	if err != nil {
