@@ -2,7 +2,7 @@
 
 ## Problem
 
-On https://solidping.k8xp.com/dash0/orgs/stonaltech/checks the dashboard shows the
+On https://solidping.k8xp.com/dash0/orgs/acmetech/checks the dashboard shows the
 "Live updates unavailable" badge and no realtime updates arrive, with no
 explanation. The WebSocket itself connects fine — the upgrade returns `101
 Switching Protocols` — but the connection never gets past auth: the client sends
@@ -11,9 +11,9 @@ events).
 
 Captured HAR (`bad_ws.priv.har`, 2026-07-09 23:29 UTC) of the failing session:
 
-- `GET wss://solidping.k8xp.com/api/v1/orgs/stonaltech/events/ws` → `101` OK.
+- `GET wss://solidping.k8xp.com/api/v1/orgs/acmetech/events/ws` → `101` OK.
 - The client sends exactly one frame: `{"type":"auth","token":"eyJ…"}`.
-- **The JWT in that frame decodes to `"orgSlug":"test"`** — not `stonaltech` —
+- **The JWT in that frame decodes to `"orgSlug":"test"`** — not `acmetech` —
   with `role":"user"`, `iat` 2026-07-09T23:28:51Z (issued ~17 s before the dial,
   so it is a *fresh* token for the wrong org, not an expired one).
 - No server frames and no further client frames appear; the UI lands on the
@@ -40,7 +40,7 @@ The dash0 client keeps **one global token per browser profile**, not per org:
 
 So a login or token refresh performed for another org (e.g. a second tab open
 on the `test` org of the same deployment, or an org switch) clobbers the token
-the `stonaltech` tab relies on. The next WS dial picks up the wrong-org token →
+the `acmetech` tab relies on. The next WS dial picks up the wrong-org token →
 4403 → badge. The freshness of the wrong-org token in the HAR (`iat` 17 s
 before the dial) fits a concurrent refresh/login under org `test`.
 
@@ -92,7 +92,7 @@ this class of failure can't regress silently again.
 ## Open questions
 
 - Why did the browser hold a fresh `test`-org token while browsing
-  `stonaltech`? Second tab, org switcher, or an auto-refresh racing a
+  `acmetech`? Second tab, org switcher, or an auto-refresh racing a
   navigation? Worth reproducing before choosing the client fix.
 - Should REST requests on the page have failed too (same clobbered token)?
   If they visibly kept working from TanStack Query cache, the badge may be the

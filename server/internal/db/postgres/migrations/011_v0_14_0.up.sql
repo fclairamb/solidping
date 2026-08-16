@@ -88,8 +88,8 @@ comment on column user_integration_identities.source is
 -- denormalized into six places. Private regions match on EXACT string equality,
 -- so renaming an org left every stored copy stale while the API started
 -- advertising a new spelling no agent was bound to: every check created after a
--- rename sat in `validating` forever, silently. (Observed live: `stonaltech` →
--- `stonal`.)
+-- rename sat in `validating` forever, silently. (Observed live: `acmetech` →
+-- `acme`.)
 --
 -- The org is now implicit — every row carrying a region also carries an
 -- organization_uid — so the stored form is `@<region-slug>` and a rename

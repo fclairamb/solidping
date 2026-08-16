@@ -28,7 +28,7 @@ org emits a `results` hint on every server flush (~1s), so each tab settles at
 one invalidation burst every 3s = 20 bursts/min, each firing N+1 requests.
 
 **Measured cost: ~(N+1) × 20 requests/min per open tab.** A HAR capture of the
-stonaltech checks page (10 groups) showed ~200 req/min. This is what forced
+acmetech checks page (10 groups) showed ~200 req/min. This is what forced
 `a0b16df0` (`requests_per_minute` 300 → 1800, `burst` 60 → 360,
 `max_concurrent` 20 → 40) — the commit message says so explicitly: *"standard
 use consumed most of the old 300/min per-client budget"*. The limits were sized

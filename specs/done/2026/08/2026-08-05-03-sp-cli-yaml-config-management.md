@@ -7,8 +7,8 @@ effort: high
 
 ## Problem
 
-The reference checks-as-code workflow (Stonal's
-`~/code/stonal/exp-devops/solidping/`, see its `README.md`) manages a whole
+The reference checks-as-code workflow (Acme's
+`~/code/acme/exp-devops/solidping/`, see its `README.md`) manages a whole
 SolidPing organization from a single tracked `config.yaml` — which is exactly
 SolidPing's own v2 export document (`{version, exportedAt, organization,
 secrets, defaults, checks}`) rendered as YAML. Today that workflow cannot be

@@ -20,7 +20,7 @@ export function regionDisplayLabel(
 // (historical results from since-deleted regions). Within each group, sort
 // alphabetically by the user-visible name (falling back to the raw slug),
 // case-insensitively — so org-relative private slugs like
-// `@stonaltech/s3ns-paris` no longer jump the queue just because `@` sorts
+// `@acmetech/s3ns-paris` no longer jump the queue just because `@` sorts
 // before letters.
 export function sortRegionSlugs(
   regions: RegionDefinition[] | undefined,

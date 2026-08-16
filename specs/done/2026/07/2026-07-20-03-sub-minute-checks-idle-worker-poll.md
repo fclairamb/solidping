@@ -4,7 +4,7 @@
 **Date:** 2026-07-20
 **Reported as:** a 10s-period check assigned to a deported agent (private
 location) executes only once per minute
-(`/dash0/orgs/stonaltech/checks/7f6276d9-7acc-4aea-b65c-dad9f6a5d8e1` on the
+(`/dash0/orgs/acmetech/checks/7f6276d9-7acc-4aea-b65c-dad9f6a5d8e1` on the
 k8xp dev deployment).
 
 ## Diagnosis

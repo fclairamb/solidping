@@ -16,7 +16,7 @@ rejects it and the incidents section fails with a 500:
 {
   "title": "Internal server error",
   "code": "INTERNAL_ERROR",
-  "detail": "failed to list incidents: ERROR: invalid input syntax for type uuid: \"http-api-stonal-io-datalake\" (SQLSTATE=22P02)"
+  "detail": "failed to list incidents: ERROR: invalid input syntax for type uuid: \"http-api-acme-io-datalake\" (SQLSTATE=22P02)"
 }
 ```
 

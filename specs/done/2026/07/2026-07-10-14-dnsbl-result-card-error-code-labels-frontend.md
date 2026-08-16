@@ -95,7 +95,7 @@ Add a `DnsblCard` and translate the codes.
 ## Notes
 
 - Backend already provides everything the card needs; this is a pure dash0 change.
-- Real-world trigger: prod check `api.stonal.io (dnsbl)` sits Down on Spamhaus
+- Real-world trigger: prod check `api.acme.io (dnsbl)` sits Down on Spamhaus
   returning `127.255.255.254` from an AWS resolver — a false positive that this
   card will make self-explanatory once the backend fix is deployed.
 

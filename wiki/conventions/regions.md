@@ -59,7 +59,7 @@ baked in at *write* time into five denormalized places
 org therefore left every one of those copies stale, and the regions API started
 advertising a *new* string no agent was bound to — so every check created after
 the rename sat in `validating` forever, silently. Observed live on
-solidping.k8xp.com after `stonaltech` → `stonal` (spec
+solidping.k8xp.com after `acmetech` → `acme` (spec
 `2026-08-13-01-org-rename-private-region-routing`).
 
 Deriving identity beats repairing it: every row that carries a region already

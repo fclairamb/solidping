@@ -8,10 +8,10 @@ effort: medium
 ## Problem
 
 Check groups are whatever the operator made them — in real configs (see the
-stonaltech export) they are often organized by check *type* ("TLS certificate
+acmetech export) they are often organized by check *type* ("TLS certificate
 expiry" = 40 hosts × 1 check) rather than by host, so the one grouping that
 matches actual failure correlation — "everything probing
-`cup.abyla.stonal-secnum.io`" — exists nowhere in the UI. Restructuring groups
+`cup.abyla.acme-secnum.io`" — exists nowhere in the UI. Restructuring groups
 to be host-shaped is an operator decision we can't force; a derived by-host view
 costs no schema and lets users see the host-shaped reality regardless of how
 their groups are organized.

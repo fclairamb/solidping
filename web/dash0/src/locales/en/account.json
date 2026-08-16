@@ -134,6 +134,9 @@
     "verifiedBadge": "Verified",
     "unverifiedBadge": "Unverified — verify to receive SMS / voice alerts",
     "phoneAfterAddHint": "After adding, verify the number to start receiving SMS / voice alerts.",
+    "smsConsentNotice": "By adding this number you agree to receive SolidPing alerts by SMS from Webingenia: incident, escalation and recovery notices for the checks you configure, plus verification codes and test messages you trigger yourself. Message frequency varies by incident. Message and data rates may apply. Reply STOP to cancel, HELP for help.",
+    "smsConsentPolicyLink": "SMS Policy",
+    "smsConsentPrivacyLink": "Privacy Policy",
     "noProviderHint": "No SMS provider is configured for this organization yet. You can add the number, but it won't receive SMS or voice alerts until an admin sets up Twilio.",
     "verify": {
       "dialogTitle": "Verify phone number",

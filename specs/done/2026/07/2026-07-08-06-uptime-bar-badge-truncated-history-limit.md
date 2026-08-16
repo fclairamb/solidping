@@ -5,12 +5,12 @@
 The uptime-bar badge renders data for far fewer days than its period, and —
 tellingly — the number of populated days *grows with the period length*:
 
-- `…/checks/dnsbl-stonal-io/badges/status,uptime-bar?period=7d` → only **1**
+- `…/checks/dnsbl-acme-io/badges/status,uptime-bar?period=7d` → only **1**
   day populated (out of 7)
 - same URL with the default `period=30d` → **2** days populated
 - `period=90d&width=600` → **3** days populated
 
-(Observed on `https://solidping.k8xp.com/dash0/orgs/stonaltech/badges?check=dnsbl-stonal-io&components=status%2Cuptime-bar`.)
+(Observed on `https://solidping.k8xp.com/dash0/orgs/acmetech/badges?check=dnsbl-acme-io&components=status%2Cuptime-bar`.)
 
 The check has much more history than that, so all three should show the same
 wall-clock span of data; earlier buckets render as "no data" gray instead.

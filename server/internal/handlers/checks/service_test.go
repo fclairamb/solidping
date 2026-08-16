@@ -173,8 +173,8 @@ func TestSanitizeSlug(t *testing.T) {
 		},
 		{
 			name:     "dots replaced with hyphens",
-			input:    "webhooks.stonal.io",
-			expected: "webhooks-stonal-io",
+			input:    "webhooks.acme.io",
+			expected: "webhooks-acme-io",
 		},
 		{
 			name:     "long slug truncated to 50 chars",

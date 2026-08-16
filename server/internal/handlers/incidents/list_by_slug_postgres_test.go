@@ -25,7 +25,7 @@ const portListBySlugPG = 15453
 // `incidents.check_uid uuid not null`), so on SQLite (TEXT-affinity, no type
 // enforcement) the pre-fix code never actually 500s — only a real Postgres
 // backend reproduces "invalid input syntax for type uuid" when a slug like
-// "http-api-stonal-io-datalake" is handed straight to a `check_uid IN (?)`
+// "http-api-acme-io-datalake" is handed straight to a `check_uid IN (?)`
 // filter. This test proves the fix (resolving checkUid through
 // GetCheckByUidOrSlug before building the filter, mirroring
 // results.Service.resolveCheckIdentifiers) against that real column type.
@@ -60,7 +60,7 @@ func TestListIncidents_ByCheckSlug_Postgres(t *testing.T) {
 	org := models.NewOrganization("list-by-slug-pg-org", "")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	check := models.NewCheck(org.UID, "http-api-stonal-io-datalake", "http")
+	check := models.NewCheck(org.UID, "http-api-acme-io-datalake", "http")
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
 	inc := models.NewIncident(org.UID, check.UID, time.Now().Add(-5*time.Minute), "datalake is down")
@@ -71,7 +71,7 @@ func TestListIncidents_ByCheckSlug_Postgres(t *testing.T) {
 
 	// Pre-fix, this call fails with:
 	//   failed to list incidents: ERROR: invalid input syntax for type uuid:
-	//   "http-api-stonal-io-datalake" (SQLSTATE=22P02)
+	//   "http-api-acme-io-datalake" (SQLSTATE=22P02)
 	// because *check.Slug was forwarded straight into `check_uid IN (?)`.
 	resp, err := svc.ListIncidents(ctx, org.Slug, &incidents.ListIncidentsOptions{
 		CheckUIDs: []string{*check.Slug},

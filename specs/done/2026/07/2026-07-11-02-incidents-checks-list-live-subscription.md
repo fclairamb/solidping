@@ -2,11 +2,11 @@
 
 ## Problem
 
-On `https://solidping.k8xp.com/dash0/orgs/stonaltech/incidents?state=all` the
+On `https://solidping.k8xp.com/dash0/orgs/acmetech/incidents?state=all` the
 incidents list does not receive live updates: no `subscribe` frame is sent on
 the realtime WebSocket, so the page only refreshes on the lazy poll interval
 (or a manual reload). The same is true of the checks list at
-`/dash0/orgs/stonaltech/checks`.
+`/dash0/orgs/acmetech/checks`.
 
 The realtime plumbing (spec `2026-07-02-02-realtime-websocket-per-entity-subscriptions`)
 is fully in place and already used elsewhere:

@@ -3,7 +3,7 @@
 ## Problem
 
 On the integration edit page (observed on
-`https://solidping.k8xp.com/dash0/orgs/stonaltech/integrations/b69c17d8-…`),
+`https://solidping.k8xp.com/dash0/orgs/acmetech/integrations/b69c17d8-…`),
 searching the "Pick a channel…" combobox for `#solidping-dev` — a channel
 that exists and that the bot is a member of — returns "No channels found".
 The channel can never be selected.
@@ -29,7 +29,7 @@ No `limit`, no `cursor`. Slack's `conversations.list` returns **100 channels
 per page by default** and signals more via
 `response_metadata.next_cursor`; ignoring the cursor silently drops every
 channel past the first page. Channels come back in roughly creation order,
-so in a workspace with hundreds of channels (the Stonal workspace easily
+so in a workspace with hundreds of channels (the Acme workspace easily
 qualifies) a recently created channel like `#solidping-dev` is effectively
 never in the first 100.
 
@@ -126,7 +126,7 @@ client-side filter finds the channel. (Payload stays reasonable: even
 - `GET /api/v1/orgs/:org/channels/:uid/slack/destinations` returns
   channels sorted by name, users sorted by display name.
 - `make test` and `make lint` green.
-- Manual check after deploy to `solidping.k8xp.com`: on the Stonal
+- Manual check after deploy to `solidping.k8xp.com`: on the Acme
   integration's edit page, typing `solid` in the channel picker lists
   `#solidping-dev` and selecting it saves correctly.
 

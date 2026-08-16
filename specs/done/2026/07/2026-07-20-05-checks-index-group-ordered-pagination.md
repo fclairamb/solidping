@@ -7,9 +7,9 @@ effort: high
 
 ## Problem
 
-Reported by Cyrille on the stonaltech org
-(https://stonaltech.slack.com/archives/C0BFC2XG4K0/p1784576213211839?thread_ts=1784573400.622229&cid=C0BFC2XG4K0):
-on `/orgs/stonaltech/checks`, group headers show a non-zero check-count badge
+Reported by Cyrille on the acmetech org
+(https://acmetech.slack.com/archives/C0BFC2XG4K0/p1784576213211839?thread_ts=1784573400.622229&cid=C0BFC2XG4K0):
+on `/orgs/acmetech/checks`, group headers show a non-zero check-count badge
 but the tables under them render the "No checks" empty state. Checks only
 appear after scrolling to the very bottom of the page, repeatedly, 100 at a
 time.

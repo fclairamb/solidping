@@ -134,6 +134,9 @@
     "verifiedBadge": "Vérifié",
     "unverifiedBadge": "Non vérifié — vérifiez pour recevoir les alertes SMS / vocales",
     "phoneAfterAddHint": "Après l’ajout, vérifiez le numéro pour commencer à recevoir les alertes SMS / vocales.",
+    "smsConsentNotice": "En ajoutant ce numéro, vous acceptez de recevoir par SMS les alertes SolidPing de Webingenia : notifications d’incident, d’escalade et de rétablissement pour les checks que vous configurez, ainsi que les codes de vérification et les messages de test que vous déclenchez vous-même. La fréquence des messages varie selon les incidents. Des frais de message et de données peuvent s’appliquer. Répondez STOP pour vous désabonner, HELP pour de l’aide.",
+    "smsConsentPolicyLink": "Politique SMS",
+    "smsConsentPrivacyLink": "Politique de confidentialité",
     "noProviderHint": "Aucun fournisseur SMS n’est configuré pour cette organisation. Vous pouvez ajouter le numéro, mais il ne recevra pas d’alertes SMS ou vocales tant qu’un administrateur n’a pas configuré Twilio.",
     "verify": {
       "dialogTitle": "Vérifier le numéro de téléphone",

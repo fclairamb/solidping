@@ -33,7 +33,7 @@ Neither can use `results_raw_idx` (`organization_uid, check_uid, period_start DE
 `WHERE period_type = 'raw'`). The org has **356 checks**, so the `check_uid IN (?)`
 list covers ~64% of the table and the planner correctly prefers a seq scan. Both
 then sort the full match set to disk. Measured with `EXPLAIN (ANALYZE, BUFFERS)`
-on the live database (org `stonaltech`, 356 checks, both returning **346 rows**):
+on the live database (org `acmetech`, 356 checks, both returning **346 rows**):
 
 **`GetLastResultForChecks`** ([`postgres.go:2358`](../../server/internal/db/postgres/postgres.go)) — **1690 ms**
 
@@ -81,7 +81,7 @@ raw row becomes that first row — so for any check that has not genuinely chang
 status inside the raw-retention window, the API returns **the retention horizon**,
 which slides forward on every compaction run.
 
-Verified on live data — `api.stonal.io (ssl)` has four surviving raw rows, all
+Verified on live data — `api.acme.io (ssl)` has four surviving raw rows, all
 `status = 3`:
 
 ```

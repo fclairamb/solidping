@@ -3,7 +3,7 @@
 ## Problem
 
 Sharing a status page URL — e.g.
-`https://solidping.k8xp.com/status0/stonaltech/abyla-windows-vms` — produces no
+`https://solidping.k8xp.com/status0/acmetech/abyla-windows-vms` — produces no
 useful link preview in Slack, Discord, Teams, iMessage, X, LinkedIn, etc.
 
 status0 is a SPA: `serveStatus0Static`

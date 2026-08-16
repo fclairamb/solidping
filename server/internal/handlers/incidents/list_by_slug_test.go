@@ -44,7 +44,7 @@ func newListBySlugFixture(t *testing.T) *listBySlugFixture {
 	org := models.NewOrganization("list-by-slug-org", "")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	check := models.NewCheck(org.UID, "http-api-stonal-io-datalake", "http")
+	check := models.NewCheck(org.UID, "http-api-acme-io-datalake", "http")
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
 	inc := models.NewIncident(org.UID, check.UID, time.Now().Add(-5*time.Minute), "datalake is down")

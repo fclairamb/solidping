@@ -8,9 +8,9 @@ effort: high
 ## Problem
 
 On the k8xp dev deployment, check `de01b3ed-66aa-4dc0-b473-91a7ad0dff16` (org
-`stonaltech`) shows a compaction hole in the week view:
+`acmetech`) shows a compaction hole in the week view:
 
-> https://solidping.k8xp.com/dash0/orgs/stonaltech/checks/de01b3ed-66aa-4dc0-b473-91a7ad0dff16?graphPeriod=week&graphFrom=1784336400000&graphTo=1784354400000
+> https://solidping.k8xp.com/dash0/orgs/acmetech/checks/de01b3ed-66aa-4dc0-b473-91a7ad0dff16?graphPeriod=week&graphFrom=1784336400000&graphTo=1784354400000
 
 The window is 2026-07-18 01:00–06:00 UTC. Everything before ~03:00 UTC and
 after ~04:05 UTC renders as smooth hour/day rollups, but roughly
@@ -153,7 +153,7 @@ Investigated the live k8xp dev deployment (kubectl context `k8xp`, namespace
 
 ### What was reachable
 
-- `kubectl` cluster access works. The org in the incident (`stonaltech`) is
+- `kubectl` cluster access works. The org in the incident (`acmetech`) is
   `organization_uid=3c9d374e-e655-431d-880c-5c161777b75c`.
 - The aggregation job runs on the **main** `solidping` deployment (the
   `checks-us1`/`checks-eu2` worker deployments only execute checks).
@@ -169,7 +169,7 @@ msg="Found data to aggregate" check_uid=0c7e3fd6-144e-4021-b060-682b13e3e49e
 msg="No aggregation work found"
 ```
 
-A **raw** row with `period_start = 2026-07-18T03:59:59.999Z` (org `stonaltech`)
+A **raw** row with `period_start = 2026-07-18T03:59:59.999Z` (org `acmetech`)
 is still present 4.5 days later and is re-discovered on every run but never
 compacted. "Found data to aggregate" immediately followed by "No aggregation
 work found" — with no "Aggregating results", no rollup, and no "Skipping

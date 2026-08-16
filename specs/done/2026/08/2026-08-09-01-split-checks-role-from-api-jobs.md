@@ -7,7 +7,7 @@ effort: high
 
 ## Problem
 
-Check `c0437dd8-65bd-4767-9956-6c899eef8b5b` (org `stonaltech`, named "IPv6",
+Check `c0437dd8-65bd-4767-9956-6c899eef8b5b` (org `acmetech`, named "IPv6",
 target `https://v6.test-ipv6.vu.ayepv6.com/...`, an IPv6-only host) validates that
 check workers can reach IPv6-only targets. After the `hostNetwork: true` +
 `SP_NODE_NAME` fix (spec `2026-08-07-03-check-worker-name-override.md`, applied to
@@ -123,7 +123,7 @@ Once released, split the k8xp `k8s/solidping/overlays/dev` main deployment:
 
 ## Out of scope
 
-- `@stonaltech/aws-paris` (custom region, currently unstaffed, falls back to
+- `@acmetech/aws-paris` (custom region, currently unstaffed, falls back to
   `default`'s worker pool): may start passing as a side effect once `default`
   has a dedicated checks-only worker, but isn't this spec's target and
   shouldn't block it.

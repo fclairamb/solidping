@@ -69,7 +69,7 @@ refetches everything on every hint.
   `checks?with=last_result,last_status_change&limit=1000` (~45 KB),
   `results?periodType=day&limit=1000`, `results?periodType=hour&limit=1000`.
 
-In an org whose checks produce results roughly every second (stonaltech,
+In an org whose checks produce results roughly every second (acmetech,
 multiple regions), every 1 s flush carries a `checks` hint → each open
 dashboard tab refetches ~4 heavy queries **per second, indefinitely** — worse
 than the 30–60 s polling live mode replaced. Observed: ~3,100 API requests /

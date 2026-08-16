@@ -2,21 +2,21 @@
 
 ## Problem
 
-On `https://solidping.k8xp.com/dash0/orgs/stonaltech/checks/http-api-stonal-io-datalake`
+On `https://solidping.k8xp.com/dash0/orgs/acmetech/checks/http-api-acme-io-datalake`
 the realtime WebSocket subscription for the check never becomes live. The
 client sends:
 
 ```json
-{"type":"subscribe","entity":"check","uid":"http-api-stonal-io-datalake"}
+{"type":"subscribe","entity":"check","uid":"http-api-acme-io-datalake"}
 ```
 
 and the server replies:
 
 ```json
-{"type":"error","code":"NOT_FOUND","title":"Check not found","entity":"check","uid":"http-api-stonal-io-datalake"}
+{"type":"error","code":"NOT_FOUND","title":"Check not found","entity":"check","uid":"http-api-acme-io-datalake"}
 ```
 
-`http-api-stonal-io-datalake` is the check's **slug**, not its UID. Two
+`http-api-acme-io-datalake` is the check's **slug**, not its UID. Two
 distinct bugs stack up:
 
 1. **The client subscribes with the raw URL param, which may be a slug.**

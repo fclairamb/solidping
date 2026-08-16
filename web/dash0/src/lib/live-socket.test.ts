@@ -263,11 +263,11 @@ describe("connectLiveSocket", () => {
       code: "NOT_FOUND",
       title: "Check not found",
       entity: "check",
-      uid: "http-api-stonal-io-datalake",
+      uid: "http-api-acme-io-datalake",
     });
 
     expect(onScopeError).toHaveBeenCalledWith(
-      { entity: "check", uid: "http-api-stonal-io-datalake" },
+      { entity: "check", uid: "http-api-acme-io-datalake" },
       { code: "NOT_FOUND", title: "Check not found" },
     );
   });
