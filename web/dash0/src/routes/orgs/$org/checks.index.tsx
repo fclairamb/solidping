@@ -40,6 +40,7 @@ import {
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1443,31 +1444,24 @@ function ChecksIndexPage() {
           <span className="text-sm font-medium text-muted-foreground">
             {t("groupBy.label")}
           </span>
-          <div className="inline-flex rounded-lg border p-0.5" role="group">
-            <Button
-              size="sm"
-              variant={groupBy === "groups" ? "secondary" : "ghost"}
-              onClick={() => setGroupByMode("groups")}
-              aria-pressed={groupBy === "groups"}
-              data-testid="group-by-groups"
-            >
-              {t("groupBy.groups")}
-            </Button>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant={groupBy === "host" ? "secondary" : "ghost"}
-                  onClick={() => setGroupByMode("host")}
-                  aria-pressed={groupBy === "host"}
-                  data-testid="group-by-host"
-                >
-                  {t("groupBy.host")}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t("hostBucketDescription")}</TooltipContent>
-            </Tooltip>
-          </div>
+          <SegmentedControl
+            value={groupBy}
+            onValueChange={setGroupByMode}
+            aria-label={t("groupBy.label")}
+            options={[
+              {
+                value: "groups",
+                label: t("groupBy.groups"),
+                testId: "group-by-groups",
+              },
+              {
+                value: "host",
+                label: t("groupBy.host"),
+                tooltip: t("hostBucketDescription"),
+                testId: "group-by-host",
+              },
+            ]}
+          />
         </div>
         {user?.isSuperAdmin && (
           <Select value={internalFilter} onValueChange={setInternalFilter}>
