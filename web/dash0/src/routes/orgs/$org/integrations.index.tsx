@@ -44,6 +44,7 @@ import {
   IntegrationIcon,
   integrationLabel,
 } from "@/components/integrations/integration-icon";
+import { SMSModePanel } from "@/components/integrations/sms-mode-panel";
 import { useDebounce } from "@/lib/use-debounce";
 
 interface IntegrationsIndexSearch {
@@ -166,6 +167,12 @@ function IntegrationsListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Where this org's SMS actually comes from. Rendered above the list in
+          BOTH states: on an empty list it is the only thing that can tell an
+          admin "SMS already works, the server provides it" apart from "SMS is
+          not configured at all". */}
+      <SMSModePanel org={org} integrations={integrations} isLoading={isLoading} />
 
       {showEmptyState ? (
         <EmptyState org={org} />

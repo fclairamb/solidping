@@ -5,6 +5,7 @@ import { Activity, RefreshCw, Workflow } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgoOrDash } from "@/components/ui/time-ago";
@@ -201,26 +202,22 @@ function JobsIndexPage() {
         actions={
           <div className="flex items-center gap-2">
             {user?.isSuperAdmin && (
-              <div className="inline-flex rounded-lg border p-0.5" role="group">
-                <Button
-                  size="sm"
-                  variant={allOrgs ? "ghost" : "secondary"}
-                  onClick={() => setAllOrgs(false)}
-                  aria-pressed={!allOrgs}
-                  data-testid="scope-this-org"
-                >
-                  {t("scope.thisOrg")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant={allOrgs ? "secondary" : "ghost"}
-                  onClick={() => setAllOrgs(true)}
-                  aria-pressed={allOrgs}
-                  data-testid="scope-all-orgs"
-                >
-                  {t("scope.allOrgs")}
-                </Button>
-              </div>
+              <SegmentedControl
+                value={allOrgs ? "all" : "this"}
+                onValueChange={(next) => setAllOrgs(next === "all")}
+                options={[
+                  {
+                    value: "this",
+                    label: t("scope.thisOrg"),
+                    testId: "scope-this-org",
+                  },
+                  {
+                    value: "all",
+                    label: t("scope.allOrgs"),
+                    testId: "scope-all-orgs",
+                  },
+                ]}
+              />
             )}
             <Button
               variant="outline"

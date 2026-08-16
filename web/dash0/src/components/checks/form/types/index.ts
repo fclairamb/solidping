@@ -38,7 +38,14 @@ import {
   icmpModule,
 } from "./network";
 import { smtpModule, mailboxModule } from "./mail";
-import { dnsModule, domainModule, dnsblModule } from "./dns";
+import {
+  dnsModule,
+  domainModule,
+  dnsblModule,
+  DomainAdvancedFields,
+  domainAdvancedSummary,
+} from "./dns";
+import type { DomainState } from "./dns";
 import {
   sqlDatabaseModule,
   redisModule,
@@ -48,7 +55,12 @@ import {
 import { clickhouseModule } from "./clickhouse";
 import { grpcModule, kafkaModule, mqttModule } from "./messaging";
 import { a2sModule, minecraftModule } from "./game";
-import { snmpModule, dockerModule, freeboxLineModule } from "./infra";
+import {
+  snmpModule,
+  dockerModule,
+  freeboxLineModule,
+  prometheusModule,
+} from "./infra";
 import {
   sslModule,
   ntpModule,
@@ -92,6 +104,7 @@ const modules: CheckTypeModule[] = [
   entry(a2sModule),
   entry(minecraftModule),
   entry(snmpModule),
+  entry(prometheusModule),
   entry(dockerModule),
   entry(freeboxLineModule),
   entry(sslModule),
@@ -149,5 +162,9 @@ export const advancedFieldsRegistry: Partial<
   http: {
     Fields: HttpOptionsFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state) => httpOptionsSummary(state as HttpState),
+  },
+  domain: {
+    Fields: DomainAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => domainAdvancedSummary(state as DomainState),
   },
 };

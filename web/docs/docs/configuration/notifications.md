@@ -23,7 +23,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Opsgenie | Available | API integration |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
-| SMS / Voice | Available | [Twilio](./twilio.md) (per-organization connection) |
+| SMS / Voice | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
 | WhatsApp | Available | [Meta WhatsApp Business Cloud API](./whatsapp.md) (instance-level) |
 | Telegram | Available | [Telegram Bot API](./telegram.md) (instance-level bot, free per message) |
 
@@ -158,6 +158,44 @@ slack:
    - `channels:read`
 5. Go to "Basic Information" to get your credentials
 6. Install the app to your workspace
+
+### Slash commands
+
+| Command | What it does |
+|---|---|
+| `/check <url>` | Creates an HTTP check for the URL. |
+| `/comment [#42] <text>` | Adds a comment to an incident's timeline. |
+
+`/comment` is the **explicit** way to add a comment from Slack. A slash command
+posts nothing visible in the channel, so SolidPing answers with an ephemeral
+confirmation and then fans the comment out to every channel attached to the
+failing check — including the incident's own Slack thread, so the channel that
+typed it still sees it.
+
+Slack's payload for a slash command does **not** include `thread_ts`, so the
+command cannot tell which thread it was typed in. The incident is resolved from
+the channel instead:
+
+1. An explicit `#42` always wins.
+2. Otherwise, if the channel has exactly **one** active incident thread, that is
+   the target.
+3. Otherwise you get an ephemeral error listing the candidates — SolidPing never
+   guesses which incident a note belongs to.
+
+### Capturing thread replies (`comment_ingestion`)
+
+Each Slack integration has a **"Capture every thread reply as a comment"**
+toggle on its edit page, stored as `comment_ingestion`:
+
+| Value | Behavior |
+|---|---|
+| `explicit` (**default**) | Only `/comment` creates an incident comment. Triage chatter in the thread — "lunch?", "who is on call?" — stays chatter. |
+| `all` | Every human reply in a tracked incident thread is saved to the incident timeline. |
+
+An integration created before this setting existed carries no value and is
+therefore treated as `explicit`, so no workspace keeps over-capturing after an
+upgrade. Bot-authored messages (including SolidPing's own thread replies) are
+never ingested in either mode.
 
 ### Notification Format
 

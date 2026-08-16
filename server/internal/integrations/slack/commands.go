@@ -32,6 +32,8 @@ func DispatchCommand(ctx context.Context, svc *Service, cmd *Command) (*MessageR
 	switch cmd.Command {
 	case "/check":
 		return dispatcher.handleCheckCommand(ctx, cmd)
+	case "/comment":
+		return dispatcher.handleCommentCommand(ctx, cmd)
 	default:
 		return &MessageResponse{
 			ResponseType: ResponseTypeEphemeral,

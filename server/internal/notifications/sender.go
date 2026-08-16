@@ -43,6 +43,10 @@ type Payload struct {
 	// otherwise, which is what makes "mentions off" and "resolved/reopened are
 	// mention-free" true by construction rather than by sender discipline.
 	OnCallMentions []MentionTarget
+	// Comment carries the body and author of an `incident.comment` event.
+	// Non-nil only for that event type; senders that render comments must
+	// tolerate a nil here rather than assuming the fan-out filled it in.
+	Comment *CommentInfo
 }
 
 // MentionTarget is one human an alert should ping. ExternalID is the

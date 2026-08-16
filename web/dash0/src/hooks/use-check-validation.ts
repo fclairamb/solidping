@@ -9,16 +9,29 @@ export interface FieldError {
 interface ValidateResponse {
   valid: boolean;
   fields?: FieldError[];
+  /** Advisory, per-field notes on an otherwise VALID config — e.g. pinning
+   * `ipVersion: ipv6` in a region whose live workers report no IPv6 egress
+   * (spec 2026-08-15-11). Never blocks: the check is created and runs, because
+   * the run-time egress probe is the authority and the advertised capability
+   * can lag. */
+  warnings?: FieldError[];
 }
 
-export function useCheckValidation(
+export interface CheckValidationResult {
+  errors: FieldError[];
+  warnings: FieldError[];
+}
+
+/** Full validation result, errors and advisory warnings alike. */
+export function useCheckValidationResult(
   org: string,
   type: string | undefined,
   config: Record<string, unknown>,
   regions: string[] = [],
   debounceMs = 1000
-): FieldError[] {
+): CheckValidationResult {
   const [errors, setErrors] = useState<FieldError[]>([]);
+  const [warnings, setWarnings] = useState<FieldError[]>([]);
   const isFirstRender = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -36,6 +49,7 @@ export function useCheckValidation(
     );
     if (!hasValues) {
       setErrors([]);
+      setWarnings([]);
       return;
     }
 
@@ -54,9 +68,11 @@ export function useCheckValidation(
         );
 
         setErrors(resp.valid ? [] : (resp.fields ?? []));
+        setWarnings(resp.warnings ?? []);
       } catch {
         // Silently ignore validation errors (network issues, etc.)
         setErrors([]);
+        setWarnings([]);
       }
     }, debounceMs);
 
@@ -67,7 +83,19 @@ export function useCheckValidation(
     };
   }, [org, type, JSON.stringify(config), JSON.stringify(regions), debounceMs]);
 
-  return errors;
+  return { errors, warnings };
+}
+
+/** Errors only — the long-standing shape, kept for call sites that do not care
+ * about advisory warnings. */
+export function useCheckValidation(
+  org: string,
+  type: string | undefined,
+  config: Record<string, unknown>,
+  regions: string[] = [],
+  debounceMs = 1000
+): FieldError[] {
+  return useCheckValidationResult(org, type, config, regions, debounceMs).errors;
 }
 
 export function getFieldError(

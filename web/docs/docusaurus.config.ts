@@ -128,11 +128,6 @@ const config: Config = {
           position: "left",
         },
         {
-          href: "https://www.solidping.io/blog",
-          label: "Blog",
-          position: "left",
-        },
-        {
           href: "https://github.com/fclairamb/solidping",
           label: "GitHub",
           position: "right",
@@ -178,10 +173,6 @@ const config: Config = {
             {
               label: "Home",
               href: "https://www.solidping.io",
-            },
-            {
-              label: "Blog",
-              href: "https://www.solidping.io/blog",
             },
             {
               label: "Terms of Service",

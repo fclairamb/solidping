@@ -42,7 +42,8 @@ func canAckEvent(eventType string) bool {
 // token (D4) regardless of whether the event is ackable.
 func isModeledIncidentEvent(eventType string) bool {
 	switch eventType {
-	case eventTypeIncidentCreated, eventTypeIncidentResolved, eventTypeIncidentEscalated, eventTypeIncidentReopened:
+	case eventTypeIncidentCreated, eventTypeIncidentResolved, eventTypeIncidentEscalated,
+		eventTypeIncidentReopened, eventTypeIncidentComment:
 		return true
 	default:
 		return false
@@ -89,6 +90,7 @@ const (
 	eventTypeIncidentResolved  = "incident.resolved"
 	eventTypeIncidentEscalated = "incident.escalated"
 	eventTypeIncidentReopened  = "incident.reopened"
+	eventTypeIncidentComment   = "incident.comment"
 )
 
 // incidentTemplateForEvent maps an event type to its embedded template name.
@@ -105,6 +107,8 @@ func incidentTemplateForEvent(eventType string) (string, bool) {
 		return "incident-escalated.html", true
 	case eventTypeIncidentReopened:
 		return "incident-reopened.html", true
+	case eventTypeIncidentComment:
+		return "incident-comment.html", true
 	default:
 		return "", false
 	}
@@ -481,6 +485,12 @@ func (s *EmailSender) buildIncidentViewModel(
 	if payload.Incident.ResolvedAt != nil {
 		viewModel["ResolvedAt"] = payload.Incident.ResolvedAt.Format("2006-01-02 15:04:05")
 		viewModel["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Round(time.Second).String()
+	}
+
+	if payload.Comment != nil {
+		viewModel["CommentText"] = commentText(payload.Comment)
+		viewModel["CommentAuthor"] = commentAuthor(payload.Comment)
+		viewModel["CommentSource"] = commentSourceLabel(payload.Comment)
 	}
 
 	if unsubURL != "" {

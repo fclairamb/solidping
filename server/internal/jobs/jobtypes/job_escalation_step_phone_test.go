@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
-	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -66,17 +67,38 @@ func (f *fakeTwilio) countBySuffix(suffix string) int {
 func (f *fakeTwilio) smsCount() int  { return f.countBySuffix("Messages.json") }
 func (f *fakeTwilio) callCount() int { return f.countBySuffix("Calls.json") }
 
-// useFakeTwilio points the dispatch client seam at the fake server for the
-// duration of the test, ignoring the resolved region base URL — the fake
-// server doesn't care what region it was "meant" for.
-func useFakeTwilio(t *testing.T, srv *httptest.Server) {
-	t.Helper()
+// useFakeTwilio points this env's bring-your-own sender factory at the fake
+// server, ignoring the resolved region base URL — the fake server doesn't care
+// what region it was "meant" for. The seam is per-env, not a package-level
+// var, so parallel tests can never race on it.
+func (e *phoneTestEnv) useFakeTwilio(srv *httptest.Server) {
+	e.orgTwilioBase.Store(srv.URL)
+}
 
-	prev := newTwilioClient
-	newTwilioClient = func(accountSID, authToken, _ string) *twilio.Client {
-		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
+// useInstanceSender injects an instance-level (server-credential) provider,
+// i.e. the server-provided mode an org with no integration of its own falls
+// back to.
+func (e *phoneTestEnv) useInstanceSender(sender smssvc.Sender, voice smssvc.VoiceCaller, senderID string) {
+	e.jctx.Services.SMS = smssvc.NewResolver(
+		e.db, nil, sender, voice, senderID,
+		smssvc.WithOrgSenderFactory(e.orgSenderFactory()),
+	)
+}
+
+// orgSenderFactory builds bring-your-own senders that honor this env's
+// fake-server override when one is set.
+func (e *phoneTestEnv) orgSenderFactory() func(*models.TwilioSettings) smssvc.PhoneSender {
+	return func(settings *models.TwilioSettings) smssvc.PhoneSender {
+		base, _ := e.orgTwilioBase.Load().(string)
+
+		return smssvc.NewTwilioSender(&smssvc.TwilioCredentials{
+			AccountSID: settings.AccountSID, AuthToken: settings.AuthToken,
+			Region: settings.Region, BaseURL: base,
+			From:                settings.FromNumber,
+			MessagingServiceSID: settings.MessagingServiceSID,
+			VoiceFrom:           settings.VoiceFromNumber,
+		})
 	}
-	t.Cleanup(func() { newTwilioClient = prev })
 }
 
 // recordingEmail counts SendMessage calls and captures the last message so
@@ -120,6 +142,8 @@ type phoneTestEnv struct {
 	incident *models.Incident
 	jctx     *jobdef.JobContext
 	emails   *recordingEmail
+	// orgTwilioBase overrides the base URL bring-your-own senders target.
+	orgTwilioBase atomic.Value
 }
 
 func setupPhoneEnv(t *testing.T, withTwilio bool, voiceFrom string) *phoneTestEnv {
@@ -179,7 +203,16 @@ func setupPhoneEnv(t *testing.T, withTwilio bool, voiceFrom string) *phoneTestEn
 		Services:  &services.Registry{EmailSender: emails, EmailFormatter: formatter},
 	}
 
-	return &phoneTestEnv{db: dbSvc, org: org, incident: incident, jctx: jctx, emails: emails}
+	env := &phoneTestEnv{db: dbSvc, org: org, incident: incident, jctx: jctx, emails: emails}
+	env.orgTwilioBase.Store("")
+	// No instance-level provider by default: an org with no integration of its
+	// own resolves to nothing, which is the "missing provider degrades to a
+	// skip" path.
+	jctx.Services.SMS = smssvc.NewResolver(
+		dbSvc, nil, nil, nil, "", smssvc.WithOrgSenderFactory(env.orgSenderFactory()),
+	)
+
+	return env
 }
 
 func verifiedPhoneRoute(orgUID string) *models.UserNotificationRoute {
@@ -217,15 +250,15 @@ func newRun() *EscalationStepJobRun {
 
 // TestDispatch_SMSFilterPagesPhoneSkipsEmail proves severity {sms} texts a
 // verified phone and does NOT email.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_SMSFilterPagesPhoneSkipsEmail(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "")
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	run := newRun()
 	filter := map[string]bool{"sms": true}
@@ -242,15 +275,15 @@ func TestDispatch_SMSFilterPagesPhoneSkipsEmail(t *testing.T) {
 
 // TestDispatch_EmailSlackBehavesAsToday is the backward-compat control:
 // severity {email, slack} emails and never touches the phone.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_EmailSlackBehavesAsToday(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "")
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	run := newRun()
 	filter := map[string]bool{"email": true, "slack": true}
@@ -308,15 +341,15 @@ func TestDispatch_EscalationEmailShowsIncidentNumberNotUUID(t *testing.T) {
 
 // TestDispatch_VoicePlacesCallWithoutSMS proves severity {voice} calls but
 // does not text.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_VoicePlacesCallWithoutSMS(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "+15559990001")
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	run := newRun()
 	filter := map[string]bool{"voice": true}
@@ -330,15 +363,15 @@ func TestDispatch_VoicePlacesCallWithoutSMS(t *testing.T) {
 
 // TestDispatch_UnverifiedPhoneNeverContacted proves an unverified number is
 // never texted or dialed.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_UnverifiedPhoneNeverContacted(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "+15559990001")
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	route := verifiedPhoneRoute(env.org.UID)
 	route.Contact.VerifiedAt = nil // unverified
@@ -358,9 +391,9 @@ func TestDispatch_UnverifiedPhoneNeverContacted(t *testing.T) {
 // paths silently pinned to twilio.DefaultBaseURL regardless of the
 // connection's configured region — a test covering only the notifications
 // sender would have passed the old, broken code for these two paths.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_RegionResolvesRegionalBase(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
@@ -374,16 +407,7 @@ func TestDispatch_RegionResolvesRegionalBase(t *testing.T) {
 	r.NoError(env.db.UpdateChannel(ctx, conn.UID, &models.IntegrationUpdate{Settings: &conn.Settings}))
 
 	fake, srv := newFakeTwilio(t)
-
-	var gotBaseURLs []string
-	prev := newTwilioClient
-	newTwilioClient = func(accountSID, authToken, baseURL string) *twilio.Client {
-		gotBaseURLs = append(gotBaseURLs, baseURL)
-		// Redirect to the fake server so the send still "succeeds" — only the
-		// resolved base URL argument is under test here.
-		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
-	}
-	t.Cleanup(func() { newTwilioClient = prev })
+	env.useFakeTwilio(srv)
 
 	run := newRun()
 	filter := map[string]bool{"sms": true, "voice": true}
@@ -393,25 +417,28 @@ func TestDispatch_RegionResolvesRegionalBase(t *testing.T) {
 	r.Equal(2, sent, "sms + voice both fire")
 	r.Equal(1, fake.smsCount())
 	r.Equal(1, fake.callCount())
-	r.Len(gotBaseURLs, 2, "both the SMS and the voice call must resolve a base URL")
 
-	for _, u := range gotBaseURLs {
-		r.Equal("https://api.ie1.twilio.com", u,
-			"the escalation dispatcher must resolve the connection's region, not the default base")
-	}
+	// Without the fake-server override, both capabilities must resolve to the
+	// connection's regional host rather than the default US1 edge — a silent
+	// fallback there makes valid regional credentials look invalid.
+	settings, err := models.TwilioSettingsFromJSONMap(conn.Settings)
+	r.NoError(err)
+	r.Equal("https://api.ie1.twilio.com",
+		smssvc.TwilioBaseURL(&smssvc.TwilioCredentials{Region: settings.Region}),
+		"the escalation dispatcher must resolve the connection's region, not the default base")
 }
 
 // TestDispatch_MissingProviderDegradesToSkip proves that with no Twilio
 // connection the phone route quietly returns 0 (no panic, no error).
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_MissingProviderDegradesToSkip(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, false, "") // no twilio integration
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	run := newRun()
 	filter := map[string]bool{"sms": true}
@@ -423,15 +450,15 @@ func TestDispatch_MissingProviderDegradesToSkip(t *testing.T) {
 
 // TestDispatch_SMSQuotaExhaustedSkips proves an exhausted monthly SMS cap skips
 // the send and records a quota-skip audit row, without failing the step.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_SMSQuotaExhaustedSkips(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "")
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	// Wire an entitlements service capped at 0 SMS/month.
 	entSvc := entitlements.NewService(env.db, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
@@ -499,15 +526,15 @@ func seedPolicyWithPhoneStep(
 // TestDispatch_DedupsSamePhoneAcrossTargets proves the coalescing invariant:
 // a user reachable via BOTH a `user` target and an `all_admins` target in one
 // escalation-step run is texted once and called once, not twice.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatch_DedupsSamePhoneAcrossTargets(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "+15559990001") // voice enabled
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	user := seedAdminWithPhoneRoute(t, env, "+15551230000")
 
@@ -526,15 +553,15 @@ func TestDispatch_DedupsSamePhoneAcrossTargets(t *testing.T) {
 
 // TestRun_UnackedIncidentPagesPhone is the positive control for the ack guard:
 // through the real Run() an OPEN incident pages the on-call phone.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestRun_UnackedIncidentPagesPhone(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "+15559990001")
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	user := seedAdminWithPhoneRoute(t, env, "+15551230000")
 	step := seedPolicyWithPhoneStep(t, env, user, []string{"sms", "voice"})
@@ -551,15 +578,15 @@ func TestRun_UnackedIncidentPagesPhone(t *testing.T) {
 // TestRun_AckedIncidentSendsNothing proves the required dispatch semantic
 // through the real Run() entrypoint (not just dispatchRoute): an acknowledged
 // incident sends no SMS and places no call, even under a {sms, voice} severity.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestRun_AckedIncidentSendsNothing(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	env := setupPhoneEnv(t, true, "+15559990001")
 	fake, srv := newFakeTwilio(t)
-	useFakeTwilio(t, srv)
+	env.useFakeTwilio(srv)
 
 	user := seedAdminWithPhoneRoute(t, env, "+15551230000")
 	step := seedPolicyWithPhoneStep(t, env, user, []string{"sms", "voice"})

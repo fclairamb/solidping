@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -30,23 +31,10 @@ const smsAckTokenTTL = 7 * 24 * time.Hour
 // list on the connection. Per-user phone paging goes through the escalation
 // dispatcher, not this sender.
 type TwilioSender struct {
-	// BaseURL overrides the Twilio API base for tests. Empty = the real API.
+	// BaseURL overrides the Twilio API base for tests. Empty = the real API,
+	// in which case the connection's region decides the host (see
+	// sms.TwilioBaseURL, which owns that precedence for every send path).
 	BaseURL string
-}
-
-// resolveBaseURL decides which Twilio host a send goes to. Precedence: the
-// test override (BaseURL) wins when set — it exists only so tests can point
-// the sender at an httptest fake, and a test that sets it always wants that
-// exact host regardless of the connection's region. In real operation
-// BaseURL is always empty, so the connection's region decides:
-// twilio.BaseURLForRegion("") still resolves to twilio.DefaultBaseURL, so a
-// connection with no region behaves exactly as before this field existed.
-func (s *TwilioSender) resolveBaseURL(region string) string {
-	if s.BaseURL != "" {
-		return s.BaseURL
-	}
-
-	return twilio.BaseURLForRegion(region)
 }
 
 // Send delivers an SMS to every configured shared recipient.
@@ -70,7 +58,18 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 
 	body := s.buildBody(jctx, payload, settings)
 
-	client := twilio.NewClientWithBaseURL(settings.AccountSID, settings.AuthToken, s.resolveBaseURL(settings.Region))
+	// Goes through the provider-neutral seam like every other send path. This
+	// one is always bring-your-own by construction — a channel target IS a
+	// per-org connection — but there is no reason for it to be the last place
+	// still building a concrete provider client by hand.
+	sender := smssvc.NewTwilioSender(&smssvc.TwilioCredentials{
+		AccountSID:          settings.AccountSID,
+		AuthToken:           settings.AuthToken,
+		Region:              settings.Region,
+		BaseURL:             s.BaseURL,
+		From:                settings.FromNumber,
+		MessagingServiceSID: settings.MessagingServiceSID,
+	})
 
 	var statusCallback string
 	if payload.AppBaseURL != "" {
@@ -80,19 +79,17 @@ func (s *TwilioSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 
 	var lastSID string
 	for _, toNumber := range settings.ToNumbers {
-		res, sendErr := client.SendSMS(ctx, &twilio.SendSMSParams{
-			To:                  toNumber,
-			From:                settings.FromNumber,
-			MessagingServiceSID: settings.MessagingServiceSID,
-			Body:                body,
-			StatusCallback:      statusCallback,
+		res, sendErr := sender.SendSMS(ctx, &smssvc.SendParams{
+			To:             toNumber,
+			Body:           body,
+			StatusCallback: statusCallback,
 		})
 		if sendErr != nil {
 			return fmt.Errorf("sending SMS to %s: %w", toNumber, sendErr)
 		}
 
 		if res != nil {
-			lastSID = res.SID
+			lastSID = res.ProviderMessageID
 		}
 	}
 
@@ -114,7 +111,7 @@ func (s *TwilioSender) buildBody(
 	var msg string
 	switch payload.EventType {
 	case eventTypeIncidentResolved:
-		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName)
+		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) + twilio.OptOutFooter
 	case eventTypeIncidentEscalated:
 		msg = fmt.Sprintf("[%s] %s: %s STILL DOWN (escalated).", productName, org, checkName)
 	case eventTypeIncidentReopened:
@@ -127,7 +124,7 @@ func (s *TwilioSender) buildBody(
 		msg += " Ack: " + ackURL
 	}
 
-	return msg
+	return msg + twilio.OptOutFooter
 }
 
 // ackURL builds the signed magic-link ack URL for the SMS. The shared

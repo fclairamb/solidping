@@ -243,14 +243,31 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
 // ── Domain (expiry) ──
 export interface DomainState {
   domain: string;
+  // Lookup method: "" (or "auto", default) tries RDAP first and falls back
+  // to WHOIS on any RDAP failure; "rdap"/"whois" force one path. Empty
+  // serializes to nothing, so existing checks upgrade transparently.
+  method: string;
+  // Two-tier expiry thresholds (days remaining), mirroring the SSL check's
+  // warningDays/criticalDays. Empty strings mean "use the backend default"
+  // (30/30) — see checkdomain/config.go effectiveThresholds.
+  warningDays: string;
+  criticalDays: string;
 }
 
 export const domainModule: CheckTypeModule<DomainState> = {
   types: ["domain"],
-  fromConfig: (config) => ({ domain: getConfigField(config, "domain") }),
+  fromConfig: (config) => ({
+    domain: getConfigField(config, "domain"),
+    method: getConfigField(config, "method"),
+    warningDays: getConfigField(config, "warningDays"),
+    criticalDays: getConfigField(config, "criticalDays") || getConfigField(config, "threshold_days"),
+  }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.domain) cfg.domain = state.domain;
+    if (state.method && state.method !== "auto") cfg.method = state.method;
+    if (state.warningDays) cfg.warningDays = parseInt(state.warningDays, 10);
+    if (state.criticalDays) cfg.criticalDays = parseInt(state.criticalDays, 10);
     const errors: FieldErrors = state.domain
       ? []
       : [{ name: "domain", message: "Domain is required" }];
@@ -265,24 +282,96 @@ function DomainFields({
   errors,
 }: CheckTypeFieldsProps<DomainState>) {
   return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="domain">Domain</Label>
+        <Input
+          id="domain"
+          type="text"
+          placeholder="example.com"
+          value={state.domain}
+          onChange={(e) => onChange({ ...state, domain: e.target.value })}
+          className={cn(getFieldError(errors, "domain") && "border-destructive")}
+          data-testid="check-domain-input"
+        />
+        {getFieldError(errors, "domain") && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "domain")}
+          </p>
+        )}
+      </div>
+      <div className="flex gap-4">
+        <div className="space-y-2 w-40">
+          <Label htmlFor="domainCriticalDays">Critical (days)</Label>
+          <Input
+            id="domainCriticalDays"
+            type="number"
+            placeholder="30"
+            value={state.criticalDays}
+            onChange={(e) => onChange({ ...state, criticalDays: e.target.value })}
+            data-testid="check-domain-critical-days-input"
+          />
+          <p className="text-xs text-muted-foreground">
+            Down (pages) at or below this.
+          </p>
+        </div>
+        <div className="space-y-2 w-40">
+          <Label htmlFor="domainWarningDays">Warning (days)</Label>
+          <Input
+            id="domainWarningDays"
+            type="number"
+            placeholder="30"
+            value={state.warningDays}
+            onChange={(e) => onChange({ ...state, warningDays: e.target.value })}
+            data-testid="check-domain-warning-days-input"
+          />
+          <p className="text-xs text-muted-foreground">
+            Amber warning (no page) at or below this. Must be ≥ Critical.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// DomainAdvancedFields renders the "Advanced" section's lookup-method select
+// (RDAP first with WHOIS fallback by default, or force one path).
+export function DomainAdvancedFields({
+  state,
+  onChange,
+}: CheckTypeFieldsProps<DomainState>) {
+  return (
     <div className="space-y-2">
-      <Label htmlFor="domain">Domain</Label>
-      <Input
-        id="domain"
-        type="text"
-        placeholder="example.com"
-        value={state.domain}
-        onChange={(e) => onChange({ ...state, domain: e.target.value })}
-        className={cn(getFieldError(errors, "domain") && "border-destructive")}
-        data-testid="check-domain-input"
-      />
-      {getFieldError(errors, "domain") && (
-        <p className="text-xs text-destructive">
-          {getFieldError(errors, "domain")}
-        </p>
-      )}
+      <Label htmlFor="domainMethod">Lookup method</Label>
+      <Select
+        value={state.method || "auto"}
+        onValueChange={(method) => onChange({ ...state, method })}
+      >
+        <SelectTrigger id="domainMethod" data-testid="check-domain-method-select">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="auto">Auto (RDAP, WHOIS fallback)</SelectItem>
+          <SelectItem value="rdap">RDAP only</SelectItem>
+          <SelectItem value="whois">WHOIS only</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        Auto tries RDAP first and falls back to WHOIS on any failure. RDAP
+        only and WHOIS only never fall back.
+      </p>
     </div>
   );
+}
+
+// domainAdvancedSummary drives the "Advanced" section's summary line for the
+// lookup-method select above.
+export function domainAdvancedSummary(state: DomainState): {
+  text: string;
+  customized: boolean;
+} {
+  const customized = !!state.method && state.method !== "auto";
+  return { text: customized ? `method ${state.method}` : "", customized };
 }
 
 // ── DNSBL ──

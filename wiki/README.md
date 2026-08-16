@@ -88,7 +88,7 @@ Operational procedures for diagnosing the running system.
 
 ## Integrations
 
-- [slack/README.md](slack/README.md) — Slack app manifests overview; inbound thread-reply → incident-comment scopes and the re-authorization requirement
+- [slack/README.md](slack/README.md) — Slack app manifests overview; the `/check` and `/comment` slash commands, the `comment_ingestion` (explicit-by-default) setting, inbound thread-reply → incident-comment scopes and the re-authorization requirement
 - [slack/manifest-dev.json](slack/manifest-dev.json) — Slack app manifest for development
 - [slack/manifest-prod.json](slack/manifest-prod.json) — Slack app manifest for production
 

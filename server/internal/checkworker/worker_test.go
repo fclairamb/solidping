@@ -138,6 +138,10 @@ func TestCalculateNextScheduledAt_NoAttachedCheck(t *testing.T) {
 			{"1m", 1 * time.Minute},
 			{"5m", 5 * time.Minute},
 			{"1h", 1 * time.Hour},
+			// 336h (2 weeks) — domain's new long-interval option (spec
+			// 2026-08-15-07) — proves the reschedule math isn't silently
+			// truncated once the period is measured in weeks.
+			{"336h", 336 * time.Hour},
 		}
 
 		for _, tc := range testCases {

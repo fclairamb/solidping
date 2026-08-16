@@ -88,6 +88,52 @@ curl -X POST http://localhost:4000/api/v1/orgs/default/incidents/{uid}/comments 
   -d '{"comment":"Restarted the upstream pool, watching recovery."}'
 ```
 
+### Where a comment goes
+
+A comment is not dashboard-only. It is fanned out through the same notification
+pipeline the lifecycle events use, so everyone watching the incident on a chat
+channel sees it:
+
+- **Slack** posts it as a reply in the incident's existing thread.
+- **Discord, Microsoft Teams, Mattermost, Google Chat, ntfy, Pushover, web push,
+  webhooks and email** deliver it in their normal message shape. Webhook
+  receivers get an extra `data.comment` object (`text`, `authorName`, `source`)
+  on `incident.comment` deliveries only.
+- **Opsgenie** adds it as a note on the existing alert — never a new alert.
+- **Twilio (SMS and voice) is excluded.** Paging someone's phone for every
+  operator note is noise with a real bill attached.
+
+Every delivery produces the usual `incident_notifications` audit row, so the
+incident page's **Notifications** card shows who was told and whether it landed.
+
+Two limits worth knowing:
+
+- **A comment never echoes back to where it was written.** A reply captured from
+  a Slack thread is not re-posted into that same workspace, or the bot would
+  repeat the author's own words into the thread they just typed them in.
+- **v1 reaches check-attached channels only.** People paged individually through
+  an [escalation policy](/features/on-call) — a Telegram or SMS contact on a
+  rotation — are not forwarded comments. Attach a channel to the check if the
+  discussion needs to reach them.
+
+### Commenting from chat
+
+Both chat bots can add a comment without opening the dashboard:
+
+- Slack: `/comment [#42] <text>` — see
+  [Slack slash commands](/configuration/notifications#slash-commands).
+- Telegram: `/comment [#42] <text>` — see
+  [Telegram in-chat commands](/configuration/telegram#in-chat-commands).
+
+In both cases the incident is resolved from an explicit `#42` first, then from
+the unambiguous single active incident, and otherwise the bot lists the
+candidates rather than guessing.
+
+Slack additionally has a per-integration
+[`comment_ingestion`](/configuration/notifications#capturing-thread-replies-comment_ingestion)
+setting. It defaults to `explicit`: plain thread replies are **not** captured,
+so only a deliberate `/comment` becomes permanent incident-timeline content.
+
 ## Maintenance Windows
 
 During an active [maintenance window](/features/maintenance-windows), incident processing is suppressed for the affected checks — failures do not create incidents or fire notifications. Use this to silence alerts during planned deployments or upgrades.

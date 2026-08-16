@@ -29,6 +29,16 @@ const (
 	apiVersion = "2010-04-01"
 	// DefaultTimeout is the default HTTP client timeout.
 	DefaultTimeout = 30 * time.Second
+	// OptOutFooter is the short opt-out disclosure appended to recurring
+	// transactional SMS bodies. US A2P 10DLC review expects recurring messages
+	// to carry opt-out language; it is kept terse to limit the added segment
+	// cost on alert traffic. STOP itself is handled by Twilio's platform-level
+	// Advanced Opt-Out — we have no inbound-SMS webhook.
+	OptOutFooter = " Reply STOP to unsubscribe."
+	// FirstContactFooter is the fuller CTIA-style disclosure used on the phone
+	// verification SMS. That is the first message any number ever receives from
+	// us, so it is where carriers expect the rate and help disclosure to appear.
+	FirstContactFooter = " Msg&data rates may apply. Reply STOP to unsubscribe, HELP for help."
 )
 
 var (

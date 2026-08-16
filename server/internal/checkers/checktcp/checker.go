@@ -58,6 +58,10 @@ func (c *TCPChecker) Validate(spec *checkerdef.CheckSpec) error {
 		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
 	}
 
+	if spec.Slug == "" {
+		spec.Slug = "tcp-" + strings.ReplaceAll(cfg.Host, ".", "-")
+	}
+
 	return nil
 }
 

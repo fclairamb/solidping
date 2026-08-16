@@ -65,12 +65,41 @@ type TelegramPublicConfig struct {
 	BotUsername string `json:"botUsername,omitempty"`
 }
 
+// SMSPublicConfig is the browser-safe view of the instance's SERVER-PROVIDED
+// SMS and voice capability — the mode an org gets when it has not brought its
+// own provider account.
+//
+// Enabled / VoiceEnabled are the resolved config.SMSConfig.Active() /
+// config.VoiceConfig.Active() rules, NOT the raw kill switches: an instance
+// with the switch on but no credentials reports false, because nothing would
+// in fact be delivered.
+//
+// Sender and Provider are emitted only when enabled. Neither is a secret:
+// the sender is the string every recipient's handset displays, and the
+// provider name is an operator-side fact the dashboard needs to explain what
+// "server-provided" means on this deployment. No key, token, consumer key or
+// service name ever appears here under any circumstance.
+type SMSPublicConfig struct {
+	Enabled bool `json:"enabled"`
+	// Sender is the instance-wide sender identity (E.164 or an alphanumeric
+	// sender). There is deliberately no per-org override on this path.
+	Sender string `json:"sender,omitempty"`
+	// Provider is "twilio" or "ovh".
+	Provider string `json:"provider,omitempty"`
+	// VoiceEnabled reports the instance-level voice capability, resolved
+	// INDEPENDENTLY of SMS: OVH has no voice API, so an instance can perfectly
+	// well offer OVH SMS and Twilio voice at the same time — or SMS and no
+	// voice at all.
+	VoiceEnabled bool `json:"voiceEnabled"`
+}
+
 // Response is the public config document. Fields are added here as new public
 // flags appear; every one of them must be non-secret and browser-safe.
 type Response struct {
 	PostHog  PostHogPublicConfig  `json:"posthog"`
 	WhatsApp WhatsAppPublicConfig `json:"whatsapp"`
 	Telegram TelegramPublicConfig `json:"telegram"`
+	SMS      SMSPublicConfig      `json:"sms"`
 }
 
 // Handler serves the public config document.
@@ -109,6 +138,16 @@ func Build(cfg *config.Config) Response {
 		resp.Telegram = TelegramPublicConfig{
 			Enabled:     true,
 			BotUsername: cfg.Telegram.ResolvedBotUsername(),
+		}
+	}
+
+	if cfg != nil {
+		resp.SMS.VoiceEnabled = cfg.Voice.Active()
+
+		if cfg.SMS.Active() {
+			resp.SMS.Enabled = true
+			resp.SMS.Sender = cfg.SMS.Sender
+			resp.SMS.Provider = cfg.SMS.ResolvedProvider()
 		}
 	}
 

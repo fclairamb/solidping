@@ -3,7 +3,6 @@ package checkhttp
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -110,7 +109,7 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 		// Set slug to hostname with dots replaced by hyphens if empty
 		if spec.Slug == "" {
-			spec.Slug = strings.ReplaceAll(hostname, ".", "-")
+			spec.Slug = "http-" + strings.ReplaceAll(hostname, ".", "-")
 		}
 	}
 
@@ -588,97 +587,18 @@ func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
 	return output
 }
 
-// familyDialTimeout / familyDialKeepAlive mirror http.DefaultTransport's dialer
-// settings, so pinning the address family changes only the family — not the
-// connect timeout or the keep-alive behavior a check has always had.
-const (
-	familyDialTimeout   = 30 * time.Second
-	familyDialKeepAlive = 30 * time.Second
-)
-
-// buildTransport returns the http.Transport a check needs, or nil when it needs
-// none. Returning nil matters: with a nil Transport net/http uses the shared
-// http.DefaultTransport, keeping its connection pool and its Happy Eyeballs
-// dialing — which is exactly the behavior an unconfigured check must keep.
-//
-// Three independent reasons compose onto the SAME transport:
-//   - a tunnel dialer (the probe is dialed through an SSH bastion),
-//   - verifySsl: false (InsecureSkipVerify),
-//   - ipVersion: ipv4/ipv6 (the address family).
-//
-// TUNNEL × ipVersion: a tunneled check is resolved and dialed on the far side of
-// the bastion — the worker never sees an address, so the family is the tunnel's
-// business and not something this check can pin. That combination is rejected at
-// write time (by the checks service's validateIPVersionConfig); should a
-// hand-edited row carry both anyway, the tunnel wins here and the family is
-// ignored rather than silently breaking the tunnel.
+// buildTransport delegates to the shared checkerdef helper. It stays here as a
+// named seam so this package's tests (and the Execute path) keep reading the
+// same way after the helper moved to checkerdef for reuse by checkprometheus.
 func buildTransport(
 	dialer checkerdef.ContextDialer, skipTLSVerify bool, version checkerdef.IPVersion,
 ) http.RoundTripper {
-	pinFamily := dialer == nil && version.Explicit()
-
-	if dialer == nil && !skipTLSVerify && !pinFamily {
-		return nil
-	}
-
-	transport := &http.Transport{}
-
-	switch {
-	case dialer != nil:
-		transport.DialContext = dialer.DialContext
-	case pinFamily:
-		transport.DialContext = familyDialContext(version)
-	}
-
-	if skipTLSVerify {
-		// InsecureSkipVerify is only set when the operator explicitly
-		// opted out of verification via verifySsl: false.
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-
-	return transport
+	return checkerdef.BuildHTTPTransport(dialer, skipTLSVerify, version)
 }
 
-// familyDialContext returns a DialContext pinned to one address family.
-//
-// It resolves and selects explicitly (rather than just handing "tcp6" to
-// net.Dialer) so that a target with no address of the requested family fails
-// with checkerdef's cataloged error naming the host and the family, instead of
-// the stdlib's opaque "no suitable address found" — and so the worker-has-no-v6
-// case is told apart from the target-has-no-AAAA case. The error travels out
-// through *url.Error, which unwraps, so errors.Is still matches at the top.
+// familyDialContext delegates to checkerdef.FamilyDialContext.
 func familyDialContext(version checkerdef.IPVersion) func(context.Context, string, string) (net.Conn, error) {
-	baseDialer := &net.Dialer{Timeout: familyDialTimeout, KeepAlive: familyDialKeepAlive}
-	network := version.Network("tcp")
-
-	return func(ctx context.Context, _, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid address %q: %w", addr, err)
-		}
-
-		if ip := net.ParseIP(host); ip != nil {
-			if !checkerdef.MatchesIPVersion(ip, version) {
-				return nil, fmt.Errorf(
-					"%w: %s is not an %s address", checkerdef.ErrNoAddressForFamily, host, version.Label(),
-				)
-			}
-
-			return baseDialer.DialContext(ctx, network, addr)
-		}
-
-		addrs, err := checkerdef.LookupIPAddr(ctx, host)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve hostname: %w", err)
-		}
-
-		ip, err := checkerdef.SelectIPAddr(host, addrs, version)
-		if err != nil {
-			return nil, err
-		}
-
-		return baseDialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-	}
+	return checkerdef.FamilyDialContext(version)
 }
 
 // connFamilyTracker observes which address family the request actually

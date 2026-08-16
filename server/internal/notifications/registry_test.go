@@ -68,3 +68,40 @@ func TestGetSender_UnknownTypeReturnsFalse(t *testing.T) {
 	r.False(ok)
 	r.Nil(sender)
 }
+
+// TestAcceptsEventType_CommentOptOut pins the registry's only comment opt-out:
+// Twilio (SMS/voice) never receives `incident.comment`, every other notify
+// type does, and no event type other than comment is filtered at all.
+func TestAcceptsEventType_CommentOptOut(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.False(AcceptsEventType(models.ConnectionTypeTwilio, "incident.comment"),
+		"twilio must be opted out of comment fan-out")
+
+	// Twilio still receives every lifecycle event — the opt-out is per event
+	// class, not a mute of the whole integration.
+	for _, eventType := range []string{
+		"incident.created", "incident.resolved", "incident.escalated", "incident.reopened",
+	} {
+		r.True(AcceptsEventType(models.ConnectionTypeTwilio, eventType), eventType)
+	}
+
+	// Everything else, including email, is in the default comment set.
+	for _, connType := range []models.ConnectionType{
+		models.ConnectionTypeSlack,
+		models.ConnectionTypeDiscord,
+		models.ConnectionTypeWebhook,
+		models.ConnectionTypeEmail,
+		models.ConnectionTypeGoogleChat,
+		models.ConnectionTypeMattermost,
+		models.ConnectionTypeMSTeams,
+		models.ConnectionTypeMSTeamsBot,
+		models.ConnectionTypeNtfy,
+		models.ConnectionTypeOpsgenie,
+		models.ConnectionTypePushover,
+		models.ConnectionTypeWebPush,
+	} {
+		r.True(AcceptsEventType(connType, "incident.comment"), string(connType))
+	}
+}

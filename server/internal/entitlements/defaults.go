@@ -60,11 +60,14 @@ func Int(i int) *int { return &i }
 // org, and it must render/enforce identically to the real Free plan
 // until billing writes its own org_entitlements row.
 // The SaaS numbers implement the Free tier of the pricing decision of
-// 2026-07-12 (Free €0: 100 checks, 6 checks/min, 5 seats).
+// 2026-07-12 (Free €0: 100 checks, 5 seats), with the check rate raised
+// from 6 to 10 checks/min on 2026-08-15: at 6 the free tier was the
+// tightest in the segment (exit1.dev free is 50 monitors at 5 min = 10,
+// UptimeRobot the same), which cost us top-of-funnel signups.
 const (
 	defaultMaxUsersSelfHosted     = 30
 	defaultMaxChecksSaaS          = 100
-	defaultMaxChecksPerMinuteSaaS = 6
+	defaultMaxChecksPerMinuteSaaS = 10
 	defaultMaxUsersSaaS           = 5
 	// defaultMaxDeportedAgentsSaaS mirrors the Free SKU's private-location
 	// agent cap (plan ladder: Free 1, Starter 3, Pro 6, Scale 9 — see
@@ -76,7 +79,9 @@ const (
 	defaultMaxCustomDomainsSaaS = 0
 	// defaultMaxSmsPerMonthSaaS / defaultMaxCallsPerMonthSaaS are 0: the Free
 	// plan ships no SMS/voice; billing raises them per paid plan. Self-hosted
-	// stays unlimited (nil) — bring-your-own Twilio.
+	// stays unlimited (nil) — the operator's own credentials pay, whether those
+	// are the instance-level SP_SMS_*/SP_VOICE_* ones or a per-org
+	// bring-your-own integration.
 	defaultMaxSmsPerMonthSaaS   = 0
 	defaultMaxCallsPerMonthSaaS = 0
 	// defaultMaxWhatsappPerMonthSaaS is 0 for the same reason: the Free plan

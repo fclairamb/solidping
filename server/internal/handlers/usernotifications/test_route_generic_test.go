@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
@@ -71,7 +72,9 @@ func setupTestRouteEnv(t *testing.T, withTwilio bool) (*Service, db.Service, *mo
 		require.NoError(t, dbSvc.CreateChannel(ctx, integration))
 	}
 
-	return NewService(dbSvc, nil), dbSvc, org, user
+	resolver := smssvc.NewResolver(dbSvc, nil, nil, nil, "")
+
+	return NewService(dbSvc, nil, WithSMSResolver(resolver)), dbSvc, org, user
 }
 
 // capturingTwilio records the form fields of every Messages.json POST.
@@ -117,16 +120,16 @@ func (f *capturingTwilio) sent() []map[string]string {
 
 // TestDispatchTestRoute_PhoneSendsSMS proves a phone route's test rides the
 // org's default Twilio connection, exactly like a verification code does.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestDispatchTestRoute_PhoneSendsSMS(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, _, org, _ := setupTestRouteEnv(t, true)
+	svc, dbSvc, org, _ := setupTestRouteEnv(t, true)
 
 	fake := newCapturingTwilio(t)
-	withFakeVerifyTwilio(t, fake.server)
+	withFakeVerifyTwilio(svc, dbSvc, fake.server)
 
 	err := svc.dispatchTestRoute(
 		ctx, org.UID, org.Slug, routeFor(models.UserContactTypePhone, "+15551230000"),
@@ -300,16 +303,16 @@ func TestSendTestNotification_UnverifiedContactRejected(t *testing.T) {
 // TestSendTestNotification_VerifiedPhoneGoesThrough is the positive control
 // for the rejection above: the same phone contact, once verified, sails
 // through the public entry point and reaches Twilio.
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestSendTestNotification_VerifiedPhoneGoesThrough(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
 	svc, dbSvc, org, user := setupTestRouteEnv(t, true)
 
 	fake := newCapturingTwilio(t)
-	withFakeVerifyTwilio(t, fake.server)
+	withFakeVerifyTwilio(svc, dbSvc, fake.server)
 
 	created, err := svc.CreateContact(ctx, org.Slug, user, CreateContactRequest{
 		Type:  models.UserContactTypePhone,

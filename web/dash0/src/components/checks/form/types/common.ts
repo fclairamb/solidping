@@ -39,6 +39,7 @@ export type CheckType =
   | "minecraft"
   | "rabbitmq"
   | "snmp"
+  | "prometheus"
   | "docker"
   | "browser"
   | "freebox_line"

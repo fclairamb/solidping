@@ -71,6 +71,13 @@ type Service struct {
 	// channel. Telegram has NO monthly quota (the channel is free), so this is
 	// the only bound that applies to it.
 	telegramRunawayPerHour int
+
+	// instanceSMS holds the INSTANCE-SPEND guards: the instance-wide hourly cap
+	// and the destination-country allow-list. They are scoped to sends made on
+	// the server's own credentials, so they live apart from the per-org buckets
+	// above — a bring-your-own send bills the customer and must neither consume
+	// the shared cap nor be gated by the allow-list.
+	instanceSMS instanceSMSGuards
 }
 
 // Option customizes a Service at construction.

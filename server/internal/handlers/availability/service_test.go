@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -342,5 +343,110 @@ func TestIncidentBlock(t *testing.T) {
 		r.Equal(int64(3600+9000), block.TotalDowntimeSeconds)
 		r.Equal(int64(9000), block.LongestSeconds)
 		r.Equal(int64((3600+9000)/2), block.AverageSeconds)
+	})
+}
+
+// TestGetAvailability_SparseLongPeriodSeries proves — rather than assumes —
+// that the probe-ratio availability pipeline (GetAvailability →
+// uptimebar.WindowAvailability → buildPeriodRow) is correct for a check
+// whose results are spaced far apart (e.g. domain's new 336h/2-week period
+// option, spec 2026-08-15-07), not just a dense series with hundreds of
+// probes per window:
+//   - a 30-day window holding only 2 raw rows computes the exact
+//     successful/total ratio from those 2 rows, not something derived from
+//     an assumed rows-per-window count;
+//   - a window with ZERO probes (a check younger than any data, or a gap
+//     bigger than the window) yields HasData=false / AvailabilityPct=nil —
+//     never a divide-by-zero, a misleading 0%, or NaN.
+func TestGetAvailability_SparseLongPeriodSeries(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-sparse-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "avail-sparse-check", "domain")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	// Remove the auto-seeded "created" marker (status=created carries no
+	// up/down signal but would otherwise sit inside our windows).
+	seeded, err := dbSvc.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		Limit:           10,
+	})
+	r.NoError(err)
+
+	seededUIDs := make([]string, 0, len(seeded.Results))
+	for _, row := range seeded.Results {
+		seededUIDs = append(seededUIDs, row.UID)
+	}
+
+	if len(seededUIDs) > 0 {
+		_, delErr := dbSvc.DeleteResults(ctx, org.UID, seededUIDs)
+		r.NoError(delErr)
+	}
+
+	// The check's CreatedAt is "now" (set at insert time above), so both
+	// windows below are Partial — irrelevant here since the assertions only
+	// cover TotalChecks/SuccessfulChecks/AvailabilityPct, not MonitoredSeconds.
+	now := time.Now().UTC()
+
+	// Two raw executions ~2 weeks apart, both inside a 30-day lookback: one
+	// Up, one Down.
+	first := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 0.1)
+	first.PeriodStart = now.Add(-20 * 24 * time.Hour)
+	r.NoError(dbSvc.CreateResult(ctx, first))
+
+	second := models.NewResult(org.UID, check.UID, models.ResultStatusDown, 0.1)
+	second.PeriodStart = now.Add(-6 * 24 * time.Hour)
+	r.NoError(dbSvc.CreateResult(ctx, second))
+
+	svc := NewService(dbSvc)
+
+	t.Run("sparse window computes the exact ratio from its handful of rows", func(t *testing.T) {
+		t.Parallel()
+
+		rr := require.New(t)
+
+		resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+			Periods: []string{"30d"},
+		})
+		rr.NoError(availErr)
+		rr.Len(resp.Data, 1)
+
+		row := resp.Data[0]
+		rr.True(row.HasData, "a window with 2 real probes must report data")
+		rr.Equal(2, row.TotalChecks)
+		rr.Equal(1, row.SuccessfulChecks)
+		rr.NotNil(row.AvailabilityPct)
+		rr.InDelta(50.0, *row.AvailabilityPct, 0.0001, "1 up out of 2 = 50%, not skewed by window length")
+	})
+
+	t.Run("empty window yields no data, never divide-by-zero or 0%", func(t *testing.T) {
+		t.Parallel()
+
+		rr := require.New(t)
+
+		// A 1-day window predates both probes (the older is 20 days back) —
+		// zero rows fall inside it.
+		resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+			Periods: []string{"1d"},
+		})
+		rr.NoError(availErr)
+		rr.Len(resp.Data, 1)
+
+		row := resp.Data[0]
+		rr.False(row.HasData, "zero probes in the window must not report data")
+		rr.Nil(row.AvailabilityPct, "must be nil, never 0% (0% is a real measured value) or NaN")
+		rr.Equal(0, row.TotalChecks)
+		rr.Zero(row.DowntimeSeconds)
 	})
 }

@@ -64,6 +64,10 @@ type WebhookPayload struct {
 type WebhookData struct {
 	Incident WebhookIncident `json:"incident"`
 	Check    WebhookCheck    `json:"check"`
+	// Comment is present only on `incident.comment` deliveries and carries the
+	// comment body plus its author. Omitted entirely for every other event, so
+	// existing receivers see a byte-identical payload to before.
+	Comment *CommentInfo `json:"comment,omitempty"`
 }
 
 // WebhookIncident is the incident projection inside a webhook payload.
@@ -430,6 +434,7 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 				Name: checkName,
 				Type: payload.Check.Type,
 			},
+			Comment: payload.Comment,
 		},
 	}
 }

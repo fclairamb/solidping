@@ -265,7 +265,45 @@ func (h *Handler) handleMessage(ctx context.Context, event *Event) error {
 		return nil // reply in a thread we don't track — ignore
 	}
 
+	// Explicit-by-default (spec 2026-08-15-08): a plain thread reply is
+	// conversation, not an incident comment. Only a workspace that has opted
+	// into `comment_ingestion: "all"` keeps the historical capture-everything
+	// behavior; everyone else uses `/comment`.
+	if !h.ingestsAllThreadReplies(ctx, event.TeamID) {
+		slog.DebugContext(ctx, "Skipping Slack thread reply: comment ingestion is explicit",
+			"team_id", event.TeamID, "incident_uid", incidentUID)
+
+		return nil
+	}
+
 	return h.ingestSlackComment(ctx, event, incidentUID, orgUID)
+}
+
+// ingestsAllThreadReplies reports whether the workspace's SolidPing
+// integration is in "all" mode.
+//
+// Fails CLOSED: a workspace whose connection or settings cannot be read is
+// treated as explicit. Getting this wrong in the other direction writes
+// somebody's private triage chatter into a permanent, fanned-out incident
+// timeline — an unreadable setting must never do that.
+func (h *Handler) ingestsAllThreadReplies(ctx context.Context, teamID string) bool {
+	conn, err := h.svc.GetConnectionByTeamID(ctx, teamID)
+	if err != nil || conn == nil {
+		slog.WarnContext(ctx, "Slack comment ingestion mode unreadable; defaulting to explicit",
+			"team_id", teamID, "error", err)
+
+		return false
+	}
+
+	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	if err != nil {
+		slog.WarnContext(ctx, "Slack settings unparseable; defaulting to explicit comment ingestion",
+			"team_id", teamID, "error", err)
+
+		return false
+	}
+
+	return settings.IngestsAllThreadReplies()
 }
 
 // resolveIncidentThread looks up the incident a Slack thread belongs to via the

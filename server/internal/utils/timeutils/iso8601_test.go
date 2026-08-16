@@ -32,6 +32,7 @@ const (
 	intv1H30M    = "01:30:00"
 	intv1H30M45S = "01:30:45"
 	intv25H      = "25:00:00"
+	intv720H     = "720:00:00" // 30 days — 3-digit hour component
 )
 
 func TestParseISO8601Duration(t *testing.T) {
@@ -418,6 +419,13 @@ func TestDuration_Value(t *testing.T) {
 			duration: Duration(25 * time.Hour),
 			expected: intv25H,
 		},
+		{
+			// 30-day period (check-form's new long-interval option): proves
+			// %02d does not truncate a 3-digit hour component.
+			name:     "720 hours (30 days)",
+			duration: Duration(720 * time.Hour),
+			expected: intv720H,
+		},
 	}
 
 	for _, tt := range tests {
@@ -489,6 +497,14 @@ func TestDuration_Scan(t *testing.T) {
 			name:     "PostgreSQL interval format - 1 hour 30 minutes 45 seconds",
 			input:    intv1H30M45S,
 			expected: Duration(time.Hour + 30*time.Minute + 45*time.Second),
+			wantErr:  false,
+		},
+		{
+			// A 3-digit hour component (720h = 30 days) must still match
+			// parsePostgresInterval's `\d{2,}` hour group, not just 2 digits.
+			name:     "PostgreSQL interval format - 720 hours (30 days)",
+			input:    intv720H,
+			expected: Duration(720 * time.Hour),
 			wantErr:  false,
 		},
 		{

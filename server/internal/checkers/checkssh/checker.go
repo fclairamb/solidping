@@ -69,7 +69,7 @@ func (c *SSHChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	if spec.Slug == "" {
-		spec.Slug = strings.ReplaceAll(cfg.Host, ".", "-")
+		spec.Slug = "ssh-" + strings.ReplaceAll(cfg.Host, ".", "-")
 	}
 
 	return nil

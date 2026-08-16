@@ -47,7 +47,15 @@ func (c *SIPChecker) Validate(spec *checkerdef.CheckSpec) error {
 		return err
 	}
 
-	return cfg.Validate()
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+
+	if spec.Slug == "" {
+		spec.Slug = "sip-" + strings.ReplaceAll(cfg.Host, ".", "-")
+	}
+
+	return nil
 }
 
 // applyDefaults fills in transport/port/timeout/mode/domain defaults on a copy

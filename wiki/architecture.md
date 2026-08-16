@@ -164,7 +164,7 @@ solidping/
         checkicmp/             # ICMP ping
         checkdns/              # DNS resolution
         checkssl/              # SSL certificate validation
-        checkdomain/           # Domain expiration (WHOIS)
+        checkdomain/           # Domain expiration (RDAP, WHOIS fallback)
         checkwebsocket/        # WebSocket connectivity
         checkudp/              # UDP connectivity
         checksmtp/             # SMTP email
@@ -275,7 +275,7 @@ solidping/
 - DNS: Record resolution, response time
 - WebSocket: WebSocket connectivity
 - SSL: Certificate validation, expiration monitoring
-- Domain: WHOIS-based domain expiration tracking
+- Domain: RDAP-based domain expiration tracking (WHOIS fallback)
 - DNSBL: DNS blocklist / reputation lookups
 - NTP: Time-server reachability and clock offset
 - SIP: SIP endpoint registration and response

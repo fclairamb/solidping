@@ -30,6 +30,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkoracle"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkprometheus"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
@@ -145,6 +146,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkkubernetes.KubernetesChecker{}, true
 	case checkerdef.CheckTypeNTP:
 		return &checkntp.NTPChecker{}, true
+	case checkerdef.CheckTypePrometheus:
+		return &checkprometheus.PrometheusChecker{}, true
 	case checkerdef.CheckTypeRDP:
 		return &checkrdp.RDPChecker{}, true
 	case checkerdef.CheckTypeSleep:
@@ -238,6 +241,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkkubernetes.KubernetesConfig{}, true
 	case checkerdef.CheckTypeNTP:
 		return &checkntp.NTPConfig{}, true
+	case checkerdef.CheckTypePrometheus:
+		return &checkprometheus.PrometheusConfig{}, true
 	case checkerdef.CheckTypeRDP:
 		return &checkrdp.RDPConfig{}, true
 	case checkerdef.CheckTypeSleep:

@@ -6,11 +6,42 @@ Slack app config UI, or manage via the App Manifest API):
 - [`manifest-prod.json`](manifest-prod.json) — production app (`solidping.io`).
 - [`manifest-dev.json`](manifest-dev.json) — development app (`solidping.k8xp.com`).
 
+## Slash commands
+
+The manifests register two commands, both routed to
+`/api/v1/integrations/slack/command` and dispatched by
+`slack.DispatchCommand` — the transport-agnostic entry point, so HTTP and
+Socket Mode behave identically:
+
+- `/check <url>` — creates an HTTP check.
+- `/comment [#42] <text>` — appends an incident comment (spec `2026-08-15-08`).
+
+A slash command's payload does **not** carry `thread_ts`, which is why
+`/comment` resolves its incident from the channel (explicit `#42` → the single
+active tracked incident in the channel → an ephemeral error listing the
+candidates) rather than from the thread it was typed in. It answers ephemerally
+and does NOT suppress the origin workspace on fan-out: the command posts nothing
+visible, so the channel that asked for the comment must still receive it.
+
 ## Inbound thread replies → incident comments
 
 Incident comments (spec `2026-07-17-04`) ingest Slack thread replies posted
-under the bot's incident message and record them on the incident timeline. For
-this the app subscribes to channel message events and needs history read scopes:
+under the bot's incident message and record them on the incident timeline.
+
+**Default since spec `2026-08-15-08`: this is OFF.** Each integration carries
+`settings.comment_ingestion`:
+
+| Value | Behavior |
+|---|---|
+| `explicit` (default; also the meaning of an absent key) | Plain thread replies are ignored; only `/comment` creates a comment. |
+| `all` | Every human thread reply under a tracked incident thread is ingested — the pre-2026-08-15 behavior. |
+
+The mode is read per inbound message via `GetConnectionByTeamID` and **fails
+closed**: an unreadable connection or unparseable settings are treated as
+`explicit`, because guessing the other way writes private triage chatter into a
+permanent, fanned-out incident timeline.
+
+The scopes below are still required for `all` mode:
 
 - **Bot events:** `message.channels` (public channels) and `message.groups`
   (private channels), in addition to the existing `message.im`.

@@ -79,6 +79,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
+	"github.com/fclairamb/solidping/server/internal/handlers/ovhsmscb"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
@@ -100,6 +101,7 @@ import (
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/msteams"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -348,8 +350,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc)
 
 	// Initialize Sentry error tracking
-	if err := initSentry(cfg.Sentry); err != nil {
-		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
+	if sentryErr := initSentry(cfg.Sentry); sentryErr != nil {
+		return nil, fmt.Errorf("failed to initialize Sentry: %w", sentryErr)
 	}
 
 	// Entitlements service. Defaults are deployment-mode dependent
@@ -364,8 +366,45 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		),
 		entitlementsapi.WithWhatsAppRunawayCap(cfg.Entitlements.WhatsAppRunawayPerHour),
 		entitlementsapi.WithTelegramRunawayCap(cfg.Entitlements.TelegramRunawayPerHour),
+		// Instance-SPEND guards. Unlike the per-org caps above, these two apply
+		// only to sends made on the server's own SMS credentials: they exist to
+		// bound this instance's bill, and a bring-your-own send is billed to the
+		// customer's own account.
+		entitlementsapi.WithInstanceSMSGuards(
+			cfg.SMS.ResolvedGlobalRunawayPerHour(), cfg.SMS.AllowedCountryCodes(),
+		),
 	)
 	svcList.Entitlements = entitlementsService
+
+	// Instance-level SMS/voice providers, built ONCE here and shared by every
+	// org that has not brought its own account. A misconfiguration (unknown
+	// provider, bad region, unreachable OVH endpoint) must surface as a startup
+	// error rather than as a failed page during the first incident.
+	instanceSMSSender, err := smssvc.NewInstanceSender(ctx, &cfg.SMS)
+	if err != nil {
+		return nil, fmt.Errorf("build instance SMS sender: %w", err)
+	}
+
+	instanceVoiceCaller, err := smssvc.NewInstanceVoiceCaller(&cfg.Voice)
+	if err != nil {
+		return nil, fmt.Errorf("build instance voice caller: %w", err)
+	}
+
+	svcList.SMS = smssvc.NewResolver(
+		dbService, credSvc, instanceSMSSender, instanceVoiceCaller, cfg.SMS.Sender,
+	)
+
+	// OVH has no per-job callback field: delivery receipts only arrive if the
+	// SMS account's service-level `callBack` points back here. Register it at
+	// startup, best-effort — an operator can set the same URL in the OVH
+	// control panel, and losing receipts must never stop the process from
+	// booting and paging people.
+	if err := smssvc.ConfigureOVHDeliveryCallback(
+		ctx, instanceSMSSender, ovhsmscb.CallbackURL(cfg.Server.BaseURL, ovhsmscb.ResolveToken(cfg)),
+	); err != nil {
+		slog.WarnContext(ctx, "could not register the OVH SMS delivery callback; "+
+			"set it manually on the SMS account if you want delivery receipts", "error", err)
+	}
 
 	// Create auth service. The entitlements service gates SSO membership
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
@@ -1092,6 +1131,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// Instance-level Telegram credentials power the connect-link flow. Off
 		// by default; CreateTelegramLink refuses while the config is inactive.
 		usernotifications.WithTelegramConfig(&s.config.Telegram),
+		// Two-mode SMS: the org's own Twilio integration when it has one, the
+		// instance provider otherwise.
+		usernotifications.WithSMSResolver(s.services.SMS),
+		// Verification codes and the test button are outbound SMS on the same
+		// bill as an escalation page, so the instance-spend guards apply to
+		// them too — otherwise they would be the unguarded way to spend the
+		// instance's money on a premium-rate destination.
+		usernotifications.WithEntitlements(s.services.Entitlements),
 	)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender, s.services.EmailFormatter)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
@@ -1485,6 +1532,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
 	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
 
+	// OVH SMS delivery receipts. OVH does not sign its callbacks and offers no
+	// per-job callback field, so the route authenticates by construction with a
+	// high-entropy path token; an unknown token 404s. The route is registered
+	// unconditionally so a token rotation needs no restart-order coordination —
+	// the handler itself refuses every request while no token is configured.
+	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, ovhsmscb.ResolveToken(s.config))
+	ovhSMSIntegration := api.NewGroup("/integrations/ovhsms")
+	ovhSMSIntegration.GET(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
+	ovhSMSIntegration.POST(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
+
 	// Meta WhatsApp Cloud API inbound webhook (subscription handshake +
 	// delivery statuses + inbound replies). Instance-level, so unlike Twilio
 	// there is no org-scoped `cid`: the GET handshake matches the configured
@@ -1511,7 +1568,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// early-registered one is 403-only until the secret is known.
 	if s.config.Telegram.Configured() {
 		telegramHandler := telegramcb.NewHandler(s.dbService, s.config,
-			telegramcb.WithAcknowledger(incidentsService))
+			telegramcb.WithAcknowledger(incidentsService),
+			telegramcb.WithCommenter(incidentsService))
 		telegramIntegration := api.NewGroup("/integrations/telegram")
 		// Path kept in sync with TelegramWebhookPath, which the boot-time
 		// self-registration uses.

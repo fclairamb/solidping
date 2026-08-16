@@ -33,6 +33,12 @@ type RegionResponse struct {
 	Name  string `json:"name"`
 	// Private marks an org-private region served by deported agents.
 	Private bool `json:"private,omitempty"`
+	// Capabilities reports what the region's LIVE workers say they can do,
+	// today only `ipv6` with a three-state value ("yes" / "no" / "unknown").
+	// Additive and ignorable: a client that does not read it behaves exactly as
+	// it did before the field existed, and "unknown" must never be rendered as
+	// "no" (spec 2026-08-15-11).
+	Capabilities map[string]string `json:"capabilities,omitempty"`
 }
 
 // ListGlobalRegionsResponse is the response for listing global regions.
@@ -53,12 +59,17 @@ func (s *Service) ListGlobalRegions(ctx context.Context) (*ListGlobalRegionsResp
 		return nil, fmt.Errorf("failed to get global regions: %w", err)
 	}
 
+	if capErr := s.regions.AnnotateGlobalCapabilities(ctx, defs); capErr != nil {
+		return nil, fmt.Errorf("failed to compute region capabilities: %w", capErr)
+	}
+
 	data := make([]RegionResponse, len(defs))
 	for i := range defs {
 		data[i] = RegionResponse{
-			Slug:  defs[i].Slug,
-			Emoji: defs[i].Emoji,
-			Name:  defs[i].Name,
+			Slug:         defs[i].Slug,
+			Emoji:        defs[i].Emoji,
+			Name:         defs[i].Name,
+			Capabilities: defs[i].Capabilities,
 		}
 	}
 
@@ -79,12 +90,17 @@ func (s *Service) ListOrgRegions(ctx context.Context, orgSlug string) (*ListOrgR
 		return nil, fmt.Errorf("failed to get global regions: %w", err)
 	}
 
+	if capErr := s.regions.AnnotateGlobalCapabilities(ctx, defs); capErr != nil {
+		return nil, fmt.Errorf("failed to compute region capabilities: %w", capErr)
+	}
+
 	data := make([]RegionResponse, 0, len(defs))
 	for i := range defs {
 		data = append(data, RegionResponse{
-			Slug:  defs[i].Slug,
-			Emoji: defs[i].Emoji,
-			Name:  defs[i].Name,
+			Slug:         defs[i].Slug,
+			Emoji:        defs[i].Emoji,
+			Name:         defs[i].Name,
+			Capabilities: defs[i].Capabilities,
 		})
 	}
 
@@ -98,12 +114,20 @@ func (s *Service) ListOrgRegions(ctx context.Context, orgSlug string) (*ListOrgR
 		return nil, fmt.Errorf("failed to get org private regions: %w", err)
 	}
 
+	// Private capability is resolved through this org's agents only — see
+	// AnnotatePrivateCapabilities for why matching on the region string alone
+	// would pool two orgs' identically-named locations.
+	if capErr := s.regions.AnnotatePrivateCapabilities(ctx, org.UID, privateDefs); capErr != nil {
+		return nil, fmt.Errorf("failed to compute private region capabilities: %w", capErr)
+	}
+
 	for i := range privateDefs {
 		data = append(data, RegionResponse{
-			Slug:    regions.PrivateRegionSlug(privateDefs[i].Slug),
-			Emoji:   privateDefs[i].Emoji,
-			Name:    privateDefs[i].Name,
-			Private: true,
+			Slug:         regions.PrivateRegionSlug(privateDefs[i].Slug),
+			Emoji:        privateDefs[i].Emoji,
+			Name:         privateDefs[i].Name,
+			Private:      true,
+			Capabilities: privateDefs[i].Capabilities,
 		})
 	}
 

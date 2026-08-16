@@ -24,6 +24,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -346,10 +347,11 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 	}
 
 	worker := &models.Worker{
-		UID:    uuid.New().String(),
-		Slug:   identity.Slug,
-		Name:   identity.Name,
-		Region: &region,
+		UID:          uuid.New().String(),
+		Slug:         identity.Slug,
+		Name:         identity.Name,
+		Region:       &region,
+		Capabilities: egressreport.Current(),
 	}
 
 	registeredWorker, err := r.backend.Register(ctx, worker)
@@ -389,9 +391,12 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 	}
 }
 
-// updateHeartbeat updates the worker's last_active_at timestamp.
+// updateHeartbeat updates the worker's last_active_at timestamp and re-reports
+// this host's egress families. The probe runs HERE, at report time, rather than
+// once at process start: a node that gains or loses an IPv6 route then stops
+// advertising the wrong thing within one beat, with no restart.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.backend.Heartbeat(ctx, r.getWorker().UID); err != nil {
+	if err := r.backend.Heartbeat(ctx, r.getWorker().UID, egressreport.Current()); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
 }

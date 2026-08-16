@@ -66,6 +66,24 @@ The original static bearer (`entitlements.service_token`, let through by
 deprecated on every use, so retiring it is a parameter flip rather than a
 coordinated deploy. See `wiki/features/entitlements.md` for the migration order.
 
+The `#bt=` upgrade token appended to the dashboard's `upgradeUrl` is signed with
+its **own** secret, `entitlements.billing_upgrade_token_secret` (env
+`SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET`, mirroring billing's
+`BILLING_UPGRADE_TOKEN_SECRET`). `entitlements.billing_inbound_secret` is a
+**bearer only** — leaking a credential that travels on every service call must
+not also be the power to mint an upgrade token for any org, so collapsing the two
+back into one value is a security regression. While the dedicated parameter is
+unset the minter falls back to the bearer (WARN once per process); if both are
+set to the *same* value, boot logs an ERROR and still starts. Operator migration
+(both ends prefer-new / accept-old, so deploy order does not matter):
+
+1. Deploy this — nothing moves, the fallback mints exactly as before.
+2. Generate one new secret, set it on both sides.
+3. Confirm billing's fallback warning has stopped.
+4. Set `BILLING_ALLOW_LEGACY_UPGRADE_TOKEN_SECRET=false` on billing.
+
+**Step 4 is what closes the vulnerability** — steps 1–3 only make it closeable.
+
 `make dev-saas` seeds the SaaS system parameters from
 `SP_ENTITLEMENTS_SERVICE_TOKEN`, `SP_ENTITLEMENTS_SERVICE_SIGNING_KEYS`,
 `SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS`,

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -50,11 +51,23 @@ const (
 	ParamAllowLegacyServiceToken = "entitlements.allow_legacy_service_token"
 	ParamAdminWritesEnabled      = "entitlements.admin_writes_enabled"
 	ParamUpgradeURLTemplate      = "entitlements.upgrade_url_template"
-	// ParamBillingInboundSecret is the shared HS256 secret used to sign the
-	// billing upgrade token appended to the upgrade URL. Set to the same
-	// value as the billing service's BILLING_INBOUND_SECRET.
+	// ParamBillingInboundSecret is the shared BEARER credential presented on
+	// service calls between this instance and the billing service. Set to the
+	// same value as the billing service's BILLING_INBOUND_SECRET. It is NOT
+	// the upgrade-token signing key any more — see
+	// ParamBillingUpgradeTokenSecret — though it is still accepted as the
+	// signing key while that parameter is unset, so an unconfigured install
+	// keeps working.
 	ParamBillingInboundSecret = "entitlements.billing_inbound_secret"
-	ParamStaleAfterDays       = "entitlements.stale_after_days"
+	// ParamBillingUpgradeTokenSecret is the HS256 key that signs the `#bt=`
+	// upgrade token. It is deliberately NOT ParamBillingInboundSecret: that
+	// one is a bearer credential sent on every service call, and a leak of a
+	// bearer must not also be the power to mint an upgrade token for any org.
+	// Collapsing the two back into one value is a security regression, not a
+	// simplification. Mirrors the billing service's
+	// BILLING_UPGRADE_TOKEN_SECRET.
+	ParamBillingUpgradeTokenSecret = "entitlements.billing_upgrade_token_secret"
+	ParamStaleAfterDays            = "entitlements.stale_after_days"
 	// billingTokenTTL is how long a minted billing upgrade token is valid.
 	billingTokenTTL      = time.Hour
 	defaultAuditPageSize = 50
@@ -463,8 +476,8 @@ func interpolateURL(template, org string) string {
 	return strings.ReplaceAll(template, "{org}", org)
 }
 
-// adminUpgradeURL builds the upgrade URL for an org admin and, when a billing
-// inbound secret is configured, appends a signed billing token as a URL
+// adminUpgradeURL builds the upgrade URL for an org admin and, when an
+// upgrade-token secret is configured, appends a signed billing token as a URL
 // fragment (`#bt=<token>`). Fragments are never sent to servers, so the token
 // can't leak via Referer headers or access logs. Callers must have already
 // verified the principal is an org admin.
@@ -474,11 +487,15 @@ func (h *Handler) adminUpgradeURL(ctx context.Context, orgSlug string) (string, 
 		return upgradeURL, err
 	}
 
-	secret, secretErr := h.billingInboundSecret(ctx)
+	secret, viaFallback, secretErr := h.upgradeTokenSecret(ctx)
 	if secretErr != nil || secret == "" {
 		// No billing secret configured (self-hosted without billing) — return
 		// the plain upgrade URL with no token fragment.
 		return upgradeURL, secretErr
+	}
+
+	if viaFallback {
+		warnUpgradeTokenFallback(ctx)
 	}
 
 	user, ok := middleware.GetUserFromContext(ctx)
@@ -497,10 +514,59 @@ func (h *Handler) adminUpgradeURL(ctx context.Context, orgSlug string) (string, 
 	return upgradeURL + "#bt=" + token, nil
 }
 
-// billingInboundSecret reads the shared HS256 secret used to sign billing
-// upgrade tokens. Empty when unset (self-hosted without billing).
+// warnUpgradeTokenFallbackOnce keeps the deprecation WARN to one line per
+// process: adminUpgradeURL runs on a dashboard read path, so logging per URL
+// build would be pure noise.
+var warnUpgradeTokenFallbackOnce sync.Once //nolint:gochecknoglobals // process-wide one-shot log guard
+
+// warnUpgradeTokenFallback emits the deprecation warning at most once per
+// process. It mirrors the billing service's own fallback-acceptance message so
+// the two logs read as one migration.
+func warnUpgradeTokenFallback(ctx context.Context) {
+	warnUpgradeTokenFallbackOnce.Do(func() {
+		slog.WarnContext(ctx, "minting the billing upgrade token with the deprecated "+
+			ParamBillingInboundSecret+" fallback; set "+ParamBillingUpgradeTokenSecret+
+			" (SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET) to a dedicated value, then set "+
+			"BILLING_ALLOW_LEGACY_UPGRADE_TOKEN_SECRET=false on the billing service",
+			"missingParam", ParamBillingUpgradeTokenSecret)
+	})
+}
+
+// upgradeTokenSecret resolves the HS256 key used to sign the `#bt=` upgrade
+// token: the dedicated ParamBillingUpgradeTokenSecret when set, otherwise the
+// legacy ParamBillingInboundSecret bearer. viaFallback reports that the legacy
+// bearer produced the secret — the operator-visible signal that the split of
+// the two credentials is still pending. Empty secret means no billing is
+// configured at all (self-hosted).
+func (h *Handler) upgradeTokenSecret(ctx context.Context) (string, bool, error) {
+	dedicated, err := h.systemParameterString(ctx, ParamBillingUpgradeTokenSecret)
+	if err != nil {
+		return "", false, err
+	}
+
+	if dedicated != "" {
+		return dedicated, false, nil
+	}
+
+	legacy, err := h.billingInboundSecret(ctx)
+	if err != nil {
+		return "", false, err
+	}
+
+	return legacy, legacy != "", nil
+}
+
+// billingInboundSecret reads the shared bearer credential, which doubles as
+// the upgrade-token signing key while ParamBillingUpgradeTokenSecret is unset.
+// Empty when unset (self-hosted without billing).
 func (h *Handler) billingInboundSecret(ctx context.Context) (string, error) {
-	param, err := h.db.GetSystemParameter(ctx, ParamBillingInboundSecret)
+	return h.systemParameterString(ctx, ParamBillingInboundSecret)
+}
+
+// systemParameterString reads a string-valued system parameter, returning ""
+// when the parameter is absent or not a string.
+func (h *Handler) systemParameterString(ctx context.Context, key string) (string, error) {
+	param, err := h.db.GetSystemParameter(ctx, key)
 	if err != nil || param == nil {
 		return "", err
 	}

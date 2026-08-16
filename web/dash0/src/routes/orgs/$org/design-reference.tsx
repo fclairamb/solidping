@@ -62,6 +62,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
+import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -82,6 +83,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   Card,
   CardContent,
@@ -877,6 +879,18 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] = 
   { name: "brand-muted", varName: "--brand-muted", description: "Soft brand wash for headers / hero strips" },
   { name: "destructive", varName: "--destructive", description: "Delete / irreversible action confirms" },
   { name: "accent", varName: "--accent", description: "Hover/highlight surface" },
+  {
+    name: "control",
+    varName: "--control",
+    description:
+      "Fill of interactive form surfaces (input, textarea, select trigger, outline button). Light raises it to white; dark recesses it below --card. Use bg-control — bg-background is reserved for the page shell, the sidebar rail and the switch thumb.",
+  },
+  {
+    name: "input",
+    varName: "--input",
+    description:
+      "BORDER color of form controls, consumed as border-input — not a fill. The fill is --control; there is deliberately no --input-background.",
+  },
   { name: "muted-foreground", varName: "--muted-foreground", description: "Secondary text" },
   { name: "status-ok", varName: "--status-ok", description: "Healthy / passing — swatch color (dots, bars, soft tints)" },
   { name: "status-ok-foreground", varName: "--status-ok-foreground", description: "Text on a soft status-ok tint (badges, alerts)" },
@@ -1087,6 +1101,31 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">IPv6 capability badge</h3>
+        <p className="text-sm text-muted-foreground">
+          What a region's <strong>live</strong> workers report about their IPv6 egress
+          (spec 2026-08-15-11). Three states, three renderings —{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">unknown</code> means
+          "not reported yet" (no live worker, or an older agent) and must{" "}
+          <strong>never</strong> be rendered as{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">no</code>. The value is a
+          hint only: it never hides, disables or filters a region, because the run-time egress
+          probe is the authority. Use{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">hideUnknown</code> on dense
+          inline surfaces (the region picker) — "no" always renders, so a missing badge can
+          never be misread as a negative.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <Ipv6CapabilityBadge capability="yes" />
+              <Ipv6CapabilityBadge capability="no" />
+              <Ipv6CapabilityBadge capability="unknown" />
+            </>
+          }
+          importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
         />
 
         <h3 className="text-sm font-medium">Check group status header</h3>
@@ -3073,31 +3112,53 @@ function JobsPrimitivesSection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Segmented toggle (two-way view switch)</h3>
         <p className="text-xs text-muted-foreground">
-          Two ghost/secondary Buttons in a bordered pill — the pattern used for
-          the jobs page's org-scope toggle and the checks index's "Group by"
-          view switch. When the toggle is a page's primary navigation (like a
-          view mode), drive it from a URL search param and push a history
-          entry on change (see tech note on frontend URL state); use{" "}
-          <code>replace: true</code> instead for incidental refinements.
+          import {"{ SegmentedControl }"} from "@/components/ui/segmented-control"
         </p>
-        <div className="inline-flex rounded-lg border p-0.5" role="group">
-          <Button
-            size="sm"
-            variant={segmented === "first" ? "secondary" : "ghost"}
-            onClick={() => setSegmented("first")}
-            aria-pressed={segmented === "first"}
-          >
-            Groups
-          </Button>
-          <Button
-            size="sm"
-            variant={segmented === "second" ? "secondary" : "ghost"}
-            onClick={() => setSegmented("second")}
-            aria-pressed={segmented === "second"}
-          >
-            Host
-          </Button>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          The pattern used for the jobs page's org-scope toggle and the checks
+          index's &ldquo;Group by&rdquo; view switch. Always render it through the{" "}
+          <code>SegmentedControl</code> primitive rather than hand-rolling
+          Buttons — the elevation is easy to get backwards.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          <strong>Selected = raised pill on a recessed track.</strong> The track
+          is <code>bg-muted</code> and the selected segment is a{" "}
+          <code>ghost</code> Button with <code>bg-card shadow-sm hover:bg-card</code>;
+          unselected segments stay plain <code>ghost</code>. Never make the
+          selected segment the darker one (the old{" "}
+          <code>variant=&quot;secondary&quot;</code> pattern did exactly that, and
+          read as recessed).
+        </p>
+        <p className="text-xs text-muted-foreground">
+          <strong>The track flips token in dark:</strong>{" "}
+          <code>dark:bg-background</code>. Dark <code>--muted</code> is{" "}
+          <code>0.22</code>, <em>lighter</em> than dark <code>--card</code> at{" "}
+          <code>0.18</code>, so reusing <code>bg-muted</code> in dark would put
+          the pill below its own track and re-invert the control. The invariant
+          to hold in both themes is <em>pill lighter than its track</em>.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          When the toggle is a page's primary navigation (like a view mode),
+          drive it from a URL search param and push a history entry on change
+          (see tech note on frontend URL state); use <code>replace: true</code>{" "}
+          instead for incidental refinements. Each option carries an optional{" "}
+          <code>testId</code> (rendered as <code>data-testid</code>) and{" "}
+          <code>tooltip</code>; the primitive always emits{" "}
+          <code>aria-pressed</code>.
+        </p>
+        <SegmentedControl
+          value={segmented}
+          onValueChange={setSegmented}
+          aria-label="Group by"
+          options={[
+            { value: "first", label: "Groups" },
+            {
+              value: "second",
+              label: "Host",
+              tooltip: "Bucket checks by the host they target",
+            },
+          ]}
+        />
       </div>
 
       <div className="space-y-2">

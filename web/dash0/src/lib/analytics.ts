@@ -48,11 +48,33 @@ export interface TelegramPublicConfig {
   botUsername?: string;
 }
 
+/**
+ * Browser-safe view of the instance's SERVER-PROVIDED SMS and voice
+ * capability, as returned by GET /api/v1/config — the mode an organization
+ * gets when it has not brought its own provider account.
+ *
+ * `sender` and `provider` are not secrets: the sender is the string every
+ * recipient's handset displays, and the provider name is what lets the UI
+ * explain what "server-provided" means on this deployment. No key, token or
+ * service name is ever exposed.
+ *
+ * `voiceEnabled` is resolved INDEPENDENTLY of `enabled`: OVHcloud has no voice
+ * API, so an instance can offer OVH SMS and Twilio voice at the same time — or
+ * SMS with no voice at all.
+ */
+export interface SMSPublicConfig {
+  enabled: boolean;
+  sender?: string;
+  provider?: string;
+  voiceEnabled: boolean;
+}
+
 /** The public config document. Extra keys are ignored. */
 export interface PublicConfig {
   posthog?: PostHogPublicConfig;
   whatsapp?: WhatsAppPublicConfig;
   telegram?: TelegramPublicConfig;
+  sms?: SMSPublicConfig;
 }
 
 /**

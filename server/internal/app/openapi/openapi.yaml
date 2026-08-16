@@ -7403,6 +7403,16 @@ components:
             checks). Not stored — renaming a host in a check's config moves it
             to a different value on the next read. Use `?sort=targetHost` on
             the list endpoint to order checks by it.
+        warnings:
+          type: array
+          readOnly: true
+          description: >-
+            Advisory notes attached to a SUCCESSFUL create or update — the check
+            was written and will run. Today the only one is "you pinned
+            `ipVersion: ipv6` in a region whose live workers report no IPv6
+            egress". Absent on read paths.
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
         enabled:
           type: boolean
         internal:
@@ -7862,6 +7872,17 @@ components:
           type: boolean
         fields:
           type: array
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
+        warnings:
+          type: array
+          description: >
+            Advisory, per-field notes that do NOT make the configuration
+            invalid — `valid` stays true and the write path accepts it. Today
+            the only source is pinning `ipVersion: ipv6` in a region whose live
+            workers report no IPv6 egress; that is deliberately a warning and
+            never a rejection, because the advertised capability lags reality
+            and the run-time probe is the authority.
           items:
             $ref: "#/components/schemas/ValidationErrorField"
 
@@ -10422,6 +10443,33 @@ components:
             $ref: "#/components/schemas/LabelSuggestion"
 
     # Region schemas
+    RegionCapabilities:
+      type: object
+      description: >
+        What a region's LIVE workers report they can do. Derived from worker
+        heartbeats at read time, never configured. Additive: a client that
+        ignores this object behaves exactly as before it existed.
+      properties:
+        ipv4:
+          type: string
+          enum: ["yes", "no", "unknown"]
+          description: >
+            Whether checks pinned to `ipVersion: ipv4` can leave this region.
+            Same three states and the same any-not-all rule as `ipv6` below;
+            `unknown` is a real state and MUST NOT be rendered as `no`.
+        ipv6:
+          type: string
+          enum: ["yes", "no", "unknown"]
+          description: >
+            Whether checks pinned to `ipVersion: ipv6` can leave this region.
+            `yes` when at least one live worker there reports IPv6 egress
+            (any-not-all: a job runs on one worker). `no` when live workers
+            reported and none has it. `unknown` when nothing live has reported —
+            no live worker, or only workers predating the capability report.
+            `unknown` is a real state and MUST NOT be rendered as `no`.
+            The value is a hint with a heartbeat of lag: it never gates
+            execution, and the run-time egress pre-flight is the authority.
+
     Region:
       type: object
       required: [slug, emoji, name]
@@ -10432,6 +10480,11 @@ components:
           type: string
         name:
           type: string
+        private:
+          type: boolean
+          description: True for an org-private location served by deported agents.
+        capabilities:
+          $ref: "#/components/schemas/RegionCapabilities"
 
     OrgRegionListResponse:
       type: object

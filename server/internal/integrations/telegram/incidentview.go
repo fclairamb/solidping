@@ -442,6 +442,62 @@ func BuildAckNeedsRefHTML(lines []IncidentLine) string {
 	return body.String()
 }
 
+// BuildCommentUsageHTML is the answer to a /comment with no text.
+func BuildCommentUsageHTML() string {
+	return "What should I note? Send <code>/comment the central DNS is down</code>, " +
+		"or <code>/comment #42 restarting the pod</code> to name the incident."
+}
+
+// BuildCommentAddedHTML confirms a comment landed on an incident.
+func BuildCommentAddedHTML(ref string) string {
+	return fmt.Sprintf("💬 Comment added to <b>%s</b>.", EscapeHTML(strings.TrimSpace(ref)))
+}
+
+// BuildCommentFailedHTML is the answer when the comment write itself failed.
+func BuildCommentFailedHTML() string {
+	return "Could not add that comment — please try again, or use the dashboard."
+}
+
+// BuildCommentUnavailableHTML is the answer when this deployment has not wired
+// the incident service into the bot. Says so plainly rather than pretending
+// the note was saved.
+func BuildCommentUnavailableHTML() string {
+	return "Commenting is not available on this SolidPing instance."
+}
+
+// BuildNothingToCommentHTML is the bare-/comment answer when nothing is open.
+func BuildNothingToCommentHTML() string {
+	return "No open incidents to comment on. Name one explicitly: <code>/comment #42 your note</code>."
+}
+
+// BuildCommentNeedsRefHTML lists the candidates when a bare /comment is
+// ambiguous. Same rule as /ack: guessing puts the note where nobody handling
+// the real outage will read it.
+func BuildCommentNeedsRefHTML(lines []IncidentLine) string {
+	var body strings.Builder
+
+	body.WriteString("Which one? Several incidents are open:\n")
+
+	for i := range lines {
+		body.WriteString("\n• <b>")
+		body.WriteString(EscapeHTML(lines[i].Ref()))
+		body.WriteString("</b> ")
+		body.WriteString(EscapeHTML(checkNameOr(lines[i].CheckName)))
+	}
+
+	body.WriteString("\n\nSend <code>/comment ")
+
+	if len(lines) > 0 {
+		body.WriteString(EscapeHTML(lines[0].Ref()))
+	} else {
+		body.WriteString("#42")
+	}
+
+	body.WriteString(" your note</code> with the one you mean.")
+
+	return body.String()
+}
+
 // BuildNothingToAckHTML is the bare-/ack answer when nothing is open.
 func BuildNothingToAckHTML() string {
 	return "✅ Nothing to acknowledge — no open incidents."
@@ -491,6 +547,7 @@ func BuildHelpHTML() string {
 		"/incidents — the open incidents, each with an Acknowledge button\n" +
 		"/ack #42 — acknowledge an incident (no number when only one is open)\n" +
 		"/incident #42 — the latest detail on one incident\n" +
+		"/comment your note — add a comment to an incident (prefix <code>#42</code> to pick one)\n" +
 		"/help — this message\n" +
 		"/stop — disconnect this chat"
 }

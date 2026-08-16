@@ -58,7 +58,12 @@
     "unlimited": "Illimité",
     "upgrade": "Mettre à niveau",
     "loadError": "Impossible de charger l'utilisation.",
-    "whatsappThisMonth": "Messages WhatsApp ce mois-ci"
+    "whatsappThisMonth": "Messages WhatsApp ce mois-ci",
+    "smsGuard": {
+      "title": "Certaines alertes SMS n'ont pas été envoyées",
+      "runaway": "{{count}} message(s) ont été refusés car le plafond SMS de cette instance ({{limit}}/heure) a été atteint. Des alertes sont perdues pour toute l'instance — prévenez votre opérateur.",
+      "country": "{{count}} message(s) ont été refusés car le pays de destination ne figure pas dans la liste autorisée de cette instance ({{countries}})."
+    }
   },
   "ai": {
     "title": "Assistants IA",

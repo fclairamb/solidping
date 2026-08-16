@@ -1245,13 +1245,23 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 		return worker, nil
 	}
 
-	// Worker exists, update last_active_at
+	// Worker exists, update last_active_at (and the capability set when this
+	// registration reported one — a nil set keeps the stored value, so a caller
+	// that cannot answer never downgrades a known set to NULL. An empty non-nil
+	// set is a real report of "none" and IS written).
 	existing.LastActiveAt = &now
 	existing.UpdatedAt = now
 
+	columns := workerLivenessColumns()
+
+	if worker.Capabilities != nil {
+		existing.Capabilities = worker.Capabilities
+		columns = append(columns, "capabilities")
+	}
+
 	_, err = s.db.NewUpdate().
 		Model(&existing).
-		Column("last_active_at", "updated_at").
+		Column(columns...).
 		Where("uid = ?", existing.UID).
 		Exec(ctx)
 	if err != nil {
@@ -1261,12 +1271,45 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 	return &existing, nil
 }
 
-func (s *Service) UpdateWorkerHeartbeat(ctx context.Context, workerUID string) error {
+func (s *Service) ListLiveWorkers(ctx context.Context, since time.Time) ([]*models.Worker, error) {
+	var workers []*models.Worker
+
+	err := s.db.NewSelect().
+		Model(&workers).
+		Where("deleted_at IS NULL").
+		Where("last_active_at IS NOT NULL").
+		Where("last_active_at >= ?", since).
+		Scan(ctx)
+
+	return workers, err
+}
+
+// workerLivenessColumns are the columns every worker registration and
+// heartbeat refreshes, whatever else it does or does not report.
+func workerLivenessColumns() []string {
+	return []string{"last_active_at", "updated_at"}
+}
+
+func (s *Service) UpdateWorkerHeartbeat(
+	ctx context.Context, workerUID string, capabilities []string,
+) error {
 	now := time.Now()
+
+	// Model-driven rather than Set("capabilities = ?", …): see the Postgres
+	// twin — the field tag, not the raw argument path, picks the encoding.
+	worker := &models.Worker{UID: workerUID, LastActiveAt: &now, UpdatedAt: now}
+	columns := workerLivenessColumns()
+
+	// nil means "not reported" and must not touch the stored set. An empty
+	// non-nil slice is a real report of "none" and is written.
+	if capabilities != nil {
+		worker.Capabilities = capabilities
+		columns = append(columns, "capabilities")
+	}
+
 	_, err := s.db.NewUpdate().
-		Model((*models.Worker)(nil)).
-		Set("last_active_at = ?", now).
-		Set("updated_at = ?", now).
+		Model(worker).
+		Column(columns...).
 		Where("uid = ?", workerUID).
 		Exec(ctx)
 

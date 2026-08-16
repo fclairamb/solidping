@@ -419,9 +419,60 @@ func (h *Handler) ensureWorkerRow(ctx context.Context, agent *models.Agent) (str
 }
 
 // connState is the per-connection state threaded through the frame handlers.
+// It is touched only from the connection's own read loop, so the throttle
+// bookkeeping below needs no locking.
 type connState struct {
 	agent     *models.Agent
 	workerUID string
+	// egressWrittenAt throttles the workers-row refresh driven by claim frames
+	// (see recordAgentEgress). Zero means "never written on this connection".
+	egressWrittenAt time.Time
+}
+
+// agentEgressReportInterval bounds how often a claim frame refreshes the
+// agent's workers row. Claims can arrive several times a second on a busy
+// agent; the capability they carry changes approximately never, and the row's
+// last_active_at only has to stay inside the region liveness window.
+const agentEgressReportInterval = 50 * time.Second
+
+// recordAgentEgress refreshes the agent's workers row from a claim frame: its
+// last_active_at (which is what region aggregation reads as liveness) and its
+// self-reported capability set.
+//
+// An agent predating the field sends nothing, the decoded slice is nil, and the
+// column is left untouched — it stays NULL, i.e. "unknown", which must never be
+// rendered as "this location has no IPv6". That is the whole reason the column
+// is nullable, and it is what makes the agent/server rollout order irrelevant.
+// An agent sending `[]` is a DIFFERENT statement — "I have none" — and is
+// written as such.
+func (h *Handler) recordAgentEgress(
+	ctx context.Context, state *connState, frame *agentcrypto.ClientFrame,
+) {
+	now := time.Now()
+	if !state.egressWrittenAt.IsZero() && now.Sub(state.egressWrittenAt) < agentEgressReportInterval {
+		return
+	}
+
+	state.egressWrittenAt = now
+
+	// The set is untrusted remote input and the column is CHECK-constrained, so
+	// a malformed array would fail this UPDATE — and take last_active_at down
+	// with it, quietly starving the region of liveness while the agent happily
+	// keeps running checks. Drop the bad set instead and still write the
+	// heartbeat: nil means "not reported", which leaves whatever is stored
+	// exactly as it was.
+	capabilities := frame.Capabilities
+	if err := models.ValidateCapabilitySet(capabilities); err != nil {
+		h.logger.WarnContext(ctx, "agent reported an unstorable capability set; ignoring it",
+			"error", err, "agent", state.agent.UID)
+
+		capabilities = nil
+	}
+
+	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities); err != nil {
+		h.logger.WarnContext(ctx, "failed to refresh agent worker row",
+			"error", err, "agent", state.agent.UID)
+	}
 }
 
 // runAgentConnection sends hello (for reconnects) and serves frames until the
@@ -586,6 +637,8 @@ func agentClaimScope(agent *models.Agent) checkjobsvc.AgentScope {
 func (h *Handler) handleClaim(
 	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) {
+	h.recordAgentEgress(ctx, state, frame)
+
 	maxJobs := frame.MaxJobs
 	if maxJobs <= 0 {
 		maxJobs = 5

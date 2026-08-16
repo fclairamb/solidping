@@ -43,15 +43,7 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return fmt.Errorf("getting thread state entry: %w", err)
 	}
 
-	// Defense-in-depth: a resolved/reopened event with no stored thread state has
-	// no original message to update or thread under, so a standalone top-level
-	// "resolved"/"reopened" message is never the right output. Skip posting rather
-	// than falling through to postNewMessage, which would emit a context-free
-	// orphan message. This bounds the blast radius of any "resolved/reopened with
-	// no opened" path (e.g. a still-suppressed rolled-up child that recorded its
-	// event but was never paged on open).
-	if (payload.EventType == eventTypeIncidentResolved || payload.EventType == eventTypeIncidentReopened) &&
-		(threadEntry == nil || threadEntry.Value == nil) {
+	if requiresExistingThread(payload.EventType) && (threadEntry == nil || threadEntry.Value == nil) {
 		return nil
 	}
 
@@ -68,6 +60,24 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 	}
 
 	return s.postNewMessage(ctx, jctx, client, payload, channel, stateKey, threadEntry)
+}
+
+// requiresExistingThread reports whether an event may ONLY be posted as a
+// reply under an already-stored incident thread.
+//
+// Resolved/reopened have no original message to update or thread under without
+// one, so a standalone top-level "resolved" is never the right output — it
+// would be a context-free orphan. This bounds the blast radius of any
+// "resolved/reopened with no opened" path (e.g. a still-suppressed rolled-up
+// child that recorded its event but was never paged on open).
+//
+// A comment is the same, plus one extra hazard: posting it top-level would
+// CLAIM the incident's thread mapping, so the eventual resolved notice would
+// thread under a comment instead of under the alert.
+func requiresExistingThread(eventType string) bool {
+	return eventType == eventTypeIncidentResolved ||
+		eventType == eventTypeIncidentReopened ||
+		eventType == eventTypeIncidentComment
 }
 
 // parseSettings extracts and validates Slack settings from the payload.
@@ -188,6 +198,8 @@ func (s *SlackSender) buildMessage(payload *Payload) *slack.MessageResponse {
 		return s.buildIncidentEscalatedMessage(payload)
 	case eventTypeIncidentReopened:
 		return s.buildIncidentReopenedThreadReply(payload)
+	case eventTypeIncidentComment:
+		return s.buildCommentThreadReply(payload)
 	default:
 		return s.buildSimpleMessage(payload)
 	}
@@ -619,6 +631,43 @@ func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName s
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
 					Text: slackLink(incidentURL, ":warning: Escalated") + "  " + slackLink(incidentURL, ":warning: Incident"),
+				},
+			},
+		},
+	}
+}
+
+// buildCommentThreadReply renders an incident comment as a thread reply. Kept
+// deliberately plain — quoted body under an author line — because it lands in
+// a human conversation, not in an alert card.
+func (s *SlackSender) buildCommentThreadReply(payload *Payload) *slack.MessageResponse {
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	author := commentAuthor(payload.Comment)
+
+	header := fmt.Sprintf(
+		":speech_balloon: *%s* commented on %s%s",
+		author, incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+	)
+
+	if label := commentSourceLabel(payload.Comment); label != "" {
+		header += " _(" + label + ")_"
+	}
+
+	body := commentText(payload.Comment)
+	text := header
+	if body != "" {
+		text += "\n> " + strings.ReplaceAll(body, "\n", "\n> ")
+	}
+
+	return &slack.MessageResponse{
+		Text: text,
+		Blocks: []slack.Block{
+			{
+				Type: slack.BlockTypeSection,
+				Text: &slack.Text{
+					Type: slack.BlockTypeMrkdwn,
+					Text: text,
 				},
 			},
 		},

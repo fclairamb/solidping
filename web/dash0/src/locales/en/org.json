@@ -61,7 +61,12 @@
     "unlimited": "Unlimited",
     "upgrade": "Upgrade",
     "loadError": "Could not load usage.",
-    "whatsappThisMonth": "WhatsApp messages this month"
+    "whatsappThisMonth": "WhatsApp messages this month",
+    "smsGuard": {
+      "title": "Some SMS alerts were not sent",
+      "runaway": "{{count}} message(s) were refused because this instance's SMS cap of {{limit}}/hour was reached. Alerts are being dropped instance-wide — tell your operator.",
+      "country": "{{count}} message(s) were refused because the destination country is outside this instance's allow-list ({{countries}})."
+    }
   },
   "ai": {
     "title": "AI assistants",

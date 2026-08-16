@@ -490,6 +490,9 @@ func TestSupportsIPVersionMetadata(t *testing.T) {
 		checkerdef.CheckTypeSSL: true, checkerdef.CheckTypeSSH: true,
 		checkerdef.CheckTypeSMTP: true, checkerdef.CheckTypeIMAP: true,
 		checkerdef.CheckTypePOP3: true, checkerdef.CheckTypeDNSBL: true,
+		// prometheus speaks plain HTTP through the same shared transport
+		// helper as checkhttp, so it pins the family the same way.
+		checkerdef.CheckTypePrometheus: true,
 	}
 
 	for _, meta := range checkerdef.ListCheckTypeMetas() {

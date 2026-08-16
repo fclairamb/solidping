@@ -58,7 +58,12 @@
     "unlimited": "Unbegrenzt",
     "upgrade": "Upgrade",
     "loadError": "Nutzung konnte nicht geladen werden.",
-    "whatsappThisMonth": "WhatsApp-Nachrichten diesen Monat"
+    "whatsappThisMonth": "WhatsApp-Nachrichten diesen Monat",
+    "smsGuard": {
+      "title": "Einige SMS-Alarme wurden nicht gesendet",
+      "runaway": "{{count}} Nachricht(en) wurden abgelehnt, weil das SMS-Limit dieser Instanz ({{limit}}/Stunde) erreicht wurde. Instanzweit gehen Alarme verloren — informieren Sie Ihren Betreiber.",
+      "country": "{{count}} Nachricht(en) wurden abgelehnt, weil das Zielland nicht auf der Positivliste dieser Instanz steht ({{countries}})."
+    }
   },
   "ai": {
     "title": "KI-Assistenten",

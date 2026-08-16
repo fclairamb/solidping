@@ -78,6 +78,19 @@ func ipVersionCases() []ipVersionCase {
 				"timeout": "2s",
 			}
 		}),
+		// prometheus is the second type that pins the family on an
+		// http.Transport rather than picking an address itself. It shares
+		// checkhttp's transport helper, so the point of this case is exactly
+		// that the sharing is wired up — the metadata claiming
+		// SupportsIPVersion is only true if this passes.
+		shared(checkerdef.CheckTypePrometheus, func(host string, port int) map[string]any {
+			return map[string]any{
+				"url":           "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/metrics",
+				"metric":        "up",
+				"criticalValue": 1,
+				"timeout":       "2s",
+			}
+		}),
 		{
 			// dnsbl is the tenth ipVersion-capable type and the one that cannot
 			// honor ipv6 at all: DNSBL zones are indexed by reversed IPv4
@@ -91,6 +104,35 @@ func ipVersionCases() []ipVersionCase {
 			wantMessage: "IPv4 blocklists only",
 			wantStatus:  checkerdef.StatusError,
 		},
+	}
+}
+
+// TestIPVersionCasesCoverEveryCapableType is the meta-guard that would have
+// caught this table falling behind the registry: the three cross-checker tests
+// below are only as complete as ipVersionCases(), so a new type declaring
+// SupportsIPVersion without a case here would silently go unexercised while
+// the capability pin in checkerdef still went green.
+func TestIPVersionCasesCoverEveryCapableType(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	covered := make(map[checkerdef.CheckType]bool, len(ipVersionCases()))
+	for _, tc := range ipVersionCases() {
+		covered[tc.checkType] = true
+	}
+
+	for _, meta := range checkerdef.ListCheckTypeMetas() {
+		if !meta.SupportsIPVersion {
+			r.NotContains(covered, meta.Type,
+				"%s has an ipVersionCases entry but does not declare SupportsIPVersion", meta.Type)
+
+			continue
+		}
+
+		r.True(covered[meta.Type],
+			"check type %q declares SupportsIPVersion but has no ipVersionCases entry — "+
+				"the cross-checker wiring guards never exercise it", meta.Type)
 	}
 }
 

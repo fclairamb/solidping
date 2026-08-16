@@ -1,9 +1,14 @@
 package checks
 
 import (
+	"context"
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // ipVersionConfigField is the config field name reported on validation errors,
@@ -73,4 +78,129 @@ func validateIPVersionConfig(checkType string, config map[string]any) error {
 	}
 
 	return nil
+}
+
+// ipVersionRegionWarnings reports — as a WARNING, never a rejection — that a
+// check pinned to IPv6 targets a region whose live workers currently advertise
+// no IPv6 egress (spec 2026-08-15-11).
+//
+// Warning, not rejection, for two independent reasons, and both matter:
+//
+//  1. The advertised value is a hint with a lag. A region may have gained IPv6
+//     since its workers last reported, and the run-time egress pre-flight is
+//     the authority — refusing the write here would block a check that would
+//     have run perfectly.
+//  2. "unknown" is a real state. A region with no live worker, or one served
+//     by an agent predating the capability report, says nothing about IPv6, and
+//     must never be treated as "no".
+//
+// So only an explicit "no" warns, and even then the check is created and runs.
+func (s *Service) ipVersionRegionWarnings(
+	ctx context.Context, orgUID, checkType string, config map[string]any, checkRegions []string,
+) []base.ValidationErrorField {
+	version, err := checkerdef.IPVersionFromConfig(config)
+	if err != nil || version != checkerdef.IPVersionIPv6 {
+		return nil
+	}
+
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType))
+	if meta == nil || !meta.SupportsIPVersion {
+		return nil
+	}
+
+	effective, err := s.regions.ResolveRegionsForCheck(ctx, checkRegions, orgUID)
+	if err != nil || len(effective) == 0 {
+		return nil
+	}
+
+	index, err := s.regions.CapabilityIndex(ctx, orgUID)
+	if err != nil {
+		return nil
+	}
+
+	var lacking []string
+
+	for _, slug := range effective {
+		def, known := index[slug]
+		if !known {
+			continue
+		}
+
+		if def.IPv6Capability() == regions.CapabilityNo {
+			lacking = append(lacking, regionLabel(def))
+		}
+	}
+
+	if len(lacking) == 0 {
+		return nil
+	}
+
+	return []base.ValidationErrorField{{
+		Name:    ipVersionConfigField,
+		Message: ipVersionRegionWarningMessage(lacking, ipv6CapableRegions(index)),
+	}}
+}
+
+// regionLabel renders a region the way the user sees it in the picker.
+func regionLabel(def regions.RegionDefinition) string {
+	if def.Name == "" {
+		return def.Slug
+	}
+
+	return fmt.Sprintf("%s (%s)", def.Name, def.Slug)
+}
+
+// ipv6CapableRegions lists the regions that DO advertise IPv6, so the warning
+// can end with something actionable rather than just bad news. Sorted for a
+// stable message.
+func ipv6CapableRegions(index map[string]regions.RegionDefinition) []string {
+	capable := make([]string, 0, len(index))
+
+	for slug := range index {
+		def := index[slug]
+		if def.IPv6Capability() == regions.CapabilityYes {
+			capable = append(capable, regionLabel(def))
+		}
+	}
+
+	sort.Strings(capable)
+
+	return capable
+}
+
+// ipVersionRegionWarningMessage names the offending regions and, when one
+// exists, points at a region that does advertise IPv6.
+func ipVersionRegionWarningMessage(lacking, capable []string) string {
+	var builder strings.Builder
+
+	builder.WriteString("this check is pinned to IPv6, but ")
+
+	if len(lacking) == 1 {
+		builder.WriteString("region " + lacking[0] + " reports no IPv6 egress")
+	} else {
+		builder.WriteString("regions " + strings.Join(lacking, ", ") + " report no IPv6 egress")
+	}
+
+	builder.WriteString(" from its live workers")
+
+	if len(capable) > 0 {
+		builder.WriteString(", so runs there will fail with a worker-egress error. ")
+		builder.WriteString(strings.Join(capable, ", "))
+
+		if len(capable) == 1 {
+			builder.WriteString(" advertises IPv6")
+		} else {
+			builder.WriteString(" advertise IPv6")
+		}
+
+		builder.WriteString(".")
+	} else {
+		builder.WriteString(", so runs there will fail with a worker-egress error.")
+	}
+
+	builder.WriteString(
+		" The check is still saved and will still run — this is only what the region last reported.",
+	)
+
+	return builder.String()
 }

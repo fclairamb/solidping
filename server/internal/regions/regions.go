@@ -17,6 +17,17 @@ type RegionDefinition struct {
 	Slug  string `json:"slug"`
 	Emoji string `json:"emoji"`
 	Name  string `json:"name"`
+	// Capabilities carries what the region's live workers say they can do,
+	// keyed by capability name (today CapabilityIPv4 and CapabilityIPv6). It is
+	// a MAP rather than a field so the next capability is additive — and it is
+	// generic all the way down to storage since spec 2026-08-16-02, so adding
+	// one costs a string and nothing else. It is omit-empty so
+	// a definition round-tripped through the stored `regions` / `custom_regions`
+	// parameter stays byte-identical for an older binary that never sets it.
+	//
+	// This is DERIVED, not configured: it is computed from worker rows at read
+	// time and is never persisted by SetOrgCustomRegions.
+	Capabilities map[string]string `json:"capabilities,omitempty"`
 }
 
 const (
@@ -364,7 +375,17 @@ func (s *Service) SetOrgCustomRegions(ctx context.Context, orgUID string, defs [
 		seen[defs[i].Slug] = struct{}{}
 	}
 
-	if err := s.db.SetOrgParameter(ctx, orgUID, ParamCustomRegions, defs, false); err != nil {
+	// Capabilities are DERIVED from live workers on every read, so they must
+	// never be written back into the stored parameter: a persisted copy would
+	// be stale the moment a worker's route changed, and would then outrank the
+	// truth. Strip whatever a caller happened to pass through.
+	stored := make([]RegionDefinition, len(defs))
+	for i := range defs {
+		stored[i] = defs[i]
+		stored[i].Capabilities = nil
+	}
+
+	if err := s.db.SetOrgParameter(ctx, orgUID, ParamCustomRegions, stored, false); err != nil {
 		return fmt.Errorf("failed to save custom_regions: %w", err)
 	}
 

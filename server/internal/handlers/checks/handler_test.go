@@ -152,6 +152,27 @@ func TestCreateCheckFlappingFieldsRoundTrip(t *testing.T) {
 	r.InDelta(float64(5), fetched["maxRecoveryMultiplier"], 0.0001)
 }
 
+// TestCreateCheckAutoSlugDoesNotDoubleTypePrefix is a regression test for the
+// generated-slug double-prefix bug: creating a domain check for google.com
+// without a slug used to yield "domain-domain-google-com" because both the
+// checker's Validate and the service layer prepended the type. It must now
+// yield "domain-google-com".
+func TestCreateCheckAutoSlugDoesNotDoubleTypePrefix(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	router, orgSlug := newCheckHandlerRouter(t)
+
+	rec := postCheck(t, router, orgSlug, map[string]any{
+		"type":   "domain",
+		"config": map[string]any{"domain": "google.com"},
+	})
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	r.Equal("domain-google-com", created["slug"])
+}
+
 // postCheck marshals body and POSTs it to the org's checks collection.
 func postCheck(t *testing.T, router *httpx.Router, orgSlug string, body map[string]any) *httptest.ResponseRecorder {
 	t.Helper()

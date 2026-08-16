@@ -9,9 +9,10 @@ SolidPing stores sensitive data — notification connection secrets, check crede
 
 ## How It Works
 
-```
-Master Key (KEK)  ──encrypts──▶  Per-org Data Key (DEK)  ──encrypts──▶  Stored secrets
-   (from env)                        (generated per org)                  (AES-256-GCM)
+```mermaid
+flowchart LR
+    KEK["Master Key (KEK)<br/>(from env)"] -->|encrypts| DEK["Per-org Data Key (DEK)<br/>(generated per org)"]
+    DEK -->|encrypts| Secrets["Stored secrets<br/>(AES-256-GCM)"]
 ```
 
 1. You supply a 32-byte **master key** (the Key Encryption Key) via the environment.

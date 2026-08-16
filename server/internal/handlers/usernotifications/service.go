@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -14,9 +15,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
-	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
 	"github.com/fclairamb/solidping/server/internal/integrations/whatsapp"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
@@ -33,6 +35,16 @@ var (
 	ErrNoSlackChannelForOrg        = errors.New("no Slack channel configured for this organization")
 	ErrSlackClientNotConfigured    = errors.New("slack client not configured")
 	ErrWebPushNotConfigured        = errors.New("web push not configured on this server")
+	// ErrSMSDestinationNotAllowed is returned when an SMS on the SERVER's
+	// credentials targets a country outside SP_SMS_ALLOWED_COUNTRIES. Distinct
+	// from a cap error because it is not a volume problem — retrying later
+	// fails identically.
+	ErrSMSDestinationNotAllowed = errors.New(
+		"this destination country is not allowed for SMS sent by this instance")
+	// ErrSMSInstanceCapReached is returned when the instance-wide hourly SMS
+	// cap (SP_SMS_GLOBAL_RUNAWAY_PER_HOUR) is exhausted.
+	ErrSMSInstanceCapReached = errors.New(
+		"this instance's hourly SMS limit has been reached; try again later")
 	// ErrInvalidWhatsAppNumber is returned when a WhatsApp contact value is not
 	// a syntactically valid E.164 number.
 	ErrInvalidWhatsAppNumber = errors.New("WhatsApp number must be in E.164 format (e.g. +15551234567)")
@@ -104,6 +116,31 @@ type Service struct {
 	// telegramCfg is the instance-level Telegram configuration used to mint
 	// connect links. Zero value = feature off.
 	telegramCfg config.TelegramConfig
+	// smsResolver picks, per org, whether an SMS goes through the org's own
+	// Twilio integration (bring-your-own) or the instance-level provider
+	// (server-provided, the default). Nil when the phone paths are not
+	// exercised.
+	smsResolver *smssvc.Resolver
+	// entitlements applies the INSTANCE-SPEND guards (instance-wide hourly cap,
+	// destination-country allow-list) to sends made on the server's own
+	// credentials. Verification codes and the test button are outbound SMS on
+	// the same bill as an escalation page, so they are gated identically —
+	// otherwise any org member could add a premium-rate contact and request
+	// codes on the instance's money, which is exactly what the allow-list
+	// exists to stop. Nil disables the guards (tests, self-hosted defaults).
+	entitlements *entitlements.Service
+}
+
+// WithEntitlements supplies the entitlements service used to apply the
+// instance-spend SMS guards.
+func WithEntitlements(svc *entitlements.Service) Option {
+	return func(s *Service) { s.entitlements = svc }
+}
+
+// WithSMSResolver supplies the provider resolver used by the phone
+// verification and test-send paths.
+func WithSMSResolver(resolver *smssvc.Resolver) Option {
+	return func(s *Service) { s.smsResolver = resolver }
 }
 
 // Option customizes a Service at construction.
@@ -528,35 +565,96 @@ func (s *Service) dispatchTestTelegram(ctx context.Context, chatID string) error
 	return nil
 }
 
-// dispatchTestSMS sends a plain test SMS through the org's default Twilio
-// connection — the same transport a verification code rides, so a working
+// dispatchTestSMS sends a plain test SMS through whichever provider this org
+// resolves to — its own Twilio integration if it has one, the instance
+// provider otherwise. Same transport a verification code rides, so a working
 // verify flow implies a working test.
 func (s *Service) dispatchTestSMS(ctx context.Context, orgUID, toNumber string) error {
-	_, settings, err := twilioconn.ResolveDefault(ctx, s.db, s.creds, orgUID)
+	sender, err := s.resolveGuardedSMSSender(ctx, orgUID, toNumber)
 	if err != nil {
-		if errors.Is(err, twilioconn.ErrNoTwilioConnection) {
-			return ErrNoProvider
-		}
-
-		return fmt.Errorf("resolve twilio connection: %w", err)
+		return err
 	}
 
-	if settings.AccountSID == "" || settings.AuthToken == "" {
-		return ErrNoProvider
-	}
-
-	client := newTwilioClient(settings.AccountSID, settings.AuthToken, twilio.BaseURLForRegion(settings.Region))
-
-	if _, err := client.SendSMS(ctx, &twilio.SendSMSParams{
-		To:                  toNumber,
-		From:                settings.FromNumber,
-		MessagingServiceSID: settings.MessagingServiceSID,
-		Body:                "[SolidPing] Test notification. Your SMS delivery is working correctly.",
+	if _, err := sender.SendSMS(ctx, &smssvc.SendParams{
+		To: toNumber,
+		Body: "[SolidPing] Test notification. Your SMS delivery is working correctly." +
+			twilio.OptOutFooter,
 	}); err != nil {
 		return fmt.Errorf("send test SMS: %w", err)
 	}
 
 	return nil
+}
+
+// resolveSMSProvider returns the org's effective SMS resolution, or
+// ErrNoProvider when neither a per-org integration nor the instance
+// configuration can send.
+func (s *Service) resolveSMSProvider(
+	ctx context.Context, orgUID string,
+) (*smssvc.Resolution, error) {
+	if s.smsResolver == nil {
+		return nil, ErrNoProvider
+	}
+
+	resolution, err := s.smsResolver.Resolve(ctx, orgUID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sms provider: %w", err)
+	}
+
+	if !resolution.SMSAvailable() {
+		return nil, ErrNoProvider
+	}
+
+	return resolution, nil
+}
+
+// reserveInstanceSMSSpend applies the INSTANCE-SPEND guards before a send made
+// on the server's own credentials, and returns nil when the send may proceed.
+//
+// Scoping is delegated to Resolution.InstanceCredentialsForSMS so the rule
+// lives in exactly one place: a bring-your-own send bills the customer's own
+// Twilio account and is therefore exempt from both the instance-wide cap and
+// the country allow-list, on this path exactly as on the escalation path.
+//
+// A breach logs loudly (and is counted for the org's Usage page) rather than
+// failing silently.
+func (s *Service) reserveInstanceSMSSpend(
+	ctx context.Context, orgUID string, resolution *smssvc.Resolution, toNumber string,
+) error {
+	if s.entitlements == nil || !resolution.InstanceCredentialsForSMS() {
+		return nil
+	}
+
+	err := s.entitlements.ReserveInstanceSMS(ctx, orgUID, toNumber)
+	if err == nil {
+		return nil
+	}
+
+	s.entitlements.LogInstanceSMSBreach(ctx, slog.Default(), orgUID, err)
+
+	if errors.Is(err, entitlements.ErrCountryNotAllowed) {
+		return fmt.Errorf("%w: %w", ErrSMSDestinationNotAllowed, err)
+	}
+
+	return fmt.Errorf("%w: %w", ErrSMSInstanceCapReached, err)
+}
+
+// resolveGuardedSMSSender resolves the org's sender AND clears the
+// instance-spend guards for one send to toNumber. Every server-credential send
+// on this package's paths goes through it, so no path can quietly skip a guard.
+func (s *Service) resolveGuardedSMSSender(
+	ctx context.Context, orgUID, toNumber string,
+) (smssvc.Sender, error) {
+	resolution, err := s.resolveSMSProvider(ctx, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if guardErr := s.reserveInstanceSMSSpend(ctx, orgUID, resolution, toNumber); guardErr != nil {
+		return nil, guardErr
+	}
+
+	return resolution.Sender, nil
 }
 
 // dispatchTestWhatsApp sends a test through the approved alert template — the

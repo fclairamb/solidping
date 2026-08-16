@@ -515,6 +515,8 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
     if (getCommentSource(event) === "slack") {
       return getCommentSlackAuthor(event) ?? t("comments.slackUser");
     }
+    const authored = event.payload?.authorName;
+    if (typeof authored === "string" && authored.length > 0) return authored;
     const member = members?.data?.find((m) => m.userUid === event.actorUid);
     return member?.name || member?.email || t("comments.teamMember");
   };
@@ -571,6 +573,11 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
                   {getCommentSource(c) === "slack" && (
                     <Badge variant="outline" className="text-xs">
                       {t("comments.viaSlack")}
+                    </Badge>
+                  )}
+                  {getCommentSource(c) === "telegram" && (
+                    <Badge variant="outline" className="text-xs">
+                      {t("comments.viaTelegram")}
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground">

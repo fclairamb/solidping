@@ -41,7 +41,10 @@ func (s *OpsgenieSender) Send(ctx context.Context, _ *jobdef.JobContext, payload
 		return s.createAlert(ctx, settings, payload)
 	case eventTypeIncidentResolved:
 		return s.closeAlert(ctx, settings, payload)
-	case eventTypeIncidentEscalated:
+	case eventTypeIncidentEscalated, eventTypeIncidentComment:
+		// A comment annotates the open alert. It must never create one: an
+		// operator note is not a new page, and Opsgenie would wake whoever the
+		// schedule says is on call for it.
 		return s.addNote(ctx, settings, payload)
 	default:
 		return s.createAlert(ctx, settings, payload)
@@ -164,11 +167,7 @@ func (s *OpsgenieSender) closeAlert(
 func (s *OpsgenieSender) addNote(
 	ctx context.Context, settings *opsgenieSettings, payload *Payload,
 ) error {
-	duration := formatDuration(time.Since(payload.Incident.StartedAt))
-	noteBody := fmt.Sprintf(
-		"Escalated: %d consecutive failures in %s",
-		payload.Incident.FailureCount, duration,
-	)
+	noteBody := opsgenieNoteBody(payload)
 
 	url := s.baseURL(settings.Region) + "/" + payload.Incident.UID + "/notes?identifierType=alias"
 	notePayload := map[string]any{
@@ -178,6 +177,21 @@ func (s *OpsgenieSender) addNote(
 	}
 
 	return s.doRequest(ctx, http.MethodPost, url, settings.APIKey, notePayload)
+}
+
+// opsgenieNoteBody renders the note text for the events that annotate an
+// existing alert rather than opening one.
+func opsgenieNoteBody(payload *Payload) string {
+	if payload.EventType == eventTypeIncidentComment {
+		return commentAuthor(payload.Comment) + " commented: " + commentText(payload.Comment)
+	}
+
+	duration := formatDuration(time.Since(payload.Incident.StartedAt))
+
+	return fmt.Sprintf(
+		"Escalated: %d consecutive failures in %s",
+		payload.Incident.FailureCount, duration,
+	)
 }
 
 func (s *OpsgenieSender) doRequest(

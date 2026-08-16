@@ -52,6 +52,10 @@ import {
   type PrivateRegion,
 } from "@/api/hooks";
 import { DocsLink } from "@/components/shared/docs-link";
+import {
+  Ipv6CapabilityBadge,
+  ipv6Capability,
+} from "@/components/shared/ipv6-capability";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
@@ -169,6 +173,7 @@ function RegionsCard({ org }: { org: string }) {
                   <TableHead>{t("privateLocations.regions.name", "Name")}</TableHead>
                   <TableHead>{t("privateLocations.regions.region", "Region")}</TableHead>
                   <TableHead>{t("privateLocations.regions.agents", "Agents")}</TableHead>
+                  <TableHead>{t("privateLocations.regions.ipv6", "IPv6")}</TableHead>
                   <TableHead className="w-24 text-right">
                     {t("privateLocations.regions.actions", "Actions")}
                   </TableHead>
@@ -190,6 +195,18 @@ function RegionsCard({ org }: { org: string }) {
                       <Badge variant={region.agentCount > 0 ? "default" : "secondary"}>
                         {region.agentCount}
                       </Badge>
+                    </TableCell>
+                    {/* Egress families this location's live agents report
+                        (spec 2026-08-15-11). This is the one case the user can
+                        actually fix — by enabling IPv6 on a host they own — so
+                        it belongs on the location's own page. Three states:
+                        "unknown" (no live agent reporting, or an older agent)
+                        is never rendered as "no". */}
+                    <TableCell>
+                      <Ipv6CapabilityBadge
+                        capability={ipv6Capability(region.capabilities)}
+                        data-testid={`private-region-ipv6-${region.slug}`}
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

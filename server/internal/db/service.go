@@ -190,13 +190,25 @@ type Service interface {
 	GetWorker(ctx context.Context, uid string) (*models.Worker, error)
 	GetWorkerBySlug(ctx context.Context, slug string) (*models.Worker, error)
 	ListWorkers(ctx context.Context) ([]*models.Worker, error)
+	// ListLiveWorkers returns every non-deleted worker whose last_active_at is
+	// at or after since. It is the input to region capability aggregation: a
+	// region advertises a family only while a LIVE worker there reports it, so
+	// a stale worker's answer stops counting on its own (spec 2026-08-15-11).
+	ListLiveWorkers(ctx context.Context, since time.Time) ([]*models.Worker, error)
 	UpdateWorker(ctx context.Context, uid string, update models.WorkerUpdate) error
 	DeleteWorker(ctx context.Context, uid string) error
 	// RegisterOrUpdateWorker finds a worker by slug, creates it if not found, or updates it if exists.
 	// Returns the registered/updated worker.
 	RegisterOrUpdateWorker(ctx context.Context, worker *models.Worker) (*models.Worker, error)
-	// UpdateWorkerHeartbeat updates the worker's last_active_at and updated_at timestamps.
-	UpdateWorkerHeartbeat(ctx context.Context, workerUID string) error
+	// UpdateWorkerHeartbeat updates the worker's last_active_at and updated_at
+	// timestamps, and refreshes its self-reported capability set.
+	//
+	// THE SET IS THREE-STATE. A NIL slice means "not reported" and leaves the
+	// stored column exactly as it was — an executor that cannot answer never
+	// overwrites a known set with a guess. A NON-NIL EMPTY slice is a different
+	// statement, "I reported, and I have none of them", and IS written. Anything
+	// that collapses the two turns "unknown" into "no".
+	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, capabilities []string) error
 
 	// Deported-agent operations (spec 2026-07-16-02).
 	// CreateAgentEnrollmentToken persists a one-shot enrollment token.

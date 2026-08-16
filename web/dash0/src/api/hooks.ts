@@ -62,7 +62,7 @@ export interface Check {
    * check inherits its group's policy, then the org default, then none.
    */
   escalationPolicyUid?: string | null;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "prometheus" | "sleep";
   config?: Record<string, unknown>;
   /**
    * Derived, read-time-only host this check probes: config's `host` when
@@ -135,6 +135,10 @@ export interface RegionDefinition {
   name: string;
   /** Org-private region served by the customer's own deported agents. */
   private?: boolean;
+  /** What the region's LIVE workers report they can do — today only `ipv6`,
+   * three-state ("yes" / "no" / "unknown"). Omitted entirely by older servers;
+   * an absent map means "unknown", never "no" (spec 2026-08-15-11). */
+  capabilities?: Record<string, string>;
 }
 
 export interface CreateCheckRequest {
@@ -144,7 +148,7 @@ export interface CreateCheckRequest {
   checkGroupUid?: string;
   /** Escalation policy to assign; omit/empty inherits (group → org default → none). */
   escalationPolicyUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "sleep";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "prometheus" | "sleep";
   config: Record<string, unknown>;
   regions?: string[];
   /** Omit to use the automatic default (period / region count). */
@@ -4817,6 +4821,26 @@ export interface EntitlementsLimits {
   maxWhatsappPerMonth?: number | null;
 }
 
+/**
+ * The instance-spend SMS guards and how many of this organization's sends they
+ * have refused since the server started.
+ *
+ * These two guard the INSTANCE's bill, so they apply only to sends made on the
+ * server's own SMS credentials — an organization sending through its own
+ * Twilio integration is billed by Twilio directly and is never gated by them.
+ *
+ * Absent entirely when the deployment configures no instance-spend guard.
+ */
+export interface EntitlementsSMSGuard {
+  /** Instance-wide hourly cap; 0 when disabled. */
+  globalRunawayPerHour: number;
+  /** Allowed E.164 country calling codes; absent/empty means all countries. */
+  allowedCountries?: string[];
+  globalRunawayBreaches: number;
+  countryBlockedBreaches: number;
+  lastBreachAt?: string;
+}
+
 export interface EntitlementsUsage {
   checks: number;
   checksPerMinute: number;
@@ -4830,6 +4854,11 @@ export interface EntitlementsUsage {
    * persistent counter, not a live count — sent messages cannot be un-sent.
    */
   whatsappThisMonth: number;
+  /**
+   * Instance-spend guard state. A breach must never fail silently — what it
+   * drops is an alert — so it surfaces here as well as in the server logs.
+   */
+  smsGuard?: EntitlementsSMSGuard;
 }
 
 export interface EntitlementsResponse {
@@ -5272,6 +5301,9 @@ export interface PrivateRegion {
   /** Stored region string, org-relative, e.g. `@dc1`. */
   region: string;
   agentCount: number;
+  /** Egress families this location's LIVE agents report — today only `ipv6`,
+   * three-state ("yes" / "no" / "unknown"). See spec 2026-08-15-11. */
+  capabilities?: Record<string, string>;
 }
 
 export interface AgentInfo {

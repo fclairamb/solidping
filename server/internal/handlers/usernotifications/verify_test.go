@@ -9,14 +9,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
-	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
+	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 )
 
 // setupVerifyEnv builds a service backed by SQLite with an org, user, and an
 // unverified phone contact. withTwilio adds a default Twilio integration.
-func setupVerifyEnv(t *testing.T, withTwilio bool) (*Service, *models.Organization, *models.User, *models.UserContact) {
+func setupVerifyEnv(
+	t *testing.T, withTwilio bool,
+) (*Service, *models.Organization, *models.User, *models.UserContact, db.Service) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -47,7 +50,13 @@ func setupVerifyEnv(t *testing.T, withTwilio bool) (*Service, *models.Organizati
 		require.NoError(t, dbSvc.CreateChannel(ctx, integration))
 	}
 
-	return NewService(dbSvc, nil), org, user, contact
+	// The resolver is what picks between the org's own Twilio integration and
+	// the instance provider. Neither is configured here beyond the optional
+	// integration above, so an env built with withTwilio=false resolves to
+	// nothing and the verify flow must report ErrNoProvider.
+	resolver := smssvc.NewResolver(dbSvc, nil, nil, nil, "")
+
+	return NewService(dbSvc, nil, WithSMSResolver(resolver)), org, user, contact, dbSvc
 }
 
 // fakeTwilioSMS captures verification-code sends.
@@ -64,23 +73,29 @@ func fakeTwilioSMS(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func withFakeVerifyTwilio(t *testing.T, srv *httptest.Server) {
-	t.Helper()
-
-	prev := newTwilioClient
-	newTwilioClient = func(accountSID, authToken, _ string) *twilio.Client {
-		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
-	}
-	t.Cleanup(func() { newTwilioClient = prev })
+// withFakeVerifyTwilio repoints the service's bring-your-own sender factory at
+// a fake Twilio. The seam is injected per service, not a package-level var, so
+// parallel tests never race on it.
+func withFakeVerifyTwilio(svc *Service, dbSvc db.Service, srv *httptest.Server) {
+	svc.smsResolver = smssvc.NewResolver(dbSvc, nil, nil, nil, "",
+		smssvc.WithOrgSenderFactory(func(settings *models.TwilioSettings) smssvc.PhoneSender {
+			return smssvc.NewTwilioSender(&smssvc.TwilioCredentials{
+				AccountSID: settings.AccountSID, AuthToken: settings.AuthToken,
+				BaseURL: srv.URL, From: settings.FromNumber,
+				MessagingServiceSID: settings.MessagingServiceSID,
+				VoiceFrom:           settings.VoiceFromNumber,
+			})
+		}))
 }
 
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestVerifyContact_IssuesCode(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, true)
-	withFakeVerifyTwilio(t, fakeTwilioSMS(t))
+	svc, org, user, contact, dbSvc := setupVerifyEnv(t, true)
+	withFakeVerifyTwilio(svc, dbSvc, fakeTwilioSMS(t))
 
 	r.NoError(svc.VerifyContact(ctx, org.Slug, user, contact.UID))
 
@@ -93,26 +108,29 @@ func TestVerifyContact_IssuesCode(t *testing.T) {
 	r.Nil(reloaded.VerifiedAt)
 }
 
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestVerifyContact_NoProvider(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, false) // no twilio integration
+	svc, org, user, contact, _ := setupVerifyEnv(t, false) // no twilio integration
 	r.ErrorIs(svc.VerifyContact(ctx, org.Slug, user, contact.UID), ErrNoProvider)
 }
 
-// TestVerifyContact_RegionResolvesRegionalBase proves the phone-verification
-// send resolves the connection's region to the matching Twilio host — the
-// third of the three call sites this spec fixes (the other two are the
-// escalation SMS and voice paths in jobtypes).
-//
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
+// TestVerifyContact_RegionResolvesRegionalBase proves a bring-your-own
+// connection's region still resolves to the matching Twilio host after the
+// provider seam replaced the concrete-client threading. A silent fallback to
+// the default US1 edge makes perfectly valid regional credentials look invalid.
 func TestVerifyContact_RegionResolvesRegionalBase(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, true)
+	svc, org, user, contact, _ := setupVerifyEnv(t, true)
+	r.NotNil(user)
+	r.Nil(contact.VerifiedAt)
 
 	channels, err := svc.db.ListChannels(ctx, &models.ListIntegrationsFilter{OrganizationUID: org.UID})
 	r.NoError(err)
@@ -121,29 +139,25 @@ func TestVerifyContact_RegionResolvesRegionalBase(t *testing.T) {
 	conn.Settings["region"] = "au1"
 	r.NoError(svc.db.UpdateChannel(ctx, conn.UID, &models.IntegrationUpdate{Settings: &conn.Settings}))
 
-	srv := fakeTwilioSMS(t)
+	resolution, err := svc.smsResolver.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.Equal(smssvc.ModeBringYourOwn, resolution.SMSMode)
 
-	var gotBaseURL string
-	prev := newTwilioClient
-	newTwilioClient = func(accountSID, authToken, baseURL string) *twilio.Client {
-		gotBaseURL = baseURL
-
-		return twilio.NewClientWithBaseURL(accountSID, authToken, srv.URL)
-	}
-	t.Cleanup(func() { newTwilioClient = prev })
-
-	r.NoError(svc.VerifyContact(ctx, org.Slug, user, contact.UID))
-	r.Equal("https://api.au1.twilio.com", gotBaseURL,
+	settings, err := models.TwilioSettingsFromJSONMap(conn.Settings)
+	r.NoError(err)
+	r.Equal("https://api.au1.twilio.com",
+		smssvc.TwilioBaseURL(&smssvc.TwilioCredentials{Region: settings.Region}),
 		"phone verification must resolve the connection's region, not the default base")
 }
 
-//nolint:paralleltest // mutates the package-level newTwilioClient seam.
 func TestVerifyContact_ResendRateLimited(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, true)
-	withFakeVerifyTwilio(t, fakeTwilioSMS(t))
+	svc, org, user, contact, dbSvc := setupVerifyEnv(t, true)
+	withFakeVerifyTwilio(svc, dbSvc, fakeTwilioSMS(t))
 
 	// verifyResendMax issuances allowed, the next one is throttled.
 	for i := 0; i < verifyResendMax; i++ {
@@ -169,7 +183,7 @@ func TestConfirmVerify_Success(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, true)
+	svc, org, user, contact, _ := setupVerifyEnv(t, true)
 	stampCode(t, svc, contact.UID, time.Now().Add(5*time.Minute))
 
 	r.NoError(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, testVerifyCode))
@@ -185,7 +199,7 @@ func TestConfirmVerify_NoPendingCode(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, true)
+	svc, org, user, contact, _ := setupVerifyEnv(t, true)
 	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, testVerifyCode), ErrNoPendingCode)
 }
 
@@ -194,7 +208,7 @@ func TestConfirmVerify_Expired(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, true)
+	svc, org, user, contact, _ := setupVerifyEnv(t, true)
 	stampCode(t, svc, contact.UID, time.Now().Add(-time.Minute))
 
 	r.ErrorIs(svc.ConfirmVerify(ctx, org.Slug, user, contact.UID, testVerifyCode), ErrCodeExpired)
@@ -205,7 +219,7 @@ func TestConfirmVerify_WrongCodeIncrementsThenCaps(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, user, contact := setupVerifyEnv(t, true)
+	svc, org, user, contact, _ := setupVerifyEnv(t, true)
 	stampCode(t, svc, contact.UID, time.Now().Add(5*time.Minute))
 
 	// verifyMaxAttempts wrong tries, each a mismatch.
@@ -227,7 +241,7 @@ func TestConfirmVerify_ForeignContactRejected(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	svc, org, _, contact := setupVerifyEnv(t, true)
+	svc, org, _, contact, _ := setupVerifyEnv(t, true)
 	stampCode(t, svc, contact.UID, time.Now().Add(5*time.Minute))
 
 	// A different user must not confirm someone else's contact.

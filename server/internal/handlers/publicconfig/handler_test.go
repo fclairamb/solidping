@@ -282,3 +282,85 @@ func TestBuild_TelegramUsernameOmittedWhenDisabled(t *testing.T) {
 	r.Contains(string(encoded), `"telegram":{"enabled":false}`)
 	r.NotContains(string(encoded), "solidping_bot")
 }
+
+// TestBuildSMS pins the browser-safe SMS view: the resolved Active() rule, the
+// public sender identity, and — the part that matters — the total absence of
+// any credential.
+func TestBuildSMS(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Nothing configured: both capabilities dark.
+	empty := publicconfig.Build(&config.Config{})
+	r.False(empty.SMS.Enabled)
+	r.False(empty.SMS.VoiceEnabled)
+	r.Empty(empty.SMS.Sender)
+	r.Empty(empty.SMS.Provider)
+
+	// Kill switch on but no credentials is still off.
+	switchOnly := &config.Config{}
+	switchOnly.SMS.Enabled = true
+	switchOnly.SMS.Sender = "SolidPing"
+	r.False(publicconfig.Build(switchOnly).SMS.Enabled)
+
+	full := &config.Config{}
+	full.SMS = config.SMSConfig{
+		Enabled: true, Provider: config.SMSProviderOVH, Sender: "SolidPing",
+		OVH: config.SMSOVHConfig{
+			ApplicationKey: "ak", ApplicationSecret: "super-secret",
+			ConsumerKey: "consumer-secret", ServiceName: "sms-ab12345-1",
+			DLRToken: "dlr-secret",
+		},
+	}
+	full.Voice = config.VoiceConfig{
+		Enabled: true, FromNumber: "+15550002222",
+		Twilio: config.SMSTwilioConfig{AccountSID: "AC1", AuthToken: "voice-secret"},
+	}
+
+	built := publicconfig.Build(full)
+	r.True(built.SMS.Enabled)
+	r.True(built.SMS.VoiceEnabled)
+	r.Equal("SolidPing", built.SMS.Sender)
+	r.Equal("ovh", built.SMS.Provider)
+
+	encoded, err := json.Marshal(built)
+	r.NoError(err)
+
+	for _, secret := range []string{
+		"super-secret", "consumer-secret", "dlr-secret", "voice-secret", "sms-ab12345-1", "ak", "AC1",
+	} {
+		r.NotContains(string(encoded), secret,
+			"a credential must never reach the browser through /api/v1/config")
+	}
+}
+
+// TestBuildSMSVoiceIsIndependent proves the two capabilities are resolved
+// separately — the configuration we expect to ship is OVH for SMS and Twilio
+// for voice, and an instance may equally have one without the other.
+func TestBuildSMSVoiceIsIndependent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	smsOnly := &config.Config{}
+	smsOnly.SMS = config.SMSConfig{
+		Enabled: true, Provider: config.SMSProviderOVH, Sender: "SolidPing",
+		OVH: config.SMSOVHConfig{
+			ApplicationKey: "ak", ApplicationSecret: "as",
+			ConsumerKey: "ck", ServiceName: "sms-1",
+		},
+	}
+	built := publicconfig.Build(smsOnly)
+	r.True(built.SMS.Enabled)
+	r.False(built.SMS.VoiceEnabled)
+
+	voiceOnly := &config.Config{}
+	voiceOnly.Voice = config.VoiceConfig{
+		Enabled: true, FromNumber: "+15550002222",
+		Twilio: config.SMSTwilioConfig{AccountSID: "AC1", AuthToken: "tok"},
+	}
+	built = publicconfig.Build(voiceOnly)
+	r.False(built.SMS.Enabled)
+	r.True(built.SMS.VoiceEnabled)
+}

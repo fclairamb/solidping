@@ -22,6 +22,9 @@ const (
 	mattermostColorGreen  = "#00FF00"
 	mattermostColorOrange = "#FFA500"
 	mattermostColorYellow = "#FFFF00"
+	// Comments are conversation, not alarm — a neutral blue keeps them visually
+	// distinct from every severity color above.
+	mattermostColorBlue = "#3498DB"
 )
 
 // Mattermost field title labels.
@@ -181,6 +184,8 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 		return mattermostColorOrange, ":warning: [ESCALATED] " + checkName
 	case eventTypeIncidentReopened:
 		return mattermostColorYellow, ":repeat: [REOPENED] " + checkName
+	case eventTypeIncidentComment:
+		return mattermostColorBlue, ":speech_balloon: [COMMENT] " + checkName
 	default:
 		return mattermostColorOrange, "[UPDATE] " + checkName
 	}
@@ -189,6 +194,14 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mattermostField {
 	if payload.EventType == eventTypeIncidentResolved {
 		return s.buildResolvedFields(payload, checkName)
+	}
+
+	if payload.EventType == eventTypeIncidentComment {
+		return []mattermostField{
+			{Short: true, Title: mmFieldCheck, Value: checkName},
+			{Short: true, Title: fieldLabelAuthor, Value: commentAuthor(payload.Comment)},
+			{Short: false, Title: fieldLabelComment, Value: commentText(payload.Comment)},
+		}
 	}
 
 	fields := []mattermostField{

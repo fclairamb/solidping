@@ -27,6 +27,13 @@
         "should_escape": false
       },
       {
+        "command": "/comment",
+        "url": "https://solidping.io/api/v1/integrations/slack/command",
+        "description": "Comment on a SolidPing incident",
+        "usage_hint": "[#42] I think the central DNS is down",
+        "should_escape": false
+      },
+      {
         "command": "/check",
         "url": "https://solidping.io/api/v1/integrations/slack/command",
         "description": "Quick shortcut to create a check",

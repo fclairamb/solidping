@@ -9,7 +9,7 @@ SolidPing supports **39 check types** across multiple categories for monitoring 
 
 ## Network Checks
 
-### HTTP/HTTPS
+### HTTP/HTTPS {#httphttps}
 
 Monitor web services, APIs, and websites.
 
@@ -72,7 +72,7 @@ body: '{"test": true}'
 expected_status: 200
 ```
 
-### TCP
+### TCP {#tcp}
 
 Monitor TCP services like databases, message queues, and custom services.
 
@@ -90,7 +90,7 @@ tcps://hostname:port  # With TLS
 | Timeout | Connection timeout | `10s` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
 
-### UDP
+### UDP {#udp}
 
 Check UDP port reachability.
 
@@ -105,7 +105,7 @@ udp://hostname:port
 | Port | Target port | `53` |
 | Timeout | Connection timeout | `10s` |
 
-### ICMP (Ping)
+### ICMP (Ping) {#icmp-ping}
 
 Check host availability using ICMP echo requests.
 
@@ -126,7 +126,7 @@ icmp://hostname
 ICMP checks may require elevated permissions on some systems. Docker containers typically need `NET_RAW` capability.
 :::
 
-### DNS
+### DNS {#dns}
 
 Verify DNS resolution and record values.
 
@@ -143,7 +143,7 @@ dns://8.8.8.8/example.com?type=MX
 | Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA` |
 | Expected | Expected values | `93.184.216.34` |
 
-### WebSocket
+### WebSocket {#websocket}
 
 Monitor WebSocket endpoint availability.
 
@@ -158,7 +158,7 @@ wss://hostname/path  # With TLS
 | URL | WebSocket endpoint | `wss://api.example.com/ws` |
 | Timeout | Connection timeout | `10s` |
 
-### RDP (Remote Desktop)
+### RDP (Remote Desktop) {#rdp-remote-desktop}
 
 Monitor Remote Desktop Protocol servers. Unlike a plain TCP/3389 port probe, this checker performs the **pre-auth RDP negotiation handshake** (X.224 Connection Request/Confirm, MS-RDPBCGR): a valid answer proves the RDP listener (TermService, xrdp, …) actually parsed the request — not just that a firewall forwards the port. The handshake needs **no credentials** and stops before any authentication.
 
@@ -181,7 +181,7 @@ RDP hosts are typically reachable only from inside a network — run the check f
 
 ## Security & Certificates
 
-### SSL/TLS Certificate
+### SSL/TLS Certificate {#ssltls-certificate}
 
 Monitor SSL/TLS certificate expiration and validity.
 
@@ -198,17 +198,32 @@ Monitor SSL/TLS certificate expiration and validity.
 - Chain validation
 - Hostname verification
 
-### Domain Expiration
+### Domain Expiration {#domain-expiration}
 
-Monitor domain name registration expiration via WHOIS lookup.
+Monitor domain name registration expiration. Lookups go through RDAP
+(RFC 7480–7484), the structured, HTTPS-based successor to WHOIS, with an
+automatic fallback to WHOIS when RDAP can't answer (no RDAP service for the
+TLD, a request error, or a response with no expiration date).
 
 | Option | Description | Example |
 |--------|-------------|---------|
 | Domain | Domain name to check | `example.com` |
 | Warning Days | Days before expiry to warn | `30` |
 | Critical Days | Days before expiry to alert | `7` |
+| Lookup method (Advanced) | `auto` (default, RDAP first with WHOIS fallback), `rdap` (RDAP only, no fallback), or `whois` (WHOIS only) | `auto` |
 
-### DNSBL (DNS Blocklist)
+The check result reports which path answered via a `method` field
+(`"rdap"` or `"whois"`) alongside the existing `expiry_date`, `days_remaining`,
+and `registrar` fields.
+
+Expiry is graduated across two tiers, exactly like the SSL/TLS check: at or
+below **Critical Days** the check goes **down** (pages); between Critical and
+**Warning Days** it reports **warning** (amber, counts as up, no incident).
+Existing checks that only set the legacy single threshold keep working
+unchanged — it's treated as Critical Days, with Warning Days defaulting to
+the same value.
+
+### DNSBL (DNS Blocklist) {#dnsbl-dns-blocklist}
 
 Check whether an IP address or hostname is listed on DNS-based blocklists (DNSBLs) such as Spamhaus, SpamCop, Barracuda, or UCEPROTECT. This is essential for monitoring the reputation of mail servers and public IPs.
 
@@ -227,7 +242,7 @@ Hostnames are resolved to IPv4 before lookup. The check **fails** when the targe
 
 ## Database Checks
 
-### PostgreSQL
+### PostgreSQL {#postgresql}
 
 Monitor PostgreSQL database connectivity and query execution.
 
@@ -242,7 +257,7 @@ postgres://user:password@hostname:5432/database
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
 
-### MySQL / MariaDB
+### MySQL / MariaDB {#mysql--mariadb}
 
 Monitor MySQL or MariaDB database connectivity and query execution.
 
@@ -257,7 +272,7 @@ mysql://user:password@hostname:3306/database
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
 
-### MongoDB
+### MongoDB {#mongodb}
 
 Monitor MongoDB connectivity using the ping command.
 
@@ -271,7 +286,7 @@ mongodb://user:password@hostname:27017/database
 | URL | Connection string | `mongodb://user:pass@db:27017/mydb` |
 | Timeout | Connection timeout | `10s` |
 
-### Redis
+### Redis {#redis}
 
 Monitor Redis server availability using the PING command.
 
@@ -286,7 +301,7 @@ redis://:password@hostname:6379
 | URL | Connection string | `redis://redis:6379` |
 | Timeout | Connection timeout | `10s` |
 
-### Microsoft SQL Server
+### Microsoft SQL Server {#microsoft-sql-server}
 
 Monitor MSSQL database connectivity and query execution.
 
@@ -301,7 +316,7 @@ sqlserver://user:password@hostname:1433?database=mydb
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
 
-### Oracle Database
+### Oracle Database {#oracle-database}
 
 Monitor Oracle database connectivity and query execution.
 
@@ -316,7 +331,7 @@ oracle://user:password@hostname:1521/service
 | Query | Optional test query | `SELECT 1 FROM DUAL` |
 | Timeout | Connection timeout | `10s` |
 
-### ClickHouse
+### ClickHouse {#clickhouse}
 
 Monitor ClickHouse connectivity and query execution over the **native (binary)
 protocol** — not the HTTP interface — so the check exercises the same transport
@@ -340,7 +355,7 @@ server version is reported in the result output, and `connection_time_ms` /
 
 ## Email Services
 
-### SMTP
+### SMTP {#smtp}
 
 Monitor SMTP server availability with optional authentication.
 
@@ -359,7 +374,7 @@ smtps://hostname:465  # With SSL
 | Auth | Test authentication | `user:password` |
 | Timeout | Connection timeout | `10s` |
 
-### IMAP
+### IMAP {#imap}
 
 Monitor IMAP server availability and authentication.
 
@@ -384,7 +399,7 @@ automatically from port 993 if `tls`/`starttls` are both left unset, but
 spelling it out keeps a copy-pasted config unambiguous.
 :::
 
-### POP3
+### POP3 {#pop3}
 
 Monitor POP3 server availability and authentication.
 
@@ -409,7 +424,7 @@ automatically from port 995 if `tls`/`starttls` are both left unset, but
 spelling it out keeps a copy-pasted config unambiguous.
 :::
 
-### Email Reception (Passive Inbox)
+### Email Reception (Passive Inbox) {#email-reception-passive-inbox}
 
 Verify end-to-end email **delivery** rather than just server connectivity. SolidPing generates a unique address for the check; when a message arrives at that address, the check is marked up. This is ideal for monitoring a full sending pipeline (queue → relay → inbox).
 
@@ -425,7 +440,7 @@ Email-reception checks are receive-only — SolidPing waits for mail instead of 
 
 ## Remote Access
 
-### SSH
+### SSH {#ssh}
 
 Monitor SSH server availability.
 
@@ -440,7 +455,7 @@ ssh://hostname:22
 | Port | SSH port | `22` |
 | Timeout | Connection timeout | `10s` |
 
-### FTP
+### FTP {#ftp}
 
 Monitor FTP server availability.
 
@@ -455,7 +470,7 @@ ftp://hostname:21
 | Port | FTP port | `21` |
 | Timeout | Connection timeout | `10s` |
 
-### SFTP
+### SFTP {#sftp}
 
 Monitor SFTP server availability.
 
@@ -472,7 +487,7 @@ sftp://hostname:22
 
 ## Messaging & Streaming
 
-### gRPC
+### gRPC {#grpc}
 
 Monitor gRPC services using the standard health check protocol (`grpc.health.v1`).
 
@@ -489,7 +504,7 @@ grpc://hostname:50051
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
 
-### Kafka
+### Kafka {#kafka}
 
 Monitor Apache Kafka broker connectivity.
 
@@ -503,7 +518,7 @@ kafka://hostname:9092
 | Broker | Kafka broker address | `kafka:9092` |
 | Timeout | Connection timeout | `10s` |
 
-### RabbitMQ
+### RabbitMQ {#rabbitmq}
 
 Monitor RabbitMQ message queue connectivity.
 
@@ -517,7 +532,7 @@ amqp://user:password@hostname:5672
 | URL | AMQP connection string | `amqp://guest:guest@rabbitmq:5672` |
 | Timeout | Connection timeout | `10s` |
 
-### MQTT
+### MQTT {#mqtt}
 
 Monitor MQTT broker connectivity via subscription.
 
@@ -535,7 +550,7 @@ mqtts://hostname:8883  # With TLS
 
 ## Telephony
 
-### SIP (VoIP)
+### SIP (VoIP) {#sip-voip}
 
 Monitor SIP servers used for voice/VoIP, either by checking reachability with an `OPTIONS` ping or by verifying that a user can register (`REGISTER` with digest authentication).
 
@@ -563,7 +578,7 @@ tls://host:5061
 - **OPTIONS mode** succeeds when the server returns a valid SIP status code (matching `expect_status` if set).
 - **REGISTER mode** performs the standard two-step challenge/response and succeeds only on a final `200 OK`.
 
-### NTP (Time Server)
+### NTP (Time Server) {#ntp-time-server}
 
 Monitor an NTP time server. Unlike a plain UDP/123 reachability probe, this checker sends a real NTP request and judges the server **as a clock**: it confirms the server returns a valid response and reports itself healthy (stratum, leap indicator, and root distance, via the server's own self-report — no trust in the worker's clock). Two optional, opt-in thresholds let you also alert on the measured clock offset and on the server's stratum depth.
 
@@ -587,7 +602,7 @@ NTP uses outbound **UDP port 123**, which is frequently blocked by egress firewa
 
 ## Infrastructure
 
-### SNMP
+### SNMP {#snmp}
 
 Monitor devices via SNMP protocol.
 
@@ -599,7 +614,7 @@ Monitor devices via SNMP protocol.
 | Version | SNMP version | `2c` |
 | Timeout | Connection timeout | `10s` |
 
-### Docker
+### Docker {#docker}
 
 Monitor remote Docker daemon connectivity.
 
@@ -615,7 +630,7 @@ docker://hostname:2375
 | TLS | Enable TLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
 
-### A2S Game Server (Source / Steam)
+### A2S Game Server (Source / Steam) {#a2s-game-server-source--steam}
 
 Query Source-engine and Steam game servers using the Valve A2S protocol (`A2S_INFO`).
 
@@ -625,7 +640,7 @@ Query Source-engine and Steam game servers using the Valve A2S protocol (`A2S_IN
 | Port | Query port | `27015` |
 | Timeout | Connection timeout | `10s` |
 
-### Minecraft
+### Minecraft {#minecraft}
 
 Monitor Minecraft servers (both Java and Bedrock editions), with optional player-count thresholds.
 
@@ -640,7 +655,7 @@ Monitor Minecraft servers (both Java and Bedrock editions), with optional player
 
 The check reports online players, max players, MOTD, and version. It fails if the query fails or the player count falls outside the configured bounds.
 
-### Freebox Line (xDSL / FTTH)
+### Freebox Line (xDSL / FTTH) {#freebox-line-xdsl--ftth}
 
 Monitor the quality of a Freebox broadband line (xDSL or FTTH) through the Freebox OS API. The check connects via a stored **Freebox integration connection** rather than a direct address.
 
@@ -656,7 +671,7 @@ Monitor the quality of a Freebox broadband line (xDSL or FTTH) through the Freeb
 
 The check reports sync rates, SNR, attenuation, CRC counts (xDSL) or optical power and SFP details (FTTH), and fails when the WAN is down, the link is not trained, or any configured threshold is violated.
 
-### Kubernetes (Workload Replica Health)
+### Kubernetes (Workload Replica Health) {#kubernetes-workload-replica-health}
 
 Monitor a Kubernetes workload's replica health — the structural analog of how the Docker check mirrors a container's HEALTHCHECK. The check connects via a stored **Kubernetes cluster connection** (an integration of type `kubernetes`) referenced by UID, never an inline credential.
 
@@ -716,9 +731,147 @@ subjects:
 
 > Kubernetes discovery (enumerating workloads automatically) builds on this same connection and additionally needs `get`/`list` on `services`, `endpoints`, and `ingresses` (and `nodes`); grant those too if you plan to use it.
 
+## Metrics
+
+### Prometheus Metric {#prometheus-metric}
+
+Alert on a **number a target reports about itself** rather than on whether it
+answers. Every other check type answers "is it up?"; this one answers "is the
+value still acceptable?" — a queue depth, a free-disk gauge, an open-file-descriptor
+count, an error rate. It works against any endpoint that speaks the Prometheus
+text exposition format (most Go, Java, Python and Rust services expose one at
+`/metrics`), and against a Prometheus server itself via PromQL. No Prometheus +
+Alertmanager stack is required.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| URL | Metrics endpoint (scrape) or Prometheus server base URL (promql) | - (required) |
+| Mode | `scrape` or `promql` | `scrape` |
+| Metric | Series name to select (scrape mode) | - (required in `scrape`) |
+| Labels | Label/value pairs the series must carry (subset match, scrape mode) | none |
+| Query | PromQL instant query (promql mode) | - (required in `promql`) |
+| Operator | `>`, `>=`, `<`, `<=`, `==`, `!=` | `>` |
+| Warning Value | Threshold that yields **Warning** (amber, counts as up, never pages) | unset |
+| Critical Value | Threshold that yields **Down** (pages) | unset |
+| Match | What to do when several series match: `single`, `min`, `max`, `sum`, `avg` | `single` |
+| On Missing | Status when nothing matches: `down`, `warning`, `up` | `down` |
+| Headers | Extra request headers (bearer / basic auth) | none |
+| Timeout | Per-execution request timeout (max 60s) | `15s` |
+
+At least one of **Warning Value** / **Critical Value** must be set. `0` is a
+perfectly legal threshold — "alert when free slots reach 0" is written as
+`warningValue: 0`, and it is honoured as a real threshold, not read as "unset".
+
+#### Modes
+
+**`scrape`** fetches the URL, parses the exposition format, and picks the series
+named by **Metric** whose labels contain every configured label/value pair
+(extra labels on the series are fine). Histograms and summaries need no special
+handling: address them through the flattened series names Prometheus itself
+exposes — `<name>_sum`, `<name>_count`, `<name>_bucket` (with an `le` label), or
+`<name>` with a `quantile` label.
+
+```json
+{
+  "url": "https://app.example.com/metrics",
+  "mode": "scrape",
+  "metric": "process_open_fds",
+  "labels": { "instance": "app-1" },
+  "operator": ">",
+  "warningValue": 800,
+  "criticalValue": 1000
+}
+```
+
+**`promql`** treats the URL as a Prometheus server base URL and runs an instant
+query against `{url}/api/v1/query`. Scalar and instant-vector results are
+accepted; a **matrix (range) result is rejected** — a range returns a series of
+points over time, not one current value, so use an instant query.
+
+```json
+{
+  "url": "https://prometheus.example.com",
+  "mode": "promql",
+  "query": "sum(rate(http_requests_total{code=~\"5..\"}[5m]))",
+  "operator": ">",
+  "warningValue": 1,
+  "criticalValue": 10
+}
+```
+
+#### Threshold semantics
+
+The check fires when `value <operator> threshold` is true:
+
+- **Critical breached → Down** (pages, opens an incident).
+- Otherwise **warning breached → Warning** (amber; counts as up for availability,
+  aggregates to Degraded, does **not** open an incident).
+- Otherwise **Up**.
+
+A check with only a **Warning Value** is valid and can never page — the same
+contract as `warningDays` on the [Domain](#domain-expiration) and
+[SSL](#ssltls-certificate) checks. Use it for "I want to see this, not be woken
+by it".
+
+The operator points the thresholds. For `>` / `>=` (something growing too big),
+Critical must be **greater than or equal to** Warning. For `<` / `<=` (something
+shrinking too far) the ordering reverses — this is the free-disk shape:
+
+```json
+{
+  "url": "https://app.example.com/metrics",
+  "mode": "scrape",
+  "metric": "node_filesystem_avail_bytes",
+  "labels": { "mountpoint": "/" },
+  "operator": "<",
+  "warningValue": 10737418240,
+  "criticalValue": 2147483648
+}
+```
+
+That check warns below 10 GiB free and pages below 2 GiB. `==` and `!=` accept a
+**Critical Value only** — there is no ordering between two equality targets, so a
+warning tier would be meaningless and is rejected at validation time.
+
+#### Multiple matching series
+
+By default (`match: single`) a selector that matches more than one series is an
+error result, not a silent pick — an ambiguous selector is a configuration bug,
+and guessing would grade an arbitrary series. Either narrow the selector with
+labels, or choose an explicit aggregation: `min`, `max`, `sum` or `avg`.
+
+#### Missing metrics
+
+`onMissing` decides what an absent metric (or an empty PromQL vector) means.
+The default is `down`: a metric that vanished usually means the target is
+broken, not healthy. Use `warning` when the metric is expected to be absent
+occasionally, or `up` when its absence is genuinely fine.
+
+#### Counters and rates
+
+This check reads whatever value is exposed, right now. It performs **no
+client-side rate computation** — a rate needs state between executions, which is
+explicitly out of scope. A raw counter (`http_requests_total`) only ever grows,
+so thresholding it directly is rarely what you want. For rates, use `promql`
+mode and let Prometheus do the work: `rate(http_requests_total[5m])`.
+
+#### Graphing
+
+Every execution records the resolved value as a `value` metric, so the check
+page graphs the monitored number over time and rolls it up like any latency
+metric — that history is half the point of the check type.
+
+#### Limits
+
+Scrape responses are capped at **5 MB**. A larger body is **refused** with an
+explicit error naming the cap — never truncated: a half-read exposition body
+still parses, and would then be graded as a wrong-but-plausible value. If your
+`/metrics` output is that big, narrow the endpoint or switch to `promql` mode,
+where the query bounds the response.
+
 ## Special Check Types
 
-### Heartbeat
+### Heartbeat {#heartbeat}
 
 Passive monitoring that expects incoming pings at regular intervals. Instead of SolidPing checking a service, the service pings SolidPing to report it's alive.
 
@@ -815,7 +968,7 @@ pushes for a few days would trip the grace window and page someone for
 nothing. Reporting push-triggered CI failures is a different, useful feature,
 but it isn't this one.
 
-### JavaScript
+### JavaScript {#javascript}
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.
 
@@ -827,7 +980,7 @@ Minimum period: `30s` (default `1m`) — see [Check Intervals](#check-intervals)
 - Conditional checks based on time or state
 - Aggregating multiple checks into one
 
-### Browser
+### Browser {#browser}
 
 Headless browser-based monitoring using a real browser engine.
 
@@ -926,7 +1079,13 @@ Supported interval formats:
 
 - Seconds: `10s`, `30s`, `60s`
 - Minutes: `1m`, `5m`, `15m`
-- Hours: `1h`, `6h`, `24h`
+- Hours: `1h`, `6h`, `24h`, `168h` (1 week), `336h` (2 weeks), `720h` (30 days)
+
+The dashboard's interval picker offers 1 week / 2 weeks / 30 days for any
+check type whose `MaxPeriod` allows it (uncapped by default — see the table
+below), useful for slow-moving checks like domain expiration. Every region
+you select still runs the check at the full interval — see
+[Multiple regions](#multiple-regions).
 
 ### Minimum intervals
 

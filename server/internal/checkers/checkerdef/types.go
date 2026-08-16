@@ -185,6 +185,11 @@ const (
 	// security protocol (optionally enforcing NLA), and certificate expiry
 	// when a TLS-based protocol is selected. No credentials are used.
 	CheckTypeRDP CheckType = "rdp"
+	// CheckTypePrometheus reads one numeric value out of a Prometheus
+	// metrics endpoint (scrape mode) or a Prometheus server (promql mode)
+	// and grades it against warning/critical thresholds. It is the first
+	// check type that inspects a value rather than a service.
+	CheckTypePrometheus CheckType = "prometheus"
 	// CheckTypeSleep is a synthetic/testing check that sleeps for a configured
 	// duration. It performs no network I/O and exists as a deterministic load
 	// generator for the scheduler. It is NOT a customer-facing check type and
@@ -327,6 +332,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeKubernetes, Labels: []string{labelSafe, labelReqK8sCluster, labelCatInfrastructure}, Description: "Monitor Kubernetes workload replica health"},
 	{Type: CheckTypeNTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor NTP time servers", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeRDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor RDP (Remote Desktop) servers"},
+	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }
 
@@ -421,6 +427,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeKubernetes,
 		CheckTypeNTP,
 		CheckTypeRDP,
+		CheckTypePrometheus,
 		CheckTypeSleep,
 	}
 }

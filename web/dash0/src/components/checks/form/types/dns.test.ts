@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   dnsModule,
+  domainModule,
   isValidIPv4,
   isValidIPv6,
   type DnsState,
+  type DomainState,
 } from "./dns";
 
 // Base state for toConfig tests — a valid domain and defaults, so each test
@@ -111,6 +113,53 @@ describe("dnsModule.toConfig — expectation serialization", () => {
     );
     expect(bad.errors).toHaveLength(1);
     expect(bad.errors[0].message).toContain("IPv6");
+  });
+});
+
+function baseDomainState(overrides: Partial<DomainState> = {}): DomainState {
+  return {
+    domain: "example.com",
+    method: "",
+    warningDays: "",
+    criticalDays: "",
+    ...overrides,
+  };
+}
+
+describe("domainModule.fromConfig — threshold seeding", () => {
+  it("seeds warningDays/criticalDays from the canonical camelCase keys", () => {
+    const state = domainModule.fromConfig({
+      domain: "example.com",
+      warningDays: 30,
+      criticalDays: 7,
+    });
+    expect(state.warningDays).toBe("30");
+    expect(state.criticalDays).toBe("7");
+  });
+
+  it("falls back to the legacy threshold_days for criticalDays when criticalDays is absent", () => {
+    const state = domainModule.fromConfig({
+      domain: "example.com",
+      threshold_days: 14,
+    });
+    expect(state.criticalDays).toBe("14");
+    expect(state.warningDays).toBe("");
+  });
+});
+
+describe("domainModule.toConfig — threshold serialization", () => {
+  it("omits warningDays/criticalDays when blank (backend applies defaults)", () => {
+    const { config } = domainModule.toConfig(baseDomainState());
+    expect(config.warningDays).toBeUndefined();
+    expect(config.criticalDays).toBeUndefined();
+  });
+
+  it("writes numeric warningDays/criticalDays when set", () => {
+    const { config } = domainModule.toConfig(
+      baseDomainState({ warningDays: "30", criticalDays: "7" }),
+    );
+    expect(config.warningDays).toBe(30);
+    expect(config.criticalDays).toBe(7);
   });
 });
 

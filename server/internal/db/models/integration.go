@@ -46,20 +46,31 @@ type Capabilities struct {
 	// CanSource reports whether the integration provides data that checks
 	// read from (e.g. the Freebox line-quality source).
 	CanSource bool
+	// CanSendSMS / CanPlaceCall report the two PHONE capabilities, resolved
+	// independently of each other. They are separate because the providers
+	// are: OVHcloud sells SMS but has no voice API, so an instance can run OVH
+	// for SMS and Twilio for voice at the same time. Binding them would mean
+	// giving up escalation calls in exchange for cheaper SMS.
+	CanSendSMS   bool
+	CanPlaceCall bool
 }
 
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
 // mattermost, msteams, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
-// (CanSource) and cannot receive notifications. The default branch
-// intentionally covers every current notification-sink type, so only data
-// sources need an explicit case.
+// (CanSource) and cannot receive notifications. Twilio additionally carries
+// the two phone capabilities — it is the only connection type that is a
+// bring-your-own SMS *and* voice account. The default branch intentionally
+// covers every current notification-sink type, so only data sources and the
+// phone type need an explicit case.
 //
 //nolint:exhaustive // default branch handles all notification-sink types.
 func CapabilitiesFor(t ConnectionType) Capabilities {
 	switch t {
 	case ConnectionTypeFreebox, ConnectionTypeKubernetes:
 		return Capabilities{CanSource: true}
+	case ConnectionTypeTwilio:
+		return Capabilities{CanNotify: true, CanSendSMS: true, CanPlaceCall: true}
 	default: // all current notification sinks
 		return Capabilities{CanNotify: true}
 	}
@@ -151,6 +162,34 @@ type SlackSettings struct {
 	// integrations get `true` written explicitly by the install flow (see
 	// slack.Service.createOrUpdateConnection).
 	MentionOnCall bool `json:"mention_on_call"`
+	// CommentIngestion selects how inbound Slack thread replies are treated:
+	//
+	//   - SlackCommentIngestionExplicit (default, and the meaning of an empty
+	//     value): only an explicit `/comment` becomes an incident comment.
+	//     Triage chatter in the thread — "lunch?", "who's on call?" — stays
+	//     chatter instead of becoming permanent incident-timeline content.
+	//   - SlackCommentIngestionAll: every human thread reply is ingested, the
+	//     historical behavior, kept for teams that want it.
+	//
+	// Zero value is deliberately the safe one: an integration stored before
+	// this field existed decodes to "" and therefore stops over-capturing,
+	// which is the whole point of the change.
+	CommentIngestion string `json:"comment_ingestion,omitempty"`
+}
+
+// Slack comment-ingestion modes. See SlackSettings.CommentIngestion.
+const (
+	// SlackCommentIngestionExplicit ingests only `/comment` invocations.
+	SlackCommentIngestionExplicit = "explicit"
+	// SlackCommentIngestionAll ingests every human thread reply.
+	SlackCommentIngestionAll = "all"
+)
+
+// IngestsAllThreadReplies reports whether this Slack integration captures
+// every human thread reply as an incident comment. Anything other than an
+// explicit "all" — including an absent value on a pre-existing row — means no.
+func (s *SlackSettings) IngestsAllThreadReplies() bool {
+	return s != nil && s.CommentIngestion == SlackCommentIngestionAll
 }
 
 // ToJSONMap converts SlackSettings to JSONMap for storage.

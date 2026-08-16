@@ -1,9 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
-import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
+import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
+import { useCheckValidationResult, getFieldError } from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
 import { resolveCheckRefLabel } from "@/lib/dependency-graph";
+import {
+  Ipv6CapabilityBadge,
+  ipv6Capability,
+  type Ipv6Capability,
+} from "@/components/shared/ipv6-capability";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +34,7 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LabelInput } from "@/components/shared/label-input";
 import { DocsLink } from "@/components/shared/docs-link";
+import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
 import {
@@ -100,6 +106,7 @@ const checkTypes: { value: CheckType; label: string; description: string; synthe
   { value: "minecraft", label: "Minecraft", description: "Monitor Minecraft servers (Java + Bedrock)" },
   { value: "rabbitmq", label: "RabbitMQ", description: "Check RabbitMQ server health" },
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
+  { value: "prometheus", label: "Prometheus", description: "Alert on Prometheus metric thresholds" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
@@ -116,7 +123,7 @@ function isPassiveType(t: CheckType): boolean {
   return t === "heartbeat" || t === "email";
 }
 
-type PeriodUnit = "minutes" | "hours" | "days" | "weeks";
+export type PeriodUnit = "minutes" | "hours" | "days" | "weeks";
 
 const periodUnits: { value: PeriodUnit; label: string }[] = [
   { value: "minutes", label: "Minutes" },
@@ -125,7 +132,7 @@ const periodUnits: { value: PeriodUnit; label: string }[] = [
   { value: "weeks", label: "Weeks" },
 ];
 
-function parsePeriod(period: string): { value: number; unit: PeriodUnit } {
+export function parsePeriod(period: string): { value: number; unit: PeriodUnit } {
   const [h, m, s] = period.split(":").map(Number);
   const totalSeconds = h * 3600 + m * 60 + s;
   if (totalSeconds % (7 * 86400) === 0) return { value: totalSeconds / (7 * 86400), unit: "weeks" };
@@ -134,7 +141,7 @@ function parsePeriod(period: string): { value: number; unit: PeriodUnit } {
   return { value: Math.max(1, Math.round(totalSeconds / 60)), unit: "minutes" };
 }
 
-function formatPeriod(value: number, unit: PeriodUnit): string {
+export function formatPeriod(value: number, unit: PeriodUnit): string {
   const multipliers = { minutes: 60, hours: 3600, days: 86400, weeks: 604800 };
   const totalSeconds = value * multipliers[unit];
   const h = Math.floor(totalSeconds / 3600);
@@ -143,14 +150,14 @@ function formatPeriod(value: number, unit: PeriodUnit): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function secondsToHMS(seconds: number): string {
+export function secondsToHMS(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function hmsToSeconds(hms: string): number {
+export function hmsToSeconds(hms: string): number {
   const [h, m, s] = hms.split(":").map(Number);
   return h * 3600 + m * 60 + s;
 }
@@ -188,7 +195,7 @@ function parseRegionSpread(hms: string): { value: string; unit: RegionSpreadUnit
   return { value: String(totalSeconds), unit: "seconds" };
 }
 
-function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
+export function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
   const allOptions = [
     { seconds: 5, value: "00:00:05", label: "5 seconds" },
     { seconds: 10, value: "00:00:10", label: "10 seconds" },
@@ -201,6 +208,9 @@ function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: 
     { seconds: 21600, value: "06:00:00", label: "6 hours" },
     { seconds: 43200, value: "12:00:00", label: "12 hours" },
     { seconds: 86400, value: "24:00:00", label: "24 hours" },
+    { seconds: 604800, value: "168:00:00", label: "1 week" },
+    { seconds: 1209600, value: "336:00:00", label: "2 weeks" },
+    { seconds: 2592000, value: "720:00:00", label: "30 days" },
   ];
 
   return allOptions
@@ -563,6 +573,28 @@ export function CheckForm({
         })
       : null;
 
+  // Advertised per-region IPv6 egress (spec 2026-08-15-11). Purely a hint:
+  // when the check is pinned to `ipv6` we surface which regions currently say
+  // they can do it and float those to the top, but every region stays listed,
+  // selectable and submittable — the run-time probe is the authority, and an
+  // "unknown" region may well be capable.
+  const pinnedIpv6 = supportsIpVersion && ipVersion === "ipv6";
+  const orderedRegions = useMemo(() => {
+    const list = availableRegions ?? [];
+
+    if (!pinnedIpv6) {
+      return list;
+    }
+
+    // "yes" first, then "unknown", then "no" — never removing anything. Stable
+    // within each bucket so the picker keeps the server's ordering otherwise.
+    const rank: Record<Ipv6Capability, number> = { yes: 0, unknown: 1, no: 2 };
+
+    return [...list].sort(
+      (a, b) => rank[ipv6Capability(a.capabilities)] - rank[ipv6Capability(b.capabilities)]
+    );
+  }, [availableRegions, pinnedIpv6]);
+
   const activeModule = checkTypeRegistry[type];
   const ActiveFields = activeModule.Fields;
   const authSection = authFieldsRegistry[type];
@@ -611,7 +643,7 @@ export function CheckForm({
     ipVersion,
   ]);
 
-  const fieldErrors = useCheckValidation(
+  const { errors: fieldErrors, warnings: fieldWarnings } = useCheckValidationResult(
     org,
     type,
     currentConfig,
@@ -849,7 +881,7 @@ export function CheckForm({
             <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
             <p className="text-muted-foreground">{subtitle}</p>
           </div>
-          <DocsLink href="/docs/features/check-types" className="ml-auto" />
+          <DocsLink href={docsHrefForType(type)} className="ml-auto" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1063,19 +1095,55 @@ export function CheckForm({
                 <div className="space-y-2">
                   <Label>Regions</Label>
                   <div className="grid grid-cols-2 gap-2">
-                    {availableRegions?.map((region) => (
-                      <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50" data-testid={`region-option-${region.slug}`}>
-                        <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
-                        <span className="text-sm">{region.emoji} {region.name}</span>
-                        {region.private && (
-                          <Badge variant="secondary" className="ml-auto text-[10px]" title="Runs on your own deported agents">
-                            Private
-                          </Badge>
-                        )}
-                      </label>
-                    ))}
+                    {orderedRegions.map((region) => {
+                      const ipv6 = ipv6Capability(region.capabilities);
+                      // De-emphasise only when the check is pinned to ipv6 and
+                      // the region does not advertise it. Never disabled, never
+                      // hidden — the advertised value is a hint, not a gate.
+                      const deemphasised = pinnedIpv6 && ipv6 !== "yes";
+
+                      return (
+                        <label
+                          key={region.slug}
+                          className={cn(
+                            "flex flex-wrap items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50",
+                            deemphasised && "opacity-60"
+                          )}
+                          data-testid={`region-option-${region.slug}`}
+                          data-ipv6={ipv6}
+                        >
+                          <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
+                          <span className="text-sm">{region.emoji} {region.name}</span>
+                          <span className="ml-auto flex items-center gap-1">
+                            {region.private && (
+                              <Badge variant="secondary" className="text-[10px]" title="Runs on your own deported agents">
+                                Private
+                              </Badge>
+                            )}
+                            {/* "yes" is always marked; "no" is always shown so
+                                its absence can never be misread. "unknown" gets
+                                a neutral badge only while ipv6 is pinned, where
+                                the distinction actually matters. */}
+                            <Ipv6CapabilityBadge
+                              capability={ipv6}
+                              hideUnknown={!pinnedIpv6}
+                              className="text-[10px]"
+                              data-testid={`region-ipv6-${region.slug}`}
+                            />
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                   <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
+                  {pinnedIpv6 && (
+                    <p className="text-xs text-muted-foreground" data-testid="regions-ipv6-hint">
+                      {t("form.regionsIpv6Hint", {
+                        defaultValue:
+                          "This check is pinned to IPv6. Regions whose live workers report IPv6 egress are listed first — the others stay selectable, and a region marked “IPv6 unknown” has simply not reported yet.",
+                      })}
+                    </p>
+                  )}
                   {selectedRegions.length > 1 && regionPeriodSeconds > 0 && (
                     <p className="text-xs text-muted-foreground" data-testid="regions-period-hint">
                       {hasRegionSpreadInput && !regionSpreadError
@@ -1414,6 +1482,22 @@ export function CheckForm({
                     <p className="text-xs text-destructive">
                       {getFieldError(fieldErrors, "ipVersion")}
                     </p>
+                  )}
+                  {/* Advisory only (spec 2026-08-15-11): the selected regions
+                      currently report no IPv6 egress. It never blocks submit —
+                      the advertised value lags, and the run-time probe is the
+                      authority. */}
+                  {getFieldError(fieldWarnings, "ipVersion") && (
+                    <Alert
+                      variant="warning"
+                      className="mt-2"
+                      data-testid="check-ip-version-warning"
+                    >
+                      <AlertTriangle />
+                      <AlertDescription>
+                        {getFieldError(fieldWarnings, "ipVersion")}
+                      </AlertDescription>
+                    </Alert>
                   )}
                 </div>
               )}

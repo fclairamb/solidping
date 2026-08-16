@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
+	"github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
 )
@@ -40,7 +41,18 @@ type IncidentAcker interface {
 
 type ctxKey int
 
-const ctxKeyIntegration ctxKey = iota
+const ctxKeyCallback ctxKey = iota
+
+// callbackTarget is what the verified callback middleware hands the handlers:
+// the org the call belongs to, and the `cid` to echo on any follow-up callback
+// URL. It replaces the former *models.Integration because a server-credential
+// send has no per-org integration at all — only the instance configuration.
+type callbackTarget struct {
+	orgUID string
+	// connUID is the org integration's UID for a bring-your-own call, or
+	// sms.InstanceCallbackID for a server-credential one.
+	connUID string
+}
 
 // Handler serves the inbound Twilio callbacks.
 type Handler struct {
@@ -67,18 +79,8 @@ func NewHandler(dbSvc db.Service, creds credentials.Service, cfg *config.Config,
 // us1, ie1, or any other regional account.
 func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
-		cid := req.URL.Query().Get("cid")
-		if cid == "" {
-			return forbidden(writer)
-		}
-
-		conn, err := h.db.GetChannel(req.Context(), cid)
-		if err != nil || conn == nil || conn.Type != models.ConnectionTypeTwilio {
-			return forbidden(writer)
-		}
-
-		settings, err := twilioconn.DecryptSettings(req.Context(), h.creds, conn)
-		if err != nil || settings.AuthToken == "" {
+		target, authToken := h.resolveCallbackCredentials(req)
+		if target == nil || authToken == "" {
 			return forbidden(writer)
 		}
 
@@ -88,21 +90,61 @@ func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 
 		fullURL := strings.TrimRight(h.cfg.Server.BaseURL, "/") + req.URL.RequestURI()
 		signature := req.Header.Get("X-Twilio-Signature")
-		if signature == "" || !twilio.ValidateSignature(settings.AuthToken, fullURL, req.PostForm, signature) {
+		if signature == "" || !twilio.ValidateSignature(authToken, fullURL, req.PostForm, signature) {
 			return forbidden(writer)
 		}
 
-		ctx := context.WithValue(req.Context(), ctxKeyIntegration, conn)
+		ctx := context.WithValue(req.Context(), ctxKeyCallback, target)
 
 		return next(writer, req.WithContext(ctx))
 	}
 }
 
+// resolveCallbackCredentials picks which Twilio auth token validates this
+// request's signature, from the `cid` query parameter:
+//
+//   - the instance sentinel → the instance-level SP_VOICE_TWILIO_AUTH_TOKEN,
+//     with the org taken from `oid`;
+//   - anything else → the named per-org Twilio integration's decrypted token.
+//
+// `oid` is attacker-supplied, but it is inside the signed URL: only a party
+// holding the instance auth token can produce a signature over it, so a forged
+// org id cannot pass this gate.
+//
+// Returns (nil, "") on any failure, which the caller turns into a bare 403.
+func (h *Handler) resolveCallbackCredentials(req *http.Request) (*callbackTarget, string) {
+	cid := req.URL.Query().Get("cid")
+	if cid == "" {
+		return nil, ""
+	}
+
+	if cid == sms.InstanceCallbackID {
+		orgUID := req.URL.Query().Get("oid")
+		if orgUID == "" || !h.cfg.Voice.Active() {
+			return nil, ""
+		}
+
+		return &callbackTarget{orgUID: orgUID, connUID: cid}, h.cfg.Voice.Twilio.AuthToken
+	}
+
+	conn, err := h.db.GetChannel(req.Context(), cid)
+	if err != nil || conn == nil || conn.Type != models.ConnectionTypeTwilio {
+		return nil, ""
+	}
+
+	settings, err := twilioconn.DecryptSettings(req.Context(), h.creds, conn)
+	if err != nil || settings.AuthToken == "" {
+		return nil, ""
+	}
+
+	return &callbackTarget{orgUID: conn.OrganizationUID, connUID: conn.UID}, settings.AuthToken
+}
+
 // HandleVoice answers an outbound alert call with TwiML: it reads the incident
 // aloud and gathers a DTMF digit to acknowledge.
 func (h *Handler) HandleVoice(writer http.ResponseWriter, req *http.Request) error {
-	conn := integrationFromContext(req.Context())
-	if conn == nil {
+	target := callbackTargetFromContext(req.Context())
+	if target == nil {
 		return forbidden(writer)
 	}
 
@@ -114,17 +156,17 @@ func (h *Handler) HandleVoice(writer http.ResponseWriter, req *http.Request) err
 		return h.writeTwiML(writer, sayHangup("This alert can no longer be acknowledged. Goodbye."))
 	}
 
-	checkName := h.checkNameFor(req.Context(), conn.OrganizationUID, payload.IncidentUID)
+	checkName := h.checkNameFor(req.Context(), target.orgUID, payload.IncidentUID)
 	say := fmt.Sprintf("SolidPing alert. %s is down. Again: %s is down.", checkName, checkName)
 
-	return h.writeTwiML(writer, voiceGatherTwiML(say, h.gatherActionURL(conn.UID, iid, token)))
+	return h.writeTwiML(writer, voiceGatherTwiML(say, h.gatherActionURL(target, iid, token)))
 }
 
 // HandleGather processes the DTMF digit: 4 acknowledges the incident, anything
 // else re-prompts.
 func (h *Handler) HandleGather(writer http.ResponseWriter, req *http.Request) error {
-	conn := integrationFromContext(req.Context())
-	if conn == nil {
+	target := callbackTargetFromContext(req.Context())
+	if target == nil {
 		return forbidden(writer)
 	}
 
@@ -139,7 +181,7 @@ func (h *Handler) HandleGather(writer http.ResponseWriter, req *http.Request) er
 	if req.PostForm.Get("Digits") == "4" {
 		from := req.PostForm.Get("From")
 		if _, ackErr := h.acker.AcknowledgeIncidentFromPhone(
-			req.Context(), conn.OrganizationUID, payload.IncidentUID, from,
+			req.Context(), target.orgUID, payload.IncidentUID, from,
 		); ackErr != nil {
 			return h.writeTwiML(writer, sayHangup("Sorry, we could not acknowledge the incident. Goodbye."))
 		}
@@ -149,15 +191,15 @@ func (h *Handler) HandleGather(writer http.ResponseWriter, req *http.Request) er
 
 	return h.writeTwiML(writer, voiceGatherTwiML(
 		"Sorry, I did not get that. Press 4 to acknowledge.",
-		h.gatherActionURL(conn.UID, iid, token),
+		h.gatherActionURL(target, iid, token),
 	))
 }
 
 // HandleStatus records an SMS/call delivery-status update on the matching
 // notification audit row.
 func (h *Handler) HandleStatus(writer http.ResponseWriter, req *http.Request) error {
-	conn := integrationFromContext(req.Context())
-	if conn == nil {
+	target := callbackTargetFromContext(req.Context())
+	if target == nil {
 		return forbidden(writer)
 	}
 
@@ -173,7 +215,7 @@ func (h *Handler) HandleStatus(writer http.ResponseWriter, req *http.Request) er
 
 	if sid != "" && status != "" {
 		details := &models.DeliveryDetails{ResponseBody: "twilio status: " + status}
-		_ = h.db.UpdateIncidentNotificationDeliveryByMessageID(req.Context(), conn.OrganizationUID, sid, details)
+		_ = h.db.UpdateIncidentNotificationDeliveryByMessageID(req.Context(), target.orgUID, sid, details)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -197,11 +239,14 @@ func (h *Handler) checkNameFor(ctx context.Context, orgUID, incidentUID string) 
 	return "a monitored service"
 }
 
-// gatherActionURL builds the signed callback URL the <Gather> posts the DTMF to.
-func (h *Handler) gatherActionURL(connUID, iid, token string) string {
-	return fmt.Sprintf("%s/api/v1/integrations/twilio/voice/gather?cid=%s&iid=%s&token=%s",
+// gatherActionURL builds the signed callback URL the <Gather> posts the DTMF
+// to. It echoes back the same cid/oid pair the inbound request carried, so the
+// second hop re-authenticates against the same credentials as the first.
+func (h *Handler) gatherActionURL(target *callbackTarget, iid, token string) string {
+	return fmt.Sprintf("%s/api/v1/integrations/twilio/voice/gather?cid=%s&oid=%s&iid=%s&token=%s",
 		strings.TrimRight(h.cfg.Server.BaseURL, "/"),
-		url.QueryEscape(connUID), url.QueryEscape(iid), url.QueryEscape(token))
+		url.QueryEscape(target.connUID), url.QueryEscape(target.orgUID),
+		url.QueryEscape(iid), url.QueryEscape(token))
 }
 
 func (h *Handler) writeTwiML(writer http.ResponseWriter, body string) error {
@@ -212,10 +257,10 @@ func (h *Handler) writeTwiML(writer http.ResponseWriter, body string) error {
 	return nil
 }
 
-func integrationFromContext(ctx context.Context) *models.Integration {
-	conn, _ := ctx.Value(ctxKeyIntegration).(*models.Integration)
+func callbackTargetFromContext(ctx context.Context) *callbackTarget {
+	target, _ := ctx.Value(ctxKeyCallback).(*callbackTarget)
 
-	return conn
+	return target
 }
 
 func forbidden(writer http.ResponseWriter) error {
