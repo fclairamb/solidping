@@ -55,7 +55,12 @@ import {
 import { clickhouseModule } from "./clickhouse";
 import { grpcModule, kafkaModule, mqttModule } from "./messaging";
 import { a2sModule, minecraftModule } from "./game";
-import { snmpModule, dockerModule, freeboxLineModule } from "./infra";
+import {
+  snmpModule,
+  dockerModule,
+  freeboxLineModule,
+  prometheusModule,
+} from "./infra";
 import {
   sslModule,
   ntpModule,
@@ -99,6 +104,7 @@ const modules: CheckTypeModule[] = [
   entry(a2sModule),
   entry(minecraftModule),
   entry(snmpModule),
+  entry(prometheusModule),
   entry(dockerModule),
   entry(freeboxLineModule),
   entry(sslModule),

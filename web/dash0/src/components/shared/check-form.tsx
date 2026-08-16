@@ -106,6 +106,7 @@ const checkTypes: { value: CheckType; label: string; description: string; synthe
   { value: "minecraft", label: "Minecraft", description: "Monitor Minecraft servers (Java + Bedrock)" },
   { value: "rabbitmq", label: "RabbitMQ", description: "Check RabbitMQ server health" },
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
+  { value: "prometheus", label: "Prometheus", description: "Alert on Prometheus metric thresholds" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
