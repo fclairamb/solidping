@@ -52,6 +52,21 @@
     "expiryNone": "Kein Ablauf"
   },
   "security": {
+    "password": {
+      "title": "Passwort ändern",
+      "setTitle": "Passwort festlegen",
+      "subtitle": "Ändern Sie das Passwort für Ihre Anmeldung. Ihre anderen Sitzungen werden abgemeldet.",
+      "setSubtitle": "Dieses Konto meldet sich derzeit über einen Identitätsanbieter an. Legen Sie ein Passwort fest, um sich auch direkt anzumelden.",
+      "current": "Aktuelles Passwort",
+      "new": "Neues Passwort",
+      "confirm": "Neues Passwort bestätigen",
+      "submit": "Passwort ändern",
+      "setSubmit": "Passwort festlegen",
+      "changed": "Passwort aktualisiert.",
+      "mismatch": "Die beiden neuen Passwörter stimmen nicht überein.",
+      "tooShort": "Das Passwort muss mindestens {{min}} Zeichen lang sein.",
+      "invalidCurrent": "Das ist nicht Ihr aktuelles Passwort."
+    },
     "passkeys": {
       "title": "Passkeys",
       "subtitle": "Sign in without a password using your device or a hardware key.",
