@@ -422,9 +422,12 @@ func TestBucketAvailability_ClampKeepsTiersDisjoint(t *testing.T) {
 // of the clamp: raw rows older than RetentionRaw only survive thanks to
 // rawClampMargin, and their presence means the aggregation job is behind. That
 // is logged (and the data still returned) rather than absorbed silently.
+//
+// running concurrently with another test doing the same would corrupt both
+// captured buffers (see the sibling tests below, same reasoning).
+//
+//nolint:paralleltest // swaps the process-wide slog default (global state);
 func TestBucketAvailability_WarnsWhenAggregationLags(t *testing.T) {
-	t.Parallel()
-
 	r := require.New(t)
 
 	var logBuf bytes.Buffer
@@ -459,9 +462,11 @@ func TestBucketAvailability_WarnsWhenAggregationLags(t *testing.T) {
 // TestBucketAvailability_NoWarningWhenAggregationHealthy is the positive control
 // for the test above: with every raw row inside the retention band, the lagging
 // warning must NOT fire (otherwise the assertion above would pass on any input).
+//
+// TestBucketAvailability_WarnsWhenAggregationLags.
+//
+//nolint:paralleltest // swaps the process-wide slog default; see
 func TestBucketAvailability_NoWarningWhenAggregationHealthy(t *testing.T) {
-	t.Parallel()
-
 	r := require.New(t)
 
 	var logBuf bytes.Buffer
@@ -614,9 +619,11 @@ func TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks(t *testing.T) {
 // "generous cap + log + return partial" shape as the Slack client's
 // pagination cap (see internal/integrations/slack/client.go's paginate and
 // TestListChannelsStopsAtPageCap in client_test.go).
+//
+// TestBucketAvailability_WarnsWhenAggregationLags.
+//
+//nolint:paralleltest // swaps the process-wide slog default; see
 func TestBucketAvailability_SafetyCapEngagesAndWarns(t *testing.T) {
-	t.Parallel()
-
 	r := require.New(t)
 
 	// Capture slog output for the duration of this test so the warning can be
