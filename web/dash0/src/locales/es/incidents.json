@@ -84,6 +84,7 @@
     "relapseCount": "Número de recaídas",
     "descriptionLabel": "Descripción",
     "checkLabel": "Comprobación",
+    "state": "Estado",
     "checkTypeLabel": "Tipo de comprobación",
     "totalDuration": "Duración total",
     "ongoing": "(en curso)",
@@ -141,6 +142,8 @@
     "blastRadiusFooter": "Se enviarán notificaciones para cualquier hijo que siga caído cuando este incidente se resuelva.",
     "blastRadiusEmpty": "Ningún incidente hijo está actualmente agrupado bajo este.",
     "rolledUpBadge": "agrupado",
+    "pagingColumn": "Notificación",
+    "checkLink": "Abrir comprobación",
     "showRolledUp": "Mostrar incidentes agrupados",
     "pagingSuppressed": "notificaciones suprimidas",
     "rolledUpInactive": "agrupado"

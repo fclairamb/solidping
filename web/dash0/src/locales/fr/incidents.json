@@ -84,6 +84,7 @@
     "relapseCount": "Nombre de rechutes",
     "descriptionLabel": "Description",
     "checkLabel": "Contrôle",
+    "state": "État",
     "checkTypeLabel": "Type de contrôle",
     "totalDuration": "Durée totale",
     "ongoing": "(en cours)",
@@ -141,6 +142,8 @@
     "blastRadiusFooter": "Les notifications seront émises pour tout enfant encore en panne à la résolution de cet incident.",
     "blastRadiusEmpty": "Aucun incident enfant n'est actuellement regroupé sous celui-ci.",
     "rolledUpBadge": "regroupé",
+    "pagingColumn": "Notifications",
+    "checkLink": "Ouvrir le contrôle",
     "showRolledUp": "Afficher les incidents regroupés",
     "pagingSuppressed": "notifications suspendues",
     "rolledUpInactive": "regroupé"

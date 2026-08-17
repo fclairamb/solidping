@@ -84,6 +84,7 @@
     "relapseCount": "Anzahl Rückfälle",
     "descriptionLabel": "Beschreibung",
     "checkLabel": "Prüfung",
+    "state": "Status",
     "checkTypeLabel": "Prüfungstyp",
     "totalDuration": "Gesamtdauer",
     "ongoing": "(läuft noch)",
@@ -141,6 +142,8 @@
     "blastRadiusFooter": "Benachrichtigungen werden für jedes Kind ausgelöst, das beim Auflösen dieses Vorfalls noch ausgefallen ist.",
     "blastRadiusEmpty": "Aktuell sind keine Kind-Vorfälle unter diesem zusammengefasst.",
     "rolledUpBadge": "zusammengefasst",
+    "pagingColumn": "Benachrichtigung",
+    "checkLink": "Prüfung öffnen",
     "showRolledUp": "Zusammengefasste Vorfälle anzeigen",
     "pagingSuppressed": "Benachrichtigung unterdrückt",
     "rolledUpInactive": "zusammengefasst"

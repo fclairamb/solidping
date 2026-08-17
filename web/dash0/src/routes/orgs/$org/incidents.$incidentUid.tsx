@@ -1271,40 +1271,60 @@ function BlastRadiusCard({
           <TableHeader>
             <TableRow>
               <TableHead>{t("detail.checkLabel")}</TableHead>
-              <TableHead>{t("detail.state", { defaultValue: "State" })}</TableHead>
-              <TableHead>{t("rollup.rolledUpBadge")}</TableHead>
-              <TableHead />
+              <TableHead className="whitespace-nowrap">{t("detail.state")}</TableHead>
+              <TableHead className="whitespace-nowrap">{t("rollup.pagingColumn")}</TableHead>
+              <TableHead className="whitespace-nowrap px-2">
+                <span className="sr-only">{t("rollup.checkLink")}</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((child) => (
-              <TableRow key={child.uid}>
-                <TableCell>
-                  {child.checkName || child.checkSlug || child.checkUid}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={child.state === "active" ? "destructive" : "secondary"}>
-                    {child.state === "active" ? t("active") : t("resolved")}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {child.pagingSuppressed && (
-                    <Badge variant="outline">{t("rollup.rolledUpBadge")}</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {child.uid && (
-                    <Link
-                      to="/orgs/$org/incidents/$incidentUid"
-                      params={{ org, incidentUid: child.uid }}
-                      className="text-primary hover:underline"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+            {items.map((child) => {
+              const displayName = child.checkName || child.checkSlug || child.checkUid;
+              return (
+                <TableRow key={child.uid}>
+                  <TableCell className="max-w-0">
+                    {child.uid ? (
+                      <Link
+                        to="/orgs/$org/incidents/$incidentUid"
+                        params={{ org, incidentUid: child.uid }}
+                        title={displayName}
+                        className="block truncate font-medium text-primary hover:underline"
+                      >
+                        {displayName}
+                      </Link>
+                    ) : (
+                      <span title={displayName} className="block truncate font-medium">
+                        {displayName}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <Badge variant={child.state === "active" ? "destructive" : "secondary"}>
+                      {child.state === "active" ? t("active") : t("resolved")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {child.pagingSuppressed && (
+                      <Badge variant="outline">{t("rollup.rolledUpBadge")}</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap px-2 text-right">
+                    {child.checkUid && (
+                      <Link
+                        to="/orgs/$org/checks/$checkUid"
+                        params={{ org, checkUid: child.checkUid }}
+                        search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
+                        aria-label={t("rollup.checkLink")}
+                        className="inline-flex text-muted-foreground hover:text-foreground"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
         <p className="mt-3 text-xs text-muted-foreground">

@@ -84,6 +84,7 @@
     "relapseCount": "Relapse count",
     "descriptionLabel": "Description",
     "checkLabel": "Check",
+    "state": "State",
     "checkTypeLabel": "Check Type",
     "totalDuration": "Total Duration",
     "ongoing": "(ongoing)",
@@ -141,6 +142,8 @@
     "blastRadiusFooter": "Paging will fire on any child still down when this incident resolves.",
     "blastRadiusEmpty": "No child incidents currently rolled up under this one.",
     "rolledUpBadge": "rolled up",
+    "pagingColumn": "Paging",
+    "checkLink": "Open check",
     "showRolledUp": "Show rolled-up incidents",
     "pagingSuppressed": "paging suppressed",
     "rolledUpInactive": "rolled up"
