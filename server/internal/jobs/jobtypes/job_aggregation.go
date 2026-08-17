@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -346,24 +347,20 @@ func measurableSourceUIDs(results []*models.Result) []string {
 // each run is what lets a server "Aggregation" settings edit take effect on the
 // next scheduled run without a restart. The historical 1/1/1 fallback is gone.
 func retentionFromConfig(ctx context.Context, jctx *jobdef.JobContext) (int, int, int) {
-	legacyRaw, legacyHour, legacyDay := 0, 0, 0
-	if jctx != nil && jctx.AppConfig != nil {
-		legacyRaw = jctx.AppConfig.Aggregation.RetentionRaw
-		legacyHour = jctx.AppConfig.Aggregation.RetentionHour
-		legacyDay = jctx.AppConfig.Aggregation.RetentionDay
+	var (
+		dbSvc systemconfig.RetentionParameterReader
+		cfg   *config.Config
+	)
+
+	if jctx != nil {
+		if jctx.DBService != nil {
+			dbSvc = jctx.DBService
+		}
+
+		cfg = jctx.AppConfig
 	}
 
-	rawHours := resolveRetentionTier(ctx, jctx,
-		systemconfig.KeyPerfAggRetentionRawHours, "SP_PERFORMANCE_AGGREGATION_RETENTION_RAW_HOURS",
-		legacyRaw, defaultRetentionRawHours)
-	hourDays := resolveRetentionTier(ctx, jctx,
-		systemconfig.KeyPerfAggRetentionHourDays, "SP_PERFORMANCE_AGGREGATION_RETENTION_HOUR_DAYS",
-		legacyHour, defaultRetentionHourDays)
-	dayMonths := resolveRetentionTier(ctx, jctx,
-		systemconfig.KeyPerfAggRetentionDayMonths, "SP_PERFORMANCE_AGGREGATION_RETENTION_DAY_MONTHS",
-		legacyDay, defaultRetentionDayMonths)
-
-	return rawHours, hourDays, dayMonths
+	return systemconfig.ResolveAggregationRetention(ctx, dbSvc, cfg)
 }
 
 // resolveRetentionTier resolves a single retention tier through the documented

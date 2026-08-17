@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -406,16 +407,20 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 	}
 }
 
-// retentionHints returns the org's configured raw/hour retention (hours of
-// raw kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
-// uptimebar.BucketAvailability treats as "use the documented defaults" when
-// sizing its safety cap.
-func (s *Service) retentionHints() (int, int) {
-	if s.cfg == nil {
-		return 0, 0
-	}
+// retentionHints returns the live raw/hour aggregation retention (hours of raw
+// kept / days of hourly rollups kept), resolved with the same precedence as the
+// aggregation job itself — env > performance.* global parameter > legacy koanf
+// field > documented default (systemconfig.ResolveAggregationRetention).
+//
+// It must NOT read the koanf config alone: the server "Aggregation" settings tab
+// writes the performance.* parameters, which never reach the koanf struct, so a
+// stale hint would make uptimebar clamp its raw-tier query shorter than the
+// window the job actually keeps raw for — silently dropping raw rows no rollup
+// covers yet.
+func (s *Service) retentionHints(ctx context.Context) (int, int) {
+	rawHours, hourDays, _ := systemconfig.ResolveAggregationRetention(ctx, s.db, s.cfg)
 
-	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
+	return rawHours, hourDays
 }
 
 // --- Response types ---
@@ -1908,7 +1913,7 @@ func (s *Service) enrichWithAvailability(
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	historyStart := todayStart.AddDate(0, 0, -(page.HistoryDays - 1))
 
-	retentionRawHours, retentionHourDays := s.retentionHints()
+	retentionRawHours, retentionHourDays := s.retentionHints(ctx)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, 24*time.Hour, historyStart, page.HistoryDays,
@@ -2035,7 +2040,7 @@ func (s *Service) enrichHourly(
 	// 23 hours earlier. -(n-1) keeps the current hour inside the window.
 	bucketStart := now.Truncate(time.Hour).Add(-time.Duration(hourlyBucketCount-1) * time.Hour)
 
-	retentionRawHours, retentionHourDays := s.retentionHints()
+	retentionRawHours, retentionHourDays := s.retentionHints(ctx)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, time.Hour, bucketStart, hourlyBucketCount,

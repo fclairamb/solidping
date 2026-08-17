@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -60,17 +61,20 @@ func NewService(dbService db.Service, cfg *config.Config) *Service {
 	return &Service{db: dbService, cfg: cfg}
 }
 
-// retentionHints returns the org's configured raw/hour retention (hours of raw
-// kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
-// uptimebar.WindowAvailability treats as "use the documented defaults" when
-// clamping the raw tier and sizing its safety caps. Mirrors the identically
-// named helpers in the badges and statuspages services.
-func (s *Service) retentionHints() (int, int) {
-	if s.cfg == nil {
-		return 0, 0
-	}
+// retentionHints returns the live raw/hour aggregation retention (hours of raw
+// kept / days of hourly rollups kept), resolved with the same precedence as the
+// aggregation job itself — env > performance.* global parameter > legacy koanf
+// field > documented default (systemconfig.ResolveAggregationRetention).
+//
+// It must NOT read the koanf config alone: the server "Aggregation" settings tab
+// writes the performance.* parameters, which never reach the koanf struct, so a
+// stale hint would make uptimebar clamp its raw-tier query shorter than the
+// window the job actually keeps raw for — silently dropping raw rows no rollup
+// covers yet.
+func (s *Service) retentionHints(ctx context.Context) (int, int) {
+	rawHours, hourDays, _ := systemconfig.ResolveAggregationRetention(ctx, s.db, s.cfg)
 
-	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
+	return rawHours, hourDays
 }
 
 // PeriodIncidents is the confirmed-outage (wall-clock) block for one window —
@@ -166,7 +170,7 @@ func (s *Service) computePeriod(
 ) (Period, error) {
 	monitored := monitoredDuration(window, check.CreatedAt.UTC(), now)
 
-	retentionRawHours, retentionHourDays := s.retentionHints()
+	retentionRawHours, retentionHourDays := s.retentionHints(ctx)
 
 	stats, err := uptimebar.WindowAvailability(
 		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end,
