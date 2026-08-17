@@ -385,6 +385,128 @@ func TestListStaleSystemAgentsExcludesOrgAgents(t *testing.T) {
 	r.Len(survivors, 1, "RetireSystemAgent must never touch a customer's agent")
 }
 
+// TestListPurgeableRevokedAgents backs the agent_gc purge pass at the query
+// level (spec 2026-08-16-03): only a revoked row past the cutoff is
+// purgeable, regardless of kind, last_seen_at, or how the caller reaches the
+// revocation timestamp.
+func TestListPurgeableRevokedAgents(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, orgUID := newAgentTestService(t)
+	ctx := t.Context()
+
+	cutoff := time.Now().Add(-48 * time.Hour)
+	threeDaysAgo := time.Now().Add(-72 * time.Hour)
+	oneHourAgo := time.Now().Add(-time.Hour)
+	oneMinuteAgo := time.Now().Add(-time.Minute)
+
+	// Revoked well past the cutoff — org kind — must be returned.
+	pastCutoffOrg := models.NewAgent(orgUID, "@agt-org/dc1", "past-cutoff-org", "ed1", "age1a", "fp1")
+	pastCutoffOrg.Status = models.AgentStatusRevoked
+	pastCutoffOrg.RevokedAt = &threeDaysAgo
+	insertAgent(t, svc, pastCutoffOrg)
+
+	// Revoked well past the cutoff — system kind — must be returned too: kind
+	// is irrelevant to purge eligibility, only revocation age is.
+	pastCutoffSystem := models.NewSystemAgent("eu-west-1", "past-cutoff-system", "ed2", "age1b", "fp2")
+	pastCutoffSystem.Status = models.AgentStatusRevoked
+	pastCutoffSystem.RevokedAt = &threeDaysAgo
+	insertAgent(t, svc, pastCutoffSystem)
+
+	// Revoked 3 days ago but last seen a minute ago — the positive control:
+	// the clock is revoked_at, not last_seen_at, so this must still be
+	// returned despite looking "fresh" by last-seen.
+	revokedButFreshlySeen := models.NewAgent(orgUID, "@agt-org/dc1", "revoked-fresh-seen", "ed3", "age1c", "fp3")
+	revokedButFreshlySeen.Status = models.AgentStatusRevoked
+	revokedButFreshlySeen.RevokedAt = &threeDaysAgo
+	revokedButFreshlySeen.LastSeenAt = &oneMinuteAgo
+	insertAgent(t, svc, revokedButFreshlySeen)
+
+	// Revoked row with a NULL revoked_at (legacy/inconsistent data) but an old
+	// updated_at — must be caught by the COALESCE fallback.
+	nullRevokedAt := models.NewAgent(orgUID, "@agt-org/dc1", "null-revoked-at", "ed4", "age1d", "fp4")
+	nullRevokedAt.Status = models.AgentStatusRevoked
+	nullRevokedAt.RevokedAt = nil
+	nullRevokedAt.UpdatedAt = threeDaysAgo
+	insertAgent(t, svc, nullRevokedAt)
+
+	// Revoked inside the window — must NOT be returned.
+	insideWindow := models.NewAgent(orgUID, "@agt-org/dc1", "inside-window", "ed5", "age1e", "fp5")
+	insideWindow.Status = models.AgentStatusRevoked
+	insideWindow.RevokedAt = &oneHourAgo
+	insertAgent(t, svc, insideWindow)
+
+	// Active, however old — negative control: status gates eligibility.
+	activeAgent := models.NewAgent(orgUID, "@agt-org/dc1", "still-active", "ed6", "age1f", "fp6")
+	activeAgent.EnrolledAt = threeDaysAgo
+	insertAgent(t, svc, activeAgent)
+
+	// Already deleted — must NOT resurface.
+	alreadyDeleted := models.NewAgent(orgUID, "@agt-org/dc1", "already-deleted", "ed7", "age1g", "fp7")
+	alreadyDeleted.Status = models.AgentStatusRevoked
+	alreadyDeleted.RevokedAt = &threeDaysAgo
+	alreadyDeleted.DeletedAt = &threeDaysAgo
+	insertAgent(t, svc, alreadyDeleted)
+
+	purgeable, err := svc.ListPurgeableRevokedAgents(ctx, cutoff)
+	r.NoError(err)
+
+	gotUIDs := make(map[string]bool, len(purgeable))
+	for _, a := range purgeable {
+		gotUIDs[a.UID] = true
+	}
+
+	r.True(gotUIDs[pastCutoffOrg.UID], "an org agent revoked past the cutoff must be purgeable")
+	r.True(gotUIDs[pastCutoffSystem.UID], "a system agent revoked past the cutoff must be purgeable")
+	r.True(gotUIDs[revokedButFreshlySeen.UID], "the clock is revoked_at, not last_seen_at")
+	r.True(gotUIDs[nullRevokedAt.UID], "a NULL revoked_at must fall back to updated_at")
+	r.False(gotUIDs[insideWindow.UID], "a revoked agent inside the window must not be purgeable")
+	r.False(gotUIDs[activeAgent.UID], "an active agent must never be purgeable")
+	r.False(gotUIDs[alreadyDeleted.UID], "an already-deleted row must not resurface")
+	r.Len(purgeable, 4)
+}
+
+// TestPurgeAgentIsScopedToRevoked backs the DB-layer guard: PurgeAgent is a
+// no-op on an active agent (negative control) and actually soft-deletes a
+// revoked one.
+func TestPurgeAgentIsScopedToRevoked(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, orgUID := newAgentTestService(t)
+	ctx := t.Context()
+
+	active := models.NewAgent(orgUID, "@agt-org/dc1", "active-agent", "ed1", "age1a", "fp1")
+	insertAgent(t, svc, active)
+
+	r.NoError(svc.PurgeAgent(ctx, active.UID))
+
+	still, err := svc.GetAgent(ctx, active.UID)
+	r.NoError(err, "PurgeAgent must be a no-op on an active agent")
+	r.Equal(models.AgentStatusActive, still.Status)
+
+	revokedAt := time.Now().Add(-time.Hour)
+	revoked := models.NewAgent(orgUID, "@agt-org/dc1", "revoked-agent", "ed2", "age1b", "fp2")
+	revoked.Status = models.AgentStatusRevoked
+	revoked.RevokedAt = &revokedAt
+	insertAgent(t, svc, revoked)
+
+	r.NoError(svc.PurgeAgent(ctx, revoked.UID))
+
+	_, err = svc.GetAgent(ctx, revoked.UID)
+	r.Error(err, "a revoked agent must be purged (soft-deleted)")
+}
+
+// insertAgent writes an agent row directly, bypassing the enrollment-token
+// flow these tests don't need.
+func insertAgent(t *testing.T, svc *Service, agent *models.Agent) {
+	t.Helper()
+
+	_, err := svc.db.NewInsert().Model(agent).Exec(t.Context())
+	require.NoError(t, err)
+}
+
 // TestAgentNonceStoreIsAReplayGuard covers the shared store's contract: a
 // consumed (agent, nonce) pair is refused inside the window, forgotten outside
 // it, and prunable.
