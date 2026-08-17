@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -35,6 +37,10 @@ var (
 const (
 	// maxPeriods caps how many periods one request may ask for.
 	maxPeriods = 12
+	// maxConcurrentPeriods bounds the fan-out of per-window computations. periods
+	// is caller-controlled (up to maxPeriods), so this keeps one HTTP request from
+	// opening an unbounded number of simultaneous DB connections.
+	maxConcurrentPeriods = 6
 	// maxLookbackYears is a pure input-sanity bound, not a data horizon: the
 	// uptimebar union includes the month tier, which is terminal (never rolled
 	// further, never deleted), so any lookback is answerable regardless of the
@@ -148,7 +154,7 @@ func (s *Service) GetAvailability(
 		return nil, ErrCheckNotFound
 	}
 
-	periods := make([]Period, 0, len(windows))
+	periods := make([]Period, len(windows))
 
 	// Resolved ONCE for the whole request: every window shares the same org, so
 	// re-resolving per window would multiply the parameter/probe-rate lookups by
@@ -156,13 +162,29 @@ func (s *Service) GetAvailability(
 	// spec whose whole point is removing per-request latency.
 	hints := s.uptimebarHints(ctx, org.UID)
 
-	for i := range windows {
-		row, periodErr := s.computePeriod(ctx, org.UID, check, windows[i], now, hints)
-		if periodErr != nil {
-			return nil, periodErr
-		}
+	// The windows are independent — each computePeriod only reads org.UID, check
+	// and its own window, and writes only its own slot. Fan them out concurrently
+	// so the request costs the slowest window instead of their sum, bounded so a
+	// caller-controlled period count can't open unbounded DB connections. Written
+	// by index (never appended) so the response stays in the requested order.
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrentPeriods)
 
-		periods = append(periods, row)
+	for i := range windows {
+		g.Go(func() error {
+			row, periodErr := s.computePeriod(gctx, org.UID, check, windows[i], now, hints)
+			if periodErr != nil {
+				return periodErr
+			}
+
+			periods[i] = row
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	return &ListAvailabilityResponse{Data: periods}, nil
