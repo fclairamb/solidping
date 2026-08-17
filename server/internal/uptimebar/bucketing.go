@@ -123,30 +123,93 @@ func (b *BucketStats) accumulateAgg(result *models.Result) {
 	}
 }
 
-// Defaults used by safetyRowCap when the caller doesn't have a real retention
-// config to hand (e.g. the MCP handler passes cfg=nil, or a test exercising the
-// bucketing logic in isolation). These are a deliberately generous upper bound
-// for the row cap, not the tightened live defaults (jobtypes' 24/7/2) — a wider
-// cap only ever admits more rows, never truncates, which is the safe direction
-// for a fallback. Never used on the normal production call path, which always
-// passes the org's actual configured retention.
+// Defaults used by the row caps and the raw clamp when the caller doesn't have a
+// real retention config to hand (e.g. the MCP handler passes cfg=nil, or a test
+// exercising the bucketing logic in isolation). RetentionHour is deliberately a
+// generous upper bound for the row cap, not the tightened live default
+// (jobtypes' 7 days) — a wider cap only ever admits more rows, never truncates,
+// which is the safe direction for a fallback. RetentionRaw, by contrast, must
+// match the live default (24 h) because it also bounds the raw CLAMP, where too
+// wide is as wrong as too narrow. Never used on the normal production call path,
+// which always passes the org's actual configured retention (see
+// systemconfig.ResolveAggregationRetention).
 const (
 	defaultRetentionRawHours = 24
 	defaultRetentionHourDays = 30
 )
 
-// capMaxRegionsPerCheck generously bounds the number of distinct regions
-// safetyRowCap assumes per check when sizing the query's row cap. Real
+// capMaxRegionsPerCheck generously bounds the number of distinct regions the row
+// caps assume per check when the caller supplies no measured probe rate. Real
 // deployments run a handful of regions (2-5 is typical for a multi-region
 // check); this is padded well past that so the cap never bites under any
 // realistic multi-region topology — it only engages when retention is
 // misconfigured or the aggregation job has been unhealthy for a long stretch.
 const capMaxRegionsPerCheck = 20
 
-// capSafetyMargin pads safetyRowCap's computed bound to absorb rounding and
-// tier-boundary edge cases (e.g. a bucket that straddles the raw/hour
-// boundary while the aggregation job is mid-rollup).
+// capSafetyMargin pads a computed row cap to absorb rounding and tier-boundary
+// edge cases (e.g. a bucket that straddles the raw/hour boundary while the
+// aggregation job is mid-rollup).
 const capSafetyMargin = 500
+
+// capRateHeadroom multiplies the caller's MEASURED raw row rate when that rate
+// is available. It absorbs everything the measurement cannot see: internal
+// (system-created) checks, which ListOrgCheckRates excludes; rows still inside
+// the retention window that belong to a check deleted since; and a check whose
+// period was shortened after the older rows were written. Four times the org's
+// entire configured probe rate is far past any of those, while still being one
+// to two orders of magnitude below the unmeasured worst case — which is the
+// whole point: the cap must be a real guard, not a formality (spec
+// 2026-08-17-03 §4).
+const capRateHeadroom = 4
+
+// Hints size uptimebar's raw clamp and its two per-tier safety row caps. The
+// zero value is valid everywhere and means "use the documented defaults and the
+// conservative unmeasured worst case".
+//
+// Callers resolve these ONCE per request (see each service's uptimebarHints):
+// RetentionRaw/RetentionHour must come from systemconfig.ResolveAggregationRetention
+// so the reader agrees with the aggregation job about how much raw exists, and
+// RawRowsPerHour is the org's measured probe rate, which is what lets the raw cap
+// be sized from reality instead of from the platform's theoretical maximum.
+type Hints struct {
+	// RetentionRawHours is Aggregation.RetentionRaw — hours of raw kept before
+	// it is rolled up and deleted. 0 = documented default (24).
+	RetentionRawHours int
+	// RetentionHourDays is Aggregation.RetentionHour — days of hourly rollups
+	// kept. 0 = documented default.
+	RetentionHourDays int
+	// RawRowsPerHour is the number of raw rows the org's checks can produce per
+	// hour, measured from their configured periods and region counts (see
+	// RawRowsPerHour). 0 = unknown, fall back to the worst case. It is an
+	// org-wide figure and therefore a valid upper bound for any subset of the
+	// org's checks.
+	RawRowsPerHour int
+}
+
+// RawRowsPerHour sums the raw rows per hour the given checks can produce:
+// (3600s / period) × max(1, regions) each, since a multi-region check executes
+// once per region per period. Mirrors entitlements.Usage's checks-per-minute
+// formula. Disabled checks are counted too — they stop producing rows but the
+// ones they already wrote stay queryable until retention expires them.
+func RawRowsPerHour(rates []models.CheckRate) int {
+	total := 0
+
+	for i := range rates {
+		period := time.Duration(rates[i].Period)
+		if period <= 0 {
+			continue
+		}
+
+		regions := len(rates[i].Regions)
+		if regions < 1 {
+			regions = 1
+		}
+
+		total += int(time.Hour/period) * regions
+	}
+
+	return total
+}
 
 // rawClampMargin pads the raw tier's lower bound past RetentionRaw to absorb
 // aggregation lag: a bucket whose rollup hasn't run yet must still be readable
@@ -225,30 +288,59 @@ func windowDayCount(windowSpan time.Duration) int {
 	return days
 }
 
-// rawRowCap bounds the RAW tier's query. Per check-region the raw tier can only
-// hold min(window, RetentionRaw+margin) hours of rows at the platform's fastest
-// allowed check period (checkerdef.GlobalMinPeriod); that is padded by a
-// generous per-check region count and multiplied by the number of checks in the
-// batch. Sizing it to its own tier — rather than to the sum of all tiers, which
-// produced a functionally unbounded LIMIT 884300 on the observed request — is
-// what makes the cap an actual guard (spec 2026-08-17-03 §4).
-func rawRowCap(checkCount int, windowSpan time.Duration, retentionRawHours int) int {
+// rawTierHours is how many hours of raw the clamped query can span:
+// min(window, RetentionRaw + rawClampMargin), never below 1.
+func rawTierHours(windowSpan time.Duration, retentionRawHours int) int {
+	hours := effectiveRetentionRawHours(retentionRawHours) + int(rawClampMargin/time.Hour)
+	if windowHours := int(windowSpan / time.Hour); windowHours < hours {
+		hours = windowHours
+	}
+
+	if hours < 1 {
+		hours = 1
+	}
+
+	return hours
+}
+
+// rawRowCap bounds the RAW tier's query, which the clamp already bounds in TIME
+// (rawTierHours). What remains to bound is the row RATE inside that window, and
+// there are two ways to know it:
+//
+//   - Measured (hints.RawRowsPerHour > 0, the production path): the org's checks
+//     can only produce that many raw rows an hour, so the whole window holds at
+//     most hours × rate. Multiplied by capRateHeadroom for what the measurement
+//     cannot see. This is a REAL bound — for a typical org (a handful of checks
+//     at a 60 s period in one region) it lands in the tens of thousands, against
+//     the LIMIT 884300 the spec measured, which was large enough to be
+//     functionally unbounded and therefore protected nothing.
+//   - Unmeasured (rate 0, e.g. the MCP handler or a unit test): fall back to the
+//     platform's theoretical worst case — every check in the batch probing at
+//     checkerdef.GlobalMinPeriod from capMaxRegionsPerCheck regions at once.
+//
+// The measured bound is capped by the unmeasured one, so a hint can only ever
+// tighten the query, never loosen it past what the platform can physically
+// produce. If a cap does engage, the query still returns its (partial) rows and
+// logs a warning — see listTier.
+func rawRowCap(hints Hints, checkCount int, windowSpan time.Duration) int {
 	if checkCount < 1 {
 		checkCount = 1
 	}
 
-	rawHours := effectiveRetentionRawHours(retentionRawHours) + int(rawClampMargin/time.Hour)
-	if windowHours := int(windowSpan / time.Hour); windowHours < rawHours {
-		rawHours = windowHours
+	hours := rawTierHours(windowSpan, hints.RetentionRawHours)
+
+	worstCase := hours*int(time.Hour/checkerdef.GlobalMinPeriod)*capMaxRegionsPerCheck*checkCount + capSafetyMargin
+
+	if hints.RawRowsPerHour <= 0 {
+		return worstCase
 	}
 
-	if rawHours < 1 {
-		rawHours = 1
+	measured := hours*hints.RawRowsPerHour*capRateHeadroom + capSafetyMargin
+	if measured < worstCase {
+		return measured
 	}
 
-	perRegion := rawHours * int(time.Hour/checkerdef.GlobalMinPeriod)
-
-	return perRegion*capMaxRegionsPerCheck*checkCount + capSafetyMargin
+	return worstCase
 }
 
 // rollupRowCap bounds the ROLLUP tiers' query: one row per bucket per tier per
@@ -257,7 +349,8 @@ func rawRowCap(checkCount int, windowSpan time.Duration, retentionRawHours int) 
 // WindowAvailability path) one month row per ~30 days of window. Both bounds are
 // independent of RetentionDay/RetentionMonth: a tier can never return more rows
 // than the requested window has buckets.
-func rollupRowCap(checkCount int, windowSpan time.Duration, retentionHourDays int, includeMonth bool) int {
+func rollupRowCap(hints Hints, checkCount int, windowSpan time.Duration, includeMonth bool) int {
+	retentionHourDays := hints.RetentionHourDays
 	if retentionHourDays < 1 {
 		retentionHourDays = defaultRetentionHourDays
 	}
@@ -327,19 +420,17 @@ func listTier(
 // Both feed the SAME accumulator, so bucketing semantics are unchanged: the
 // tiers stay disjoint (see rawTierStart) and nothing is double-counted.
 //
-// retentionRawHours/retentionHourDays are the org's configured
-// Aggregation.RetentionRaw/RetentionHour (hours of raw kept / days of hourly
-// rollups kept) — pass 0 to fall back to the documented config defaults. They
-// bound the raw clamp and size each tier's own safety row cap (see rawRowCap /
-// rollupRowCap): a single bucket can be fed by many rows, so an UNBOUNDED query
-// risks scanning without limit if retention is misconfigured or the aggregation
-// job is unhealthy. The caps are sized so they never bite under realistic
-// configurations — if one does engage, a warning is logged and the partial
-// result is returned rather than erroring.
+// hints bound the raw clamp and size each tier's own safety row cap (see Hints,
+// rawRowCap and rollupRowCap): a single bucket can be fed by many rows, so an
+// UNBOUNDED query risks scanning without limit if retention is misconfigured or
+// the aggregation job is unhealthy. The caps are sized so they never bite under
+// realistic configurations — if one does engage, a warning is logged and the
+// partial result is returned rather than erroring. The zero Hints is valid and
+// falls back to the documented defaults.
 func BucketAvailability(
 	ctx context.Context, db ResultsLister, orgUID string, checkUIDs []string,
 	bucketDuration time.Duration, bucketStart time.Time, n int,
-	retentionRawHours, retentionHourDays int,
+	hints Hints,
 ) (map[string]map[time.Time]BucketStats, error) {
 	out := make(map[string]map[time.Time]BucketStats, len(checkUIDs))
 
@@ -357,7 +448,7 @@ func BucketAvailability(
 		CheckUIDs:        checkUIDs,
 		PeriodTypes:      []string{models.PeriodTypeHour, models.PeriodTypeDay},
 		PeriodStartAfter: &start,
-		Limit:            rollupRowCap(len(checkUIDs), windowSpan, retentionHourDays, false),
+		Limit:            rollupRowCap(hints, len(checkUIDs), windowSpan, false),
 		// Buckets are built from status/counts only, so the metrics/output blobs
 		// are dead weight on these queries (spec 2026-07-24-02 §5).
 		SkipBlobs: true,
@@ -367,21 +458,21 @@ func BucketAvailability(
 	}
 
 	// Raw tier: clamped to the raw-retention band, answered by results_raw_idx.
-	rawStart := rawTierStart(start, now, retentionRawHours)
+	rawStart := rawTierStart(start, now, hints.RetentionRawHours)
 
 	rawRows, err := listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        checkUIDs,
 		PeriodTypes:      []string{models.PeriodTypeRaw},
 		PeriodStartAfter: &rawStart,
-		Limit:            rawRowCap(len(checkUIDs), windowSpan, retentionRawHours),
+		Limit:            rawRowCap(hints, len(checkUIDs), windowSpan),
 		SkipBlobs:        true,
 	}, models.PeriodTypeRaw)
 	if err != nil {
 		return nil, err
 	}
 
-	warnIfRawLagging(ctx, orgUID, rawRows, now, retentionRawHours)
+	warnIfRawLagging(ctx, orgUID, rawRows, now, hints.RetentionRawHours)
 
 	for _, rows := range [][]*models.Result{rollupRows, rawRows} {
 		for _, result := range rows {
@@ -406,4 +497,27 @@ func BucketAvailability(
 	}
 
 	return out, nil
+}
+
+// CheckRateLister is the minimal db surface needed to measure an org's raw row
+// rate (db.Service implements it).
+type CheckRateLister interface {
+	ListOrgCheckRates(ctx context.Context, orgUID string) ([]models.CheckRate, error)
+}
+
+// MeasureRawRowsPerHour returns the org's configured raw row rate for Hints, or
+// 0 when it cannot be read — in which case the caps fall back to the
+// conservative unmeasured worst case rather than to no bound at all. A read
+// failure must never fail the render: this only sizes a safety cap.
+func MeasureRawRowsPerHour(ctx context.Context, db CheckRateLister, orgUID string) int {
+	rates, err := db.ListOrgCheckRates(ctx, orgUID)
+	if err != nil {
+		slog.WarnContext(ctx, "uptimebar could not measure the org's probe rate; "+
+			"falling back to the conservative row cap",
+			"organization_uid", orgUID, "error", err)
+
+		return 0
+	}
+
+	return RawRowsPerHour(rates)
 }

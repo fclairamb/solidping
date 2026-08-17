@@ -61,20 +61,25 @@ func NewService(dbService db.Service, cfg *config.Config) *Service {
 	return &Service{db: dbService, cfg: cfg}
 }
 
-// retentionHints returns the live raw/hour aggregation retention (hours of raw
-// kept / days of hourly rollups kept), resolved with the same precedence as the
-// aggregation job itself — env > performance.* global parameter > legacy koanf
-// field > documented default (systemconfig.ResolveAggregationRetention).
+// uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
+// per request: the live raw/hour aggregation retention and the org's measured
+// probe rate.
 //
-// It must NOT read the koanf config alone: the server "Aggregation" settings tab
-// writes the performance.* parameters, which never reach the koanf struct, so a
-// stale hint would make uptimebar clamp its raw-tier query shorter than the
-// window the job actually keeps raw for — silently dropping raw rows no rollup
-// covers yet.
-func (s *Service) retentionHints(ctx context.Context) (int, int) {
-	rawHours, hourDays, _ := systemconfig.ResolveAggregationRetention(ctx, s.db, s.cfg)
+// Retention is resolved with the same precedence as the aggregation job itself —
+// env > performance.* global parameter > legacy koanf field > documented default
+// (systemconfig.ResolveReadSideRetention). It must NOT read the koanf config
+// alone: the server "Aggregation" settings tab writes the performance.*
+// parameters, which never reach the koanf struct, so a stale hint would make
+// uptimebar clamp its raw-tier query shorter than the window the job actually
+// keeps raw for — silently dropping raw rows no rollup covers yet.
+func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
 
-	return rawHours, hourDays
+	return uptimebar.Hints{
+		RetentionRawHours: rawHours,
+		RetentionHourDays: hourDays,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
+	}
 }
 
 // PeriodIncidents is the confirmed-outage (wall-clock) block for one window —
@@ -145,8 +150,14 @@ func (s *Service) GetAvailability(
 
 	periods := make([]Period, 0, len(windows))
 
+	// Resolved ONCE for the whole request: every window shares the same org, so
+	// re-resolving per window would multiply the parameter/probe-rate lookups by
+	// the number of requested periods (five on the check detail page) inside a
+	// spec whose whole point is removing per-request latency.
+	hints := s.uptimebarHints(ctx, org.UID)
+
 	for i := range windows {
-		row, periodErr := s.computePeriod(ctx, org.UID, check, windows[i], now)
+		row, periodErr := s.computePeriod(ctx, org.UID, check, windows[i], now, hints)
 		if periodErr != nil {
 			return nil, periodErr
 		}
@@ -167,14 +178,13 @@ type periodWindow struct {
 // computePeriod builds the DTO for one resolved window.
 func (s *Service) computePeriod(
 	ctx context.Context, orgUID string, check *models.Check, window periodWindow, now time.Time,
+	hints uptimebar.Hints,
 ) (Period, error) {
 	monitored := monitoredDuration(window, check.CreatedAt.UTC(), now)
 
-	retentionRawHours, retentionHourDays := s.retentionHints(ctx)
-
 	stats, err := uptimebar.WindowAvailability(
 		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end,
-		retentionRawHours, retentionHourDays)
+		hints)
 	if err != nil {
 		return Period{}, err
 	}

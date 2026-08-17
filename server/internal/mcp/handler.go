@@ -120,8 +120,9 @@ func NewHandler(
 		incidentsSvc:  incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
 		eventsSvc:     events.NewService(dbService),
 		// nil cfg: the MCP surface has no app config to hand; the uptime-bar
-		// safety cap this feeds falls back to the documented retention
-		// defaults (see statuspages.Service.retentionHints).
+		// raw clamp and safety caps this feeds fall back to the live
+		// performance.* parameters and then the documented retention defaults
+		// (see statuspages.Service.uptimebarHints).
 		statusPagesSvc: statuspages.NewService(dbService, nil, nil),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
 		// nil registry: the MCP surface manages integrations but does not
