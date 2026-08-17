@@ -688,6 +688,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/auth/change-password:
+    post:
+      tags: [Authentication]
+      summary: Change (or set) the authenticated user's password
+      description: >
+        Rotates the caller's password without an emailed reset token.
+        `currentPassword` is required when the account already has a password;
+        for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is
+        ignored and this call sets the initial password. All of the caller's
+        *other* sessions are revoked; the calling session and any personal access
+        tokens keep working. A confirmation email is sent.
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: >
+            Not authenticated, or the supplied `currentPassword` is wrong
+            (error code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
   /api/v1/auth/invite/{token}:
     get:
       tags: [Authentication]
@@ -7239,6 +7281,20 @@ components:
         password:
           type: string
           minLength: 8
+
+    ChangePasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password yet (SSO-only sign-up), in which case it is ignored.
+        newPassword:
+          type: string
+          minLength: 8
+          description: Must differ from the current password.
 
     AcceptInviteRequest:
       type: object
