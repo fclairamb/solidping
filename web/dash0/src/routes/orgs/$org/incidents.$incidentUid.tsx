@@ -1252,6 +1252,7 @@ function BlastRadiusCard({
   const { data: children } = useIncidents(org, {
     causedByIncidentUid: incident.uid,
     size: 50,
+    with: "check",
     refetchInterval: incident.state === "active" ? 30_000 : undefined,
   });
 
