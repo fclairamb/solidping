@@ -1,12 +1,17 @@
 package availability
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -612,4 +617,120 @@ func TestGetAvailability_PeriodsFanOutIsRace(t *testing.T) {
 			rr.Len(resp.Data, 5, "run %d", i)
 		})
 	}
+}
+
+// errBarrierTimeout means the concurrent fan-out never got enough callers into
+// ListIncidents at once — i.e. it regressed to serial execution.
+var errBarrierTimeout = errors.New("periods are being computed serially")
+
+// barrierIncidentsDB wraps a real db.Service and turns ListIncidents — the call
+// every computePeriod goroutine makes exactly once, on its way out — into a
+// rendezvous point. It blocks each caller until barrierN callers have arrived
+// simultaneously, then releases them all (and lets every later caller through
+// immediately, once released). This makes concurrency an observable, counted
+// fact instead of a wall-clock guess: a serial implementation can never get two
+// callers in flight at once, so it deadlocks at the barrier and the timeout
+// fires with a diagnostic message instead of the test hanging or passing by
+// accident.
+type barrierIncidentsDB struct {
+	db.Service
+
+	barrierN int
+
+	mu          sync.Mutex
+	inFlight    int
+	maxInFlight int
+	released    bool
+	releaseCh   chan struct{}
+}
+
+func newBarrierIncidentsDB(underlying db.Service, barrierN int) *barrierIncidentsDB {
+	return &barrierIncidentsDB{
+		Service:   underlying,
+		barrierN:  barrierN,
+		releaseCh: make(chan struct{}),
+	}
+}
+
+func (b *barrierIncidentsDB) ListIncidents(
+	ctx context.Context, filter *models.ListIncidentsFilter,
+) ([]*models.Incident, int64, error) {
+	b.mu.Lock()
+	b.inFlight++
+
+	if b.inFlight > b.maxInFlight {
+		b.maxInFlight = b.inFlight
+	}
+
+	if b.inFlight >= b.barrierN && !b.released {
+		b.released = true
+
+		close(b.releaseCh)
+	}
+
+	snapshot := b.inFlight
+	b.mu.Unlock()
+
+	select {
+	case <-b.releaseCh:
+	case <-time.After(3 * time.Second):
+		return nil, 0, fmt.Errorf(
+			"%w: only %d of %d calls were ever in flight", errBarrierTimeout, snapshot, b.barrierN)
+	}
+
+	incidents, total, err := b.Service.ListIncidents(ctx, filter)
+
+	b.mu.Lock()
+	b.inFlight--
+	b.mu.Unlock()
+
+	return incidents, total, err
+}
+
+// TestGetAvailability_PeriodsRunConcurrently is the deterministic proof of the
+// spec's headline claim: the per-window computations genuinely overlap, and the
+// overlap never exceeds maxConcurrentPeriods. Both properties are pinned by
+// count, not by timing — a revert to a serial loop makes this test fail with a
+// clear message (via the barrier timeout) instead of silently passing.
+func TestGetAvailability_PeriodsRunConcurrently(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-concur-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "avail-concur-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	// More periods than maxConcurrentPeriods so the barrier also exercises (and
+	// pins) SetLimit: the fan-out must reach the limit but never exceed it.
+	periods := []string{"1h", "2h", "3h", "6h", "12h", "24h", "2d", "7d"}
+	r.Greater(len(periods), maxConcurrentPeriods,
+		"test needs more periods than the concurrency limit to exercise SetLimit")
+
+	barrier := newBarrierIncidentsDB(dbSvc, maxConcurrentPeriods)
+	svc := NewService(barrier, nil)
+
+	resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+		Periods: periods,
+	})
+	r.NoError(availErr)
+	r.Len(resp.Data, len(periods))
+
+	barrier.mu.Lock()
+	maxInFlight := barrier.maxInFlight
+	barrier.mu.Unlock()
+
+	r.Greater(maxInFlight, 1, "periods must be computed concurrently, not one at a time")
+	r.LessOrEqual(maxInFlight, maxConcurrentPeriods, "SetLimit must bound the fan-out")
+	r.Equal(maxConcurrentPeriods, maxInFlight,
+		"the barrier only releases once maxConcurrentPeriods callers are simultaneously in flight, "+
+			"so a correctly-bounded fan-out must reach exactly that many")
 }
