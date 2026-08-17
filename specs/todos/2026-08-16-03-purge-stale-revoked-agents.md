@@ -101,3 +101,81 @@ conventions (red `Trash2`, confirmation) and the design reference.
 - Job-level test: an agent revoked 3 days ago is gone from `ListAgents` after
   one `agent_gc` run; an agent revoked 1 day ago is still listed.
 - Postgres and SQLite parity for the new methods.
+
+## Implementation Plan
+
+1. **DB layer** (`server/internal/db/postgres/agents.go` and
+   `server/internal/db/sqlite/agents.go`, kept byte-identical per existing
+   convention):
+   - `ListPurgeableRevokedAgents(ctx, cutoff time.Time) ([]*models.Agent, error)`
+     — `status = 'revoked' AND deleted_at IS NULL AND COALESCE(revoked_at,
+     updated_at) < cutoff`. No kind filter (both `org` and `system` eligible).
+   - `PurgeAgent(ctx, uid string) error` — soft delete (`deleted_at`,
+     `updated_at`) scoped to `uid = ? AND status = 'revoked' AND deleted_at IS
+     NULL`. No rows-affected check needed at this layer (mirrors
+     `RetireSystemAgent`); the caller that needs "was it found" semantics
+     resolves the row first.
+   - Add both to the `db.Service` interface
+     (`server/internal/db/service.go`), next to the existing agent methods.
+
+2. **`agent_gc` job** (`server/internal/jobs/jobtypes/job_agent_gc.go`):
+   - New constant `defaultRevokedPurgeAfter = 2 * 24 * time.Hour`.
+   - New `AgentGCJobConfig.RevokedPurgeAfterSeconds int` field +
+     `revokedPurgeAfter()` accessor mirroring `staleAfter()`.
+   - Extract the worker-row cleanup half of `retire()` into a shared
+     `cleanupWorkerRow(ctx, jctx, agent)` helper; `retire()` calls it after a
+     successful `RetireSystemAgent`.
+   - New `purge(ctx, jctx, agent) bool`: calls `PurgeAgent`, then
+     `cleanupWorkerRow` on success.
+   - `Run()`: after the existing stale-system-agent pass, add a second pass —
+     `ListPurgeableRevokedAgents(ctx, now.Add(-r.revokedPurgeAfter()))`, purge
+     each, log a summary count — before the nonce-prune step.
+
+3. **Admin service** (`server/internal/handlers/agents/service.go`):
+   `RevokeAgent` branches on the current status: if the agent is already
+   `revoked`, call `s.db.PurgeAgent` instead of re-revoking (and skip
+   `ResealRegion` — a revoked agent is already excluded from seals). The org
+   scoping check (`GetAgent` + `OrgUID() != org.UID` → `ErrAgentNotFound`)
+   stays first, so purge is exactly as org-scoped as revoke. The HTTP mapping
+   (`DELETE /api/v1/orgs/:org/agents/:uid` → `Handler.RevokeAgent` →
+   `Service.RevokeAgent`) is unchanged — no handler edit needed.
+
+4. **Frontend**
+   (`web/dash0/src/routes/orgs/$org/organization.private-locations.index.tsx`):
+   - Drop the `agent.status === "active"` gate on the row's `Trash2` button —
+     render it for every status, reusing the same `useRevokeAgent` mutation
+     (the backend now purges on a second call).
+   - Track the full pending agent (not just its UID) so the confirmation
+     dialog can read its status and show purge-appropriate copy ("Remove this
+     agent?" / "This clears it from the list immediately, instead of waiting
+     for the two-day automatic cleanup.") instead of the revoke copy, when the
+     target is already revoked. Button title differs the same way ("Revoke
+     agent" vs "Remove agent").
+   - No i18n JSON edits needed — `privateLocations.agents.*` keys are not
+     present in any `locales/*/org.json` today; every call already runs on its
+     inline default string.
+
+5. **Tests**
+   - `sqlite/agents_test.go`: `ListPurgeableRevokedAgents` positive/negative
+     matrix (past-cutoff revoked → in; active of any age → out; revoked inside
+     window → out; already-deleted → out; NULL `revoked_at` past cutoff via
+     `updated_at` fallback → in). `PurgeAgent` no-op on an active agent
+     (negative control: row survives, still active).
+   - `jobtypes/job_agent_gc_test.go`: one job-level test seeding a
+     3-day-revoked agent (gone from `ListAgents` after one run, worker row
+     soft-deleted) and a 1-day-revoked agent (still listed); a positive
+     control with `revoked_at` 3 days ago but `last_seen_at` 1 minute ago
+     (still purged — proves the clock is `revoked_at`).
+   - `handlers/agents/service_test.go`: a second `RevokeAgent` call on an
+     already-revoked agent purges it (disappears from `ListAgents`); org
+     scoping still applies (reuse the `ErrAgentNotFound` pattern from
+     `TestRevokeAgentIsOrgScoped`).
+   - `web/dash0/e2e/private-locations.spec.ts`: extend the existing stubbed
+     agents-list pattern (see the last-seen test) with a revoked agent row —
+     assert the `Trash2` button renders for it, the confirmation dialog shows
+     the "Remove" copy, and confirming issues the `DELETE` call.
+
+6. **QA gate**: `make build-backend lint-back test`, then
+   `make build-dash0 && cd web/dash0 && bun run lint`. Run the new/extended
+   E2E file if the local devloop is in `SP_RUNMODE=test`; otherwise author it
+   and report so in the final QA notes.
