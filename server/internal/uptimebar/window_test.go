@@ -152,7 +152,8 @@ func TestWindowAvailability(t *testing.T) {
 
 			lister := &fakeLister{results: tc.rows}
 
-			out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now)
+			out, err := WindowAvailability(
+				context.Background(), lister, "org", []string{"c1"}, start, now, 24, 7)
 			r.NoError(err)
 
 			stats := out["c1"]
@@ -176,22 +177,121 @@ func TestWindowAvailability_Empty(t *testing.T) {
 	lister := &fakeLister{results: []*models.Result{rawRow("c1", models.ResultStatusUp, now, 10)}}
 
 	// No checks → empty, query never run.
-	out, err := WindowAvailability(context.Background(), lister, "org", nil, now.Add(-time.Hour), now)
+	out, err := WindowAvailability(context.Background(), lister, "org", nil, now.Add(-time.Hour), now, 24, 7)
 	r.NoError(err)
 	r.Empty(out)
-	r.Nil(lister.gotFilter, "no query should be issued when there are no checks")
+	r.Nil(lister.gotFilter(), "no query should be issued when there are no checks")
 
 	// end == start (non-positive window) → empty.
-	out, err = WindowAvailability(context.Background(), lister, "org", []string{"c1"}, now, now)
+	out, err = WindowAvailability(context.Background(), lister, "org", []string{"c1"}, now, now, 24, 7)
 	r.NoError(err)
 	r.Empty(out)
 }
 
-// TestWindowAvailability_Filter asserts the query bounds the window with both
-// edges and unions all four disjoint tiers — month included, since with default
-// retention (day tier ≈ 2 months) everything older than that lives only in
-// month rows (so older buckets are never dropped by a row cap the way the old
-// client-side size:1000 limit did).
+// TestWindowAvailability_RawTierClampedAndDisjoint pins the tier split on the
+// window path: the raw query is clamped to the raw-retention band (so it uses
+// results_raw_idx instead of scanning), the rollup query keeps the full window,
+// and a stale raw row inside an already-rolled-up period is NOT counted on top
+// of the rollup that already covers it.
+func TestWindowAvailability_RawTierClampedAndDisjoint(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	now := time.Now().UTC()
+	start := now.Add(-90 * 24 * time.Hour)
+
+	lister := &fakeLister{results: []*models.Result{
+		dayRow("c1", 1000, 1000, now.Add(-10*24*time.Hour)),
+		// Same period as the rollup above, but raw: impossible in production
+		// (rollup + delete happen in one transaction) and excluded by the clamp.
+		rawRow("c1", models.ResultStatusDown, now.Add(-10*24*time.Hour).Add(time.Hour), 10),
+		// Inside the retention band: counted.
+		rawRow("c1", models.ResultStatusUp, now.Add(-time.Hour), 10),
+	}}
+
+	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, 24, 7)
+	r.NoError(err)
+
+	stats := out["c1"]
+	r.Equal(1001, stats.Total, "the stale raw row must not be double-counted against its rollup")
+	r.Equal(1001, stats.Up, "and its 'down' status must not leak into the availability either")
+
+	r.Len(lister.gotFilters, 2, "one query per tier group, not a single straddling union")
+
+	rollup := lister.filterFor(models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth)
+	r.NotNil(rollup, "the rollup query spans hour+day+month")
+	r.NotContains(rollup.PeriodTypes, models.PeriodTypeRaw)
+	r.True(rollup.PeriodStartAfter.Equal(start))
+	r.True(rollup.PeriodEndBefore.Equal(now))
+	r.Equal(rollupRowCap(1, now.Sub(start), 7, true), rollup.Limit)
+
+	raw := lister.filterFor(models.PeriodTypeRaw)
+	r.NotNil(raw)
+	r.WithinDuration(now.Add(-26*time.Hour), *raw.PeriodStartAfter, time.Minute,
+		"raw is clamped to RetentionRaw + rawClampMargin, not the caller's 90-day window")
+	r.True(raw.PeriodEndBefore.Equal(now))
+	r.Equal(rawRowCap(1, now.Sub(start), 24), raw.Limit)
+
+	for _, filter := range lister.gotFilters {
+		r.True(filter.SkipBlobs, "both tier queries must project the blobs away (spec 2026-07-24-02)")
+	}
+}
+
+// TestWindowAvailability_PastWindowSkipsRawQuery covers the window that ends
+// before the raw-retention band even starts (e.g. "last year"): no raw row can
+// exist in it, so the raw query is skipped entirely rather than issued with an
+// empty range.
+func TestWindowAvailability_PastWindowSkipsRawQuery(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	now := time.Now().UTC()
+	end := now.Add(-30 * 24 * time.Hour)
+	start := end.Add(-30 * 24 * time.Hour)
+
+	lister := &fakeLister{results: []*models.Result{dayRow("c1", 100, 99, end.Add(-24*time.Hour))}}
+
+	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, end, 24, 7)
+	r.NoError(err)
+
+	r.Equal(100, out["c1"].Total, "the rollup tiers still answer a fully historical window")
+	r.Len(lister.gotFilters, 1, "only the rollup query is issued")
+	r.Nil(lister.filterFor(models.PeriodTypeRaw))
+}
+
+// TestWindowAvailability_NoDataIsNotHundredPercent pins the contract documented
+// on WindowAvailability: a check with no rows in the window is either absent
+// from the map or has Total == 0, and must never read as 100%.
+func TestWindowAvailability_NoDataIsNotHundredPercent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	now := time.Now().UTC()
+	start := now.Add(-24 * time.Hour)
+
+	lister := &fakeLister{}
+
+	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, 24, 7)
+	r.NoError(err)
+
+	stats, present := out["c1"]
+	r.False(present, "a check with no rows is absent from the map")
+
+	pct, ok := stats.AvailabilityPct()
+	r.False(ok, "an empty BucketStats reports no data, never 100%")
+	r.Zero(pct)
+}
+
+// TestWindowAvailability_Filter asserts the queries bound the window with both
+// edges and, between them, cover all four disjoint tiers — month included, since
+// with default retention (day tier ≈ 2 months) everything older than that lives
+// only in month rows (so older buckets are never dropped by a row cap the way the
+// old client-side size:1000 limit did). The tiers are split across two queries so
+// each predicate is implied by one of the PARTIAL indexes on `results`
+// (spec 2026-08-17-03).
 func TestWindowAvailability_Filter(t *testing.T) {
 	t.Parallel()
 
@@ -201,21 +301,31 @@ func TestWindowAvailability_Filter(t *testing.T) {
 	start := now.Add(-30 * 24 * time.Hour)
 
 	lister := &fakeLister{}
-	_, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now)
+	_, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, 24, 7)
 	r.NoError(err)
 
-	r.NotNil(lister.gotFilter)
-	r.Equal("org", lister.gotFilter.OrganizationUID)
-	r.Equal([]string{"c1"}, lister.gotFilter.CheckUIDs)
+	covered := make([]string, 0, 4)
+
+	for _, filter := range lister.gotFilters {
+		r.Equal("org", filter.OrganizationUID)
+		r.Equal([]string{"c1"}, filter.CheckUIDs)
+		r.NotNil(filter.PeriodStartAfter)
+		r.NotNil(filter.PeriodEndBefore)
+		r.True(filter.PeriodEndBefore.Equal(now))
+		r.True(filter.SkipBlobs,
+			"availability is computed from status/counts, so the metrics/output blobs "+
+				"must be projected away (spec 2026-07-24-02)")
+
+		covered = append(covered, filter.PeriodTypes...)
+	}
+
 	r.ElementsMatch(
 		[]string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth},
-		lister.gotFilter.PeriodTypes,
+		covered,
+		"every tier is still covered, exactly once, across the two queries",
 	)
-	r.NotNil(lister.gotFilter.PeriodStartAfter)
-	r.NotNil(lister.gotFilter.PeriodEndBefore)
-	r.True(lister.gotFilter.PeriodStartAfter.Equal(start))
-	r.True(lister.gotFilter.PeriodEndBefore.Equal(now))
-	r.True(lister.gotFilter.SkipBlobs,
-		"availability is computed from status/counts, so the metrics/output blobs "+
-			"must be projected away (spec 2026-07-24-02)")
+
+	rollup := lister.filterFor(models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth)
+	r.NotNil(rollup)
+	r.True(rollup.PeriodStartAfter.Equal(start), "the rollup tiers cover the caller's full window")
 }

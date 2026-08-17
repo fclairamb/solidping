@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -409,7 +410,14 @@ func TestGetAvailability_SparseLongPeriodSeries(t *testing.T) {
 	second.PeriodStart = now.Add(-6 * 24 * time.Hour)
 	r.NoError(dbSvc.CreateResult(ctx, second))
 
-	svc := NewService(dbSvc, nil)
+	// This deployment keeps 30 days of raw (a supported configuration), so both
+	// probes above are still raw and none has been rolled up. uptimebar clamps
+	// its raw-tier query to the CONFIGURED raw retention, so the hint has to say
+	// what the fixture assumes — with the 24h default, a 20-day-old raw row could
+	// not exist at all.
+	svc := NewService(dbSvc, &config.Config{
+		Aggregation: config.AggregationConfig{RetentionRaw: 30 * 24, RetentionHour: 7},
+	})
 
 	t.Run("sparse window computes the exact ratio from its handful of rows", func(t *testing.T) {
 		t.Parallel()
