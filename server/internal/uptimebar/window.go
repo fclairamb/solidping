@@ -28,9 +28,8 @@ import (
 // see jobtypes' defaultRetention* constants). Without month in the union, a 365d
 // window on a default deployment silently saw only ~2 months of data.
 //
-// retentionRawHours/retentionHourDays are the org's configured
-// Aggregation.RetentionRaw/RetentionHour — pass 0 for the documented defaults.
-// They bound the raw clamp and size each tier's own safety row cap.
+// hints bound the raw clamp and size each tier's own safety row cap; the zero
+// value falls back to the documented defaults (see Hints).
 //
 // The function holds no shared mutable state, so several windows may be computed
 // concurrently against the same Service.
@@ -49,7 +48,7 @@ import (
 // the caller renders that as "no data", not "100%".
 func WindowAvailability(
 	ctx context.Context, db ResultsLister, orgUID string, checkUIDs []string,
-	start, end time.Time, retentionRawHours, retentionHourDays int,
+	start, end time.Time, hints Hints,
 ) (map[string]BucketStats, error) {
 	out := make(map[string]BucketStats, len(checkUIDs))
 
@@ -73,7 +72,7 @@ func WindowAvailability(
 		},
 		PeriodStartAfter: &startUTC,
 		PeriodEndBefore:  &endUTC,
-		Limit:            rollupRowCap(len(checkUIDs), windowSpan, retentionHourDays, true),
+		Limit:            rollupRowCap(hints, len(checkUIDs), windowSpan, true),
 		// Availability is computed from status/counts only — never from the
 		// metrics/output blobs — and these queries can pull thousands of rows per
 		// request, so skip them entirely (spec 2026-07-24-02 §5).
@@ -84,7 +83,7 @@ func WindowAvailability(
 	}
 
 	// Raw tier, clamped to the raw-retention band, answered by results_raw_idx.
-	rawStart := rawTierStart(startUTC, now, retentionRawHours)
+	rawStart := rawTierStart(startUTC, now, hints.RetentionRawHours)
 
 	var rawRows []*models.Result
 
@@ -95,14 +94,14 @@ func WindowAvailability(
 			PeriodTypes:      []string{models.PeriodTypeRaw},
 			PeriodStartAfter: &rawStart,
 			PeriodEndBefore:  &endUTC,
-			Limit:            rawRowCap(len(checkUIDs), windowSpan, retentionRawHours),
+			Limit:            rawRowCap(hints, len(checkUIDs), windowSpan),
 			SkipBlobs:        true,
 		}, models.PeriodTypeRaw)
 		if err != nil {
 			return nil, err
 		}
 
-		warnIfRawLagging(ctx, orgUID, rawRows, now, retentionRawHours)
+		warnIfRawLagging(ctx, orgUID, rawRows, now, hints.RetentionRawHours)
 	}
 
 	for _, rows := range [][]*models.Result{rollupRows, rawRows} {

@@ -41,7 +41,7 @@ type RetentionParameterReader interface {
 // the aggregation job uses it to decide what to roll up and delete
 // (jobtypes.retentionFromConfig delegates here), and the read side uses it to
 // bound its raw-tier queries (uptimebar's raw clamp, via each service's
-// retentionHints). The two must agree: if a reader assumed 24 h while the job
+// uptimebarHints). The two must agree: if a reader assumed 24 h while the job
 // actually keeps 168 h, the reader would clamp away six days of raw rows that
 // have no rollup covering them yet. Reading the legacy koanf field alone is NOT
 // enough — the server "Aggregation" settings tab writes the performance.*
@@ -70,6 +70,32 @@ func ResolveAggregationRetention(
 	return rawHours, hourDays, dayMonths
 }
 
+// ResolveReadSideRetention resolves only the two tiers the read side needs — raw
+// hours and hourly days — with the same precedence as
+// ResolveAggregationRetention. The day/month tier is deliberately not resolved:
+// nothing on the read path uses it, and every tier costs one parameter lookup.
+//
+// Callers resolve this ONCE per request and thread the result down (see each
+// service's uptimebarHints): this sits inside the request path of a spec whose
+// whole purpose is removing per-request latency, and the availability endpoint
+// computes several windows per request.
+//
+// Returns (rawHours, hourDays).
+func ResolveReadSideRetention(
+	ctx context.Context, db RetentionParameterReader, cfg *config.Config,
+) (int, int) {
+	legacyRaw, legacyHour := 0, 0
+	if cfg != nil {
+		legacyRaw = cfg.Aggregation.RetentionRaw
+		legacyHour = cfg.Aggregation.RetentionHour
+	}
+
+	return resolveRetentionTier(ctx, db,
+			KeyPerfAggRetentionRawHours, EnvRetentionRawHours, legacyRaw, DefaultRetentionRawHours),
+		resolveRetentionTier(ctx, db,
+			KeyPerfAggRetentionHourDays, EnvRetentionHourDays, legacyHour, DefaultRetentionHourDays)
+}
+
 // resolveRetentionTier applies the documented precedence for one tier.
 func resolveRetentionTier(
 	ctx context.Context, db RetentionParameterReader,
@@ -86,6 +112,13 @@ func resolveRetentionTier(
 	}
 
 	// 3. Legacy koanf field (deprecated back-compat).
+	//
+	// This branch deliberately does NOT log the deprecation warning the
+	// aggregation job used to emit here. The resolver is now also on the READ
+	// path — every status-page render and every availability request — so a
+	// per-resolution warning would go from one line per aggregation run to one
+	// per HTTP request. The deprecation is documented on
+	// config.AggregationConfig instead.
 	if legacy >= 1 {
 		return legacy
 	}

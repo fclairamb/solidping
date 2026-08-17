@@ -62,20 +62,25 @@ func NewService(dbSvc db.Service, cfg *config.Config) *Service {
 	return &Service{dbSvc: dbSvc, cfg: cfg}
 }
 
-// retentionHints returns the live raw/hour aggregation retention (hours of raw
-// kept / days of hourly rollups kept), resolved with the same precedence as the
-// aggregation job itself — env > performance.* global parameter > legacy koanf
-// field > documented default (systemconfig.ResolveAggregationRetention).
+// uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
+// per request: the live raw/hour aggregation retention and the org's measured
+// probe rate.
 //
-// It must NOT read the koanf config alone: the server "Aggregation" settings tab
-// writes the performance.* parameters, which never reach the koanf struct, so a
-// stale hint would make uptimebar clamp its raw-tier query shorter than the
-// window the job actually keeps raw for — silently dropping raw rows no rollup
-// covers yet.
-func (s *Service) retentionHints(ctx context.Context) (int, int) {
-	rawHours, hourDays, _ := systemconfig.ResolveAggregationRetention(ctx, s.dbSvc, s.cfg)
+// Retention is resolved with the same precedence as the aggregation job itself —
+// env > performance.* global parameter > legacy koanf field > documented default
+// (systemconfig.ResolveReadSideRetention). It must NOT read the koanf config
+// alone: the server "Aggregation" settings tab writes the performance.*
+// parameters, which never reach the koanf struct, so a stale hint would make
+// uptimebar clamp its raw-tier query shorter than the window the job actually
+// keeps raw for — silently dropping raw rows no rollup covers yet.
+func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.dbSvc, s.cfg)
 
-	return rawHours, hourDays
+	return uptimebar.Hints{
+		RetentionRawHours: rawHours,
+		RetentionHourDays: hourDays,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.dbSvc, orgUID),
+	}
 }
 
 func isAllowedComponent(token string) bool {
@@ -283,11 +288,11 @@ func (s *Service) bucketStatsForPeriod(
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 	win := barWindow{bucketStart: bucketStart, n: n, bucketDuration: bucketDuration}
 
-	retentionRawHours, retentionHourDays := s.retentionHints(ctx)
+	hints := s.uptimebarHints(ctx, orgUID)
 
 	byCheck, err := uptimebar.BucketAvailability(
 		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,
-		retentionRawHours, retentionHourDays,
+		hints,
 	)
 	if err != nil {
 		return nil, barWindow{}, err
