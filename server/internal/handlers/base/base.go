@@ -85,6 +85,11 @@ const (
 	ErrorCodePasskeyLastAuthMethod     ErrorCode = "PASSKEY_LAST_AUTH_METHOD"
 	ErrorCodeWebAuthnNotConfigured     ErrorCode = "WEBAUTHN_NOT_CONFIGURED"
 	ErrorCodeChannelNotConnected       ErrorCode = "CHANNEL_NOT_CONNECTED"
+	// ErrorCodeInvalidCurrentPassword is returned by POST /api/v1/auth/change-password
+	// when the supplied currentPassword does not match the stored hash. It is
+	// deliberately distinct from INVALID_CREDENTIALS so the dashboard can point
+	// the error at the current-password field instead of the whole form.
+	ErrorCodeInvalidCurrentPassword ErrorCode = "INVALID_CURRENT_PASSWORD"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

@@ -93,10 +93,15 @@ var (
 	ErrOrgSlugTaken            = errors.New("organization slug is already taken")
 	ErrInvalidOrgSlug          = errors.New("invalid organization slug")
 	ErrPasswordResetExpired    = errors.New("password reset link has expired or is invalid")
-	ErrInvalid2FACode          = errors.New("invalid 2FA code")
-	ErrInvalidRecoveryCode     = errors.New("invalid recovery code")
-	ErrTwoFAAlreadyEnabled     = errors.New("2FA is already enabled")
-	ErrTwoFANotEnabled         = errors.New("2FA is not enabled")
+	// ErrInvalidCurrentPassword is returned by ChangePassword when the caller
+	// supplies a currentPassword that does not match the stored hash. Kept
+	// distinct from ErrInvalidCredentials so the handler can emit the
+	// field-specific INVALID_CURRENT_PASSWORD code.
+	ErrInvalidCurrentPassword = errors.New("current password is incorrect")
+	ErrInvalid2FACode         = errors.New("invalid 2FA code")
+	ErrInvalidRecoveryCode    = errors.New("invalid recovery code")
+	ErrTwoFAAlreadyEnabled    = errors.New("2FA is already enabled")
+	ErrTwoFANotEnabled        = errors.New("2FA is not enabled")
 	// ErrRateLimited is returned when a client exceeds the per-endpoint
 	// rate limit. The handler maps this to HTTP 429.
 	ErrRateLimited = errors.New("rate limit exceeded")
@@ -2089,6 +2094,14 @@ const (
 	passwordResetMaxPerIP       = 5
 	minPasswordLength           = 8
 	registrationTokenSize       = 32
+
+	// Authenticated change-password rate limit. The endpoint sits behind a
+	// valid session, but a stolen-but-unprivileged token must not become an
+	// oracle for the current password, so the per-user attempt count is
+	// capped over a rolling window.
+	changePasswordCountKeyPrefix = "change_password_count:"
+	changePasswordMaxPerUser     = 10
+	changePasswordWindow         = 15 * time.Minute
 )
 
 // hashResetToken derives the storage key suffix for a plaintext reset
@@ -2600,12 +2613,142 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	}, nil
 }
 
+// ChangePasswordRequest is the body of POST /api/v1/auth/change-password.
+//
+// CurrentPassword is required when the account already has a password, and
+// ignored when it does not (the SSO-only "set a password" case).
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+// ChangePasswordResponse confirms the rotation.
+type ChangePasswordResponse struct {
+	Message string `json:"message"`
+}
+
+// bumpChangePasswordCounter increments the per-user change-password counter
+// and reports whether the cap for the current window is already reached.
+func (s *Service) bumpChangePasswordCounter(ctx context.Context, userUID string) (bool, error) {
+	return s.bumpCounter(ctx,
+		changePasswordCountKeyPrefix+userUID, changePasswordMaxPerUser, changePasswordWindow)
+}
+
+// ChangePassword rotates the password of an already-authenticated user.
+//
+// It is the authenticated twin of ResetPassword: identical post-change side
+// effects (other sessions revoked, PATs preserved, password-changed.html
+// confirmation email) so it does not matter which path rotated the password.
+//
+// Two behaviours are deliberate and load-bearing:
+//
+//   - When the account has no password yet (signed up through an identity
+//     provider), currentPassword is ignored and this *sets* the initial
+//     password. Without it an SSO user is permanently locked to their IdP.
+//   - currentRefreshUID (the caller's own Claims.RefreshUID) is spared by the
+//     revocation sweep. Changing your password from the settings page must not
+//     bounce you to the login screen; every *other* session still dies.
+func (s *Service) ChangePassword(
+	ctx context.Context, userUID, currentRefreshUID string, req ChangePasswordRequest,
+) (*ChangePasswordResponse, error) {
+	// Rate-limit first: the current-password check below is the brute-force
+	// surface, so it must never be reachable an unbounded number of times
+	// from a single stolen session token.
+	limited, err := s.bumpChangePasswordCounter(ctx, userUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bump change-password counter: %w", err)
+	}
+
+	if limited {
+		return nil, ErrRateLimited
+	}
+
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil || user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
+	if hasPassword {
+		// Always run the verify — even for an empty currentPassword — so the
+		// "field missing" and "field wrong" cases cost the same time.
+		if !passwords.Verify(req.CurrentPassword, *user.PasswordHash) {
+			return nil, ErrInvalidCurrentPassword
+		}
+	}
+
+	if len(req.NewPassword) < minPasswordLength {
+		return nil, fmt.Errorf("%w: password must be at least %d characters",
+			ErrInvalidCredentials, minPasswordLength)
+	}
+
+	// A no-op rotation that reports success is misleading: the user believes
+	// their password changed and the confirmation email says so too.
+	if hasPassword && passwords.Verify(req.NewPassword, *user.PasswordHash) {
+		return nil, fmt.Errorf("%w: new password must be different from the current one",
+			ErrInvalidCredentials)
+	}
+
+	hash, err := passwords.Hash(req.NewPassword)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &hash}); err != nil {
+		return nil, fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Best-effort: the rotation already succeeded, so a stale counter is the
+	// worst outcome and it ages out at the window TTL anyway.
+	if _, err := s.db.DeleteStateEntry(ctx, nil, changePasswordCountKeyPrefix+user.UID); err != nil {
+		slog.DebugContext(ctx, "Failed to delete change-password counter", "error", err)
+	}
+
+	// Same policy as the reset flow: session refresh tokens die, PATs
+	// (TokenTypePAT) survive as separately managed credentials — except the
+	// caller's own grant, which must keep working.
+	s.revokeRefreshTokensForUserExcept(ctx, user.UID, currentRefreshUID)
+
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
+		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
+	)
+
+	return &ChangePasswordResponse{
+		Message: "Your password has been updated.",
+	}, nil
+}
+
 // revokeRefreshTokensForUser deletes every session refresh token attached to
 // the user. PATs are deliberately untouched. Errors are logged, never fatal —
 // stateless access tokens (JWTs) can't be revoked synchronously anyway,
 // so the goal here is best-effort hygiene, not a security boundary.
 func (s *Service) revokeRefreshTokensForUser(ctx context.Context, userUID string) {
-	s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeRefresh)
+	s.revokeRefreshTokensForUserExcept(ctx, userUID, "")
+}
+
+// revokeRefreshTokensForUserExcept is revokeRefreshTokensForUser with one
+// refresh-token row spared (pass "" to spare none). Used by ChangePassword so
+// the caller who just rotated their own password keeps their session.
+func (s *Service) revokeRefreshTokensForUserExcept(ctx context.Context, userUID, exceptTokenUID string) {
+	tokens, err := s.db.ListUserTokensByType(ctx, userUID, models.TokenTypeRefresh)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to list tokens for revocation",
+			"error", err, "userUID", userUID, "type", models.TokenTypeRefresh)
+
+		return
+	}
+
+	for _, token := range tokens {
+		if exceptTokenUID != "" && token.UID == exceptTokenUID {
+			continue
+		}
+
+		if _, delErr := s.db.DeleteUserToken(ctx, token.UID); delErr != nil {
+			slog.ErrorContext(ctx, "Failed to delete token",
+				"error", delErr, "tokenUID", token.UID, "type", models.TokenTypeRefresh)
+		}
+	}
 }
 
 // revokeUserTokensOfType best-effort soft-deletes every live token of one
