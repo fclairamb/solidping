@@ -218,6 +218,60 @@ test.describe("Private locations", () => {
     await expect(neverCell).toHaveText("never");
   });
 
+  // Regression guard for spec 2026-08-16-03: a revoked agent used to have no
+  // Trash2 action at all, leaving it stuck in the list until the agent_gc
+  // sweep caught up (up to two days later). It now shows the same delete
+  // action as an active row, but a second DELETE purges it immediately
+  // instead of re-revoking it — confirmed with purge-specific copy. Stub the
+  // agents list and the DELETE call (same rationale as the last-seen test
+  // above: driving a real revoked agent over the WS protocol isn't practical
+  // from Playwright).
+  test("a revoked agent shows a delete action that purges it", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/private-regions`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { slug: "e2e-dc", name: "E2E Datacenter" },
+    });
+    expect(resp.ok()).toBeTruthy();
+
+    const revokedAgent = {
+      uid: "e2e-revoked-agent",
+      name: "revoked-agent",
+      region: "@e2e-dc",
+      fingerprint: "fp-revoked",
+      status: "revoked",
+      enrolledAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+      revokedAt: new Date(Date.now() - 60_000).toISOString(),
+    };
+
+    let deleteCalled = false;
+
+    await page.route("**/api/v1/orgs/test/agents", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({ json: { data: [revokedAgent] } });
+    });
+    await page.route(`**/api/v1/orgs/test/agents/${revokedAgent.uid}`, async (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      deleteCalled = true;
+      await route.fulfill({ json: { status: "purged" } });
+    });
+
+    await page.goto("orgs/test/organization/private-locations");
+    await page.waitForLoadState("networkidle");
+
+    const deleteButton = page.getByTestId(`revoke-agent-${revokedAgent.uid}`);
+    await expect(deleteButton).toBeVisible();
+    await expect(deleteButton).toHaveAttribute("title", "Remove agent");
+    await deleteButton.click();
+
+    await expect(page.getByText("Remove this agent?")).toBeVisible();
+    await page.getByTestId("confirm-revoke-agent").click();
+
+    await expect.poll(() => deleteCalled).toBe(true);
+  });
+
   test("private region appears in the check-form region picker", async ({
     authenticatedPage,
   }) => {
