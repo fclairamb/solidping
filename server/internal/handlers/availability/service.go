@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -48,12 +49,28 @@ const (
 
 // Service provides business logic for the availability endpoint.
 type Service struct {
-	db db.Service
+	db  db.Service
+	cfg *config.Config
 }
 
-// NewService creates a new availability service.
-func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+// NewService creates a new availability service. cfg may be nil (e.g. a test
+// exercising the service in isolation) — the uptime-bar queries then fall back
+// to the documented retention defaults instead of the org's configured values.
+func NewService(dbService db.Service, cfg *config.Config) *Service {
+	return &Service{db: dbService, cfg: cfg}
+}
+
+// retentionHints returns the org's configured raw/hour retention (hours of raw
+// kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
+// uptimebar.WindowAvailability treats as "use the documented defaults" when
+// clamping the raw tier and sizing its safety caps. Mirrors the identically
+// named helpers in the badges and statuspages services.
+func (s *Service) retentionHints() (int, int) {
+	if s.cfg == nil {
+		return 0, 0
+	}
+
+	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
 }
 
 // PeriodIncidents is the confirmed-outage (wall-clock) block for one window —
@@ -149,8 +166,11 @@ func (s *Service) computePeriod(
 ) (Period, error) {
 	monitored := monitoredDuration(window, check.CreatedAt.UTC(), now)
 
+	retentionRawHours, retentionHourDays := s.retentionHints()
+
 	stats, err := uptimebar.WindowAvailability(
-		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end)
+		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end,
+		retentionRawHours, retentionHourDays)
 	if err != nil {
 		return Period{}, err
 	}

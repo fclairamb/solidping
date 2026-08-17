@@ -409,7 +409,7 @@ func TestGetAvailability_SparseLongPeriodSeries(t *testing.T) {
 	second.PeriodStart = now.Add(-6 * 24 * time.Hour)
 	r.NoError(dbSvc.CreateResult(ctx, second))
 
-	svc := NewService(dbSvc)
+	svc := NewService(dbSvc, nil)
 
 	t.Run("sparse window computes the exact ratio from its handful of rows", func(t *testing.T) {
 		t.Parallel()

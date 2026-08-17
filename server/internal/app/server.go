@@ -1036,7 +1036,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
 
 	// Per-check availability statistics (real per-period probe-ratio + incidents)
-	availabilityService := availability.NewService(s.dbService)
+	availabilityService := availability.NewService(s.dbService, s.config)
 	availabilityHandler := availability.NewHandler(availabilityService, s.config)
 	orgChecksAvail := orgGroup("/orgs/:org/checks/:check/availability")
 	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
