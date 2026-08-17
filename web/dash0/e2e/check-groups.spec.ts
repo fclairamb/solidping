@@ -342,6 +342,64 @@ test.describe("Check Groups", () => {
     await deleteGroupViaApi(page, token, group.uid);
   });
 
+  test("should add a check to a group from the group header, once the group is non-empty", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a group with an existing check via API — the empty-state link
+    // (group-empty-new-check-link) only renders for an empty group, so this
+    // exercises the persistent header button instead.
+    const token = await getAuthToken(page);
+    const ts = Date.now();
+    const groupName = `E2E HeaderAdd ${ts}`;
+    const group = await createGroupViaApi(page, token, groupName);
+    await createCheckViaApi(page, token, `E2E HeaderAdd Existing ${ts}`, group.uid);
+
+    await navigateToChecks(page);
+
+    const groupSection = page
+      .getByTestId("group-section")
+      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+    await expect(groupSection).toBeVisible({ timeout: 10000 });
+
+    // Negative control: the header row (which toggles collapse on click) must
+    // stay unaffected by the button click.
+    const groupHeader = groupSection.getByTestId("group-header");
+    const expandedBefore = await groupHeader.getAttribute("aria-expanded");
+
+    await groupSection.getByTestId("group-add-check-button").click();
+
+    await page.waitForURL(/\/checks\/new\?/, { timeout: 10000 });
+    const url = new URL(page.url());
+    expect(url.pathname.endsWith("/checks/new")).toBe(true);
+    expect(url.searchParams.get("group")).toBe(group.slug);
+
+    // The new-check form has the group preselected.
+    await expect(page.getByTestId("check-name-input")).toBeVisible({
+      timeout: 10000,
+    });
+    await expandSection(page, "section-organization-trigger");
+    const groupSelect = page.getByTestId("check-group-select");
+    await expect(groupSelect).toContainText(groupName, { timeout: 10000 });
+
+    // Verify the negative control: aria-expanded must be unchanged (the
+    // header row's collapse state was not touched by the button click). Go
+    // back to the checks list and re-check.
+    await navigateToChecks(page);
+    const groupSectionAfter = page
+      .getByTestId("group-section")
+      .filter({ has: page.getByTestId("group-name").getByText(groupName) });
+    await expect(groupSectionAfter).toBeVisible({ timeout: 10000 });
+    const expandedAfter = await groupSectionAfter
+      .getByTestId("group-header")
+      .getAttribute("aria-expanded");
+    expect(expandedAfter).toBe(expandedBefore);
+
+    // Clean up
+    await deleteGroupViaApi(page, token, group.uid);
+  });
+
   test("should edit a check to assign it to a group", async ({
     authenticatedPage,
   }) => {
