@@ -142,20 +142,25 @@ func TestGetConfigPositiveControl(t *testing.T) {
 	r.Equal(true, block["enabled"])
 	r.Equal("phc_public_key", block["projectApiKey"])
 	r.Equal("https://ph.example.com", block["host"])
+	// An explicit host bypasses the proxy, so no ui_host override is emitted.
+	_, hasUIHost := block["uiHost"]
+	r.False(hasUIHost, "uiHost must be absent when an explicit host is set")
 }
 
-// TestGetConfigFallsBackToDefaultHost proves an operator who sets only a key
-// gets the documented default endpoint rather than an empty host.
-func TestGetConfigFallsBackToDefaultHost(t *testing.T) {
+// TestGetConfigDefaultsToFirstPartyProxy proves an operator who sets only a key
+// gets the first-party proxy path as api_host — so ad blockers do not drop
+// events — plus the PostHog app host as ui_host so in-app links still resolve.
+func TestGetConfigDefaultsToFirstPartyProxy(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	body := serve(t, &config.Config{PostHog: config.PostHogConfig{
+	block := posthogBlock(t, serve(t, &config.Config{PostHog: config.PostHogConfig{
 		Enabled:       true,
 		ProjectAPIKey: "phc_public_key",
-	}})
+	}}))
 
-	r.Equal(config.DefaultPostHogHost, posthogBlock(t, body)["host"])
+	r.Equal(config.PostHogProxyPath, block["host"])
+	r.Equal(config.DefaultPostHogUIHost, block["uiHost"])
 }
 
 // TestBuildIsNilSafe guards the handler against a nil config (defensive: the

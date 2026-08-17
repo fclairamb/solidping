@@ -1701,6 +1701,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/status0", s.serveStatus0Root)
 	mainGroup.GET("/status0/*path", s.serveStatus0Root)
 
+	// PostHog ingestion reverse proxy (config.PostHogProxyPath). The dashboard
+	// posts analytics to this first-party path instead of *.posthog.com, so ad
+	// blockers that block third-party analytics hosts do not silently drop
+	// events. posthog-js uses GET (static assets, remote config) and POST
+	// (events, flags).
+	mainGroup.GET(config.PostHogProxyPath+"/*path", s.proxyPostHog)
+	mainGroup.POST(config.PostHogProxyPath+"/*path", s.proxyPostHog)
+
 	// Catch-all for frontend (must be last)
 	mainGroup.GET("/*path", s.serveAppRoot)
 
@@ -2159,6 +2167,52 @@ func (s *Server) serveAppRedirect(
 				http.Error(writer, "Internal server error", http.StatusInternalServerError)
 			}
 		}
+	}
+
+	proxy.ServeHTTP(writer, req)
+
+	return nil
+}
+
+// proxyPostHog reverse-proxies dashboard analytics traffic to PostHog through
+// the SolidPing origin (config.PostHogProxyPath). Serving capture first-party
+// keeps ad blockers that block requests to *.posthog.com from dropping events.
+func (s *Server) proxyPostHog(writer http.ResponseWriter, req *http.Request) error {
+	// Nothing to forward when analytics is off — the dashboard never targets
+	// this path in that case, so a stray hit is just noise.
+	if !s.config.PostHog.Active() {
+		handlerBase := base.NewHandlerBase(s.config)
+
+		return handlerBase.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Not found")
+	}
+
+	// /static/ carries posthog-js assets (toolbar, surveys, recorder), which
+	// PostHog Cloud serves from a separate host; everything else is ingestion.
+	upstream := s.config.PostHog.ResolvedHost()
+	if strings.HasPrefix(req.URL.Path, config.PostHogProxyPath+"/static/") {
+		upstream = config.DefaultPostHogAssetsHost
+	}
+
+	target, err := url.Parse(upstream)
+	if err != nil {
+		return fmt.Errorf("parse posthog upstream %q: %w", upstream, err)
+	}
+
+	// Strip the proxy prefix so the upstream receives the path it expects.
+	upstreamPath := strings.TrimPrefix(req.URL.Path, config.PostHogProxyPath)
+
+	//nolint:exhaustruct // Only Rewrite is needed for reverse proxying.
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(proxyReq *httputil.ProxyRequest) {
+			proxyReq.SetURL(target)
+			proxyReq.Out.URL.Path = upstreamPath
+			proxyReq.Out.URL.RawPath = upstreamPath
+			// The upstream routes and TLS-terminates on its own hostname.
+			proxyReq.Out.Host = target.Host
+			// Preserve the visitor IP so PostHog geolocates the real client,
+			// not the SolidPing server.
+			proxyReq.SetXForwarded()
+		},
 	}
 
 	proxy.ServeHTTP(writer, req)

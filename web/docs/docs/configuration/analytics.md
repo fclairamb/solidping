@@ -47,7 +47,7 @@ dashboard.
 | Variable | Default | Secret | Description |
 |----------|---------|--------|-------------|
 | `SP_POSTHOG_PROJECT_API_KEY` | – | no | The public `phc_…` browser key. **Empty means analytics is entirely off.** Public by design: it is shipped to the dashboard, exactly like a Sentry DSN. |
-| `SP_POSTHOG_HOST` | `https://eu.i.posthog.com` | no | Ingestion endpoint. Point it at a self-hosted PostHog or a reverse proxy if you prefer. |
+| `SP_POSTHOG_HOST` | – (first-party proxy) | no | Ingestion endpoint. Leave it empty to capture through the built-in first-party proxy (see below). Set it to point the dashboard directly at a self-hosted PostHog or your own reverse proxy. |
 | `SP_POSTHOG_PERSONAL_API_KEY` | – | **yes** | Optional server-side key. Stored as a secret, never returned by any API and never sent to the browser. When unset, the backend captures with the project key. |
 | `SP_POSTHOG_ENABLED` | `true` | no | Kill switch. Set to `false` to disable analytics even while a key is configured. |
 
@@ -64,6 +64,27 @@ Values saved from the dashboard live in the system `parameters` table under the
 keys `posthog.enabled`, `posthog.project_api_key`, `posthog.host` and
 `posthog.personal_api_key`. Resolution order is the standard
 **environment variable → database → default**.
+
+## First-party capture
+
+By default the dashboard sends analytics to a first-party path on the SolidPing
+origin, `/ingest`, instead of directly to `*.posthog.com`. The Go binary
+reverse-proxies that path to PostHog. Many ad blockers drop third-party requests
+to known analytics hosts, so first-party capture stops those blockers from
+silently discarding events and keeps the web analytics numbers complete. This
+needs no extra infrastructure: the same host that serves `/dash0` serves
+`/ingest`.
+
+The proxy forwards the visitor IP to PostHog, so geolocation stays accurate. It
+sends `/ingest/static/*` requests (the toolbar and other posthog-js assets) to
+the PostHog assets host and every other request to the ingestion host.
+
+The dashboard also receives a `ui_host` (`https://eu.posthog.com`), so the
+PostHog toolbar and "view in PostHog" links still resolve to the PostHog app
+even though `api_host` is a local path.
+
+Set `SP_POSTHOG_HOST` to opt out: the dashboard then captures directly against
+that host and the built-in proxy is unused.
 
 ## Exactly what is sent
 
