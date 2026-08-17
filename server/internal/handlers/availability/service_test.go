@@ -9,6 +9,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -457,4 +458,80 @@ func TestGetAvailability_SparseLongPeriodSeries(t *testing.T) {
 		rr.Equal(0, row.TotalChecks)
 		rr.Zero(row.DowntimeSeconds)
 	})
+}
+
+// TestGetAvailability_RawClampFollowsTheLiveRetentionParameter is the read-side
+// regression for the retention source. uptimebar clamps its raw-tier query to
+// the configured raw retention, and the server "Aggregation" settings tab writes
+// that setting to the `performance.aggregation_retention_raw_hours` system
+// parameter — NOT to the koanf config struct. A reader that only consulted koanf
+// would keep clamping at the 24h default while the aggregation job kept three
+// days of raw, silently dropping two days of rows that no rollup covers yet.
+//
+// The two subtests are each other's control: the same 3-day-old raw row is
+// invisible with the parameter unset (the default 24h clamp, which is correct
+// for that configuration) and counted once the parameter says the job keeps it.
+func TestGetAvailability_RawClampFollowsTheLiveRetentionParameter(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-retention-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "avail-retention-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	// Drop the auto-seeded "created" lifecycle marker so only the seeded probe
+	// below can produce a count.
+	seeded, err := dbSvc.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID, CheckUIDs: []string{check.UID}, Limit: 10,
+	})
+	r.NoError(err)
+
+	seededUIDs := make([]string, 0, len(seeded.Results))
+	for _, row := range seeded.Results {
+		seededUIDs = append(seededUIDs, row.UID)
+	}
+
+	if len(seededUIDs) > 0 {
+		_, delErr := dbSvc.DeleteResults(ctx, org.UID, seededUIDs)
+		r.NoError(delErr)
+	}
+
+	probe := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 0.1)
+	probe.PeriodStart = time.Now().UTC().Add(-3 * 24 * time.Hour)
+	r.NoError(dbSvc.CreateResult(ctx, probe))
+
+	// cfg is nil: the koanf field says nothing, so only the system parameter can
+	// move the clamp.
+	svc := NewService(dbSvc, nil)
+
+	totalFor := func(tt *testing.T) int {
+		tt.Helper()
+
+		resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+			Periods: []string{"30d"},
+		})
+		require.NoError(tt, availErr)
+		require.Len(tt, resp.Data, 1)
+
+		return resp.Data[0].TotalChecks
+	}
+
+	r.Equal(0, totalFor(t),
+		"with the default 24h raw retention the clamp correctly excludes a 3-day-old raw row")
+
+	// What the Aggregation settings tab writes.
+	r.NoError(dbSvc.SetSystemParameter(ctx,
+		string(systemconfig.KeyPerfAggRetentionRawHours), 7*24, false))
+
+	r.Equal(1, totalFor(t),
+		"a UI-set performance.aggregation_retention_raw_hours must widen the raw clamp")
 }
