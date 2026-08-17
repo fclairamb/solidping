@@ -513,14 +513,14 @@ func TestGetAvailability_RawClampFollowsTheLiveRetentionParameter(t *testing.T) 
 	// move the clamp.
 	svc := NewService(dbSvc, nil)
 
-	totalFor := func(tt *testing.T) int {
-		tt.Helper()
+	totalFor := func(t *testing.T) int {
+		t.Helper()
 
 		resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
 			Periods: []string{"30d"},
 		})
-		require.NoError(tt, availErr)
-		require.Len(tt, resp.Data, 1)
+		require.NoError(t, availErr)
+		require.Len(t, resp.Data, 1)
 
 		return resp.Data[0].TotalChecks
 	}

@@ -11,6 +11,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// errParameterReadFailed stands in for a database that cannot be reached.
+var errParameterReadFailed = errors.New("parameter read failed")
+
 // fakeParameterReader serves canned global parameters, and can fail, so the
 // precedence rules can be exercised without a database.
 type fakeParameterReader struct {
@@ -42,8 +45,6 @@ func dayKey() string  { return string(KeyPerfAggRetentionDayMonths) }
 // tier. This is the contract the whole read-side clamp rests on: if the reader
 // resolved a shorter retention than the aggregation job actually applies, it
 // would clamp away raw rows that no rollup covers yet.
-//
-//nolint:paralleltest // t.Setenv forbids t.Parallel
 func TestResolveAggregationRetention_Precedence(t *testing.T) {
 	r := require.New(t)
 	ctx := t.Context()
@@ -89,8 +90,6 @@ func TestResolveAggregationRetention_Precedence(t *testing.T) {
 // handling: a below-floor or unparseable value falls through instead of being
 // applied, and the stored JSON number is coerced whatever concrete type it
 // arrives as.
-//
-//nolint:paralleltest // t.Setenv forbids t.Parallel
 func TestResolveAggregationRetention_ValidationAndCoercion(t *testing.T) {
 	r := require.New(t)
 	ctx := t.Context()
@@ -136,7 +135,7 @@ func TestResolveAggregationRetention_ValidationAndCoercion(t *testing.T) {
 	cfg.Aggregation.RetentionHour = 9
 
 	_, hour, _ := ResolveAggregationRetention(ctx,
-		fakeParameterReader{err: errors.New("db down")}, cfg)
+		fakeParameterReader{err: errParameterReadFailed}, cfg)
 	r.Equal(9, hour)
 }
 

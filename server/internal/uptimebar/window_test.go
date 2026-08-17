@@ -153,7 +153,7 @@ func TestWindowAvailability(t *testing.T) {
 			lister := &fakeLister{results: tc.rows}
 
 			out, err := WindowAvailability(
-				context.Background(), lister, "org", []string{"c1"}, start, now, Hints{RetentionRawHours: 24, RetentionHourDays: 7})
+				context.Background(), lister, "org", []string{"c1"}, start, now, hints())
 			r.NoError(err)
 
 			stats := out["c1"]
@@ -177,13 +177,13 @@ func TestWindowAvailability_Empty(t *testing.T) {
 	lister := &fakeLister{results: []*models.Result{rawRow("c1", models.ResultStatusUp, now, 10)}}
 
 	// No checks → empty, query never run.
-	out, err := WindowAvailability(context.Background(), lister, "org", nil, now.Add(-time.Hour), now, Hints{RetentionRawHours: 24, RetentionHourDays: 7})
+	out, err := WindowAvailability(context.Background(), lister, "org", nil, now.Add(-time.Hour), now, hints())
 	r.NoError(err)
 	r.Empty(out)
 	r.Nil(lister.gotFilter(), "no query should be issued when there are no checks")
 
 	// end == start (non-positive window) → empty.
-	out, err = WindowAvailability(context.Background(), lister, "org", []string{"c1"}, now, now, Hints{RetentionRawHours: 24, RetentionHourDays: 7})
+	out, err = WindowAvailability(context.Background(), lister, "org", []string{"c1"}, now, now, hints())
 	r.NoError(err)
 	r.Empty(out)
 }
@@ -210,7 +210,7 @@ func TestWindowAvailability_RawTierClampedAndDisjoint(t *testing.T) {
 		rawRow("c1", models.ResultStatusUp, now.Add(-time.Hour), 10),
 	}}
 
-	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, Hints{RetentionRawHours: 24, RetentionHourDays: 7})
+	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, hints())
 	r.NoError(err)
 
 	stats := out["c1"]
@@ -224,14 +224,14 @@ func TestWindowAvailability_RawTierClampedAndDisjoint(t *testing.T) {
 	r.NotContains(rollup.PeriodTypes, models.PeriodTypeRaw)
 	r.True(rollup.PeriodStartAfter.Equal(start))
 	r.True(rollup.PeriodEndBefore.Equal(now))
-	r.Equal(rollupRowCap(Hints{RetentionRawHours: 24, RetentionHourDays: 7}, 1, now.Sub(start), true), rollup.Limit)
+	r.Equal(rollupRowCap(hints(), 1, now.Sub(start), true), rollup.Limit)
 
 	raw := lister.filterFor(models.PeriodTypeRaw)
 	r.NotNil(raw)
 	r.WithinDuration(now.Add(-26*time.Hour), *raw.PeriodStartAfter, time.Minute,
 		"raw is clamped to RetentionRaw + rawClampMargin, not the caller's 90-day window")
 	r.True(raw.PeriodEndBefore.Equal(now))
-	r.Equal(rawRowCap(Hints{RetentionRawHours: 24, RetentionHourDays: 7}, 1, now.Sub(start)), raw.Limit)
+	r.Equal(rawRowCap(hints(), 1, now.Sub(start)), raw.Limit)
 
 	for _, filter := range lister.gotFilters {
 		r.True(filter.SkipBlobs, "both tier queries must project the blobs away (spec 2026-07-24-02)")
@@ -253,7 +253,7 @@ func TestWindowAvailability_PastWindowSkipsRawQuery(t *testing.T) {
 
 	lister := &fakeLister{results: []*models.Result{dayRow("c1", 100, 99, end.Add(-24*time.Hour))}}
 
-	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, end, Hints{RetentionRawHours: 24, RetentionHourDays: 7})
+	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, end, hints())
 	r.NoError(err)
 
 	r.Equal(100, out["c1"].Total, "the rollup tiers still answer a fully historical window")
@@ -274,7 +274,7 @@ func TestWindowAvailability_NoDataIsNotHundredPercent(t *testing.T) {
 
 	lister := &fakeLister{}
 
-	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, Hints{RetentionRawHours: 24, RetentionHourDays: 7})
+	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, hints())
 	r.NoError(err)
 
 	stats, present := out["c1"]
@@ -301,7 +301,7 @@ func TestWindowAvailability_Filter(t *testing.T) {
 	start := now.Add(-30 * 24 * time.Hour)
 
 	lister := &fakeLister{}
-	_, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, Hints{RetentionRawHours: 24, RetentionHourDays: 7})
+	_, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, hints())
 	r.NoError(err)
 
 	covered := make([]string, 0, 4)

@@ -124,6 +124,13 @@ func hourRow(checkUID string, total, success int, start time.Time) *models.Resul
 
 // dayRow is defined in window_test.go (same package) and reused here.
 
+// Hints shorthands: hints() mirrors the live default retention (24 h raw, 7 d
+// hourly) with no measured probe rate; noHints() exercises the documented
+// fallbacks.
+func hints() Hints { return Hints{RetentionRawHours: 24, RetentionHourDays: 7} }
+
+func noHints() Hints { return Hints{} }
+
 // TestBucketStats_AvailabilityPct covers the empty/non-empty distinction the
 // caller uses to choose between a real status and "no data".
 func TestBucketStats_AvailabilityPct(t *testing.T) {
@@ -158,7 +165,9 @@ func TestBucketAvailability_RawSpansCurrentAndPreviousHour(t *testing.T) {
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(5*time.Minute), 50),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, Hints{})
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, noHints(),
+	)
 	r.NoError(err)
 
 	byBucket := out["c1"]
@@ -195,7 +204,9 @@ func TestBucketAvailability_RawAndRollupNoDoubleCount(t *testing.T) {
 		hourRow("c1", 60, 60, olderHour),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, Hints{})
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, noHints(),
+	)
 	r.NoError(err)
 
 	byBucket := out["c1"]
@@ -233,7 +244,9 @@ func TestBucketAvailability_WarningCountsAsUpLifecycleExcluded(t *testing.T) {
 		rawRow("c1", models.ResultStatusRunning, currentHour.Add(5*time.Minute), 0),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, Hints{})
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, noHints(),
+	)
 	r.NoError(err)
 
 	stats := out["c1"][currentHour]
@@ -259,7 +272,9 @@ func TestBucketAvailability_EmptyBucketAbsent(t *testing.T) {
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(time.Minute), 40),
 	}}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, Hints{})
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, noHints(),
+	)
 	r.NoError(err)
 
 	byBucket := out["c1"]
@@ -285,7 +300,7 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	}}
 
 	out, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1", "c2"}, time.Hour, bucketStart, 24, Hints{},
+		context.Background(), lister, "org", []string{"c1", "c2"}, time.Hour, bucketStart, 24, noHints(),
 	)
 	r.NoError(err)
 
@@ -311,9 +326,9 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	// truncates dense windows — see TestBucketAvailability_DenseRowsFillAllBuckets)
 	// but a per-tier retention-derived safety cap: it must exceed this tiny
 	// query's actual row count by a wide margin.
-	r.Equal(rollupRowCap(Hints{}, 2, 24*time.Hour, false), rollup.Limit,
+	r.Equal(rollupRowCap(noHints(), 2, 24*time.Hour, false), rollup.Limit,
 		"the rollup query is bounded by the rollup-tier safety cap")
-	r.Equal(rawRowCap(Hints{}, 2, 24*time.Hour), raw.Limit,
+	r.Equal(rawRowCap(noHints(), 2, 24*time.Hour), raw.Limit,
 		"the raw query is bounded by the raw-tier safety cap")
 	r.Greater(rollup.Limit, len(lister.results),
 		"the cap must be generous enough not to truncate this small query")
@@ -346,7 +361,7 @@ func TestBucketAvailability_RawTierIsClampedToRetention(t *testing.T) {
 	lister := &fakeLister{}
 
 	_, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, Hints{RetentionRawHours: 24, RetentionHourDays: 7},
+		context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, hints(),
 	)
 	r.NoError(err)
 
@@ -393,7 +408,7 @@ func TestBucketAvailability_ClampKeepsTiersDisjoint(t *testing.T) {
 	}}
 
 	out, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, Hints{RetentionRawHours: 24, RetentionHourDays: 7},
+		context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, hints(),
 	)
 	r.NoError(err)
 
@@ -431,7 +446,7 @@ func TestBucketAvailability_WarnsWhenAggregationLags(t *testing.T) {
 	}}
 
 	out, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 48, Hints{RetentionRawHours: 24, RetentionHourDays: 7},
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 48, hints(),
 	)
 	r.NoError(err)
 	r.NotEmpty(out["c1"], "the lagging raw row is still counted, not dropped")
@@ -465,7 +480,7 @@ func TestBucketAvailability_NoWarningWhenAggregationHealthy(t *testing.T) {
 	}}
 
 	_, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 48, Hints{RetentionRawHours: 24, RetentionHourDays: 7},
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 48, hints(),
 	)
 	r.NoError(err)
 
@@ -479,7 +494,7 @@ func TestBucketAvailability_NoChecks(t *testing.T) {
 	r := require.New(t)
 
 	lister := &fakeLister{}
-	out, err := BucketAvailability(context.Background(), lister, "org", nil, time.Hour, time.Now(), 24, Hints{})
+	out, err := BucketAvailability(context.Background(), lister, "org", nil, time.Hour, time.Now(), 24, noHints())
 	r.NoError(err)
 	r.Empty(out)
 	r.Nil(lister.gotFilter(), "no query is issued when there are no checks")
@@ -527,7 +542,7 @@ func TestBucketAvailability_DenseRowsFillAllBuckets(t *testing.T) {
 			lister := &fakeLister{results: results}
 
 			out, err := BucketAvailability(
-				context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, Hints{},
+				context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, noHints(),
 			)
 			r.NoError(err)
 
@@ -581,7 +596,7 @@ func TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks(t *testing.T) {
 	lister := &fakeLister{results: results}
 
 	out, err := BucketAvailability(
-		context.Background(), lister, "org", []string{"c1", "c2"}, 24*time.Hour, bucketStart, n, Hints{},
+		context.Background(), lister, "org", []string{"c1", "c2"}, 24*time.Hour, bucketStart, n, noHints(),
 	)
 	r.NoError(err)
 
@@ -632,13 +647,15 @@ func TestBucketAvailability_SafetyCapEngagesAndWarns(t *testing.T) {
 
 	lister := &fakeLister{results: results}
 
-	out, err := BucketAvailability(context.Background(), lister, "org", []string{"c1"}, time.Hour, currentHour, 1, Hints{})
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, currentHour, 1, noHints(),
+	)
 	r.NoError(err, "a capped, partial fetch must not error")
 
 	raw := lister.filterFor(models.PeriodTypeRaw)
 	r.NotNil(raw)
 
-	wantLimit := rawRowCap(Hints{}, 1, time.Hour)
+	wantLimit := rawRowCap(noHints(), 1, time.Hour)
 	r.Less(wantLimit, pathologicalRowCount,
 		"the cap must be smaller than the pathological row count for this test to be meaningful")
 	r.Equal(wantLimit, raw.Limit, "the raw query is bounded by the raw-tier safety cap")
@@ -702,14 +719,14 @@ func TestRawRowCap_IsARealGuard(t *testing.T) {
 	window := 30 * 24 * time.Hour
 	hints := Hints{RetentionRawHours: 24, RetentionHourDays: 7, RawRowsPerHour: rowsPerHour}
 
-	cap := rawRowCap(hints, checks, window)
+	rawCap := rawRowCap(hints, checks, window)
 
 	// Rows this deployment can actually have in the clamped 26h window.
 	actual := 26 * rowsPerHour
 
-	r.Greater(cap, actual*2, "the cap must keep generous headroom over the real row count")
-	r.Less(cap, 100_000, "the cap must be a real bound, not a formality")
-	r.Less(cap, observedOldCap/8,
+	r.Greater(rawCap, actual*2, "the cap must keep generous headroom over the real row count")
+	r.Less(rawCap, 100_000, "the cap must be a real bound, not a formality")
+	r.Less(rawCap, observedOldCap/8,
 		"the cap must be materially tighter than the LIMIT %d the spec measured", observedOldCap)
 
 	// The rollup tier is bounded by buckets, not by probe rate.
@@ -724,7 +741,7 @@ func TestRawRowCap_IsARealGuard(t *testing.T) {
 		"an implausible rate falls back to the worst-case bound, never above it")
 
 	// And with no measurement at all the conservative worst case still applies.
-	r.Greater(rawRowCap(Hints{RetentionRawHours: 24}, checks, window), cap)
+	r.Greater(rawRowCap(Hints{RetentionRawHours: 24}, checks, window), rawCap)
 }
 
 // TestMeasureRawRowsPerHour_ReadFailureFallsBack asserts the cap degrades to the
