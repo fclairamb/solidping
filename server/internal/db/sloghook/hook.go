@@ -48,7 +48,16 @@ type QueryHook struct {
 	// Now overrides the clock used for throttling (tests). Nil uses time.Now.
 	Now func() time.Time
 
-	mu          sync.Mutex
+	mu sync.Mutex
+	// slowQueries has no eviction, but is bounded by construction: the key is
+	// the NORMALIZED statement (see normalizeStatement), so its size tracks
+	// the number of distinct query shapes in the codebase — not traffic and
+	// not argument values. A hot endpoint hammered by many requests, or the
+	// same query run with many different WHERE values, still collapses to
+	// one entry. This invariant depends on normalizeStatement actually
+	// stripping literals; if that regressed (e.g. started leaving IDs or
+	// timestamps in the key), this map would become traffic-proportional and
+	// leak.
 	slowQueries map[string]*slowQueryState
 }
 
@@ -159,7 +168,13 @@ func (h *QueryHook) logSlowQuery(ctx context.Context, event *bun.QueryEvent, att
 // statement for logging: single-quoted string literals (with ” escapes)
 // and bare numeric literals both collapse to a single placeholder. This is a
 // heuristic, not a SQL parser, but it is sufficient to keep secrets and
-// other row values out of the slow-query log line.
+// other row values out of the slow-query log line. Two shapes are
+// deliberately not handled: backslash-escaped strings (non-standard-conforming
+// Postgres mode, i.e. standard_conforming_strings=off) and dollar-quoted
+// strings (`$$...$$`). Neither is ever produced by bun's query builder — bun
+// always emits standard ” escaping and never dollar-quoting — so this is a
+// known, considered gap rather than an oversight; it would need revisiting if
+// a raw statement from outside bun's builder were ever fed through this hook.
 var (
 	reStringLiteral = regexp.MustCompile(`'(?:[^']|'')*'`)
 	reNumberLiteral = regexp.MustCompile(`\b\d+(\.\d+)?\b`)
