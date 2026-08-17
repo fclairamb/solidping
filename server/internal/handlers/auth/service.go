@@ -2640,7 +2640,7 @@ func (s *Service) bumpChangePasswordCounter(ctx context.Context, userUID string)
 // effects (other sessions revoked, PATs preserved, password-changed.html
 // confirmation email) so it does not matter which path rotated the password.
 //
-// Two behaviours are deliberate and load-bearing:
+// Two behaviors are deliberate and load-bearing:
 //
 //   - When the account has no password yet (signed up through an identity
 //     provider), currentPassword is ignored and this *sets* the initial
