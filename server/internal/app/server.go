@@ -2203,15 +2203,15 @@ func (s *Server) proxyPostHog(writer http.ResponseWriter, req *http.Request) err
 
 	//nolint:exhaustruct // Only Rewrite is needed for reverse proxying.
 	proxy := &httputil.ReverseProxy{
-		Rewrite: func(r *httputil.ProxyRequest) {
-			r.SetURL(target)
-			r.Out.URL.Path = upstreamPath
-			r.Out.URL.RawPath = upstreamPath
+		Rewrite: func(proxyReq *httputil.ProxyRequest) {
+			proxyReq.SetURL(target)
+			proxyReq.Out.URL.Path = upstreamPath
+			proxyReq.Out.URL.RawPath = upstreamPath
 			// The upstream routes and TLS-terminates on its own hostname.
-			r.Out.Host = target.Host
+			proxyReq.Out.Host = target.Host
 			// Preserve the visitor IP so PostHog geolocates the real client,
 			// not the SolidPing server.
-			r.SetXForwarded()
+			proxyReq.SetXForwarded()
 		},
 	}
 
