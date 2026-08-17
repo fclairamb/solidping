@@ -74,6 +74,10 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 
 	log.InfoContext(ctx, "Starting aggregation job", "organization_uid", orgUID)
 
+	// Table-wide gauge refresh, throttled process-wide — see
+	// maybeSampleResultsRowCount for why this must not run on every org's job.
+	maybeSampleResultsRowCount(ctx, jctx)
+
 	// Define aggregation stages in priority order
 	aggregations := []struct {
 		sourcePeriod string
