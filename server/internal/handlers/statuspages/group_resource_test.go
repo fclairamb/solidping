@@ -358,6 +358,13 @@ func TestViewStatusPage_GroupWeightedAvailability(t *testing.T) {
 		CreateResourceRequest{CheckGroupUID: group.UID})
 	r.NoError(err)
 
+	// Raw rows older than the raw-retention window cannot exist in production
+	// (the aggregation job rolls them up and deletes them in one transaction),
+	// and uptimebar clamps its raw-tier query accordingly. This fixture's raw
+	// rows are up to two days old, so the page must be configured to keep raw
+	// that long for them to be a realistic dataset.
+	svc.cfg.Aggregation.RetentionRaw = 7 * 24
+
 	now := time.Now().UTC()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	yesterday := todayStart.AddDate(0, 0, -1)
