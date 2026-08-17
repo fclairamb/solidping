@@ -130,3 +130,49 @@ in the `account:security.password.*` namespace, alongside the existing
 - A Playwright E2E in `web/dash0/e2e/` in the style of the existing
   `account-*.spec.ts` files: change the password, confirm the success toast,
   then log in again with the new password.
+
+## Implementation Plan
+
+**Session-survival decision (spec step 7):** exclude `Claims.RefreshUID` from the
+revocation sweep rather than re-issuing tokens. The caller keeps the exact
+credential it already holds (no client-side token swap, no cookie rewrite), and
+the existing `LogoutOtherSessions` code already proves the "spare this one row"
+pattern works. Covered by a test asserting the caller's refresh token still
+resolves while a second session's row is gone.
+
+1. **Error code** — add `ErrorCodeInvalidCurrentPassword = "INVALID_CURRENT_PASSWORD"`
+   to `server/internal/handlers/base/base.go`.
+2. **Service** (`server/internal/handlers/auth/service.go`):
+   - `ChangePasswordRequest{CurrentPassword, NewPassword}` / `ChangePasswordResponse{Message}`.
+   - Sentinel `ErrInvalidCurrentPassword`.
+   - `revokeRefreshTokensForUserExcept(ctx, userUID, exceptTokenUID)`; existing
+     `revokeRefreshTokensForUser` delegates with `""`.
+   - `(s *Service) ChangePassword(ctx, userUID, currentRefreshUID, req)`:
+     rate-limit per user via `bumpCounter` (new `changePasswordCountKeyPrefix`,
+     max 10 / 15 min) → load user (`ErrUserNotFound`) → if the user has a hash,
+     always run `passwords.Verify` (flat timing) and reject with
+     `ErrInvalidCurrentPassword` → length check against `minPasswordLength` →
+     reject `newPassword == currentPassword` → `passwords.Hash` + `db.UpdateUser`
+     → revoke other refresh tokens (PATs preserved, caller's row spared) →
+     `password-changed.html` email with the same `ChangedAt` payload.
+3. **Handler** (`handler.go`): `ChangePassword` reads claims, decodes the body,
+   validates `newPassword` presence, maps `ErrInvalidCurrentPassword` → 401
+   `INVALID_CURRENT_PASSWORD`, `ErrRateLimited` → 429, `ErrUserNotFound` → 404,
+   `ErrInvalidCredentials` → 400 `VALIDATION_ERROR`.
+4. **Route** (`server/internal/app/server.go`):
+   `rootAuthProtected.POST("/change-password", authHandler.ChangePassword)`.
+5. **OpenAPI** (`openapi.yaml`): document `/api/v1/auth/change-password` next to
+   `/api/v1/auth/reset-password`, plus a `ChangePasswordRequest` schema and the
+   401 `INVALID_CURRENT_PASSWORD` response.
+6. **Frontend**: `web/dash0/src/api/password.ts` (`changePassword`), a Password
+   card in `account.security.tsx` above the Passkeys card (`KeyRound` icon,
+   `Label` + `PasswordInput` + `Button` from the design reference), driven off
+   `me.hasPassword`; inline error on the current-password field for
+   `INVALID_CURRENT_PASSWORD`; `toast.success` + `refreshAll()` on success;
+   `data-testid`s `password-current-input` / `password-new-input` /
+   `password-confirm-input` / `password-submit-button`.
+7. **Translations**: `account:security.password.*` in `en`, `fr`, `de`, `es`.
+8. **Tests**: Go table-driven service + handler tests for happy path, wrong
+   current password, missing current password, too short, new == current, SSO
+   set-password, caller-session-survives / other-session-revoked, rate limit.
+   Playwright `web/dash0/e2e/account-password.spec.ts`.
