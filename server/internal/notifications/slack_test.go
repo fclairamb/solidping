@@ -884,6 +884,14 @@ func (m *mockDBService) RevokeAgent(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListPurgeableRevokedAgents(_ context.Context, _ time.Time) ([]*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) PurgeAgent(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetCheckByUidOrSlug( //nolint:revive // Interface method name
 	_ context.Context, _, _ string,
 ) (*models.Check, error) {
