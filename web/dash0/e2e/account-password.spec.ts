@@ -118,6 +118,30 @@ test.describe("Account > Security > Password", () => {
       data: { email, password: OLD_PASSWORD },
     });
     expect(oldLogin.status()).not.toBe(200);
+
+    // And the real login form accepts the new password end to end. This needs
+    // a pristine context: `seedBrowserSession` installs an init script on
+    // `page` that re-seeds the old session on every navigation, which would
+    // bounce us straight past the login form.
+    const browser = page.context().browser();
+    expect(browser).not.toBeNull();
+    const freshContext = await browser!.newContext();
+    const freshPage = await freshContext.newPage();
+    try {
+      await freshPage.goto(`orgs/${org.slug}/login`);
+      await freshPage.waitForLoadState("networkidle");
+      await freshPage
+        .getByTestId("login-title")
+        .waitFor({ state: "visible", timeout: 10000 });
+      await freshPage.getByTestId("login-email").fill(email);
+      await freshPage.getByTestId("login-password").fill(newPassword);
+      await freshPage.getByTestId("login-submit").click();
+      await freshPage.waitForURL((url) => !url.pathname.includes("login"), {
+        timeout: 10000,
+      });
+    } finally {
+      await freshContext.close();
+    }
   });
 
   test("a wrong current password surfaces inline and does not log the user out", async ({
