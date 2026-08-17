@@ -1171,6 +1171,13 @@ type DatabaseConfig struct {
 	MaxIdleConns    int           `koanf:"max_idle_conns"`     // 0 = driver default (2)
 	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"`  // 0 = no expiry
 	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time"` // 0 = no reap; idle conns held forever
+
+	// SlowQueryThreshold logs a successful query at WARN once it takes at
+	// least this long (internal/db/sloghook). 0 disables slow-query logging.
+	// Multi-word koanf key → read via applyDBSlowQueryEnv
+	// (SP_DB_SLOW_QUERY_THRESHOLD), not the auto env loader. See
+	// project_koanf_env_quirk.
+	SlowQueryThreshold time.Duration `koanf:"slow_query_threshold"`
 }
 
 // Load reads configuration from defaults, config file, and environment variables.
@@ -1256,6 +1263,10 @@ func Load() (*Config, error) {
 			MaxIdleConns:    dbPoolMaxIdleConnsDefault,
 			ConnMaxLifetime: time.Hour,
 			ConnMaxIdleTime: 5 * time.Minute,
+			// Comfortably above healthy queries here (the post-fix uptime-bar
+			// tiers measure ~10ms and ~97ms) and below anything a user would
+			// call slow (spec 2026-08-17-04).
+			SlowQueryThreshold: 500 * time.Millisecond,
 		},
 		Auth: AuthConfig{
 			JWTSecret:          "change-me-in-production",
@@ -1499,6 +1510,7 @@ func Load() (*Config, error) {
 	applyNodeRolePoolDefaults(&cfg.Database, cfg.Node.Role)
 
 	applyDatabasePoolEnv(&cfg.Database)
+	applyDBSlowQueryEnv(&cfg.Database)
 
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
@@ -1928,6 +1940,18 @@ func applyDatabasePoolEnv(cfg *DatabaseConfig) {
 	if v := os.Getenv("SP_DB_CONN_MAX_IDLE_TIME"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.ConnMaxIdleTime = d
+		}
+	}
+}
+
+// applyDBSlowQueryEnv reads the multi-word SP_DB_SLOW_QUERY_THRESHOLD knob
+// koanf's env loader cannot bind (it would collapse the underscores to dots
+// and miss the snake_case koanf tag "slow_query_threshold"). See
+// project_koanf_env_quirk, mirroring applyDatabasePoolEnv.
+func applyDBSlowQueryEnv(cfg *DatabaseConfig) {
+	if v := os.Getenv("SP_DB_SLOW_QUERY_THRESHOLD"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.SlowQueryThreshold = d
 		}
 	}
 }

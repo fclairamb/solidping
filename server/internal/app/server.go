@@ -213,45 +213,49 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	switch cfg.Database.Type {
 	case "postgres":
 		dbService, err = postgres.New(ctx, &postgres.Config{
-			DSN:             cfg.Database.URL,
-			Embedded:        false,
-			LogSQL:          cfg.Database.LogSQL,
-			RunMode:         cfg.RunMode,
-			Reset:           cfg.Database.Reset,
-			MaxOpenConns:    cfg.Database.MaxOpenConns,
-			MaxIdleConns:    cfg.Database.MaxIdleConns,
-			ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
-			ConnMaxIdleTime: cfg.Database.ConnMaxIdleTime,
+			DSN:                cfg.Database.URL,
+			Embedded:           false,
+			LogSQL:             cfg.Database.LogSQL,
+			RunMode:            cfg.RunMode,
+			Reset:              cfg.Database.Reset,
+			MaxOpenConns:       cfg.Database.MaxOpenConns,
+			MaxIdleConns:       cfg.Database.MaxIdleConns,
+			ConnMaxLifetime:    cfg.Database.ConnMaxLifetime,
+			ConnMaxIdleTime:    cfg.Database.ConnMaxIdleTime,
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create PostgreSQL service: %w", err)
 		}
 	case "postgres-embedded":
 		dbService, err = postgres.New(ctx, &postgres.Config{
-			Embedded: true,
-			Port:     embeddedPostgresPort,
-			LogSQL:   cfg.Database.LogSQL,
-			RunMode:  cfg.RunMode,
-			Reset:    cfg.Database.Reset,
+			Embedded:           true,
+			Port:               embeddedPostgresPort,
+			LogSQL:             cfg.Database.LogSQL,
+			RunMode:            cfg.RunMode,
+			Reset:              cfg.Database.Reset,
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create embedded PostgreSQL service: %w", err)
 		}
 	case "sqlite":
 		dbService, err = sqlite.New(ctx, sqlite.Config{
-			DataDir:  cfg.Database.Dir,
-			InMemory: false,
-			LogSQL:   cfg.Database.LogSQL,
-			RunMode:  cfg.RunMode,
-			Reset:    cfg.Database.Reset,
+			DataDir:            cfg.Database.Dir,
+			InMemory:           false,
+			LogSQL:             cfg.Database.LogSQL,
+			RunMode:            cfg.RunMode,
+			Reset:              cfg.Database.Reset,
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite service: %w", err)
 		}
 	case dbTypeSQLiteMemory:
 		dbService, err = sqlite.New(ctx, sqlite.Config{
-			InMemory: true,
-			LogSQL:   cfg.Database.LogSQL,
+			InMemory:           true,
+			LogSQL:             cfg.Database.LogSQL,
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite in-memory service: %w", err)
