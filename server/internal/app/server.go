@@ -573,6 +573,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.POST("/switch-org", authHandler.SwitchOrg)
 	rootAuthProtected.GET("/me", authHandler.Me)
 	rootAuthProtected.PATCH("/me", authHandler.UpdateMe)
+	// Authenticated password rotation (and the SSO-only "set a password"
+	// case). The unauthenticated /reset-password above stays for the
+	// forgotten-password flow; this one needs no email round-trip.
+	rootAuthProtected.POST("/change-password", authHandler.ChangePassword)
 	rootAuthProtected.GET("/tokens", authHandler.GetAllUserTokens)
 	rootAuthProtected.POST("/2fa/setup", authHandler.Setup2FA)
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)

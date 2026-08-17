@@ -624,6 +624,55 @@ func (h *Handler) ResetPassword(writer http.ResponseWriter, req *http.Request) e
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// ChangePassword rotates the authenticated caller's password (or sets an
+// initial one for an SSO-only account). Unlike ResetPassword it needs no
+// emailed token — the session is the proof of identity, plus the current
+// password when the account has one.
+func (h *Handler) ChangePassword(writer http.ResponseWriter, req *http.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	var changeReq ChangePasswordRequest
+	if err := json.NewDecoder(req.Body).Decode(&changeReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	if changeReq.NewPassword == "" {
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "newPassword", Message: msgPasswordRequired},
+		})
+	}
+
+	resp, err := h.svc.ChangePassword(req.Context(), claims.UserUID, claims.RefreshUID, changeReq)
+	if err != nil {
+		return h.handleChangePasswordError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+func (h *Handler) handleChangePasswordError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrInvalidCurrentPassword):
+		return h.WriteErrorErr(writer, http.StatusUnauthorized, base.ErrorCodeInvalidCurrentPassword,
+			"Current password is incorrect", err)
+	case errors.Is(err, ErrRateLimited):
+		return h.WriteErrorErr(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many password change attempts, please try again later", err)
+	case errors.Is(err, ErrUserNotFound):
+		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
+	case errors.Is(err, ErrInvalidCredentials):
+		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			err.Error(), err)
+	default:
+		return h.WriteInternalError(writer, err)
+	}
+}
+
 func (h *Handler) handlePasswordResetError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrPasswordResetExpired):
