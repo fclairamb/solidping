@@ -48,9 +48,11 @@ type RetentionParameterReader interface {
 // parameters, which never reach the koanf struct.
 //
 // db and cfg may both be nil (callers without either fall back to the defaults).
+//
+// Returns (rawHours, hourDays, dayMonths).
 func ResolveAggregationRetention(
 	ctx context.Context, db RetentionParameterReader, cfg *config.Config,
-) (rawHours, hourDays, dayMonths int) {
+) (int, int, int) {
 	legacyRaw, legacyHour, legacyDay := 0, 0, 0
 	if cfg != nil {
 		legacyRaw = cfg.Aggregation.RetentionRaw
@@ -58,11 +60,11 @@ func ResolveAggregationRetention(
 		legacyDay = cfg.Aggregation.RetentionDay
 	}
 
-	rawHours = resolveRetentionTier(ctx, db,
+	rawHours := resolveRetentionTier(ctx, db,
 		KeyPerfAggRetentionRawHours, EnvRetentionRawHours, legacyRaw, DefaultRetentionRawHours)
-	hourDays = resolveRetentionTier(ctx, db,
+	hourDays := resolveRetentionTier(ctx, db,
 		KeyPerfAggRetentionHourDays, EnvRetentionHourDays, legacyHour, DefaultRetentionHourDays)
-	dayMonths = resolveRetentionTier(ctx, db,
+	dayMonths := resolveRetentionTier(ctx, db,
 		KeyPerfAggRetentionDayMonths, EnvRetentionDayMonths, legacyDay, DefaultRetentionDayMonths)
 
 	return rawHours, hourDays, dayMonths
