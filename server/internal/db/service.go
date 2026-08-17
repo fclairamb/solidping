@@ -322,6 +322,11 @@ type Service interface {
 	UpsertAggregatedResult(ctx context.Context, result *models.Result) error
 	GetResult(ctx context.Context, uid string) (*models.Result, error)
 	ListResults(ctx context.Context, filter *models.ListResultsFilter) (*models.ListResultsResponse, error)
+	// CountResultsByPeriodType returns the total row count in `results` grouped
+	// by period_type, across every organization. Table-wide and uncached —
+	// only the aggregation-job-cadence gauge sampler may call this, never a
+	// request path (spec 2026-08-17-04 §3).
+	CountResultsByPeriodType(ctx context.Context) (map[string]int64, error)
 	// GetResultNeighbors returns the UID of the next-older (prevUID) and
 	// next-newer (nextUID) row in the same organization+check+periodType
 	// series (optionally narrowed to regions), relative to the pivot

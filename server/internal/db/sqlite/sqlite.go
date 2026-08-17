@@ -66,6 +66,11 @@ type Config struct {
 
 	// Reset deletes the database file before creating (only for test/demo run modes)
 	Reset bool
+
+	// SlowQueryThreshold logs a successful query at WARN once it takes at
+	// least this long (see internal/db/sloghook). 0 disables slow-query
+	// logging.
+	SlowQueryThreshold time.Duration
 }
 
 // Service implements db.Service for SQLite.
@@ -171,7 +176,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	// Query hook is always installed: it emits Prometheus histograms
 	// (solidping_db_query_duration_seconds) regardless of cfg.LogSQL.
 	// Verbose slog logging stays opt-in to avoid leaking secrets.
-	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel))
+	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel, cfg.SlowQueryThreshold))
 
 	// Expose connection-pool stats via /metrics. Cheap — the collector
 	// only calls sql.DB.Stats() at scrape time. Idempotent per backend
@@ -2091,6 +2096,36 @@ func (s *Service) GetResult(ctx context.Context, uid string) (*models.Result, er
 	}
 
 	return result, nil
+}
+
+// CountResultsByPeriodType returns the total row count in `results` grouped
+// by period_type (raw/hour/day/month), across every organization. Deliberately
+// table-wide and uncached: this is only ever called by the periodic gauge
+// sampler tied to the aggregation job's own cadence
+// (internal/jobs/jobtypes/job_aggregation.go), never per-request — a
+// table-wide COUNT(*) is exactly what results cannot afford on every page
+// load (spec 2026-08-17-04 §3).
+func (s *Service) CountResultsByPeriodType(ctx context.Context) (map[string]int64, error) {
+	var rows []struct {
+		PeriodType string `bun:"period_type"`
+		Count      int64  `bun:"count"`
+	}
+
+	if err := s.db.NewSelect().
+		Model((*models.Result)(nil)).
+		ColumnExpr("period_type").
+		ColumnExpr("COUNT(*) AS count").
+		Group("period_type").
+		Scan(ctx, &rows); err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		counts[row.PeriodType] = row.Count
+	}
+
+	return counts, nil
 }
 
 func (s *Service) ListResults(

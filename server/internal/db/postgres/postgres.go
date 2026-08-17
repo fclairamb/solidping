@@ -82,6 +82,11 @@ type Config struct {
 	// MaxIdleConns × replica-count connections against the Postgres role's
 	// rolconnlimit indefinitely. See spec 2026-07-05-09 (D2).
 	ConnMaxIdleTime time.Duration
+
+	// SlowQueryThreshold logs a successful query at WARN once it takes at
+	// least this long (see internal/db/sloghook). 0 disables slow-query
+	// logging.
+	SlowQueryThreshold time.Duration
 }
 
 // applyPoolLimits bounds the connection pool. Left unbounded, a burst can open
@@ -177,7 +182,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 			suite = "app"
 		}
 
-		return NewEmbedded(ctx, suite, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset)
+		return NewEmbedded(ctx, suite, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset, cfg.SlowQueryThreshold)
 	}
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
@@ -186,7 +191,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 
 	// Query hook is always installed: it emits Prometheus histograms
 	// (solidping_db_query_duration_seconds) regardless of cfg.LogSQL.
-	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel))
+	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel, cfg.SlowQueryThreshold))
 
 	// Expose connection-pool stats via /metrics. Idempotent per backend.
 	prommetrics.RegisterDB(sqldb, backendLabel)
@@ -210,6 +215,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 // embeddedpg package; callers no longer manage their own data directory.
 func NewEmbedded(
 	_ context.Context, suite string, port uint32, logSQL bool, runMode string, reset bool,
+	slowQueryThreshold time.Duration,
 ) (*Service, error) {
 	// contextcheck: the watchdog subprocess embeddedpg.Start spawns is
 	// intentionally detached from any request/caller context — it must
@@ -234,7 +240,7 @@ func NewEmbedded(
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
 	// Query hook is always installed for metrics; verbose slog logging is opt-in.
-	bunDB.AddQueryHook(sloghook.New(logSQL, backendLabel))
+	bunDB.AddQueryHook(sloghook.New(logSQL, backendLabel, slowQueryThreshold))
 
 	// Expose connection-pool stats via /metrics. Idempotent per backend.
 	prommetrics.RegisterDB(sqldb, backendLabel)
@@ -2144,6 +2150,36 @@ func (s *Service) GetResult(ctx context.Context, uid string) (*models.Result, er
 	}
 
 	return result, nil
+}
+
+// CountResultsByPeriodType returns the total row count in `results` grouped
+// by period_type (raw/hour/day/month), across every organization. Deliberately
+// table-wide and uncached: this is only ever called by the periodic gauge
+// sampler tied to the aggregation job's own cadence
+// (internal/jobs/jobtypes/job_aggregation.go), never per-request — a
+// table-wide COUNT(*) is exactly what results cannot afford on every page
+// load (spec 2026-08-17-04 §3).
+func (s *Service) CountResultsByPeriodType(ctx context.Context) (map[string]int64, error) {
+	var rows []struct {
+		PeriodType string `bun:"period_type"`
+		Count      int64  `bun:"count"`
+	}
+
+	if err := s.db.NewSelect().
+		Model((*models.Result)(nil)).
+		ColumnExpr("period_type").
+		ColumnExpr("COUNT(*) AS count").
+		Group("period_type").
+		Scan(ctx, &rows); err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		counts[row.PeriodType] = row.Count
+	}
+
+	return counts, nil
 }
 
 func (s *Service) ListResults(

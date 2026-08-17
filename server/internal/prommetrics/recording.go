@@ -79,14 +79,21 @@ func RecordHTTPRequest(method, route, status string, durationSeconds float64) {
 
 // RecordDBQuery records a SQL query observation. backend is "sqlite" or
 // "postgres"; operation is the bun-reported verb ("SELECT", "INSERT",
-// "UPDATE", "DELETE", "BEGIN", "COMMIT", "ROLLBACK"); ok=false means the
-// query returned a non-ErrNoRows error.
-func RecordDBQuery(operation, backend string, durationSeconds float64, ok bool) {
+// "UPDATE", "DELETE", "BEGIN", "COMMIT", "ROLLBACK"); callsite is the bounded
+// label from internal/db/sloghook.WithCallsite (or "unlabelled"); ok=false
+// means the query returned a non-ErrNoRows error.
+func RecordDBQuery(operation, backend, callsite string, durationSeconds float64, ok bool) {
 	status := "ok"
 	if !ok {
 		status = "error"
 	}
-	DBQueryDuration.WithLabelValues(operation, backend, status).Observe(durationSeconds)
+	DBQueryDuration.WithLabelValues(operation, backend, status, callsite).Observe(durationSeconds)
+}
+
+// SetResultsRowCount sets the results-row-count gauge for the given
+// period_type. Called by the aggregation-job-cadence sampler, never per-request.
+func SetResultsRowCount(periodType string, count float64) {
+	ResultsRowCount.WithLabelValues(periodType).Set(count)
 }
 
 // RecordDBBusyRetry increments the busy-retry counter for the given

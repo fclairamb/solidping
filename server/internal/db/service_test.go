@@ -1267,7 +1267,7 @@ func TestPostgresService(t *testing.T) {
 		t.Skip("Skipping PostgreSQL test in short mode")
 	}
 
-	svc, err := postgres.NewEmbedded(t.Context(), "db-service", 5435, false, "", false)
+	svc, err := postgres.NewEmbedded(t.Context(), "db-service", 5435, false, "", false, 0)
 	require.NoError(t, err, "Failed to create PostgreSQL service")
 
 	t.Cleanup(func() {
