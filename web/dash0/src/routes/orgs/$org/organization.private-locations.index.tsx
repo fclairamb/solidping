@@ -380,6 +380,13 @@ function AgentsCard({ org }: { org: string }) {
   const revokeAgent = useRevokeAgent(org);
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
 
+  // A revoked agent's row still shows the same Trash2 action, but it means
+  // something different: the agent is already gone (revoked), so a second
+  // DELETE call purges it from the list immediately instead of waiting for
+  // the automatic two-day cleanup. Same mutation, different confirmation copy.
+  const pendingAgent = agents?.find((agent) => agent.uid === pendingRevoke) ?? null;
+  const pendingIsPurge = pendingAgent?.status !== "active";
+
   const confirmRevoke = async () => {
     if (!pendingRevoke) return;
     try {
@@ -453,17 +460,19 @@ function AgentsCard({ org }: { org: string }) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {agent.status === "active" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title={t("privateLocations.agents.revoke", "Revoke agent")}
-                          data-testid={`revoke-agent-${agent.uid}`}
-                          onClick={() => setPendingRevoke(agent.uid)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={
+                          agent.status === "active"
+                            ? t("privateLocations.agents.revoke", "Revoke agent")
+                            : t("privateLocations.agents.remove", "Remove agent")
+                        }
+                        data-testid={`revoke-agent-${agent.uid}`}
+                        onClick={() => setPendingRevoke(agent.uid)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -477,19 +486,28 @@ function AgentsCard({ org }: { org: string }) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t("privateLocations.agents.revokeTitle", "Revoke this agent?")}
+              {pendingIsPurge
+                ? t("privateLocations.agents.removeTitle", "Remove this agent?")
+                : t("privateLocations.agents.revokeTitle", "Revoke this agent?")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t(
-                "privateLocations.agents.revokeDescription",
-                "The agent loses access immediately and stops receiving checks. It already saw the credentials sealed to it — rotate them. This cannot be undone; enroll a new agent to replace it.",
-              )}
+              {pendingIsPurge
+                ? t(
+                    "privateLocations.agents.removeDescription",
+                    "This agent is already revoked. Removing it clears it from the list immediately, instead of waiting for the automatic two-day cleanup.",
+                  )
+                : t(
+                    "privateLocations.agents.revokeDescription",
+                    "The agent loses access immediately and stops receiving checks. It already saw the credentials sealed to it — rotate them. This cannot be undone; enroll a new agent to replace it.",
+                  )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("privateLocations.cancel", "Cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={confirmRevoke} data-testid="confirm-revoke-agent">
-              {t("privateLocations.agents.revokeConfirm", "Revoke")}
+              {pendingIsPurge
+                ? t("privateLocations.agents.removeConfirm", "Remove")
+                : t("privateLocations.agents.revokeConfirm", "Revoke")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
