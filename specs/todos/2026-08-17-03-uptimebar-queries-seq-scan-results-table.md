@@ -64,6 +64,33 @@ an index in both directions:
 Postgres *does* prove `IN ('hour','day')` implies `period_type <> 'raw'`, so the
 non-raw tiers need no new index — splitting the query is sufficient.
 
+### The same defect dominates the single-check page
+
+This is not only a status-page problem. The check detail page
+(`/dash0/orgs/$org/checks/$uid`) calls
+`GET /orgs/:org/checks/:check/availability` for five windows, and that endpoint
+routes into `WindowAvailability` — the second call site above. Measured on the
+same instance, one request took **12.0 s** in the pod log; a clean re-measure
+gives **8.1 s**.
+
+The starkest case is the **1 h** window for a **single** check, which needs 19
+rows:
+
+```
+->  Parallel Seq Scan on results  (actual rows=19.00 loops=3)
+      Rows Removed by Filter: 307227          (x3 workers ~ 922k)
+Execution Time: 1483 ms
+```
+
+**19 rows returned, ~922k scanned.** The cost is essentially independent of the
+window asked for — measured per-period: 1 h **0.96 s**, 24 h 1.52 s, 30 d 2.16 s,
+90 d 1.25 s, 365 d 1.36 s. A 1-hour window costing 70 % of a 365-day window is
+the signature of a full scan: the planner reads the whole table either way.
+
+Because a 1 h window only ever needs `raw` (raw retention is 24 h), the tier
+split in this spec collapses that particular query to a `results_raw_idx` lookup
+— measured at ~5 ms for a comparable raw-only bounded query.
+
 ### Why it turned slow suddenly rather than gradually
 
 The instance writes **831,353 raw rows per 24 h**, and raw retention is 24 h
