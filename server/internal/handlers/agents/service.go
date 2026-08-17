@@ -514,6 +514,13 @@ func (s *Service) ListAllAgents(ctx context.Context) (*ListAgentsResponse, error
 // (excluding it); sealed-only checks surface as needs-re-seal. Honest caveat
 // for the docs: a revoked agent already saw the credentials sealed to it —
 // rotate them.
+//
+// Called on an agent that is already revoked, it purges the row instead of
+// re-revoking it (which would just bump revoked_at forever) — this is the
+// admin's way to clear a revoked agent from the list immediately, instead of
+// waiting for the agent_gc sweep's two-day retention window (spec
+// 2026-08-16-03). A purge never touches ResealRegion: a revoked agent is
+// already excluded from seals, so there is nothing left to re-seal.
 func (s *Service) RevokeAgent(ctx context.Context, orgSlug, uid string) error {
 	org, err := s.resolveOrg(ctx, orgSlug)
 	if err != nil {
@@ -526,6 +533,10 @@ func (s *Service) RevokeAgent(ctx context.Context, orgSlug, uid string) error {
 	agent, err := s.db.GetAgent(ctx, uid)
 	if err != nil || agent.OrgUID() != org.UID {
 		return fmt.Errorf("%w: %s", ErrAgentNotFound, uid)
+	}
+
+	if agent.Status == models.AgentStatusRevoked {
+		return s.db.PurgeAgent(ctx, uid)
 	}
 
 	if err := s.db.RevokeAgent(ctx, org.UID, uid); err != nil {
