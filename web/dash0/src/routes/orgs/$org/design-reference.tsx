@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   Bot,
   Building,
   Check,
@@ -1826,6 +1827,55 @@ function ClickableTable() {
   );
 }
 
+/** Narrow rows where one cell holds an unpredictably long, unbreakable value
+ * (a URL, a name with no natural wrap point). `max-w-0 w-full truncate` on the
+ * <TableCell> — not just the text inside it — is what makes an auto-layout
+ * <table> respect the column's fair share instead of growing to fit content;
+ * pair it with `title` (or the Tooltip primitive above) so the full value is
+ * still one hover/focus away. Columns that must never wrap (a badge, an
+ * icon-link) get `whitespace-nowrap` so the flexible column absorbs the
+ * leftover width — that's also the mechanism the blast-radius table on the
+ * incident detail page uses to survive a 375px viewport. */
+function TruncatedCellTable() {
+  const rows = [
+    { id: "1", name: "api.acme-staging.io document-storage version (http)", status: "up" as const },
+    { id: "2", name: "84698cfb-5b01-4fab-b898-13beda200722", status: "down" as const },
+  ];
+
+  return (
+    <div className="max-w-xs rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Check</TableHead>
+            <TableHead className="whitespace-nowrap">State</TableHead>
+            <TableHead className="whitespace-nowrap px-2" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
+              <TableCell className="max-w-0">
+                <a href="#" title={row.name} className="block truncate text-primary hover:underline">
+                  {row.name}
+                </a>
+              </TableCell>
+              <TableCell className="whitespace-nowrap">
+                <StatusBadge status={row.status} />
+              </TableCell>
+              <TableCell className="whitespace-nowrap px-2 text-right">
+                <a href="#" aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </a>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function DataDisplaySection() {
   return (
     <Section
@@ -1866,6 +1916,30 @@ function DataDisplaySection() {
       </div>
       <CodeSnippet
         code={`import { useNavigate } from "@tanstack/react-router";\n\nconst navigate = useNavigate();\nconst open = () =>\n  void navigate({ to: "/orgs/$org/widgets/$uid", params: { org, uid: row.uid } });\n\n<TableRow\n  className="cursor-pointer hover:bg-muted/50"\n  role="link"\n  tabIndex={0}\n  onClick={open}\n  onKeyDown={(e) => {\n    if (e.key === "Enter" || e.key === " ") {\n      e.preventDefault();\n      open();\n    }\n  }}\n>\n  {/* cells — no nested <Link>/<Button> */}\n</TableRow>`}
+      />
+
+      <div className="space-y-2 pt-2">
+        <h3 className="text-sm font-medium">Truncated cell</h3>
+        <p className="text-sm text-muted-foreground">
+          When a column's value has no natural break point (a UUID, a long
+          URL), let it truncate instead of wrapping to several lines or
+          forcing the table wider than its container. Give the{" "}
+          <code>TableCell</code> itself <code>max-w-0</code> — not just the
+          text node inside it — so the browser's table layout algorithm
+          shrinks that column to its fair share instead of growing to fit the
+          content; other columns that must stay one line (a badge, an
+          icon-link) get <code>whitespace-nowrap</code> so the flexible
+          column absorbs whatever width is left. Pair the truncated element
+          with a <code>title</code> attribute (or Tooltip, above) so the full
+          value is still reachable on hover/focus. Two link targets in one
+          row (here: the name → detail page, the trailing icon → a related
+          page) stay distinguishable by weight — underlined text vs. a muted
+          icon — rather than by color alone.
+        </p>
+        <TruncatedCellTable />
+      </div>
+      <CodeSnippet
+        code={`<TableHead>Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
       />
     </Section>
   );
