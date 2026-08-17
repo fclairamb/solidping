@@ -350,6 +350,46 @@ func TestRevokeAgentIsOrgScoped(t *testing.T) {
 	r.ErrorIs(err, agents.ErrAgentNotFound)
 }
 
+// TestRevokeAgentPurgesAnAlreadyRevokedAgent asserts a second DELETE call on
+// an already-revoked agent purges it (spec 2026-08-16-03) instead of no-oping
+// or bumping revoked_at forever, and stays org-scoped exactly like the first
+// revoke.
+func TestRevokeAgentPurgesAnAlreadyRevokedAgent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newSetup(t)
+	ctx := t.Context()
+
+	other := models.NewOrganization("other", "Other")
+	r.NoError(s.dbSvc.CreateOrganization(ctx, other))
+
+	_, err := s.svc.CreatePrivateRegion(ctx, "acme", &agents.CreatePrivateRegionRequest{Slug: "dc1"})
+	r.NoError(err)
+	minted, err := s.svc.MintEnrollmentToken(ctx, "acme", &agents.MintEnrollmentTokenRequest{RegionSlug: "dc1"}, nil)
+	r.NoError(err)
+	agent, err := s.dbSvc.EnrollAgent(
+		ctx, agentcrypto.HashEnrollmentToken(minted.Token), "a1", "ed1", "age1x", "fp1",
+	)
+	r.NoError(err)
+
+	// A second call on another org's route still 404s, even once revoked.
+	r.NoError(s.svc.RevokeAgent(ctx, "acme", agent.UID))
+
+	err = s.svc.RevokeAgent(ctx, "other", agent.UID)
+	r.ErrorIs(err, agents.ErrAgentNotFound)
+
+	// The real second call, on the owning org, purges instead of no-oping.
+	r.NoError(s.svc.RevokeAgent(ctx, "acme", agent.UID))
+
+	list, err := s.svc.ListAgents(ctx, "acme")
+	r.NoError(err)
+	r.Empty(list.Data, "a purged agent must disappear from the listing")
+
+	_, err = s.dbSvc.GetAgent(ctx, agent.UID)
+	r.Error(err, "the row is soft-deleted, not just hidden from the list")
+}
+
 // TestMintEnrollmentTokenAllowedUnderCap asserts a mint under the
 // MaxDeportedAgents cap succeeds.
 func TestMintEnrollmentTokenAllowedUnderCap(t *testing.T) {
