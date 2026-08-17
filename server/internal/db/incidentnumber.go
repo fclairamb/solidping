@@ -9,15 +9,31 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// IncidentNumberAttempts bounds the "take MAX+1, insert, retry on collision"
-// loop. Every retry means a real concurrent creation in the SAME organization
-// won the race; more than a handful of those in the microseconds one insert
-// takes would be a stampede, not contention, and looping forever would turn it
-// into a livelock.
+// IncidentNumberAttempts bounds how many times in a row the loop may collide
+// WITHOUT MAKING PROGRESS — that is, without MAX+1 having moved because a
+// competing creation committed. A stalled retry is the only kind that can
+// livelock: the same guess, colliding forever.
+//
+// It is deliberately NOT a bound on total retries. A retry that reads a HIGHER
+// number than the one it just tried is not a failure mode at all — it is the
+// scheme working: somebody else in this organization took the number, so this
+// caller takes the next one. Counting those against a small constant made the
+// loop fail whenever more than ~8 incidents opened at once in one organization,
+// which is precisely what a region-wide outage produces.
 const IncidentNumberAttempts = 8
 
-// ErrIncidentNumberExhausted means the per-org number could not be claimed
-// within IncidentNumberAttempts. Deliberately an error rather than a silent
+// IncidentNumberMaxAttempts is the unconditional ceiling, so the loop terminates
+// even in a scenario nobody predicted. It is a livelock backstop, not a
+// contention budget: legitimate contention is bounded by how many incidents open
+// simultaneously in ONE organization, and this sits far above any realistic
+// burst. Under a genuine stampede the caller's context deadline is what should
+// cut the loop short, since both callbacks take ctx.
+const IncidentNumberMaxAttempts = 1024
+
+// ErrIncidentNumberExhausted means the per-org number could not be claimed:
+// either the loop stalled (IncidentNumberAttempts collisions with no competing
+// commit in between) or it hit the IncidentNumberMaxAttempts ceiling.
+// Deliberately an error rather than a silent
 // number-less incident: an incident with no reference cannot be acked from
 // Telegram or named in Slack, which is worse than a failed create the caller
 // can retry.
@@ -108,14 +124,31 @@ func CreateIncidentWithNumber(
 		return insert(ctx)
 	}
 
-	var lastErr error
+	var (
+		lastErr   error
+		lastTried int64
+		stalled   int
+	)
 
-	for attempt := 0; attempt < IncidentNumberAttempts; attempt++ {
+	for attempt := 0; attempt < IncidentNumberMaxAttempts; attempt++ {
 		next, err := nextNumber(ctx, incident.OrganizationUID)
 		if err != nil {
 			return fmt.Errorf("reading the next incident number: %w", err)
 		}
 
+		// A candidate above the one we just tried means a competing creation
+		// committed in between: the loop is advancing through the sequence, not
+		// spinning on it, so it must not be charged to the stall budget.
+		if next > lastTried {
+			stalled = 0
+		} else {
+			stalled++
+			if stalled >= IncidentNumberAttempts {
+				break
+			}
+		}
+
+		lastTried = next
 		incident.Number = next
 
 		insertErr := insert(ctx)
@@ -139,5 +172,11 @@ func CreateIncidentWithNumber(
 
 	incident.Number = 0
 
-	return fmt.Errorf("%w after %d attempts: %w", ErrIncidentNumberExhausted, IncidentNumberAttempts, lastErr)
+	if stalled >= IncidentNumberAttempts {
+		return fmt.Errorf("%w after %d attempts without progress: %w",
+			ErrIncidentNumberExhausted, IncidentNumberAttempts, lastErr)
+	}
+
+	return fmt.Errorf("%w after the %d-attempt ceiling: %w",
+		ErrIncidentNumberExhausted, IncidentNumberMaxAttempts, lastErr)
 }
