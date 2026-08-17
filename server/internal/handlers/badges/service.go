@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -61,16 +62,20 @@ func NewService(dbSvc db.Service, cfg *config.Config) *Service {
 	return &Service{dbSvc: dbSvc, cfg: cfg}
 }
 
-// retentionHints returns the org's configured raw/hour retention (hours of
-// raw kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
-// uptimebar.BucketAvailability treats as "use the documented defaults" when
-// sizing its safety cap.
-func (s *Service) retentionHints() (int, int) {
-	if s.cfg == nil {
-		return 0, 0
-	}
+// retentionHints returns the live raw/hour aggregation retention (hours of raw
+// kept / days of hourly rollups kept), resolved with the same precedence as the
+// aggregation job itself — env > performance.* global parameter > legacy koanf
+// field > documented default (systemconfig.ResolveAggregationRetention).
+//
+// It must NOT read the koanf config alone: the server "Aggregation" settings tab
+// writes the performance.* parameters, which never reach the koanf struct, so a
+// stale hint would make uptimebar clamp its raw-tier query shorter than the
+// window the job actually keeps raw for — silently dropping raw rows no rollup
+// covers yet.
+func (s *Service) retentionHints(ctx context.Context) (int, int) {
+	rawHours, hourDays, _ := systemconfig.ResolveAggregationRetention(ctx, s.dbSvc, s.cfg)
 
-	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
+	return rawHours, hourDays
 }
 
 func isAllowedComponent(token string) bool {
@@ -278,7 +283,7 @@ func (s *Service) bucketStatsForPeriod(
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 	win := barWindow{bucketStart: bucketStart, n: n, bucketDuration: bucketDuration}
 
-	retentionRawHours, retentionHourDays := s.retentionHints()
+	retentionRawHours, retentionHourDays := s.retentionHints(ctx)
 
 	byCheck, err := uptimebar.BucketAvailability(
 		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,
