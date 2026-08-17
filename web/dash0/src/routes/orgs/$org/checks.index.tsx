@@ -206,6 +206,35 @@ const MEMBER_SUMMARY_ORDER = [
   "up",
 ] as const;
 
+// Builds the search object for `/orgs/$org/checks/new` that preselects a
+// group (every other new-check search key explicit-`undefined`, matching the
+// route's validateSearch). Shared by the group empty-state link and the
+// group-header "add a check" button so the ~20-key literal isn't duplicated.
+function newCheckSearchForGroup(slug: string) {
+  return {
+    checkType: undefined,
+    checkPeriod: undefined,
+    checkName: undefined,
+    checkSlug: undefined,
+    httpUrl: undefined,
+    httpMethod: undefined,
+    host: undefined,
+    port: undefined,
+    url: undefined,
+    domain: undefined,
+    username: undefined,
+    database: undefined,
+    expectedStatus: undefined,
+    timeout: undefined,
+    label: undefined,
+    region: undefined,
+    group: slug,
+    confirmationPeriod: undefined,
+    recoveryPeriod: undefined,
+    section: undefined,
+  };
+}
+
 // Renders memberStatusCounts as a compact, localized summary: "3/3 up" when
 // every counted member is up (exactly the collapse-eligible case), otherwise
 // severity-ordered parts like "1 down · 3 up". Returns null when there are no
@@ -806,6 +835,27 @@ function CheckGroupSection({
           className="flex items-center gap-1"
           onClick={(e) => e.stopPropagation()}
         >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={t("addCheckToGroup")}
+                data-testid="group-add-check-button"
+                asChild
+              >
+                <Link
+                  to="/orgs/$org/checks/new"
+                  params={{ org }}
+                  search={newCheckSearchForGroup(group.slug)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("addCheckToGroup")}</TooltipContent>
+          </Tooltip>
           <Button
             variant="ghost"
             size="icon"
@@ -890,7 +940,7 @@ function CheckGroupSection({
                 <Link
                   to="/orgs/$org/checks/new"
                   params={{ org }}
-                  search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: group.slug, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}
+                  search={newCheckSearchForGroup(group.slug)}
                   className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
                   data-testid="group-empty-new-check-link"
                 >
