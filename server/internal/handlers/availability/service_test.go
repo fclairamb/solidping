@@ -535,3 +535,81 @@ func TestGetAvailability_RawClampFollowsTheLiveRetentionParameter(t *testing.T) 
 	r.Equal(1, totalFor(t),
 		"a UI-set performance.aggregation_retention_raw_hours must widen the raw clamp")
 }
+
+// TestGetAvailability_PeriodsFanOutPreservesRequestOrder is the key correctness
+// test for the by-index concurrent fan-out: computePeriod for each window now
+// runs in its own goroutine, so a naive append (instead of writing periods[i])
+// would both race and scramble the response order. The tokens are deliberately
+// out of chronological order so a silent sort — or a race that just happens to
+// preserve order for monotonic windows — would not mask a regression.
+func TestGetAvailability_PeriodsFanOutPreservesRequestOrder(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-order-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "avail-order-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	svc := NewService(dbSvc, nil)
+
+	requested := []string{"365d", "1h", "30d", "90d", "24h"}
+
+	resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+		Periods: requested,
+	})
+	r.NoError(availErr)
+	r.Len(resp.Data, len(requested))
+
+	got := make([]string, len(resp.Data))
+	for i, row := range resp.Data {
+		got[i] = row.Period
+	}
+
+	r.Equal(requested, got, "response rows must stay in the requested token order, not chronological order")
+}
+
+// TestGetAvailability_PeriodsFanOutIsRace is the race-detector target for the
+// concurrent fan-out (`go test -race`): several periods, run several times, so
+// the detector has actual concurrent DB access to inspect.
+func TestGetAvailability_PeriodsFanOutIsRace(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-race-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "avail-race-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	svc := NewService(dbSvc, nil)
+
+	for i := range 5 {
+		t.Run("run", func(t *testing.T) {
+			t.Parallel()
+
+			rr := require.New(t)
+
+			resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+				Periods: []string{"1h", "24h", "30d", "90d", "365d"},
+			})
+			rr.NoError(availErr, "run %d", i)
+			rr.Len(resp.Data, 5, "run %d", i)
+		})
+	}
+}

@@ -167,12 +167,12 @@ func (s *Service) GetAvailability(
 	// so the request costs the slowest window instead of their sum, bounded so a
 	// caller-controlled period count can't open unbounded DB connections. Written
 	// by index (never appended) so the response stays in the requested order.
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrentPeriods)
+	errg, errgCtx := errgroup.WithContext(ctx)
+	errg.SetLimit(maxConcurrentPeriods)
 
 	for i := range windows {
-		g.Go(func() error {
-			row, periodErr := s.computePeriod(gctx, org.UID, check, windows[i], now, hints)
+		errg.Go(func() error {
+			row, periodErr := s.computePeriod(errgCtx, org.UID, check, windows[i], now, hints)
 			if periodErr != nil {
 				return periodErr
 			}
@@ -183,7 +183,7 @@ func (s *Service) GetAvailability(
 		})
 	}
 
-	if err := g.Wait(); err != nil {
+	if err := errg.Wait(); err != nil {
 		return nil, err
 	}
 
