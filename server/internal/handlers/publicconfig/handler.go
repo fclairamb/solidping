@@ -32,8 +32,13 @@ type PostHogPublicConfig struct {
 	Enabled bool `json:"enabled"`
 	// ProjectAPIKey is the public phc_… browser key. Absent when disabled.
 	ProjectAPIKey string `json:"projectApiKey,omitempty"`
-	// Host is the ingestion endpoint. Absent when disabled.
+	// Host is the api_host the dashboard posts events to. It defaults to the
+	// first-party proxy path (see config.PostHogProxyPath). Absent when disabled.
 	Host string `json:"host,omitempty"`
+	// UIHost is posthog-js ui_host, present only when Host is the first-party
+	// proxy path so toolbar and "view in PostHog" links still resolve to the
+	// PostHog app. Absent when disabled or when an operator set an explicit host.
+	UIHost string `json:"uiHost,omitempty"`
 }
 
 // WhatsAppPublicConfig is the browser-safe view of the instance's WhatsApp
@@ -126,7 +131,8 @@ func Build(cfg *config.Config) Response {
 		resp.PostHog = PostHogPublicConfig{
 			Enabled:       true,
 			ProjectAPIKey: cfg.PostHog.ProjectAPIKey,
-			Host:          cfg.PostHog.ResolvedHost(),
+			Host:          cfg.PostHog.BrowserAPIHost(),
+			UIHost:        cfg.PostHog.BrowserUIHost(),
 		}
 	}
 
