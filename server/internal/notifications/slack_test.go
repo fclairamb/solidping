@@ -328,6 +328,10 @@ func (m *mockDBService) ListResults(
 	panic("not implemented")
 }
 
+func (m *mockDBService) CountResultsByPeriodType(_ context.Context) (map[string]int64, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetResultNeighbors(
 	_ context.Context, _, _, _ string, _ []string, _ time.Time, _ string,
 ) (string, string, error) {
