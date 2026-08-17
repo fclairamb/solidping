@@ -264,6 +264,13 @@ type Service interface {
 	UpdateAgentLastSeen(ctx context.Context, uid string, at time.Time) error
 	// RevokeAgent marks an agent revoked (it can no longer authenticate).
 	RevokeAgent(ctx context.Context, orgUID, uid string) error
+	// ListPurgeableRevokedAgents returns live agents (any kind) revoked before
+	// cutoff (falling back to updated_at when revoked_at is NULL) — the
+	// agent_gc job's purge candidates.
+	ListPurgeableRevokedAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error)
+	// PurgeAgent soft-deletes a revoked agent. Scoped to status='revoked' so it
+	// can never touch a live agent.
+	PurgeAgent(ctx context.Context, uid string) error
 
 	// Check operations
 	CreateCheck(ctx context.Context, check *models.Check) error

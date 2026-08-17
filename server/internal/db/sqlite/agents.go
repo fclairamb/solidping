@@ -288,6 +288,53 @@ func (s *Service) RevokeAgent(ctx context.Context, orgUID, uid string) error {
 	return nil
 }
 
+// ListPurgeableRevokedAgents returns live agents (any kind) whose revocation
+// is older than cutoff — a revoked agent is dead by admin decision, and
+// nobody is waiting for it to come back. The clock is revoked_at, not
+// last_seen_at (revoking a still-connected agent must not reset it, and an
+// agent revoked before it ever connected has no last_seen_at at all). A
+// legacy/inconsistent revoked row with a NULL revoked_at falls back to
+// updated_at so it is still eventually collected instead of becoming
+// permanently immortal.
+func (s *Service) ListPurgeableRevokedAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error) {
+	var agents []*models.Agent
+
+	err := s.db.NewSelect().
+		Model(&agents).
+		Where("status = ?", models.AgentStatusRevoked).
+		Where("deleted_at IS NULL").
+		Where("COALESCE(revoked_at, updated_at) < ?", cutoff).
+		Order("enrolled_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list purgeable revoked agents: %w", err)
+	}
+
+	return agents, nil
+}
+
+// PurgeAgent soft-deletes a revoked agent, clearing it from every listing.
+// Scoped to status='revoked' so it can never touch a live agent — an admin
+// purging an already-revoked row through the API, or the agent_gc sweep
+// collecting one past the retention window.
+func (s *Service) PurgeAgent(ctx context.Context, uid string) error {
+	now := time.Now()
+
+	_, err := s.db.NewUpdate().
+		Model((*models.Agent)(nil)).
+		Set("deleted_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("uid = ?", uid).
+		Where("status = ?", models.AgentStatusRevoked).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to purge agent: %w", err)
+	}
+
+	return nil
+}
+
 // UpsertSystemAgentEnrollmentToken inserts a seeded platform token, or refreshes
 // the existing row with that hash (expiry, region, use budget) and un-deletes it.
 // Idempotent: SP_SYSTEM_AGENT_ENROLLMENT_TOKENS is re-applied on every boot.
