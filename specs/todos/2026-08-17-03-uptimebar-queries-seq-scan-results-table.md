@@ -177,3 +177,59 @@ formality. Keep the existing warn-and-return-partial behaviour when it engages.
   server-side, against ~530–2400 ms today.
 - Bucket values must be byte-identical before and after for a fixed dataset —
   this is a pure query-shape change, not a semantics change.
+
+## Implementation Plan
+
+1. **Shared tier helpers in `uptimebar`** (`bucketing.go`)
+   - `rawClampMargin = 2 * time.Hour` and `rawTierStart(windowStart, now, retentionRawHours) time.Time`
+     returning `max(windowStart, now - (retentionRaw + margin))`, falling back to
+     `defaultRetentionRawHours` when the caller passes 0.
+   - `warnIfRawLagging(...)`: one `slog.WarnContext` when any returned raw row is older
+     than `now - retentionRaw` (i.e. it sits in the clamp's margin band), which means the
+     aggregation job is lagging.
+   - Split `safetyRowCap` into `rawRowCap` (clamped raw span × `checkerdef.GlobalMinPeriod`
+     probe rate × `capMaxRegionsPerCheck` × checks) and `rollupRowCap` (one row per bucket
+     per tier: hour tier bounded by `RetentionHour`, day tier by the window, month tier by
+     the window's months). Each keeps `capSafetyMargin` and the existing
+     warn-and-return-partial behaviour.
+
+2. **`BucketAvailability`: two tier-aligned queries**
+   - Rollup query: `PeriodTypes = [hour, day]`, `PeriodStartAfter = windowStart`,
+     `Limit = rollupRowCap(...)`.
+   - Raw query: `PeriodTypes = [raw]`, `PeriodStartAfter = rawTierStart(...)`,
+     `Limit = rawRowCap(...)`.
+   - `SkipBlobs: true` on both. Rows from both responses feed the *same* accumulator loop,
+     so bucketing/accumulation semantics are untouched.
+
+3. **`WindowAvailability`: same split**
+   - Signature gains `retentionRawHours, retentionHourDays int` (0 = documented defaults),
+     mirroring `BucketAvailability`. `availability.NewService` gains the app config and a
+     `retentionHints()` accessor exactly like `badges`/`statuspages`.
+   - Rollup query: `[hour, day, month]` over `[start, end)`.
+   - Raw query: `[raw]` over `[rawTierStart(start, now, retentionRaw), end)`.
+   - `windowQueryLimit` (flat 200 000) is replaced by the per-tier caps; both queries keep
+     `SkipBlobs` and the `PeriodEndBefore` upper edge. No shared mutable state, so the
+     function stays safe under concurrent per-window calls.
+
+4. **Unit tests** (`bucketing_test.go`, `window_test.go`)
+   - `fakeLister` records *every* filter and honours `PeriodStartAfter`/`PeriodEndBefore`
+     so the clamp is actually exercised.
+   - Tests: two tier-aligned queries issued with the right `PeriodTypes`/bounds/`SkipBlobs`;
+     the raw clamp excludes a stale raw row that would double-count against a rollup for the
+     same bucket (fails if the clamp widens past a rollup boundary); the lagging-aggregation
+     warning fires; no-data semantics (absent check / `Total == 0`) unchanged; per-tier caps
+     engage and warn.
+
+5. **Postgres plan assertion** (`server/internal/db/postgres/uptimebar_plan_postgres_test.go`)
+   - Embedded Postgres seeded with ~300 k raw rows plus hour/day rollups over 30 days,
+     then `ANALYZE`.
+   - The filters are *captured from the real `uptimebar` call path* (a recording
+     `ResultsLister`), rebuilt through `applyResultsFilter`, and run under
+     `EXPLAIN (ANALYZE, BUFFERS)`.
+   - Assertions: each split query's plan contains `Index Scan`/`Bitmap Index Scan` on a
+     `results_*_idx` and **no** `Seq Scan on results`. Positive control: the old combined
+     `period_type IN ('raw','hour','day')` predicate on the same dataset *does* seq-scan,
+     proving the dataset is dense enough for the assertion to have teeth.
+
+6. **SQLite parity**: no dialect-specific code changes — the split lives in `uptimebar`, so
+   both backends inherit it; the unit tests run against the shared code path.
