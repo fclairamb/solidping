@@ -77,7 +77,7 @@ func WindowAvailability(
 		// metrics/output blobs — and these queries can pull thousands of rows per
 		// request, so skip them entirely (spec 2026-07-24-02 §5).
 		SkipBlobs: true,
-	}, models.PeriodTypeHour+"+"+models.PeriodTypeDay+"+"+models.PeriodTypeMonth)
+	}, models.PeriodTypeHour+"+"+models.PeriodTypeDay+"+"+models.PeriodTypeMonth, callsiteWindowAvailability)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func WindowAvailability(
 			PeriodEndBefore:  &endUTC,
 			Limit:            rawRowCap(hints, len(checkUIDs), windowSpan),
 			SkipBlobs:        true,
-		}, models.PeriodTypeRaw)
+		}, models.PeriodTypeRaw, callsiteWindowAvailability)
 		if err != nil {
 			return nil, err
 		}

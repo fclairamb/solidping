@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -2004,7 +2005,7 @@ func (s *Service) fetchRecentResults(
 		SkipBlobs: true,
 	}
 
-	recentResp, err := s.db.ListResults(ctx, recentFilter)
+	recentResp, err := s.db.ListResults(sloghook.WithCallsite(ctx, "statuspages.recent_results"), recentFilter)
 	if err != nil || recentResp == nil {
 		return recentByCheck
 	}

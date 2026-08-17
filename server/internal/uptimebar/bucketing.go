@@ -37,6 +37,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 )
 
 // ResultsLister is the minimal db surface both services already satisfy
@@ -375,15 +376,25 @@ func rollupRowCap(hints Hints, checkCount int, windowSpan time.Duration, include
 	return perRegion*capMaxRegionsPerCheck*checkCount + capSafetyMargin
 }
 
+// Bounded db_query_duration_seconds callsite labels for the uptimebar entry
+// points (see sloghook.WithCallsite) — the highest-value queries to label
+// after the 2026-08-16 status-page slowdown (spec 2026-08-17-04).
+const (
+	callsiteBucketAvailability = "uptimebar.bucket_availability"
+	callsiteWindowAvailability = "uptimebar.window_availability"
+)
+
 // listTier runs one tier-aligned query and warns (without failing) when the
 // safety cap engaged, returning the partial rows — the "generous cap + log +
 // return partial" pattern also used by the Slack client's list pagination (see
-// internal/integrations/slack/client.go's paginate).
+// internal/integrations/slack/client.go's paginate). callsite is a bounded
+// db_query_duration_seconds label (see sloghook.WithCallsite) identifying
+// which uptimebar entry point issued the query.
 func listTier(
 	ctx context.Context, db ResultsLister, orgUID string, checkUIDs []string,
-	filter *models.ListResultsFilter, tier string,
+	filter *models.ListResultsFilter, tier, callsite string,
 ) ([]*models.Result, error) {
-	resp, err := db.ListResults(ctx, filter)
+	resp, err := db.ListResults(sloghook.WithCallsite(ctx, callsite), filter)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +463,7 @@ func BucketAvailability(
 		// Buckets are built from status/counts only, so the metrics/output blobs
 		// are dead weight on these queries (spec 2026-07-24-02 §5).
 		SkipBlobs: true,
-	}, models.PeriodTypeHour+"+"+models.PeriodTypeDay)
+	}, models.PeriodTypeHour+"+"+models.PeriodTypeDay, callsiteBucketAvailability)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +478,7 @@ func BucketAvailability(
 		PeriodStartAfter: &rawStart,
 		Limit:            rawRowCap(hints, len(checkUIDs), windowSpan),
 		SkipBlobs:        true,
-	}, models.PeriodTypeRaw)
+	}, models.PeriodTypeRaw, callsiteBucketAvailability)
 	if err != nil {
 		return nil, err
 	}

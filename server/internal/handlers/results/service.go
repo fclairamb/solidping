@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
@@ -174,7 +175,7 @@ func (s *Service) ListResults(
 	filter.IncludeCheckInfo = s.needsCheckInfo(opts.With)
 
 	// Execute query
-	dbResults, err := s.db.ListResults(ctx, &filter)
+	dbResults, err := s.db.ListResults(sloghook.WithCallsite(ctx, "results.list"), &filter)
 	if err != nil {
 		return nil, err
 	}

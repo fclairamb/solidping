@@ -25,6 +25,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -899,7 +900,7 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 	}
 
 	// Get checks for the organization
-	checks, total, err := s.db.ListChecks(ctx, org.UID, filter)
+	checks, total, err := s.db.ListChecks(sloghook.WithCallsite(ctx, "checks.list"), org.UID, filter)
 	if err != nil {
 		return nil, err
 	}
