@@ -220,7 +220,9 @@ var (
 	// crosses a shared_buffers cache cliff (spec 2026-08-17-04).
 	ResultsRowCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "solidping_results_row_count",
+			// Deliberately not "..._row_count": promlinter reserves the
+			// "_count" suffix for histograms/summaries.
+			Name: "solidping_results_rows",
 			Help: "Total rows in the results table, by period_type",
 		},
 		[]string{"period_type"},

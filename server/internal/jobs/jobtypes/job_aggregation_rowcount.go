@@ -10,7 +10,7 @@ import (
 )
 
 // resultsRowCountSampleInterval bounds how often the aggregation job refreshes
-// solidping_results_row_count. The gauge is table-wide (every organization),
+// solidping_results_rows. The gauge is table-wide (every organization),
 // so it must not be recomputed on every single org's aggregation run — that
 // would multiply an already-expensive table-wide COUNT(*) by however many
 // orgs run the job in the interval. Tying the refresh to this job (rather
