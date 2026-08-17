@@ -158,20 +158,29 @@ func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
 	_, err := s.db.ExecContext(ctx, "ANALYZE results")
 	r.NoError(err)
 
-	// Capture the filters the real engine builds for both call sites.
+	// Capture the filters the real engine builds for both call sites, with the
+	// hints the production path resolves (live retention + the org's measured
+	// probe rate, which is what sizes the raw tier's row cap).
+	planHints := uptimebar.Hints{
+		RetentionRawHours: 24,
+		RetentionHourDays: 7,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s, org.UID),
+	}
+	r.Positive(planHints.RawRowsPerHour, "the seeded checks must produce a measurable probe rate")
+
 	rec := &planFilterRecorder{}
 	now := time.Now().UTC()
 	todayStart := now.Truncate(24 * time.Hour)
 
 	_, err = uptimebar.BucketAvailability(
-		ctx, rec, org.UID, []string{target.UID}, 24*time.Hour, todayStart.AddDate(0, 0, -29), 30, 24, 7)
+		ctx, rec, org.UID, []string{target.UID}, 24*time.Hour, todayStart.AddDate(0, 0, -29), 30, planHints)
 	r.NoError(err)
 
 	bucketFilters := len(rec.filters)
 	r.Equal(2, bucketFilters, "BucketAvailability must issue exactly one query per tier group")
 
 	_, err = uptimebar.WindowAvailability(
-		ctx, rec, org.UID, []string{target.UID}, now.AddDate(0, 0, -30), now, 24, 7)
+		ctx, rec, org.UID, []string{target.UID}, now.AddDate(0, 0, -30), now, planHints)
 	r.NoError(err)
 
 	r.Len(rec.filters, 4, "WindowAvailability must issue exactly one query per tier group")
