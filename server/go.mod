@@ -68,7 +68,7 @@ require (
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/sijms/go-ora/v3 v3.0.1
 	github.com/slack-go/slack v0.29.0
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.0
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
