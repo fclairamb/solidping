@@ -1418,3 +1418,119 @@ func TestApplyAgentEnvPrintKeysDefaultsOff(t *testing.T) {
 	applyAgentEnv(&cfg)
 	r.False(cfg.PrintKeys)
 }
+
+// TestApplySentryEnv proves SP_SENTRY_TRACES_SAMPLE_RATE actually lands on the
+// snake_case-tagged TracesSampleRate field despite koanf's env
+// underscore→dot collapse — this MUST fail (rate stays 0.0) if applySentryEnv
+// is not wired in.
+func TestApplySentryEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_SENTRY_TRACES_SAMPLE_RATE", "0.25")
+
+	cfg := SentryConfig{}
+	applySentryEnv(&cfg)
+
+	r.InDelta(0.25, cfg.TracesSampleRate, 0.0001)
+}
+
+// TestApplySentryEnv_Unset confirms an absent env var leaves the existing
+// value untouched.
+func TestApplySentryEnv_Unset(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg := SentryConfig{TracesSampleRate: 0.42}
+	applySentryEnv(&cfg)
+
+	r.InDelta(0.42, cfg.TracesSampleRate, 0.0001)
+}
+
+// TestApplySentryEnv_OutOfRangeKeepsExisting confirms values outside [0.0,
+// 1.0] are rejected rather than clamped — Sentry itself treats >1 as 1
+// without complaint, which would silently hide an operator typo.
+//
+//nolint:paralleltest // uses t.Setenv, incompatible with t.Parallel
+func TestApplySentryEnv_OutOfRangeKeepsExisting(t *testing.T) {
+	cases := []string{"1.5", "-0.1"}
+
+	for _, v := range cases {
+		r := require.New(t)
+
+		t.Setenv("SP_SENTRY_TRACES_SAMPLE_RATE", v)
+
+		cfg := SentryConfig{TracesSampleRate: 0.42}
+		applySentryEnv(&cfg)
+
+		r.InDeltaf(0.42, cfg.TracesSampleRate, 0.0001, "value %q must be rejected", v)
+	}
+}
+
+// TestApplySentryEnv_MalformedKeepsExisting matches the fail-open convention
+// of the other manual numeric readers (e.g. applyDatabasePoolEnv,
+// applyJobsEnv): an unparsable value leaves the existing value untouched.
+func TestApplySentryEnv_MalformedKeepsExisting(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_SENTRY_TRACES_SAMPLE_RATE", "abc")
+
+	cfg := SentryConfig{TracesSampleRate: 0.42}
+	applySentryEnv(&cfg)
+
+	r.InDelta(0.42, cfg.TracesSampleRate, 0.0001)
+}
+
+// TestSentryDebugEnvBindsViaKoanf proves SP_SENTRY_DEBUG binds through the
+// ordinary koanf env provider (sentry.debug is a single-word, underscore-free
+// segment) without needing a manual reader.
+func TestSentryDebugEnvBindsViaKoanf(t *testing.T) {
+	t.Setenv("SP_SENTRY_DEBUG", "true")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.True(cfg.Sentry.Debug)
+}
+
+// TestSentryDSNEnvUnaffectedByManualReader guards against a regression in
+// applySentryEnv: SP_SENTRY_DSN must keep binding through the ordinary koanf
+// env provider, not get re-read (and its precedence changed) by hand.
+func TestSentryDSNEnvUnaffectedByManualReader(t *testing.T) {
+	t.Setenv("SP_SENTRY_DSN", "https://examplePublicKey@o0.ingest.sentry.io/0")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal("https://examplePublicKey@o0.ingest.sentry.io/0", cfg.Sentry.DSN)
+}
+
+// TestSentryTracesSampleRateDefault pins the deliberate 0.0 default: no env
+// override, no config.yml — the shipped default is 0.0, not a leftover Go
+// zero value (see the defaults-block comment in config.go).
+func TestSentryTracesSampleRateDefault(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.InDelta(0.0, cfg.Sentry.TracesSampleRate, 0.0001)
+}
+
+// TestLoad_SentryTracesSampleRateApplied is the end-to-end proof that
+// SP_SENTRY_TRACES_SAMPLE_RATE reaches cfg.Sentry.TracesSampleRate through
+// Load(), not just through applySentryEnv in isolation. Before applySentryEnv
+// was wired into Load, this env var silently mapped to the unreachable
+// sentry.traces.sample.rate koanf path and this test failed (rate stayed 0.0).
+func TestLoad_SentryTracesSampleRateApplied(t *testing.T) {
+	t.Setenv("SP_SENTRY_TRACES_SAMPLE_RATE", "0.25")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.InDelta(0.25, cfg.Sentry.TracesSampleRate, 0.0001)
+}

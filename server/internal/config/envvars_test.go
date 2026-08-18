@@ -64,6 +64,7 @@ func TestRecognizedEnvVars(t *testing.T) {
 	r.Contains(set, "SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH")
 	r.Contains(set, "SP_LOG_LEVEL")
 	r.Contains(set, "SP_DB_SLOW_QUERY_THRESHOLD")
+	r.Contains(set, "SP_SENTRY_TRACES_SAMPLE_RATE")
 
 	// Confirmed-broken bindings must NOT be recognized (see spec open question):
 	// SP_ENCRYPTION_MASTER_KEY transforms to encryption.master.key but the tag
