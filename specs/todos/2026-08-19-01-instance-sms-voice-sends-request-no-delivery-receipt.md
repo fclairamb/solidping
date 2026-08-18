@@ -161,3 +161,55 @@ that merely asserts "a callback was handled" passes today for voice.
   token (`SP_SMS_OVH_DLR_TOKEN`) and is unaffected.
 - Surfacing delivery state in the dashboard beyond what the timeline already
   renders for the bring-your-own mode.
+
+## Implementation Plan
+
+### 1. `job_escalation_step.go` — build the callback URL for both modes
+
+- `twilioStatusCallbackURL(baseURL, orgUID, connID string) string` now takes the
+  `cid` to carry rather than a `*models.Integration`, and always appends
+  `oid=<orgUID>` — exactly like the TwiML URL next to it, which already carries
+  `oid` in both modes. Still returns `""` when `baseURL` (or `connID`) is empty.
+- `smsStatusCallbackURL(cfg, baseURL, orgUID, resolution)` picks the `cid`:
+  the org integration's UID for a bring-your-own SMS, the `__instance__`
+  sentinel for a server-credential one — and returns `""` when the instance SMS
+  provider is not Twilio (OVH posts no Twilio status callback and its receipts
+  arrive on the service-level DLR endpoint).
+- `voiceStatusCallbackURL(baseURL, orgUID, resolution)` reuses the existing
+  `voiceCallbackConnID`, so the status URL and the TwiML URL of the same call
+  can never disagree on `cid`. This also fixes the latent case of an org that
+  has a Twilio integration without `voice_from_number`: voice falls through to
+  the instance, so the status callback must carry the sentinel, not the
+  connection UID.
+
+### 2. `twiliocb/handler.go` — resolve the token per capability
+
+- Introduce a `capability` discriminator and split the middleware in two:
+  `VerifyVoiceMiddleware` (TwiML + gather, voice-only by construction) and
+  `VerifyStatusMiddleware` (`/status`, either capability).
+- `req.ParseForm()` moves ahead of credential resolution, because the status
+  path discriminates on the payload.
+- Instance-sentinel token resolution:
+  - voice endpoints → `cfg.Voice.Twilio.AuthToken`, gated on `Voice.Active()`;
+  - `/status` with a `MessageSid` and no `CallSid` → `cfg.SMS.Twilio.AuthToken`,
+    gated on `SMS.Active()` **and** the resolved provider being Twilio;
+  - `/status` with a `CallSid` and no `MessageSid` → the voice token;
+  - anything else (neither, or both) → reject. No guessing.
+- Bring-your-own resolution is untouched: the connection named by `cid` still
+  supplies the token and the org.
+- Security properties preserved: `oid` is read only from the signed URL, every
+  resolution failure still returns a bare `403` with no body, and `HandleStatus`
+  still scopes the write by `target.orgUID`.
+
+### 3. `app/server.go` — point the three routes at the right middleware.
+
+### 4. Tests
+
+- `job_escalation_step_status_callback_test.go` (new): asserts on the form the
+  fake Twilio API actually received — server-credential SMS and voice both
+  carry `StatusCallback` with `cid=__instance__&oid=<org>`; bring-your-own still
+  carries `cid=<connUID>`; OVH-for-SMS carries no Twilio callback at all.
+- `twiliocb/handler_test.go`: sentinel status round trip (valid signature
+  updates the row, wrong signature returns 403 and writes nothing), the two
+  previously broken configurations, cross-capability rejection with two
+  DIFFERENT tokens, and the unchanged bring-your-own path.
