@@ -37,6 +37,24 @@ Bun's migration discovery regex (`[0-9a-z_\-]` only) does **not** allow dots. Us
 
 Migrations already shipped in a released version (`vX.Y.Z` git tag) are **frozen and never rewritten**. Only add new files for new releases.
 
+## Gaps in the `NNN` sequence are fine — never renumber to close one
+
+The sequence may contain holes (at the time of writing, `013` is followed by
+`015`: a `014` was added and then withdrawn). **Leave them.** Bun discovers
+migrations by numeric prefix and applies whichever are unapplied, in order — a
+gap costs nothing.
+
+Renumbering a later migration down into a hole is actively dangerous, because
+the hole is only empty *in the source tree*. Databases that ran the withdrawn
+migration still carry its number in `bun_migrations`. Slide the next migration
+into that number and bun sees it as already applied and **silently skips it** —
+the exact failure mode the integrity guard below exists to catch, reintroduced
+by hand. On those databases the guard then refuses to boot on the checksum
+mismatch, which is correct but means a hand repair before anything runs again.
+
+So: a gap is cosmetic, closing it is a schema bug. Add the next number and move
+on.
+
 ## Integrity guard: an applied migration is frozen too
 
 The freeze rule above is about *released* migrations. The trap is the pending
