@@ -194,6 +194,8 @@ func manualReaderPlatformEnvVars() []string {
 		"SP_DB_CONN_MAX_IDLE_TIME",
 		// applyDBSlowQueryEnv
 		"SP_DB_SLOW_QUERY_THRESHOLD",
+		// applyMigrationGuardModeEnv
+		"SP_DB_MIGRATION_GUARD_MODE",
 		// applyRuntimeEnv
 		"SP_RUNTIME_MEMORY_LIMIT",
 		"SP_RUNTIME_AUTO_MEMORY_LIMIT",

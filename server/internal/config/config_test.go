@@ -1136,7 +1136,7 @@ func defaultPasswordConfig() PasswordConfig {
 // validation can be exercised in isolation.
 func validBaseConfig() *Config {
 	return &Config{
-		Database: DatabaseConfig{Type: DatabaseTypeSQLite, Dir: "."},
+		Database: DatabaseConfig{Type: DatabaseTypeSQLite, Dir: ".", MigrationGuardMode: MigrationGuardModeStrict},
 		// Node.Name is pinned so Validate()'s worker-identity check never
 		// depends on the machine's real hostname.
 		Node: NodeConfig{Role: NodeRoleAll, Name: "test-node"},

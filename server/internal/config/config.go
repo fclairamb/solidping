@@ -55,6 +55,17 @@ const (
 	DatabaseTypeSQLiteMemory     = "sqlite-memory"
 )
 
+// Migration guard mode constants (db.migration_guard_mode /
+// SP_DB_MIGRATION_GUARD_MODE). Strict is the default and the only mode
+// production should run: a checksum mismatch fails the boot. Warn logs the
+// mismatch and lets the boot continue — intended for local development only,
+// where editing an already-applied migration's comment is common. See
+// internal/db/migrationguard.
+const (
+	MigrationGuardModeStrict = "strict"
+	MigrationGuardModeWarn   = "warn"
+)
+
 // Deployment mode constants. Drives the per-org entitlement defaults:
 // self-hosted caps SSO membership, SaaS caps aggregate check rate.
 const (
@@ -79,6 +90,11 @@ var (
 	ErrDatabaseURLRequired = errors.New("database URL is required for postgres")
 	// ErrDatabaseDirRequired is returned when sqlite is selected but directory is missing.
 	ErrDatabaseDirRequired = errors.New("database directory is required for sqlite")
+	// ErrInvalidMigrationGuardMode is returned when the migration guard mode
+	// is neither "strict" nor "warn".
+	ErrInvalidMigrationGuardMode = errors.New(
+		"database migration guard mode must be 'strict' or 'warn'",
+	)
 	// ErrInvalidNodeRole is returned when the node role is invalid.
 	ErrInvalidNodeRole = errors.New(
 		"node role must be 'all', 'api', 'jobs', 'checks' or 'agent', " +
@@ -1208,6 +1224,12 @@ type DatabaseConfig struct {
 	LogSQL bool   `koanf:"logsql"` // Enable SQL query logging using slog
 	Reset  bool   `koanf:"reset"`  // Reset database on startup (only for test/demo run modes)
 
+	// MigrationGuardMode is "strict" (default, fail boot on checksum mismatch)
+	// or "warn" (log and continue). Multi-word koanf key → read via
+	// applyMigrationGuardModeEnv (SP_DB_MIGRATION_GUARD_MODE), not the auto env
+	// loader. See project_koanf_env_quirk.
+	MigrationGuardMode string `koanf:"migration_guard_mode"`
+
 	// PostgreSQL connection-pool bounds. Without these, database/sql leaves the
 	// pool unbounded (default MaxOpenConns = 0 = unlimited), so a burst can open
 	// arbitrarily many connections — each with its own buffers client- and
@@ -1302,12 +1324,13 @@ func Load() (*Config, error) {
 			FallbackUpstreamProxyProtocol: true,
 		},
 		Database: DatabaseConfig{
-			Type:            DatabaseTypeSQLite,
-			Dir:             ".",
-			MaxOpenConns:    dbPoolMaxOpenConnsDefault,
-			MaxIdleConns:    dbPoolMaxIdleConnsDefault,
-			ConnMaxLifetime: time.Hour,
-			ConnMaxIdleTime: 5 * time.Minute,
+			Type:               DatabaseTypeSQLite,
+			Dir:                ".",
+			MigrationGuardMode: MigrationGuardModeStrict,
+			MaxOpenConns:       dbPoolMaxOpenConnsDefault,
+			MaxIdleConns:       dbPoolMaxIdleConnsDefault,
+			ConnMaxLifetime:    time.Hour,
+			ConnMaxIdleTime:    5 * time.Minute,
 			// Comfortably above healthy queries here (the post-fix uptime-bar
 			// tiers measure ~10ms and ~97ms) and below anything a user would
 			// call slow (spec 2026-08-17-04).
@@ -1567,6 +1590,7 @@ func Load() (*Config, error) {
 
 	applyDatabasePoolEnv(&cfg.Database)
 	applyDBSlowQueryEnv(&cfg.Database)
+	applyMigrationGuardModeEnv(&cfg.Database)
 
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
@@ -2009,6 +2033,18 @@ func applyDBSlowQueryEnv(cfg *DatabaseConfig) {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.SlowQueryThreshold = d
 		}
+	}
+}
+
+// applyMigrationGuardModeEnv reads the multi-word SP_DB_MIGRATION_GUARD_MODE
+// knob koanf's env loader cannot bind (it would collapse the underscores to
+// dots and miss the snake_case koanf tag "migration_guard_mode"). Validation
+// of the value happens in validateDatabaseConfig, not here — an invalid value
+// is left in place so Validate reports it rather than being silently dropped.
+// See project_koanf_env_quirk.
+func applyMigrationGuardModeEnv(cfg *DatabaseConfig) {
+	if v := os.Getenv("SP_DB_MIGRATION_GUARD_MODE"); v != "" {
+		cfg.MigrationGuardMode = v
 	}
 }
 
@@ -2550,6 +2586,10 @@ func validateDatabaseConfig(cfg *DatabaseConfig) error {
 	// On-disk SQLite requires a directory (memory mode does not).
 	if cfg.Type == DatabaseTypeSQLite && cfg.Dir == "" {
 		return ErrDatabaseDirRequired
+	}
+
+	if cfg.MigrationGuardMode != MigrationGuardModeStrict && cfg.MigrationGuardMode != MigrationGuardModeWarn {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidMigrationGuardMode, cfg.MigrationGuardMode)
 	}
 
 	return nil
