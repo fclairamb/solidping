@@ -556,17 +556,23 @@ function CheckDetailPage() {
   const checkLive = useScopeLive(checkScope);
   const checkLiveError = useScopeError(checkScope);
 
-  // While the very first result is still the "created" placeholder, poll
-  // fast enough that a freshly-created check shows its first real status
-  // without making the user wait for a full check period. Cap the fast
-  // phase so a stuck worker can't trigger runaway polling at 1.5 s.
+  // While the check has never produced a real result, poll fast enough that
+  // a freshly-created check shows its first real status without making the
+  // user wait for a full check period. Cap the fast phase so a stuck worker
+  // can't trigger runaway polling at 1.5 s.
   // When this check's live subscription is acked, the first result arrives
   // as a hint-driven invalidation, so the hot poll is skipped entirely and
   // the regular interval stretches to the lazy safety net.
+  //
+  // `lastResult` is absent (not a "created"-status object) for a check that
+  // has never run: the API excludes the non-terminal "created" placeholder
+  // row from lastResult entirely (spec 2026-08-18-03) rather than surfacing
+  // it as if it were a real result, so pending-first-run is now "no
+  // lastResult at all", not "lastResult.status === created".
   const isLive = checkLive;
   const fastPollMs = 1500;
   const fastPollWindowMs = 30_000;
-  const isPendingFirstRun = check?.lastResult?.status === "created";
+  const isPendingFirstRun = !check?.lastResult;
   const [withinFastWindow, setWithinFastWindow] = useState(true);
   useEffect(() => {
     const id = setTimeout(() => setWithinFastWindow(false), fastPollWindowMs);

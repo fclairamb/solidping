@@ -110,7 +110,7 @@ type Result struct {
 	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
 	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
 	// Abandoned marks a row the abandoned-result reaper finalized from a stale
-	// created/running marker (spec 2026-08-18-03): Status is set to
+	// created marker (spec 2026-08-18-03): Status is set to
 	// ResultStatusError like a genuine failure — the timeline keeps honest
 	// evidence an attempt happened — but Abandoned=true excludes it from
 	// availability math everywhere that math is done. See
@@ -276,8 +276,8 @@ type CompactResultsOutcome struct {
 // ReapAbandonedResultsOutcome reports what one abandoned-result reaper sweep
 // did (see db.Service.ReapAbandonedResults).
 type ReapAbandonedResultsOutcome struct {
-	// Candidates is the number of raw rows found sitting in a lifecycle-marker
-	// status (created/running), before threshold filtering.
+	// Candidates is the number of raw rows found sitting in ResultStatusCreated
+	// (see abandonedResultLifecycleStatuses), before threshold filtering.
 	Candidates int
 	// Reaped is the number of those candidates that were past
 	// AbandonedResultThreshold for their check and got finalized this sweep.

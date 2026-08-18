@@ -15,8 +15,8 @@ import (
 // relative to the stuck-job reaper (1 min, defaultReaperInterval): the
 // eligibility threshold itself is already several check-periods wide (see
 // models.AbandonedResultThreshold), so nothing is lost by checking less
-// often, and the candidate set (models.ResultStatusCreated /
-// ResultStatusRunning raw rows) is tiny regardless.
+// often, and the candidate set (models.ResultStatusCreated raw rows) is tiny
+// regardless.
 const defaultAbandonedResultReaperInterval = 5 * time.Minute
 
 // AbandonedResultReaperJobDefinition is the factory for the abandoned-result reaper.

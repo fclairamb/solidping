@@ -112,6 +112,17 @@ func rawRow(checkUID string, status models.ResultStatus, start time.Time, dur fl
 	}
 }
 
+// rawRowAbandoned builds a raw row the abandoned-result reaper finalized:
+// terminal status (normally error) but Abandoned=true, so it must behave like
+// a lifecycle marker for availability purposes despite the terminal status
+// (spec 2026-08-18-03).
+func rawRowAbandoned(checkUID string, status models.ResultStatus, start time.Time) *models.Result {
+	row := rawRow(checkUID, status, start, 0)
+	row.Abandoned = true
+
+	return row
+}
+
 func hourRow(checkUID string, total, success int, start time.Time) *models.Result {
 	return &models.Result{
 		CheckUID:         checkUID,
@@ -255,6 +266,59 @@ func TestBucketAvailability_WarningCountsAsUpLifecycleExcluded(t *testing.T) {
 	pct, ok := stats.AvailabilityPct()
 	r.True(ok)
 	r.InDelta(66.6667, pct, 0.01)
+}
+
+// TestBucketAvailability_AbandonedExcludedGenuineErrorCounts is the required
+// positive-control test for spec 2026-08-18-03: a row the abandoned-result
+// reaper finalized (status=error, Abandoned=true) must not move the bucket's
+// availability at all — not numerator, not denominator — while a genuine
+// error result (status=error, Abandoned=false) in the SAME window still
+// counts against it. Without the positive control, a fixture that never
+// reached the calculation would trivially pass a "percentage unchanged"
+// assertion.
+func TestBucketAvailability_AbandonedExcludedGenuineErrorCounts(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	now := time.Now().UTC()
+	currentHour := now.Truncate(time.Hour)
+	bucketStart := currentHour.Add(-23 * time.Hour)
+
+	lister := &fakeLister{results: []*models.Result{
+		rawRow("c1", models.ResultStatusUp, currentHour.Add(1*time.Minute), 40),
+		rawRowAbandoned("c1", models.ResultStatusError, currentHour.Add(2*time.Minute)),
+	}}
+
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, noHints(),
+	)
+	r.NoError(err)
+
+	stats := out["c1"][currentHour]
+	r.Equal(1, stats.Total, "the abandoned row must not enter the denominator")
+	r.Equal(1, stats.Up, "the abandoned row must not enter the numerator either")
+	pct, ok := stats.AvailabilityPct()
+	r.True(ok)
+	r.InDelta(100.0, pct, 0.01, "one up + one abandoned reads as 100%%, not 50%%")
+
+	// Positive control: add a GENUINE error (Abandoned=false) in the same
+	// window and confirm it DOES move the percentage — proving the exclusion
+	// is specific to Abandoned=true, not a blanket "errors don't count" bug.
+	lister.results = append(lister.results, rawRow("c1", models.ResultStatusError, currentHour.Add(3*time.Minute), 0))
+	lister.gotFilters = nil
+
+	out, err = BucketAvailability(
+		context.Background(), lister, "org", []string{"c1"}, time.Hour, bucketStart, 24, noHints(),
+	)
+	r.NoError(err)
+
+	stats = out["c1"][currentHour]
+	r.Equal(2, stats.Total, "the genuine error must enter the denominator")
+	r.Equal(1, stats.Up, "the genuine error must not count as success")
+	pct, ok = stats.AvailabilityPct()
+	r.True(ok)
+	r.InDelta(50.0, pct, 0.01, "the genuine error must drag availability down")
 }
 
 // TestBucketAvailability_EmptyBucketAbsent asserts a bucket with zero rows is

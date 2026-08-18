@@ -350,15 +350,15 @@ var (
 	)
 
 	// ResultsReaped counts raw results the abandoned-result reaper finalized
-	// from a stale created/running marker into a terminal error (spec
-	// 2026-08-18-03). A spike signals a worker that crashed or restarted
-	// mid-cycle across many checks, not normal operation — these results are
-	// deliberately excluded from availability, so a spike here should never
-	// itself be read as a customer-facing availability dip.
+	// from a stale created marker into a terminal error (spec 2026-08-18-03).
+	// A spike signals a worker that crashed or restarted mid-cycle across many
+	// checks, not normal operation — these results are deliberately excluded
+	// from availability, so a spike here should never itself be read as a
+	// customer-facing availability dip.
 	ResultsReaped = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "solidping_results_reaped_total",
-			Help: "Total raw results finalized by the abandoned-result reaper (stale created/running rows)",
+			Help: "Total raw results finalized by the abandoned-result reaper (stale created rows)",
 		},
 	)
 

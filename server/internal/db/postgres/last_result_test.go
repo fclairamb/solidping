@@ -165,6 +165,92 @@ func TestGetLastResultForChecks_Parity_Postgres(t *testing.T) {
 	r.NotContains(results, noHistory.UID, "a check with no raw row is absent, not nil-valued")
 }
 
+// TestGetLastResultForChecks_ExcludesCreatedMarkerOnly_Postgres is the
+// Postgres twin of the SQLite regression test for spec 2026-08-18-03
+// (Proposal Part 2): a raw row still in ResultStatusCreated must never win
+// "last checked" over an older terminal row, and a check whose only raw row
+// IS such a marker must read as having no last result at all.
+// ResultStatusRunning is a different story — heartbeat checks use it as a
+// legitimate long-lived status the API must still surface.
+//
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
+func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly_Postgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	s, err := New(ctx, &Config{
+		Embedded: true,
+		Port:     portLastResult + 3,
+		RunMode:  runModeTest,
+	})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	if initErr := s.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	org := models.NewOrganization("marker-pg-org", "Lifecycle Marker PG Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	stale := models.NewCheck(org.UID, "stale-marker-only", "http")
+	withHistory := models.NewCheck(org.UID, "with-history-then-marker", "http")
+	r.NoError(s.CreateCheck(ctx, stale))
+	r.NoError(s.CreateCheck(ctx, withHistory))
+
+	// `stale` keeps only CreateCheck's own "Check created" marker.
+	results, err := s.GetLastResultForChecks(ctx, org.UID, []string{stale.UID})
+	r.NoError(err)
+	r.NotContains(results, stale.UID,
+		"a check whose only raw row is the created marker must read as having no last result")
+
+	terminal := models.NewResult(org.UID, withHistory.UID, models.ResultStatusUp, 42)
+	terminal.PeriodStart = time.Now().Add(time.Hour)
+	r.NoError(s.CreateResult(ctx, terminal))
+
+	newerCreated := models.NewResult(org.UID, withHistory.UID, models.ResultStatusCreated, 0)
+	newerCreated.PeriodStart = terminal.PeriodStart.Add(time.Minute)
+	r.NoError(s.CreateResult(ctx, newerCreated))
+
+	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})
+	r.NoError(err)
+	r.Contains(results, withHistory.UID)
+	r.Equal(terminal.UID, results[withHistory.UID].UID,
+		"a newer created row must never win over an older terminal row")
+
+	// A newer RUNNING row, in contrast, must win: heartbeat checks rely on
+	// this to surface "the monitored job is currently running" as the check's
+	// last result.
+	newerRunning := models.NewResult(org.UID, withHistory.UID, models.ResultStatusRunning, 0)
+	newerRunning.PeriodStart = newerCreated.PeriodStart.Add(time.Minute)
+	r.NoError(s.CreateResult(ctx, newerRunning))
+
+	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})
+	r.NoError(err)
+	r.Contains(results, withHistory.UID)
+	r.Equal(newerRunning.UID, results[withHistory.UID].UID,
+		"a running row is a legitimate heartbeat report and must win as the newest row")
+
+	// A reaped/abandoned row is deliberately NOT excluded: once terminal it is
+	// a legitimate last-checked entry.
+	abandoned := models.NewResult(org.UID, withHistory.UID, models.ResultStatusError, 0)
+	abandoned.PeriodStart = newerRunning.PeriodStart.Add(time.Minute)
+	abandoned.Abandoned = true
+	r.NoError(s.CreateResult(ctx, abandoned))
+
+	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})
+	r.NoError(err)
+	r.Contains(results, withHistory.UID)
+	r.Equal(abandoned.UID, results[withHistory.UID].UID,
+		"a reaped/abandoned row is terminal and must still be eligible as the last result")
+}
+
 // TestGetLastResultForChecks_FiltersByOrganization_Postgres confirms the
 // organization_uid predicate is actually applied — querying with the wrong
 // org UID must return nothing, and the covering index

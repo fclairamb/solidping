@@ -2,6 +2,7 @@ package models
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -117,6 +118,20 @@ func TestRawAvailability(t *testing.T) {
 			wantSuccess: 0,
 			wantTotal:   0,
 		},
+		{
+			// Positive control for the reaper's exclusion rule: a genuine
+			// error (status=error, Abandoned=false) still counts against
+			// availability — only Abandoned=true is excluded (spec
+			// 2026-08-18-03).
+			name: "reaped result excluded, genuine error still counts",
+			results: []*Result{
+				{Status: &up},
+				{Status: &down, Abandoned: true}, // reaped: excluded entirely
+				{Status: &down},                  // genuine error: counts against availability
+			},
+			wantSuccess: 1,
+			wantTotal:   2,
+		},
 	}
 
 	for _, tt := range tests {
@@ -137,4 +152,44 @@ func repeatStatus(status int, n int) []*Result {
 		out = append(out, &Result{Status: &s})
 	}
 	return out
+}
+
+func TestResultExcludedFromAvailability(t *testing.T) {
+	t.Parallel()
+
+	up := int(ResultStatusUp)
+	created := int(ResultStatusCreated)
+
+	tests := []struct {
+		name   string
+		result *Result
+		want   bool
+	}{
+		{"up, not abandoned", &Result{Status: &up}, false},
+		{"created marker", &Result{Status: &created}, true},
+		{"nil status, not abandoned", &Result{Status: nil}, false},
+		{"up but abandoned", &Result{Status: &up, Abandoned: true}, true},
+		{"nil status and abandoned", &Result{Status: nil, Abandoned: true}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.New(t).Equal(tt.want, tt.result.ExcludedFromAvailability())
+		})
+	}
+}
+
+func TestAbandonedResultThreshold(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// threshold = multiplier * (period + leaseGrace)
+	r.Equal(
+		AbandonedResultMultiplier*(time.Minute+AbandonedResultLeaseGrace),
+		AbandonedResultThreshold(time.Minute),
+	)
+
+	// A longer period yields a longer threshold — monotonic in period.
+	r.Greater(AbandonedResultThreshold(time.Hour), AbandonedResultThreshold(time.Minute))
 }

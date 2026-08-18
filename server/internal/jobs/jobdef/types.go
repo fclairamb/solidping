@@ -68,13 +68,14 @@ const (
 	// failures (domain release/takeover protection). Global, self-rescheduling
 	// every 6h (spec 2026-07-22-01).
 	JobTypeCustomDomainVerify JobType = "custom_domain_verify"
-	// JobTypeAbandonedResultReaper periodically finalizes raw results left in a
-	// lifecycle-marker status (created/running, most visibly CreateCheck's
-	// one-time "Check created" marker) once they are well past any plausible
-	// execution window for their check: each is flipped to a terminal error
-	// carrying Abandoned=true, which keeps it out of availability math while
-	// still recording that an attempt happened. Global, self-rescheduling
-	// (spec 2026-08-18-03).
+	// JobTypeAbandonedResultReaper periodically finalizes raw results left in
+	// ResultStatusCreated (most visibly CreateCheck's one-time "Check created"
+	// marker) once they are well past any plausible execution window for their
+	// check: each is flipped to a terminal error carrying Abandoned=true,
+	// which keeps it out of availability math while still recording that an
+	// attempt happened. Deliberately does NOT touch ResultStatusRunning, which
+	// heartbeat checks use as a legitimate long-lived status. Global,
+	// self-rescheduling (spec 2026-08-18-03).
 	JobTypeAbandonedResultReaper JobType = "abandoned_result_reaper"
 	// JobTypeAgentGC retires platform-operated ("system") agents that stopped
 	// reporting: a fly.io fleet enrolls on boot with a per-machine keypair, so

@@ -465,6 +465,99 @@ func TestGetAvailability_SparseLongPeriodSeries(t *testing.T) {
 	})
 }
 
+// TestGetAvailability_AbandonedExcludedGenuineErrorCounts is the availability
+// service's slice of the required spec 2026-08-18-03 positive-control test: a
+// row the abandoned-result reaper finalized (status=error, Abandoned=true)
+// must not move the availability percentage at all, while a genuine error
+// result (Abandoned=false) in the same window still drags it down. This is
+// the third of the three surfaces the spec calls out by name (hour rollup,
+// uptimebar union, availability service) — all three must agree, and this
+// pins the service's own end of that agreement through a real DB round trip,
+// not just the shared in-memory predicate.
+func TestGetAvailability_AbandonedExcludedGenuineErrorCounts(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-abandoned-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "avail-abandoned-check", "domain")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	// Remove the auto-seeded "created" marker so it can't leak into the
+	// window under test.
+	seeded, err := dbSvc.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		Limit:           10,
+	})
+	r.NoError(err)
+
+	seededUIDs := make([]string, 0, len(seeded.Results))
+	for _, row := range seeded.Results {
+		seededUIDs = append(seededUIDs, row.UID)
+	}
+
+	if len(seededUIDs) > 0 {
+		_, delErr := dbSvc.DeleteResults(ctx, org.UID, seededUIDs)
+		r.NoError(delErr)
+	}
+
+	now := time.Now().UTC()
+
+	up := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 0.1)
+	up.PeriodStart = now.Add(-2 * time.Hour)
+	r.NoError(dbSvc.CreateResult(ctx, up))
+
+	abandoned := models.NewResult(org.UID, check.UID, models.ResultStatusError, 0)
+	abandoned.PeriodStart = now.Add(-1 * time.Hour)
+	abandoned.Abandoned = true
+	r.NoError(dbSvc.CreateResult(ctx, abandoned))
+
+	svc := NewService(dbSvc, &config.Config{
+		Aggregation: config.AggregationConfig{RetentionRaw: 30 * 24, RetentionHour: 7},
+	})
+
+	resp, availErr := svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+		Periods: []string{"7d"},
+	})
+	r.NoError(availErr)
+	r.Len(resp.Data, 1)
+
+	row := resp.Data[0]
+	r.True(row.HasData)
+	r.Equal(1, row.TotalChecks, "the abandoned row must not enter total_checks")
+	r.Equal(1, row.SuccessfulChecks)
+	r.NotNil(row.AvailabilityPct)
+	r.InDelta(100.0, *row.AvailabilityPct, 0.0001, "one up + one abandoned reads as 100%, not 50%")
+
+	// Positive control: a genuine error (Abandoned=false) in the same window
+	// must drag availability down — proving the exclusion above is specific
+	// to Abandoned=true, not a bug swallowing errors in general.
+	genuineErr := models.NewResult(org.UID, check.UID, models.ResultStatusError, 0)
+	genuineErr.PeriodStart = now.Add(-30 * time.Minute)
+	r.NoError(dbSvc.CreateResult(ctx, genuineErr))
+
+	resp, availErr = svc.GetAvailability(ctx, org.Slug, check.UID, &GetAvailabilityOptions{
+		Periods: []string{"7d"},
+	})
+	r.NoError(availErr)
+	r.Len(resp.Data, 1)
+
+	row = resp.Data[0]
+	r.Equal(2, row.TotalChecks, "the genuine error must enter total_checks")
+	r.Equal(1, row.SuccessfulChecks)
+	r.NotNil(row.AvailabilityPct)
+	r.InDelta(50.0, *row.AvailabilityPct, 0.0001, "the genuine error must drag availability down")
+}
+
 // TestGetAvailability_RawClampFollowsTheLiveRetentionParameter is the read-side
 // regression for the retention source. uptimebar clamps its raw-tier query to
 // the configured raw retention, and the server "Aggregation" settings tab writes

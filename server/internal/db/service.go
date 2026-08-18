@@ -352,15 +352,17 @@ type Service interface {
 	GetLastResultForChecks(
 		ctx context.Context, orgUID string, checkUIDs []string,
 	) (map[string]*models.Result, error)
-	// ReapAbandonedResults finalizes raw results still sitting in a
-	// lifecycle-marker status (created/running) well past any plausible
-	// execution window for their check — models.AbandonedResultThreshold,
-	// "the check's period plus the worker lease timeout, with a generous
-	// multiplier" (spec 2026-08-18-03). Each eligible row is atomically
-	// flipped to ResultStatusError with Abandoned=true and an output
-	// explaining the worker never reported, re-asserting the row's current
-	// status in the guard so a legitimate finish racing the sweep is a no-op
-	// rather than a clobber. Global, not per-org — mirrors ReapStuckJobs.
+	// ReapAbandonedResults finalizes raw results still sitting in
+	// ResultStatusCreated well past any plausible execution window for their
+	// check — models.AbandonedResultThreshold, "the check's period plus the
+	// worker lease timeout, with a generous multiplier" (spec 2026-08-18-03).
+	// Each eligible row is atomically flipped to ResultStatusError with
+	// Abandoned=true and an output explaining the worker never reported,
+	// re-asserting the row's current status in the guard so a legitimate
+	// finish racing the sweep is a no-op rather than a clobber.
+	// ResultStatusRunning is deliberately left alone: heartbeat checks use it
+	// as a legitimate long-lived status with no period/lease relationship.
+	// Global, not per-org — mirrors ReapStuckJobs.
 	ReapAbandonedResults(ctx context.Context) (models.ReapAbandonedResultsOutcome, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)
 	// CompactResults atomically compacts one source bucket into a single

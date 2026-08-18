@@ -2533,14 +2533,30 @@ func (s *Service) GetLastResultForChecks(
 	// versus 47 ms and zero spill here). The returned rows are identical: the
 	// newest raw row per requested check, at most one each.
 	//
-	// The status filter excludes lifecycle markers (created/running, spec
-	// 2026-08-18-03): a "created" row means an attempt started, not that the
-	// check was checked, so it must never win "last checked" over an older
-	// terminal row — or leave a fresh check reading "Last checked" at all when
-	// the only row it has is its own creation marker. A reaped/abandoned row
-	// (status flipped to error by the reaper) is deliberately NOT excluded
-	// here: once terminal it is a legitimate, if uninformative, last-checked
-	// entry.
+	// The status filter excludes only ResultStatusCreated (spec 2026-08-18-03):
+	// a "created" row means an attempt started, not that the check was
+	// checked, so it must never win "last checked" over an older terminal
+	// row — or leave a fresh check reading "Last checked" at all when the only
+	// row it has is its own creation marker (CreateCheck's one-time "Check
+	// created" row, the observed source of the bug).
+	//
+	// ResultStatusRunning is deliberately NOT excluded here despite also being
+	// a models.ResultStatus.IsLifecycleMarker() value: heartbeat checks
+	// (handlers/heartbeat) use "running" as a legitimate, externally-reported,
+	// possibly long-lived status — "the monitored job started and hasn't
+	// pinged again yet" — that the API is meant to surface as the check's
+	// current/last result, not hide (spec 2026-08-18-03 discovered this via
+	// TestReceiveHeartbeat*RunningStatus regressing). Excluding it here would
+	// wrongly hide a heartbeat's genuine "running" report. Nothing else in the
+	// codebase ever writes a raw row with status=running, so this exclusion is
+	// narrower than IsLifecycleMarker() on purpose, for this one call site
+	// only — availability math (RawAvailability, the hour rollup, the
+	// uptimebar union) is unaffected and still excludes Running via
+	// IsLifecycleMarker() as before.
+	//
+	// A reaped/abandoned row (status flipped to error by the reaper) is also
+	// deliberately NOT excluded: once terminal it is a legitimate, if
+	// uninformative, last-checked entry.
 	query := `
 		SELECT r.*
 		FROM unnest(?::uuid[]) AS cu(uid)
@@ -2550,14 +2566,13 @@ func (s *Service) GetLastResultForChecks(
 			WHERE res.organization_uid = ?
 				AND res.check_uid = cu.uid
 				AND res.period_type = 'raw'
-				AND (res.status IS NULL OR res.status NOT IN (?, ?))
+				AND (res.status IS NULL OR res.status != ?)
 			ORDER BY res.period_start DESC
 			LIMIT 1
 		) AS r
 	`
 
-	err := s.db.NewRaw(query, pgdialect.Array(checkUIDs), orgUID,
-		int(models.ResultStatusCreated), int(models.ResultStatusRunning)).Scan(ctx, &results)
+	err := s.db.NewRaw(query, pgdialect.Array(checkUIDs), orgUID, int(models.ResultStatusCreated)).Scan(ctx, &results)
 	if err != nil {
 		return nil, err
 	}
@@ -2573,12 +2588,20 @@ func (s *Service) GetLastResultForChecks(
 }
 
 // abandonedResultLifecycleStatuses is the raw statuses ReapAbandonedResults
-// scans for: created (the only one any code path currently writes and leaves
-// open — CreateCheck's one-time "Check created" marker) plus running,
-// included for symmetry with models.ResultStatus.IsLifecycleMarker and to
-// stay correct if a future protocol path ever writes an in-progress row.
+// scans for: ResultStatusCreated only — the sole status any code path writes
+// and then may leave open (CreateCheck's one-time "Check created" marker).
+// ResultStatusRunning is deliberately EXCLUDED even though
+// models.ResultStatus.IsLifecycleMarker() also treats it as a lifecycle
+// marker: heartbeat checks (handlers/heartbeat) write "running" as a
+// legitimate, externally-reported, possibly long-lived status ("the
+// monitored job started and hasn't pinged again yet") with no check_jobs
+// period/lease relationship for AbandonedResultThreshold to measure against
+// — reaping it would finalize a heartbeat's genuine in-progress report into a
+// fake error the moment its own period math (which does not apply to it)
+// says it should have finished (spec 2026-08-18-03, discovered via
+// TestReceiveHeartbeat*RunningStatus regressing during implementation).
 func abandonedResultLifecycleStatuses() []int {
-	return []int{int(models.ResultStatusCreated), int(models.ResultStatusRunning)}
+	return []int{int(models.ResultStatusCreated)}
 }
 
 // ReapAbandonedResults finalizes raw results stuck in a lifecycle-marker
