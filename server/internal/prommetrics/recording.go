@@ -161,6 +161,15 @@ func RecordJobReaped(outcome string, n int) {
 	JobsReaped.WithLabelValues(outcome).Add(float64(n))
 }
 
+// RecordResultsReaped increments the abandoned-result reaper counter by n. n
+// is the number of raw results finalized in one sweep; a zero n is a no-op.
+func RecordResultsReaped(n int) {
+	if n <= 0 {
+		return
+	}
+	ResultsReaped.Add(float64(n))
+}
+
 // RecordJobLeaseLost increments the lease-lost counter for the given job type.
 // Called when a worker's terminal write is discarded because the reaper already
 // transitioned the job out of 'running'.

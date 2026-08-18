@@ -76,17 +76,15 @@ func (s ResultStatus) CountsAsUp() bool {
 }
 
 // RawAvailability computes (successCount, countableTotal) over raw results, skipping
-// lifecycle markers. Callers derive pct = 100*success/total when total > 0.
+// lifecycle markers and reaped/abandoned attempts. Callers derive
+// pct = 100*success/total when total > 0.
 func RawAvailability(results []*Result) (int, int) {
 	var success, total int
 	for _, r := range results {
-		if r.Status == nil {
+		if r.Status == nil || r.ExcludedFromAvailability() {
 			continue
 		}
 		s := ResultStatus(*r.Status)
-		if s.IsLifecycleMarker() {
-			continue
-		}
 		total++
 		if s.CountsAsUp() {
 			success++
@@ -111,6 +109,15 @@ type Result struct {
 	Duration  *float32 `bun:"duration"`
 	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
 	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
+	// Abandoned marks a row the abandoned-result reaper finalized from a stale
+	// created/running marker (spec 2026-08-18-03): Status is set to
+	// ResultStatusError like a genuine failure — the timeline keeps honest
+	// evidence an attempt happened — but Abandoned=true excludes it from
+	// availability math everywhere that math is done. See
+	// ExcludedFromAvailability, the one predicate the hour rollup
+	// (job_aggregation.go), the uptimebar union (uptimebar/bucketing.go), and
+	// RawAvailability below all route through.
+	Abandoned bool `bun:"abandoned,notnull"`
 
 	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year').
 	// availability_pct is intentionally absent: it is derived at read time from
@@ -123,6 +130,50 @@ type Result struct {
 	DurationAvg      *float32 `bun:"duration_avg"`
 
 	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
+}
+
+// ExcludedFromAvailability reports whether a raw result must be dropped from
+// both availability's numerator and denominator: a lifecycle marker (still in
+// flight — created/running) OR a row the abandoned-result reaper finalized
+// (terminal, but evidence of OUR infrastructure failing, not the monitored
+// service — spec 2026-08-18-03). RawAvailability, the hour rollup's
+// processRawResult (job_aggregation.go), and uptimebar's accumulateRaw
+// (uptimebar/bucketing.go) all route through this one predicate so the three
+// surfaces can never drift apart on what counts.
+func (r *Result) ExcludedFromAvailability() bool {
+	if r.Abandoned {
+		return true
+	}
+
+	if r.Status == nil {
+		return false
+	}
+
+	return ResultStatus(*r.Status).IsLifecycleMarker()
+}
+
+// Constants behind AbandonedResultThreshold — see its doc comment.
+const (
+	// AbandonedResultLeaseGrace mirrors the check_jobs lease formula
+	// (scheduled_at + period + 30s, see checkjobsvc.Service.ClaimJobs): the
+	// worst-case slack a legitimately in-flight attempt could still need on
+	// top of the check's own period.
+	AbandonedResultLeaseGrace = 30 * time.Second
+
+	// AbandonedResultMultiplier pads (period + lease grace) generously so a
+	// single routine worker restart mid-cycle is never mistaken for
+	// abandonment. Only a check that has had no chance to produce ANY result
+	// across several of its own periods is reaped.
+	AbandonedResultMultiplier = 5
+)
+
+// AbandonedResultThreshold returns how old a lifecycle-marker raw row must be,
+// relative to its check's period, before the abandoned-result reaper may
+// finalize it: AbandonedResultMultiplier * (period + AbandonedResultLeaseGrace).
+// This is "the check's period plus the worker lease timeout, with a generous
+// multiplier" from spec 2026-08-18-03's Proposal.
+func AbandonedResultThreshold(checkPeriod time.Duration) time.Duration {
+	return AbandonedResultMultiplier * (checkPeriod + AbandonedResultLeaseGrace)
 }
 
 // NewResult creates a new raw result with generated UID.
@@ -220,4 +271,15 @@ type CompactResultsOutcome struct {
 	Compacted bool
 	// DeletedCount is the number of source rows actually deleted.
 	DeletedCount int64
+}
+
+// ReapAbandonedResultsOutcome reports what one abandoned-result reaper sweep
+// did (see db.Service.ReapAbandonedResults).
+type ReapAbandonedResultsOutcome struct {
+	// Candidates is the number of raw rows found sitting in a lifecycle-marker
+	// status (created/running), before threshold filtering.
+	Candidates int
+	// Reaped is the number of those candidates that were past
+	// AbandonedResultThreshold for their check and got finalized this sweep.
+	Reaped int
 }

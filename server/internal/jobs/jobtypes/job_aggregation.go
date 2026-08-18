@@ -935,8 +935,13 @@ func processRawResult(
 	statusCounts map[int]int,
 	successCount, totalChecks *int,
 ) {
-	// Skip non-data statuses (initial, running) — they are lifecycle markers, not measurements
-	if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
+	// Skip non-data statuses (created, running — lifecycle markers, not
+	// measurements) and rows the abandoned-result reaper finalized (evidence
+	// of OUR worker crashing, not the monitored service — spec
+	// 2026-08-18-03). Duration/statusCounts/totalChecks/successCount must
+	// never see either: this is the hour rollup's half of the shared
+	// models.Result.ExcludedFromAvailability contract.
+	if result.ExcludedFromAvailability() {
 		return
 	}
 

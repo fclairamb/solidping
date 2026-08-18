@@ -2532,6 +2532,15 @@ func (s *Service) GetLastResultForChecks(
 	// (spec 2026-08-09-07: 1690 ms and 24 MB of temp spill for 356 checks,
 	// versus 47 ms and zero spill here). The returned rows are identical: the
 	// newest raw row per requested check, at most one each.
+	//
+	// The status filter excludes lifecycle markers (created/running, spec
+	// 2026-08-18-03): a "created" row means an attempt started, not that the
+	// check was checked, so it must never win "last checked" over an older
+	// terminal row — or leave a fresh check reading "Last checked" at all when
+	// the only row it has is its own creation marker. A reaped/abandoned row
+	// (status flipped to error by the reaper) is deliberately NOT excluded
+	// here: once terminal it is a legitimate, if uninformative, last-checked
+	// entry.
 	query := `
 		SELECT r.*
 		FROM unnest(?::uuid[]) AS cu(uid)
@@ -2541,12 +2550,14 @@ func (s *Service) GetLastResultForChecks(
 			WHERE res.organization_uid = ?
 				AND res.check_uid = cu.uid
 				AND res.period_type = 'raw'
+				AND (res.status IS NULL OR res.status NOT IN (?, ?))
 			ORDER BY res.period_start DESC
 			LIMIT 1
 		) AS r
 	`
 
-	err := s.db.NewRaw(query, pgdialect.Array(checkUIDs), orgUID).Scan(ctx, &results)
+	err := s.db.NewRaw(query, pgdialect.Array(checkUIDs), orgUID,
+		int(models.ResultStatusCreated), int(models.ResultStatusRunning)).Scan(ctx, &results)
 	if err != nil {
 		return nil, err
 	}
@@ -2559,6 +2570,162 @@ func (s *Service) GetLastResultForChecks(
 	}
 
 	return resultMap, nil
+}
+
+// abandonedResultLifecycleStatuses is the raw statuses ReapAbandonedResults
+// scans for: created (the only one any code path currently writes and leaves
+// open — CreateCheck's one-time "Check created" marker) plus running,
+// included for symmetry with models.ResultStatus.IsLifecycleMarker and to
+// stay correct if a future protocol path ever writes an in-progress row.
+func abandonedResultLifecycleStatuses() []int {
+	return []int{int(models.ResultStatusCreated), int(models.ResultStatusRunning)}
+}
+
+// ReapAbandonedResults finalizes raw results stuck in a lifecycle-marker
+// status well past any plausible execution window for their check. See the
+// db.Service interface doc for the contract.
+//
+// There is no proactive check_jobs lease sweep to piggyback on here (spec
+// 2026-08-18-03, resolved from the code as instructed): check_jobs leases are
+// only ever reclaimed lazily, inside ClaimJobs's own SELECT, when a worker
+// happens to ask for work in that job's scope — never on a timer against the
+// whole table. More fundamentally, nothing in this codebase ties an open raw
+// result row to a check_jobs lease at all: the one persistent status=created
+// row is CreateCheck's one-time "Check created" marker, written outside any
+// claim/lease flow. So this has to be its own sweep, over `results` directly,
+// keyed off each row's own check's period rather than any check_jobs state.
+func (s *Service) ReapAbandonedResults(ctx context.Context) (models.ReapAbandonedResultsOutcome, error) {
+	var candidates []*models.Result
+
+	// idx_results_lifecycle_pending (period_start) WHERE period_type='raw' AND
+	// status IN (1,2) backs this: `results` is the largest table in the
+	// system, and a periodic sweep for a handful of stuck marker rows must
+	// never fall back to scanning it.
+	err := s.db.NewSelect().
+		Model(&candidates).
+		Column("uid", "check_uid", "status", "period_start").
+		Where("period_type = 'raw'").
+		Where("status IN (?)", bun.List(abandonedResultLifecycleStatuses())).
+		Scan(ctx)
+	if err != nil {
+		return models.ReapAbandonedResultsOutcome{}, fmt.Errorf("failed to list abandoned-result candidates: %w", err)
+	}
+
+	outcome := models.ReapAbandonedResultsOutcome{Candidates: len(candidates)}
+	if len(candidates) == 0 {
+		return outcome, nil
+	}
+
+	periods, err := s.checkPeriodsFor(ctx, candidates)
+	if err != nil {
+		return models.ReapAbandonedResultsOutcome{}, fmt.Errorf("failed to fetch check periods: %w", err)
+	}
+
+	now := time.Now()
+
+	for _, candidate := range candidates {
+		period, ok := periods[candidate.CheckUID]
+		if !ok {
+			// Check hard-deleted since; nothing reads its "last checked" any
+			// more, and it will never be joinable again — leave it alone.
+			continue
+		}
+
+		if now.Sub(candidate.PeriodStart) < models.AbandonedResultThreshold(period) {
+			continue // still inside the plausible execution window
+		}
+
+		claimed, claimErr := s.claimAbandonedResult(ctx, candidate)
+		if claimErr != nil {
+			slog.WarnContext(ctx, "failed to reap abandoned result", "result_uid", candidate.UID, "error", claimErr)
+
+			continue
+		}
+
+		if claimed {
+			outcome.Reaped++
+		}
+	}
+
+	return outcome, nil
+}
+
+// checkPeriodsFor batch-fetches the period of every distinct check referenced
+// by candidates, in one query. A check_uid absent from the returned map has
+// been hard-deleted since the candidate row was written.
+func (s *Service) checkPeriodsFor(ctx context.Context, candidates []*models.Result) (map[string]time.Duration, error) {
+	seen := make(map[string]struct{}, len(candidates))
+	checkUIDs := make([]string, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		if _, ok := seen[candidate.CheckUID]; ok {
+			continue
+		}
+
+		seen[candidate.CheckUID] = struct{}{}
+		checkUIDs = append(checkUIDs, candidate.CheckUID)
+	}
+
+	var checks []*models.Check
+
+	if err := s.db.NewSelect().
+		Model(&checks).
+		Column("uid", "period").
+		Where("uid IN (?)", bun.List(checkUIDs)).
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	periods := make(map[string]time.Duration, len(checks))
+	for _, check := range checks {
+		periods[check.UID] = time.Duration(check.Period)
+	}
+
+	return periods, nil
+}
+
+// abandonedResultOutput is the output payload written on a reaped result: a
+// human message (checkerdef.OutputKeyError, the conventional key every other
+// error-result writer uses) plus a machine-readable "reason" so a reaped row
+// stays distinguishable from a genuine error by output alone, mirroring the
+// stuck-job reaper's "reason":"stuck_timeout" convention.
+func abandonedResultOutput() models.JSONMap {
+	return models.JSONMap{
+		checkerdef.OutputKeyError: "No result was ever reported for this attempt — the worker likely crashed, " +
+			"restarted, or lost its lease before finishing. Excluded from availability.",
+		"reason": "abandoned",
+	}
+}
+
+// claimAbandonedResult atomically flips one candidate to a terminal,
+// Abandoned=true row, re-asserting its current status in the WHERE clause so
+// a concurrent transition (another reaper replica, or the row somehow being
+// legitimately finalized between the SELECT and here) is a no-op rather than
+// a clobber — same guard shape as jobsvc.ReapStuckJobs. Returns false when the
+// row had already moved.
+func (s *Service) claimAbandonedResult(ctx context.Context, candidate *models.Result) (bool, error) {
+	if candidate.Status == nil {
+		return false, nil
+	}
+
+	res, err := s.db.NewUpdate().
+		Model((*models.Result)(nil)).
+		Set("status = ?", int(models.ResultStatusError)).
+		Set("abandoned = ?", true).
+		Set("output = ?", abandonedResultOutput()).
+		Where("uid = ?", candidate.UID).
+		Where("status = ?", *candidate.Status).
+		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n > 0, nil
 }
 
 // Job operations
