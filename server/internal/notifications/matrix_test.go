@@ -153,7 +153,7 @@ func TestMatrixSender_Send_TrailingSlashTolerated(t *testing.T) {
 	sender := &MatrixSender{}
 	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
 
-	r.False(strings.Contains(gotPath, "//_matrix"), "trailing slash must not produce a double slash: %s", gotPath)
+	r.NotContains(gotPath, "//_matrix", "trailing slash must not produce a double slash: %s", gotPath)
 	r.True(strings.HasPrefix(gotPath, "/_matrix/client/v3/rooms/"))
 }
 
@@ -291,10 +291,10 @@ func TestMatrixSender_Send_EventFormatting(t *testing.T) {
 		eventType  string
 		wantPrefix string
 	}{
-		{"created", eventTypeIncidentCreated, "[DOWN] API health"},
-		{"resolved", eventTypeIncidentResolved, "[RECOVERED] API health"},
-		{"escalated", eventTypeIncidentEscalated, "[ESCALATED] API health"},
-		{"reopened", eventTypeIncidentReopened, "[REOPENED] API health"},
+		{"incident created", eventTypeIncidentCreated, "[DOWN] API health"},
+		{"incident resolved", eventTypeIncidentResolved, "[RECOVERED] API health"},
+		{"incident escalated", eventTypeIncidentEscalated, "[ESCALATED] API health"},
+		{"incident reopened", eventTypeIncidentReopened, "[REOPENED] API health"},
 	}
 
 	for _, tc := range cases {

@@ -210,7 +210,7 @@ type matrixMessageEvent struct {
 // event. HTML is built with html.EscapeString on every dynamic value —
 // never fmt.Sprintf directly into markup — so a check name or failure
 // reason cannot inject markup into the room.
-func (s *MatrixSender) buildContent(payload *Payload) (plain, formatted string) {
+func (s *MatrixSender) buildContent(payload *Payload) (string, string) {
 	checkName := getCheckName(payload.Check)
 
 	var title string
@@ -240,7 +240,7 @@ func (s *MatrixSender) buildContent(payload *Payload) (plain, formatted string) 
 
 	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 
-	plain = title
+	plain := title
 	if len(lines) > 0 {
 		plain += "\n" + strings.Join(lines, "\n")
 	}
@@ -254,7 +254,7 @@ func (s *MatrixSender) buildContent(payload *Payload) (plain, formatted string) 
 		htmlLines[i] = html.EscapeString(line)
 	}
 
-	formatted = "<strong>" + html.EscapeString(title) + "</strong>"
+	formatted := "<strong>" + html.EscapeString(title) + "</strong>"
 	if len(htmlLines) > 0 {
 		formatted += "<br/>" + strings.Join(htmlLines, "<br/>")
 	}
