@@ -1,6 +1,8 @@
--- Parity only: rebuild `results` with the `abandoned` flag back and the
--- narrower `status in (0..8)` domain, folding status 9 back into
--- "error + abandoned" on the way across. Same *_new rebuild and same
+-- Parity only: rebuild `results` with the narrower `status in (0..8)` domain
+-- 013 left behind, and drop the reaper's index. Any row the reaper minted is
+-- folded back to plain `error` on the way across — the narrower domain cannot
+-- hold 9, and `error` is the closest pre-9 encoding — so the distinction this
+-- release introduced is simply lost going down. Same *_new rebuild and same
 -- foreign_keys handling as the up migration.
 
 PRAGMA foreign_keys=OFF;
@@ -29,9 +31,7 @@ create table results_new (
   duration_p95      real,
   duration_avg      real,
 
-  created_at        text not null default (datetime('now')),
-
-  abandoned         integer not null default 0 -- True (1) when the abandoned-result reaper finalized this row from a stale created marker.
+  created_at        text not null default (datetime('now'))
 );
 
 --bun:split
@@ -40,7 +40,7 @@ insert into results_new (
   uid, organization_uid, check_uid, period_type, period_start, period_end, region,
   worker_uid, status, duration, metrics, output,
   total_checks, successful_checks, duration_min, duration_max, duration_p95, duration_avg,
-  created_at, abandoned
+  created_at
 )
 select
   uid, organization_uid, check_uid, period_type, period_start, period_end, region,
@@ -48,8 +48,7 @@ select
   case when period_type = 'raw' and status = 9 then 6 else status end,
   duration, metrics, output,
   total_checks, successful_checks, duration_min, duration_max, duration_p95, duration_avg,
-  created_at,
-  case when period_type = 'raw' and status = 9 then 1 else 0 end
+  created_at
 from results;
 
 --bun:split
@@ -83,9 +82,8 @@ create unique index results_aggregated_unique_idx
 
 --bun:split
 
-create index idx_results_lifecycle_pending on results (period_start)
-  where period_type = 'raw' and status = 1;
-
---bun:split
+-- idx_results_lifecycle_pending is deliberately NOT recreated: it arrived with
+-- this migration, so the post-013 state does not have it. The rebuild drops it
+-- along with the old table.
 
 PRAGMA foreign_keys=ON;

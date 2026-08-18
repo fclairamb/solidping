@@ -1,23 +1,23 @@
--- SQLite mirror of postgres/migrations/016_v0_17_0.up.sql — replace the
--- `results.abandoned` boolean with the dedicated ResultStatusAbandoned (9)
--- status value (spec 2026-08-18-10). See the Postgres file for why the flag
--- collapses into the status enum, and why this is a new migration rather than
--- an edit of the already-applied 015.
+-- SQLite mirror of postgres/migrations/014_v0_17_0.up.sql — the
+-- abandoned-result reaper: the dedicated ResultStatusAbandoned (9) status
+-- value plus the partial index the reaper scans on (specs 2026-08-18-03 and
+-- 2026-08-18-10, consolidated). See the Postgres file for why the reaper
+-- exists, why only status=1 (created) is reaped and never status=2 (running,
+-- used by heartbeat checks for a legitimate long-lived report), why the state
+-- is a status rather than a boolean flag alongside `error`, why a reaped
+-- attempt is excluded from availability, and why this is numbered 014.
 --
--- Postgres does this in three statements (widen the CHECK, convert, drop the
--- column). SQLite has neither DROP CONSTRAINT nor ALTER COLUMN, and 001
--- declares `status integer check (status in (0, ..., 8))` inline, so the table
--- has to be rebuilt with the established *_new pattern (same technique as
--- 005_v0_4_0 and 009_v0_8_0). That is not extra cost: `alter table ... drop
--- column` rewrites the whole table anyway, so one rebuild does the widening,
--- the conversion and the column drop in a single pass.
+-- Postgres widens the CHECK domain with a DROP CONSTRAINT / ADD CONSTRAINT
+-- pair. SQLite has neither DROP CONSTRAINT nor ALTER COLUMN, and 001 declares
+-- `status integer check (status in (0, ..., 8))` inline, so the table has to be
+-- rebuilt with the established *_new pattern (same technique as 005_v0_4_0 and
+-- 009_v0_8_0).
 --
--- The conversion rides the INSERT ... SELECT: `abandoned = 1` (SQLite stores
--- the boolean as an integer) is what keeps it from sweeping genuine `error`
--- rows, which must keep counting against availability. The column list is
--- spelled out explicitly rather than `select *` — `insert ... select` is
--- positional, and a silent column-order drift here would scramble every row of
--- the largest table in the system.
+-- There is no data conversion in the rebuild: no database applying this
+-- migration ever had an `abandoned` column. The column list is still spelled
+-- out explicitly rather than `select *` — `insert ... select` is positional,
+-- and a silent column-order drift here would scramble every row of the largest
+-- table in the system.
 --
 -- Nothing has a foreign key TO `results`, so dropping it fires no cascade into
 -- a live table. foreign_keys is still switched off around the rebuild because
@@ -69,12 +69,7 @@ insert into results_new (
 )
 select
   uid, organization_uid, check_uid, period_type, period_start, period_end, region,
-  worker_uid,
-  case
-    when period_type = 'raw' and status = 6 and abandoned = 1 then 9
-    else status
-  end,
-  duration, metrics, output,
+  worker_uid, status, duration, metrics, output,
   total_checks, successful_checks, duration_min, duration_max, duration_p95, duration_avg,
   created_at
 from results;
@@ -110,7 +105,7 @@ create unique index results_aggregated_unique_idx
 
 --bun:split
 
--- 015's reaper index, recreated verbatim: still status=1 (created) only.
+-- The reaper's candidate index: status=1 (created) only, never status=2.
 create index idx_results_lifecycle_pending on results (period_start)
   where period_type = 'raw' and status = 1;
 
