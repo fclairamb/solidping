@@ -27,7 +27,7 @@ func TestCLICoverage_StatusPageLifecycle(t *testing.T) {
 	visibility := "public"
 	createResp, err := apiClient.CreateStatusPageWithResponse(ctx, TestOrgSlug, client.CreateStatusPageJSONRequestBody{
 		Name:       "CLI Coverage Page",
-		Slug:       "cli-cov-page",
+		Slug:       ptrOf("cli-cov-page"),
 		Visibility: &visibility,
 	})
 	r.NoError(err)
@@ -93,7 +93,7 @@ func TestCLICoverage_StatusPageSectionsResourcesSubscribers(t *testing.T) {
 	// A status page to hang sections/resources/subscribers off.
 	pageResp, err := apiClient.CreateStatusPageWithResponse(ctx, TestOrgSlug, client.CreateStatusPageJSONRequestBody{
 		Name: "CLI Cov SR Page",
-		Slug: "cli-cov-sr-page",
+		Slug: ptrOf("cli-cov-sr-page"),
 	})
 	r.NoError(err)
 	r.Equal(201, pageResp.StatusCode())
@@ -102,7 +102,7 @@ func TestCLICoverage_StatusPageSectionsResourcesSubscribers(t *testing.T) {
 
 	// --- Sections ---
 	sectionResp, err := apiClient.CreateStatusPageSectionWithResponse(ctx, TestOrgSlug, pageUID.String(),
-		client.CreateStatusPageSectionJSONRequestBody{Name: "Core Systems", Slug: "core-systems"})
+		client.CreateStatusPageSectionJSONRequestBody{Name: "Core Systems", Slug: ptrOf("core-systems")})
 	r.NoError(err)
 	r.Equal(201, sectionResp.StatusCode())
 	r.NotNil(sectionResp.JSON201)
@@ -228,7 +228,7 @@ func TestCLICoverage_StatusUpdateLifecycle(t *testing.T) {
 
 	pageResp, err := apiClient.CreateStatusPageWithResponse(ctx, TestOrgSlug, client.CreateStatusPageJSONRequestBody{
 		Name: "CLI Cov Update Page",
-		Slug: "cli-cov-upd-page",
+		Slug: ptrOf("cli-cov-upd-page"),
 	})
 	r.NoError(err)
 	r.Equal(201, pageResp.StatusCode())
