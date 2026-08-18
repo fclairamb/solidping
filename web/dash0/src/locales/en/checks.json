@@ -27,6 +27,7 @@
     "down": "Down",
     "warning": "Warning",
     "degraded": "Degraded",
+    "abandoned": "Abandoned",
     "unknown": "Unknown"
   },
   "groupSummary": {

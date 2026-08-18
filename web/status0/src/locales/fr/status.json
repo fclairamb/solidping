@@ -4,6 +4,7 @@
   "degraded": "Dégradé",
   "warning": "Avertissement",
   "scheduledMaintenance": "Maintenance planifiée",
+  "abandoned": "Abandonné",
   "unknown": "Inconnu",
   "allSystemsOperational": "Tous les systèmes sont opérationnels",
   "someSystemsDegraded": "Certains systèmes sont dégradés",
@@ -28,6 +29,7 @@
   "switchToDarkMode": "Passer en mode sombre",
   "switchToLightMode": "Passer en mode clair",
   "status": {
+    "abandoned": "Abandonné",
     "up": "Disponible",
     "down": "Hors service",
     "timeout": "Délai dépassé",

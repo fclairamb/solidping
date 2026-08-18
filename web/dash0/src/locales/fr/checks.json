@@ -27,6 +27,7 @@
     "down": "En panne",
     "warning": "Avertissement",
     "degraded": "Dégradé",
+    "abandoned": "Abandonné",
     "unknown": "Inconnu"
   },
   "groupSummary": {

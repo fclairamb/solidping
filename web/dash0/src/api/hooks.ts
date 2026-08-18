@@ -98,7 +98,7 @@ export interface Check {
   status?: "up" | "down" | "validating" | "created" | "degraded" | "unknown";
   lastResult?: {
     uid?: string;
-    status?: "up" | "down" | "error" | "timeout" | "created";
+    status?: "up" | "down" | "error" | "timeout" | "created" | "abandoned";
     timestamp?: string;
     durationMs?: number;
     metrics?: Record<string, unknown>;

@@ -92,6 +92,22 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         bannerPill: "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
         isDown: false,
       };
+    case "abandoned":
+      // Reaper-minted: nothing was ever reported for the attempt (our side
+      // died, not the target). Excluded from availability everywhere, so it
+      // reads neutral — never as an outage (spec 2026-08-18-10).
+      return {
+        color: "bg-status-neutral",
+        barFill: "var(--status-neutral)",
+        chartColor: NEUTRAL_CHART,
+        badgeVariant: "secondary",
+        labelKey: "abandoned",
+        bannerSurface:
+          "border-border bg-gradient-to-r from-muted/60 via-muted/25 to-transparent",
+        bannerTitle: "text-foreground",
+        bannerPill: "border-border bg-muted text-muted-foreground",
+        isDown: false,
+      };
     case "error":
     case "down":
       return {

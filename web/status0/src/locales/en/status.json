@@ -4,6 +4,7 @@
   "degraded": "Degraded",
   "warning": "Warning",
   "scheduledMaintenance": "Scheduled Maintenance",
+  "abandoned": "Abandoned",
   "unknown": "Unknown",
   "allSystemsOperational": "All Systems Operational",
   "someSystemsDegraded": "Some Systems Degraded",
@@ -28,6 +29,7 @@
   "switchToDarkMode": "Switch to dark mode",
   "switchToLightMode": "Switch to light mode",
   "status": {
+    "abandoned": "Abandoned",
     "up": "Up",
     "down": "Down",
     "timeout": "Timeout",
