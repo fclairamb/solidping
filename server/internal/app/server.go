@@ -1538,12 +1538,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Twilio inbound callbacks (voice TwiML + DTMF ack + delivery status).
 	// No org auth — authenticity is the per-request X-Twilio-Signature check in
-	// VerifyMiddleware, which resolves the connection from the `cid` query param.
+	// the verify middleware, which resolves the credentials from the `cid` query
+	// param. Voice and status get DIFFERENT middlewares: a server-credential
+	// status callback is validated with the instance credentials of the
+	// capability it belongs to (SMS or voice), which are configured separately.
 	twilioHandler := twiliocb.NewHandler(s.dbService, s.services.Credentials, s.config, incidentsService)
 	twilioIntegration := api.NewGroup("/integrations/twilio")
-	twilioIntegration.POST("/voice", twilioHandler.VerifyMiddleware(twilioHandler.HandleVoice))
-	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
-	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
+	twilioIntegration.POST("/voice", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleVoice))
+	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleGather))
+	twilioIntegration.POST("/status", twilioHandler.VerifyStatusMiddleware(twilioHandler.HandleStatus))
 
 	// OVH SMS delivery receipts. OVH does not sign its callbacks and offers no
 	// per-job callback field, so the route authenticates by construction with a

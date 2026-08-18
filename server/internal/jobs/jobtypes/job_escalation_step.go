@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
@@ -918,18 +919,58 @@ func incidentCheckName(
 	return incident.UID
 }
 
-// twilioStatusCallbackURL builds the delivery-status callback URL for a send
-// made through a per-org Twilio integration. conn is nil for a
-// server-credential send, which has no per-org connection to sign against —
-// Twilio's callback signature is verified with the connection's own auth
-// token, so an instance send simply requests no status callback and the
-// timeline falls back to the sent-at timestamp.
-func twilioStatusCallbackURL(baseURL string, conn *models.Integration) string {
-	if baseURL == "" || conn == nil {
+// twilioStatusCallbackURL builds the delivery-status callback URL for a Twilio
+// send. connID is the `cid` the callback must carry — the per-org integration
+// UID for a bring-your-own send, or smssvc.InstanceCallbackID for a
+// server-credential one — and orgUID is echoed as `oid`, exactly like the TwiML
+// URL built next to it. Both parameters sit inside the URL Twilio signs, so a
+// forged `oid` cannot pass the callback handler's signature check.
+//
+// Returns "" when there is no reachable base URL (nothing could call us back)
+// or no cid to name the credentials the callback must be validated against.
+func twilioStatusCallbackURL(baseURL, orgUID, connID string) string {
+	if baseURL == "" || connID == "" {
 		return ""
 	}
 
-	return strings.TrimRight(baseURL, "/") + "/api/v1/integrations/twilio/status?cid=" + url.QueryEscape(conn.UID)
+	return fmt.Sprintf("%s/api/v1/integrations/twilio/status?cid=%s&oid=%s",
+		strings.TrimRight(baseURL, "/"),
+		url.QueryEscape(connID), url.QueryEscape(orgUID))
+}
+
+// smsStatusCallbackURL returns the delivery-status callback URL for one
+// escalation SMS, or "" when this send can produce no Twilio status callback.
+//
+// A bring-your-own send is signed with the org connection's own auth token, so
+// the callback carries that connection's UID. A server-credential send carries
+// the instance sentinel — but ONLY when the instance SMS provider is Twilio:
+// OVH's API has no per-job callback field (it ignores StatusCallback by design,
+// see sms.ovhSender.SendSMS) and its receipts arrive on the service-level DLR
+// endpoint with its own token, so asking for a Twilio callback there would be
+// requesting a receipt nothing can ever deliver or validate.
+func smsStatusCallbackURL(
+	cfg *config.Config, baseURL, orgUID string, resolution *smssvc.Resolution,
+) string {
+	if resolution.SMSMode == smssvc.ModeBringYourOwn && resolution.Conn != nil {
+		return twilioStatusCallbackURL(baseURL, orgUID, resolution.Conn.UID)
+	}
+
+	if cfg == nil || cfg.SMS.ResolvedProvider() != config.SMSProviderTwilio {
+		return ""
+	}
+
+	return twilioStatusCallbackURL(baseURL, orgUID, smssvc.InstanceCallbackID)
+}
+
+// voiceStatusCallbackURL returns the delivery-status callback URL for one
+// escalation call. It reuses voiceCallbackConnID so the status URL and the
+// TwiML URL of the same call can never disagree on `cid` — an org whose Twilio
+// integration configures no voice_from_number places its calls on the
+// INSTANCE's credentials, so both URLs must carry the sentinel rather than the
+// connection UID. Voice is Twilio-only by construction, so there is no
+// provider check to make here.
+func voiceStatusCallbackURL(baseURL, orgUID string, resolution *smssvc.Resolution) string {
+	return twilioStatusCallbackURL(baseURL, orgUID, voiceCallbackConnID(resolution))
 }
 
 // sendPhoneSMS sends one escalation SMS to the contact's number. Returns true
@@ -951,7 +992,7 @@ func (r *EscalationStepJobRun) sendPhoneSMS(
 	res, err := resolution.Sender.SendSMS(ctx, &smssvc.SendParams{
 		To:             route.Contact.Value,
 		Body:           body,
-		StatusCallback: twilioStatusCallbackURL(baseURL, resolution.Conn),
+		StatusCallback: smsStatusCallbackURL(jctx.AppConfig, baseURL, incident.OrganizationUID, resolution),
 	})
 	if err != nil {
 		log.WarnContext(ctx, "failed to send escalation SMS",
@@ -988,7 +1029,7 @@ func (r *EscalationStepJobRun) placePhoneCall(
 	res, err := resolution.Voice.PlaceCall(ctx, &smssvc.CallParams{
 		To:             route.Contact.Value,
 		TwiMLURL:       twimlURL,
-		StatusCallback: twilioStatusCallbackURL(baseURL, resolution.Conn),
+		StatusCallback: voiceStatusCallbackURL(baseURL, incident.OrganizationUID, resolution),
 	})
 	if err != nil {
 		log.WarnContext(ctx, "failed to place escalation voice call",

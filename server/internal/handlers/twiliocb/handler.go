@@ -1,8 +1,9 @@
 // Package twiliocb handles inbound Twilio callbacks: the voice TwiML flow with
 // DTMF acknowledgement and the SMS/call delivery-status callback. Every route
-// is guarded by VerifyMiddleware, which loads the connection named by the `cid`
-// query param, decrypts its auth token, and validates the X-Twilio-Signature
-// over the exact request URL + POST params.
+// is guarded by a verify middleware, which resolves the auth token named by the
+// `cid` query param — a per-org connection's decrypted token, or the instance
+// credentials of the capability the callback belongs to — and validates the
+// X-Twilio-Signature over the exact request URL + POST params.
 package twiliocb
 
 import (
@@ -67,9 +68,40 @@ func NewHandler(dbSvc db.Service, creds credentials.Service, cfg *config.Config,
 	return &Handler{db: dbSvc, creds: creds, cfg: cfg, acker: acker}
 }
 
-// VerifyMiddleware authenticates the inbound request: it resolves the Twilio
+// capability says which SolidPing capability an inbound callback belongs to,
+// and therefore which instance credentials may validate it. It exists because
+// SMS and voice are configured INDEPENDENTLY — an instance can run OVH for SMS
+// and Twilio for voice, or Twilio SMS with SP_VOICE_ENABLED=false — so "the
+// instance Twilio auth token" is not one thing.
+type capability int
+
+const (
+	// capVoice is the voice-only TwiML/gather flow.
+	capVoice capability = iota
+	// capStatus is the shared delivery-status endpoint, which serves both an
+	// SMS status callback (MessageSid) and a call status callback (CallSid).
+	capStatus
+)
+
+// VerifyVoiceMiddleware authenticates an inbound TwiML/gather request, which
+// is voice by construction.
+func (h *Handler) VerifyVoiceMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return h.verify(next, capVoice)
+}
+
+// VerifyStatusMiddleware authenticates an inbound delivery-status callback,
+// which may belong to either capability — see instanceAuthToken.
+func (h *Handler) VerifyStatusMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return h.verify(next, capStatus)
+}
+
+// verify authenticates the inbound request: it resolves the Twilio
 // connection from `cid`, decrypts its auth token, and validates the Twilio
 // signature. On any failure it returns 403 with no body detail.
+//
+// The form is parsed BEFORE credentials are resolved: the shared /status
+// endpoint tells an SMS callback from a call callback by its payload, and
+// therefore has to read it to know which auth token applies.
 //
 // This path is region-agnostic by construction, confirmed (not assumed) when
 // the region support was added: the signature is computed over SolidPing's
@@ -77,14 +109,14 @@ func NewHandler(dbSvc db.Service, creds credentials.Service, cfg *config.Config,
 // account's auth token — no Twilio host appears anywhere in the signed
 // material or in ValidateSignature itself, so it validates identically for a
 // us1, ie1, or any other regional account.
-func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
+func (h *Handler) verify(next httpx.HandlerFunc, capa capability) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
-		target, authToken := h.resolveCallbackCredentials(req)
-		if target == nil || authToken == "" {
+		if err := req.ParseForm(); err != nil {
 			return forbidden(writer)
 		}
 
-		if err := req.ParseForm(); err != nil {
+		target, authToken := h.resolveCallbackCredentials(req, capa)
+		if target == nil || authToken == "" {
 			return forbidden(writer)
 		}
 
@@ -103,8 +135,9 @@ func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 // resolveCallbackCredentials picks which Twilio auth token validates this
 // request's signature, from the `cid` query parameter:
 //
-//   - the instance sentinel → the instance-level SP_VOICE_TWILIO_AUTH_TOKEN,
-//     with the org taken from `oid`;
+//   - the instance sentinel → the instance-level token of the CAPABILITY this
+//     callback belongs to (see instanceAuthToken), with the org taken from
+//     `oid`;
 //   - anything else → the named per-org Twilio integration's decrypted token.
 //
 // `oid` is attacker-supplied, but it is inside the signed URL: only a party
@@ -112,7 +145,7 @@ func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 // org id cannot pass this gate.
 //
 // Returns (nil, "") on any failure, which the caller turns into a bare 403.
-func (h *Handler) resolveCallbackCredentials(req *http.Request) (*callbackTarget, string) {
+func (h *Handler) resolveCallbackCredentials(req *http.Request, capa capability) (*callbackTarget, string) {
 	cid := req.URL.Query().Get("cid")
 	if cid == "" {
 		return nil, ""
@@ -120,11 +153,16 @@ func (h *Handler) resolveCallbackCredentials(req *http.Request) (*callbackTarget
 
 	if cid == sms.InstanceCallbackID {
 		orgUID := req.URL.Query().Get("oid")
-		if orgUID == "" || !h.cfg.Voice.Active() {
+		if orgUID == "" {
 			return nil, ""
 		}
 
-		return &callbackTarget{orgUID: orgUID, connUID: cid}, h.cfg.Voice.Twilio.AuthToken
+		authToken := h.instanceAuthToken(req, capa)
+		if authToken == "" {
+			return nil, ""
+		}
+
+		return &callbackTarget{orgUID: orgUID, connUID: cid}, authToken
 	}
 
 	conn, err := h.db.GetChannel(req.Context(), cid)
@@ -138,6 +176,59 @@ func (h *Handler) resolveCallbackCredentials(req *http.Request) (*callbackTarget
 	}
 
 	return &callbackTarget{orgUID: conn.OrganizationUID, connUID: conn.UID}, settings.AuthToken
+}
+
+// instanceAuthToken returns the instance-level Twilio auth token that may
+// validate this server-credential callback, or "" to reject it.
+//
+// The capability decides, NOT whichever token happens to be populated: SMS and
+// voice are configured independently, and the two tokens are frequently the
+// same string (one Twilio account serving both), so reading the wrong one
+// works on most deployments and silently 403s on the rest.
+//
+//   - voice endpoints (TwiML, gather) are voice by construction;
+//   - the shared /status endpoint is told apart by its payload, exactly as
+//     HandleStatus already does: a MessageSid is an SMS receipt, a CallSid is a
+//     call receipt. Neither (or both) is rejected rather than guessed at.
+func (h *Handler) instanceAuthToken(req *http.Request, capa capability) string {
+	if capa == capVoice {
+		return h.voiceInstanceAuthToken()
+	}
+
+	hasMessage := req.PostForm.Get("MessageSid") != ""
+	hasCall := req.PostForm.Get("CallSid") != ""
+
+	switch {
+	case hasMessage && !hasCall:
+		return h.smsInstanceAuthToken()
+	case hasCall && !hasMessage:
+		return h.voiceInstanceAuthToken()
+	default:
+		return ""
+	}
+}
+
+// smsInstanceAuthToken returns the instance SMS auth token, but only when the
+// instance actually sends SMS through Twilio. An OVH instance never asks for a
+// Twilio status callback (its receipts arrive on the service-level DLR
+// endpoint), so a request claiming to be one is rejected outright rather than
+// validated against an unrelated Twilio account.
+func (h *Handler) smsInstanceAuthToken() string {
+	if !h.cfg.SMS.Active() || h.cfg.SMS.ResolvedProvider() != config.SMSProviderTwilio {
+		return ""
+	}
+
+	return h.cfg.SMS.Twilio.AuthToken
+}
+
+// voiceInstanceAuthToken returns the instance voice auth token, gated on voice
+// being active on this instance.
+func (h *Handler) voiceInstanceAuthToken() string {
+	if !h.cfg.Voice.Active() {
+		return ""
+	}
+
+	return h.cfg.Voice.Twilio.AuthToken
 }
 
 // HandleVoice answers an outbound alert call with TwiML: it reads the incident
