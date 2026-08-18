@@ -8102,7 +8102,7 @@ components:
           items:
             $ref: "#/components/schemas/OrgResult"
         pagination:
-          $ref: "#/components/schemas/CursorPagination"
+          $ref: "#/components/schemas/ResultsCursorPagination"
 
     CheckAvailabilityResponse:
       type: object
@@ -8293,6 +8293,21 @@ components:
       properties:
         total:
           type: integer
+        cursor:
+          type: string
+          description: Cursor for next page (empty if no more results)
+        size:
+          type: integer
+
+    ResultsCursorPagination:
+      type: object
+      description: >-
+        Cursor pagination for the results endpoint only — deliberately no
+        `total`. `results` is the largest table in the system, and an
+        unbounded COUNT(*) on every page load is too expensive to compute
+        (see the Results section of the API wiki). Page forward with
+        `cursor` until it comes back empty.
+      properties:
         cursor:
           type: string
           description: Cursor for next page (empty if no more results)

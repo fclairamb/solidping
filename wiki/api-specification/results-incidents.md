@@ -20,6 +20,14 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 100, max 1000). Also accepts `?size=` as a deprecated alias.
 
+`pagination` on this endpoint carries only `cursor` and `size` — **no `total`**.
+`results` is the largest table in the system; an unbounded `COUNT(*)` scoped to
+an organization on every page load can scan tens of millions of rows, so this
+endpoint is cursor-only. Page forward by passing the previous response's
+`pagination.cursor` back as the `cursor` query parameter; an empty (or absent)
+`cursor` means there is no next page. Contrast with incidents below, which
+returns a real `pagination.total` from a bounded query.
+
 A single result is fetched through the check-scoped route
 `GET /api/v1/orgs/:org/checks/:check/results/:uid` — see [checks.md](checks.md).
 
