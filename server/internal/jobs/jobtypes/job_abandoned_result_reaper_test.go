@@ -102,8 +102,8 @@ func TestAbandonedResultReaperRunReapsAndReschedules(t *testing.T) {
 	var row models.Result
 	r.NoError(dbSvc.DB().NewSelect().Model(&row).Where("uid = ?", stale.UID).Scan(t.Context()))
 	r.NotNil(row.Status)
-	r.Equal(int(models.ResultStatusError), *row.Status)
-	r.True(row.Abandoned)
+	r.Equal(int(models.ResultStatusAbandoned), *row.Status,
+		"the reaped row carries the dedicated abandoned status, not a fake error")
 
 	after := testutil.ToFloat64(prommetrics.ResultsReaped)
 	r.InDelta(before+1, after, 0.0001)
@@ -166,7 +166,6 @@ func TestAbandonedResultReaperRunWithinThresholdNoop(t *testing.T) {
 	r.NoError(dbSvc.DB().NewSelect().Model(&row).Where("uid = ?", fresh.UID).Scan(t.Context()))
 	r.NotNil(row.Status)
 	r.Equal(int(models.ResultStatusCreated), *row.Status, "a fresh created row must survive the sweep")
-	r.False(row.Abandoned)
 }
 
 func countPendingAbandonedReaperJobs(ctx context.Context, dbSvc db.Service) (int, error) {

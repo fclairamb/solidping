@@ -237,11 +237,11 @@ func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly_Postgres(t *testing.T)
 	r.Equal(newerRunning.UID, results[withHistory.UID].UID,
 		"a running row is a legitimate heartbeat report and must win as the newest row")
 
-	// A reaped/abandoned row is deliberately NOT excluded: once terminal it is
+	// A reaped row (models.ResultStatusAbandoned) is deliberately NOT
+	// excluded: once terminal it is
 	// a legitimate last-checked entry.
-	abandoned := models.NewResult(org.UID, withHistory.UID, models.ResultStatusError, 0)
+	abandoned := models.NewResult(org.UID, withHistory.UID, models.ResultStatusAbandoned, 0)
 	abandoned.PeriodStart = newerRunning.PeriodStart.Add(time.Minute)
-	abandoned.Abandoned = true
 	r.NoError(s.CreateResult(ctx, abandoned))
 
 	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})

@@ -11,7 +11,7 @@ import (
 
 // TestReapAbandonedResults_Postgres is the Postgres twin of the SQLite reaper
 // tests (sync-pg-to-sqlite convention): a created-marker raw row well past its
-// check's threshold is finalized to a terminal error with Abandoned=true, a
+// check's threshold is finalized to models.ResultStatusAbandoned, a
 // fresh created row is left alone, a stale RUNNING row is never touched at
 // all (heartbeat checks use "running" as a legitimate long-lived status), and
 // a re-run does not double-reap.
@@ -81,22 +81,20 @@ func TestReapAbandonedResults_Postgres(t *testing.T) {
 	var reapedRow models.Result
 	r.NoError(s.db.NewSelect().Model(&reapedRow).Where("uid = ?", stale.UID).Scan(ctx))
 	r.NotNil(reapedRow.Status)
-	r.Equal(int(models.ResultStatusError), *reapedRow.Status)
-	r.True(reapedRow.Abandoned)
+	r.Equal(int(models.ResultStatusAbandoned), *reapedRow.Status,
+		"the reaped row carries the dedicated abandoned status, not a fake error")
 	r.Equal("abandoned", reapedRow.Output["reason"])
 
 	var freshRow models.Result
 	r.NoError(s.db.NewSelect().Model(&freshRow).Where("uid = ?", fresh.UID).Scan(ctx))
 	r.NotNil(freshRow.Status)
 	r.Equal(int(models.ResultStatusCreated), *freshRow.Status)
-	r.False(freshRow.Abandoned)
 
 	var runningRow models.Result
 	r.NoError(s.db.NewSelect().Model(&runningRow).Where("uid = ?", staleRunning.UID).Scan(ctx))
 	r.NotNil(runningRow.Status)
 	r.Equal(int(models.ResultStatusRunning), *runningRow.Status,
 		"a running row must never be touched by the reaper, no matter how old")
-	r.False(runningRow.Abandoned)
 
 	// Re-run must not double-reap: the stale row is no longer a
 	// created-marker candidate.

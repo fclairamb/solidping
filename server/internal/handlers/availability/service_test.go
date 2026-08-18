@@ -467,9 +467,9 @@ func TestGetAvailability_SparseLongPeriodSeries(t *testing.T) {
 
 // TestGetAvailability_AbandonedExcludedGenuineErrorCounts is the availability
 // service's slice of the required spec 2026-08-18-03 positive-control test: a
-// row the abandoned-result reaper finalized (status=error, Abandoned=true)
+// row the abandoned-result reaper finalized (models.ResultStatusAbandoned)
 // must not move the availability percentage at all, while a genuine error
-// result (Abandoned=false) in the same window still drags it down. This is
+// result in the same window still drags it down. This is
 // the third of the three surfaces the spec calls out by name (hour rollup,
 // uptimebar union, availability service) — all three must agree, and this
 // pins the service's own end of that agreement through a real DB round trip,
@@ -516,9 +516,8 @@ func TestGetAvailability_AbandonedExcludedGenuineErrorCounts(t *testing.T) {
 	up.PeriodStart = now.Add(-2 * time.Hour)
 	r.NoError(dbSvc.CreateResult(ctx, up))
 
-	abandoned := models.NewResult(org.UID, check.UID, models.ResultStatusError, 0)
+	abandoned := models.NewResult(org.UID, check.UID, models.ResultStatusAbandoned, 0)
 	abandoned.PeriodStart = now.Add(-1 * time.Hour)
-	abandoned.Abandoned = true
 	r.NoError(dbSvc.CreateResult(ctx, abandoned))
 
 	svc := NewService(dbSvc, &config.Config{
@@ -538,9 +537,9 @@ func TestGetAvailability_AbandonedExcludedGenuineErrorCounts(t *testing.T) {
 	r.NotNil(row.AvailabilityPct)
 	r.InDelta(100.0, *row.AvailabilityPct, 0.0001, "one up + one abandoned reads as 100%, not 50%")
 
-	// Positive control: a genuine error (Abandoned=false) in the same window
+	// Positive control: a genuine ResultStatusError in the same window
 	// must drag availability down — proving the exclusion above is specific
-	// to Abandoned=true, not a bug swallowing errors in general.
+	// to ResultStatusAbandoned, not a bug swallowing errors in general.
 	genuineErr := models.NewResult(org.UID, check.UID, models.ResultStatusError, 0)
 	genuineErr.PeriodStart = now.Add(-30 * time.Minute)
 	r.NoError(dbSvc.CreateResult(ctx, genuineErr))

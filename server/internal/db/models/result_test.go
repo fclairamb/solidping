@@ -71,6 +71,8 @@ func TestRawAvailability(t *testing.T) {
 	running := int(ResultStatusRunning)
 	warning := int(ResultStatusWarning)
 	timeout := int(ResultStatusTimeout)
+	errored := int(ResultStatusError)
+	abandoned := int(ResultStatusAbandoned)
 
 	tests := []struct {
 		name        string
@@ -120,17 +122,26 @@ func TestRawAvailability(t *testing.T) {
 		},
 		{
 			// Positive control for the reaper's exclusion rule: a genuine
-			// error (status=error, Abandoned=false) still counts against
-			// availability — only Abandoned=true is excluded (spec
-			// 2026-08-18-03).
+			// error still counts against availability — only
+			// ResultStatusAbandoned is excluded (specs 2026-08-18-03 /
+			// 2026-08-18-10). Both rows are terminal failures on the wire;
+			// only the status tells them apart.
 			name: "reaped result excluded, genuine error still counts",
 			results: []*Result{
 				{Status: &up},
-				{Status: &down, Abandoned: true}, // reaped: excluded entirely
-				{Status: &down},                  // genuine error: counts against availability
+				{Status: &abandoned}, // reaped: excluded entirely
+				{Status: &errored},   // genuine error: counts against availability
 			},
 			wantSuccess: 1,
 			wantTotal:   2,
+		},
+		{
+			// The edge the exclusion rule creates: a window of nothing but
+			// reaped attempts is "no data", never a manufactured 0% outage.
+			name:        "only abandoned rows → total zero",
+			results:     []*Result{{Status: &abandoned}, {Status: &abandoned}},
+			wantSuccess: 0,
+			wantTotal:   0,
 		},
 	}
 
@@ -159,17 +170,25 @@ func TestResultExcludedFromAvailability(t *testing.T) {
 
 	up := int(ResultStatusUp)
 	created := int(ResultStatusCreated)
+	running := int(ResultStatusRunning)
+	errored := int(ResultStatusError)
+	warning := int(ResultStatusWarning)
+	abandoned := int(ResultStatusAbandoned)
 
 	tests := []struct {
 		name   string
 		result *Result
 		want   bool
 	}{
-		{"up, not abandoned", &Result{Status: &up}, false},
+		{"up", &Result{Status: &up}, false},
 		{"created marker", &Result{Status: &created}, true},
-		{"nil status, not abandoned", &Result{Status: nil}, false},
-		{"up but abandoned", &Result{Status: &up, Abandoned: true}, true},
-		{"nil status and abandoned", &Result{Status: nil, Abandoned: true}, true},
+		{"running marker", &Result{Status: &running}, true},
+		{"nil status", &Result{Status: nil}, false},
+		{"abandoned", &Result{Status: &abandoned}, true},
+		// The two negative controls that matter: neither a genuine error nor
+		// a warning may be swept up by the abandoned exclusion.
+		{"genuine error still counts", &Result{Status: &errored}, false},
+		{"warning still counts", &Result{Status: &warning}, false},
 	}
 
 	for _, tt := range tests {

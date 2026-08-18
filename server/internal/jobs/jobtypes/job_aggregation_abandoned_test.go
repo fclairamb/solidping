@@ -10,12 +10,10 @@ import (
 )
 
 // rawResultAbandoned builds a raw result fixture the abandoned-result reaper
-// would have produced: a terminal status (normally error) with Abandoned=true.
-func rawResultAbandoned(status models.ResultStatus, offset time.Duration, periodStart time.Time) *models.Result {
-	result := rawResultWithStatus(status, offset, periodStart)
-	result.Abandoned = true
-
-	return result
+// would have produced: the dedicated terminal models.ResultStatusAbandoned
+// (spec 2026-08-18-10, which replaced the `abandoned` boolean column).
+func rawResultAbandoned(offset time.Duration, periodStart time.Time) *models.Result {
+	return rawResultWithStatus(models.ResultStatusAbandoned, offset, periodStart)
 }
 
 // TestAggregateAbandonedExcludedGenuineErrorCounts is the required test for
@@ -32,14 +30,14 @@ func TestAggregateAbandonedExcludedGenuineErrorCounts(t *testing.T) {
 	periodStart := time.Date(2025, 12, 19, 12, 0, 0, 0, time.UTC)
 	periodEnd := periodStart.Add(time.Hour)
 
-	// One genuine Up and one reaped/abandoned Error. If the abandoned row
+	// One genuine Up and one reaped/abandoned attempt. If the abandoned row
 	// were counted, this would read 50% (1/2); if it silently vanished from
 	// total_checks entirely while still being iterated, that would also be
 	// wrong in a different way (a nil TotalChecks or a panic). The correct
 	// reading is 100% availability over exactly 1 countable check.
 	results := []*models.Result{
 		rawResultWithStatus(models.ResultStatusUp, 1*time.Minute, periodStart),
-		rawResultAbandoned(models.ResultStatusError, 2*time.Minute, periodStart),
+		rawResultAbandoned(2*time.Minute, periodStart),
 	}
 
 	agg := aggregateResults(results, models.PeriodTypeHour, periodStart, periodEnd)
@@ -49,10 +47,11 @@ func TestAggregateAbandonedExcludedGenuineErrorCounts(t *testing.T) {
 	r.NotNil(agg.SuccessfulChecks)
 	r.Equal(1, *agg.SuccessfulChecks, "the up row is the only success; the abandoned row contributes nothing")
 
-	// Positive control: replace the abandoned row with a GENUINE error
-	// (Abandoned=false) in the same shape of window and confirm it DOES drag
-	// availability down — proving the exclusion is specific to Abandoned,
-	// not a bug that drops errors from the count in general.
+	// Positive control: replace the abandoned row with a GENUINE
+	// ResultStatusError in the same shape of window and confirm it DOES drag
+	// availability down — proving the exclusion is specific to
+	// ResultStatusAbandoned, not a bug that drops errors from the count in
+	// general.
 	controlResults := []*models.Result{
 		rawResultWithStatus(models.ResultStatusUp, 1*time.Minute, periodStart),
 		rawResultWithStatus(models.ResultStatusError, 2*time.Minute, periodStart),
@@ -78,8 +77,8 @@ func TestAggregateAllAbandonedBucketReadsAsNoData(t *testing.T) {
 	periodEnd := periodStart.Add(time.Hour)
 
 	results := []*models.Result{
-		rawResultAbandoned(models.ResultStatusError, 1*time.Minute, periodStart),
-		rawResultAbandoned(models.ResultStatusError, 2*time.Minute, periodStart),
+		rawResultAbandoned(1*time.Minute, periodStart),
+		rawResultAbandoned(2*time.Minute, periodStart),
 	}
 
 	agg := aggregateResults(results, models.PeriodTypeHour, periodStart, periodEnd)

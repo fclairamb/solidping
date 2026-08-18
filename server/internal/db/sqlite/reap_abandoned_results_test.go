@@ -72,8 +72,8 @@ func TestReapAbandonedResults_FinalizesStaleMarkerOnly(t *testing.T) {
 	var reapedRow models.Result
 	r.NoError(s.DB().NewSelect().Model(&reapedRow).Where("uid = ?", stale.UID).Scan(ctx))
 	r.NotNil(reapedRow.Status)
-	r.Equal(int(models.ResultStatusError), *reapedRow.Status, "reaped row becomes a terminal error")
-	r.True(reapedRow.Abandoned, "reaped row is marked Abandoned")
+	r.Equal(int(models.ResultStatusAbandoned), *reapedRow.Status,
+		"reaped row becomes the dedicated terminal abandoned status, not a fake error")
 	r.Contains(reapedRow.Output, "error", "output names what happened")
 	r.Contains(reapedRow.Output, "reason")
 	r.Equal("abandoned", reapedRow.Output["reason"])
@@ -82,14 +82,12 @@ func TestReapAbandonedResults_FinalizesStaleMarkerOnly(t *testing.T) {
 	r.NoError(s.DB().NewSelect().Model(&freshRow).Where("uid = ?", fresh.UID).Scan(ctx))
 	r.NotNil(freshRow.Status)
 	r.Equal(int(models.ResultStatusCreated), *freshRow.Status, "fresh row must survive the sweep untouched")
-	r.False(freshRow.Abandoned)
 
 	var runningRow models.Result
 	r.NoError(s.DB().NewSelect().Model(&runningRow).Where("uid = ?", staleRunning.UID).Scan(ctx))
 	r.NotNil(runningRow.Status)
 	r.Equal(int(models.ResultStatusRunning), *runningRow.Status,
 		"a running row must never be touched by the reaper, no matter how old")
-	r.False(runningRow.Abandoned)
 
 	// A second sweep must be a no-op: the stale row is no longer a
 	// created-marker candidate (its status is now error), so it is not
@@ -160,5 +158,4 @@ func TestReapAbandonedResults_SkipsOrphanedCheck(t *testing.T) {
 	r.NoError(s.DB().NewSelect().Model(&row).Where("uid = ?", orphan.UID).Scan(ctx))
 	r.NotNil(row.Status)
 	r.Equal(int(models.ResultStatusCreated), *row.Status, "orphaned row must be untouched")
-	r.False(row.Abandoned)
 }

@@ -261,12 +261,11 @@ func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly(t *testing.T) {
 	r.Equal(newerRunning.UID, results[withHistory.UID].UID,
 		"a running row is a legitimate heartbeat report and must win as the newest row")
 
-	// A reaped/abandoned row (terminal status, Abandoned=true) is also
+	// A reaped row (models.ResultStatusAbandoned) is also
 	// eligible: once finalized it is a legitimate, if uninformative,
 	// last-checked entry — only an open created marker is excluded.
-	abandoned := models.NewResult(org.UID, withHistory.UID, models.ResultStatusError, 0)
+	abandoned := models.NewResult(org.UID, withHistory.UID, models.ResultStatusAbandoned, 0)
 	abandoned.PeriodStart = newerRunning.PeriodStart.Add(time.Minute)
-	abandoned.Abandoned = true
 	r.NoError(s.CreateResult(ctx, abandoned))
 
 	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})
