@@ -1,6 +1,10 @@
 package sqlite
 
 import (
+	"context"
+	"regexp"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,15 +142,130 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly(t *testing.T) {
 	r.Equal(region, gotRegion)
 	r.Equal(models.PeriodTypeHour, gotPeriodType)
 
-	// 5. Every index the table carried is back, including 015's reaper index.
-	r.Equal(4, count(`select count(*) from sqlite_master where type = 'index' and name in (
-		'results_raw_idx', 'results_aggregated_idx', 'results_aggregated_unique_idx',
-		'idx_results_lifecycle_pending')`),
-		"the rebuild must recreate every index on results")
+	// 5. Every index the table carried is back with its DEFINITION intact, not
+	//    merely its name. This compares against a reference database built by
+	//    replaying 001..015, because comparing before/after inside THIS database
+	//    would be circular: Initialize() has already run 016, so a rebuild that
+	//    recreates a wrong index would simply produce the same wrong index
+	//    twice and compare equal.
+	//
+	//    This assertion exists because the first cut of this migration
+	//    recreated the indexes from 001's create-table block, which silently
+	//    reverted results_aggregated_unique_idx to its pre-006 form and
+	//    reopened the aggregation poison-pill loop (spec 2026-07-11-16) on the
+	//    largest table in the system. A name-only check passed straight through
+	//    that.
+	r.Equal(resultsIndexDefinitionsAt015(ctx, t), resultsIndexDefinitions(ctx, t, s),
+		"016 must leave every index on results byte-identical to what 001..015 produced")
+
+	// 5b. The invariant that regression turned off, asserted behaviorally
+	//     rather than by reading DDL: SQLite treats every NULL as distinct, so
+	//     without coalesce(region, '') the unique index stops constraining
+	//     region-less rollups entirely and the aggregation job can duplicate
+	//     `hour` rows without bound.
+	regionless := func(uid string) error {
+		_, execErr := s.DB().ExecContext(ctx,
+			`insert into results (uid, organization_uid, check_uid, period_type, period_start, region, total_checks)
+			 values (?, ?, ?, 'hour', '2026-08-01T00:00:00Z', null, 1)`, uid, org.UID, check.UID)
+
+		return execErr
+	}
+	r.NoError(regionless("00000000-0000-7000-8000-0000000000a1"),
+		"positive control: the first region-less hour rollup must insert")
+	r.Error(regionless("00000000-0000-7000-8000-0000000000a2"),
+		"a second region-less hour rollup for the same bucket must collide — "+
+			"results_aggregated_unique_idx has to keep its coalesce(region, '') form")
 
 	// 6. The widened CHECK domain actually accepts 9 — the reaper's write path
 	//    depends on it, and a rebuild that forgot to widen it would leave the
 	//    reaper failing at runtime instead of at migration time.
 	fresh := models.NewResult(org.UID, check.UID, models.ResultStatusAbandoned, 0)
 	r.NoError(s.CreateResult(ctx, fresh))
+}
+
+// bunSplitRE matches the statement separator bun's migrator recognizes: a line
+// containing nothing but `--bun:split`. Several migrations mention the marker
+// inside ordinary comments, so a plain substring split would slice them apart
+// mid-sentence and feed the remainder to SQLite as SQL.
+var bunSplitRE = regexp.MustCompile(`(?m)^[ \t]*--bun:split[ \t]*$`)
+
+// resultsIndexDefinitions snapshots every index on `results` as name -> the
+// exact DDL SQLite stored for it. sqlite_autoindex_* rows carry a NULL sql and
+// coalesce to "" — they are kept in the map deliberately, so a rebuild that
+// lost the primary key would show up here too.
+func resultsIndexDefinitions(ctx context.Context, t *testing.T, s *Service) map[string]string {
+	t.Helper()
+
+	rows, err := s.DB().QueryContext(ctx,
+		`select name, coalesce(sql, '') from sqlite_master
+		 where type = 'index' and tbl_name = 'results' order by name`)
+	require.NoError(t, err)
+
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[string]string)
+
+	for rows.Next() {
+		var name, ddl string
+
+		require.NoError(t, rows.Scan(&name, &ddl))
+
+		out[name] = ddl
+	}
+
+	require.NoError(t, rows.Err())
+	require.NotEmpty(t, out)
+
+	return out
+}
+
+// resultsIndexDefinitionsAt015 builds a throwaway database by replaying every
+// up migration BEFORE 016 and returns its `results` indexes. That is the
+// ground truth a 016 upgrade has to preserve — and, unlike the live dev
+// database, it cannot have drifted from the files that actually ship.
+//
+// Statements are split on a lone `--bun:split` LINE, exactly as bun's migrator
+// splits them, so PRAGMA statements land in autocommit the way the real
+// migration run executes them. Matching the bare substring instead would cut
+// several migrations in half mid-comment — their prose explains why the marker
+// is there.
+func resultsIndexDefinitionsAt015(ctx context.Context, t *testing.T) map[string]string {
+	t.Helper()
+
+	// New() opens the database without migrating; Initialize() is what would
+	// apply 016, so it is deliberately not called here.
+	ref, err := New(ctx, Config{InMemory: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ref.Close() })
+
+	entries, err := migrationsFS.ReadDir("migrations")
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(entries))
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasSuffix(name, ".up.sql") && name < "016" {
+			names = append(names, name)
+		}
+	}
+
+	sort.Strings(names)
+	require.NotEmpty(t, names, "no pre-016 migrations found — the filter is wrong")
+
+	for _, name := range names {
+		body, readErr := migrationsFS.ReadFile("migrations/" + name)
+		require.NoError(t, readErr)
+
+		for _, stmt := range bunSplitRE.Split(string(body), -1) {
+			if strings.TrimSpace(stmt) == "" {
+				continue
+			}
+
+			_, execErr := ref.DB().ExecContext(ctx, stmt)
+			require.NoError(t, execErr, "replaying %s", name)
+		}
+	}
+
+	return resultsIndexDefinitions(ctx, t, ref)
 }

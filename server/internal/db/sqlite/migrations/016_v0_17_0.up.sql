@@ -97,7 +97,16 @@ create index results_aggregated_idx on results (organization_uid, check_uid, per
 
 --bun:split
 
-create unique index results_aggregated_unique_idx on results (organization_uid, check_uid, region, period_type, period_start) where period_type != 'raw';
+-- NOT 001's definition: migration 006 replaced it with this NULL-proof form
+-- over coalesce(region, '') to close the aggregation poison-pill loop that
+-- duplicated `hour` rows unbounded (spec 2026-07-11-16). SQLite treats every
+-- NULL as distinct in a unique index, so the bare `region` form silently
+-- stops constraining region-less rollups at all. Copied verbatim from
+-- 006_v0_5_0.up.sql — a rebuild that recreates indexes from the ORIGINAL
+-- create-table migration reopens every index fix shipped since.
+create unique index results_aggregated_unique_idx
+  on results (organization_uid, check_uid, coalesce(region, ''), period_type, period_start)
+  where period_type != 'raw';
 
 --bun:split
 
