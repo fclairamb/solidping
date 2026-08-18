@@ -26,6 +26,7 @@ func TestCapabilitiesFor(t *testing.T) {
 		{name: "ntfy", connType: ConnectionTypeNtfy, canNotify: true, canSource: false},
 		{name: "opsgenie", connType: ConnectionTypeOpsgenie, canNotify: true, canSource: false},
 		{name: "pushover", connType: ConnectionTypePushover, canNotify: true, canSource: false},
+		{name: "matrix", connType: ConnectionTypeMatrix, canNotify: true, canSource: false},
 		{name: "freebox", connType: ConnectionTypeFreebox, canNotify: false, canSource: true},
 	}
 

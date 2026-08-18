@@ -467,6 +467,7 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 	models.ConnectionTypeMSTeams:    true,
 	models.ConnectionTypeMSTeamsBot: true,
 	models.ConnectionTypeNtfy:       true,
+	models.ConnectionTypeMatrix:     true,
 	models.ConnectionTypeOpsgenie:   true,
 	models.ConnectionTypePushover:   true,
 	models.ConnectionTypeFreebox:    true,

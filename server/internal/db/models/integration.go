@@ -32,6 +32,11 @@ const (
 	// ConnectionTypeMSTeams, which stays as the zero-infra, one-way Teams
 	// Workflow webhook: the two coexist and an org may use either or both.
 	ConnectionTypeMSTeamsBot ConnectionType = "msteams-bot"
+	// ConnectionTypeMatrix is the org-level Matrix (matrix.org) integration: a
+	// stateless HTTP sender to a Matrix room via the Client-Server API,
+	// alongside Slack/Discord/ntfy — not the instance-level direct-channel
+	// path used by Telegram.
+	ConnectionTypeMatrix ConnectionType = "matrix"
 )
 
 // Capabilities describes what roles an integration type can play. The two

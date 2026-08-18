@@ -91,6 +91,7 @@ func senderFactories() map[models.ConnectionType]func() Sender {
 		models.ConnectionTypeMSTeams:    func() Sender { return &MSTeamsSender{} },
 		models.ConnectionTypeMSTeamsBot: func() Sender { return &MSTeamsBotSender{} },
 		models.ConnectionTypeNtfy:       func() Sender { return &NtfySender{} },
+		models.ConnectionTypeMatrix:     func() Sender { return &MatrixSender{} },
 		models.ConnectionTypeOpsgenie:   func() Sender { return &OpsgenieSender{} },
 		models.ConnectionTypePushover:   func() Sender { return &PushoverSender{} },
 		models.ConnectionTypeWebPush:    func() Sender { return &WebPushSender{} },

@@ -26,10 +26,15 @@ const (
 //
 //nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
 var connectionSecretFields = map[models.ConnectionType][]string{
-	models.ConnectionTypeSlack:    {"access_token"},
-	models.ConnectionTypeWebhook:  {secretKeyAuthToken, "signingSecret", "signingSecretPrevious"},
-	models.ConnectionTypeEmail:    {"smtp_password"},
-	models.ConnectionTypeNtfy:     {secretKeyAuthToken},
+	models.ConnectionTypeSlack:   {"access_token"},
+	models.ConnectionTypeWebhook: {secretKeyAuthToken, "signingSecret", "signingSecretPrevious"},
+	models.ConnectionTypeEmail:   {"smtp_password"},
+	models.ConnectionTypeNtfy:    {secretKeyAuthToken},
+	// Matrix: the bot/dedicated user's access token. homeserverUrl and roomId
+	// stay public so the dashboard can render them on the edit form (same
+	// reasoning as the webhook/Discord/GoogleChat/Mattermost/MSTeams URLs
+	// above).
+	models.ConnectionTypeMatrix:   {"accessToken"},
 	models.ConnectionTypeOpsgenie: {"api_key"},
 	models.ConnectionTypePushover: {"user_key", "api_token"},
 	models.ConnectionTypeFreebox:  {"appToken"},
