@@ -678,9 +678,13 @@ func (e ExportedDependencyKind) Valid() bool {
 // Defines values for GetOrgResultResponseStatus.
 const (
 	GetOrgResultResponseStatusAbandoned GetOrgResultResponseStatus = "abandoned"
+	GetOrgResultResponseStatusCreated   GetOrgResultResponseStatus = "created"
+	GetOrgResultResponseStatusDegraded  GetOrgResultResponseStatus = "degraded"
 	GetOrgResultResponseStatusDown      GetOrgResultResponseStatus = "down"
+	GetOrgResultResponseStatusRunning   GetOrgResultResponseStatus = "running"
 	GetOrgResultResponseStatusUnknown   GetOrgResultResponseStatus = "unknown"
 	GetOrgResultResponseStatusUp        GetOrgResultResponseStatus = "up"
+	GetOrgResultResponseStatusWarning   GetOrgResultResponseStatus = "warning"
 )
 
 // Valid indicates whether the value is a known member of the GetOrgResultResponseStatus enum.
@@ -688,11 +692,19 @@ func (e GetOrgResultResponseStatus) Valid() bool {
 	switch e {
 	case GetOrgResultResponseStatusAbandoned:
 		return true
+	case GetOrgResultResponseStatusCreated:
+		return true
+	case GetOrgResultResponseStatusDegraded:
+		return true
 	case GetOrgResultResponseStatusDown:
+		return true
+	case GetOrgResultResponseStatusRunning:
 		return true
 	case GetOrgResultResponseStatusUnknown:
 		return true
 	case GetOrgResultResponseStatusUp:
+		return true
+	case GetOrgResultResponseStatusWarning:
 		return true
 	default:
 		return false
@@ -825,10 +837,14 @@ func (e JobStatus) Valid() bool {
 // Defines values for LastResultStatus.
 const (
 	LastResultStatusAbandoned LastResultStatus = "abandoned"
+	LastResultStatusCreated   LastResultStatus = "created"
+	LastResultStatusDegraded  LastResultStatus = "degraded"
 	LastResultStatusDown      LastResultStatus = "down"
 	LastResultStatusError     LastResultStatus = "error"
 	LastResultStatusTimeout   LastResultStatus = "timeout"
+	LastResultStatusUnknown   LastResultStatus = "unknown"
 	LastResultStatusUp        LastResultStatus = "up"
+	LastResultStatusWarning   LastResultStatus = "warning"
 )
 
 // Valid indicates whether the value is a known member of the LastResultStatus enum.
@@ -836,13 +852,21 @@ func (e LastResultStatus) Valid() bool {
 	switch e {
 	case LastResultStatusAbandoned:
 		return true
+	case LastResultStatusCreated:
+		return true
+	case LastResultStatusDegraded:
+		return true
 	case LastResultStatusDown:
 		return true
 	case LastResultStatusError:
 		return true
 	case LastResultStatusTimeout:
 		return true
+	case LastResultStatusUnknown:
+		return true
 	case LastResultStatusUp:
+		return true
+	case LastResultStatusWarning:
 		return true
 	default:
 		return false
@@ -852,10 +876,14 @@ func (e LastResultStatus) Valid() bool {
 // Defines values for LastResultListItemStatus.
 const (
 	LastResultListItemStatusAbandoned LastResultListItemStatus = "abandoned"
+	LastResultListItemStatusCreated   LastResultListItemStatus = "created"
+	LastResultListItemStatusDegraded  LastResultListItemStatus = "degraded"
 	LastResultListItemStatusDown      LastResultListItemStatus = "down"
 	LastResultListItemStatusError     LastResultListItemStatus = "error"
 	LastResultListItemStatusTimeout   LastResultListItemStatus = "timeout"
+	LastResultListItemStatusUnknown   LastResultListItemStatus = "unknown"
 	LastResultListItemStatusUp        LastResultListItemStatus = "up"
+	LastResultListItemStatusWarning   LastResultListItemStatus = "warning"
 )
 
 // Valid indicates whether the value is a known member of the LastResultListItemStatus enum.
@@ -863,13 +891,21 @@ func (e LastResultListItemStatus) Valid() bool {
 	switch e {
 	case LastResultListItemStatusAbandoned:
 		return true
+	case LastResultListItemStatusCreated:
+		return true
+	case LastResultListItemStatusDegraded:
+		return true
 	case LastResultListItemStatusDown:
 		return true
 	case LastResultListItemStatusError:
 		return true
 	case LastResultListItemStatusTimeout:
 		return true
+	case LastResultListItemStatusUnknown:
+		return true
 	case LastResultListItemStatusUp:
+		return true
+	case LastResultListItemStatusWarning:
 		return true
 	default:
 		return false
@@ -975,9 +1011,13 @@ func (e MembershipRequestSummaryStatus) Valid() bool {
 // Defines values for OrgResultStatus.
 const (
 	OrgResultStatusAbandoned OrgResultStatus = "abandoned"
+	OrgResultStatusCreated   OrgResultStatus = "created"
+	OrgResultStatusDegraded  OrgResultStatus = "degraded"
 	OrgResultStatusDown      OrgResultStatus = "down"
+	OrgResultStatusRunning   OrgResultStatus = "running"
 	OrgResultStatusUnknown   OrgResultStatus = "unknown"
 	OrgResultStatusUp        OrgResultStatus = "up"
+	OrgResultStatusWarning   OrgResultStatus = "warning"
 )
 
 // Valid indicates whether the value is a known member of the OrgResultStatus enum.
@@ -985,11 +1025,19 @@ func (e OrgResultStatus) Valid() bool {
 	switch e {
 	case OrgResultStatusAbandoned:
 		return true
+	case OrgResultStatusCreated:
+		return true
+	case OrgResultStatusDegraded:
+		return true
 	case OrgResultStatusDown:
+		return true
+	case OrgResultStatusRunning:
 		return true
 	case OrgResultStatusUnknown:
 		return true
 	case OrgResultStatusUp:
+		return true
+	case OrgResultStatusWarning:
 		return true
 	default:
 		return false
@@ -2762,12 +2810,12 @@ type GetOrgResultResponse struct {
 	// Region Region identifier (with=region)
 	Region *string `json:"region,omitempty"`
 
-	// Status Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
+	// Status Result status, mirroring every value `statusIntToString` can return: `up` and `warning` both count as available, `degraded` only appears on aggregated rollup rows, `down` covers every genuine failure (the raw `timeout` and `error` statuses are both reported as `down` here), `created` and `running` are attempts that have not been finalized, and `unknown` covers a missing or unrecognised raw status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 	Status *GetOrgResultResponseStatus `json:"status,omitempty"`
 	Uid    *openapi_types.UUID         `json:"uid,omitempty"`
 }
 
-// GetOrgResultResponseStatus Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
+// GetOrgResultResponseStatus Result status, mirroring every value `statusIntToString` can return: `up` and `warning` both count as available, `degraded` only appears on aggregated rollup rows, `down` covers every genuine failure (the raw `timeout` and `error` statuses are both reported as `down` here), `created` and `running` are attempts that have not been finalized, and `unknown` covers a missing or unrecognised raw status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 type GetOrgResultResponseStatus string
 
 // HealthResponse defines model for HealthResponse.
@@ -3005,7 +3053,7 @@ type LastResult struct {
 	// Output Diagnostic output and error messages
 	Output *map[string]interface{} `json:"output,omitempty"`
 
-	// Status Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
+	// Status Result status, mirroring every value `resultStatusString` can return: `up` and `warning` both count as available (`warning` is "up, but something to report"), `degraded` only appears on aggregated rollup rows, `down`/`timeout`/`error` are genuine failures, `created` is an attempt that has not been executed yet, and `unknown` covers a missing or unrecognised raw status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 	Status *LastResultStatus `json:"status,omitempty"`
 
 	// Timestamp When the check was executed
@@ -3013,7 +3061,7 @@ type LastResult struct {
 	Uid       *openapi_types.UUID `json:"uid,omitempty"`
 }
 
-// LastResultStatus Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
+// LastResultStatus Result status, mirroring every value `resultStatusString` can return: `up` and `warning` both count as available (`warning` is "up, but something to report"), `degraded` only appears on aggregated rollup rows, `down`/`timeout`/`error` are genuine failures, `created` is an attempt that has not been executed yet, and `unknown` covers a missing or unrecognised raw status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 type LastResultStatus string
 
 // LastResultListItem Slim last-execution result used on list responses (GET /checks) — {uid, status, timestamp, durationMs} only. See LastResult for the full detail-response shape.
@@ -3021,7 +3069,7 @@ type LastResultListItem struct {
 	// DurationMs Response time in milliseconds
 	DurationMs *float32 `json:"durationMs,omitempty"`
 
-	// Status Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
+	// Status Result status, mirroring every value `resultStatusString` can return: `up` and `warning` both count as available (`warning` is "up, but something to report"), `degraded` only appears on aggregated rollup rows, `down`/`timeout`/`error` are genuine failures, `created` is an attempt that has not been executed yet, and `unknown` covers a missing or unrecognised raw status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 	Status *LastResultListItemStatus `json:"status,omitempty"`
 
 	// Timestamp When the check was executed
@@ -3029,7 +3077,7 @@ type LastResultListItem struct {
 	Uid       *openapi_types.UUID `json:"uid,omitempty"`
 }
 
-// LastResultListItemStatus Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
+// LastResultListItemStatus Result status, mirroring every value `resultStatusString` can return: `up` and `warning` both count as available (`warning` is "up, but something to report"), `degraded` only appears on aggregated rollup rows, `down`/`timeout`/`error` are genuine failures, `created` is an attempt that has not been executed yet, and `unknown` covers a missing or unrecognised raw status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 type LastResultListItemStatus string
 
 // LimitsConcurrency Concurrency section of the limits response.
@@ -3580,12 +3628,12 @@ type OrgResult struct {
 	// Region Region identifier (with=region)
 	Region *string `json:"region,omitempty"`
 
-	// Status Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
+	// Status Result status, mirroring every value `statusIntToString` can return: `up` and `warning` both count as available, `degraded` only appears on aggregated rollup rows, `down` covers every genuine failure (the raw `timeout` and `error` statuses are both reported as `down` here), `created` and `running` are attempts that have not been finalized, and `unknown` covers a missing or unrecognised raw status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 	Status *OrgResultStatus    `json:"status,omitempty"`
 	Uid    *openapi_types.UUID `json:"uid,omitempty"`
 }
 
-// OrgResultStatus Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
+// OrgResultStatus Result status, mirroring every value `statusIntToString` can return: `up` and `warning` both count as available, `degraded` only appears on aggregated rollup rows, `down` covers every genuine failure (the raw `timeout` and `error` statuses are both reported as `down` here), `created` and `running` are attempts that have not been finalized, and `unknown` covers a missing or unrecognised raw status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 type OrgResultStatus string
 
 // OrgResultListResponse defines model for OrgResultListResponse.

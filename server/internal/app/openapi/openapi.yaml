@@ -7615,9 +7615,15 @@ components:
           format: uuid
         status:
           type: string
-          enum: [up, down, timeout, error, abandoned]
+          enum: [up, warning, degraded, down, timeout, error, created, abandoned, unknown]
           description: >-
-            Result status. `abandoned` is server-minted by the abandoned-result
+            Result status, mirroring every value `resultStatusString` can
+            return: `up` and `warning` both count as available (`warning` is
+            "up, but something to report"), `degraded` only appears on
+            aggregated rollup rows, `down`/`timeout`/`error` are genuine
+            failures, `created` is an attempt that has not been executed yet,
+            and `unknown` covers a missing or unrecognised raw status.
+            `abandoned` is server-minted by the abandoned-result
             reaper when nothing was ever reported for an attempt (a worker
             crashed, restarted, or lost its lease). It is terminal but is
             excluded from every availability calculation, so it must be
@@ -7648,9 +7654,15 @@ components:
           format: uuid
         status:
           type: string
-          enum: [up, down, timeout, error, abandoned]
+          enum: [up, warning, degraded, down, timeout, error, created, abandoned, unknown]
           description: >-
-            Result status. `abandoned` is server-minted by the abandoned-result
+            Result status, mirroring every value `resultStatusString` can
+            return: `up` and `warning` both count as available (`warning` is
+            "up, but something to report"), `degraded` only appears on
+            aggregated rollup rows, `down`/`timeout`/`error` are genuine
+            failures, `created` is an attempt that has not been executed yet,
+            and `unknown` covers a missing or unrecognised raw status.
+            `abandoned` is server-minted by the abandoned-result
             reaper when nothing was ever reported for an attempt (a worker
             crashed, restarted, or lost its lease). It is terminal but is
             excluded from every availability calculation, so it must be
@@ -8213,9 +8225,15 @@ components:
           format: date-time
         status:
           type: string
-          enum: [up, down, unknown, abandoned]
+          enum: [up, warning, degraded, down, created, running, abandoned, unknown]
           description: >-
-            Result status. `abandoned` marks an attempt nothing was ever
+            Result status, mirroring every value `statusIntToString` can
+            return: `up` and `warning` both count as available, `degraded` only
+            appears on aggregated rollup rows, `down` covers every genuine
+            failure (the raw `timeout` and `error` statuses are both reported
+            as `down` here), `created` and `running` are attempts that have not
+            been finalized, and `unknown` covers a missing or unrecognised raw
+            status. `abandoned` marks an attempt nothing was ever
             reported for (see LastResult.status): terminal, excluded from
             availability, and never rendered as a failure. It is filterable on
             its own via `?status=abandoned`, and is deliberately NOT part of
