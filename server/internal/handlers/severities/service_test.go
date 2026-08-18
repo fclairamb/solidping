@@ -245,3 +245,28 @@ func TestCreateAcceptsWhatsAppChannel(t *testing.T) {
 	})
 	r.ErrorIs(err, severities.ErrInvalidChannel)
 }
+
+// TestCreateAcceptsMatrixChannel proves the matrix connection type passes
+// severity-channel validation, with a negative control so the test cannot
+// pass on a validator that accepts everything.
+func TestCreateAcceptsMatrixChannel(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newSetup(t)
+
+	sev, err := s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "wake-me-matrix",
+		Name:     "Wake me via Matrix",
+		Channels: []string{"email", "matrix"},
+	})
+	r.NoError(err)
+	r.Contains(sev.Channels, "matrix")
+
+	// Negative control: a near-miss spelling must still be rejected.
+	_, err = s.svc.CreateSeverity(t.Context(), s.org.Slug, severities.CreateSeverityRequest{
+		Slug:     "wake-me-matrix-2",
+		Name:     "Wake me via Matrix 2",
+		Channels: []string{"matrixx"},
+	})
+	r.ErrorIs(err, severities.ErrInvalidChannel)
+}
