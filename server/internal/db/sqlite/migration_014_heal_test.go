@@ -47,7 +47,7 @@ func schemaObjects(ctx context.Context, t *testing.T, svc *Service) map[string]s
 // exactly: the DDL migration 013 was supposed to leave behind is gone, while
 // `bun_migrations` still claims 013 was applied — so bun will never re-run it.
 //
-// It also removes 014's own bookkeeping, because the scenario being modelled is
+// It also removes 014's own bookkeeping, because the scenario being modeled is
 // a database that predates 014 entirely.
 func desyncWorkerCapabilities(ctx context.Context, t *testing.T, svc *Service) {
 	t.Helper()

@@ -167,12 +167,12 @@ type Guard struct {
 // file-derived set.
 func New(db *bun.DB, expected map[string]Migration, extra ...Migration) *Guard {
 	merged := make(map[string]Migration, len(expected)+len(extra))
-	for k, v := range expected {
-		merged[k] = v
+	for k := range expected {
+		merged[k] = expected[k]
 	}
 
-	for _, m := range extra {
-		merged[m.Name] = m
+	for i := range extra {
+		merged[extra[i].Name] = extra[i]
 	}
 
 	return &Guard{db: db, expected: merged, table: DefaultTable}
@@ -325,8 +325,8 @@ func (g *Guard) recordedChecksums(ctx context.Context) (map[string]string, error
 	}
 
 	out := make(map[string]string, len(rows))
-	for _, row := range rows {
-		out[row.Name] = row.Checksum
+	for i := range rows {
+		out[rows[i].Name] = rows[i].Checksum
 	}
 
 	return out, nil

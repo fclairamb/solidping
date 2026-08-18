@@ -2,6 +2,7 @@ package gomigrations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"regexp"
@@ -24,7 +25,7 @@ const source013 = "migrations/013_v0_16_0.up.sql"
 
 // Checksum014 is the guard checksum for this migration (see
 // internal/db/migrationguard). A Go migration has no file to hash, so its
-// identity is declared: bump the trailing revision if the behaviour of the
+// identity is declared: bump the trailing revision if the behavior of the
 // migration ever changes, and never otherwise.
 const Checksum014 = "go:014_v0_17_0/heal-013-worker-capabilities/1"
 
@@ -35,12 +36,22 @@ const name014 = "014"
 // splitDirective is bun's own statement separator inside a .sql migration.
 const splitDirective = "--bun:split"
 
-// addColumnPrefix and createTriggerRE recognise the two kinds of statement 013
+// addColumnPrefix and createTriggerRE recognize the two kinds of statement 013
 // is allowed to contain. Anything else makes 014 refuse to guess: a statement
 // it cannot reason about is a statement it cannot make idempotent.
 const addColumnPrefix = "alter table workers add column capabilities"
 
 var createTriggerRE = regexp.MustCompile(`(?is)^create\s+trigger\s+([a-z0-9_]+)\b`)
+
+// errNoStatements and errUnrecognizedStatement are the two ways 014 refuses to
+// run rather than guess. Both mean 013 is not what this migration was written
+// against, which is a code bug, not a database state.
+var (
+	errNoStatements          = errors.New("source migration yielded no statements")
+	errUnrecognizedStatement = errors.New(
+		"unrecognized statement in the source migration: 014 can only re-apply the column " +
+			"and the shape triggers, so a new statement needs its own idempotency guard")
+)
 
 // Register adds migration 014 — a self-healing re-application of 013 — to the
 // collection.
@@ -62,7 +73,7 @@ var createTriggerRE = regexp.MustCompile(`(?is)^create\s+trigger\s+([a-z0-9_]+)\
 // fsys must be the filesystem carrying the SQLite migration files (the
 // `migrations/*.sql` embed in package sqlite).
 func Register(migrations *migrate.Migrations, fsys fs.FS) error {
-	up := func(ctx context.Context, db *bun.DB) error {
+	upFunc := func(ctx context.Context, db *bun.DB) error {
 		return heal013(ctx, db, fsys)
 	}
 
@@ -70,9 +81,9 @@ func Register(migrations *migrate.Migrations, fsys fs.FS) error {
 	// finishes 013 — and 013's own down migration drops the column and the
 	// triggers. Undoing 014 on a healthy database would leave the schema
 	// broken in exactly the way 014 exists to repair.
-	down := func(_ context.Context, _ *bun.DB) error { return nil }
+	downFunc := func(_ context.Context, _ *bun.DB) error { return nil }
 
-	if err := migrations.Register(up, down); err != nil {
+	if err := migrations.Register(upFunc, downFunc); err != nil {
 		return fmt.Errorf("register migration %s: %w", name014, err)
 	}
 
@@ -87,7 +98,7 @@ func heal013(ctx context.Context, db *bun.DB, fsys fs.FS) error {
 	}
 
 	if len(statements) == 0 {
-		return fmt.Errorf("migration %s: %s yielded no statements", name014, source013)
+		return fmt.Errorf("migration %s: %s: %w", name014, source013, errNoStatements)
 	}
 
 	for _, stmt := range statements {
@@ -109,7 +120,7 @@ func heal013(ctx context.Context, db *bun.DB, fsys fs.FS) error {
 }
 
 // isMissing reports whether the object stmt creates is absent, and refuses to
-// answer for a statement shape it does not recognise.
+// answer for a statement shape it does not recognize.
 func isMissing(ctx context.Context, db *bun.DB, stmt string) (bool, error) {
 	lower := strings.ToLower(stmt)
 
@@ -126,9 +137,8 @@ func isMissing(ctx context.Context, db *bun.DB, stmt string) (bool, error) {
 	}
 
 	return false, fmt.Errorf(
-		"migration %s: unrecognised statement in %s: %q — 014 can only re-apply the "+
-			"column and the shape triggers, so a new statement needs its own idempotency guard",
-		name014, source013, firstLine(stmt),
+		"migration %s: %s: %q: %w",
+		name014, source013, firstLine(stmt), errUnrecognizedStatement,
 	)
 }
 

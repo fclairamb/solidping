@@ -77,7 +77,13 @@ func TestMigration014PostgresHealAndGuard(t *testing.T) {
 	r.NotEmpty(healthy.ConstraintExpr, "a correctly-migrated database has the shape constraint")
 	r.NotEmpty(healthy.Comment, "a correctly-migrated database has the column comment")
 
-	t.Run("heals a database that skipped 013", func(t *testing.T) {
+	// --- 014 heals a database that skipped 013 ---
+	//
+	// The phases below run in sequence on ONE embedded instance and each
+	// depends on the state the previous one left: they are deliberately not
+	// subtests, because parallel subtests over a shared database would race
+	// and a skipped phase would prove nothing.
+	{
 		// Reproduce the incident: the DDL is gone, bun_migrations still claims
 		// 013 was applied, and 014 has not been seen yet.
 		for _, stmt := range []string{
@@ -103,9 +109,10 @@ func TestMigration014PostgresHealAndGuard(t *testing.T) {
 		r.NoError(svc.DB().NewRaw(
 			"SELECT count(*) FROM bun_migrations WHERE name = '014'").Scan(ctx, &applied))
 		r.Equal(1, applied)
-	})
+	}
 
-	t.Run("restores the constraint verdicts", func(t *testing.T) {
+	// --- the healed column enforces the shape rules, not just its existence ---
+	{
 		cases := dbcaptest.SharedCases()
 		r.NotEmpty(cases)
 
@@ -122,9 +129,10 @@ func TestMigration014PostgresHealAndGuard(t *testing.T) {
 				r.Error(err, "case %q must still be rejected after the heal", tc.Name)
 			}
 		}
-	})
+	}
 
-	t.Run("is a no-op on a healthy database", func(t *testing.T) {
+	// --- positive control: 014 is a no-op on a healthy database ---
+	{
 		before := readCapabilitiesShape(ctx, t, svc)
 
 		_, err := svc.DB().ExecContext(ctx, "delete from bun_migrations where name = '014'")
@@ -134,9 +142,10 @@ func TestMigration014PostgresHealAndGuard(t *testing.T) {
 
 		r.NoError(svc.Initialize(ctx), "014 must be a no-op on a healthy database")
 		r.Equal(before, readCapabilitiesShape(ctx, t, svc))
-	})
+	}
 
-	t.Run("fails the boot on a rewritten migration", func(t *testing.T) {
+	// --- the guard fails the boot once an applied migration's content changes ---
+	{
 		// Positive control: unchanged, it boots.
 		r.NoError(svc.Initialize(ctx))
 
@@ -159,5 +168,5 @@ func TestMigration014PostgresHealAndGuard(t *testing.T) {
 			"UPDATE migration_checksums SET checksum = ? WHERE name = '013'", original)
 		r.NoError(err)
 		r.NoError(svc.Initialize(ctx))
-	})
+	}
 }
