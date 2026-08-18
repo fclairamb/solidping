@@ -76,3 +76,45 @@ Two parts, in order of importance:
 - Should a reaped attempt count against availability at all? If it is finalized
   as `error` it will, via `successful_checks` / `total_checks` in the hour
   rollup.
+
+## Resolved open questions
+
+> Finalize as `error` or delete? See above — this is the decision the spec
+> exists to make.
+>
+> Should a reaped attempt count against availability at all? If it is finalized
+> as `error` it will, via `successful_checks` / `total_checks` in the hour
+> rollup.
+
+**Decision: finalize as `error`, and EXCLUDE it from availability.** Both halves
+are binding; implementing one without the other is not the decision.
+
+Finalize rather than delete, so the timeline keeps the evidence that an attempt
+happened — silently deleting the row erases the only symptom of a crashing or
+restarting worker, which makes that class of bug much harder to diagnose. The
+reaped row's output must say plainly that the worker never reported a result.
+
+Exclude it from the availability maths, because an abandoned row means **our**
+worker died, not that the monitored service was down. Counting it would
+manufacture downtime for the customer out of our own infrastructure failure —
+for a monitoring product that is the worst possible failure mode, and it would
+make every devloop restart show up as a dip in someone's uptime percentage. So
+the hour rollup must be able to tell a reaped attempt apart from a genuine
+`error` result and leave it out of both `successful_checks` and `total_checks`.
+
+This is the part of the work that carries real design weight: decide how the
+distinction is represented (a dedicated status, a flag column, or a reserved
+output marker) and make sure the rollup, the uptimebar union, and the
+availability service all agree on it. Whatever is chosen, add a test proving a
+reaped attempt does **not** move the availability percentage, with a positive
+control showing a real `error` result in the same window does.
+
+> Does the existing lease-expiry sweep already have the information needed to
+> reap the matching result row, making this a few lines inside it rather than a
+> new job?
+
+**Not a question for the user — resolve it from the code.** Read the
+`check_jobs.lease_expires_at` / `lease_starts` sweep first, as the spec's own
+Proposal instructs. If that sweep can already identify the orphaned result row,
+put the reaping there rather than adding a second job; if it cannot, a separate
+sweep is fine. State which you found and why in the implementation.

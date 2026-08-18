@@ -84,3 +84,51 @@ gone from the response and the OpenAPI schema).
   (`result.go:198-199`) that the DB layer never populates — the service
   recomputes both from a `Limit: size + 1` over-fetch. Dead fields on the same
   struct; remove them in the same pass?
+
+## Resolved open questions
+
+> Drop, opt-in, or bounded-only? The answer decides whether this is an API
+> break (needs an OpenAPI change and a dash0 follow-up) or an addition.
+
+**Decision: drop `total` from the results response entirely** (option 1 in the
+Proposal). Do not add `?with=total`, and do not compute it conditionally.
+
+The endpoint is cursor-paginated, nothing needs a real total, and shipping a
+field that is always `0` is worse than not shipping it — an API consumer that
+sizes a pager from it reads "0 results" over a full page. Removing it makes the
+contract honest instead of preserving a documented lie.
+
+This IS an API break, and that is accepted (the repo is pre-1.0 and
+`2026-08-18-01` already established that API changes are fine). The work must
+therefore include, in the same change:
+
+- removing `total` from the results response shape and from the
+  `CursorPagination` schema **as it applies to this endpoint**
+  (`server/internal/app/openapi/openapi.yaml:8291-8300`) — take care not to
+  break the incidents endpoint, which returns a genuine total and documents it
+  at `wiki/api-specification/results-incidents.md:42-44`,
+- removing the dash0 read at `web/dash0/src/api/hooks.ts:952` and anything
+  downstream of it,
+- documenting the cursor + `size` model for this endpoint in
+  `wiki/api-specification/`,
+- a regression test pinning that the field is gone from the response **and**
+  from the OpenAPI schema, per the spec's existing requirement.
+
+> `models.ListResultsResponse` also declares `NextCursor` and `HasMore`
+> (`result.go:198-199`) that the DB layer never populates — the service
+> recomputes both from a `Limit: size + 1` over-fetch. Dead fields on the same
+> struct; remove them in the same pass?
+
+**Decision: yes, remove them in the same pass.** Same struct, same class of bug
+as `Total` — declared but never filled — and this spec is already editing that
+struct. They are internal model fields, so removing them is not an additional
+API break. Leaving them behind would keep a trap for the next reader who
+believes `HasMore` means something.
+
+The adjacent `filter.IncludeCheckInfo` finding in the Notes section (set at
+`server/internal/handlers/results/service.go:175`, but `applyResultsFilter`
+never joins `checks` and `convertResultToResponse` never populates
+`CheckSlug`/`CheckName`, so `with=checkSlug,checkName` silently returns nothing)
+stays as the spec wrote it: **fold it in only if it is cheap.** If making it
+work is more than a small join plus field population, file it separately rather
+than widening this spec.
