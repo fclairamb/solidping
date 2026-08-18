@@ -280,7 +280,7 @@ type CheckersConfig struct {
 type SentryConfig struct {
 	DSN              string  `koanf:"dsn"`                // Sentry DSN (empty = disabled)
 	Environment      string  `koanf:"environment"`        // development, staging, production
-	TracesSampleRate float64 `koanf:"traces_sample_rate"` // 0.0 to 1.0 (default 0.1)
+	TracesSampleRate float64 `koanf:"traces_sample_rate"` // 0.0 to 1.0 (default 0.0 — see defaults block)
 	Debug            bool    `koanf:"debug"`              // Enable Sentry debug logging
 }
 
@@ -1340,6 +1340,14 @@ func Load() (*Config, error) {
 		// additionally requires a project API key, which self-hosted installs
 		// never have unless the operator sets one.
 		PostHog: PostHogConfig{Enabled: true, Host: DefaultPostHogHost},
+		// TracesSampleRate defaults to 0.0, explicitly (not a leftover Go zero
+		// value). SolidPing already ships OpenTelemetry tracing behind
+		// SP_OTEL_ENABLED; paying Sentry's transaction quota for a second,
+		// thinner trace stream is duplicate spend for a self-hostable product
+		// where the operator may have no Sentry plan at all. Errors and
+		// panics — what Sentry is actually good at — are captured at 100%
+		// regardless of this setting.
+		Sentry:  SentryConfig{TracesSampleRate: 0.0},
 		Discord: DiscordOAuthConfig{Enabled: false},
 		OIDC:    OIDCOAuthConfig{Enabled: false},
 		SAML:    SAMLConfig{Enabled: false},
@@ -1482,6 +1490,7 @@ func Load() (*Config, error) {
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
 	applyPostHogEnv(&cfg.PostHog)
+	applySentryEnv(&cfg.Sentry)
 	applyWhatsAppEnv(&cfg.WhatsApp)
 	applyTelegramEnv(&cfg.Telegram)
 	applySMSEnv(&cfg.SMS)
@@ -2051,6 +2060,38 @@ func applyPostHogEnv(cfg *PostHogConfig) {
 	if v := os.Getenv("SP_POSTHOG_PERSONAL_API_KEY"); v != "" {
 		cfg.PersonalAPIKey = strings.TrimSpace(v)
 	}
+}
+
+// applySentryEnv reads SP_SENTRY_* into cfg. sentry.dsn / sentry.environment /
+// sentry.debug are koanf-reachable (single-word segments) and already bound by
+// the env provider, but sentry.traces_sample_rate has a snake_case segment
+// that koanf's underscore→dot collapsing can never reach, so it is read by
+// hand here. Keep in sync with manualReaderPlatformEnvVars.
+//
+// Do NOT read SP_SENTRY_DSN / SP_SENTRY_ENVIRONMENT / SP_SENTRY_DEBUG here —
+// re-reading them by hand would change their precedence against config.yml.
+func applySentryEnv(cfg *SentryConfig) {
+	v := os.Getenv("SP_SENTRY_TRACES_SAMPLE_RATE")
+	if v == "" {
+		return
+	}
+
+	rate, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		// Malformed input: leave the existing value, matching the fail-open
+		// convention of the other manual numeric readers (e.g.
+		// applyDatabasePoolEnv, applyJobsEnv).
+		return
+	}
+
+	if rate < 0.0 || rate > 1.0 {
+		// Out of range is an operator error, not something to clamp
+		// silently — Sentry itself treats >1 as 1 without complaint, which
+		// would hide the mistake. Reject and keep the existing value.
+		return
+	}
+
+	cfg.TracesSampleRate = rate
 }
 
 // SP_WHATSAPP_* environment variable names. Declared once and referenced from
