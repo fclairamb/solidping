@@ -44,6 +44,7 @@ func (m *mockAcker) AcknowledgeIncidentFromPhone(
 
 type cbEnv struct {
 	handler     *Handler
+	db          *sqlite.Service
 	acker       *mockAcker
 	integration *models.Integration
 	incident    *models.Incident
@@ -90,6 +91,7 @@ func setupCallbackEnv(t *testing.T) *cbEnv {
 
 	return &cbEnv{
 		handler:     NewHandler(dbSvc, nil, cfg, acker),
+		db:          dbSvc,
 		acker:       acker,
 		integration: integration,
 		incident:    incident,
