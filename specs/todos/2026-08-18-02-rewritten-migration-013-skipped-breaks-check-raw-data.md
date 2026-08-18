@@ -138,3 +138,75 @@ incident caused repeatedly. Re-check the page once the migration fix restores
 data flow; file a separate spec **only if it reproduces on a healthy server**.
 Do not chase the `Transitioner`-during-render warning as part of this spec — it
 is a dash0 routing concern with no connection to the migration root cause.
+
+## Implementation Plan
+
+### 1. Migration 014 — self-healing re-application of 013's DDL
+
+Next release after `v0.16.2` is `v0.17.0` (the batch carries `feat:` commits), so the
+migration is named `014_v0_17_0`.
+
+**Postgres** — `server/internal/db/postgres/migrations/014_v0_17_0.up.sql` /
+`.down.sql`. Every statement 013 runs is already idempotent
+(`add column if not exists`, `drop constraint if exists` then `add constraint`), so
+014 re-issues the same block verbatim. `.down.sql` is a deliberate no-op: 013's down
+already removes the column and the constraint, and 014 must never undo a healthy
+schema.
+
+**SQLite** — SQLite has no `ADD COLUMN IF NOT EXISTS`, so 014 is a **Go migration**
+registered through `migrate.Migrations.Register`, whose name/comment bun derives from
+the *caller's file name*. New package
+`server/internal/db/sqlite/gomigrations/014_v0_17_0.go` exporting
+`Register(*migrate.Migrations) error`, wired into `sqlite.Service.Initialize` right
+after `Discover`. The up function:
+
+- reads `pragma_table_info('workers')`; if `capabilities` is absent it issues the
+  **byte-identical** `alter table workers add column capabilities text check (...)`
+  statement text from 013 — SQLite appends the literal column-definition text to the
+  stored `CREATE TABLE`, so identical text is what makes a healed DB and a freshly
+  migrated DB schema-identical;
+- reads `sqlite_master` for `workers_capabilities_shape_insert` /
+  `workers_capabilities_shape_update` and creates each missing one from the same
+  literal body as 013.
+
+Acceptance: a desynced DB healed by 014 and a fresh DB must have identical
+`sqlite_master.sql` for `workers` and for both triggers. Pinned by a test.
+
+### 2. Migration integrity guard
+
+New package `server/internal/db/migrationguard`:
+
+- `Checksums(fsys, dir)` — sha256 over each `NNN_*.up.sql`, keyed by the numeric
+  prefix bun keys on. Go migrations contribute an explicit constant checksum.
+- `Guard.Reconcile(ctx)` — creates the side table `migration_checksums`
+  (`name` PK, `checksum`, `recorded_at`), reads `bun_migrations`, and for every
+  applied migration either **backfills** the current checksum (first boot on an
+  existing DB) or **compares** it, returning a `MismatchError` naming the migration,
+  both checksums and the repair options.
+
+Wired into both `Initialize` implementations: `Reconcile` before `Migrate` (verify +
+backfill what is already applied) and again after `Migrate` (record what was just
+applied). Down-migration files are deliberately out of the checksum: editing a
+`.down.sql` never desyncs an applied schema.
+
+### 3. Verification & tests
+
+- SQLite: build a DB that reproduces the incident exactly (run migrations, then drop
+  the column and triggers and leave `bun_migrations` claiming 013 applied), re-run
+  `Initialize`, assert the column, both triggers, the constraint verdicts
+  (`dbcaptest.SharedCases`) and the raw `sqlite_master.sql` all match a fresh DB.
+- Postgres: same shape via testcontainers.
+- Guard regression: boot, tamper with the recorded checksum of an applied migration,
+  boot again, assert `Initialize` fails with the mismatch error naming the migration.
+  Plus a positive control: an untampered second boot succeeds.
+- Live: boot a side-car server on an alt port against a copy of the desynced
+  `./solidping.db`, confirm 014 heals it and `/api/v1/orgs/default/regions` answers
+  200; then let the `:4000` devloop heal `server/solidping.db` and confirm new
+  `periodType=raw` rows and the check-detail response-time data.
+
+### 4. Resolved-open-question follow-ups
+
+- Abandoned `status: "created"` results reaper → written up as its own spec in
+  `specs/todos/`, not implemented here.
+- `pagination.total: 0` on `/results?periodType=raw` → investigate the COUNT-vs-rows
+  divergence; fix here with a regression test only if trivial, otherwise its own spec.
