@@ -364,10 +364,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return applyLoginResponse(data);
   };
 
+  // The temp token from the 2FA login challenge travels as a Bearer header —
+  // the backend never reads it from the body.
   const verify2FA = async (tempToken: string, code: string): Promise<LoginResult> => {
     const data = await apiFetch<AuthResponse>(`/api/v1/auth/2fa/verify`, {
       method: "POST",
-      body: JSON.stringify({ tempToken, code }),
+      headers: { Authorization: `Bearer ${tempToken}` },
+      body: JSON.stringify({ code }),
       skipAuth: true,
     });
     return applyLoginResponse(data);
@@ -376,7 +379,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const useRecoveryCode = async (tempToken: string, code: string): Promise<LoginResult> => {
     const data = await apiFetch<AuthResponse>(`/api/v1/auth/2fa/recovery`, {
       method: "POST",
-      body: JSON.stringify({ tempToken, recoveryCode: code }),
+      headers: { Authorization: `Bearer ${tempToken}` },
+      body: JSON.stringify({ recoveryCode: code }),
       skipAuth: true,
     });
     return applyLoginResponse(data);

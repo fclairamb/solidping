@@ -37,13 +37,16 @@ export async function confirm2FA(code: string): Promise<Confirm2FAResponse> {
   });
 }
 
+// The temp token from the 2FA login challenge travels as a Bearer header —
+// the backend never reads it from the body.
 export async function verify2FA(
   tempToken: string,
   code: string,
 ): Promise<Verify2FAResponse> {
   return apiFetch<Verify2FAResponse>("/api/v1/auth/2fa/verify", {
     method: "POST",
-    body: JSON.stringify({ tempToken, code }),
+    headers: { Authorization: `Bearer ${tempToken}` },
+    body: JSON.stringify({ code }),
     skipAuth: true,
   });
 }
@@ -54,7 +57,8 @@ export async function recovery2FA(
 ): Promise<Verify2FAResponse> {
   return apiFetch<Verify2FAResponse>("/api/v1/auth/2fa/recovery", {
     method: "POST",
-    body: JSON.stringify({ tempToken, recoveryCode }),
+    headers: { Authorization: `Bearer ${tempToken}` },
+    body: JSON.stringify({ recoveryCode }),
     skipAuth: true,
   });
 }
