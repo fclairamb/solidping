@@ -59,9 +59,9 @@ checksum recorded in the `migration_checksums` side table:
   both checksums, and the two repair routes.
 
 Only the `.up.sql` half is hashed: a `.down.sql` never runs during a forward
-boot, so editing one cannot desync an applied schema. Go migrations have no
-file to hash and declare their checksum instead (see
-`sqlite/gomigrations`).
+boot, so editing one cannot desync an applied schema. A Go migration would
+have no file to hash; `migrationguard.New` accepts declared checksums for
+that case (no current occupant).
 
 ### Repairing a database the guard rejects
 
@@ -73,9 +73,10 @@ file to hash and declare their checksum instead (see
 
 The correct *prevention* is never to edit an applied migration: add a new
 numbered one instead, written to be idempotent so it is a no-op on databases
-that already got the DDL. `014_v0_17_0` is the worked example — it re-applies
-013's DDL, guarded per-object, so a desynced database and a correctly-migrated
-one end up schema-identical.
+that already got the DDL. (A self-healing `014_v0_17_0` once did this for a
+rewritten 013; it was removed before release in favor of repairing the few
+affected dev databases by hand — pre-release, hand repair beats shipping a
+permanent migration.)
 
 ## Development workflow
 

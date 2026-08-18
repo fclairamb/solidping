@@ -29,7 +29,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
-	"github.com/fclairamb/solidping/server/internal/db/sqlite/gomigrations"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
@@ -272,10 +271,6 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to discover migrations: %w", err)
 	}
 
-	if err := gomigrations.Register(migrations, migrationsFS); err != nil {
-		return fmt.Errorf("failed to register go migrations: %w", err)
-	}
-
 	guard, err := newMigrationGuard(s.db)
 	if err != nil {
 		return err
@@ -301,16 +296,14 @@ func (s *Service) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// newMigrationGuard builds the checksum guard over the embedded SQL migrations
-// plus the Go migrations, which have no file to hash and declare their
-// checksum instead.
+// newMigrationGuard builds the checksum guard over the embedded SQL migrations.
 func newMigrationGuard(db *bun.DB) (*migrationguard.Guard, error) {
 	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
 	}
 
-	return migrationguard.New(db, expected, gomigrations.Guarded()...), nil
+	return migrationguard.New(db, expected), nil
 }
 
 // DB returns the underlying bun.DB instance.

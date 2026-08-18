@@ -210,3 +210,12 @@ applied). Down-migration files are deliberately out of the checksum: editing a
   `specs/todos/`, not implemented here.
 - `pagination.total: 0` on `/results?periodType=raw` → investigate the COUNT-vs-rows
   divergence; fix here with a regression test only if trivial, otherwise its own spec.
+
+## Addendum (2026-08-18)
+
+Migration 014 (the self-healing re-application of 013, both dialects) was **removed
+before release**: 013 never shipped in any tagged version, so the only databases
+carrying the bad draft were development ones, and those were repaired by hand
+instead of shipping a permanent no-op migration to every future install. The
+startup migration-integrity guard (`internal/db/migrationguard`) — the part of this
+spec that prevents recurrence — stays.
