@@ -285,8 +285,8 @@ func (s *Service) Initialize(ctx context.Context) error {
 	}
 
 	migrator := migrate.NewMigrator(s.db, migrations)
-	if err := migrator.Init(ctx); err != nil {
-		return fmt.Errorf("failed to init migrator: %w", err)
+	if initErr := migrator.Init(ctx); initErr != nil {
+		return fmt.Errorf("failed to init migrator: %w", initErr)
 	}
 
 	mismatches, err := guard.Reconcile(ctx, s.guardMode)
@@ -300,8 +300,8 @@ func (s *Service) Initialize(ctx context.Context) error {
 
 	migrationguard.LogMismatches(ctx, mismatches)
 
-	if _, err := migrator.Migrate(ctx); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	if _, migrateErr := migrator.Migrate(ctx); migrateErr != nil {
+		return fmt.Errorf("failed to run migrations: %w", migrateErr)
 	}
 
 	mismatches, err = guard.Reconcile(ctx, s.guardMode)

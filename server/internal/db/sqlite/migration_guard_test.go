@@ -9,13 +9,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 )
 
-func recordedChecksum(ctx context.Context, t *testing.T, svc *Service, name string) string {
+func recordedChecksum(ctx context.Context, t *testing.T, svc *Service) string {
 	t.Helper()
 
 	var sum string
 
 	require.NoError(t, svc.db.NewRaw(
-		"SELECT checksum FROM migration_checksums WHERE name = ?", name,
+		"SELECT checksum FROM migration_checksums WHERE name = ?", "013",
 	).Scan(ctx, &sum))
 
 	return sum
@@ -41,7 +41,7 @@ func TestMigrationGuardFailsBootOnRewrittenMigration(t *testing.T) {
 	// failure below can only come from the tampering.
 	r.NoError(svc.Initialize(ctx), "an unchanged database must keep booting")
 
-	original := recordedChecksum(ctx, t, svc, "013")
+	original := recordedChecksum(ctx, t, svc)
 	r.NotEmpty(original, "013's checksum must have been recorded")
 
 	// Rewrite 013's recorded content — the database's record of what it ran no
@@ -69,7 +69,7 @@ func TestMigrationGuardFailsBootOnRewrittenMigration(t *testing.T) {
 
 	// The guard must NOT quietly repair its own record: a diverged database
 	// stays failing until a human decides how to fix it.
-	r.Equal("deadbeef", recordedChecksum(ctx, t, svc, "013"),
+	r.Equal("deadbeef", recordedChecksum(ctx, t, svc),
 		"a failing boot must not overwrite the recorded checksum")
 }
 
@@ -155,7 +155,7 @@ func TestMigrationGuardWarnModeBootsOnRewrittenMigration(t *testing.T) {
 
 	r.NoError(svc.Initialize(ctx), "the first boot applies and records every migration")
 
-	original := recordedChecksum(ctx, t, svc, "013")
+	original := recordedChecksum(ctx, t, svc)
 	r.NotEmpty(original)
 
 	_, err = svc.db.ExecContext(ctx,
@@ -166,7 +166,7 @@ func TestMigrationGuardWarnModeBootsOnRewrittenMigration(t *testing.T) {
 	// must not.
 	r.NoError(svc.Initialize(ctx), "warn mode must let a boot with a checksum mismatch continue")
 
-	r.Equal("deadbeef", recordedChecksum(ctx, t, svc, "013"),
+	r.Equal("deadbeef", recordedChecksum(ctx, t, svc),
 		"warn mode must not overwrite a mismatched row's checksum — that would silence the warning")
 }
 
@@ -189,7 +189,7 @@ func TestRepairMigrationChecksums(t *testing.T) {
 	r.NoError(err)
 	r.Empty(results, "a healthy database has nothing to repair")
 
-	original := recordedChecksum(ctx, t, svc, "013")
+	original := recordedChecksum(ctx, t, svc)
 	r.NotEmpty(original)
 
 	_, err = svc.db.ExecContext(ctx,
@@ -203,7 +203,7 @@ func TestRepairMigrationChecksums(t *testing.T) {
 	r.Equal("deadbeef", results[0].Old)
 	r.Equal(original, results[0].New)
 
-	r.Equal(original, recordedChecksum(ctx, t, svc, "013"),
+	r.Equal(original, recordedChecksum(ctx, t, svc),
 		"repair must re-record the current file's checksum")
 
 	// Repair must not have run any migration — the database boots clean in

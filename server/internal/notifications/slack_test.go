@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -94,7 +95,11 @@ func (m *mockDBService) Close() error {
 
 // Stub implementations for all other db.Service methods (not used in tests).
 func (m *mockDBService) Initialize(_ context.Context) error { panic("not implemented") }
-func (m *mockDBService) DB() *bun.DB                        { panic("not implemented") }
+
+func (m *mockDBService) RepairMigrationChecksums(_ context.Context) ([]migrationguard.RepairResult, error) {
+	panic("not implemented")
+}
+func (m *mockDBService) DB() *bun.DB { panic("not implemented") }
 func (m *mockDBService) CreateOrganization(_ context.Context, _ *models.Organization) error {
 	panic("not implemented")
 }

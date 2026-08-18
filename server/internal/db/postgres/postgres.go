@@ -295,8 +295,8 @@ func (s *Service) Initialize(ctx context.Context) error {
 	}
 
 	migrator := migrate.NewMigrator(s.db, migrations)
-	if err := migrator.Init(ctx); err != nil {
-		return fmt.Errorf("failed to init migrator: %w", err)
+	if initErr := migrator.Init(ctx); initErr != nil {
+		return fmt.Errorf("failed to init migrator: %w", initErr)
 	}
 
 	// Verify (and, on a database that predates the guard, backfill) what is
@@ -313,8 +313,8 @@ func (s *Service) Initialize(ctx context.Context) error {
 
 	migrationguard.LogMismatches(ctx, mismatches)
 
-	if _, err := migrator.Migrate(ctx); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	if _, migrateErr := migrator.Migrate(ctx); migrateErr != nil {
+		return fmt.Errorf("failed to run migrations: %w", migrateErr)
 	}
 
 	// Record what this boot just applied.

@@ -426,7 +426,8 @@ func migrateRepair(ctx context.Context, _ *cli.Command) error {
 		return nil
 	}
 
-	for _, res := range results {
+	for i := range results {
+		res := &results[i]
 		slog.InfoContext(ctx, "migrate repair: re-recorded checksum",
 			"migration", res.Name, "comment", res.Comment,
 			"old", shortSum(res.Old), "new", shortSum(res.New))

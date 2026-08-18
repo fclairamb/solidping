@@ -18,13 +18,13 @@ const portMigrationGuard = 15477
 // file content was rewritten after it ran.
 const tamperedMigrationName = "013"
 
-func recordedChecksumPG(t *testing.T, svc *Service, name string) string {
+func recordedChecksumPG(t *testing.T, svc *Service) string {
 	t.Helper()
 
 	var sum string
 
 	require.NoError(t, svc.db.NewRaw(
-		"SELECT checksum FROM migration_checksums WHERE name = ?", name,
+		"SELECT checksum FROM migration_checksums WHERE name = ?", tamperedMigrationName,
 	).Scan(t.Context(), &sum))
 
 	return sum
@@ -49,7 +49,7 @@ func TestMigrationGuardModePairPG(t *testing.T) {
 
 	r.NoError(svc.Initialize(ctx), "the first boot applies and records every migration")
 
-	original := recordedChecksumPG(t, svc, tamperedMigrationName)
+	original := recordedChecksumPG(t, svc)
 	r.NotEmpty(original)
 
 	_, err = svc.db.ExecContext(ctx,
@@ -59,13 +59,13 @@ func TestMigrationGuardModePairPG(t *testing.T) {
 	err = svc.Initialize(ctx)
 	r.Error(err, "strict mode (the default) must fail the boot on a checksum mismatch")
 	r.ErrorIs(err, migrationguard.ErrChecksumMismatch)
-	r.Equal("deadbeef", recordedChecksumPG(t, svc, tamperedMigrationName),
+	r.Equal("deadbeef", recordedChecksumPG(t, svc),
 		"a failing boot must not overwrite the recorded checksum")
 
 	// Positive control: the identical tampered row, warn mode — must boot.
 	svc.guardMode = migrationguard.ModeWarn
 	r.NoError(svc.Initialize(ctx), "warn mode must let the same mismatch boot")
-	r.Equal("deadbeef", recordedChecksumPG(t, svc, tamperedMigrationName),
+	r.Equal("deadbeef", recordedChecksumPG(t, svc),
 		"warn mode must not overwrite a mismatched row's checksum either")
 }
 
@@ -90,7 +90,7 @@ func TestRepairMigrationChecksumsPG(t *testing.T) {
 	r.NoError(err)
 	r.Empty(results, "a healthy database has nothing to repair")
 
-	original := recordedChecksumPG(t, svc, tamperedMigrationName)
+	original := recordedChecksumPG(t, svc)
 	_, err = svc.db.ExecContext(ctx,
 		"UPDATE migration_checksums SET checksum = 'deadbeef' WHERE name = ?", tamperedMigrationName)
 	r.NoError(err)
