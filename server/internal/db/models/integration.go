@@ -20,7 +20,7 @@ const (
 	ConnectionTypeGoogleChat ConnectionType = "googlechat"
 	ConnectionTypeMattermost ConnectionType = "mattermost"
 	ConnectionTypeNtfy       ConnectionType = "ntfy"
-	ConnectionTypeOpsgenie   ConnectionType = "opsgenie"
+	ConnectionTypePagerduty  ConnectionType = "pagerduty"
 	ConnectionTypePushover   ConnectionType = "pushover"
 	ConnectionTypeFreebox    ConnectionType = "freebox"
 	ConnectionTypeWebPush    ConnectionType = "webpush"
@@ -62,7 +62,7 @@ type Capabilities struct {
 
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
-// mattermost, msteams, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
+// mattermost, msteams, ntfy, pagerduty, pushover) is CanNotify; freebox is a data source
 // (CanSource) and cannot receive notifications. Twilio additionally carries
 // the two phone capabilities — it is the only connection type that is a
 // bring-your-own SMS *and* voice account. The default branch intentionally

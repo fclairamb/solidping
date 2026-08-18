@@ -169,7 +169,7 @@ func TestConnectionSecretFieldsRegistry(t *testing.T) {
 
 	r := require.New(t)
 	r.Contains(credentials.ConnectionSecretFields("slack"), "access_token")
-	r.Contains(credentials.ConnectionSecretFields("opsgenie"), "api_key")
+	r.Contains(credentials.ConnectionSecretFields("pagerduty"), "routing_key")
 	r.Empty(credentials.ConnectionSecretFields("not-a-real-type"))
 }
 
