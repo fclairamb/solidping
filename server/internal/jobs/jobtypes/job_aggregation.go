@@ -936,11 +936,17 @@ func processRawResult(
 	successCount, totalChecks *int,
 ) {
 	// Skip non-data statuses (created, running — lifecycle markers, not
-	// measurements) and rows the abandoned-result reaper finalized (evidence
-	// of OUR worker crashing, not the monitored service — spec
-	// 2026-08-18-03). Duration/statusCounts/totalChecks/successCount must
-	// never see either: this is the hour rollup's half of the shared
+	// measurements) and rows the abandoned-result reaper finalized
+	// (models.ResultStatusAbandoned: evidence of OUR worker crashing, not the
+	// monitored service — specs 2026-08-18-03 / 2026-08-18-10).
+	// Duration/statusCounts/totalChecks/successCount must never see either:
+	// this is the hour rollup's half of the shared
 	// models.Result.ExcludedFromAvailability contract.
+	//
+	// Note this is deliberately narrower than measurableSourceUIDs below,
+	// which does NOT skip an abandoned row: contributing nothing to the stats
+	// and being deletable once rolled up are different questions, and an
+	// abandoned row is still an ordinary retention candidate.
 	if result.ExcludedFromAvailability() {
 		return
 	}

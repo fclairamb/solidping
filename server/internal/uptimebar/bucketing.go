@@ -79,8 +79,9 @@ func (b BucketStats) AvgDuration() (float64, bool) {
 }
 
 // accumulateRaw merges a raw result row into the bucket. Lifecycle markers
-// (created/running) and reaped/abandoned attempts are excluded from the
-// denominator (models.Result.ExcludedFromAvailability, spec 2026-08-18-03);
+// (created/running) and reaped attempts (models.ResultStatusAbandoned) are
+// excluded from the denominator (models.Result.ExcludedFromAvailability,
+// specs 2026-08-18-03 and 2026-08-18-10);
 // up + warning count as success — the canonical models.RawAvailability /
 // CountsAsUp rule, which also matches the aggregation job and the status
 // page. This is the single point where the "warning counts as up" rule lives

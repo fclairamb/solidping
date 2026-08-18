@@ -2635,9 +2635,10 @@ func (s *Service) GetLastResultForChecks(
 	// uptimebar union) is unaffected and still excludes Running via
 	// IsLifecycleMarker() as before.
 	//
-	// A reaped/abandoned row (status flipped to error by the reaper) is also
-	// deliberately NOT excluded: once terminal it is a legitimate, if
-	// uninformative, last-checked entry.
+	// A reaped row (ResultStatusAbandoned, written by the reaper) is
+	// also deliberately NOT excluded: once terminal it is a legitimate, if
+	// uninformative, last-checked entry. Only an OPEN `created` marker is
+	// hidden here — "an attempt started" is not "the check was checked".
 	query := `
 		SELECT r.*
 		FROM unnest(?::uuid[]) AS cu(uid)
@@ -2801,12 +2802,17 @@ func abandonedResultOutput() models.JSONMap {
 	}
 }
 
-// claimAbandonedResult atomically flips one candidate to a terminal,
-// Abandoned=true row, re-asserting its current status in the WHERE clause so
-// a concurrent transition (another reaper replica, or the row somehow being
-// legitimately finalized between the SELECT and here) is a no-op rather than
-// a clobber — same guard shape as jobsvc.ReapStuckJobs. Returns false when the
-// row had already moved.
+// claimAbandonedResult atomically flips one candidate to a terminal
+// ResultStatusAbandoned row, re-asserting its current status in the WHERE
+// clause so a concurrent transition (another reaper replica, or the row
+// somehow being legitimately finalized between the SELECT and here) is a
+// no-op rather than a clobber — same guard shape as jobsvc.ReapStuckJobs.
+// Returns false when the row had already moved.
+//
+// The status IS the marker (spec 2026-08-18-10): 9 is terminal, so it never
+// re-enters the created-only candidate scan above, and it is excluded from
+// availability by models.ResultStatus.ExcludedFromAvailability without any
+// second column for a reader to have to know about.
 func (s *Service) claimAbandonedResult(ctx context.Context, candidate *models.Result) (bool, error) {
 	if candidate.Status == nil {
 		return false, nil
@@ -2814,8 +2820,7 @@ func (s *Service) claimAbandonedResult(ctx context.Context, candidate *models.Re
 
 	res, err := s.db.NewUpdate().
 		Model((*models.Result)(nil)).
-		Set("status = ?", int(models.ResultStatusError)).
-		Set("abandoned = ?", true).
+		Set("status = ?", int(models.ResultStatusAbandoned)).
 		Set("output = ?", abandonedResultOutput()).
 		Where("uid = ?", candidate.UID).
 		Where("status = ?", *candidate.Status).

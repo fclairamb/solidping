@@ -36,6 +36,12 @@ const (
 	statusStrWarning  = "warning"
 	statusStrDegraded = "degraded"
 	statusStrUnknown  = "unknown"
+	// statusStrAbandoned surfaces models.ResultStatusAbandoned as its own
+	// filterable, renderable state: an attempt nobody ever reported on. It is
+	// deliberately NOT folded into statusStrDown — an abandoned row is
+	// precisely *not* downtime (spec 2026-08-18-10), so `?status=down` must
+	// keep excluding it, exactly as availability does.
+	statusStrAbandoned = "abandoned"
 )
 
 // Service provides business logic for results.
@@ -238,6 +244,8 @@ func (s *Service) mapStatusStringsToInts(statuses []string) []int {
 		statusStrRunning: {int(models.ResultStatusRunning)},
 		"up":             {int(models.ResultStatusUp)},
 		statusStrDown:    {int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError)},
+		// Filterable on its own; never part of `down` — see statusStrAbandoned.
+		statusStrAbandoned: {int(models.ResultStatusAbandoned)},
 	}
 
 	var result []int
@@ -413,6 +421,11 @@ func (s *Service) statusIntToString(status *int) string {
 	case int(models.ResultStatusDegraded):
 		// Aggregated rollup status (hour/day/month rows).
 		return statusStrDegraded
+	case int(models.ResultStatusAbandoned):
+		// Reaper-minted: nothing was ever reported for this attempt. Neutral,
+		// never "down" — it is excluded from availability, not counted as an
+		// outage (spec 2026-08-18-10).
+		return statusStrAbandoned
 	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
 		return statusStrDown
 	default:

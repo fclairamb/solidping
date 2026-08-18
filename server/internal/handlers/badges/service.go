@@ -712,6 +712,14 @@ func formatResponseTime(results []*models.Result) string {
 // calculateStatusDuration returns the time since last status change, a
 // boolean indicating whether the current status is up, and a third boolean
 // indicating whether the status is known at all.
+//
+// Rows excluded from availability are skipped in BOTH walks: lifecycle
+// markers (created/running) as before, and — since spec 2026-08-18-10 —
+// models.ResultStatusAbandoned. A reaped attempt is not a reading of the
+// service, so a badge whose newest row is abandoned must fall back to the
+// last real observation rather than announcing "down for 3 days" because our
+// own worker crashed. Under the previous encoding these rows carried
+// status=error and did exactly that.
 func calculateStatusDuration(results []*models.Result) (time.Duration, bool, bool) {
 	// Find the most recent actionable status.
 	currentStatus := -1
@@ -722,7 +730,7 @@ func calculateStatusDuration(results []*models.Result) (time.Duration, bool, boo
 		}
 
 		s := models.ResultStatus(*res.Status)
-		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
+		if s.ExcludedFromAvailability() {
 			continue
 		}
 
@@ -748,7 +756,7 @@ func calculateStatusDuration(results []*models.Result) (time.Duration, bool, boo
 		}
 
 		s := models.ResultStatus(*res.Status)
-		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
+		if s.ExcludedFromAvailability() {
 			continue
 		}
 

@@ -29,6 +29,18 @@ const (
 	// ResultStatusWarning indicates the target is up but there is something to
 	// report. Stored on raw rows; counts as up for availability.
 	ResultStatusWarning ResultStatus = 8
+	// ResultStatusAbandoned marks a raw attempt the abandoned-result reaper
+	// finalized from a stale `created` marker (spec 2026-08-18-03): nothing was
+	// ever reported for it because OUR side died — a worker crash, a devloop
+	// restart, a lost lease — not because the monitored service was down. It is
+	// terminal (the timeline keeps honest evidence an attempt happened) but is
+	// excluded from availability math everywhere, unlike a genuine
+	// ResultStatusError; see ExcludedFromAvailability.
+	//
+	// Server-minted ONLY, by ReapAbandonedResults. A worker or a deported agent
+	// can never report it: handlers/agentws validates inbound statuses to
+	// [ResultStatusCreated..ResultStatusError] and so rejects 9 outright.
+	ResultStatusAbandoned ResultStatus = 9
 )
 
 // PeriodType values for the Result.PeriodType column.
@@ -58,6 +70,8 @@ func StatusToString(status int) string {
 		return "DEGRADED"
 	case int(ResultStatusWarning):
 		return "WARNING"
+	case int(ResultStatusAbandoned):
+		return "ABANDONED"
 	default:
 		return "UNKNOWN"
 	}
@@ -73,6 +87,17 @@ func (s ResultStatus) IsLifecycleMarker() bool {
 // Warning is "up with something to report" (the target is reachable), so it counts.
 func (s ResultStatus) CountsAsUp() bool {
 	return s == ResultStatusUp || s == ResultStatusWarning
+}
+
+// ExcludedFromAvailability reports whether a raw status must be dropped from
+// both availability's numerator and denominator: a lifecycle marker (still in
+// flight — created/running) OR ResultStatusAbandoned (terminal, but evidence
+// of OUR infrastructure failing, not the monitored service — spec
+// 2026-08-18-03). This is the one place the rule lives; (*Result) delegates to
+// it so a caller holding only a status and a caller holding a whole row can
+// never disagree.
+func (s ResultStatus) ExcludedFromAvailability() bool {
+	return s == ResultStatusAbandoned || s.IsLifecycleMarker()
 }
 
 // RawAvailability computes (successCount, countableTotal) over raw results, skipping
@@ -109,15 +134,6 @@ type Result struct {
 	Duration  *float32 `bun:"duration"`
 	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
 	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
-	// Abandoned marks a row the abandoned-result reaper finalized from a stale
-	// created marker (spec 2026-08-18-03): Status is set to
-	// ResultStatusError like a genuine failure — the timeline keeps honest
-	// evidence an attempt happened — but Abandoned=true excludes it from
-	// availability math everywhere that math is done. See
-	// ExcludedFromAvailability, the one predicate the hour rollup
-	// (job_aggregation.go), the uptimebar union (uptimebar/bucketing.go), and
-	// RawAvailability below all route through.
-	Abandoned bool `bun:"abandoned,notnull"`
 
 	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year').
 	// availability_pct is intentionally absent: it is derived at read time from
@@ -147,21 +163,22 @@ type Result struct {
 // ExcludedFromAvailability reports whether a raw result must be dropped from
 // both availability's numerator and denominator: a lifecycle marker (still in
 // flight — created/running) OR a row the abandoned-result reaper finalized
-// (terminal, but evidence of OUR infrastructure failing, not the monitored
-// service — spec 2026-08-18-03). RawAvailability, the hour rollup's
-// processRawResult (job_aggregation.go), and uptimebar's accumulateRaw
-// (uptimebar/bucketing.go) all route through this one predicate so the three
-// surfaces can never drift apart on what counts.
+// (ResultStatusAbandoned — terminal, but evidence of OUR infrastructure
+// failing, not the monitored service — spec 2026-08-18-03). RawAvailability,
+// the hour rollup's processRawResult (job_aggregation.go), and uptimebar's
+// accumulateRaw (uptimebar/bucketing.go) all route through this one predicate
+// so the three surfaces can never drift apart on what counts.
+//
+// A row with no status at all is NOT excluded: that is an aggregated rollup
+// row, which never reaches this predicate's raw-only callers, and treating a
+// missing status as "skip" would silently swallow a malformed raw row instead
+// of counting it.
 func (r *Result) ExcludedFromAvailability() bool {
-	if r.Abandoned {
-		return true
-	}
-
 	if r.Status == nil {
 		return false
 	}
 
-	return ResultStatus(*r.Status).IsLifecycleMarker()
+	return ResultStatus(*r.Status).ExcludedFromAvailability()
 }
 
 // Constants behind AbandonedResultThreshold — see its doc comment.

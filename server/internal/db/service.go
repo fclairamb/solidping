@@ -362,10 +362,11 @@ type Service interface {
 	// ResultStatusCreated well past any plausible execution window for their
 	// check — models.AbandonedResultThreshold, "the check's period plus the
 	// worker lease timeout, with a generous multiplier" (spec 2026-08-18-03).
-	// Each eligible row is atomically flipped to ResultStatusError with
-	// Abandoned=true and an output explaining the worker never reported,
-	// re-asserting the row's current status in the guard so a legitimate
-	// finish racing the sweep is a no-op rather than a clobber.
+	// Each eligible row is atomically flipped to ResultStatusAbandoned — the
+	// dedicated terminal status that is excluded from availability everywhere
+	// (spec 2026-08-18-10) — with an output explaining the worker never
+	// reported, re-asserting the row's current status in the guard so a
+	// legitimate finish racing the sweep is a no-op rather than a clobber.
 	// ResultStatusRunning is deliberately left alone: heartbeat checks use it
 	// as a legitimate long-lived status with no period/lease relationship.
 	// Global, not per-org — mirrors ReapStuckJobs.

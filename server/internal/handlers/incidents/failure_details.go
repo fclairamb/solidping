@@ -94,8 +94,14 @@ func failureReasonFromResult(result *models.Result) string {
 		return reasonTimeout
 	case models.ResultStatusError:
 		return reasonError
+	// ResultStatusAbandoned sits here rather than beside Error on purpose: a
+	// reaped attempt is not a failure the monitored service produced, and it
+	// can never reach this path anyway (the reaper writes the row directly and
+	// incident processing skips statuses that are neither success, failure nor
+	// warning). Listed explicitly so the exhaustive linter stays a real check.
 	case models.ResultStatusCreated, models.ResultStatusRunning, models.ResultStatusUp,
-		models.ResultStatusDown, models.ResultStatusDegraded, models.ResultStatusWarning:
+		models.ResultStatusDown, models.ResultStatusDegraded, models.ResultStatusWarning,
+		models.ResultStatusAbandoned:
 		return reasonDown
 	default:
 		return reasonDown

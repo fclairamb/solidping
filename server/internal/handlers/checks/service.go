@@ -2656,6 +2656,10 @@ func resultStatusString(result *models.Result) string {
 			statusStr = "error"
 		case int(models.ResultStatusCreated):
 			statusStr = "created"
+		case int(models.ResultStatusAbandoned):
+			// Reaper-minted terminal status: the attempt was never reported
+			// on. Rendered neutrally, never as a failure (spec 2026-08-18-10).
+			statusStr = "abandoned"
 		}
 	}
 
