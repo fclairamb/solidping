@@ -1998,6 +1998,15 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OrgPath"
         - $ref: "#/components/parameters/IncidentUidPath"
+        - name: with
+          in: query
+          description: >-
+            Comma-separated optional fields to include: "check", "members"
+            (members also adds checkGroupSlug). Both are opt-in — the default
+            response includes neither and costs no extra query for them.
+          schema:
+            type: string
+          example: "check"
       responses:
         "200":
           description: Incident details

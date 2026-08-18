@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -1470,10 +1471,29 @@ func (s *Service) GetCheck(ctx context.Context, orgUID, checkUID string) (*model
 	return check, nil
 }
 
-// GetChecksByUIDs returns the requested checks keyed by UID, in a single
-// batched query (absent UIDs — deleted or unknown — simply have no entry).
+// checksByUIDsChunkSize caps how many check UIDs go into a single IN(...)
+// query. Unlike the incident/group UID batches this method's other two
+// siblings deal with, checkUIDs here is NOT bounded by the response page
+// size — incidents.buildIncidentEnrichment folds in every distinct member
+// check across every group incident on the page, and check-group membership
+// itself has no size cap anywhere in the checkgroups/checks handlers.
+//
+// This does NOT guard SQLITE_MAX_VARIABLE_NUMBER or Postgres's
+// 65535-parameter ceiling specifically: bun's
+// `Where("uid IN (?)", bun.List(...))` renders every UID as an inlined SQL
+// literal rather than a driver-bound placeholder (confirmed by inspecting
+// the emitted SQL and by a manual probe — a single unchunked query with two
+// million inlined UUID literals raised no error against this repo's SQLite
+// driver). What this bounds instead is how large a single generated SQL
+// statement gets — keeping query text size and parse/plan cost small and
+// predictable regardless of how big one check group happens to be. 500 is
+// comfortably small on that basis, and identical on both engines.
+const checksByUIDsChunkSize = 500
+
+// GetChecksByUIDs returns the requested checks keyed by UID, in one or more
+// batched queries (absent UIDs — deleted or unknown — simply have no entry).
 // Mirrors GetLabelsForChecks's shape: used to replace one GetCheck call per
-// row with a single IN(...) query for a whole response page.
+// row with a small number of IN(...) queries for a whole response page.
 func (s *Service) GetChecksByUIDs(
 	ctx context.Context, orgUID string, checkUIDs []string,
 ) (map[string]*models.Check, error) {
@@ -1481,20 +1501,23 @@ func (s *Service) GetChecksByUIDs(
 		return make(map[string]*models.Check), nil
 	}
 
-	var checks []*models.Check
-	err := s.db.NewSelect().
-		Model(&checks).
-		Where("uid IN (?)", bun.List(checkUIDs)).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get checks by uids: %w", err)
-	}
+	checkMap := make(map[string]*models.Check, len(checkUIDs))
 
-	checkMap := make(map[string]*models.Check, len(checks))
-	for _, check := range checks {
-		checkMap[check.UID] = check
+	for batch := range slices.Chunk(checkUIDs, checksByUIDsChunkSize) {
+		var checks []*models.Check
+		err := s.db.NewSelect().
+			Model(&checks).
+			Where("uid IN (?)", bun.List(batch)).
+			Where("organization_uid = ?", orgUID).
+			Where("deleted_at IS NULL").
+			Scan(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get checks by uids: %w", err)
+		}
+
+		for _, check := range checks {
+			checkMap[check.UID] = check
+		}
 	}
 
 	return checkMap, nil
@@ -2951,7 +2974,10 @@ func (s *Service) ListIncidentMemberChecks(
 // ListIncidentMemberChecksByIncidentUIDs returns member rows for several
 // group incidents at once, grouped by incident UID. A single batched query
 // replaces one ListIncidentMemberChecks call per group incident on a
-// response page.
+// response page. Unlike GetChecksByUIDs, incidentUIDs is NOT chunked: it is
+// at most one entry per incident on the page, and the page itself is capped
+// by base.ParsePageLimit (100) — nowhere near either engine's bound-parameter
+// ceiling.
 func (s *Service) ListIncidentMemberChecksByIncidentUIDs(
 	ctx context.Context, incidentUIDs []string,
 ) (map[string][]*models.IncidentMemberCheck, error) {
@@ -4675,7 +4701,10 @@ func (s *Service) GetCheckGroup(ctx context.Context, orgUID, uid string) (*model
 }
 
 // GetCheckGroupsByUIDs returns the requested check groups keyed by UID, in a
-// single batched query (absent UIDs simply have no entry).
+// single batched query (absent UIDs simply have no entry). Unlike
+// GetChecksByUIDs, groupUIDs is NOT chunked: at most one entry per group
+// incident on the page, itself capped by base.ParsePageLimit (100) — nowhere
+// near either engine's bound-parameter ceiling.
 func (s *Service) GetCheckGroupsByUIDs(
 	ctx context.Context, orgUID string, groupUIDs []string,
 ) (map[string]*models.CheckGroup, error) {
