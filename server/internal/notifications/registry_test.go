@@ -24,7 +24,7 @@ func TestGetSender_NotifyCapableTypesResolve(t *testing.T) {
 		models.ConnectionTypeMSTeamsBot,
 		models.ConnectionTypeNtfy,
 		models.ConnectionTypeMatrix,
-		models.ConnectionTypeOpsgenie,
+		models.ConnectionTypePagerduty,
 		models.ConnectionTypePushover,
 		models.ConnectionTypeWebPush,
 		models.ConnectionTypeTwilio,
@@ -100,7 +100,7 @@ func TestAcceptsEventType_CommentOptOut(t *testing.T) {
 		models.ConnectionTypeMSTeamsBot,
 		models.ConnectionTypeNtfy,
 		models.ConnectionTypeMatrix,
-		models.ConnectionTypeOpsgenie,
+		models.ConnectionTypePagerduty,
 		models.ConnectionTypePushover,
 		models.ConnectionTypeWebPush,
 	} {

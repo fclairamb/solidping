@@ -92,7 +92,7 @@ func senderFactories() map[models.ConnectionType]func() Sender {
 		models.ConnectionTypeMSTeamsBot: func() Sender { return &MSTeamsBotSender{} },
 		models.ConnectionTypeNtfy:       func() Sender { return &NtfySender{} },
 		models.ConnectionTypeMatrix:     func() Sender { return &MatrixSender{} },
-		models.ConnectionTypeOpsgenie:   func() Sender { return &OpsgenieSender{} },
+		models.ConnectionTypePagerduty:  func() Sender { return &PagerDutySender{} },
 		models.ConnectionTypePushover:   func() Sender { return &PushoverSender{} },
 		models.ConnectionTypeWebPush:    func() Sender { return &WebPushSender{} },
 		models.ConnectionTypeTwilio:     func() Sender { return &TwilioSender{} },
