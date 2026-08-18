@@ -1656,6 +1656,7 @@ type ListIncidentsOptions struct {
 	Cursor         string
 	Size           int
 	WithCheck      bool // Include check details in response
+	WithMembers    bool // Include group-incident members and checkGroupSlug in response
 	HideSuppressed bool // Hide rolled-up (paging-suppressed) incidents
 	CausedByUID    string
 }
@@ -1829,26 +1830,128 @@ func checkToResponse(check *models.Check) *CheckResponse {
 	}
 }
 
-// buildCheckMap builds a map of check UIDs to check models for embedding in responses.
-func (s *Service) buildCheckMap(
-	ctx context.Context, orgUID string, incidents []*models.Incident, withCheck bool,
-) map[string]*models.Check {
-	checkMap := make(map[string]*models.Check)
-	if !withCheck || len(incidents) == 0 {
-		return checkMap
+// incidentEnrichment holds the batch-loaded data needed to fill in
+// IncidentResponse fields for a whole page of incidents: checks (with=check)
+// and members/checkGroupSlug (with=members). Built by buildIncidentEnrichment
+// with at most 3 DB queries total, regardless of page size.
+type incidentEnrichment struct {
+	checks            map[string]*models.Check
+	membersByIncident map[string][]*models.IncidentMemberCheck
+	groups            map[string]*models.CheckGroup
+}
+
+// buildIncidentEnrichment collects the check UIDs the page needs (the
+// incidents' own checks when withCheck, plus every group incident's member
+// check UIDs when withMembers) and issues one batched query per distinct
+// need: member rows, check groups, and — merging both the "own check" and
+// "member check" cases into a single shared call — checks. A page with no
+// group incidents and withMembers=false issues zero member/group queries.
+func (s *Service) buildIncidentEnrichment(
+	ctx context.Context, orgUID string, incidents []*models.Incident, withCheck, withMembers bool,
+) *incidentEnrichment {
+	enrichment := &incidentEnrichment{
+		checks:            make(map[string]*models.Check),
+		membersByIncident: make(map[string][]*models.IncidentMemberCheck),
+		groups:            make(map[string]*models.CheckGroup),
 	}
 
+	if len(incidents) == 0 {
+		return enrichment
+	}
+
+	checkUIDSet := make(map[string]struct{})
+	if withCheck {
+		for _, inc := range incidents {
+			checkUIDSet[inc.CheckUID] = struct{}{}
+		}
+	}
+
+	if withMembers {
+		s.loadGroupEnrichment(ctx, orgUID, incidents, enrichment, checkUIDSet)
+	}
+
+	if len(checkUIDSet) > 0 {
+		checkUIDs := make([]string, 0, len(checkUIDSet))
+		for uid := range checkUIDSet {
+			checkUIDs = append(checkUIDs, uid)
+		}
+
+		checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to get checks for response", "error", err)
+		} else {
+			enrichment.checks = checks
+		}
+	}
+
+	return enrichment
+}
+
+// loadGroupEnrichment issues the member-rows and check-groups batch queries
+// for a page's group incidents, and folds every member's check UID into
+// checkUIDSet so the caller's single checks query resolves them too.
+func (s *Service) loadGroupEnrichment(
+	ctx context.Context, orgUID string, incidents []*models.Incident,
+	enrichment *incidentEnrichment, checkUIDSet map[string]struct{},
+) {
+	var groupIncidentUIDs []string
+
+	groupUIDSet := make(map[string]struct{})
 	for _, inc := range incidents {
-		if _, exists := checkMap[inc.CheckUID]; exists {
-			continue
-		}
-		check, err := s.db.GetCheck(ctx, orgUID, inc.CheckUID)
-		if err == nil {
-			checkMap[inc.CheckUID] = check
+		if inc.CheckGroupUID != nil {
+			groupIncidentUIDs = append(groupIncidentUIDs, inc.UID)
+			groupUIDSet[*inc.CheckGroupUID] = struct{}{}
 		}
 	}
 
-	return checkMap
+	if len(groupIncidentUIDs) == 0 {
+		return
+	}
+
+	membersByIncident, err := s.db.ListIncidentMemberChecksByIncidentUIDs(ctx, groupIncidentUIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list incident members for response", "error", err)
+	} else {
+		enrichment.membersByIncident = membersByIncident
+		for _, members := range membersByIncident {
+			for _, member := range members {
+				checkUIDSet[member.CheckUID] = struct{}{}
+			}
+		}
+	}
+
+	groupUIDs := make([]string, 0, len(groupUIDSet))
+	for uid := range groupUIDSet {
+		groupUIDs = append(groupUIDs, uid)
+	}
+
+	groups, err := s.db.GetCheckGroupsByUIDs(ctx, orgUID, groupUIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to get check groups for response", "error", err)
+	} else {
+		enrichment.groups = groups
+	}
+}
+
+// applyIncidentMembers fills in the Members and CheckGroupSlug fields on a
+// list-page response row purely from pre-loaded enrichment data — no DB
+// calls happen here.
+func applyIncidentMembers(enrichment *incidentEnrichment, inc *models.Incident, resp *IncidentResponse) {
+	if inc.CheckGroupUID == nil {
+		return
+	}
+
+	members := enrichment.membersByIncident[inc.UID]
+	resp.Members = make([]IncidentMemberResponse, 0, len(members))
+
+	for _, member := range members {
+		check := enrichment.checks[member.CheckUID] // nil is fine; memberToResponse tolerates it
+		resp.Members = append(resp.Members, memberToResponse(member, check))
+	}
+
+	if group, ok := enrichment.groups[*inc.CheckGroupUID]; ok {
+		resp.CheckGroupSlug = &group.Slug
+	}
 }
 
 // stringToState converts a string to an incident state.
@@ -1946,8 +2049,10 @@ func (s *Service) ListIncidents(
 		incidents = incidents[:opts.Size]
 	}
 
-	// Build check map if WithCheck is requested
-	checkMap := s.buildCheckMap(ctx, org.UID, incidents, opts.WithCheck)
+	// Batch-load everything the page needs: checks (with=check) and, when
+	// with=members, member rows + their checks + check groups — at most 3
+	// queries total regardless of page size (spec 2026-08-18-01).
+	enrichment := s.buildIncidentEnrichment(ctx, org.UID, incidents, opts.WithCheck, opts.WithMembers)
 
 	// Build response
 	response := &ListIncidentsResponse{
@@ -1961,15 +2066,21 @@ func (s *Service) ListIncidents(
 	for _, inc := range incidents {
 		incResponse := incidentToResponse(inc)
 
-		// Add check details if requested
-		if check, exists := checkMap[inc.CheckUID]; exists {
-			incResponse.Check = checkToResponse(check)
-			incResponse.CheckSlug = check.Slug
-			incResponse.CheckName = check.Name
+		// Add check details if requested. Gated on opts.WithCheck (not just
+		// map presence) because enrichment.checks may also hold entries
+		// fetched purely to resolve member checks under with=members.
+		if opts.WithCheck {
+			if check, exists := enrichment.checks[inc.CheckUID]; exists {
+				incResponse.Check = checkToResponse(check)
+				incResponse.CheckSlug = check.Slug
+				incResponse.CheckName = check.Name
+			}
 		}
 
-		// Populate group members for group incidents.
-		s.loadIncidentMembers(ctx, org.UID, inc, &incResponse)
+		// Populate group members for group incidents, when requested.
+		if opts.WithMembers {
+			applyIncidentMembers(enrichment, inc, &incResponse)
+		}
 
 		response.Data = append(response.Data, incResponse)
 	}
@@ -2016,7 +2127,8 @@ func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, id
 
 // GetIncidentOptions contains options for getting a single incident.
 type GetIncidentOptions struct {
-	WithCheck bool // Include check details in response
+	WithCheck   bool // Include check details in response
+	WithMembers bool // Include group-incident members and checkGroupSlug in response
 }
 
 // GetIncident gets a single incident by UID.
@@ -2049,8 +2161,10 @@ func (s *Service) GetIncident(
 		}
 	}
 
-	// Populate group members for group incidents.
-	s.loadIncidentMembers(ctx, org.UID, incident, &response)
+	// Populate group members for group incidents, when requested.
+	if opts != nil && opts.WithMembers {
+		s.loadIncidentMembers(ctx, org.UID, incident, &response)
+	}
 
 	return &response, nil
 }

@@ -1474,7 +1474,9 @@ func (s *Service) GetCheck(ctx context.Context, orgUID, checkUID string) (*model
 // batched query (absent UIDs — deleted or unknown — simply have no entry).
 // Mirrors GetLabelsForChecks's shape: used to replace one GetCheck call per
 // row with a single IN(...) query for a whole response page.
-func (s *Service) GetChecksByUIDs(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Check, error) {
+func (s *Service) GetChecksByUIDs(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) (map[string]*models.Check, error) {
 	if len(checkUIDs) == 0 {
 		return make(map[string]*models.Check), nil
 	}
@@ -4674,7 +4676,9 @@ func (s *Service) GetCheckGroup(ctx context.Context, orgUID, uid string) (*model
 
 // GetCheckGroupsByUIDs returns the requested check groups keyed by UID, in a
 // single batched query (absent UIDs simply have no entry).
-func (s *Service) GetCheckGroupsByUIDs(ctx context.Context, orgUID string, groupUIDs []string) (map[string]*models.CheckGroup, error) {
+func (s *Service) GetCheckGroupsByUIDs(
+	ctx context.Context, orgUID string, groupUIDs []string,
+) (map[string]*models.CheckGroup, error) {
 	if len(groupUIDs) == 0 {
 		return make(map[string]*models.CheckGroup), nil
 	}

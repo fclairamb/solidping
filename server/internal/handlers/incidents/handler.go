@@ -112,8 +112,11 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 func applyListIncidentsExtras(query url.Values, opts *ListIncidentsOptions) {
 	if v := query.Get("with"); v != "" {
 		for _, w := range strings.Split(v, ",") {
-			if w == "check" {
+			switch w {
+			case "check":
 				opts.WithCheck = true
+			case "members":
+				opts.WithMembers = true
 			}
 		}
 	}
@@ -132,12 +135,15 @@ func (h *Handler) GetIncident(writer http.ResponseWriter, req *http.Request) err
 	orgSlug := httpx.Param(req, "org")
 	incidentUID := httpx.Param(req, "uid")
 
-	// Parse with parameter (e.g., ?with=check)
+	// Parse with parameter (e.g., ?with=check,members)
 	opts := &GetIncidentOptions{}
 	if withParam := req.URL.Query().Get("with"); withParam != "" {
 		for _, w := range strings.Split(withParam, ",") {
-			if w == "check" {
+			switch w {
+			case "check":
 				opts.WithCheck = true
+			case "members":
+				opts.WithMembers = true
 			}
 		}
 	}

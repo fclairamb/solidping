@@ -33,7 +33,9 @@ Query parameters:
 - `state` - comma-separated states (e.g., `open`, `resolved`)
 - `since` - RFC3339 timestamp
 - `until` - RFC3339 timestamp
-- `with` - comma-separated: `check`
+- `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`;
+  both are opt-in — omitted by default, and the default response costs zero extra
+  member/group queries)
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
@@ -45,7 +47,7 @@ ignoring `limit`/`cursor` — not the org-wide incident count.
 Get a single incident. Auth: required
 
 Query parameters:
-- `with` - comma-separated: `check`
+- `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`)
 
 ### GET /api/v1/orgs/:org/incidents/:uid/events
 List events for a specific incident. Auth: required

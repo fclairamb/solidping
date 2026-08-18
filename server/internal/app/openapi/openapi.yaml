@@ -1969,7 +1969,10 @@ paths:
             maximum: 100
         - name: with
           in: query
-          description: Comma-separated optional fields to include (e.g., "check")
+          description: >-
+            Comma-separated optional fields to include: "check", "members"
+            (members also adds checkGroupSlug). Both are opt-in — the default
+            response includes neither and costs no extra query for them.
           schema:
             type: string
           example: "check"
