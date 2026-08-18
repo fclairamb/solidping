@@ -444,6 +444,44 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           </div>
         </div>
       );
+    case "matrix":
+      return (
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="ch-matrix-homeserver">
+              {t("form.matrixHomeserver", "Homeserver URL")}
+            </Label>
+            <Input
+              id="ch-matrix-homeserver"
+              type="url"
+              value={(settings.homeserverUrl as string) || ""}
+              onChange={(e) => update("homeserverUrl", e.target.value)}
+              placeholder="https://matrix.org"
+            />
+          </div>
+          <SecretPanel
+            id="ch-matrix-token"
+            label={t("form.matrixAccessToken", "Access token")}
+            value={(settings.accessToken as string) || ""}
+            onChange={(v) => update("accessToken", v)}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="ch-matrix-room">{t("form.matrixRoom", "Room")}</Label>
+            <Input
+              id="ch-matrix-room"
+              value={(settings.roomId as string) || ""}
+              onChange={(e) => update("roomId", e.target.value)}
+              placeholder="!abcdef:matrix.org"
+            />
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "form.matrixRoomHint",
+                "Room ID (!room:server) or alias (#room:server). Invite the bot to the room first.",
+              )}
+            </p>
+          </div>
+        </div>
+      );
     case "pushover":
       return (
         <div className="space-y-3">

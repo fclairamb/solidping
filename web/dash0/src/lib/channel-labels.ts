@@ -29,6 +29,7 @@ const TRANSLATED_CHANNELS = new Set([
   "googlechat",
   "mattermost",
   "ntfy",
+  "matrix",
   "opsgenie",
   "pushover",
   "slack",

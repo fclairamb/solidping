@@ -72,6 +72,7 @@
     "googlechat": "Google Chat",
     "mattermost": "Mattermost",
     "ntfy": "ntfy",
+    "matrix": "Matrix",
     "opsgenie": "Opsgenie",
     "pushover": "Pushover",
     "slack": "Slack",

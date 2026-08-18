@@ -20,6 +20,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Google Chat | Available | Webhook |
 | Mattermost | Available | Webhook |
 | ntfy | Available | HTTP push |
+| Matrix | Available | Client-Server API |
 | Opsgenie | Available | API integration |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
@@ -440,6 +441,45 @@ Add a ntfy connection in SolidPing with:
 # Subscribe to notifications
 ntfy subscribe solidping-alerts
 ```
+
+## Matrix
+
+[Matrix](https://matrix.org) is an open, decentralized chat protocol — the standard for
+self-hosted chat (Element, Synapse, Conduit, beeper). SolidPing sends notifications as a
+dedicated bot user posting into a room, via the Matrix Client-Server API — no bridge or
+generic webhook needed.
+
+### Configuration
+
+Add a Matrix connection in SolidPing with:
+- **Homeserver URL**: the base URL of the bot account's homeserver (e.g. `https://matrix.org`,
+  or your self-hosted Synapse/Conduit instance). A trailing slash is fine.
+- **Access token**: the bot/dedicated user's access token. Treated as a secret — stored
+  encrypted, never shown again after you save it.
+- **Room**: the room ID (`!abcdef:matrix.org`) or alias (`#alerts:matrix.org`) to post into.
+  The bot account must already be invited to and have joined the room — SolidPing does not
+  auto-join.
+
+### Creating a bot user and access token
+
+1. Register a dedicated account for SolidPing on your homeserver (don't reuse a personal
+   account — the access token can post as that user indefinitely).
+2. Get an access token for that account, either:
+   - In [Element](https://element.io): sign in as the bot user, then go to
+     **Settings → Help & About → Advanced → Access Token**, or
+   - Via the API: `POST /_matrix/client/v3/login` with the bot's credentials, which returns
+     an `access_token` in the response.
+3. Find the room ID: in Element, open the room, go to **Room settings → Advanced**, and copy
+   the internal room ID (starts with `!`). A room alias (starts with `#`) also works —
+   SolidPing resolves it to the current room ID on every send.
+4. Invite the bot account to the room and accept the invite as the bot (join it) — SolidPing
+   only posts into rooms the bot is already a member of.
+
+### Limitations
+
+- End-to-end encrypted rooms are not supported (posting into one would require a full Matrix
+  crypto SDK). Use an unencrypted room for alerts.
+- SolidPing does not auto-join a room on invite — join it manually as the bot account first.
 
 ## Opsgenie
 
