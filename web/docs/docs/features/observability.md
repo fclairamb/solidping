@@ -71,13 +71,13 @@ SP_SENTRY_DSN=https://your-key@sentry.io/your-project
 SP_SENTRY_ENVIRONMENT=production
 ```
 
-Additional tuning such as the traces sample rate and debug logging is available through the `sentry` section of `config.yml`:
+Additional tuning such as the traces sample rate and debug logging is available through the `sentry` section of `config.yml`, or via `SP_SENTRY_TRACES_SAMPLE_RATE` / `SP_SENTRY_DEBUG`:
 
 ```yaml
 sentry:
   dsn: https://your-key@sentry.io/your-project
   environment: production
-  traces_sample_rate: 0.1   # 0.0 to 1.0
+  traces_sample_rate: 0.0   # 0.0 to 1.0, default 0.0 (errors/panics are always captured at 100%; this only controls transaction/performance sampling, which duplicates the OpenTelemetry tracing above for a self-hostable product)
   debug: false
 ```
 
