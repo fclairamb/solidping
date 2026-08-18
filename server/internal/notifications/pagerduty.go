@@ -30,6 +30,20 @@ const (
 
 	// pagerdutyLinkText labels the incident-page link sent in every trigger.
 	pagerdutyLinkText = "View incident in SolidPing"
+
+	// pagerdutyFieldRoutingKey is the Events API v2 request's top-level
+	// routing_key field name (distinct from the pagerdutySettings.RoutingKey
+	// Go field it carries — same JSON key as the connection's own secret
+	// settings field, "routing_key").
+	pagerdutyFieldRoutingKey = "routing_key"
+
+	// ResultStatus string forms (models.StatusToString) recorded on an
+	// incident's failure snapshot, used to derive a PagerDuty severity.
+	resultStatusStrDown     = "DOWN"
+	resultStatusStrTimeout  = "TIMEOUT"
+	resultStatusStrError    = "ERROR"
+	resultStatusStrWarning  = "WARNING"
+	resultStatusStrDegraded = "DEGRADED"
 )
 
 var (
@@ -47,7 +61,21 @@ var (
 // PagerDutySender sends notifications via the PagerDuty Events API v2 ONLY
 // (`POST https://events.pagerduty.com/v2/enqueue`) — no OAuth, no REST API
 // v2, no schedule import. See spec 2026-08-19-02.
-type PagerDutySender struct{}
+type PagerDutySender struct {
+	// EventsURL overrides the Events API v2 endpoint for tests. Empty = the
+	// real pagerdutyEventsURL. Mirrors TwilioSender.BaseURL.
+	EventsURL string
+}
+
+// eventsURL returns EventsURL when set (tests), otherwise the real
+// PagerDuty Events API v2 endpoint.
+func (s *PagerDutySender) eventsURL() string {
+	if s.EventsURL != "" {
+		return s.EventsURL
+	}
+
+	return pagerdutyEventsURL
+}
 
 // Send sends a notification to PagerDuty.
 func (s *PagerDutySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
@@ -75,7 +103,7 @@ func (s *PagerDutySender) Send(ctx context.Context, _ *jobdef.JobContext, payloa
 }
 
 type pagerdutySettings struct {
-	RoutingKey string `json:"routing_key"`
+	RoutingKey string `json:"routing_key"` //nolint:tagliatelle // matches the settings JSONB / dashboard form key
 }
 
 func (s *PagerDutySender) parseSettings(payload *Payload) (*pagerdutySettings, error) {
@@ -105,8 +133,8 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 	}
 
 	event := map[string]any{
-		"routing_key":  settings.RoutingKey,
-		"event_action": pagerdutyEventActionTrigger,
+		pagerdutyFieldRoutingKey: settings.RoutingKey,
+		"event_action":           pagerdutyEventActionTrigger,
 		// dedup_key = incident UID, so trigger/resolve (and any future
 		// trigger for the same incident) all correlate to ONE PagerDuty
 		// incident across its whole lifecycle.
@@ -140,10 +168,10 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 
 func (s *PagerDutySender) resolve(ctx context.Context, settings *pagerdutySettings, payload *Payload) error {
 	event := map[string]any{
-		"routing_key":  settings.RoutingKey,
-		"event_action": pagerdutyEventActionResolve,
-		"dedup_key":    payload.Incident.UID,
-		"client":       productName,
+		pagerdutyFieldRoutingKey: settings.RoutingKey,
+		"event_action":           pagerdutyEventActionResolve,
+		"dedup_key":              payload.Incident.UID,
+		"client":                 productName,
 	}
 
 	return s.doRequest(ctx, event)
@@ -179,11 +207,11 @@ func pagerdutyLinks(payload *Payload) []map[string]string {
 // the incident.
 func pagerdutySeverity(incident *models.Incident) string {
 	switch latestFailureStatus(incident) {
-	case "DOWN":
+	case resultStatusStrDown:
 		return pagerdutySeverityCritical
-	case "TIMEOUT", "ERROR":
+	case resultStatusStrTimeout, resultStatusStrError:
 		return pagerdutySeverityError
-	case "WARNING", "DEGRADED":
+	case resultStatusStrWarning, resultStatusStrDegraded:
 		return pagerdutySeverityWarning
 	default:
 		// Includes a missing/unrecognized snapshot: favor the least alarming
@@ -223,7 +251,7 @@ func (s *PagerDutySender) doRequest(ctx context.Context, event map[string]any) e
 		return fmt.Errorf("marshaling pagerduty payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pagerdutyEventsURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.eventsURL(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating pagerduty request: %w", err)
 	}
