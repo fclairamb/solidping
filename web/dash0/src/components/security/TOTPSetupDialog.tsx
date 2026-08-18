@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import QRCode from "qrcode";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,8 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
   const { t } = useTranslation(["account", "common"]);
   const [step, setStep] = useState<"setup" | "verify" | "recovery">("setup");
   const [secret, setSecret] = useState("");
-  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [otpauthUri, setOtpauthUri] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,12 +44,33 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
     setLoading(true);
     setup2FA()
       .then((resp) => {
+        if (!resp.secret && !resp.uri) {
+          setError(t("account:security.totp.setupFailed"));
+          return;
+        }
         setSecret(resp.secret);
-        setQrCodeUrl(resp.qrCodeUrl);
+        setOtpauthUri(resp.uri);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "failed"))
       .finally(() => setLoading(false));
-  }, [open, step]);
+  }, [open, step, t]);
+
+  // Render the otpauth URI as a QR code entirely client-side — no network
+  // request may leave the page with the TOTP seed.
+  useEffect(() => {
+    if (!otpauthUri) return;
+    let cancelled = false;
+    QRCode.toDataURL(otpauthUri, { width: 200, margin: 1 })
+      .then((dataUrl) => {
+        if (!cancelled) setQrDataUrl(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [otpauthUri]);
 
   const onConfirm = async () => {
     setLoading(true);
@@ -81,7 +104,8 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
           setStep("setup");
           setCode("");
           setSecret("");
-          setQrCodeUrl("");
+          setOtpauthUri("");
+          setQrDataUrl("");
           setRecoveryCodes([]);
           onComplete();
         }}
@@ -110,19 +134,21 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
           </div>
         )}
 
-        {!loading && qrCodeUrl && (
+        {!loading && step === "setup" && secret && (
           <div className="space-y-4">
-            <div className="flex justify-center">
-              {/* The server returns an otpauth:// URI; render it as a QR via a
-                  public renderer. For dev simplicity we use api.qrserver.com;
-                  self-hosted operators can replace this with an offline lib. */}
-              <img
-                data-testid="2fa-qr-code"
-                alt="otpauth QR"
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUrl)}`}
-                className="rounded border"
-              />
-            </div>
+            {qrDataUrl && (
+              <div className="flex justify-center">
+                {/* Rendered fully client-side from the otpauth:// URI (the
+                    `qrcode` package) — no network request ever carries the
+                    TOTP seed off the page. */}
+                <img
+                  data-testid="2fa-qr-code"
+                  alt="otpauth QR"
+                  src={qrDataUrl}
+                  className="rounded border"
+                />
+              </div>
+            )}
             <div className="space-y-1">
               <Label>{t("account:security.totp.manualSecret")}</Label>
               <div className="flex items-center gap-2">

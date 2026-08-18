@@ -5,7 +5,7 @@ import { apiFetch } from "./client";
 // confirm, and we hand back recovery codes.
 export interface Setup2FAResponse {
   secret: string;
-  qrCodeUrl: string;
+  uri: string;
 }
 
 export interface Confirm2FAResponse {

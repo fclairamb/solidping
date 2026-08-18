@@ -131,7 +131,8 @@
       "savedCheck": "I have saved these codes in a safe place.",
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
-      "disableSubtitle": "Enter a current 6-digit code to confirm."
+      "disableSubtitle": "Enter a current 6-digit code to confirm.",
+      "setupFailed": "Unable to set up two-factor authentication. Try again."
     }
   },
   "organizations": {
