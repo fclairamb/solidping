@@ -69,6 +69,12 @@ type Config struct {
 	// Reset deletes the database file before creating (only for test/demo run modes)
 	Reset bool
 
+	// GuardMode controls the migration guard's behavior on a checksum
+	// mismatch: migrationguard.ModeStrict (default, fails boot) or
+	// migrationguard.ModeWarn (logs and continues). The zero value behaves as
+	// ModeStrict.
+	GuardMode migrationguard.Mode
+
 	// SlowQueryThreshold logs a successful query at WARN once it takes at
 	// least this long (see internal/db/sloghook). 0 disables slow-query
 	// logging.
@@ -77,8 +83,9 @@ type Config struct {
 
 // Service implements db.Service for SQLite.
 type Service struct {
-	db      *bun.DB
-	dataDir string
+	db        *bun.DB
+	dataDir   string
+	guardMode migrationguard.Mode
 
 	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
 	// rollup upsert and before the source delete. It exists only so same-package
@@ -186,8 +193,9 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	prommetrics.RegisterDB(sqldb, backendLabel)
 
 	return &Service{
-		db:      bunDB,
-		dataDir: cfg.DataDir,
+		db:        bunDB,
+		dataDir:   cfg.DataDir,
+		guardMode: cfg.GuardMode,
 	}, nil
 }
 
@@ -281,19 +289,44 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to init migrator: %w", err)
 	}
 
-	if err := guard.Reconcile(ctx); err != nil {
+	mismatches, err := guard.Reconcile(ctx, s.guardMode)
+	if err != nil {
 		return err
 	}
+
+	if applyErr := s.guardMode.Apply(mismatches); applyErr != nil {
+		return applyErr
+	}
+
+	migrationguard.LogMismatches(ctx, mismatches)
 
 	if _, err := migrator.Migrate(ctx); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	if err := guard.Reconcile(ctx); err != nil {
+	mismatches, err = guard.Reconcile(ctx, s.guardMode)
+	if err != nil {
 		return err
 	}
 
+	if applyErr := s.guardMode.Apply(mismatches); applyErr != nil {
+		return applyErr
+	}
+
 	return nil
+}
+
+// RepairMigrationChecksums re-records checksums for every applied migration
+// this binary ships — inserting a missing row or updating a drifted one to
+// the current file checksum — without running any migration. Used by the
+// `solidping migrate repair` CLI command; see internal/db/migrationguard.
+func (s *Service) RepairMigrationChecksums(ctx context.Context) ([]migrationguard.RepairResult, error) {
+	guard, err := newMigrationGuard(s.db)
+	if err != nil {
+		return nil, err
+	}
+
+	return guard.Repair(ctx)
 }
 
 // newMigrationGuard builds the checksum guard over the embedded SQL migrations.

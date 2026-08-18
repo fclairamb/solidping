@@ -73,6 +73,14 @@ type Config struct {
 	// Reset drops all tables before running migrations (only for test/demo run modes)
 	Reset bool
 
+	// GuardMode controls the migration guard's behavior on a checksum
+	// mismatch: migrationguard.ModeStrict (default, fails boot) or
+	// migrationguard.ModeWarn (logs and continues). The zero value behaves as
+	// ModeStrict. Not threaded through the Embedded branch's positional
+	// NewEmbedded — New sets it on the returned Service afterward instead, so
+	// NewEmbedded's signature (and its other test callers) stays unchanged.
+	GuardMode migrationguard.Mode
+
 	// Connection-pool bounds. Zero values leave database/sql's defaults
 	// (MaxOpenConns unlimited, MaxIdleConns 2, no lifetime), so an unset config
 	// behaves exactly as before.
@@ -156,10 +164,11 @@ func checkRoleConnLimitHeadroom(ctx context.Context, bunDB *bun.DB, maxOpenConns
 
 // Service implements db.Service for PostgreSQL.
 type Service struct {
-	db       *bun.DB
-	embedded *embeddedpg.Instance
-	reset    bool   // Reset database before migrations
-	runMode  string // Run mode (test, demo, etc.)
+	db        *bun.DB
+	embedded  *embeddedpg.Instance
+	reset     bool   // Reset database before migrations
+	runMode   string // Run mode (test, demo, etc.)
+	guardMode migrationguard.Mode
 
 	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
 	// rollup upsert and before the source delete. It exists only so same-package
@@ -184,7 +193,17 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 			suite = "app"
 		}
 
-		return NewEmbedded(ctx, suite, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset, cfg.SlowQueryThreshold)
+		svc, err := NewEmbedded(ctx, suite, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset, cfg.SlowQueryThreshold)
+		if err != nil {
+			return nil, err
+		}
+
+		// NewEmbedded's signature is shared with several test callers that
+		// all want the strict default, so GuardMode travels via the returned
+		// Service instead of an extra positional parameter.
+		svc.guardMode = cfg.GuardMode
+
+		return svc, nil
 	}
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
@@ -204,9 +223,10 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 	checkRoleConnLimitHeadroom(ctx, bunDB, cfg.MaxOpenConns)
 
 	return &Service{
-		db:      bunDB,
-		reset:   cfg.Reset,
-		runMode: cfg.RunMode,
+		db:        bunDB,
+		reset:     cfg.Reset,
+		runMode:   cfg.RunMode,
+		guardMode: cfg.GuardMode,
 	}, nil
 }
 
@@ -269,12 +289,10 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to discover migrations: %w", err)
 	}
 
-	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
+	guard, err := newMigrationGuard(s.db)
 	if err != nil {
-		return fmt.Errorf("failed to checksum migrations: %w", err)
+		return err
 	}
-
-	guard := migrationguard.New(s.db, expected)
 
 	migrator := migrate.NewMigrator(s.db, migrations)
 	if err := migrator.Init(ctx); err != nil {
@@ -284,20 +302,55 @@ func (s *Service) Initialize(ctx context.Context) error {
 	// Verify (and, on a database that predates the guard, backfill) what is
 	// already applied BEFORE migrating: a migration rewritten after it was
 	// applied must fail the boot, not be silently skipped (spec 2026-08-18-02).
-	if err := guard.Reconcile(ctx); err != nil {
+	mismatches, err := guard.Reconcile(ctx, s.guardMode)
+	if err != nil {
 		return err
 	}
+
+	if applyErr := s.guardMode.Apply(mismatches); applyErr != nil {
+		return applyErr
+	}
+
+	migrationguard.LogMismatches(ctx, mismatches)
 
 	if _, err := migrator.Migrate(ctx); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	// Record what this boot just applied.
-	if err := guard.Reconcile(ctx); err != nil {
+	mismatches, err = guard.Reconcile(ctx, s.guardMode)
+	if err != nil {
 		return err
 	}
 
+	if applyErr := s.guardMode.Apply(mismatches); applyErr != nil {
+		return applyErr
+	}
+
 	return nil
+}
+
+// newMigrationGuard builds the checksum guard over the embedded SQL migrations.
+func newMigrationGuard(db *bun.DB) (*migrationguard.Guard, error) {
+	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
+	}
+
+	return migrationguard.New(db, expected), nil
+}
+
+// RepairMigrationChecksums re-records checksums for every applied migration
+// this binary ships — inserting a missing row or updating a drifted one to
+// the current file checksum — without running any migration. Used by the
+// `solidping migrate repair` CLI command; see internal/db/migrationguard.
+func (s *Service) RepairMigrationChecksums(ctx context.Context) ([]migrationguard.RepairResult, error) {
+	guard, err := newMigrationGuard(s.db)
+	if err != nil {
+		return nil, err
+	}
+
+	return guard.Repair(ctx)
 }
 
 // resetDatabase drops all tables in the database.

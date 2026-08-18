@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -62,6 +63,11 @@ type ListIncidentNotificationsFilter struct {
 type Service interface {
 	// Initialize sets up the database schema (runs migrations)
 	Initialize(ctx context.Context) error
+
+	// RepairMigrationChecksums re-records checksums for every applied
+	// migration this binary ships, without running any migration. Backs the
+	// `solidping migrate repair` CLI command; see internal/db/migrationguard.
+	RepairMigrationChecksums(ctx context.Context) ([]migrationguard.RepairResult, error)
 
 	// DB returns the underlying bun.DB instance for direct queries
 	DB() *bun.DB
