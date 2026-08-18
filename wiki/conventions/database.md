@@ -73,21 +73,48 @@ checksum recorded in the `migration_checksums` side table:
 - **No record** (a database that predates the guard) → the checksum is
   backfilled and the boot proceeds. Existing healthy databases never trip it.
 - **Record matches** → normal boot.
-- **Record differs** → startup **fails** with an error naming the migration,
-  both checksums, and the two repair routes.
+- **Record differs** → what happens depends on the guard mode (below).
 
 Only the `.up.sql` half is hashed: a `.down.sql` never runs during a forward
 boot, so editing one cannot desync an applied schema. A Go migration would
 have no file to hash; `migrationguard.New` accepts declared checksums for
 that case (no current occupant).
 
+### Guard mode: `strict` (default) or `warn`
+
+`db.migration_guard_mode` / `SP_DB_MIGRATION_GUARD_MODE` (**multi-word koanf
+key — read by the manual `applyMigrationGuardModeEnv` reader, not the
+automatic env loader**, same quirk as `db.slow_query_threshold`) picks the
+behavior on a checksum mismatch:
+
+- **`strict`** (the default, and the only mode production should run) —
+  startup **fails** with an error naming the migration, both checksums, and
+  the repair options. Nothing is written to `migration_checksums` while any
+  mismatch exists, not even for an unrelated migration awaiting its first
+  checksum — a database that is already diverged must not have its record
+  quietly updated.
+- **`warn`** — the mismatch is logged (`slog.WarnContext`, once per boot) and
+  the boot continues. `make dev` / `make dev-test` / `make dev-saas` always run
+  this way (set in the root `Makefile`), because editing a comment in an
+  already-applied migration during local development is common and must not
+  brick the dev database. Warn mode still backfills any migration with no
+  recorded checksum at all, even while another migration mismatches — only the
+  mismatched row's own checksum is protected from being overwritten, in both
+  modes, which is what makes the warning recur every boot until someone
+  repairs deliberately.
+
 ### Repairing a database the guard rejects
 
-1. **Development** — reset it. `SP_DB_RESET=true` in test/demo run mode, or
-   delete the SQLite file. This is almost always the right answer.
-2. **Otherwise** — apply the missing statements by hand, then reconcile the
-   record with the `UPDATE migration_checksums SET checksum = '<current>' WHERE
-   name = '<NNN>';` statement the error message prints verbatim.
+1. **Cosmetic edit** (comment/whitespace only in an already-applied
+   migration) — run `solidping migrate repair`. It re-records checksums for
+   every applied migration this binary ships (inserting a missing row or
+   updating a drifted one to the current file's checksum) **without running
+   any migration** — it only ever touches `migration_checksums`.
+2. **Development** — reset the database (`SP_DB_RESET=true` in test/demo run
+   mode, or delete the SQLite file), or run with
+   `SP_DB_MIGRATION_GUARD_MODE=warn` to boot anyway.
+3. **Otherwise** — apply the missing statements by hand, then run
+   `solidping migrate repair`.
 
 The correct *prevention* is never to edit an applied migration: add a new
 numbered one instead, written to be idempotent so it is a no-op on databases

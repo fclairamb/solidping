@@ -88,6 +88,13 @@ Mechanics worth knowing before you touch an existing file:
 - Rename **both** dialects (`postgres/` and `sqlite/`) and **both** directions
   (`.up.sql`/`.down.sql`) together, and grep for the filename first: migration tests read
   these files by name via `migrationsFS.ReadFile`.
+- Editing an **already-applied** migration in place (renumbering, or rewriting content) is
+  caught at boot by `internal/db/migrationguard`, which checksums every applied `.up.sql`.
+  Default mode `strict` fails the boot on a mismatch; `db.migration_guard_mode` /
+  `SP_DB_MIGRATION_GUARD_MODE=warn` logs and continues instead — the local dev loop
+  (`make dev` / `dev-test` / `dev-saas`) always runs warn. `solidping migrate repair`
+  re-records checksums for applied migrations (no migration runs) to clear a cosmetic-edit
+  mismatch. See `wiki/conventions/database.md` for the full guard/repair writeup.
 - **`internal/middleware/`**: Authentication, CORS, logging, and organization context
 - **`internal/config/`**: Configuration management using koanf (YAML + environment variables)
 
