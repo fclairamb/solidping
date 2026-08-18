@@ -37,6 +37,46 @@ Bun's migration discovery regex (`[0-9a-z_\-]` only) does **not** allow dots. Us
 
 Migrations already shipped in a released version (`vX.Y.Z` git tag) are **frozen and never rewritten**. Only add new files for new releases.
 
+## Integrity guard: an applied migration is frozen too
+
+The freeze rule above is about *released* migrations. The trap is the pending
+one: bun keys an applied migration on its **numeric prefix alone**, so editing
+`013_v0_16_0.up.sql` after a dev loop has already run an earlier draft of it
+does **not** re-run it. The new statements never execute, `bun_migrations` keeps
+claiming 013 is applied, and the database silently lacks whatever the rewrite
+added. That has bitten this repository twice — most recently as a missing
+`workers.capabilities` column that 404'd region resolution and stopped check
+scheduling for two days (spec 2026-08-18-02).
+
+`internal/db/migrationguard` makes that loud. On every boot, before migrating,
+it compares a SHA-256 of each applied migration's `.up.sql` against the
+checksum recorded in the `migration_checksums` side table:
+
+- **No record** (a database that predates the guard) → the checksum is
+  backfilled and the boot proceeds. Existing healthy databases never trip it.
+- **Record matches** → normal boot.
+- **Record differs** → startup **fails** with an error naming the migration,
+  both checksums, and the two repair routes.
+
+Only the `.up.sql` half is hashed: a `.down.sql` never runs during a forward
+boot, so editing one cannot desync an applied schema. Go migrations have no
+file to hash and declare their checksum instead (see
+`sqlite/gomigrations`).
+
+### Repairing a database the guard rejects
+
+1. **Development** — reset it. `SP_DB_RESET=true` in test/demo run mode, or
+   delete the SQLite file. This is almost always the right answer.
+2. **Otherwise** — apply the missing statements by hand, then reconcile the
+   record with the `UPDATE migration_checksums SET checksum = '<current>' WHERE
+   name = '<NNN>';` statement the error message prints verbatim.
+
+The correct *prevention* is never to edit an applied migration: add a new
+numbered one instead, written to be idempotent so it is a no-op on databases
+that already got the DDL. `014_v0_17_0` is the worked example — it re-applies
+013's DDL, guarded per-object, so a desynced database and a correctly-migrated
+one end up schema-identical.
+
 ## Development workflow
 
 During a release cycle developers add scratch migrations as needed (e.g., `002_add_foo.up.sql`). At release time:
