@@ -23,6 +23,9 @@ func TestResultStatusIsLifecycleMarker(t *testing.T) {
 		{WireStatusError, ResultStatusError, false},
 		{WireStatusDegraded, ResultStatusDegraded, false},
 		{WireStatusWarning, ResultStatusWarning, false},
+		// Abandoned is terminal, not a lifecycle marker — it is excluded from
+		// availability by ExcludedFromAvailability's other arm, not this one.
+		{WireStatusAbandoned, ResultStatusAbandoned, false},
 	}
 
 	for _, tt := range tests {
@@ -52,6 +55,9 @@ func TestResultStatusCountsAsUp(t *testing.T) {
 		{WireStatusDegraded, ResultStatusDegraded, false},
 		// Warning is "up with something to report" — counts as up.
 		{WireStatusWarning, ResultStatusWarning, true},
+		// Abandoned is not up. It is not down either — it is excluded from the
+		// denominator entirely, which is ExcludedFromAvailability's job.
+		{WireStatusAbandoned, ResultStatusAbandoned, false},
 	}
 
 	for _, tt := range tests {
@@ -60,6 +66,22 @@ func TestResultStatusCountsAsUp(t *testing.T) {
 			require.New(t).Equal(tt.want, tt.status.CountsAsUp())
 		})
 	}
+}
+
+// TestStatusToStringCoversAbandoned pins the wire/diagnostic name of the
+// reaper-minted status. incidents' resultSnapshot stores this string on an
+// incident, where it outlives the raw row itself, so an unmapped 9 would
+// silently become "UNKNOWN" in the only surviving record of what happened.
+func TestStatusToStringCoversAbandoned(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.Equal("ABANDONED", StatusToString(int(ResultStatusAbandoned)))
+	// Controls: the neighbouring values are unchanged, and an unknown value
+	// still falls through.
+	r.Equal("ERROR", StatusToString(int(ResultStatusError)))
+	r.Equal("WARNING", StatusToString(int(ResultStatusWarning)))
+	r.Equal("UNKNOWN", StatusToString(99))
 }
 
 func TestRawAvailability(t *testing.T) {
@@ -195,6 +217,38 @@ func TestResultExcludedFromAvailability(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.New(t).Equal(tt.want, tt.result.ExcludedFromAvailability())
+		})
+	}
+}
+
+// TestResultStatusExcludedFromAvailability covers the status-level predicate
+// the three availability surfaces (hour rollup, uptimebar union, availability
+// service) share. It is the whole enum, on purpose: the exclusion set must
+// stay exactly {created, running, abandoned} — any other status silently
+// joining it would remove real measurements from every customer's uptime.
+func TestResultStatusExcludedFromAvailability(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		status ResultStatus
+		want   bool
+	}{
+		{WireStatusCreated, ResultStatusCreated, true},
+		{WireStatusRunning, ResultStatusRunning, true},
+		{WireStatusAbandoned, ResultStatusAbandoned, true},
+		{WireStatusUp, ResultStatusUp, false},
+		{WireStatusDown, ResultStatusDown, false},
+		{WireStatusTimeout, ResultStatusTimeout, false},
+		{WireStatusError, ResultStatusError, false},
+		{WireStatusDegraded, ResultStatusDegraded, false},
+		{WireStatusWarning, ResultStatusWarning, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.New(t).Equal(tt.want, tt.status.ExcludedFromAvailability())
 		})
 	}
 }

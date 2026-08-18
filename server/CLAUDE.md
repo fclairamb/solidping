@@ -182,7 +182,7 @@ Mechanics worth knowing before you touch an existing file:
 
 Raw-only fields (period_type = 'raw'):
 - `worker_uid` - Worker that executed the check
-- `status` - 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error
+- `status` - 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error, 8=warning, 9=abandoned (7=degraded is aggregated-only). 9 is server-minted by the abandoned-result reaper and, like the created/running lifecycle markers, is excluded from every availability calculation — see `models.ResultStatus.ExcludedFromAvailability`
 - `duration` (float32) - Response time
 - `metrics` (jsonb) - Per-execution metrics (the HTTP checker leaves this NULL — response time lives in `duration`)
 - `output` (jsonb) - Detailed results and error messages

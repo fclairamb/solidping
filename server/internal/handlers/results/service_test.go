@@ -198,6 +198,25 @@ func TestMapStatusStringsToInts(t *testing.T) {
 				int(models.ResultStatusRunning), int(models.ResultStatusCreated),
 			},
 		},
+		{
+			name:         "abandoned status is filterable on its own",
+			statusStrs:   []string{"abandoned"},
+			expectedInts: []int{int(models.ResultStatusAbandoned)},
+		},
+		{
+			// The load-bearing negative control for spec 2026-08-18-10: an
+			// abandoned attempt is precisely NOT downtime, so `?status=down`
+			// must keep excluding it exactly as availability does. The
+			// positive half sits right above: down still expands to the three
+			// genuine failure statuses.
+			name:       "down never expands to abandoned",
+			statusStrs: []string{"down"},
+			expectedInts: []int{
+				int(models.ResultStatusDown),
+				int(models.ResultStatusTimeout),
+				int(models.ResultStatusError),
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -249,6 +268,11 @@ func TestStatusIntToString(t *testing.T) {
 		{"status 4 (down)", intPtr(int(models.ResultStatusDown)), "down"},
 		{"status 5 (timeout)", intPtr(int(models.ResultStatusTimeout)), "down"},
 		{"status 6 (error)", intPtr(int(models.ResultStatusError)), "down"},
+		{"status 8 (warning)", intPtr(int(models.ResultStatusWarning)), "warning"},
+		// Abandoned renders as its own neutral state, NOT as "down": it is
+		// excluded from availability, so calling it downtime on the timeline
+		// would contradict the percentage next to it (spec 2026-08-18-10).
+		{"status 9 (abandoned)", intPtr(int(models.ResultStatusAbandoned)), "abandoned"},
 		{"invalid status -1", intPtr(-1), "unknown"},
 		{"invalid status 99", intPtr(99), "unknown"},
 	}

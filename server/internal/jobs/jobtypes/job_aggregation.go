@@ -943,7 +943,7 @@ func processRawResult(
 	// this is the hour rollup's half of the shared
 	// models.Result.ExcludedFromAvailability contract.
 	//
-	// Note this is deliberately narrower than measurableSourceUIDs below,
+	// This is deliberately narrower than measurableSourceUIDs below,
 	// which does NOT skip an abandoned row: contributing nothing to the stats
 	// and being deletable once rolled up are different questions, and an
 	// abandoned row is still an ordinary retention candidate.

@@ -344,6 +344,46 @@ func TestCalculateStatusDuration(t *testing.T) {
 		r.False(ok)
 	})
 
+	t.Run("abandoned newest row is skipped, not read as the current status", func(t *testing.T) {
+		t.Parallel()
+
+		// Spec 2026-08-18-10: the reaper's row means OUR worker died, not that
+		// the target went down. The badge must fall through it to the last
+		// real observation — under the previous encoding this row carried
+		// status=error and the badge announced a fake outage.
+		abandoned := int(models.ResultStatusAbandoned)
+		results := []*models.Result{
+			{Status: &abandoned, PeriodStart: now.Add(-1 * time.Minute)},
+			{Status: &statusUp, PeriodStart: now.Add(-6 * time.Minute)},
+		}
+		_, isUp, ok := calculateStatusDuration(results)
+		r.True(ok)
+		r.True(isUp, "the abandoned row must not turn an up check into a down badge")
+
+		// Positive control: the very same shape with a GENUINE error in the
+		// newest slot DOES read as down — proving the skip is specific to
+		// abandoned, not a bug that ignores failures in general.
+		errored := int(models.ResultStatusError)
+		control := []*models.Result{
+			{Status: &errored, PeriodStart: now.Add(-1 * time.Minute)},
+			{Status: &statusUp, PeriodStart: now.Add(-6 * time.Minute)},
+		}
+		_, controlUp, controlOK := calculateStatusDuration(control)
+		r.True(controlOK)
+		r.False(controlUp, "a genuine error must still read as down")
+	})
+
+	t.Run("unknown when only abandoned results", func(t *testing.T) {
+		t.Parallel()
+
+		abandoned := int(models.ResultStatusAbandoned)
+		results := []*models.Result{
+			{Status: &abandoned, PeriodStart: now.Add(-1 * time.Minute)},
+		}
+		_, _, ok := calculateStatusDuration(results)
+		r.False(ok, "a badge with nothing but reaped attempts has no known status")
+	})
+
 	t.Run("duration reflects time since status change", func(t *testing.T) {
 		t.Parallel()
 
