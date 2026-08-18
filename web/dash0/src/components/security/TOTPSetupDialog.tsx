@@ -38,14 +38,20 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sentinel, not a message: resolved through t() at render time so this
+  // effect never depends on `t` (whose identity changes on language switch
+  // / namespace load, which would re-fire the effect and rotate the secret
+  // via a second setup2FA() call).
+  const [setupFailed, setSetupFailed] = useState(false);
 
   useEffect(() => {
     if (!open || step !== "setup") return;
     setLoading(true);
+    setSetupFailed(false);
     setup2FA()
       .then((resp) => {
         if (!resp.secret && !resp.uri) {
-          setError(t("account:security.totp.setupFailed"));
+          setSetupFailed(true);
           return;
         }
         setSecret(resp.secret);
@@ -53,7 +59,7 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
       })
       .catch((err) => setError(err instanceof Error ? err.message : "failed"))
       .finally(() => setLoading(false));
-  }, [open, step, t]);
+  }, [open, step]);
 
   // Render the otpauth URI as a QR code entirely client-side — no network
   // request may leave the page with the TOTP seed.
@@ -121,10 +127,12 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
           <DialogDescription>{t("account:security.totp.setupSubtitle")}</DialogDescription>
         </DialogHeader>
 
-        {error && (
+        {(error || setupFailed) && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>
+              {error ?? t("account:security.totp.setupFailed")}
+            </AlertDescription>
           </Alert>
         )}
 
