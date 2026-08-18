@@ -54,6 +54,24 @@ jobs:
           # present in the embedded FS, so it must exist here too.
           echo '[]' > internal/app/docsres/search-index.json
 
+      # pkg/client/client_generated.go is committed once per batch/release,
+      # not per commit (wiki/conventions/generated-client.md), so it can
+      # legitimately lag internal/app/openapi/openapi.yaml mid-batch — that's
+      # fine on its own. What isn't fine is a regeneration that doesn't
+      # compile: that's a real defect in the openapi change, and it should
+      # fail the PR that introduced it rather than surface at release time
+      # (spec 2026-08-18-08). A byte-diff against the committed file would
+      # false-fail on every legitimate mid-batch commit that touches
+      # openapi.yaml without regenerating, so this checks the one invariant
+      # that actually matters — regenerate here (this doesn't get committed)
+      # and let the build/lint/test steps below run against it, same as they
+      # would against a real regeneration.
+      - name: Regenerate client from current openapi.yaml
+        run: go generate ./pkg/client/...
+
+      - name: Verify the freshly generated client still builds
+        run: go build ./...
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
         with:
