@@ -2255,6 +2255,36 @@ function FeedbackSection() {
           importLine={`import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";`}
         />
 
+        <h3 className="text-sm font-medium">Tinted panel</h3>
+        <p className="text-sm text-muted-foreground">
+          A sub-surface that needs to read as visually distinct from the{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-card</code>{" "}
+          it sits on — never a bare border alone. Neutral content (e.g. the
+          incident timeline entries) uses{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-muted/30</code>;
+          content that IS the error (e.g. the incident detail failure
+          snapshot) uses the destructive tint plus{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>{" "}
+          on the error text itself, so it reads as &quot;this is the
+          error&quot; at a glance. Tokens only, no raw hex, so both stay
+          correct in dark mode.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex w-full max-w-md flex-col gap-2">
+              <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="text-xs text-muted-foreground">Neutral (timeline entries)</div>
+                <div>Use for grouped detail that isn&apos;t itself an error.</div>
+              </div>
+              <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <div className="text-xs text-muted-foreground">Destructive (failure snapshot)</div>
+                <div className="font-mono text-destructive">connect ECONNREFUSED</div>
+              </div>
+            </div>
+          }
+          importLine={`// Neutral\n<div className="rounded-md border bg-muted/30 p-3">...</div>\n\n// Destructive (this IS the error)\n<div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">\n  <div className="font-mono text-destructive">{errorText}</div>\n</div>`}
+        />
+
         <h3 className="text-sm font-medium">Dialog</h3>
         <ExampleRow
           preview={

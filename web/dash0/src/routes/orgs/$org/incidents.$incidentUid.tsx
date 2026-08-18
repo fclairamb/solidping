@@ -1151,10 +1151,12 @@ function FailureSnapshotBlock({
   const errorText = typeof output.error === "string" ? output.error : undefined;
 
   return (
-    <div className="space-y-3 rounded-lg border p-4">
+    <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
       <div className="text-sm font-medium text-muted-foreground">{title}</div>
       {errorText && (
-        <div className="break-words font-mono text-sm">{errorText}</div>
+        <div className="break-words font-mono text-sm text-destructive">
+          {errorText}
+        </div>
       )}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
         <div>
