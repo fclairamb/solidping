@@ -1470,6 +1470,34 @@ func (s *Service) GetCheck(ctx context.Context, orgUID, checkUID string) (*model
 	return check, nil
 }
 
+// GetChecksByUIDs returns the requested checks keyed by UID, in a single
+// batched query (absent UIDs — deleted or unknown — simply have no entry).
+// Mirrors GetLabelsForChecks's shape: used to replace one GetCheck call per
+// row with a single IN(...) query for a whole response page.
+func (s *Service) GetChecksByUIDs(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Check, error) {
+	if len(checkUIDs) == 0 {
+		return make(map[string]*models.Check), nil
+	}
+
+	var checks []*models.Check
+	err := s.db.NewSelect().
+		Model(&checks).
+		Where("uid IN (?)", bun.List(checkUIDs)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get checks by uids: %w", err)
+	}
+
+	checkMap := make(map[string]*models.Check, len(checks))
+	for _, check := range checks {
+		checkMap[check.UID] = check
+	}
+
+	return checkMap, nil
+}
+
 func (s *Service) GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.Check, error) {
 	check := new(models.Check)
 
@@ -2916,6 +2944,35 @@ func (s *Service) ListIncidentMemberChecks(
 	}
 
 	return members, nil
+}
+
+// ListIncidentMemberChecksByIncidentUIDs returns member rows for several
+// group incidents at once, grouped by incident UID. A single batched query
+// replaces one ListIncidentMemberChecks call per group incident on a
+// response page.
+func (s *Service) ListIncidentMemberChecksByIncidentUIDs(
+	ctx context.Context, incidentUIDs []string,
+) (map[string][]*models.IncidentMemberCheck, error) {
+	if len(incidentUIDs) == 0 {
+		return make(map[string][]*models.IncidentMemberCheck), nil
+	}
+
+	var members []*models.IncidentMemberCheck
+	err := s.db.NewSelect().
+		Model(&members).
+		Where("incident_uid IN (?)", bun.List(incidentUIDs)).
+		Order("incident_uid ASC", "first_failure_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list incident member checks by incident uids: %w", err)
+	}
+
+	membersByIncident := make(map[string][]*models.IncidentMemberCheck)
+	for _, member := range members {
+		membersByIncident[member.IncidentUID] = append(membersByIncident[member.IncidentUID], member)
+	}
+
+	return membersByIncident, nil
 }
 
 // GetIncidentMemberCheck returns a single member row, or sql.ErrNoRows.
@@ -4613,6 +4670,32 @@ func (s *Service) GetCheckGroup(ctx context.Context, orgUID, uid string) (*model
 	}
 
 	return group, nil
+}
+
+// GetCheckGroupsByUIDs returns the requested check groups keyed by UID, in a
+// single batched query (absent UIDs simply have no entry).
+func (s *Service) GetCheckGroupsByUIDs(ctx context.Context, orgUID string, groupUIDs []string) (map[string]*models.CheckGroup, error) {
+	if len(groupUIDs) == 0 {
+		return make(map[string]*models.CheckGroup), nil
+	}
+
+	var groups []*models.CheckGroup
+	err := s.db.NewSelect().
+		Model(&groups).
+		Where("uid IN (?)", bun.List(groupUIDs)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get check groups by uids: %w", err)
+	}
+
+	groupMap := make(map[string]*models.CheckGroup, len(groups))
+	for _, group := range groups {
+		groupMap[group.UID] = group
+	}
+
+	return groupMap, nil
 }
 
 func (s *Service) GetCheckGroupBySlug(ctx context.Context, orgUID, slug string) (*models.CheckGroup, error) {

@@ -259,6 +259,10 @@ func (m *mockDBService) GetCheck(_ context.Context, _, _ string) (*models.Check,
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetChecksByUIDs(_ context.Context, _ string, _ []string) (map[string]*models.Check, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListChecks(
 	_ context.Context, _ string, _ *models.ListChecksFilter,
 ) ([]*models.Check, int64, error) {
@@ -922,6 +926,12 @@ func (m *mockDBService) ListIncidentMemberChecks(
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListIncidentMemberChecksByIncidentUIDs(
+	_ context.Context, _ []string,
+) (map[string][]*models.IncidentMemberCheck, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetIncidentMemberCheck(
 	_ context.Context, _, _ string,
 ) (*models.IncidentMemberCheck, error) {
@@ -1198,6 +1208,12 @@ func (m *mockDBService) CreateCheckGroup(_ context.Context, _ *models.CheckGroup
 }
 
 func (m *mockDBService) GetCheckGroup(_ context.Context, _, _ string) (*models.CheckGroup, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetCheckGroupsByUIDs(
+	_ context.Context, _ string, _ []string,
+) (map[string]*models.CheckGroup, error) {
 	panic("not implemented")
 }
 

@@ -275,6 +275,10 @@ type Service interface {
 	// Check operations
 	CreateCheck(ctx context.Context, check *models.Check) error
 	GetCheck(ctx context.Context, orgUID, checkUID string) (*models.Check, error)
+	// GetChecksByUIDs returns the requested checks keyed by UID, in a single
+	// batched query (absent UIDs simply have no entry) — replaces one GetCheck
+	// call per row with a single IN(...) query for a whole response page.
+	GetChecksByUIDs(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Check, error)
 	GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.Check, error)
 	// GetCheckByEmailToken finds an email-type check by its config.token across all
 	// organizations. The token alone is unique because it's 24 random bytes.
@@ -445,6 +449,13 @@ type Service interface {
 
 	// Incident member operations (group incidents only)
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
+	// ListIncidentMemberChecksByIncidentUIDs returns member rows for several
+	// group incidents at once, grouped by incident UID — one batched query
+	// instead of one ListIncidentMemberChecks call per group incident on a
+	// response page.
+	ListIncidentMemberChecksByIncidentUIDs(
+		ctx context.Context, incidentUIDs []string,
+	) (map[string][]*models.IncidentMemberCheck, error)
 	GetIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string) (*models.IncidentMemberCheck, error)
 	UpsertIncidentMemberCheck(ctx context.Context, member *models.IncidentMemberCheck) error
 	UpdateIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string, update *models.IncidentMemberUpdate) error
@@ -663,6 +674,9 @@ type Service interface {
 	// CheckGroup operations
 	CreateCheckGroup(ctx context.Context, group *models.CheckGroup) error
 	GetCheckGroup(ctx context.Context, orgUID, uid string) (*models.CheckGroup, error)
+	// GetCheckGroupsByUIDs returns the requested check groups keyed by UID, in
+	// a single batched query (absent UIDs simply have no entry).
+	GetCheckGroupsByUIDs(ctx context.Context, orgUID string, groupUIDs []string) (map[string]*models.CheckGroup, error)
 	GetCheckGroupBySlug(ctx context.Context, orgUID, slug string) (*models.CheckGroup, error)
 	GetCheckGroupByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.CheckGroup, error)
 	ListCheckGroups(ctx context.Context, orgUID string) ([]*models.CheckGroup, error)
