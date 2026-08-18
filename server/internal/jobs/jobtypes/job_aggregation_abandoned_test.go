@@ -11,7 +11,8 @@ import (
 
 // rawResultAbandoned builds a raw result fixture the abandoned-result reaper
 // would have produced: the dedicated terminal models.ResultStatusAbandoned
-// (spec 2026-08-18-10, which replaced the `abandoned` boolean column).
+// (spec 2026-08-18-10; an `abandoned` boolean column was drafted during the
+// cycle and consolidated away before release).
 func rawResultAbandoned(offset time.Duration, periodStart time.Time) *models.Result {
 	return rawResultWithStatus(models.ResultStatusAbandoned, offset, periodStart)
 }

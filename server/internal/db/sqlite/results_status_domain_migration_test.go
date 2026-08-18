@@ -13,30 +13,37 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// abandonedStatusMigrationSQL is migration 016 read straight out of the
+// lifecyclePendingIndexDDL is the exact text SQLite stores for the reaper's
+// partial index, spelled out here rather than read back from the migration so
+// a silent edit to the file (dropping the WHERE clause, widening it to include
+// status=2) fails the test instead of redefining what it asserts.
+const lifecyclePendingIndexDDL = "CREATE INDEX idx_results_lifecycle_pending on results (period_start)\n" +
+	"  where period_type = 'raw' and status = 1"
+
+// resultsStatusDomainMigrationSQL is migration 014 read straight out of the
 // embedded FS, so this test can never drift from the file that actually ships.
-func abandonedStatusMigrationSQL(t *testing.T) string {
+func resultsStatusDomainMigrationSQL(t *testing.T) string {
 	t.Helper()
 
-	body, err := migrationsFS.ReadFile("migrations/016_v0_17_0.up.sql")
+	body, err := migrationsFS.ReadFile("migrations/014_v0_17_0.up.sql")
 	require.NoError(t, err)
 
 	return string(body)
 }
 
-// TestAbandonedStatusMigrationConvertsReapedRowsOnly is the data-migration half
-// of spec 2026-08-18-10: a pre-existing row written by 015's reaper
-// (`status = 6, abandoned = 1`) must come out as ResultStatusAbandoned (9),
-// the `abandoned` column must be gone, and — the load-bearing negative control
-// — a GENUINE `status = 6` row that was never abandoned must be left exactly
-// as it was. Both halves are required: a migration that converted every error
-// row would pass the first assertion on its own while silently erasing real
-// downtime from every customer's history.
+// TestResultsStatusDomainMigration covers what the consolidated 014 actually
+// guarantees on SQLite: the `results` status CHECK domain now admits
+// ResultStatusAbandoned (9) and still rejects everything outside the domain,
+// the reaper's partial index exists with its exact definition, and — the
+// load-bearing part — the table rebuild 014 needs in order to widen an inline
+// CHECK preserved every OTHER index on the table byte-for-byte.
 //
-// Initialize() has already applied 016, so the pre-016 shape is reconstructed
-// by adding the column back; from there the shipped file runs byte-for-byte as
-// it would on a database that stopped at 015.
-func TestAbandonedStatusMigrationConvertsReapedRowsOnly(t *testing.T) {
+// There is no `abandoned` column anywhere in this release and therefore no
+// data conversion to assert: the v0.17.0 cycle briefly shipped the flag across
+// two migrations that undid each other, and the consolidated migration never
+// creates it. The absence is asserted explicitly so a botched port cannot
+// quietly bring it back.
+func TestResultsStatusDomainMigration(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -63,15 +70,45 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly(t *testing.T) {
 		return out
 	}
 
-	// Rewind to the 015 shape.
-	exec(`alter table results add column abandoned integer not null default 0`)
-	r.Equal(1, count(`select count(*) from pragma_table_info('results') where name = 'abandoned'`),
-		"precondition: the test rebuilt the pre-016 shape")
+	// 1. No `abandoned` column is ever created by this release.
+	r.Equal(0, count(`select count(*) from pragma_table_info('results') where name = 'abandoned'`),
+		"014 must never create an abandoned column — the flag was consolidated away before release")
 
-	org := models.NewOrganization("abandon-mig-org", "Abandon Mig Org")
+	// 2. Every index the table carried before 014 is back with its DEFINITION
+	//    intact, not merely its name, plus exactly one new index: the reaper's.
+	//    The reference is a throwaway database replaying 001..013, because
+	//    comparing before/after inside THIS database would be circular —
+	//    Initialize() has already run 014, so a rebuild that recreated a wrong
+	//    index would simply produce the same wrong index twice.
+	//
+	//    This assertion exists because an early cut of the rebuild recreated
+	//    the indexes from 001's create-table block, which silently reverted
+	//    results_aggregated_unique_idx to its pre-006 form and reopened the
+	//    aggregation poison-pill loop (spec 2026-07-11-16) on the largest table
+	//    in the system. A name-only check passed straight through that.
+	before := resultsIndexDefinitionsAt013(ctx, t)
+	after := resultsIndexDefinitions(ctx, t, s)
+
+	r.NotContains(before, "idx_results_lifecycle_pending",
+		"precondition: the reaper index must be what 014 adds, not something 013 already had")
+	r.Equal(lifecyclePendingIndexDDL, after["idx_results_lifecycle_pending"],
+		"the reaper's partial index must cover status=1 only — status=2 (running) is used by heartbeat checks")
+
+	preserved := make(map[string]string, len(after))
+
+	for name, ddl := range after {
+		if name != "idx_results_lifecycle_pending" {
+			preserved[name] = ddl
+		}
+	}
+
+	r.Equal(before, preserved,
+		"014 must leave every pre-existing index on results byte-identical to what 001..013 produced")
+
+	org := models.NewOrganization("status-domain-org", "Status Domain Org")
 	r.NoError(s.CreateOrganization(ctx, org))
 
-	check := models.NewCheck(org.UID, "abandoned-migration-check", "http")
+	check := models.NewCheck(org.UID, "status-domain-check", "http")
 	r.NoError(s.CreateCheck(ctx, check))
 
 	base := time.Now().UTC().Add(-3 * time.Hour)
@@ -80,19 +117,41 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly(t *testing.T) {
 	up.PeriodStart = base
 	r.NoError(s.CreateResult(ctx, up))
 
-	genuineErr := models.NewResult(org.UID, check.UID, models.ResultStatusError, 7)
-	genuineErr.PeriodStart = base.Add(time.Minute)
-	r.NoError(s.CreateResult(ctx, genuineErr))
-
-	reaped := models.NewResult(org.UID, check.UID, models.ResultStatusError, 0)
-	reaped.PeriodStart = base.Add(2 * time.Minute)
+	// 3a. The widened CHECK domain accepts 9 — the reaper's write path depends
+	//     on it, and a rebuild that forgot to widen it would leave the reaper
+	//     failing at runtime instead of at migration time.
+	reaped := models.NewResult(org.UID, check.UID, models.ResultStatusAbandoned, 0)
+	reaped.PeriodStart = base.Add(time.Minute)
 	r.NoError(s.CreateResult(ctx, reaped))
-	exec(`update results set abandoned = 1 where uid = ?`, reaped.UID)
 
-	// An aggregated rollup row: it has no status at all, and the SQLite half of
-	// this migration is a positional INSERT ... SELECT table rebuild, so a
-	// column-order slip would surface here as scrambled counters rather than as
-	// a wrong status.
+	// 3b. ...and it still REJECTS a value outside the domain, so the rebuild
+	//     did not simply drop the constraint on the floor. Both halves are
+	//     required: a table with no CHECK at all passes 3a alone.
+	_, err = s.DB().ExecContext(ctx, `update results set status = 42 where uid = ?`, up.UID)
+	r.Error(err, "the status CHECK constraint must still be enforced after the migration")
+
+	// 4. The invariant the index regression turned off, asserted behaviorally
+	//    rather than by reading DDL: SQLite treats every NULL as distinct, so
+	//    without coalesce(region, '') the unique index stops constraining
+	//    region-less rollups entirely and the aggregation job can duplicate
+	//    `hour` rows without bound.
+	regionless := func(uid string) error {
+		_, execErr := s.DB().ExecContext(ctx,
+			`insert into results (uid, organization_uid, check_uid, period_type, period_start, region, total_checks)
+			 values (?, ?, ?, 'hour', '2026-08-01T00:00:00Z', null, 1)`, uid, org.UID, check.UID)
+
+		return execErr
+	}
+	r.NoError(regionless("00000000-0000-7000-8000-0000000000a1"),
+		"positive control: the first region-less hour rollup must insert")
+	r.Error(regionless("00000000-0000-7000-8000-0000000000a2"),
+		"a second region-less hour rollup for the same bucket must collide — "+
+			"results_aggregated_unique_idx has to keep its coalesce(region, '') form")
+
+	// 5. Replay the shipped file over a POPULATED table. The SQLite half of
+	//    this migration is a positional INSERT ... SELECT table rebuild, so a
+	//    column-order slip would surface here as scrambled counters — and on a
+	//    freshly-initialized database there would be no rows to scramble.
 	total, successful := 17, 16
 	region := "eu-west-1"
 	hourEnd := base.Add(time.Hour)
@@ -112,27 +171,11 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly(t *testing.T) {
 
 	rowsBefore := count(`select count(*) from results`)
 
-	exec(abandonedStatusMigrationSQL(t))
+	exec(resultsStatusDomainMigrationSQL(t))
 
-	// 1. The reaped row is now the dedicated abandoned status.
-	r.Equal(int(models.ResultStatusAbandoned),
-		count(`select status from results where uid = ?`, reaped.UID),
-		"the row 015's reaper wrote must become ResultStatusAbandoned")
-
-	// 2. Negative control: a genuine error is untouched. Without this half, a
-	//    migration that converted every status=6 row would look correct.
-	r.Equal(int(models.ResultStatusError),
-		count(`select status from results where uid = ?`, genuineErr.UID),
-		"a genuine error must never be swept into abandoned — that would erase real downtime")
+	r.Equal(rowsBefore, count(`select count(*) from results`), "the rebuild must not lose or duplicate rows")
+	r.Equal(int(models.ResultStatusAbandoned), count(`select status from results where uid = ?`, reaped.UID))
 	r.Equal(int(models.ResultStatusUp), count(`select status from results where uid = ?`, up.UID))
-
-	// 3. The column is gone.
-	r.Equal(0, count(`select count(*) from pragma_table_info('results') where name = 'abandoned'`),
-		"the abandoned column must be dropped")
-
-	// 4. Nothing was lost or duplicated in the rebuild, and the aggregated row
-	//    came across with its counters in the right columns.
-	r.Equal(rowsBefore, count(`select count(*) from results`))
 	r.Equal(total, count(`select total_checks from results where uid = ?`, hour.UID))
 	r.Equal(successful, count(`select successful_checks from results where uid = ?`, hour.UID))
 
@@ -142,45 +185,8 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly(t *testing.T) {
 	r.Equal(region, gotRegion)
 	r.Equal(models.PeriodTypeHour, gotPeriodType)
 
-	// 5. Every index the table carried is back with its DEFINITION intact, not
-	//    merely its name. This compares against a reference database built by
-	//    replaying 001..015, because comparing before/after inside THIS database
-	//    would be circular: Initialize() has already run 016, so a rebuild that
-	//    recreates a wrong index would simply produce the same wrong index
-	//    twice and compare equal.
-	//
-	//    This assertion exists because the first cut of this migration
-	//    recreated the indexes from 001's create-table block, which silently
-	//    reverted results_aggregated_unique_idx to its pre-006 form and
-	//    reopened the aggregation poison-pill loop (spec 2026-07-11-16) on the
-	//    largest table in the system. A name-only check passed straight through
-	//    that.
-	r.Equal(resultsIndexDefinitionsAt015(ctx, t), resultsIndexDefinitions(ctx, t, s),
-		"016 must leave every index on results byte-identical to what 001..015 produced")
-
-	// 5b. The invariant that regression turned off, asserted behaviorally
-	//     rather than by reading DDL: SQLite treats every NULL as distinct, so
-	//     without coalesce(region, '') the unique index stops constraining
-	//     region-less rollups entirely and the aggregation job can duplicate
-	//     `hour` rows without bound.
-	regionless := func(uid string) error {
-		_, execErr := s.DB().ExecContext(ctx,
-			`insert into results (uid, organization_uid, check_uid, period_type, period_start, region, total_checks)
-			 values (?, ?, ?, 'hour', '2026-08-01T00:00:00Z', null, 1)`, uid, org.UID, check.UID)
-
-		return execErr
-	}
-	r.NoError(regionless("00000000-0000-7000-8000-0000000000a1"),
-		"positive control: the first region-less hour rollup must insert")
-	r.Error(regionless("00000000-0000-7000-8000-0000000000a2"),
-		"a second region-less hour rollup for the same bucket must collide — "+
-			"results_aggregated_unique_idx has to keep its coalesce(region, '') form")
-
-	// 6. The widened CHECK domain actually accepts 9 — the reaper's write path
-	//    depends on it, and a rebuild that forgot to widen it would leave the
-	//    reaper failing at runtime instead of at migration time.
-	fresh := models.NewResult(org.UID, check.UID, models.ResultStatusAbandoned, 0)
-	r.NoError(s.CreateResult(ctx, fresh))
+	r.Equal(after, resultsIndexDefinitions(ctx, t, s), "the rebuild must be index-stable when replayed")
+	r.Equal(0, count(`select count(*) from pragma_table_info('results') where name = 'abandoned'`))
 }
 
 // bunSplitRE matches the statement separator bun's migrator recognizes: a line
@@ -219,21 +225,22 @@ func resultsIndexDefinitions(ctx context.Context, t *testing.T, s *Service) map[
 	return out
 }
 
-// resultsIndexDefinitionsAt015 builds a throwaway database by replaying every
-// up migration BEFORE 016 and returns its `results` indexes. That is the
-// ground truth a 016 upgrade has to preserve — and, unlike the live dev
-// database, it cannot have drifted from the files that actually ship.
+// resultsIndexDefinitionsAt013 builds a throwaway database by replaying every
+// up migration BEFORE 014 — that is, everything through the last RELEASED
+// migration — and returns its `results` indexes. That is the ground truth a
+// 014 upgrade has to preserve, and unlike the live dev database it cannot have
+// drifted from the files that actually ship.
 //
 // Statements are split on a lone `--bun:split` LINE, exactly as bun's migrator
 // splits them, so PRAGMA statements land in autocommit the way the real
 // migration run executes them. Matching the bare substring instead would cut
 // several migrations in half mid-comment — their prose explains why the marker
 // is there.
-func resultsIndexDefinitionsAt015(ctx context.Context, t *testing.T) map[string]string {
+func resultsIndexDefinitionsAt013(ctx context.Context, t *testing.T) map[string]string {
 	t.Helper()
 
 	// New() opens the database without migrating; Initialize() is what would
-	// apply 016, so it is deliberately not called here.
+	// apply 014, so it is deliberately not called here.
 	ref, err := New(ctx, Config{InMemory: true})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ref.Close() })
@@ -245,13 +252,13 @@ func resultsIndexDefinitionsAt015(ctx context.Context, t *testing.T) map[string]
 
 	for _, entry := range entries {
 		name := entry.Name()
-		if strings.HasSuffix(name, ".up.sql") && name < "016" {
+		if strings.HasSuffix(name, ".up.sql") && name < "014" {
 			names = append(names, name)
 		}
 	}
 
 	sort.Strings(names)
-	require.NotEmpty(t, names, "no pre-016 migrations found — the filter is wrong")
+	require.NotEmpty(t, names, "no pre-014 migrations found — the filter is wrong")
 
 	for _, name := range names {
 		body, readErr := migrationsFS.ReadFile("migrations/" + name)

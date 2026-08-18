@@ -115,7 +115,8 @@ func rawRow(checkUID string, status models.ResultStatus, start time.Time, dur fl
 // rawRowAbandoned builds a raw row the abandoned-result reaper finalized: the
 // dedicated terminal models.ResultStatusAbandoned, which must behave like a
 // lifecycle marker for availability purposes despite being terminal (specs
-// 2026-08-18-03 / 2026-08-18-10, which replaced the `abandoned` boolean).
+// 2026-08-18-03 / 2026-08-18-10; an `abandoned` boolean was drafted during the
+// cycle and consolidated away before release).
 func rawRowAbandoned(checkUID string, start time.Time) *models.Result {
 	return rawRow(checkUID, models.ResultStatusAbandoned, start, 0)
 }

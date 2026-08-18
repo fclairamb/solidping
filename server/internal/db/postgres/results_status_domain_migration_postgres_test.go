@@ -2,31 +2,36 @@ package postgres
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// portAbandonedStatusMigration is distinct from every other _postgres_test.go
-// embedded port in the repo (see the port-numbering note in
+// portResultsStatusDomainMigration is distinct from every other
+// _postgres_test.go embedded port in the repo (see the port-numbering note in
 // postgres_headroom_postgres_test.go).
-const portAbandonedStatusMigration = 15478
+const portResultsStatusDomainMigration = 15478
 
-// TestAbandonedStatusMigrationConvertsReapedRowsOnly_Postgres is the Postgres
-// twin of the SQLite migration test. The two dialects do the job completely
-// differently — a DO block dropping the auto-named CHECK plus an UPDATE here,
-// a whole *_new table rebuild there — so each needs its own proof.
+// TestResultsStatusDomainMigration_Postgres is the Postgres twin of the SQLite
+// migration test. The two dialects do the job completely differently — a DO
+// block that drops 001's auto-named CHECK and re-adds a named one here, a whole
+// *_new table rebuild there — so each needs its own proof.
 //
-// Both halves are required: a row 015's reaper wrote
-// (`status = 6, abandoned = true`) must come out as ResultStatusAbandoned (9),
-// and a GENUINE `status = 6` row must be left exactly as it was. A migration
-// that converted every error row would pass the first assertion alone while
-// silently erasing real downtime from every customer's history.
+// What 014 has to guarantee on a freshly-migrated database:
+//   - the `results` status CHECK domain admits ResultStatusAbandoned (9);
+//   - it still rejects a value outside the domain, i.e. exactly ONE check
+//     constraint on status survives — the DO block neither missed 001's
+//     unnamed constraint (which would leave the old 0..8 domain ANDed on top,
+//     rejecting 9) nor dropped it without re-adding one;
+//   - the reaper's partial index exists, covering status=1 only;
+//   - no `abandoned` column exists. The v0.17.0 cycle briefly shipped that
+//     flag across two migrations that undid each other; the consolidated
+//     migration never creates it, and there is consequently no data
+//     conversion to assert.
 //
 //nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
-func TestAbandonedStatusMigrationConvertsReapedRowsOnly_Postgres(t *testing.T) {
+func TestResultsStatusDomainMigration_Postgres(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -34,7 +39,7 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	s, err := New(ctx, &Config{Embedded: true, Port: portAbandonedStatusMigration, RunMode: runModeTest})
+	s, err := New(ctx, &Config{Embedded: true, Port: portResultsStatusDomainMigration, RunMode: runModeTest})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)
 	}
@@ -43,16 +48,6 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly_Postgres(t *testing.T) {
 
 	if initErr := s.Initialize(ctx); initErr != nil {
 		t.Skipf("embedded postgres init failed: %v", initErr)
-	}
-
-	migration, err := migrationsFS.ReadFile("migrations/016_v0_17_0.up.sql")
-	r.NoError(err)
-
-	exec := func(query string, args ...any) {
-		t.Helper()
-
-		_, execErr := s.DB().ExecContext(ctx, query, args...)
-		r.NoError(execErr)
 	}
 
 	count := func(query string, args ...any) int {
@@ -64,64 +59,53 @@ func TestAbandonedStatusMigrationConvertsReapedRowsOnly_Postgres(t *testing.T) {
 		return out
 	}
 
-	// Rewind to the 015 shape: Initialize() has already applied 016, so the
-	// column has to come back before the shipped file can run as it would on a
-	// database that stopped at 015.
-	exec(`alter table results add column abandoned boolean not null default false`)
-	r.Equal(1, count(`select count(*) from information_schema.columns
-		where table_name = 'results' and column_name = 'abandoned'`),
-		"precondition: the test rebuilt the pre-016 shape")
-
-	org := models.NewOrganization("abandon-mig-pg", "Abandon Mig PG")
-	r.NoError(s.CreateOrganization(ctx, org))
-
-	check := models.NewCheck(org.UID, "abandon-mig-check", "http")
-	r.NoError(s.CreateCheck(ctx, check))
-
-	base := time.Now().UTC().Add(-3 * time.Hour)
-
-	up := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
-	up.PeriodStart = base
-	r.NoError(s.CreateResult(ctx, up))
-
-	genuineErr := models.NewResult(org.UID, check.UID, models.ResultStatusError, 7)
-	genuineErr.PeriodStart = base.Add(time.Minute)
-	r.NoError(s.CreateResult(ctx, genuineErr))
-
-	reaped := models.NewResult(org.UID, check.UID, models.ResultStatusError, 0)
-	reaped.PeriodStart = base.Add(2 * time.Minute)
-	r.NoError(s.CreateResult(ctx, reaped))
-	exec(`update results set abandoned = true where uid = ?`, reaped.UID)
-
-	rowsBefore := count(`select count(*) from results`)
-
-	_, err = s.DB().ExecContext(ctx, string(migration))
-	r.NoError(err)
-
-	// 1. The reaped row is now the dedicated abandoned status.
-	r.Equal(int(models.ResultStatusAbandoned), count(`select status from results where uid = ?`, reaped.UID),
-		"the row 015's reaper wrote must become ResultStatusAbandoned")
-
-	// 2. Negative control: a genuine error is untouched.
-	r.Equal(int(models.ResultStatusError), count(`select status from results where uid = ?`, genuineErr.UID),
-		"a genuine error must never be swept into abandoned — that would erase real downtime")
-	r.Equal(int(models.ResultStatusUp), count(`select status from results where uid = ?`, up.UID))
-
-	// 3. The column is gone, and nothing was lost.
+	// 1. No `abandoned` column is ever created by this release.
 	r.Equal(0, count(`select count(*) from information_schema.columns
 		where table_name = 'results' and column_name = 'abandoned'`),
-		"the abandoned column must be dropped")
-	r.Equal(rowsBefore, count(`select count(*) from results`))
+		"014 must never create an abandoned column — the flag was consolidated away before release")
 
-	// 4. The CHECK domain was actually widened rather than silently left in
-	//    place by a name mismatch in the DO block — without this the reaper
-	//    would fail at runtime instead of at migration time.
-	fresh := models.NewResult(org.UID, check.UID, models.ResultStatusAbandoned, 0)
-	r.NoError(s.CreateResult(ctx, fresh))
+	// 2. Exactly one CHECK constraint on `results` mentions status, and it is
+	//    the named one 014 adds. If the DO block had failed to find 001's
+	//    auto-named constraint there would be two, and the widened domain would
+	//    be dead letter behind the old one.
+	r.Equal(1, count(`select count(*)
+		from pg_constraint c
+		join pg_class t on t.oid = c.conrelid
+		join pg_namespace n on n.oid = t.relnamespace
+		where t.relname = 'results' and n.nspname = current_schema()
+		  and c.contype = 'c' and pg_get_constraintdef(c.oid) ilike '%status%'`),
+		"exactly one status CHECK must survive — the DO block has to drop 001's auto-named one")
+	r.Equal(1, count(`select count(*) from pg_constraint where conname = 'results_status_check'`),
+		"the surviving constraint must be the named one 014 adds")
 
-	// ...and it still rejects a value outside the domain, so the DO block did
-	// not simply drop the constraint and forget to re-add it.
-	_, err = s.DB().ExecContext(ctx,
-		`update results set status = 42 where uid = ?`, up.UID)
+	// 3. The reaper's partial index exists and covers status=1 only —
+	//    status=2 (running) is excluded on purpose, because heartbeat checks
+	//    write legitimate long-lived running rows this index must not carry.
+	var indexDef string
+	r.NoError(s.DB().QueryRowContext(ctx,
+		`select indexdef from pg_indexes where tablename = 'results' and indexname = 'idx_results_lifecycle_pending'`).
+		Scan(&indexDef))
+	r.Contains(indexDef, "period_start")
+	r.Contains(indexDef, "status = 1")
+	r.NotContains(indexDef, "status = 2")
+
+	org := models.NewOrganization("status-domain-pg", "Status Domain PG")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "status-domain-check", "http")
+	r.NoError(s.CreateCheck(ctx, check))
+
+	up := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
+	r.NoError(s.CreateResult(ctx, up))
+
+	// 4a. The widened domain accepts 9 — the reaper's write path depends on it,
+	//     and a migration that forgot to widen it would leave the reaper
+	//     failing at runtime instead of at migration time.
+	reaped := models.NewResult(org.UID, check.UID, models.ResultStatusAbandoned, 0)
+	r.NoError(s.CreateResult(ctx, reaped))
+
+	// 4b. ...and it still rejects a value outside the domain. Both halves are
+	//     required: a table with no CHECK at all passes 4a alone.
+	_, err = s.DB().ExecContext(ctx, `update results set status = 42 where uid = ?`, up.UID)
 	r.Error(err, "the status CHECK constraint must still be enforced after the migration")
 }
