@@ -1260,7 +1260,7 @@ function BlastRadiusCard({
   if (items.length === 0) return null;
 
   return (
-    <Card>
+    <Card data-testid="blast-radius-card">
       <CardHeader>
         <CardTitle>
           {t("rollup.blastRadiusTitle", { count: items.length })}
@@ -1270,9 +1270,13 @@ function BlastRadiusCard({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("detail.checkLabel")}</TableHead>
-              <TableHead className="whitespace-nowrap">{t("detail.state")}</TableHead>
-              <TableHead className="whitespace-nowrap">{t("rollup.pagingColumn")}</TableHead>
+              <TableHead data-testid="blast-radius-header-check">{t("detail.checkLabel")}</TableHead>
+              <TableHead className="whitespace-nowrap" data-testid="blast-radius-header-state">
+                {t("detail.state")}
+              </TableHead>
+              <TableHead className="whitespace-nowrap" data-testid="blast-radius-header-paging">
+                {t("rollup.pagingColumn")}
+              </TableHead>
               <TableHead className="whitespace-nowrap px-2">
                 <span className="sr-only">{t("rollup.checkLink")}</span>
               </TableHead>
@@ -1282,13 +1286,14 @@ function BlastRadiusCard({
             {items.map((child) => {
               const displayName = child.checkName || child.checkSlug || child.checkUid;
               return (
-                <TableRow key={child.uid}>
+                <TableRow key={child.uid} data-testid="blast-radius-row">
                   <TableCell className="max-w-0">
                     {child.uid ? (
                       <Link
                         to="/orgs/$org/incidents/$incidentUid"
                         params={{ org, incidentUid: child.uid }}
                         title={displayName}
+                        data-testid="blast-radius-check-link"
                         className="block truncate font-medium text-primary hover:underline"
                       >
                         {displayName}
@@ -1316,6 +1321,7 @@ function BlastRadiusCard({
                         params={{ org, checkUid: child.checkUid }}
                         search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
                         aria-label={t("rollup.checkLink")}
+                        data-testid="blast-radius-open-check"
                         className="inline-flex text-muted-foreground hover:text-foreground"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
