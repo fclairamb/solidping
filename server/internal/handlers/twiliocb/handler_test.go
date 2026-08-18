@@ -164,7 +164,7 @@ func TestVoice_ValidSignatureReturnsGather(t *testing.T) {
 	req := env.buildRequest(t, "/api/v1/integrations/twilio/voice", env.voiceQuery(token), body, true, false)
 
 	rec := httptest.NewRecorder()
-	require.NoError(t, env.handler.VerifyMiddleware(env.handler.HandleVoice)(rec, req))
+	require.NoError(t, env.handler.VerifyVoiceMiddleware(env.handler.HandleVoice)(rec, req))
 
 	r.Equal(http.StatusOK, rec.Code)
 	r.Contains(rec.Body.String(), "<Gather")
@@ -181,7 +181,7 @@ func TestVoice_InvalidSignature403(t *testing.T) {
 	req := env.buildRequest(t, "/api/v1/integrations/twilio/voice", env.voiceQuery(token), url.Values{}, true, true)
 
 	rec := httptest.NewRecorder()
-	require.NoError(t, env.handler.VerifyMiddleware(env.handler.HandleVoice)(rec, req))
+	require.NoError(t, env.handler.VerifyVoiceMiddleware(env.handler.HandleVoice)(rec, req))
 
 	r.Equal(http.StatusForbidden, rec.Code)
 	r.Empty(rec.Body.String())
@@ -196,7 +196,7 @@ func TestVoice_MissingSignature403(t *testing.T) {
 	req := env.buildRequest(t, "/api/v1/integrations/twilio/voice", env.voiceQuery(token), url.Values{}, false, false)
 
 	rec := httptest.NewRecorder()
-	require.NoError(t, env.handler.VerifyMiddleware(env.handler.HandleVoice)(rec, req))
+	require.NoError(t, env.handler.VerifyVoiceMiddleware(env.handler.HandleVoice)(rec, req))
 
 	r.Equal(http.StatusForbidden, rec.Code)
 }
@@ -210,7 +210,7 @@ func TestVoice_ExpiredToken(t *testing.T) {
 	req := env.buildRequest(t, "/api/v1/integrations/twilio/voice", env.voiceQuery(token), url.Values{}, true, false)
 
 	rec := httptest.NewRecorder()
-	require.NoError(t, env.handler.VerifyMiddleware(env.handler.HandleVoice)(rec, req))
+	require.NoError(t, env.handler.VerifyVoiceMiddleware(env.handler.HandleVoice)(rec, req))
 
 	r.Equal(http.StatusOK, rec.Code)
 	r.Contains(rec.Body.String(), "no longer be acknowledged")
@@ -227,7 +227,7 @@ func TestGather_Digit4Acks(t *testing.T) {
 	req := env.buildRequest(t, "/api/v1/integrations/twilio/voice/gather", env.voiceQuery(token), body, true, false)
 
 	rec := httptest.NewRecorder()
-	require.NoError(t, env.handler.VerifyMiddleware(env.handler.HandleGather)(rec, req))
+	require.NoError(t, env.handler.VerifyVoiceMiddleware(env.handler.HandleGather)(rec, req))
 
 	r.Equal(http.StatusOK, rec.Code)
 	r.Contains(rec.Body.String(), "Acknowledged")
@@ -247,7 +247,7 @@ func TestGather_OtherDigitReprompts(t *testing.T) {
 	req := env.buildRequest(t, "/api/v1/integrations/twilio/voice/gather", env.voiceQuery(token), body, true, false)
 
 	rec := httptest.NewRecorder()
-	require.NoError(t, env.handler.VerifyMiddleware(env.handler.HandleGather)(rec, req))
+	require.NoError(t, env.handler.VerifyVoiceMiddleware(env.handler.HandleGather)(rec, req))
 
 	r.Equal(http.StatusOK, rec.Code)
 	r.Contains(rec.Body.String(), "<Gather")
