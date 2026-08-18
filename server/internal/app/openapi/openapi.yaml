@@ -7615,8 +7615,13 @@ components:
           format: uuid
         status:
           type: string
-          enum: [up, down, timeout, error]
-          description: Result status
+          enum: [up, down, timeout, error, abandoned]
+          description: >-
+            Result status. `abandoned` is server-minted by the abandoned-result
+            reaper when nothing was ever reported for an attempt (a worker
+            crashed, restarted, or lost its lease). It is terminal but is
+            excluded from every availability calculation, so it must be
+            rendered as a neutral "not counted" state, never as a failure.
         timestamp:
           type: string
           format: date-time
@@ -7643,8 +7648,13 @@ components:
           format: uuid
         status:
           type: string
-          enum: [up, down, timeout, error]
-          description: Result status
+          enum: [up, down, timeout, error, abandoned]
+          description: >-
+            Result status. `abandoned` is server-minted by the abandoned-result
+            reaper when nothing was ever reported for an attempt (a worker
+            crashed, restarted, or lost its lease). It is terminal but is
+            excluded from every availability calculation, so it must be
+            rendered as a neutral "not counted" state, never as a failure.
         timestamp:
           type: string
           format: date-time
@@ -8203,7 +8213,13 @@ components:
           format: date-time
         status:
           type: string
-          enum: [up, down, unknown]
+          enum: [up, down, unknown, abandoned]
+          description: >-
+            Result status. `abandoned` marks an attempt nothing was ever
+            reported for (see LastResult.status): terminal, excluded from
+            availability, and never rendered as a failure. It is filterable on
+            its own via `?status=abandoned`, and is deliberately NOT part of
+            `?status=down`.
         durationMs:
           type: number
           description: Duration in milliseconds (with=durationMs)

@@ -677,14 +677,17 @@ func (e ExportedDependencyKind) Valid() bool {
 
 // Defines values for GetOrgResultResponseStatus.
 const (
-	GetOrgResultResponseStatusDown    GetOrgResultResponseStatus = "down"
-	GetOrgResultResponseStatusUnknown GetOrgResultResponseStatus = "unknown"
-	GetOrgResultResponseStatusUp      GetOrgResultResponseStatus = "up"
+	GetOrgResultResponseStatusAbandoned GetOrgResultResponseStatus = "abandoned"
+	GetOrgResultResponseStatusDown      GetOrgResultResponseStatus = "down"
+	GetOrgResultResponseStatusUnknown   GetOrgResultResponseStatus = "unknown"
+	GetOrgResultResponseStatusUp        GetOrgResultResponseStatus = "up"
 )
 
 // Valid indicates whether the value is a known member of the GetOrgResultResponseStatus enum.
 func (e GetOrgResultResponseStatus) Valid() bool {
 	switch e {
+	case GetOrgResultResponseStatusAbandoned:
+		return true
 	case GetOrgResultResponseStatusDown:
 		return true
 	case GetOrgResultResponseStatusUnknown:
@@ -821,15 +824,18 @@ func (e JobStatus) Valid() bool {
 
 // Defines values for LastResultStatus.
 const (
-	LastResultStatusDown    LastResultStatus = "down"
-	LastResultStatusError   LastResultStatus = "error"
-	LastResultStatusTimeout LastResultStatus = "timeout"
-	LastResultStatusUp      LastResultStatus = "up"
+	LastResultStatusAbandoned LastResultStatus = "abandoned"
+	LastResultStatusDown      LastResultStatus = "down"
+	LastResultStatusError     LastResultStatus = "error"
+	LastResultStatusTimeout   LastResultStatus = "timeout"
+	LastResultStatusUp        LastResultStatus = "up"
 )
 
 // Valid indicates whether the value is a known member of the LastResultStatus enum.
 func (e LastResultStatus) Valid() bool {
 	switch e {
+	case LastResultStatusAbandoned:
+		return true
 	case LastResultStatusDown:
 		return true
 	case LastResultStatusError:
@@ -845,15 +851,18 @@ func (e LastResultStatus) Valid() bool {
 
 // Defines values for LastResultListItemStatus.
 const (
-	LastResultListItemStatusDown    LastResultListItemStatus = "down"
-	LastResultListItemStatusError   LastResultListItemStatus = "error"
-	LastResultListItemStatusTimeout LastResultListItemStatus = "timeout"
-	LastResultListItemStatusUp      LastResultListItemStatus = "up"
+	LastResultListItemStatusAbandoned LastResultListItemStatus = "abandoned"
+	LastResultListItemStatusDown      LastResultListItemStatus = "down"
+	LastResultListItemStatusError     LastResultListItemStatus = "error"
+	LastResultListItemStatusTimeout   LastResultListItemStatus = "timeout"
+	LastResultListItemStatusUp        LastResultListItemStatus = "up"
 )
 
 // Valid indicates whether the value is a known member of the LastResultListItemStatus enum.
 func (e LastResultListItemStatus) Valid() bool {
 	switch e {
+	case LastResultListItemStatusAbandoned:
+		return true
 	case LastResultListItemStatusDown:
 		return true
 	case LastResultListItemStatusError:
@@ -965,14 +974,17 @@ func (e MembershipRequestSummaryStatus) Valid() bool {
 
 // Defines values for OrgResultStatus.
 const (
-	OrgResultStatusDown    OrgResultStatus = "down"
-	OrgResultStatusUnknown OrgResultStatus = "unknown"
-	OrgResultStatusUp      OrgResultStatus = "up"
+	OrgResultStatusAbandoned OrgResultStatus = "abandoned"
+	OrgResultStatusDown      OrgResultStatus = "down"
+	OrgResultStatusUnknown   OrgResultStatus = "unknown"
+	OrgResultStatusUp        OrgResultStatus = "up"
 )
 
 // Valid indicates whether the value is a known member of the OrgResultStatus enum.
 func (e OrgResultStatus) Valid() bool {
 	switch e {
+	case OrgResultStatusAbandoned:
+		return true
 	case OrgResultStatusDown:
 		return true
 	case OrgResultStatusUnknown:
@@ -2748,12 +2760,14 @@ type GetOrgResultResponse struct {
 	PreviousUid *openapi_types.UUID `json:"previousUid,omitempty"`
 
 	// Region Region identifier (with=region)
-	Region *string                     `json:"region,omitempty"`
+	Region *string `json:"region,omitempty"`
+
+	// Status Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 	Status *GetOrgResultResponseStatus `json:"status,omitempty"`
 	Uid    *openapi_types.UUID         `json:"uid,omitempty"`
 }
 
-// GetOrgResultResponseStatus defines model for GetOrgResultResponse.Status.
+// GetOrgResultResponseStatus Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 type GetOrgResultResponseStatus string
 
 // HealthResponse defines model for HealthResponse.
@@ -2991,7 +3005,7 @@ type LastResult struct {
 	// Output Diagnostic output and error messages
 	Output *map[string]interface{} `json:"output,omitempty"`
 
-	// Status Result status
+	// Status Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 	Status *LastResultStatus `json:"status,omitempty"`
 
 	// Timestamp When the check was executed
@@ -2999,7 +3013,7 @@ type LastResult struct {
 	Uid       *openapi_types.UUID `json:"uid,omitempty"`
 }
 
-// LastResultStatus Result status
+// LastResultStatus Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 type LastResultStatus string
 
 // LastResultListItem Slim last-execution result used on list responses (GET /checks) — {uid, status, timestamp, durationMs} only. See LastResult for the full detail-response shape.
@@ -3007,7 +3021,7 @@ type LastResultListItem struct {
 	// DurationMs Response time in milliseconds
 	DurationMs *float32 `json:"durationMs,omitempty"`
 
-	// Status Result status
+	// Status Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 	Status *LastResultListItemStatus `json:"status,omitempty"`
 
 	// Timestamp When the check was executed
@@ -3015,7 +3029,7 @@ type LastResultListItem struct {
 	Uid       *openapi_types.UUID `json:"uid,omitempty"`
 }
 
-// LastResultListItemStatus Result status
+// LastResultListItemStatus Result status. `abandoned` is server-minted by the abandoned-result reaper when nothing was ever reported for an attempt (a worker crashed, restarted, or lost its lease). It is terminal but is excluded from every availability calculation, so it must be rendered as a neutral "not counted" state, never as a failure.
 type LastResultListItemStatus string
 
 // LimitsConcurrency Concurrency section of the limits response.
@@ -3564,12 +3578,14 @@ type OrgResult struct {
 	PeriodType  *string                 `json:"periodType,omitempty"`
 
 	// Region Region identifier (with=region)
-	Region *string             `json:"region,omitempty"`
+	Region *string `json:"region,omitempty"`
+
+	// Status Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 	Status *OrgResultStatus    `json:"status,omitempty"`
 	Uid    *openapi_types.UUID `json:"uid,omitempty"`
 }
 
-// OrgResultStatus defines model for OrgResult.Status.
+// OrgResultStatus Result status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 type OrgResultStatus string
 
 // OrgResultListResponse defines model for OrgResultListResponse.
