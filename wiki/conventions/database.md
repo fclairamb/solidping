@@ -37,23 +37,56 @@ Bun's migration discovery regex (`[0-9a-z_\-]` only) does **not** allow dots. Us
 
 Migrations already shipped in a released version (`vX.Y.Z` git tag) are **frozen and never rewritten**. Only add new files for new releases.
 
-## Gaps in the `NNN` sequence are fine — never renumber to close one
+## Gaps in the `NNN` sequence — never renumber a RELEASED one, always consolidate an UNRELEASED series
 
-The sequence may contain holes (at the time of writing, `013` is followed by
-`015`: a `014` was added and then withdrawn). **Leave them.** Bun discovers
-migrations by numeric prefix and applies whichever are unapplied, in order — a
-gap costs nothing.
+Two rules that look contradictory live here. They are not: they are about
+different halves of the sequence, split at the last released migration.
 
-Renumbering a later migration down into a hole is actively dangerous, because
-the hole is only empty *in the source tree*. Databases that ran the withdrawn
-migration still carry its number in `bun_migrations`. Slide the next migration
-into that number and bun sees it as already applied and **silently skips it** —
-the exact failure mode the integrity guard below exists to catch, reintroduced
-by hand. On those databases the guard then refuses to boot on the checksum
-mismatch, which is correct but means a hand repair before anything runs again.
+### Released or withdrawn numbers: leave the hole
 
-So: a gap is cosmetic, closing it is a schema bug. Add the next number and move
-on.
+Once a number has escaped into any database that is not yours — a released
+tag, or a withdrawn draft some colleague's dev database still records — the
+hole it leaves is permanent. **Leave it.** Bun discovers migrations by numeric
+prefix and applies whichever are unapplied, in order; a gap costs nothing.
+
+Renumbering a later migration down into such a hole is actively dangerous,
+because the hole is only empty *in the source tree*. Databases that ran the
+withdrawn migration still carry its number in `bun_migrations`. Slide the next
+migration into that number and bun sees it as already applied and **silently
+skips it** — the exact failure mode the integrity guard below exists to catch,
+reintroduced by hand. On those databases the guard then refuses to boot on the
+checksum mismatch, which is correct but means a hand repair before anything
+runs again.
+
+### The unreleased series: consolidate it, renumber included
+
+Everything numbered above the last released migration is still a draft. The
+"one migration per release" rule at the top of this section is the goal state,
+and the [development workflow](#development-workflow) below is how you get
+there: at release time the cycle's scratch migrations collapse into a single
+`NNN_vX_Y_Z` file per engine holding the **net final DDL**. That consolidation
+is a renumbering, and it is correct — the numbers being reused never shipped.
+
+Consolidate as soon as the churn is visible, not only on release day: a series
+where one migration adds a column and the next drops it makes every future
+install create the column only to destroy it, and on SQLite that is a full
+rebuild of the largest table in the system for no net gain. (v0.17.0 did
+exactly this across `015` + `016`; both were replaced by a single `014` — `013`
+being the last released migration, `014` is simply the next number.)
+
+The price is paid entirely by development databases, and it is paid by
+**RESET**, never by repair:
+
+- Reset the database — `SP_DB_RESET=true` in test/demo run mode, or delete the
+  SQLite file.
+- **Do not run `solidping migrate repair`.** Repair rewrites the recorded
+  checksum without applying any schema. A database that ran the old series
+  would come out claiming the consolidated migration is applied while actually
+  carrying whatever the old files left behind — a database that looks correct
+  and is not.
+
+Say so explicitly in the consolidated migration's header and in the release
+notes, so nobody reaches for repair out of habit.
 
 ## Integrity guard: an applied migration is frozen too
 
@@ -118,10 +151,12 @@ behavior on a checksum mismatch:
 
 The correct *prevention* is never to edit an applied migration: add a new
 numbered one instead, written to be idempotent so it is a no-op on databases
-that already got the DDL. (A self-healing `014_v0_17_0` once did this for a
-rewritten 013; it was removed before release in favor of repairing the few
-affected dev databases by hand — pre-release, hand repair beats shipping a
-permanent migration.)
+that already got the DDL. (A self-healing migration numbered `014` once did
+this for a rewritten 013; it was withdrawn before release in favor of repairing
+the few affected dev databases by hand — pre-release, hand repair beats
+shipping a permanent migration. `014_v0_17_0` today is the consolidated
+v0.17.0 migration, unrelated to that draft; see the consolidation rule above
+for why reusing the number is safe here and what it costs dev databases.)
 
 ## Development workflow
 
