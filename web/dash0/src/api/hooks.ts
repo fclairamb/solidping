@@ -942,14 +942,15 @@ export function useResults(
       if (options?.size) params.set("limit", options.size.toString());
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
+      // Results pagination is cursor-only — no `total` (the results table is
+      // the largest in the system; see wiki/api-specification/results-incidents.md).
       const response = await apiFetch<{
         data?: OrgResult[];
-        pagination?: CursorPagination;
+        pagination?: { cursor?: string; size?: number };
       }>(path);
       return {
         data: response.data || [],
         cursor: response.pagination?.cursor,
-        total: response.pagination?.total,
       };
     },
     enabled: !!org,
