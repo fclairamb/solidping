@@ -1008,6 +1008,48 @@ func (e OrganizationMemberSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for RegionCapabilitiesIpv4.
+const (
+	RegionCapabilitiesIpv4No      RegionCapabilitiesIpv4 = "no"
+	RegionCapabilitiesIpv4Unknown RegionCapabilitiesIpv4 = "unknown"
+	RegionCapabilitiesIpv4Yes     RegionCapabilitiesIpv4 = "yes"
+)
+
+// Valid indicates whether the value is a known member of the RegionCapabilitiesIpv4 enum.
+func (e RegionCapabilitiesIpv4) Valid() bool {
+	switch e {
+	case RegionCapabilitiesIpv4No:
+		return true
+	case RegionCapabilitiesIpv4Unknown:
+		return true
+	case RegionCapabilitiesIpv4Yes:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegionCapabilitiesIpv6.
+const (
+	RegionCapabilitiesIpv6No      RegionCapabilitiesIpv6 = "no"
+	RegionCapabilitiesIpv6Unknown RegionCapabilitiesIpv6 = "unknown"
+	RegionCapabilitiesIpv6Yes     RegionCapabilitiesIpv6 = "yes"
+)
+
+// Valid indicates whether the value is a known member of the RegionCapabilitiesIpv6 enum.
+func (e RegionCapabilitiesIpv6) Valid() bool {
+	switch e {
+	case RegionCapabilitiesIpv6No:
+		return true
+	case RegionCapabilitiesIpv6Unknown:
+		return true
+	case RegionCapabilitiesIpv6Yes:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ResultFallbackInfoReason.
 const (
 	ResultFallbackInfoReasonRolledUpToDay   ResultFallbackInfoReason = "rolled_up_to_day"
@@ -1522,6 +1564,15 @@ type AvailabilityThresholds struct {
 	ThresholdUp       float64 `json:"thresholdUp"`
 }
 
+// ChangePasswordRequest defines model for ChangePasswordRequest.
+type ChangePasswordRequest struct {
+	// CurrentPassword The password currently on the account. Required unless the account has no password yet (SSO-only sign-up), in which case it is ignored.
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+
+	// NewPassword Must differ from the current password.
+	NewPassword string `json:"newPassword"`
+}
+
 // Channel defines model for Channel.
 type Channel struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -1621,6 +1672,9 @@ type Check struct {
 	Type       *CheckType          `json:"type,omitempty"`
 	Uid        *openapi_types.UUID `json:"uid,omitempty"`
 	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
+
+	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
+	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
 // CheckLastStatusChangeStatus The status that the check transitioned to
@@ -1776,6 +1830,9 @@ type CheckListItem struct {
 	Type       *CheckListItemType  `json:"type,omitempty"`
 	Uid        *openapi_types.UUID `json:"uid,omitempty"`
 	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
+
+	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
+	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
 // CheckListItemLastStatusChangeStatus The status that the check transitioned to
@@ -2052,7 +2109,11 @@ type CreateInvitationRequestRole string
 // CreateJobRequest defines model for CreateJobRequest.
 type CreateJobRequest struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
-	Type   string                  `json:"type"`
+
+	// Type Job type. Only allowlisted types may be created through the public
+	// endpoint — currently `sleep` only. Anything else is refused with
+	// 403.
+	Type string `json:"type"`
 }
 
 // CreateMaintenanceWindowRequest defines model for CreateMaintenanceWindowRequest.
@@ -2134,8 +2195,10 @@ type CreateStatusPageRequest struct {
 	Settings         *StatusPageSettings `json:"settings,omitempty"`
 	ShowAvailability *bool               `json:"showAvailability,omitempty"`
 	ShowResponseTime *bool               `json:"showResponseTime,omitempty"`
-	Slug             string              `json:"slug"`
-	Visibility       *string             `json:"visibility,omitempty"`
+
+	// Slug URL-friendly identifier, unique within the organization. Omit it (or send "") to have one derived from `name`, disambiguated with a numeric suffix on collision. A slug you supply is never renamed: a collision returns VALIDATION_ERROR instead.
+	Slug       *string `json:"slug,omitempty"`
+	Visibility *string `json:"visibility,omitempty"`
 }
 
 // CreateStatusPageResourceRequest Exactly one of checkUid or checkGroupUid must be set; zero or both is a VALIDATION_ERROR naming both fields.
@@ -2154,7 +2217,9 @@ type CreateStatusPageResourceRequest struct {
 type CreateStatusPageSectionRequest struct {
 	Name     string `json:"name"`
 	Position *int   `json:"position,omitempty"`
-	Slug     string `json:"slug"`
+
+	// Slug URL-friendly identifier, unique within the status page. Omit it (or send "") to have one derived from `name`, disambiguated with a numeric suffix on collision. A slug you supply is never renamed: a collision returns VALIDATION_ERROR instead.
+	Slug *string `json:"slug,omitempty"`
 }
 
 // CreateStatusUpdateRequest defines model for CreateStatusUpdateRequest.
@@ -3509,8 +3574,10 @@ type OrgResultStatus string
 
 // OrgResultListResponse defines model for OrgResultListResponse.
 type OrgResultListResponse struct {
-	Data       *[]OrgResult      `json:"data,omitempty"`
-	Pagination *CursorPagination `json:"pagination,omitempty"`
+	Data *[]OrgResult `json:"data,omitempty"`
+
+	// Pagination Cursor pagination for the results endpoint only — deliberately no `total`. `results` is the largest table in the system, and an unbounded COUNT(*) on every page load is too expensive to compute (see the Results section of the API wiki). Page forward with `cursor` until it comes back empty.
+	Pagination *ResultsCursorPagination `json:"pagination,omitempty"`
 }
 
 // OrgSettingsResponse defines model for OrgSettingsResponse.
@@ -3673,10 +3740,30 @@ type RefreshResponse struct {
 
 // Region defines model for Region.
 type Region struct {
-	Emoji string `json:"emoji"`
-	Name  string `json:"name"`
-	Slug  string `json:"slug"`
+	// Capabilities What a region's LIVE workers report they can do. Derived from worker heartbeats at read time, never configured. Additive: a client that ignores this object behaves exactly as before it existed.
+	Capabilities *RegionCapabilities `json:"capabilities,omitempty"`
+	Emoji        string              `json:"emoji"`
+	Name         string              `json:"name"`
+
+	// Private True for an org-private location served by deported agents.
+	Private *bool  `json:"private,omitempty"`
+	Slug    string `json:"slug"`
 }
+
+// RegionCapabilities What a region's LIVE workers report they can do. Derived from worker heartbeats at read time, never configured. Additive: a client that ignores this object behaves exactly as before it existed.
+type RegionCapabilities struct {
+	// Ipv4 Whether checks pinned to `ipVersion: ipv4` can leave this region. Same three states and the same any-not-all rule as `ipv6` below; `unknown` is a real state and MUST NOT be rendered as `no`.
+	Ipv4 *RegionCapabilitiesIpv4 `json:"ipv4,omitempty"`
+
+	// Ipv6 Whether checks pinned to `ipVersion: ipv6` can leave this region. `yes` when at least one live worker there reports IPv6 egress (any-not-all: a job runs on one worker). `no` when live workers reported and none has it. `unknown` when nothing live has reported — no live worker, or only workers predating the capability report. `unknown` is a real state and MUST NOT be rendered as `no`. The value is a hint with a heartbeat of lag: it never gates execution, and the run-time egress pre-flight is the authority.
+	Ipv6 *RegionCapabilitiesIpv6 `json:"ipv6,omitempty"`
+}
+
+// RegionCapabilitiesIpv4 Whether checks pinned to `ipVersion: ipv4` can leave this region. Same three states and the same any-not-all rule as `ipv6` below; `unknown` is a real state and MUST NOT be rendered as `no`.
+type RegionCapabilitiesIpv4 string
+
+// RegionCapabilitiesIpv6 Whether checks pinned to `ipVersion: ipv6` can leave this region. `yes` when at least one live worker there reports IPv6 egress (any-not-all: a job runs on one worker). `no` when live workers reported and none has it. `unknown` when nothing live has reported — no live worker, or only workers predating the capability report. `unknown` is a real state and MUST NOT be rendered as `no`. The value is a hint with a heartbeat of lag: it never gates execution, and the run-time egress pre-flight is the authority.
+type RegionCapabilitiesIpv6 string
 
 // RegisterRequest defines model for RegisterRequest.
 type RegisterRequest struct {
@@ -3722,6 +3809,13 @@ type ResultFallbackInfo struct {
 
 // ResultFallbackInfoReason defines model for ResultFallbackInfo.Reason.
 type ResultFallbackInfoReason string
+
+// ResultsCursorPagination Cursor pagination for the results endpoint only — deliberately no `total`. `results` is the largest table in the system, and an unbounded COUNT(*) on every page load is too expensive to compute (see the Results section of the API wiki). Page forward with `cursor` until it comes back empty.
+type ResultsCursorPagination struct {
+	// Cursor Cursor for next page (empty if no more results)
+	Cursor *string `json:"cursor,omitempty"`
+	Size   *int    `json:"size,omitempty"`
+}
 
 // SetCheckChannelsRequest defines model for SetCheckChannelsRequest.
 type SetCheckChannelsRequest struct {
@@ -4320,6 +4414,9 @@ type ValidateCheckRequest struct {
 type ValidateCheckResponse struct {
 	Fields *[]ValidationErrorField `json:"fields,omitempty"`
 	Valid  bool                    `json:"valid"`
+
+	// Warnings Advisory, per-field notes that do NOT make the configuration invalid — `valid` stays true and the write path accepts it. Today the only source is pinning `ipVersion: ipv6` in a region whose live workers report no IPv6 egress; that is deliberately a warning and never a rejection, because the advertised capability lags reality and the run-time probe is the authority.
+	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
 // ValidationErrorField defines model for ValidationErrorField.
@@ -4687,7 +4784,13 @@ type ListIncidentsParams struct {
 	// Size Results per page (default 20, max 100)
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 
-	// With Comma-separated optional fields to include (e.g., "check")
+	// With Comma-separated optional fields to include: "check", "members" (members also adds checkGroupSlug). Both are opt-in — the default response includes neither and costs no extra query for them.
+	With *string `form:"with,omitempty" json:"with,omitempty"`
+}
+
+// GetIncidentParams defines parameters for GetIncident.
+type GetIncidentParams struct {
+	// With Comma-separated optional fields to include: "check", "members" (members also adds checkGroupSlug). Both are opt-in — the default response includes neither and costs no extra query for them.
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 }
 
@@ -4937,6 +5040,9 @@ type ListSystemJobsParams struct {
 
 // AcceptInviteJSONRequestBody defines body for AcceptInvite for application/json ContentType.
 type AcceptInviteJSONRequestBody = AcceptInviteRequest
+
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody = ChangePasswordRequest
 
 // ConfirmRegistrationJSONRequestBody defines body for ConfirmRegistration for application/json ContentType.
 type ConfirmRegistrationJSONRequestBody = ConfirmRegistrationRequest
@@ -5272,6 +5378,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/auth/accept-invite (the `AcceptInvite` operationId).
 	AcceptInvite(ctx context.Context, body AcceptInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ChangePasswordWithBody Change (or set) the authenticated user's password
+	//
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+	ChangePasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ChangePassword Change (or set) the authenticated user's password
+	//
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+	ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ConfirmRegistrationWithBody Confirm a pending registration with an emailed token
 	//
@@ -6185,7 +6309,7 @@ type ClientInterface interface {
 	// GetIncident Get incident details
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/incidents/{uid} (the `GetIncident` operationId).
-	GetIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, params *GetIncidentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AcknowledgeIncidentWithBody Acknowledge an incident
 	//
@@ -6342,14 +6466,42 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/jobs (the `ListJobs` operationId).
 	ListJobs(ctx context.Context, org OrgPath, params *ListJobsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateJobWithBody Create a job
+	// CreateJobWithBody Create a job (org admin, allowlisted types only)
+	//
+	// Enqueues a background job. **Requires org admin** — a member with the
+	// `user` or `viewer` role is refused with 403.
+	//
+	// Only allowlisted job types may be created through this endpoint, and
+	// the allowlist currently contains **`sleep`** alone. Every other type
+	// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+	// family, …) is refused with 403: they are internal plumbing enqueued by
+	// SolidPing itself, and exposing them would hand any caller an arbitrary
+	// mail sender (`email`) and arbitrary server-side HTTP requests
+	// (`webhook`).
+	//
+	// An unknown job type, or a `config` that is invalid for the requested
+	// type, is a 400 — never a 500.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/jobs (the `CreateJob` operationId).
 	CreateJobWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateJob Create a job
+	// CreateJob Create a job (org admin, allowlisted types only)
+	//
+	// Enqueues a background job. **Requires org admin** — a member with the
+	// `user` or `viewer` role is refused with 403.
+	//
+	// Only allowlisted job types may be created through this endpoint, and
+	// the allowlist currently contains **`sleep`** alone. Every other type
+	// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+	// family, …) is refused with 403: they are internal plumbing enqueued by
+	// SolidPing itself, and exposing them would hand any caller an arbitrary
+	// mail sender (`email`) and arbitrary server-side HTTP requests
+	// (`webhook`).
+	//
+	// An unknown job type, or a `config` that is invalid for the requested
+	// type, is a 400 — never a 500.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -7366,6 +7518,44 @@ func (c *Client) AcceptInviteWithBody(ctx context.Context, contentType string, b
 // Corresponds with POST /api/v1/auth/accept-invite (the `AcceptInvite` operationId).
 func (c *Client) AcceptInvite(ctx context.Context, body AcceptInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAcceptInviteRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ChangePasswordWithBody Change (or set) the authenticated user's password
+//
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+func (c *Client) ChangePasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangePasswordRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ChangePassword Change (or set) the authenticated user's password
+//
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+func (c *Client) ChangePassword(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewChangePasswordRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -9558,8 +9748,8 @@ func (c *Client) ListIncidents(ctx context.Context, org OrgPath, params *ListInc
 // GetIncident Get incident details
 //
 // Corresponds with GET /api/v1/orgs/{org}/incidents/{uid} (the `GetIncident` operationId).
-func (c *Client) GetIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetIncidentRequest(c.Server, org, uid)
+func (c *Client) GetIncident(ctx context.Context, org OrgPath, uid IncidentUidPath, params *GetIncidentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIncidentRequest(c.Server, org, uid, params)
 	if err != nil {
 		return nil, err
 	}
@@ -9955,7 +10145,21 @@ func (c *Client) ListJobs(ctx context.Context, org OrgPath, params *ListJobsPara
 	return c.Client.Do(req)
 }
 
-// CreateJobWithBody Create a job
+// CreateJobWithBody Create a job (org admin, allowlisted types only)
+//
+// Enqueues a background job. **Requires org admin** — a member with the
+// `user` or `viewer` role is refused with 403.
+//
+// Only allowlisted job types may be created through this endpoint, and
+// the allowlist currently contains **`sleep`** alone. Every other type
+// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+// family, …) is refused with 403: they are internal plumbing enqueued by
+// SolidPing itself, and exposing them would hand any caller an arbitrary
+// mail sender (`email`) and arbitrary server-side HTTP requests
+// (`webhook`).
+//
+// An unknown job type, or a `config` that is invalid for the requested
+// type, is a 400 — never a 500.
 //
 // Takes any type of body and a specified content type.
 //
@@ -9972,7 +10176,21 @@ func (c *Client) CreateJobWithBody(ctx context.Context, org OrgPath, contentType
 	return c.Client.Do(req)
 }
 
-// CreateJob Create a job
+// CreateJob Create a job (org admin, allowlisted types only)
+//
+// Enqueues a background job. **Requires org admin** — a member with the
+// `user` or `viewer` role is refused with 403.
+//
+// Only allowlisted job types may be created through this endpoint, and
+// the allowlist currently contains **`sleep`** alone. Every other type
+// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+// family, …) is refused with 403: they are internal plumbing enqueued by
+// SolidPing itself, and exposing them would hand any caller an arbitrary
+// mail sender (`email`) and arbitrary server-side HTTP requests
+// (`webhook`).
+//
+// An unknown job type, or a `config` that is invalid for the requested
+// type, is a 400 — never a 500.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -12446,6 +12664,46 @@ func NewAcceptInviteRequestWithBody(server string, contentType string, body io.R
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/auth/accept-invite")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewChangePasswordRequest calls the generic ChangePassword builder with application/json body
+func NewChangePasswordRequest(server string, body ChangePasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewChangePasswordRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewChangePasswordRequestWithBody constructs an http.Request for the ChangePassword method, with any body, and a specified content type
+func NewChangePasswordRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/change-password")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -17032,7 +17290,7 @@ func NewListIncidentsRequest(server string, org OrgPath, params *ListIncidentsPa
 }
 
 // NewGetIncidentRequest constructs an http.Request for the GetIncident method
-func NewGetIncidentRequest(server string, org OrgPath, uid IncidentUidPath) (*http.Request, error) {
+func NewGetIncidentRequest(server string, org OrgPath, uid IncidentUidPath, params *GetIncidentParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -17062,6 +17320,33 @@ func NewGetIncidentRequest(server string, org OrgPath, uid IncidentUidPath) (*ht
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.With != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "with", *params.With, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -23371,6 +23656,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/auth/accept-invite (the `AcceptInvite` operationId).
 	AcceptInviteWithResponse(ctx context.Context, body AcceptInviteJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptInviteResult, error)
 
+	// ChangePasswordWithBodyWithResponse Change (or set) the authenticated user's password
+	//
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+	ChangePasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangePasswordResult, error)
+
+	// ChangePasswordWithResponse Change (or set) the authenticated user's password
+	//
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+	ChangePasswordWithResponse(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangePasswordResult, error)
+
 	// ConfirmRegistrationWithBodyWithResponse Confirm a pending registration with an emailed token
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -24403,7 +24706,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/incidents/{uid} (the `GetIncident` operationId).
-	GetIncidentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*GetIncidentResult, error)
+	GetIncidentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, params *GetIncidentParams, reqEditors ...RequestEditorFn) (*GetIncidentResult, error)
 
 	// AcknowledgeIncidentWithBodyWithResponse Acknowledge an incident
 	//
@@ -24582,14 +24885,42 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/jobs (the `ListJobs` operationId).
 	ListJobsWithResponse(ctx context.Context, org OrgPath, params *ListJobsParams, reqEditors ...RequestEditorFn) (*ListJobsResult, error)
 
-	// CreateJobWithBodyWithResponse Create a job
+	// CreateJobWithBodyWithResponse Create a job (org admin, allowlisted types only)
+	//
+	// Enqueues a background job. **Requires org admin** — a member with the
+	// `user` or `viewer` role is refused with 403.
+	//
+	// Only allowlisted job types may be created through this endpoint, and
+	// the allowlist currently contains **`sleep`** alone. Every other type
+	// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+	// family, …) is refused with 403: they are internal plumbing enqueued by
+	// SolidPing itself, and exposing them would hand any caller an arbitrary
+	// mail sender (`email`) and arbitrary server-side HTTP requests
+	// (`webhook`).
+	//
+	// An unknown job type, or a `config` that is invalid for the requested
+	// type, is a 400 — never a 500.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/jobs (the `CreateJob` operationId).
 	CreateJobWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateJobResult, error)
 
-	// CreateJobWithResponse Create a job
+	// CreateJobWithResponse Create a job (org admin, allowlisted types only)
+	//
+	// Enqueues a background job. **Requires org admin** — a member with the
+	// `user` or `viewer` role is refused with 403.
+	//
+	// Only allowlisted job types may be created through this endpoint, and
+	// the allowlist currently contains **`sleep`** alone. Every other type
+	// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+	// family, …) is refused with 403: they are internal plumbing enqueued by
+	// SolidPing itself, and exposing them would hand any caller an arbitrary
+	// mail sender (`email`) and arbitrary server-side HTTP requests
+	// (`webhook`).
+	//
+	// An unknown job type, or a `config` that is invalid for the requested
+	// type, is a 400 — never a 500.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -25942,6 +26273,75 @@ func (r AcceptInviteResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AcceptInviteResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ChangePasswordResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MessageResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ChangePasswordResult) GetJSON200() *MessageResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ChangePasswordResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ChangePasswordResult) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ChangePasswordResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r ChangePasswordResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r ChangePasswordResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ChangePasswordResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ChangePasswordResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ChangePasswordResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -32030,6 +32430,8 @@ type CreateJobResult struct {
 	JSON201 *JobResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *ValidationError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -32040,6 +32442,11 @@ func (r CreateJobResult) GetJSON201() *JobResponse {
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
 func (r CreateJobResult) GetJSON400() *ValidationError {
 	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateJobResult) GetJSON403() *Error {
+	return r.JSON403
 }
 
 // GetBody returns the raw response body bytes
@@ -38109,6 +38516,36 @@ func (c *ClientWithResponses) AcceptInviteWithResponse(ctx context.Context, body
 	return ParseAcceptInviteResult(rsp)
 }
 
+// ChangePasswordWithBodyWithResponse Change (or set) the authenticated user's password
+//
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+func (c *ClientWithResponses) ChangePasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ChangePasswordResult, error) {
+	rsp, err := c.ChangePasswordWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangePasswordResult(rsp)
+}
+
+// ChangePasswordWithResponse Change (or set) the authenticated user's password
+//
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/change-password (the `ChangePassword` operationId).
+func (c *ClientWithResponses) ChangePasswordWithResponse(ctx context.Context, body ChangePasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangePasswordResult, error) {
+	rsp, err := c.ChangePassword(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseChangePasswordResult(rsp)
+}
+
 // ConfirmRegistrationWithBodyWithResponse Confirm a pending registration with an emailed token
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -39903,8 +40340,8 @@ func (c *ClientWithResponses) ListIncidentsWithResponse(ctx context.Context, org
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/orgs/{org}/incidents/{uid} (the `GetIncident` operationId).
-func (c *ClientWithResponses) GetIncidentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, reqEditors ...RequestEditorFn) (*GetIncidentResult, error) {
-	rsp, err := c.GetIncident(ctx, org, uid, reqEditors...)
+func (c *ClientWithResponses) GetIncidentWithResponse(ctx context.Context, org OrgPath, uid IncidentUidPath, params *GetIncidentParams, reqEditors ...RequestEditorFn) (*GetIncidentResult, error) {
+	rsp, err := c.GetIncident(ctx, org, uid, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -40226,7 +40663,21 @@ func (c *ClientWithResponses) ListJobsWithResponse(ctx context.Context, org OrgP
 	return ParseListJobsResult(rsp)
 }
 
-// CreateJobWithBodyWithResponse Create a job
+// CreateJobWithBodyWithResponse Create a job (org admin, allowlisted types only)
+//
+// Enqueues a background job. **Requires org admin** — a member with the
+// `user` or `viewer` role is refused with 403.
+//
+// Only allowlisted job types may be created through this endpoint, and
+// the allowlist currently contains **`sleep`** alone. Every other type
+// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+// family, …) is refused with 403: they are internal plumbing enqueued by
+// SolidPing itself, and exposing them would hand any caller an arbitrary
+// mail sender (`email`) and arbitrary server-side HTTP requests
+// (`webhook`).
+//
+// An unknown job type, or a `config` that is invalid for the requested
+// type, is a 400 — never a 500.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -40239,7 +40690,21 @@ func (c *ClientWithResponses) CreateJobWithBodyWithResponse(ctx context.Context,
 	return ParseCreateJobResult(rsp)
 }
 
-// CreateJobWithResponse Create a job
+// CreateJobWithResponse Create a job (org admin, allowlisted types only)
+//
+// Enqueues a background job. **Requires org admin** — a member with the
+// `user` or `viewer` role is refused with 403.
+//
+// Only allowlisted job types may be created through this endpoint, and
+// the allowlist currently contains **`sleep`** alone. Every other type
+// (`email`, `webhook`, `aggregation`, `notification`, the discovery
+// family, …) is refused with 403: they are internal plumbing enqueued by
+// SolidPing itself, and exposing them would hand any caller an arbitrary
+// mail sender (`email`) and arbitrary server-side HTTP requests
+// (`webhook`).
+//
+// An unknown job type, or a `config` that is invalid for the requested
+// type, is a 400 — never a 500.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -42329,6 +42794,60 @@ func ParseAcceptInviteResult(rsp *http.Response) (*AcceptInviteResult, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseChangePasswordResult parses an HTTP response from a ChangePasswordWithResponse call
+func ParseChangePasswordResult(rsp *http.Response) (*ChangePasswordResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ChangePasswordResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MessageResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	}
 
@@ -46812,6 +47331,13 @@ func ParseCreateJobResult(rsp *http.Response) (*CreateJobResult, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	}
 
