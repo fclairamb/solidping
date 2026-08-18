@@ -25,11 +25,18 @@ const portIncidentNumberPG = 15470
 // is bounded below the embedded server's max_connections (see below), so extra
 // goroutines queue on the pool instead of being refused by the server.
 //
+// It is deliberately set WELL ABOVE db.IncidentNumberAttempts. At 12 this test
+// was green on an idle machine and failed on a loaded CI runner, because the
+// unlucky goroutine loses one race per competing commit and the retry budget
+// used to be spent by those legitimate losses: N racers need up to N-1 retries.
+// Anything at or below the budget could never catch that, so the count is what
+// makes the stall-versus-progress distinction load-bearing here.
+//
 // Whether the unique-violation RETRY fires on a given run is up to the
 // scheduler, so it is pinned deterministically by
 // TestCreateIncidentWithNumber_RetriesOnUniqueViolation rather than left to
 // this test's timing.
-const concurrentIncidentCreations = 12
+const concurrentIncidentCreations = 32
 
 // TestIncidentNumbers_SQLite proves the per-org numbering contract on SQLite.
 func TestIncidentNumbers_SQLite(t *testing.T) {

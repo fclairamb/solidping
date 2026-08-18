@@ -84,6 +84,64 @@ describe("initAnalytics", () => {
     vi.doUnmock("./posthog-loader");
   });
 
+  // The dashboard must default api_host to the first-party proxy path (so ad
+  // blockers do not drop events) and pass ui_host through so in-app links still
+  // resolve to the PostHog app.
+  it("initializes posthog with the first-party proxy path and ui_host", async () => {
+    let options: Record<string, unknown> | undefined;
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: (_key: string, opts: Record<string, unknown>) => {
+          options = opts;
+        },
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+      },
+    }));
+
+    expect(
+      await initAnalytics({
+        posthog: {
+          enabled: true,
+          projectApiKey: "phc_k",
+          host: "/ingest",
+          uiHost: "https://eu.posthog.com",
+        },
+      }),
+    ).toBe(true);
+
+    expect(options?.api_host).toBe("/ingest");
+    expect(options?.ui_host).toBe("https://eu.posthog.com");
+    vi.doUnmock("./posthog-loader");
+  });
+
+  // With no ui_host from the backend (an operator-configured host), the option
+  // must be omitted so posthog-js derives it from api_host as before.
+  it("omits ui_host when the backend does not send one", async () => {
+    let options: Record<string, unknown> | undefined;
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: (_key: string, opts: Record<string, unknown>) => {
+          options = opts;
+        },
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+      },
+    }));
+
+    expect(
+      await initAnalytics({
+        posthog: { enabled: true, projectApiKey: "phc_k", host: "https://ph.example.com" },
+      }),
+    ).toBe(true);
+
+    expect(options?.api_host).toBe("https://ph.example.com");
+    expect("ui_host" in (options ?? {})).toBe(false);
+    vi.doUnmock("./posthog-loader");
+  });
+
   // …and when analytics stays off, that queued identity is discarded, never sent.
   it("discards a queued identify when analytics is off", async () => {
     identifyAnalytics("org-uid", "user-uid");

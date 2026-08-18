@@ -26,6 +26,7 @@ export interface PostHogPublicConfig {
   enabled: boolean;
   projectApiKey?: string;
   host?: string;
+  uiHost?: string;
 }
 
 /**
@@ -198,8 +199,10 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
     loading = import("./posthog-loader")
       .then((mod) => {
         const posthog = (mod.default ?? mod) as unknown as PostHogLike;
-        posthog.init(settings.projectApiKey!.trim(), {
-          api_host: settings.host || "https://eu.i.posthog.com",
+        const options: Record<string, unknown> = {
+          // Defaults to the first-party proxy path so ad blockers do not drop
+          // events; the backend sends an explicit host when one is configured.
+          api_host: settings.host || "/ingest",
           // Conservative autocapture: never ship typed values or element
           // attributes, and never record sessions.
           autocapture: true,
@@ -210,7 +213,14 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           person_profiles: "identified_only",
           // Scrub org slugs / resource UIDs out of every captured URL.
           sanitize_properties: sanitizeProperties,
-        });
+        };
+        // When api_host is the first-party proxy path, posthog-js cannot derive
+        // the PostHog app host, so toolbar and "view in PostHog" links need it
+        // explicitly. Omitted when the backend leaves it empty.
+        if (settings.uiHost) {
+          options.ui_host = settings.uiHost;
+        }
+        posthog.init(settings.projectApiKey!.trim(), options);
         client = posthog;
         if (pendingIdentity) {
           posthog.identify(pendingIdentity);

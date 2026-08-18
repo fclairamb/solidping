@@ -296,8 +296,11 @@ type PostHogConfig struct {
 	// Enabled is the kill switch (SP_POSTHOG_ENABLED, default true). It only
 	// ever turns the feature *off*: a key is still required to turn it on.
 	Enabled bool `koanf:"enabled"`
-	// Host is the PostHog ingestion endpoint (SP_POSTHOG_HOST). Defaults to
-	// the EU cloud; supports self-hosted PostHog and reverse proxies.
+	// Host is the PostHog ingestion endpoint (SP_POSTHOG_HOST). When empty the
+	// dashboard captures through the first-party PostHogProxyPath (so ad
+	// blockers do not drop events) while the server-side client and that proxy
+	// talk to DefaultPostHogHost. Set it to point at self-hosted PostHog or an
+	// external reverse proxy, in which case the dashboard uses it verbatim.
 	Host string `koanf:"host"`
 	// ProjectAPIKey is the `phc_…` client key (SP_POSTHOG_PROJECT_API_KEY).
 	// Public by design — it is shipped to the browser. Empty = feature off.
@@ -309,8 +312,25 @@ type PostHogConfig struct {
 	PersonalAPIKey string `koanf:"personal_api_key"`
 }
 
-// DefaultPostHogHost is the ingestion endpoint used when none is configured.
+// DefaultPostHogHost is the upstream ingestion endpoint used when none is
+// configured. The server-side client and the built-in reverse proxy send here.
 const DefaultPostHogHost = "https://eu.i.posthog.com"
+
+// DefaultPostHogAssetsHost is where posthog-js fetches its static assets
+// (toolbar, surveys, recorder). PostHog Cloud serves these from a separate
+// host, so the reverse proxy forwards /static/ requests here.
+const DefaultPostHogAssetsHost = "https://eu-assets.i.posthog.com"
+
+// DefaultPostHogUIHost is the PostHog application host. The dashboard passes it
+// as posthog-js ui_host so the toolbar and "view in PostHog" links resolve to
+// the app even when api_host is the first-party PostHogProxyPath.
+const DefaultPostHogUIHost = "https://eu.posthog.com"
+
+// PostHogProxyPath is the first-party path the SolidPing origin reverse-proxies
+// to PostHog (see internal/app/server.go). The dashboard uses it as api_host
+// when no host is configured, so ad blockers that block third-party analytics
+// hosts do not silently drop events.
+const PostHogProxyPath = "/ingest"
 
 // Active reports whether PostHog is on. This is THE enablement rule, applied
 // identically by the backend analytics client, the public config endpoint and
@@ -320,14 +340,39 @@ func (c PostHogConfig) Active() bool {
 	return c.Enabled && strings.TrimSpace(c.ProjectAPIKey) != ""
 }
 
-// ResolvedHost returns the ingestion host, falling back to the default when the
-// operator left it empty.
+// ResolvedHost returns the upstream ingestion host, falling back to the default
+// when the operator left it empty. This is the host the server-side client and
+// the reverse proxy talk to — always an absolute URL, never the proxy path.
 func (c PostHogConfig) ResolvedHost() string {
 	if h := strings.TrimSpace(c.Host); h != "" {
 		return h
 	}
 
 	return DefaultPostHogHost
+}
+
+// BrowserAPIHost returns the api_host the dashboard posts events to. With no
+// explicit host it is the first-party PostHogProxyPath, so ingestion travels
+// through the SolidPing origin; an operator-configured host is used verbatim.
+func (c PostHogConfig) BrowserAPIHost() string {
+	if h := strings.TrimSpace(c.Host); h != "" {
+		return h
+	}
+
+	return PostHogProxyPath
+}
+
+// BrowserUIHost returns the ui_host the dashboard passes to posthog-js, or ""
+// when no override is needed. It is set only when api_host is the first-party
+// proxy path: posthog-js would otherwise derive the UI host from api_host and
+// resolve the toolbar and "view in PostHog" links to a local path. With an
+// operator-configured host, posthog-js derives the UI host as before.
+func (c PostHogConfig) BrowserUIHost() string {
+	if strings.TrimSpace(c.Host) != "" {
+		return ""
+	}
+
+	return DefaultPostHogUIHost
 }
 
 // WebPushConfig holds VAPID credentials for Web Push notifications.
@@ -1338,8 +1383,10 @@ func Load() (*Config, error) {
 		Telegram: TelegramConfig{},
 		// Enabled defaults to true but is inert on its own: PostHogConfig.Active
 		// additionally requires a project API key, which self-hosted installs
-		// never have unless the operator sets one.
-		PostHog: PostHogConfig{Enabled: true, Host: DefaultPostHogHost},
+		// never have unless the operator sets one. Host is left empty on purpose
+		// so the dashboard captures through the first-party PostHogProxyPath; see
+		// BrowserAPIHost.
+		PostHog: PostHogConfig{Enabled: true},
 		// TracesSampleRate defaults to 0.0, explicitly (not a leftover Go zero
 		// value). SolidPing already ships OpenTelemetry tracing behind
 		// SP_OTEL_ENABLED; paying Sentry's transaction quota for a second,

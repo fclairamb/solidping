@@ -187,6 +187,56 @@ func TestCreateIncidentWithNumber_DoesNotRetryOtherUniqueViolations(t *testing.T
 	}
 }
 
+// TestCreateIncidentWithNumber_SurvivesMoreLostRacesThanTheStallBudget is the
+// deterministic guard for the bug the parallel race test only caught on a
+// loaded runner.
+//
+// Losing the race is not a failure mode: it means a competing creation in the
+// same organization committed, so MAX+1 has MOVED and the next attempt is a
+// fresh number rather than the same guess again. N incidents opening at once
+// make the unlucky one lose up to N-1 times, and N is set by the outage, not by
+// this loop — so charging those losses to a small constant made a burst of
+// simultaneous incidents fail to get numbered at all.
+//
+// The counterpart is TestCreateIncidentWithNumber_GivesUpAfterTooManyCollisions
+// below: there MAX+1 never moves, and the loop must still give up. Together
+// they pin the distinction — a loop that simply retried more would pass this
+// test and fail that one.
+func TestCreateIncidentWithNumber_SurvivesMoreLostRacesThanTheStallBudget(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Comfortably more lost races than the stall budget, every one of them
+	// legitimate contention.
+	const lostRaces = db.IncidentNumberAttempts * 4
+
+	highest := int64(0)
+	attempts := 0
+
+	incident := models.NewIncident("org", "check", time.Now(), "burst")
+
+	err := db.CreateIncidentWithNumber(t.Context(), incident,
+		func(_ context.Context, _ string) (int64, error) { return highest + 1, nil },
+		func(_ context.Context) error {
+			attempts++
+
+			if attempts <= lostRaces {
+				// Somebody else claimed the number between our SELECT and our
+				// INSERT, which is what makes the next read return a higher one.
+				highest++
+
+				return errSQLiteDuplicate
+			}
+
+			return nil
+		})
+
+	r.NoError(err, "a lost race is contention the loop must ride out, not a livelock")
+	r.Equal(lostRaces+1, attempts)
+	r.EqualValues(lostRaces+1, incident.Number)
+}
+
 // TestCreateIncidentWithNumber_GivesUpAfterTooManyCollisions proves the loop
 // terminates. Retrying forever under a genuine stampede would livelock the
 // worker that opened the incident.
