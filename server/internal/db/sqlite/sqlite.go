@@ -26,8 +26,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite/gomigrations"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
@@ -257,10 +259,26 @@ func resetSQLiteDatabase(dbPath string) error {
 }
 
 // Initialize sets up the database schema using migrations.
+//
+// The integrity guard runs twice on purpose: once BEFORE migrating, to verify
+// (and, on a database that predates the guard, to backfill) the checksums of
+// what is already applied, and once after, to record what this boot just
+// applied. Verifying first is what turns a rewritten-after-apply migration into
+// a loud startup failure instead of a database that silently lacks the DDL
+// (spec 2026-08-18-02).
 func (s *Service) Initialize(ctx context.Context) error {
 	migrations := migrate.NewMigrations()
 	if err := migrations.Discover(migrationsFS); err != nil {
 		return fmt.Errorf("failed to discover migrations: %w", err)
+	}
+
+	if err := gomigrations.Register(migrations, migrationsFS); err != nil {
+		return fmt.Errorf("failed to register go migrations: %w", err)
+	}
+
+	guard, err := newMigrationGuard(s.db)
+	if err != nil {
+		return err
 	}
 
 	migrator := migrate.NewMigrator(s.db, migrations)
@@ -268,11 +286,31 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to init migrator: %w", err)
 	}
 
+	if err := guard.Reconcile(ctx); err != nil {
+		return err
+	}
+
 	if _, err := migrator.Migrate(ctx); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
+	if err := guard.Reconcile(ctx); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// newMigrationGuard builds the checksum guard over the embedded SQL migrations
+// plus the Go migrations, which have no file to hash and declare their
+// checksum instead.
+func newMigrationGuard(db *bun.DB) (*migrationguard.Guard, error) {
+	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
+	}
+
+	return migrationguard.New(db, expected, gomigrations.Guarded()...), nil
 }
 
 // DB returns the underlying bun.DB instance.

@@ -24,6 +24,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres/embeddedpg"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
@@ -268,13 +269,32 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to discover migrations: %w", err)
 	}
 
+	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
+	if err != nil {
+		return fmt.Errorf("failed to checksum migrations: %w", err)
+	}
+
+	guard := migrationguard.New(s.db, expected)
+
 	migrator := migrate.NewMigrator(s.db, migrations)
 	if err := migrator.Init(ctx); err != nil {
 		return fmt.Errorf("failed to init migrator: %w", err)
 	}
 
+	// Verify (and, on a database that predates the guard, backfill) what is
+	// already applied BEFORE migrating: a migration rewritten after it was
+	// applied must fail the boot, not be silently skipped (spec 2026-08-18-02).
+	if err := guard.Reconcile(ctx); err != nil {
+		return err
+	}
+
 	if _, err := migrator.Migrate(ctx); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	// Record what this boot just applied.
+	if err := guard.Reconcile(ctx); err != nil {
+		return err
 	}
 
 	return nil
