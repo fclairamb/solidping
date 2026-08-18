@@ -38,6 +38,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -218,6 +219,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			LogSQL:             cfg.Database.LogSQL,
 			RunMode:            cfg.RunMode,
 			Reset:              cfg.Database.Reset,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
 			MaxOpenConns:       cfg.Database.MaxOpenConns,
 			MaxIdleConns:       cfg.Database.MaxIdleConns,
 			ConnMaxLifetime:    cfg.Database.ConnMaxLifetime,
@@ -234,6 +236,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			LogSQL:             cfg.Database.LogSQL,
 			RunMode:            cfg.RunMode,
 			Reset:              cfg.Database.Reset,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
 			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
@@ -246,6 +249,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			LogSQL:             cfg.Database.LogSQL,
 			RunMode:            cfg.RunMode,
 			Reset:              cfg.Database.Reset,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
 			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
@@ -255,6 +259,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService, err = sqlite.New(ctx, sqlite.Config{
 			InMemory:           true,
 			LogSQL:             cfg.Database.LogSQL,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
 			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
