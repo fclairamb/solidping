@@ -262,17 +262,20 @@ DEVLOOP_PROCS := -proc "dash0:$(CURDIR)/$(DASH0_DIR):bun run dev" -proc "status0
 dev: kill ## Run backend, dash0 and status0 in development mode
 	@echo "Running application in development mode..."
 	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" SP_PROFILER_ENABLED=true \
+		SP_DB_MIGRATION_GUARD_MODE=warn \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
 	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
+		SP_DB_MIGRATION_GUARD_MODE=warn \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
 	@echo "Running application in SaaS mode (billing via ../solidping-billing on :4050)..."
 	@echo "  upgrade URL template: $(SAAS_UPGRADE_URL)"
 	@cd $(BACK_DIR) && \
+		SP_DB_MIGRATION_GUARD_MODE=warn \
 		SP_DEPLOYMENT_MODE=saas \
 		SP_ENTITLEMENTS_SERVICE_TOKEN="$(SAAS_BILLING_TOKEN)" \
 		SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE="$(SAAS_UPGRADE_URL)" \
