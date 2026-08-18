@@ -130,6 +130,18 @@ type Result struct {
 	DurationAvg      *float32 `bun:"duration_avg"`
 
 	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
+
+	// CheckSlug and CheckName are populated only when the query joined
+	// `checks` (ListResultsFilter.IncludeCheckInfo, set when the results
+	// endpoint's caller requests with=checkSlug,checkName). Scan-only and
+	// transient — never selected, inserted, or updated outside that query;
+	// bun scans the joined `check_slug`/`check_name` aliases straight into
+	// these tags without a real relation. A LEFT JOIN leaves both nil for a
+	// result whose check has since been hard-deleted (results can outlive a
+	// hard-deleted check, see ListResultsFilter.RequireCheckExists) rather
+	// than dropping the row from the page.
+	CheckSlug *string `bun:"check_slug,scanonly"`
+	CheckName *string `bun:"check_name,scanonly"`
 }
 
 // ExcludedFromAvailability reports whether a raw result must be dropped from

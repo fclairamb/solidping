@@ -2242,64 +2242,92 @@ func (s *Service) ListResults(
 
 // applyResultsFilter narrows a results SELECT by filter. Shared by ListResults
 // and CompactResults so both read exactly the same rows for a bucket.
+//
+// Every column reference below is qualified with the "result" alias (bun's
+// default alias for the results model) because IncludeCheckInfo can add a
+// JOIN against `checks`, and results/checks share several column names (uid,
+// organization_uid, status, created_at) — left unqualified, those become
+// ambiguous the moment the join is present. Qualifying unconditionally keeps
+// one code path for both cases instead of two.
 func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter) *bun.SelectQuery {
 	query = query.
-		Where("organization_uid = ?", filter.OrganizationUID).
-		Order("period_start DESC").
-		Order("uid DESC")
+		Where("result.organization_uid = ?", filter.OrganizationUID).
+		Order("result.period_start DESC").
+		Order("result.uid DESC")
 
 	// Filter by multiple check UIDs
 	if len(filter.CheckUIDs) > 0 {
-		query = query.Where("check_uid IN (?)", bun.List(filter.CheckUIDs))
+		query = query.Where("result.check_uid IN (?)", bun.List(filter.CheckUIDs))
 	}
 
 	// Filter by check types (requires subquery to checks table)
 	if len(filter.CheckTypes) > 0 {
 		//nolint:lll // Long SQL query for readability
-		query = query.Where("check_uid IN (SELECT uid FROM checks WHERE organization_uid = ? AND type IN (?) AND deleted_at IS NULL)",
+		query = query.Where("result.check_uid IN (SELECT uid FROM checks WHERE organization_uid = ? AND type IN (?) AND deleted_at IS NULL)",
 			filter.OrganizationUID, bun.List(filter.CheckTypes))
 	}
 
 	// Filter by multiple regions
 	if len(filter.Regions) > 0 {
-		query = query.Where("region IN (?)", bun.List(filter.Regions))
+		query = query.Where("result.region IN (?)", bun.List(filter.Regions))
 	}
 	// Filter by multiple period types
 	if len(filter.PeriodTypes) > 0 {
-		query = query.Where("period_type IN (?)", bun.List(filter.PeriodTypes))
+		query = query.Where("result.period_type IN (?)", bun.List(filter.PeriodTypes))
 	}
 
 	// Filter by multiple statuses
 	if len(filter.Statuses) > 0 {
-		query = query.Where("status IN (?)", bun.List(filter.Statuses))
+		query = query.Where("result.status IN (?)", bun.List(filter.Statuses))
 	}
 
 	// Exclude statuses (e.g. lifecycle markers in aggregation discovery). A NULL
 	// status is never a marker, so it stays included.
 	if len(filter.ExcludeStatuses) > 0 {
-		query = query.Where("(status IS NULL OR status NOT IN (?))", bun.List(filter.ExcludeStatuses))
+		query = query.Where("(result.status IS NULL OR result.status NOT IN (?))", bun.List(filter.ExcludeStatuses))
 	}
 
 	// Skip rows whose check has been hard-deleted (FK-orphan rows). Soft-deleted
 	// checks still have a row and stay included. See RequireCheckExists.
 	if filter.RequireCheckExists {
-		query = query.Where("check_uid IN (SELECT uid FROM checks)")
+		query = query.Where("result.check_uid IN (SELECT uid FROM checks)")
 	}
 
 	// Time range filters
 	if filter.PeriodStartAfter != nil {
-		query = query.Where("period_start >= ?", *filter.PeriodStartAfter)
+		query = query.Where("result.period_start >= ?", *filter.PeriodStartAfter)
 	}
 
 	if filter.PeriodEndBefore != nil {
-		query = query.Where("period_start < ?", *filter.PeriodEndBefore)
+		query = query.Where("result.period_start < ?", *filter.PeriodEndBefore)
 	}
 
 	// Cursor-based pagination
 	if filter.CursorTimestamp != nil && filter.CursorUID != nil {
 		// Results with period_start < cursor_timestamp OR (period_start = cursor_timestamp AND uid < cursor_uid)
-		query = query.Where("(period_start < ?) OR (period_start = ? AND uid < ?)",
+		query = query.Where("(result.period_start < ?) OR (result.period_start = ? AND result.uid < ?)",
 			*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
+	}
+
+	// Only join `checks` when the caller explicitly asked for check info via
+	// with=checkSlug,checkName (needsCheckInfo in the results service) — most
+	// callers of ListResults/CompactResults (aggregation work-discovery,
+	// availability computation, uptime bars) don't and shouldn't pay for a
+	// join they never read. A single LEFT JOIN here costs one query total,
+	// independent of page size — cheaper than a second batch round-trip
+	// (db.Service.GetChecksByUIDs, the pattern the incidents list endpoint
+	// uses) for what is a straight 1:1 FK lookup, and keeps the results page
+	// itself transactionally consistent with the join. LEFT JOIN (not INNER):
+	// a result whose check was hard-deleted must still come back on the page
+	// with nil CheckSlug/CheckName rather than silently vanishing (see
+	// RequireCheckExists above for why an orphaned check_uid is possible at
+	// all).
+	if filter.IncludeCheckInfo {
+		query = query.
+			ColumnExpr("result.*").
+			ColumnExpr("c.slug AS check_slug").
+			ColumnExpr("c.name AS check_name").
+			Join("LEFT JOIN checks AS c ON c.uid = result.check_uid")
 	}
 
 	// Apply limit

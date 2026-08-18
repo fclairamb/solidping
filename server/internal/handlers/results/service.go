@@ -351,6 +351,18 @@ func (s *Service) applyDetailFields(resp *ResultResponse, result *models.Result,
 		resp.Region = result.Region
 	}
 
+	// CheckSlug/CheckName are only populated on the model when the query
+	// joined `checks` (ListResultsFilter.IncludeCheckInfo, set whenever
+	// needsCheckInfo saw checkslug/checkname in `with`) — nil here for any
+	// other read path, or for an orphaned check_uid behind a LEFT JOIN.
+	if withSet["checkslug"] && result.CheckSlug != nil {
+		resp.CheckSlug = result.CheckSlug
+	}
+
+	if withSet["checkname"] && result.CheckName != nil {
+		resp.CheckName = result.CheckName
+	}
+
 	if withSet["metrics"] && len(result.Metrics) > 0 {
 		resp.Metrics = result.Metrics
 	}
