@@ -77,7 +77,7 @@ func TestStatusToStringCoversAbandoned(t *testing.T) {
 
 	r := require.New(t)
 	r.Equal("ABANDONED", StatusToString(int(ResultStatusAbandoned)))
-	// Controls: the neighbouring values are unchanged, and an unknown value
+	// Controls: the neighboring values are unchanged, and an unknown value
 	// still falls through.
 	r.Equal("ERROR", StatusToString(int(ResultStatusError)))
 	r.Equal("WARNING", StatusToString(int(ResultStatusWarning)))
