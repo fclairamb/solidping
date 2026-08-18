@@ -2652,9 +2652,14 @@ func (s *Service) ReapAbandonedResults(ctx context.Context) (models.ReapAbandone
 	var candidates []*models.Result
 
 	// idx_results_lifecycle_pending (period_start) WHERE period_type='raw' AND
-	// status IN (1,2) backs this: `results` is the largest table in the
-	// system, and a periodic sweep for a handful of stuck marker rows must
-	// never fall back to scanning it.
+	// status = 1 backs this: `results` is the largest table in the system, and
+	// a periodic sweep for a handful of stuck marker rows must never fall back
+	// to scanning it. The partial predicate is what does the work here — no
+	// other index leads with anything this query filters on (results_raw_idx
+	// leads with organization_uid), so without it the 5-minute sweep degrades
+	// to scanning every raw row. status = 2 (running) is deliberately outside
+	// the index: heartbeat checks report it as a legitimate long-lived state,
+	// so it is neither reaped nor worth carrying here.
 	err := s.db.NewSelect().
 		Model(&candidates).
 		Column("uid", "check_uid", "status", "period_start").
