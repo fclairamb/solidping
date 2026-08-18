@@ -2232,11 +2232,11 @@ func (s *Service) ListResults(
 		return nil, err
 	}
 
-	// For now, we don't calculate total count as it's expensive
-	// It can be added later as an optional feature
+	// No total count: results is the largest table in the system, and an
+	// unbounded COUNT(*) on every page load is exactly what this endpoint
+	// cannot afford (spec 2026-08-18-04).
 	return &models.ListResultsResponse{
 		Results: results,
-		Total:   0,
 	}, nil
 }
 

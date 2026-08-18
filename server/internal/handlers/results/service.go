@@ -109,9 +109,12 @@ type ResultResponse struct {
 	SuccessfulChecks *int           `json:"successfulChecks,omitempty"`
 }
 
-// PaginationResponse contains pagination metadata.
+// PaginationResponse contains pagination metadata. Deliberately no `total`:
+// results is the largest table in the system, so this endpoint is
+// cursor-paginated only — walk pages via `cursor` until it comes back empty
+// (spec 2026-08-18-04). Contrast with incidents/checks, which return a real
+// total from a bounded query.
 type PaginationResponse struct {
-	Total  int64  `json:"total"`
 	Cursor string `json:"cursor,omitempty"`
 	Size   int    `json:"size"`
 }
@@ -203,7 +206,6 @@ func (s *Service) ListResults(
 	return &ListResultsResponse{
 		Data: responses,
 		Pagination: PaginationResponse{
-			Total:  dbResults.Total,
 			Cursor: nextCursor,
 			Size:   len(responses),
 		},

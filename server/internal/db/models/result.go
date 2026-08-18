@@ -242,12 +242,15 @@ type ListResultsFilter struct {
 	SkipBlobs bool
 }
 
-// ListResultsResponse wraps results with pagination info.
+// ListResultsResponse wraps a page of results. There is deliberately no total
+// count, next-cursor, or has-more field here: `results` is the largest table
+// in the system, so this endpoint is cursor-paginated and the DB layer never
+// computes any of the three (spec 2026-08-18-04). The service layer derives
+// its own cursor/has-more by over-fetching one extra row
+// (internal/handlers/results/service.go), which is why those fields would be
+// dead weight on this struct even if the DB layer did populate them.
 type ListResultsResponse struct {
-	Results    []*Result // The result records
-	Total      int64     // Total count of results (expensive, may be 0)
-	NextCursor string    // Encoded cursor for next page (empty if no more results)
-	HasMore    bool      // Whether there are more results
+	Results []*Result // The result records
 }
 
 // AggregateResultsFunc computes the single rollup row for one bucket from its
