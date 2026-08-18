@@ -184,16 +184,24 @@ test.describe("Blast radius table (mobile)", () => {
     await longNameLink.click();
     await page.waitForURL(new RegExp(`/incidents/${CHILD_LONG_NAME_UID}`));
 
-    // Criterion: each row also offers a link to the check's own page, absent
-    // in this specific run but present for the row with a live checkUid —
-    // go back and check the second row's icon link target.
+    // Criterion: each row also offers a link to the check's own page — but
+    // never a dead one. This is a positive/negative pair; keep both
+    // assertions together, since either half alone proves nothing:
+    //   - row 0's check was hydrated (checkName present) -> link present.
+    //   - row 1's check was NOT hydrated (hard-deleted, name fell back to
+    //     its raw UID) -> no link, because checkUid alone (still present as
+    //     a historical FK) is not "the check still exists".
     await page.goBack();
     await page.waitForLoadState("networkidle");
-    const openCheckLink = rows.nth(0).getByTestId("blast-radius-open-check");
-    await expect(openCheckLink).toBeVisible();
-    await expect(openCheckLink).toHaveAttribute(
+
+    const openCheckLinkLive = rows.nth(0).getByTestId("blast-radius-open-check");
+    await expect(openCheckLinkLive).toBeVisible();
+    await expect(openCheckLinkLive).toHaveAttribute(
       "href",
       /\/checks\/dddddddd-0000-4000-8000-000000000002/,
     );
+
+    const openCheckLinkDeleted = rows.nth(1).getByTestId("blast-radius-open-check");
+    await expect(openCheckLinkDeleted).toHaveCount(0);
   });
 });

@@ -1285,6 +1285,19 @@ function BlastRadiusCard({
           <TableBody>
             {items.map((child) => {
               const displayName = child.checkName || child.checkSlug || child.checkUid;
+              // checkUid alone is NOT "the check still exists" — it is an
+              // always-present historical FK on the incident row (backend
+              // IncidentResponse.CheckUID is a plain non-omitempty string,
+              // never cleared when the check is later hard-deleted). The
+              // only signal that hydration (`with=check`) actually found a
+              // live check is checkName/checkSlug being populated — the same
+              // signal displayName's fallback to the raw UID already relies
+              // on. Guarding the check-page link on checkUid alone would
+              // link to a check that 404s once it's gone. Bind the narrowed
+              // value (not just a boolean) so the Link below gets a `string`,
+              // not `string | undefined`.
+              const liveCheckUid =
+                child.checkUid && (child.checkName || child.checkSlug) ? child.checkUid : undefined;
               return (
                 <TableRow key={child.uid} data-testid="blast-radius-row">
                   <TableCell className="max-w-0">
@@ -1315,10 +1328,10 @@ function BlastRadiusCard({
                     )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap px-2 text-right">
-                    {child.checkUid && (
+                    {liveCheckUid && (
                       <Link
                         to="/orgs/$org/checks/$checkUid"
-                        params={{ org, checkUid: child.checkUid }}
+                        params={{ org, checkUid: liveCheckUid }}
                         search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
                         aria-label={t("rollup.checkLink")}
                         data-testid="blast-radius-open-check"
