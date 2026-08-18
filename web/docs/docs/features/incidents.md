@@ -95,8 +95,8 @@ pipeline the lifecycle events use, so everyone watching the incident on a chat
 channel sees it:
 
 - **Slack** posts it as a reply in the incident's existing thread.
-- **Discord, Microsoft Teams, Mattermost, Google Chat, ntfy, Pushover, web push,
-  webhooks and email** deliver it in their normal message shape. Webhook
+- **Discord, Microsoft Teams, Mattermost, Google Chat, ntfy, Matrix, Pushover,
+  web push, webhooks and email** deliver it in their normal message shape. Webhook
   receivers get an extra `data.comment` object (`text`, `authorName`, `source`)
   on `incident.comment` deliveries only.
 - **Opsgenie** adds it as a note on the existing alert — never a new alert.
