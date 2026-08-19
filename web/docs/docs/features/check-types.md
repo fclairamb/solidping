@@ -388,7 +388,7 @@ tokenized address.
 |--------|-------------|
 | Send a probe email | Enables send mode |
 | Mail From | Envelope sender for the probe email — the monitored server's outbound policy (SPF/DKIM alignment, relay ACLs) usually dictates it |
-| Delivery check | The paired Email Reception check the probe is addressed to (same organization only) |
+| Delivery check | Pick a paired [Email Reception check](#email-reception-passive-inbox); the dashboard fills in the recipient address from it |
 
 The message itself is entirely system-generated — there is no subject or body
 field to fill in, by design: this keeps the feature from ever becoming a way
@@ -442,15 +442,21 @@ without surprising the other).
 :::note Requires a configured inbox
 Send mode requires the instance to have an email inbox configured (the same
 one Email Reception checks use to receive mail) — see [Email Reception](#email-reception-passive-inbox).
+The recipient address must also be at that inbox's domain; SolidPing rejects
+anything else.
 :::
 
-:::caution Not yet available on private locations
-The delivery-recipient resolution currently runs only on the server's own
-region. A send-mode SMTP check scheduled onto a [private location / deported
-agent](./private-locations.md) reports a "no delivery recipient resolved"
-error instead of sending — run send-mode SMTP checks from a cloud region for
-now.
-:::
+**Under the hood, the recipient address is stored on the check, not
+resolved at send time.** Picking a delivery check in the dashboard just
+fills in the address for you — the same probe works identically from any
+worker, including a [private location / deported
+agent](./private-locations.md), with no extra setup. One consequence worth
+knowing: SolidPing does not verify that the delivery check you name belongs
+to your organization once it's just an address — anyone who already knows
+another check's tokenized address could in principle aim a probe at it too.
+The receiving inbox domain restriction still holds absolutely (a recipient
+outside the instance's own inbox is never possible), and the tokenized
+address itself is exactly as unguessable as it always was.
 
 ### IMAP {#imap}
 

@@ -13,6 +13,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getFieldError } from "@/hooks/use-check-validation";
 import { useChecks } from "@/api/hooks";
+import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { checkLabel } from "@/components/checks/tunnel";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
@@ -23,17 +24,19 @@ const hostRequired = (host: string): FieldErrors =>
   host ? [] : [{ name: "host", message: "Host is required" }];
 
 // smtpSendModeErrors validates the send-mode fields on top of the plain
-// host requirement — mail_from and delivery_check_uid are only required when
-// send mode itself is on (spec 2026-08-19-04).
+// host requirement — mail_from and delivery_to are only required when send
+// mode itself is on. Revised design (2026-08-19): delivery_to is the
+// operative recipient field; delivery_check_uid is optional bonus metadata
+// and never required.
 function smtpSendModeErrors(state: SmtpState): FieldErrors {
   const errors = hostRequired(state.host);
   if (!state.sendEmail) return errors;
   if (!state.mailFrom) {
     errors.push({ name: "mail_from", message: "Mail From is required when send mode is enabled" });
   }
-  if (!state.deliveryCheckUid) {
+  if (!state.deliveryTo) {
     errors.push({
-      name: "delivery_check_uid",
+      name: "delivery_to",
       message: "Select a delivery (email) check when send mode is enabled",
     });
   }
@@ -51,11 +54,17 @@ export interface SmtpState {
   expectGreeting: string;
   username: string;
   password: string;
-  // Send mode (spec 2026-08-19-04): submits a real, system-generated probe
-  // email through the monitored server, addressed to a paired email check's
-  // tokenized address.
+  // Send mode: submits a real, system-generated probe email through the
+  // monitored server, addressed to deliveryTo. Revised design (2026-08-19,
+  // superseding the original reference-only design): deliveryTo is the
+  // OPERATIVE recipient address, stored directly rather than resolved from a
+  // reference at dispatch time — see the backend SMTPConfig.DeliveryTo doc
+  // comment. deliveryCheckUid is optional bonus metadata (attribution + the
+  // dashboard's pairing links only); the picker below still drives the UI,
+  // it just now populates both fields from the chosen check.
   sendEmail: boolean;
   mailFrom: string;
+  deliveryTo: string;
   deliveryCheckUid: string;
 }
 
@@ -73,6 +82,7 @@ export const smtpModule: CheckTypeModule<SmtpState> = {
     password: getConfigField(config, "password"),
     sendEmail: getConfigField(config, "send_email") === "true",
     mailFrom: getConfigField(config, "mail_from"),
+    deliveryTo: getConfigField(config, "delivery_to"),
     deliveryCheckUid: getConfigField(config, "delivery_check_uid"),
   }),
   toConfig: (state) => {
@@ -89,6 +99,7 @@ export const smtpModule: CheckTypeModule<SmtpState> = {
     if (state.sendEmail) {
       cfg.send_email = true;
       if (state.mailFrom) cfg.mail_from = state.mailFrom;
+      if (state.deliveryTo) cfg.delivery_to = state.deliveryTo;
       if (state.deliveryCheckUid) cfg.delivery_check_uid = state.deliveryCheckUid;
     }
     return { config: cfg, errors: smtpSendModeErrors(state) };
@@ -199,13 +210,25 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
 }
 
 // SmtpSendModeFields renders the send-mode toggle and, when enabled, the
-// mail_from input and the same-org email-check picker. Per the spec's
-// resolved open question: no "create a delivery check for me" affordance
-// anywhere here — the picker only, plain text when the org has none yet.
+// mail_from input and the same-org email-check picker. The picker remains
+// the way users choose a delivery target — it just now populates deliveryTo
+// (the operative recipient) from the chosen check's token + the instance's
+// inbox domain, alongside deliveryCheckUid (bonus metadata for the pairing
+// links). Per the spec's resolved open question: no "create a delivery check
+// for me" affordance anywhere here — the picker only, plain text when the
+// org has none yet.
 function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>) {
   const { org } = useCheckFormFields();
   const { data: emailChecks } = useChecks(org, { type: "email", limit: 100 });
+  const { data: emailDomain } = useEmailAddressDomain();
   const candidates = emailChecks ?? [];
+
+  function selectDeliveryCheck(uid: string) {
+    const check = candidates.find((c) => c.uid === uid);
+    const token = typeof check?.config?.["token"] === "string" ? check.config["token"] : "";
+    const deliveryTo = token && emailDomain ? emailCheckAddress(token, emailDomain) : "";
+    onChange({ ...state, deliveryCheckUid: uid, deliveryTo });
+  }
 
   return (
     <div className="space-y-3 rounded-md border p-3" data-testid="check-smtp-send-mode-section">
@@ -219,9 +242,9 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
       </label>
       <p className="text-xs text-muted-foreground">
         Submits a system-generated email through this server on every check, addressed to a
-        paired email check&apos;s tokenized address, to verify the full delivery path (not just
-        the handshake). The email check&apos;s period is the delivery deadline — size it to
-        this check&apos;s interval plus the worst acceptable delivery time (greylisting can add
+        paired email check&apos;s address, to verify the full delivery path (not just the
+        handshake). The email check&apos;s period is the delivery deadline — size it to this
+        check&apos;s interval plus the worst acceptable delivery time (greylisting can add
         minutes).
       </p>
       {state.sendEmail && (
@@ -243,7 +266,14 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
           </div>
           <div className="space-y-2">
             <Label htmlFor="smtp-delivery-check">Delivery (email) check</Label>
-            {candidates.length === 0 ? (
+            {!emailDomain ? (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Email inbox not configured. Ask your administrator to set it up under
+                  Server &rarr; Email Inbox.
+                </AlertDescription>
+              </Alert>
+            ) : candidates.length === 0 ? (
               <Alert>
                 <AlertDescription>
                   No email checks in this organization yet. Create one first, then come back
@@ -251,10 +281,7 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
                 </AlertDescription>
               </Alert>
             ) : (
-              <Select
-                value={state.deliveryCheckUid}
-                onValueChange={(deliveryCheckUid) => onChange({ ...state, deliveryCheckUid })}
-              >
+              <Select value={state.deliveryCheckUid} onValueChange={selectDeliveryCheck}>
                 <SelectTrigger id="smtp-delivery-check" data-testid="check-smtp-delivery-select">
                   <SelectValue placeholder="Select an email check" />
                 </SelectTrigger>
@@ -267,10 +294,13 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
                 </SelectContent>
               </Select>
             )}
-            {getFieldError(errors, "delivery_check_uid") && (
-              <p className="text-xs text-destructive">
-                {getFieldError(errors, "delivery_check_uid")}
+            {state.deliveryTo && (
+              <p className="text-xs text-muted-foreground">
+                Probe emails will be addressed to <code className="font-mono">{state.deliveryTo}</code>.
               </p>
+            )}
+            {getFieldError(errors, "delivery_to") && (
+              <p className="text-xs text-destructive">{getFieldError(errors, "delivery_to")}</p>
             )}
           </div>
         </>

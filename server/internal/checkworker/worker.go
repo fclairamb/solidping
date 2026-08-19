@@ -1087,32 +1087,27 @@ func configWithDefaultTimeout(config map[string]any, timeout time.Duration) map[
 	return clone
 }
 
-// applySMTPDeliveryContext threads a send-mode SMTP job's server-resolved
-// delivery recipient onto execCtx (spec 2026-08-19-04). Read generically off
-// the raw config map like `tunnelCheckUid`/`ipVersion` elsewhere in this file
-// — this key is server-resolved and injected into checkJob.Config by
-// backend.DirectBackend.resolveSMTPDelivery BEFORE this job ever reaches a
-// runner, never accepted through SMTPConfig.FromMap.
+// applySMTPDeliveryContext marks execCtx as a real, dispatched SMTP check job
+// (revised design, 2026-08-19 — spec 2026-08-19-04). send_email's recipient
+// (`delivery_to`) is now a plain config field the checker reads directly, no
+// longer resolved/threaded here — see checksmtp.SMTPConfig's DeliveryTo doc
+// comment for why. What still needs threading is a narrower marker: only a
+// job that reached this exact worker.go dispatch path is trusted to run send
+// mode at all.
 //
 // Gated on check type so a JS check's own job (type "js") never carries this
-// context value even if its config map happened to contain the same raw key
-// — the JS sub-check path (checkjs) calls Execute directly with its own
-// context that never passes through here, which is the guardrail: it can
-// request send_email in a sub-check's config, but it can never reach a
-// resolved recipient.
+// context value — the JS sub-check path (checkjs/checker.go:307) calls
+// Execute directly with its own context that never passes through here,
+// which is the guardrail: it can request send_email with a valid
+// inbox-domain delivery_to in a sub-check's config, but it can never make the
+// checker believe it is a real dispatched job.
 func applySMTPDeliveryContext(execCtx context.Context, checkJob *models.CheckJob) context.Context {
 	if checkJob.Type != string(checkerdef.CheckTypeSMTP) {
 		return execCtx
 	}
 
-	recipient, ok := checkJob.Config[checkerdef.SMTPResolvedRecipientConfigKey].(string)
-	if !ok || recipient == "" {
-		return execCtx
-	}
-
-	return checkerdef.WithSMTPDeliveryRecipient(execCtx, checkerdef.SMTPDeliveryInfo{
-		Recipient:      recipient,
-		SourceCheckUID: checkJob.CheckUID,
+	return checkerdef.WithSMTPJobIdentity(execCtx, checkerdef.SMTPJobIdentity{
+		CheckUID: checkJob.CheckUID,
 	})
 }
 

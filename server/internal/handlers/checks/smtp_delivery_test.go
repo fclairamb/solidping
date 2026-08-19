@@ -13,6 +13,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
+// smtpTestInboxDomain is the email_inbox address domain seeded by
+// configureEmailInboxForTest — delivery_to must resolve to exactly this
+// domain (revised design, 2026-08-19).
+const smtpTestInboxDomain = "inbox.example.com"
+
 func setupSMTPDeliveryChecksService(t *testing.T) (*checks.Service, db.Service, *models.Organization) {
 	t.Helper()
 
@@ -39,7 +44,7 @@ func configureEmailInboxForTest(t *testing.T, dbSvc db.Service) {
 	err := dbSvc.SetSystemParameter(t.Context(), jmap.SystemParameterKey, map[string]any{
 		"enabled":       true,
 		"sessionUrl":    "https://jmap.example.com/session",
-		"addressDomain": "inbox.example.com",
+		"addressDomain": smtpTestInboxDomain,
 	}, false)
 	require.NoError(t, err)
 }
@@ -58,19 +63,24 @@ func createEmailCheck(t *testing.T, svc *checks.Service, org *models.Organizatio
 	return created
 }
 
-// smtpSendModeConfig builds a send-mode SMTP check config. mail_from is fixed
-// (irrelevant to what these tests exercise); deliveryCheckUID varies per test.
-func smtpSendModeConfig(deliveryCheckUID string) map[string]any {
+// smtpSendModeConfig builds a send-mode SMTP check config. Revised design
+// (2026-08-19): delivery_to is the operative recipient field; mail_from is
+// fixed (irrelevant to what these tests exercise). delivery_check_uid is
+// deliberately absent here — it is optional bonus metadata now, added
+// explicitly only by the tests that exercise it.
+func smtpSendModeConfig(deliveryTo string) map[string]any {
 	return map[string]any{
-		"host":               "mail.example.com",
-		"send_email":         true,
-		"mail_from":          "prober@example.com",
-		"delivery_check_uid": deliveryCheckUID,
+		"host":        "mail.example.com",
+		"send_email":  true,
+		"mail_from":   "prober@example.com",
+		"delivery_to": deliveryTo,
 	}
 }
 
-// TestCreateSendModeSMTPCheck pins the happy path at write time: a valid
-// same-org email-check reference with a configured email inbox is accepted.
+// TestCreateSendModeSMTPCheck pins the happy path at write time: a bare
+// address at the instance's inbox domain is accepted with NO
+// delivery_check_uid at all — the reference is optional bonus metadata now
+// (revised design, 2026-08-19), not a requirement.
 func TestCreateSendModeSMTPCheck(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -78,26 +88,95 @@ func TestCreateSendModeSMTPCheck(t *testing.T) {
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
 	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org)
+	deliveryTo := "deadbeef@" + smtpTestInboxDomain
 
 	created, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "probe", Slug: "probe", Type: "smtp",
-		Config: smtpSendModeConfig(emailCheck.UID),
+		Config: smtpSendModeConfig(deliveryTo),
 	})
 	r.NoError(err)
+	r.Equal(deliveryTo, created.Config["delivery_to"])
+	r.NotContains(created.Config, "delivery_check_uid")
+}
+
+// TestCreateSendModeSMTPCheck_WithDeliveryCheckUID pins that the optional
+// bonus-metadata reference still works, and still round-trips, when supplied
+// alongside delivery_to.
+func TestCreateSendModeSMTPCheck_WithDeliveryCheckUID(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
+	configureEmailInboxForTest(t, dbSvc)
+
+	emailCheck := createEmailCheck(t, svc, org)
+	deliveryTo := "deadbeef@" + smtpTestInboxDomain
+
+	config := smtpSendModeConfig(deliveryTo)
+	config["delivery_check_uid"] = emailCheck.UID
+
+	created, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
+		Name: "probe", Slug: "probe", Type: "smtp",
+		Config: config,
+	})
+	r.NoError(err)
+	r.Equal(deliveryTo, created.Config["delivery_to"])
 	r.Equal(emailCheck.UID, created.Config["delivery_check_uid"])
 }
 
-// TestCreateSendModeSMTPCheckRejections covers every write-time guard: cross-
-// org reference, wrong-type reference, missing reference, missing mail_from,
-// and no email inbox configured.
+// TestCreateSendModeSMTPCheck_CrossOrgDeliveryToAllowed pins the accepted
+// residual risk RECORDED DELIBERATELY in the spec's "Revised design"
+// section: with the reference-not-address indirection given up, a
+// delivery_to naming another org's tokenized address (still at the
+// instance's own inbox domain) is ACCEPTED, not rejected. Florent was shown
+// this trade-off explicitly and accepted it (2026-08-19) in exchange for
+// send mode working on private locations — do not "fix" this by reinstating
+// a same-org constraint on delivery_to; if this test starts failing because
+// someone added one, that constraint should come back out, not this test.
+func TestCreateSendModeSMTPCheck_CrossOrgDeliveryToAllowed(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
+	configureEmailInboxForTest(t, dbSvc)
+
+	otherOrg := models.NewOrganization("smtp-crossorg-ok", "")
+	require.NoError(t, dbSvc.CreateOrganization(t.Context(), otherOrg))
+	// Config: {} (not nil) — CreateCheck only persists the checker-generated
+	// token when a config map was supplied at all (an empty map still lets
+	// checker.Validate populate it); a nil Config skips the whole
+	// normalize/encrypt/persist block for config, discarding the generated
+	// token.
+	foreignEmailCheck, err := svc.CreateCheck(t.Context(), otherOrg.Slug, checks.CreateCheckRequest{
+		Name: "foreign-delivery", Slug: "foreign-delivery", Type: "email", Config: map[string]any{},
+	})
+	require.NoError(t, err)
+
+	foreignToken, _ := foreignEmailCheck.Config["token"].(string)
+	r.NotEmpty(foreignToken, "the foreign email check must have a real token to aim at")
+
+	deliveryTo := foreignToken + "@" + smtpTestInboxDomain
+
+	created, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
+		Name: "probe", Slug: "probe", Type: "smtp",
+		Config: smtpSendModeConfig(deliveryTo),
+	})
+	r.NoError(err, "a same-domain delivery_to naming another org's tokenized address must be accepted")
+	r.Equal(deliveryTo, created.Config["delivery_to"])
+}
+
+// TestCreateSendModeSMTPCheckRejections covers every write-time guard:
+// missing/injected/wrong-domain delivery_to, missing/injected mail_from, and
+// (when supplied) a cross-org/wrong-type/nonexistent delivery_check_uid —
+// the bonus metadata's own validation, kept even though the field itself is
+// optional now.
 func TestCreateSendModeSMTPCheckRejections(t *testing.T) {
 	t.Parallel()
 
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
 	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org)
+	validDeliveryTo := "deadbeef@" + smtpTestInboxDomain
 
 	notEmail, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "plain", Slug: "plain", Type: "http",
@@ -112,55 +191,69 @@ func TestCreateSendModeSMTPCheckRejections(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	withDeliveryCheckUID := func(uid string) map[string]any {
+		config := smtpSendModeConfig(validDeliveryTo)
+		config["delivery_check_uid"] = uid
+
+		return config
+	}
+
 	tests := []struct {
 		name    string
 		config  map[string]any
 		wantErr string
 	}{
 		{
-			name:    "cross-org delivery_check_uid rejected",
-			config:  smtpSendModeConfig(foreignEmailCheck.UID),
-			wantErr: "does not exist in this organization",
-		},
-		{
-			name:    "wrong-type delivery_check_uid rejected",
-			config:  smtpSendModeConfig(notEmail.UID),
-			wantErr: "only email checks can be a delivery target",
-		},
-		{
-			name:    "missing delivery_check_uid rejected",
+			name:    "missing delivery_to rejected",
 			config:  map[string]any{"host": "mail.example.com", "send_email": true, "mail_from": "prober@example.com"},
 			wantErr: "is required when send_email is set",
 		},
 		{
-			name:    "missing mail_from rejected",
-			config:  map[string]any{"host": "mail.example.com", "send_email": true, "delivery_check_uid": emailCheck.UID},
-			wantErr: "is required when send_email is set",
+			name: "delivery_to carrying a CRLF-smuggled SMTP command is rejected",
+			config: smtpSendModeConfig(
+				"prober@" + smtpTestInboxDomain + "\r\nRCPT TO:<victim@evil.com>",
+			),
+			wantErr: "must be a single valid email address",
 		},
 		{
-			name:    "nonexistent delivery_check_uid rejected",
-			config:  smtpSendModeConfig("00000000-0000-0000-0000-000000000000"),
-			wantErr: "does not exist in this organization",
+			name: "delivery_to carrying a CRLF-injected header is rejected",
+			config: smtpSendModeConfig(
+				"prober@" + smtpTestInboxDomain + ">\r\nBcc: attacker@evil.com\r\nSubject: not a probe",
+			),
+			wantErr: "must be a single valid email address",
+		},
+		{
+			name:    "delivery_to at the wrong domain is rejected",
+			config:  smtpSendModeConfig("prober@not-the-inbox-domain.example.com"),
+			wantErr: "must be an address at this instance's inbox domain",
+		},
+		{
+			name:    "missing mail_from rejected",
+			config:  map[string]any{"host": "mail.example.com", "send_email": true, "delivery_to": validDeliveryTo},
+			wantErr: "is required when send_email is set",
 		},
 		{
 			name: "mail_from carrying a CRLF-smuggled SMTP command is rejected",
 			config: map[string]any{
-				"host":               "mail.example.com",
-				"send_email":         true,
-				"mail_from":          "prober@example.com\r\nRCPT TO:<victim@evil.com>",
-				"delivery_check_uid": emailCheck.UID,
+				"host": "mail.example.com", "send_email": true,
+				"mail_from": "prober@example.com\r\nRCPT TO:<victim@evil.com>", "delivery_to": validDeliveryTo,
 			},
 			wantErr: "must be a single valid email address",
 		},
 		{
-			name: "mail_from carrying a CRLF-injected header is rejected",
-			config: map[string]any{
-				"host":               "mail.example.com",
-				"send_email":         true,
-				"mail_from":          "prober@example.com>\r\nBcc: attacker@evil.com\r\nSubject: not a probe",
-				"delivery_check_uid": emailCheck.UID,
-			},
-			wantErr: "must be a single valid email address",
+			name:    "cross-org delivery_check_uid rejected when supplied",
+			config:  withDeliveryCheckUID(foreignEmailCheck.UID),
+			wantErr: "does not exist in this organization",
+		},
+		{
+			name:    "wrong-type delivery_check_uid rejected when supplied",
+			config:  withDeliveryCheckUID(notEmail.UID),
+			wantErr: "only email checks can be a delivery target",
+		},
+		{
+			name:    "nonexistent delivery_check_uid rejected when supplied",
+			config:  withDeliveryCheckUID("00000000-0000-0000-0000-000000000000"),
+			wantErr: "does not exist in this organization",
 		},
 	}
 
@@ -181,7 +274,8 @@ func TestCreateSendModeSMTPCheckRejections(t *testing.T) {
 
 // TestCreateSendModeSMTPCheckNoEmailInbox pins the instance-wide prerequisite:
 // with no email.inbox system parameter configured at all, send mode is
-// refused regardless of how valid the reference is.
+// refused regardless of how valid delivery_to otherwise looks (there is no
+// domain to check it against).
 func TestCreateSendModeSMTPCheckNoEmailInbox(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -189,11 +283,9 @@ func TestCreateSendModeSMTPCheckNoEmailInbox(t *testing.T) {
 	svc, _, org := setupSMTPDeliveryChecksService(t)
 	// Deliberately NOT calling configureEmailInboxForTest.
 
-	emailCheck := createEmailCheck(t, svc, org)
-
 	_, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "probe", Slug: "probe", Type: "smtp",
-		Config: smtpSendModeConfig(emailCheck.UID),
+		Config: smtpSendModeConfig("deadbeef@inbox.example.com"),
 	})
 	r.Error(err)
 	r.Contains(err.Error(), "no email inbox configured")
@@ -208,13 +300,12 @@ func TestCreateSendModeSMTPCheckMinInterval(t *testing.T) {
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
 	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org)
 	shortPeriod := "10s"
 
 	_, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "probe", Slug: "probe", Type: "smtp",
 		Period: &shortPeriod,
-		Config: smtpSendModeConfig(emailCheck.UID),
+		Config: smtpSendModeConfig("deadbeef@" + smtpTestInboxDomain),
 	})
 	r.Error(err)
 	r.Contains(err.Error(), "at least 1m0s")
@@ -231,7 +322,8 @@ func TestCreateSendModeSMTPCheckMinInterval(t *testing.T) {
 
 // TestUpdateSendModeSMTPCheckValidatesOnPatch pins that PATCH re-validates
 // the same rules as create (UpdateCheck never calls checker.Validate, so
-// validateSMTPDeliveryConfig is the only gate on this path).
+// validateSMTPDeliveryConfig is the only gate on this path) — including the
+// bonus-metadata reference's own rules when supplied.
 func TestUpdateSendModeSMTPCheckValidatesOnPatch(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -251,11 +343,12 @@ func TestUpdateSendModeSMTPCheckValidatesOnPatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	patchConfig := smtpSendModeConfig(notEmail.UID)
+	patchConfig := smtpSendModeConfig("deadbeef@" + smtpTestInboxDomain)
+	patchConfig["delivery_check_uid"] = notEmail.UID
 	_, err = svc.UpdateCheck(t.Context(), org.Slug, plain.UID, &checks.UpdateCheckRequest{
 		Config: &patchConfig,
 	})
-	r.Error(err, "a PATCH turning on send_email with a wrong-type reference must be rejected")
+	r.Error(err, "a PATCH turning on send_email with a wrong-type bonus reference must be rejected")
 	r.Contains(err.Error(), "only email checks can be a delivery target")
 }
 
@@ -271,7 +364,35 @@ func TestUpdateSendModeSMTPCheckRejectsMailFromInjectionOnPatch(t *testing.T) {
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
 	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org)
+	plain, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
+		Name: "probe", Slug: "probe", Type: "smtp",
+		Config: map[string]any{"host": "mail.example.com"},
+	})
+	require.NoError(t, err)
+
+	patchConfig := map[string]any{
+		"host":        "mail.example.com",
+		"send_email":  true,
+		"mail_from":   "prober@example.com\r\nRCPT TO:<victim@evil.com>",
+		"delivery_to": "deadbeef@" + smtpTestInboxDomain,
+	}
+	_, err = svc.UpdateCheck(t.Context(), org.Slug, plain.UID, &checks.UpdateCheckRequest{
+		Config: &patchConfig,
+	})
+	r.Error(err, "a PATCH carrying a CRLF-smuggled mail_from must be rejected")
+	r.Contains(err.Error(), "must be a single valid email address")
+}
+
+// TestUpdateSendModeSMTPCheckRejectsDeliveryToInjectionOnPatch is the
+// delivery_to half of the same PATCH-path guard — the field an attacker
+// would target first now that it is the operative recipient (revised
+// design, 2026-08-19).
+func TestUpdateSendModeSMTPCheckRejectsDeliveryToInjectionOnPatch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
+	configureEmailInboxForTest(t, dbSvc)
 
 	plain, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "probe", Slug: "probe", Type: "smtp",
@@ -280,15 +401,16 @@ func TestUpdateSendModeSMTPCheckRejectsMailFromInjectionOnPatch(t *testing.T) {
 	require.NoError(t, err)
 
 	patchConfig := map[string]any{
-		"host":               "mail.example.com",
-		"send_email":         true,
-		"mail_from":          "prober@example.com\r\nRCPT TO:<victim@evil.com>",
-		"delivery_check_uid": emailCheck.UID,
+		"host":       "mail.example.com",
+		"send_email": true,
+		"mail_from":  "prober@example.com",
+		"delivery_to": "prober@" + smtpTestInboxDomain +
+			">\r\nBcc: attacker@evil.com\r\nSubject: not a probe",
 	}
 	_, err = svc.UpdateCheck(t.Context(), org.Slug, plain.UID, &checks.UpdateCheckRequest{
 		Config: &patchConfig,
 	})
-	r.Error(err, "a PATCH carrying a CRLF-smuggled mail_from must be rejected")
+	r.Error(err, "a PATCH carrying a CRLF-smuggled delivery_to must be rejected")
 	r.Contains(err.Error(), "must be a single valid email address")
 }
 
@@ -303,8 +425,6 @@ func TestUpdateSendModeSMTPCheckRejectsShortIntervalOnPatch(t *testing.T) {
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
 	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org)
-
 	// Created with a period well above the floor, unmodified so far.
 	plainPeriod := "5m"
 	plain, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
@@ -314,7 +434,7 @@ func TestUpdateSendModeSMTPCheckRejectsShortIntervalOnPatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	patchConfig := smtpSendModeConfig(emailCheck.UID)
+	patchConfig := smtpSendModeConfig("deadbeef@" + smtpTestInboxDomain)
 	shortPeriod := "10s"
 	_, err = svc.UpdateCheck(t.Context(), org.Slug, plain.UID, &checks.UpdateCheckRequest{
 		Config: &patchConfig,

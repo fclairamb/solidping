@@ -354,11 +354,13 @@ const (
 // own result reflects submission only — a 250 after DATA is Up (with
 // submission_ms in metrics), any rejection is Down with the server's reply.
 //
-// When no delivery recipient was resolved onto ctx, this returns an explicit
-// StatusError result rather than silently skipping the send — see
-// checkerdef.SMTPDeliveryRecipientFrom for why that can happen (a deleted
-// reference at dispatch time, or an Execute call outside normal job
-// dispatch such as a JS check's sub-check helper).
+// Revised design (2026-08-19): the recipient is cfg.DeliveryTo — a plain
+// config field, not a claim-time-resolved value — so this needs a different
+// guardrail than the old context-only recipient did. When ctx carries no
+// checkerdef.SMTPJobIdentity, this Execute call did not come from worker.go's
+// real job dispatch (the checkjs sub-check path being the verified example —
+// see checkerdef.SMTPJobIdentityFrom), and this returns an explicit
+// StatusError rather than silently sending anyway.
 func (c *SMTPChecker) executeSendMode(
 	ctx context.Context,
 	textConn *textproto.Conn,
@@ -373,10 +375,10 @@ func (c *SMTPChecker) executeSendMode(
 		checkerdef.OutputKeyPort: port,
 	}
 
-	info, ok := checkerdef.SMTPDeliveryRecipientFrom(ctx)
+	identity, ok := checkerdef.SMTPJobIdentityFrom(ctx)
 	if !ok {
-		baseOutput[checkerdef.OutputKeyError] = "send_email is set but no delivery recipient was resolved; " +
-			"this config was executed outside normal job dispatch"
+		baseOutput[checkerdef.OutputKeyError] = "send_email is set but this config was executed outside " +
+			"normal job dispatch (e.g. a JS check's sub-check helper) — refusing to send"
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
@@ -386,14 +388,14 @@ func (c *SMTPChecker) executeSendMode(
 		}
 	}
 
-	// Defense in depth: mail_from is re-validated here, immediately before it
-	// is spliced into the wire MAIL FROM command and the From: header, not
-	// just at write time (checks/service.go's validateSMTPDeliveryConfig).
-	// Write-time validation is the primary gate, but a checker must never
-	// trust that every path reaching Execute went through it — this is what
-	// keeps a CRLF-smuggled extra SMTP command or an injected header
-	// structurally impossible even if some future caller (or a config that
-	// predates this validation) bypasses it.
+	// Defense in depth: mail_from and delivery_to are both re-validated here,
+	// immediately before they are spliced into the wire protocol, not just at
+	// write time (checks/service.go's validateSMTPDeliveryConfig). Write-time
+	// validation is the primary gate, but a checker must never trust that
+	// every path reaching Execute went through it — this is what keeps a
+	// CRLF-smuggled extra SMTP command or an injected header structurally
+	// impossible even if some future caller (or a config that predates this
+	// validation) bypasses it.
 	if err := ValidateMailFrom(cfg.MailFrom); err != nil {
 		baseOutput[checkerdef.OutputKeyError] = "invalid mail_from: " + err.Error()
 
@@ -405,9 +407,20 @@ func (c *SMTPChecker) executeSendMode(
 		}
 	}
 
+	if err := ValidateDeliveryTo(cfg.DeliveryTo); err != nil {
+		baseOutput[checkerdef.OutputKeyError] = "invalid delivery_to: " + err.Error()
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusError,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   baseOutput,
+		}
+	}
+
 	sendStart := time.Now()
 
-	if err := doSendEmail(textConn, cfg.MailFrom, info); err != nil {
+	if err := doSendEmail(textConn, cfg.MailFrom, cfg.DeliveryTo, identity.CheckUID); err != nil {
 		_ = textConn.PrintfLine("QUIT")
 
 		baseOutput[checkerdef.OutputKeyError] = err.Error()
@@ -439,12 +452,12 @@ func (c *SMTPChecker) executeSendMode(
 // system-generated probe message. Returns an error naming which step was
 // rejected (and by what server reply) so executeSendMode's Down result stays
 // diagnostic.
-func doSendEmail(textConn *textproto.Conn, mailFrom string, info checkerdef.SMTPDeliveryInfo) error {
+func doSendEmail(textConn *textproto.Conn, mailFrom, deliveryTo, sourceCheckUID string) error {
 	if err := smtpCommand(textConn, smtpCodeOK, "MAIL FROM:<%s>", mailFrom); err != nil {
 		return fmt.Errorf("MAIL FROM rejected: %w", err)
 	}
 
-	if err := smtpCommand(textConn, smtpCodeOK, "RCPT TO:<%s>", info.Recipient); err != nil {
+	if err := smtpCommand(textConn, smtpCodeOK, "RCPT TO:<%s>", deliveryTo); err != nil {
 		return fmt.Errorf("RCPT TO rejected: %w", err)
 	}
 
@@ -453,7 +466,7 @@ func doSendEmail(textConn *textproto.Conn, mailFrom string, info checkerdef.SMTP
 	}
 
 	dw := textConn.DotWriter()
-	_, writeErr := dw.Write([]byte(buildProbeMessage(mailFrom, info.Recipient, info.SourceCheckUID, time.Now())))
+	_, writeErr := dw.Write([]byte(buildProbeMessage(mailFrom, deliveryTo, sourceCheckUID, time.Now())))
 	closeErr := dw.Close()
 
 	if writeErr != nil {

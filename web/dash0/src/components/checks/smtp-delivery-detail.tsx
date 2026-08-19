@@ -6,6 +6,11 @@
 // deliver here") — several SMTP checks MAY target the same email check
 // (headers keep arrivals attributable), but 1:1 pairing is the recommended,
 // documented setup.
+//
+// Revised design (2026-08-19): both cards key off delivery_check_uid, which
+// is now OPTIONAL bonus metadata (the SMTP check's actual recipient is
+// delivery_to, a plain address) — these cards render nothing when it wasn't
+// supplied, exactly like they did for a check with no pairing at all.
 import { Link } from "@tanstack/react-router";
 import { Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";

@@ -1,13 +1,19 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
 
-// Coverage for spec 2026-08-19-04: send-mode SMTP checks submit a real probe
-// email, addressed to a paired email check's tokenized address.
+// Coverage for spec 2026-08-19-04, revised design (2026-08-19): send-mode
+// SMTP checks submit a real probe email, addressed to delivery_to — a plain
+// address stored directly rather than resolved from a delivery_check_uid
+// reference at dispatch time (that resolution only ever worked in-process,
+// so send mode never worked on a private-location agent).
+// delivery_check_uid survives as OPTIONAL bonus metadata for attribution and
+// the pairing links.
 //
 // The things worth proving end-to-end, none of which the vitest unit suite
 // for the form module (mail.test.ts) reaches:
 //   - the send-mode toggle reveals Mail From + the same-org email-check
-//     picker, and creating a check through the real form stores
-//     send_email/mail_from/delivery_check_uid;
+//     picker, and picking a check populates BOTH delivery_to (computed from
+//     the chosen check's token + the instance's inbox domain) and
+//     delivery_check_uid (bonus metadata) on create;
 //   - the SMTP check's detail page links to its paired delivery check;
 //   - the email check's detail page lists the SMTP check(s) that deliver to
 //     it — the other side of the same pairing.
@@ -21,12 +27,17 @@ async function getAuthToken(page: Page): Promise<string> {
   return (await resp.json()).accessToken;
 }
 
+// smtpTestInboxDomain must match what ensureEmailInboxConfigured seeds below.
+const smtpTestInboxDomain = "inbox.e2e-test.invalid";
+
 // ensureEmailInboxConfigured seeds the email.inbox system parameter so
-// write-time validation (validateSMTPDeliveryConfig) accepts send mode.
-// test@test.com is seeded as SuperAdmin (server/test/testdata/testdata.go),
-// which is what this system-parameters endpoint requires. No connectivity is
-// exercised by this save — that is the separate POST /system/email-inbox/test
-// action — so a fake session URL is fine for this test's purposes.
+// write-time validation (validateSMTPDeliveryConfig) accepts send mode, and
+// so the dash0 form's picker can compute delivery_to from a chosen check's
+// token. test@test.com is seeded as SuperAdmin
+// (server/test/testdata/testdata.go), which is what this system-parameters
+// endpoint requires. No connectivity is exercised by this save — that is the
+// separate POST /system/email-inbox/test action — so a fake session URL is
+// fine for this test's purposes.
 async function ensureEmailInboxConfigured(page: Page, token: string) {
   const resp = await page.request.put(
     `${API_BASE}/api/v1/system/parameters/email.inbox`,
@@ -38,7 +49,7 @@ async function ensureEmailInboxConfigured(page: Page, token: string) {
           sessionUrl: "https://jmap.e2e-test.invalid/session",
           username: "e2e@e2e-test.invalid",
           password: "not-a-real-password",
-          addressDomain: "inbox.e2e-test.invalid",
+          addressDomain: smtpTestInboxDomain,
         },
       },
     },
@@ -46,11 +57,15 @@ async function ensureEmailInboxConfigured(page: Page, token: string) {
   expect(resp.status()).toBe(200);
 }
 
+// createEmailCheck passes an explicit (non-nil) empty config object — the
+// server only populates the checker-generated token when a config map was
+// supplied at all, so the create response carries a real token straight
+// away, letting this test predict the exact delivery_to the picker computes.
 async function createEmailCheck(
   page: Page,
   token: string,
   name: string,
-): Promise<{ uid: string; slug: string }> {
+): Promise<{ uid: string; slug: string; token: string }> {
   const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
@@ -62,7 +77,8 @@ async function createEmailCheck(
   });
   expect(resp.status()).toBe(201);
   const body = await resp.json();
-  return { uid: body.uid, slug: body.slug };
+  expect(body.config?.token).toEqual(expect.any(String));
+  return { uid: body.uid, slug: body.slug, token: body.config.token };
 }
 
 async function getCheck(page: Page, token: string, uid: string) {
@@ -75,7 +91,7 @@ async function getCheck(page: Page, token: string, uid: string) {
 }
 
 test.describe("SMTP send mode", () => {
-  test("toggle reveals mail_from + delivery picker; creating stores send-mode config", async ({
+  test("toggle reveals mail_from + delivery picker; picker populates delivery_to and delivery_check_uid on create", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -84,6 +100,7 @@ test.describe("SMTP send mode", () => {
 
     const deliveryName = `E2E Delivery Check ${Date.now()}`;
     const deliveryCheck = await createEmailCheck(page, token, deliveryName);
+    const expectedDeliveryTo = `${deliveryCheck.token}@${smtpTestInboxDomain}`;
 
     await page.goto("orgs/test/checks/new?checkType=smtp");
     await page.waitForLoadState("networkidle");
@@ -109,6 +126,9 @@ test.describe("SMTP send mode", () => {
       .getByRole("option", { name: deliveryName, exact: true })
       .click();
 
+    // Picking the check computes and displays the resolved recipient.
+    await expect(page.getByText(expectedDeliveryTo)).toBeVisible();
+
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
@@ -117,6 +137,7 @@ test.describe("SMTP send mode", () => {
     const created = await getCheck(page, token, uid);
     expect(created.config.send_email).toBe(true);
     expect(created.config.mail_from).toBe("prober@e2e-test.invalid");
+    expect(created.config.delivery_to).toBe(expectedDeliveryTo);
     expect(created.config.delivery_check_uid).toBe(deliveryCheck.uid);
 
     // ── The SMTP check's detail page links to its paired delivery check ──
@@ -132,7 +153,8 @@ test.describe("SMTP send mode", () => {
     await expect(sources).toBeVisible();
     await expect(sources).toContainText(checkName);
 
-    // ── Editing the check keeps send mode on and the picker selected ──
+    // ── Editing the check keeps send mode, mail_from, the picker selection,
+    // and the resolved delivery_to all showing correctly ──
     await page.goto(`orgs/test/checks/${uid}/edit`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-smtp-send-email-switch")).toBeVisible();
@@ -142,12 +164,15 @@ test.describe("SMTP send mode", () => {
     await expect(page.getByTestId("check-smtp-delivery-select")).toContainText(
       deliveryName,
     );
+    await expect(page.getByText(expectedDeliveryTo)).toBeVisible();
   });
 
   test("empty-state shows plain text with no check-creation affordance", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    await ensureEmailInboxConfigured(page, token);
 
     // Force the picker's empty state regardless of how many email checks
     // already exist in the shared "test" org: stub the exact query the

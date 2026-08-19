@@ -15,44 +15,67 @@ function baseState(overrides: Partial<SmtpState> = {}): SmtpState {
     password: "",
     sendEmail: false,
     mailFrom: "",
+    deliveryTo: "",
     deliveryCheckUid: "",
     ...overrides,
   };
 }
 
-describe("smtpModule — send mode", () => {
+describe("smtpModule — send mode (revised design, 2026-08-19)", () => {
   it("omits send-mode fields entirely when sendEmail is off (existing checks untouched)", () => {
     const { config, errors } = smtpModule.toConfig(baseState());
     expect(config.send_email).toBeUndefined();
     expect(config.mail_from).toBeUndefined();
+    expect(config.delivery_to).toBeUndefined();
     expect(config.delivery_check_uid).toBeUndefined();
     expect(errors).toEqual([]);
   });
 
-  it("serializes send_email/mail_from/delivery_check_uid when sendEmail is on", () => {
+  it("serializes send_email/mail_from/delivery_to/delivery_check_uid when sendEmail is on", () => {
     const { config, errors } = smtpModule.toConfig(
-      baseState({ sendEmail: true, mailFrom: "prober@example.com", deliveryCheckUid: "check-uid-1" }),
+      baseState({
+        sendEmail: true,
+        mailFrom: "prober@example.com",
+        deliveryTo: "deadbeef@inbox.example.com",
+        deliveryCheckUid: "check-uid-1",
+      }),
     );
     expect(config).toMatchObject({
       send_email: true,
       mail_from: "prober@example.com",
+      delivery_to: "deadbeef@inbox.example.com",
       delivery_check_uid: "check-uid-1",
     });
     expect(errors).toEqual([]);
   });
 
-  it("requires mail_from and delivery_check_uid when sendEmail is on", () => {
+  it("serializes send_email/mail_from/delivery_to with NO delivery_check_uid — the reference is optional bonus metadata now", () => {
+    const { config, errors } = smtpModule.toConfig(
+      baseState({ sendEmail: true, mailFrom: "prober@example.com", deliveryTo: "deadbeef@inbox.example.com" }),
+    );
+    expect(config).toMatchObject({
+      send_email: true,
+      mail_from: "prober@example.com",
+      delivery_to: "deadbeef@inbox.example.com",
+    });
+    expect(config.delivery_check_uid).toBeUndefined();
+    expect(errors).toEqual([]);
+  });
+
+  it("requires mail_from and delivery_to when sendEmail is on", () => {
     const { errors } = smtpModule.toConfig(baseState({ sendEmail: true }));
     const fields = errors.map((e) => e.name);
     expect(fields).toContain("mail_from");
-    expect(fields).toContain("delivery_check_uid");
+    expect(fields).toContain("delivery_to");
+    // delivery_check_uid is bonus metadata, never a required field.
+    expect(fields).not.toContain("delivery_check_uid");
   });
 
-  it("does not require mail_from/delivery_check_uid when sendEmail is off", () => {
+  it("does not require mail_from/delivery_to when sendEmail is off", () => {
     const { errors } = smtpModule.toConfig(baseState());
     const fields = errors.map((e) => e.name);
     expect(fields).not.toContain("mail_from");
-    expect(fields).not.toContain("delivery_check_uid");
+    expect(fields).not.toContain("delivery_to");
   });
 
   it("still requires host regardless of send mode", () => {
@@ -65,10 +88,12 @@ describe("smtpModule — send mode", () => {
       host: "mail.example.com",
       send_email: true,
       mail_from: "prober@example.com",
+      delivery_to: "deadbeef@inbox.example.com",
       delivery_check_uid: "check-uid-1",
     });
     expect(state.sendEmail).toBe(true);
     expect(state.mailFrom).toBe("prober@example.com");
+    expect(state.deliveryTo).toBe("deadbeef@inbox.example.com");
     expect(state.deliveryCheckUid).toBe("check-uid-1");
   });
 
@@ -76,6 +101,7 @@ describe("smtpModule — send mode", () => {
     const state = smtpModule.fromConfig({ host: "mail.example.com", starttls: "true" });
     expect(state.sendEmail).toBe(false);
     expect(state.mailFrom).toBe("");
+    expect(state.deliveryTo).toBe("");
     expect(state.deliveryCheckUid).toBe("");
   });
 });
