@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
@@ -250,6 +251,28 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		CDPURL:     cfg.Checkers.Browser.CDPURL,
 		ChromePath: cfg.Checkers.Browser.ChromePath,
 	})
+
+	// Same reasoning, same place: install the server-level check-type
+	// activation gate consulted by `js` sub-checks here, in the ONE constructor
+	// the in-process worker and the deported agent both go through. Wiring it
+	// only in the HTTP route setup (app/server.go, where the resolver is also
+	// built for checktypes.Service) would leave it nil in an agent process,
+	// which never runs that code — i.e. exactly where checks execute.
+	//
+	// Sibling construction site: app/server.go's `activationResolver`. Both are
+	// checkerdef.NewActivationResolver(&cfg.Checkers) — the same constructor
+	// over the same pure input — so they cannot diverge; keep them in step.
+	//
+	// nil orgDisabled: server-level only. The JS runtime has no org identity,
+	// so per-org overrides are not enforced through this gate (see checkjs).
+	//
+	// Agent semantics: an agent reads its OWN checkers.* config, not the
+	// control plane's, so it enforces the configuration of the host it runs on.
+	// An agent left at defaults enables every type.
+	activation := checkerdef.NewActivationResolver(&cfg.Checkers)
+	checkjs.TypeEnabled = func(checkType checkerdef.CheckType) bool {
+		return activation.IsTypeEnabled(checkType, nil)
+	}
 
 	return &CheckWorker{
 		backend:     workerBackend,

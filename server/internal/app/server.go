@@ -782,7 +782,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	publicConfigHandler := publicconfig.NewHandler(s.config)
 	api.GET("/config", publicConfigHandler.GetConfig)
 
-	// Check types service (constructed early so MCP can use it too)
+	// Check types service (constructed early so MCP can use it too).
+	//
+	// This resolver answers the metadata endpoints (what the dashboard and MCP
+	// list_check_types render). ENFORCEMENT at execution time lives elsewhere:
+	// checkworker.newCheckWorker builds its own resolver from the same
+	// cfg.Checkers and installs it as checkjs.TypeEnabled, because this route
+	// setup is never reached by a standalone agent process. Same constructor,
+	// same pure input, so the two cannot diverge — keep them in step.
 	activationResolver := checkerdef.NewActivationResolver(&s.config.Checkers)
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
