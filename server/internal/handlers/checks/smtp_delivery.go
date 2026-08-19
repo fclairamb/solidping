@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
@@ -47,9 +48,14 @@ func (s *Service) validateSMTPDeliveryConfig(
 		return nil
 	}
 
+	// Re-validated here (not just at the checker's Validate(), which only runs
+	// on create): mail_from is spliced verbatim into the wire MAIL FROM command
+	// and the From: header, so a PATCH must be held to the same real-address
+	// requirement or it could smuggle a CRLF-terminated extra SMTP command /
+	// an injected header past this gate.
 	mailFrom, _ := effective["mail_from"].(string)
-	if mailFrom == "" {
-		return checkerdef.NewConfigError("mail_from", "is required when send_email is set")
+	if err := checksmtp.ValidateMailFrom(mailFrom); err != nil {
+		return err
 	}
 
 	deliveryCheckUID, _ := effective[smtpDeliveryConfigField].(string)

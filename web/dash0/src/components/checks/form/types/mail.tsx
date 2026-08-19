@@ -208,7 +208,7 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
   const candidates = emailChecks ?? [];
 
   return (
-    <div className="space-y-3 rounded-md border p-3">
+    <div className="space-y-3 rounded-md border p-3" data-testid="check-smtp-send-mode-section">
       <label className="flex items-center gap-2">
         <Switch
           checked={state.sendEmail}

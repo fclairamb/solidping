@@ -1,6 +1,7 @@
 package checksmtp
 
 import (
+	"net/mail"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -240,14 +241,46 @@ func (c *SMTPConfig) Validate() error {
 	// requirement need DB access this layer doesn't have — those live in
 	// checks/service.go's validateSMTPDeliveryConfig, which runs on both the
 	// create and PATCH paths (mirroring how tunnelCheckUid splits the same way).
+	//
+	// mail_from is spliced verbatim into the wire MAIL FROM command and into
+	// the From: header (checker.go) — validating it as a real RFC 5322
+	// address here (not just non-empty) is what stops it from being used to
+	// smuggle a CRLF-terminated extra SMTP command or an injected header. This
+	// mirrors the same net/mail.ParseAddress check used elsewhere in the repo
+	// (statussubscribers.normalizeEmail); it rejects embedded CR/LF by
+	// construction, since those can never appear inside a valid addr-spec.
 	if c.SendEmail {
-		if c.MailFrom == "" {
-			return checkerdef.NewConfigError("mail_from", "is required when send_email is set")
+		if err := ValidateMailFrom(c.MailFrom); err != nil {
+			return err
 		}
 
 		if c.DeliveryCheckUID == "" {
 			return checkerdef.NewConfigError("delivery_check_uid", "is required when send_email is set")
 		}
+	}
+
+	return nil
+}
+
+// ValidateMailFrom requires a non-empty, single RFC 5322 address with no
+// display name games — anything mail.ParseAddress rejects (including any
+// value carrying embedded CR/LF, which can never appear in a valid addr-spec)
+// is rejected here too.
+func ValidateMailFrom(mailFrom string) error {
+	if mailFrom == "" {
+		return checkerdef.NewConfigError("mail_from", "is required when send_email is set")
+	}
+
+	addr, err := mail.ParseAddress(mailFrom)
+	if err != nil {
+		return checkerdef.NewConfigError("mail_from", "must be a single valid email address")
+	}
+
+	// ParseAddress accepts "Display Name <addr>" — reject anything that isn't
+	// a bare address, so the stored value is exactly what goes on the wire
+	// with no surprise formatting.
+	if addr.Address != mailFrom {
+		return checkerdef.NewConfigError("mail_from", "must be a bare email address, not a display name + address")
 	}
 
 	return nil
