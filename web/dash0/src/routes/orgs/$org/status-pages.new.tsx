@@ -29,6 +29,9 @@ function StatusPageNewPage() {
           showAvailability: data.showAvailability,
           showResponseTime: data.showResponseTime,
           historyPeriod: data.historyPeriod,
+          autoPublish: data.autoPublish,
+          autoPublishDelaySeconds: data.autoPublishDelaySeconds,
+          autoResolve: data.autoResolve,
         });
         toast.success(t("toast.created"));
         navigate({

@@ -125,6 +125,7 @@ import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
 import { Route as OrgsOrgCheckGroupsUidEditRouteImport } from './routes/orgs/$org/check-groups.$uid.edit'
 import { Route as OrgsOrgAccountOrganizationsNewRouteImport } from './routes/orgs/$org/account.organizations.new'
+import { Route as OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.incidents.$uid'
 import { Route as OrgsOrgOrganizationMembersMemberUidPagingRouteImport } from './routes/orgs/$org/organization.members_.$memberUid.paging'
 import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
@@ -752,6 +753,12 @@ const OrgsOrgAccountOrganizationsNewRoute =
     path: '/new',
     getParentRoute: () => OrgsOrgAccountOrganizationsRoute,
   } as any)
+const OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute =
+  OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport.update({
+    id: '/incidents/$uid',
+    path: '/incidents/$uid',
+    getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
+  } as any)
 const OrgsOrgOrganizationMembersMemberUidPagingRoute =
   OrgsOrgOrganizationMembersMemberUidPagingRouteImport.update({
     id: '/members_/$memberUid/paging',
@@ -891,6 +898,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -990,6 +998,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1112,6 +1121,7 @@ export interface FileRoutesById {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members_/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1235,6 +1245,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1334,6 +1345,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   id:
     | '__root__'
     | '/'
@@ -1455,6 +1467,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
     | '/orgs/$org/organization/members_/$memberUid/paging'
+    | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -2285,6 +2298,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountOrganizationsNewRouteImport
       parentRoute: typeof OrgsOrgAccountOrganizationsRoute
     }
+    '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': {
+      id: '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
+      path: '/incidents/$uid'
+      fullPath: '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
+      preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport
+      parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
+    }
     '/orgs/$org/organization/members_/$memberUid/paging': {
       id: '/orgs/$org/organization/members_/$memberUid/paging'
       path: '/members/$memberUid/paging'
@@ -2647,6 +2667,7 @@ interface OrgsOrgStatusPagesStatusPageUidRouteChildren {
   OrgsOrgStatusPagesStatusPageUidAppearanceRoute: typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   OrgsOrgStatusPagesStatusPageUidEditRoute: typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   OrgsOrgStatusPagesStatusPageUidIndexRoute: typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
+  OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute: typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 
 const OrgsOrgStatusPagesStatusPageUidRouteChildren: OrgsOrgStatusPagesStatusPageUidRouteChildren =
@@ -2657,6 +2678,8 @@ const OrgsOrgStatusPagesStatusPageUidRouteChildren: OrgsOrgStatusPagesStatusPage
       OrgsOrgStatusPagesStatusPageUidEditRoute,
     OrgsOrgStatusPagesStatusPageUidIndexRoute:
       OrgsOrgStatusPagesStatusPageUidIndexRoute,
+    OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute:
+      OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute,
   }
 
 const OrgsOrgStatusPagesStatusPageUidRouteWithChildren =
