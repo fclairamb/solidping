@@ -18,6 +18,8 @@ import { ResponseTimeChart } from "./response-time-chart";
 import { LanguageSwitcher } from "./language-switcher";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
+import { ActiveIncidents } from "./active-incidents";
+import { IncidentHistory } from "./incident-history";
 import { SubscribeWidget } from "./subscribe-widget";
 import { statusStyle } from "@/lib/status-style";
 import { usePreviewCss } from "@/lib/preview-css";
@@ -402,6 +404,11 @@ export function StatusPageView({
           </div>
         </div>
 
+        {/* Open incidents. Rendered ABOVE the component grid: a visitor who
+            arrived because something is broken should read the explanation
+            before hunting for a red dot. Renders nothing when all is well. */}
+        <ActiveIncidents incidents={page.activeIncidents} />
+
         {/* Sections */}
         <div className="space-y-6">
           {sections.length === 0 ? (
@@ -436,6 +443,10 @@ export function StatusPageView({
             <StatusUpdatesTimeline updates={page.recentUpdates} />
           </section>
         )}
+
+        {/* Past incidents, collapsed by default — history matters, but not
+            more than the current state. */}
+        <IncidentHistory org={org} slug={page.slug} />
 
         {/* Subscribe to updates (email double opt-in) + RSS/Atom feed */}
         <section aria-label="Subscribe to updates" className="mt-8">

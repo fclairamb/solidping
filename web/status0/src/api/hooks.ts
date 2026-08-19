@@ -96,6 +96,37 @@ export interface StatusCounts {
   unknown: number;
 }
 
+/**
+ * One customer-facing incident on a status page (spec 2026-08-19-08).
+ *
+ * This is the PUBLICATION, not the internal incident: every field here is
+ * either operator-authored or templated from the page's own public resource
+ * names. The server never puts probe output, error strings or internal
+ * hostnames on this shape, and this client never asks for them.
+ */
+export interface PublicIncident {
+  uid: string;
+  title: string;
+  /** "investigating" | "identified" | "monitoring" | "resolved" */
+  state: string;
+  /** "minor" | "major" | "critical", or absent when the operator set none. */
+  severity?: string;
+  startedAt: string;
+  resolvedAt?: string;
+  /** Public display names of the page resources this incident covers. */
+  affectedResources?: string[];
+  updates?: PublicIncidentUpdate[];
+}
+
+/** One append-only narrative entry on a public incident. */
+export interface PublicIncidentUpdate {
+  uid: string;
+  kind: string;
+  title: string;
+  bodyMarkdown: string;
+  publishedAt: string;
+}
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -126,6 +157,33 @@ export interface StatusPage {
    */
   overallStatus?: string;
   statusCounts?: StatusCounts;
+  /**
+   * Currently-open incident publications (spec 2026-08-19-08). Same population
+   * rule as overallStatus: public view endpoints only.
+   */
+  activeIncidents?: PublicIncident[];
+  /**
+   * Incident auto-publication settings. Operator-facing, echoed publicly so the
+   * dashboard preview and the live page agree.
+   */
+  autoPublish?: boolean;
+  autoPublishDelaySeconds?: number;
+  autoResolve?: string;
+}
+
+/**
+ * Public incident history for a page — the resolved ones the live payload's
+ * activeIncidents deliberately omits.
+ */
+export function usePublicIncidentHistory(org: string, slug: string) {
+  return useQuery<{ data: PublicIncident[] }>({
+    queryKey: ["public-incident-history", org, slug],
+    queryFn: () =>
+      apiFetch<{ data: PublicIncident[] }>(
+        `/api/v1/status-pages/${org}/${slug}/incidents`,
+      ),
+    enabled: !!org && !!slug,
+  });
 }
 
 export function usePublicStatusPage(org: string, slug: string) {
@@ -171,7 +229,7 @@ export function useSubscribe() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email }),
-          }
+          },
         );
       } catch {
         throw new NetworkError();
@@ -183,7 +241,7 @@ export function useSubscribe() {
           error.title || "Subscription failed",
           error.code || "UNKNOWN_ERROR",
           error.detail,
-          response.status
+          response.status,
         );
       }
     },

@@ -48,5 +48,26 @@
     "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
     "feedLink": "Per RSS abonnieren"
   },
-  "servicesOperational": "{{ok}} von {{total}} Diensten betriebsbereit"
+  "servicesOperational": "{{ok}} von {{total}} Diensten betriebsbereit",
+  "activeIncidents": "Laufende Störungen",
+  "incidentHistory": "Störungsverlauf",
+  "showIncidentHistory": "Frühere Störungen anzeigen",
+  "hideIncidentHistory": "Frühere Störungen ausblenden",
+  "noPastIncidents": "Keine früheren Störungen in diesem Zeitraum.",
+  "incidentAffects": "Betroffen: {{names}}",
+  "incidentStartedAt": "Beginn {{when}}",
+  "incidentResolvedAt": "Behoben {{when}}",
+  "incidentState": {
+    "investigating": "Untersuchung läuft",
+    "identified": "Ursache erkannt",
+    "monitoring": "Wird beobachtet",
+    "resolved": "Behoben",
+    "maintenance": "Wartung",
+    "info": "Update"
+  },
+  "incidentSeverity": {
+    "minor": "Gering",
+    "major": "Erheblich",
+    "critical": "Kritisch"
+  }
 }

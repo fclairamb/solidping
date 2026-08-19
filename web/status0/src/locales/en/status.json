@@ -48,5 +48,26 @@
     "error": "Something went wrong. Please try again.",
     "feedLink": "Subscribe via RSS"
   },
-  "servicesOperational": "{{ok}} of {{total}} services operational"
+  "servicesOperational": "{{ok}} of {{total}} services operational",
+  "activeIncidents": "Active incidents",
+  "incidentHistory": "Incident history",
+  "showIncidentHistory": "Show past incidents",
+  "hideIncidentHistory": "Hide past incidents",
+  "noPastIncidents": "No past incidents in this period.",
+  "incidentAffects": "Affected: {{names}}",
+  "incidentStartedAt": "Started {{when}}",
+  "incidentResolvedAt": "Resolved {{when}}",
+  "incidentState": {
+    "investigating": "Investigating",
+    "identified": "Identified",
+    "monitoring": "Monitoring",
+    "resolved": "Resolved",
+    "maintenance": "Maintenance",
+    "info": "Update"
+  },
+  "incidentSeverity": {
+    "minor": "Minor",
+    "major": "Major",
+    "critical": "Critical"
+  }
 }
