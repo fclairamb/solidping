@@ -994,6 +994,62 @@ seconds, so faster periods would occupy a monitoring slot continuously. See
 - Visual regression detection
 - JavaScript-rendered content checks
 
+#### Where Chrome comes from
+
+The SolidPing image is distroless and deliberately ships **no browser** — a
+browser check drives a Chrome that lives outside the SolidPing process. There
+are two ways to give it one, and nothing is ever downloaded at runtime.
+
+**1. Remote Chrome over CDP (recommended, and the only option in containers).**
+Point the worker at a long-lived headless Chrome speaking the Chrome DevTools
+Protocol:
+
+| Setting | Environment variable | Meaning |
+|---|---|---|
+| `checkers.browser.cdp_url` | `SP_CHECKERS_BROWSER_CDP_URL` | Websocket/HTTP address of the CDP endpoint, e.g. `ws://browser:9222` |
+| `checkers.browser.chrome_path` | `SP_CHECKERS_BROWSER_CHROME_PATH` | Local Chrome binary for the fallback below |
+
+Each execution opens a fresh **isolated (incognito) browser context and tab**,
+torn down afterwards, so consecutive checks never share cookies, storage or a
+service worker. Because the browser process is already running, the measured
+duration no longer includes Chrome's ~1s cold start.
+
+The expected deployment shape is a **sidecar next to each checks worker** —
+`chromedp/headless-shell`, pinned to a tag so every region runs the same Chrome
+version, reached over localhost. In Docker Compose that is an extra service; see
+[Docker Compose installation](../installation/docker-compose.md#browser-checks-headless-chrome).
+In Kubernetes it is a second container in the worker Pod with
+`SP_CHECKERS_BROWSER_CDP_URL=ws://127.0.0.1:9222`.
+
+If the endpoint is unreachable, the check reports an **error** — never "down".
+Your monitored site is not implicated by your browser sidecar being down, and
+SolidPing will not raise a false incident for it. The `browser` capability
+(below) also drops on the next worker heartbeat.
+
+**2. Local Chrome binary (fallback).** With no `cdp_url` configured, SolidPing
+executes a locally installed Chrome/Chromium: `chrome_path` if set, otherwise
+the usual binary names (`google-chrome`, `chromium`, `chromium-browser`, …).
+This is the zero-config path on a developer laptop and an opt-in for agents
+installed on a host that already has Chrome. SolidPing never downloads a
+browser.
+
+#### Concurrency
+
+At most **4 browser checks run at a time per worker** — a browser execution
+costs orders of magnitude more than a network probe, and an unbounded pool of
+tabs would starve the sidecar. A fifth execution waits for a slot inside its own
+timeout budget and reports a timeout if none frees up. Space browser checks out,
+or add workers, rather than lowering their period.
+
+#### Region capability
+
+Workers self-report a `browser` capability (a reachable CDP endpoint, or a local
+binary), aggregated per region alongside `ipv4`/`ipv6`. Creating or editing a
+browser check in a region whose live workers report no browser produces a
+**warning** naming a region that does have one — the check is still saved and
+still runs. A region with no live worker, or served by an agent predating the
+probe, reports `unknown` and never warns.
+
 ## Common Options
 
 All check types support these common options:
