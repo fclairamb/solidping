@@ -71,6 +71,7 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
+import { DeliverySources, DeliveryVia } from "@/components/checks/smtp-delivery-detail";
 import { StatusDot } from "@/components/shared/status-dot";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
@@ -1197,6 +1198,8 @@ function CheckDetailPage() {
             )}
             <TunnelVia org={org} check={check} />
             <TunnelDependents org={org} check={check} />
+            <DeliveryVia org={org} check={check} />
+            <DeliverySources org={org} check={check} />
             <div>
               <div className="text-sm font-medium text-muted-foreground">
                 {t("checks:detail.statusLabel")}

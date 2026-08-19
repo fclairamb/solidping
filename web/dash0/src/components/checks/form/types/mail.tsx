@@ -2,7 +2,18 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getFieldError } from "@/hooks/use-check-validation";
+import { useChecks } from "@/api/hooks";
+import { checkLabel } from "@/components/checks/tunnel";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField } from "./common";
@@ -10,6 +21,24 @@ import { useCheckFormFields } from "./context";
 
 const hostRequired = (host: string): FieldErrors =>
   host ? [] : [{ name: "host", message: "Host is required" }];
+
+// smtpSendModeErrors validates the send-mode fields on top of the plain
+// host requirement — mail_from and delivery_check_uid are only required when
+// send mode itself is on (spec 2026-08-19-04).
+function smtpSendModeErrors(state: SmtpState): FieldErrors {
+  const errors = hostRequired(state.host);
+  if (!state.sendEmail) return errors;
+  if (!state.mailFrom) {
+    errors.push({ name: "mail_from", message: "Mail From is required when send mode is enabled" });
+  }
+  if (!state.deliveryCheckUid) {
+    errors.push({
+      name: "delivery_check_uid",
+      message: "Select a delivery (email) check when send mode is enabled",
+    });
+  }
+  return errors;
+}
 
 // ── SMTP ──
 export interface SmtpState {
@@ -22,6 +51,12 @@ export interface SmtpState {
   expectGreeting: string;
   username: string;
   password: string;
+  // Send mode (spec 2026-08-19-04): submits a real, system-generated probe
+  // email through the monitored server, addressed to a paired email check's
+  // tokenized address.
+  sendEmail: boolean;
+  mailFrom: string;
+  deliveryCheckUid: string;
 }
 
 export const smtpModule: CheckTypeModule<SmtpState> = {
@@ -36,6 +71,9 @@ export const smtpModule: CheckTypeModule<SmtpState> = {
     expectGreeting: getConfigField(config, "expect_greeting"),
     username: getConfigField(config, "username"),
     password: getConfigField(config, "password"),
+    sendEmail: getConfigField(config, "send_email") === "true",
+    mailFrom: getConfigField(config, "mail_from"),
+    deliveryCheckUid: getConfigField(config, "delivery_check_uid"),
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -48,12 +86,17 @@ export const smtpModule: CheckTypeModule<SmtpState> = {
     if (state.checkAuth) cfg.check_auth = true;
     if (state.username) cfg.username = state.username;
     if (state.password) cfg.password = state.password;
-    return { config: cfg, errors: hostRequired(state.host) };
+    if (state.sendEmail) {
+      cfg.send_email = true;
+      if (state.mailFrom) cfg.mail_from = state.mailFrom;
+      if (state.deliveryCheckUid) cfg.delivery_check_uid = state.deliveryCheckUid;
+    }
+    return { config: cfg, errors: smtpSendModeErrors(state) };
   },
   Fields: SmtpFields,
 };
 
-function SmtpFields({ state, onChange }: CheckTypeFieldsProps<SmtpState>) {
+function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>) {
   return (
     <>
       <div className="space-y-2">
@@ -150,7 +193,89 @@ function SmtpFields({ state, onChange }: CheckTypeFieldsProps<SmtpState>) {
           />
         </div>
       </div>
+      <SmtpSendModeFields state={state} onChange={onChange} errors={errors} />
     </>
+  );
+}
+
+// SmtpSendModeFields renders the send-mode toggle and, when enabled, the
+// mail_from input and the same-org email-check picker. Per the spec's
+// resolved open question: no "create a delivery check for me" affordance
+// anywhere here — the picker only, plain text when the org has none yet.
+function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>) {
+  const { org } = useCheckFormFields();
+  const { data: emailChecks } = useChecks(org, { type: "email", limit: 100 });
+  const candidates = emailChecks ?? [];
+
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <label className="flex items-center gap-2">
+        <Switch
+          checked={state.sendEmail}
+          onCheckedChange={(sendEmail) => onChange({ ...state, sendEmail })}
+          data-testid="check-smtp-send-email-switch"
+        />
+        <span className="text-sm font-medium">Send a probe email</span>
+      </label>
+      <p className="text-xs text-muted-foreground">
+        Submits a system-generated email through this server on every check, addressed to a
+        paired email check&apos;s tokenized address, to verify the full delivery path (not just
+        the handshake). The email check&apos;s period is the delivery deadline — size it to
+        this check&apos;s interval plus the worst acceptable delivery time (greylisting can add
+        minutes).
+      </p>
+      {state.sendEmail && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="smtp-mail-from">Mail From</Label>
+            <Input
+              id="smtp-mail-from"
+              type="text"
+              placeholder="prober@example.com"
+              value={state.mailFrom}
+              onChange={(e) => onChange({ ...state, mailFrom: e.target.value })}
+              className={cn(getFieldError(errors, "mail_from") && "border-destructive")}
+              data-testid="check-smtp-mail-from-input"
+            />
+            {getFieldError(errors, "mail_from") && (
+              <p className="text-xs text-destructive">{getFieldError(errors, "mail_from")}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="smtp-delivery-check">Delivery (email) check</Label>
+            {candidates.length === 0 ? (
+              <Alert>
+                <AlertDescription>
+                  No email checks in this organization yet. Create one first, then come back
+                  to pair it here.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Select
+                value={state.deliveryCheckUid}
+                onValueChange={(deliveryCheckUid) => onChange({ ...state, deliveryCheckUid })}
+              >
+                <SelectTrigger id="smtp-delivery-check" data-testid="check-smtp-delivery-select">
+                  <SelectValue placeholder="Select an email check" />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((check) => (
+                    <SelectItem key={check.uid} value={check.uid}>
+                      {checkLabel(check)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {getFieldError(errors, "delivery_check_uid") && (
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "delivery_check_uid")}
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
