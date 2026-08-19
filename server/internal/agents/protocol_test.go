@@ -156,3 +156,62 @@ func TestClaimFrameFromAgentPredatingCapabilities(t *testing.T) {
 	r.NoError(json.Unmarshal([]byte(`{"type":"claim","maxJobs":4}`), &frame))
 	r.Nil(frame.Capabilities)
 }
+
+// TestClaimFrameVersionOmittedWhenEmpty is the wire half of spec
+// 2026-08-19-07's rollout-order independence: an agent predating version
+// reporting sends no `version` field at all (proving omitempty is doing its
+// job, unlike Capabilities which deliberately omits it), and the server
+// decodes that into the zero value "" — the sentinel this package's
+// UpdateWorkerHeartbeat treats as "not reported, leave the column alone".
+func TestClaimFrameVersionOmittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	encoded, err := json.Marshal(&agents.ClientFrame{Type: agents.MsgTypeClaim, MaxJobs: 4})
+	r.NoError(err)
+	r.NotContains(string(encoded), "version",
+		"an agent reporting no version must not put the key on the wire at all")
+
+	var back agents.ClientFrame
+	r.NoError(json.Unmarshal(encoded, &back))
+	r.Empty(back.Version)
+}
+
+// TestClaimFrameVersionRoundTrips: a reported version survives the wire
+// round trip intact.
+func TestClaimFrameVersionRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	encoded, err := json.Marshal(&agents.ClientFrame{
+		Type: agents.MsgTypeClaim, MaxJobs: 4, Version: "0.17.0",
+	})
+	r.NoError(err)
+	r.Contains(string(encoded), `"version":"0.17.0"`)
+
+	var back agents.ClientFrame
+	r.NoError(json.Unmarshal(encoded, &back))
+	r.Equal("0.17.0", back.Version)
+}
+
+// TestClaimFrameUnknownExtraFieldIsIgnored proves rollout-order independence
+// the OTHER direction: a frame carrying a field this server build does not
+// know about (e.g. a future field an older server predates) must decode
+// without error, rather than rejecting the whole frame — exactly what makes
+// it safe for a NEWER agent to talk to an OLDER server.
+func TestClaimFrameUnknownExtraFieldIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var frame agents.ClientFrame
+	err := json.Unmarshal(
+		[]byte(`{"type":"claim","maxJobs":4,"version":"0.17.0","aFieldFromTheFuture":"whatever"}`),
+		&frame,
+	)
+	r.NoError(err, "an unknown extra field must be ignored, not rejected")
+	r.Equal("0.17.0", frame.Version)
+	r.Equal(4, frame.MaxJobs)
+}
