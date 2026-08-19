@@ -14,23 +14,25 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
-// configureEmailInbox seeds the email.inbox system parameter with a working
-// address domain — the prerequisite validateSMTPDeliveryConfig / DirectBackend
-// both need before send-mode can resolve anything.
-func configureEmailInbox(ctx context.Context, t *testing.T, dbSvc db.Service, addressDomain string) {
+// configureEmailInbox seeds the email.inbox system parameter with a fixed
+// working address domain — the prerequisite validateSMTPDeliveryConfig /
+// DirectBackend both need before send-mode can resolve anything.
+func configureEmailInbox(ctx context.Context, t *testing.T, dbSvc db.Service) {
 	t.Helper()
 
 	err := dbSvc.SetSystemParameter(ctx, jmap.SystemParameterKey, map[string]any{
 		"enabled":       true,
 		"sessionUrl":    "https://jmap.example.com/session",
-		"addressDomain": addressDomain,
+		"addressDomain": "inbox.example.com",
 	}, false)
 	require.NoError(t, err)
 }
 
 // seedEmailCheck creates an email (passive) check carrying a fixed token, so
 // tests can predict the resolved recipient address.
-func seedEmailCheck(ctx context.Context, t *testing.T, dbSvc db.Service, org *models.Organization, slug, token string) *models.Check {
+func seedEmailCheck(
+	ctx context.Context, t *testing.T, dbSvc db.Service, org *models.Organization, slug, token string,
+) *models.Check {
 	t.Helper()
 
 	check := models.NewCheck(org.UID, slug, string(checkerdef.CheckTypeEmail))
@@ -67,11 +69,13 @@ func seedSMTPJob(
 	return check
 }
 
-func sendModeConfig(mailFrom, deliveryCheckUID string) models.JSONMap {
+// sendModeConfig builds a send-mode SMTP check config. mail_from is fixed
+// (irrelevant to what these tests exercise); deliveryCheckUID varies per test.
+func sendModeConfig(deliveryCheckUID string) models.JSONMap {
 	return models.JSONMap{
 		"host":               "mail.example.com",
 		"send_email":         true,
-		"mail_from":          mailFrom,
+		"mail_from":          "probe@example.com",
 		"delivery_check_uid": deliveryCheckUID,
 	}
 }
@@ -87,10 +91,10 @@ func TestResolveSMTPDelivery_Success(t *testing.T) {
 	be, _, dbSvc, ctx := newDirectBackend(t)
 
 	org := newOrg(t, ctx, dbSvc, "smtp-resolve-ok")
-	configureEmailInbox(ctx, t, dbSvc, "inbox.example.com")
+	configureEmailInbox(ctx, t, dbSvc)
 
 	emailCheck := seedEmailCheck(ctx, t, dbSvc, org, "delivery", "deadbeef000000000000000000000000000000000000aa")
-	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig("probe@example.com", emailCheck.UID))
+	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig(emailCheck.UID))
 
 	workerUID := registerWorker(ctx, t, dbSvc, "wk-smtp-ok")
 
@@ -132,11 +136,13 @@ func TestResolveSMTPDelivery_CrossOrgRejected(t *testing.T) {
 	be, _, dbSvc, ctx := newDirectBackend(t)
 
 	otherOrg := newOrg(t, ctx, dbSvc, "smtp-other-org")
-	foreignEmailCheck := seedEmailCheck(ctx, t, dbSvc, otherOrg, "foreign-delivery", "f00d000000000000000000000000000000000000000011")
+	foreignEmailCheck := seedEmailCheck(
+		ctx, t, dbSvc, otherOrg, "foreign-delivery", "f00d000000000000000000000000000000000000000011",
+	)
 
 	org := newOrg(t, ctx, dbSvc, "smtp-cross-org")
-	configureEmailInbox(ctx, t, dbSvc, "inbox.example.com")
-	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig("probe@example.com", foreignEmailCheck.UID))
+	configureEmailInbox(ctx, t, dbSvc)
+	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig(foreignEmailCheck.UID))
 
 	workerUID := registerWorker(ctx, t, dbSvc, "wk-smtp-crossorg")
 
@@ -155,12 +161,12 @@ func TestResolveSMTPDelivery_WrongTypeRejected(t *testing.T) {
 	be, _, dbSvc, ctx := newDirectBackend(t)
 
 	org := newOrg(t, ctx, dbSvc, "smtp-wrong-type")
-	configureEmailInbox(ctx, t, dbSvc, "inbox.example.com")
+	configureEmailInbox(ctx, t, dbSvc)
 
 	notEmail := models.NewCheck(org.UID, "not-email", "http")
 	require.NoError(t, dbSvc.CreateCheck(ctx, notEmail))
 
-	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig("probe@example.com", notEmail.UID))
+	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig(notEmail.UID))
 	workerUID := registerWorker(ctx, t, dbSvc, "wk-smtp-wrongtype")
 
 	r.Nil(claimOne(ctx, t, be, workerUID, smtpCheck.UID),
@@ -180,9 +186,9 @@ func TestResolveSMTPDelivery_DeletedReference(t *testing.T) {
 	be, _, dbSvc, ctx := newDirectBackend(t)
 
 	org := newOrg(t, ctx, dbSvc, "smtp-deleted-ref")
-	configureEmailInbox(ctx, t, dbSvc, "inbox.example.com")
+	configureEmailInbox(ctx, t, dbSvc)
 
-	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig("probe@example.com", "00000000-0000-0000-0000-000000000000"))
+	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig("00000000-0000-0000-0000-000000000000"))
 	workerUID := registerWorker(ctx, t, dbSvc, "wk-smtp-deletedref")
 
 	r.Nil(claimOne(ctx, t, be, workerUID, smtpCheck.UID),
@@ -202,7 +208,7 @@ func TestResolveSMTPDelivery_NoEmailInboxConfigured(t *testing.T) {
 
 	org := newOrg(t, ctx, dbSvc, "smtp-no-inbox")
 	emailCheck := seedEmailCheck(ctx, t, dbSvc, org, "delivery", "abc123000000000000000000000000000000000000000f")
-	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig("probe@example.com", emailCheck.UID))
+	smtpCheck := seedSMTPJob(ctx, t, dbSvc, org, "probe", sendModeConfig(emailCheck.UID))
 
 	workerUID := registerWorker(ctx, t, dbSvc, "wk-smtp-noinbox")
 

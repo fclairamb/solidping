@@ -307,7 +307,7 @@ func (b *WSBackend) submitSealError(ctx context.Context, job *models.CheckJob) {
 		JobUID:   job.UID,
 		Status:   int(models.ResultStatusError),
 		Duration: 0,
-		Output:   map[string]any{"error": ErrSealedForOthers.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: ErrSealedForOthers.Error()},
 	})
 }
 

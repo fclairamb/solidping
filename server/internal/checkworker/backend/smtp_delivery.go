@@ -144,7 +144,7 @@ func (b *DirectBackend) submitSMTPDeliveryError(
 		Status:          int(models.ResultStatusError),
 		Duration:        0,
 		Metrics:         map[string]any{},
-		Output:          map[string]any{"error": reason.Error()},
+		Output:          map[string]any{checkerdef.OutputKeyError: reason.Error()},
 		Region:          job.Region,
 		NextScheduledAt: nextScheduledAt(job),
 	}); err != nil {
