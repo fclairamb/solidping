@@ -964,6 +964,25 @@ func (r *CheckWorker) executeJob(
 		execCtx = checkerdef.WithIPVersion(execCtx, version)
 	}
 
+	// Send-mode SMTP delivery recipient (spec 2026-08-19-04). Read generically
+	// off the raw config map like `tunnelCheckUid`/`ipVersion` above — this key
+	// is server-resolved and injected into checkJob.Config by
+	// backend.DirectBackend.resolveSMTPDelivery BEFORE this job ever reaches a
+	// runner, never accepted through SMTPConfig.FromMap. Gated on check type so
+	// a JS check's own job (type "js") never carries this context value even if
+	// its config map happened to contain the same raw key — the JS sub-check
+	// path (checkjs) calls Execute directly with its own context that never
+	// passes through here, which is the guardrail: it can request send_email in
+	// a sub-check's config, but it can never reach a resolved recipient.
+	if checkJob.Type == string(checkerdef.CheckTypeSMTP) {
+		if recipient, uidOK := checkJob.Config[checkerdef.SMTPResolvedRecipientConfigKey].(string); uidOK && recipient != "" {
+			execCtx = checkerdef.WithSMTPDeliveryRecipient(execCtx, checkerdef.SMTPDeliveryInfo{
+				Recipient:      recipient,
+				SourceCheckUID: checkJob.CheckUID,
+			})
+		}
+	}
+
 	execStart := time.Now()
 	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())

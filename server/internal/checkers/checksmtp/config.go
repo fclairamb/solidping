@@ -27,6 +27,23 @@ type SMTPConfig struct {
 	CheckAuth      bool          `json:"check_auth,omitempty"`      //nolint:tagliatelle // API uses snake_case
 	Username       string        `json:"username,omitempty"`
 	Password       string        `json:"password,omitempty"`
+
+	// SendEmail opts this check into send mode: after the normal
+	// EHLO/STARTTLS/AUTH sequence, submit a system-generated probe email
+	// addressed to the paired email check's tokenized address (resolved
+	// server-side from DeliveryCheckUID — see checkerdef.SMTPDeliveryRecipientFrom).
+	// Default false; existing checks are completely unaffected.
+	SendEmail bool `json:"send_email,omitempty"` //nolint:tagliatelle // API uses snake_case
+	// MailFrom is the envelope sender for the probe email. Required when
+	// SendEmail is set — the monitored server's sender policy usually
+	// dictates it (SPF/DKIM alignment, relay ACLs, etc.).
+	MailFrom string `json:"mail_from,omitempty"` //nolint:tagliatelle // API uses snake_case
+	// DeliveryCheckUID references an email check (CheckTypeEmail) IN THE SAME
+	// ORG whose tokenized address the probe email is addressed to. This is a
+	// reference, never a raw address: the server resolves it to the concrete
+	// address at job-dispatch time, which is what stops one org aiming
+	// probes at another org's check address. Required when SendEmail is set.
+	DeliveryCheckUID string `json:"delivery_check_uid,omitempty"` //nolint:tagliatelle // API uses snake_case
 }
 
 // FromMap populates the configuration from a map.
@@ -106,6 +123,24 @@ func (c *SMTPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("password", "must be a string")
 	}
 
+	if sendEmail, ok := configMap["send_email"].(bool); ok {
+		c.SendEmail = sendEmail
+	} else if configMap["send_email"] != nil {
+		return checkerdef.NewConfigError("send_email", "must be a boolean")
+	}
+
+	if mailFrom, ok := configMap["mail_from"].(string); ok {
+		c.MailFrom = mailFrom
+	} else if configMap["mail_from"] != nil {
+		return checkerdef.NewConfigError("mail_from", "must be a string")
+	}
+
+	if deliveryCheckUID, ok := configMap["delivery_check_uid"].(string); ok {
+		c.DeliveryCheckUID = deliveryCheckUID
+	} else if configMap["delivery_check_uid"] != nil {
+		return checkerdef.NewConfigError("delivery_check_uid", "must be a string")
+	}
+
 	return nil
 }
 
@@ -155,6 +190,18 @@ func (c *SMTPConfig) GetConfig() map[string]any {
 		cfg["password"] = c.Password
 	}
 
+	if c.SendEmail {
+		cfg["send_email"] = c.SendEmail
+	}
+
+	if c.MailFrom != "" {
+		cfg["mail_from"] = c.MailFrom
+	}
+
+	if c.DeliveryCheckUID != "" {
+		cfg["delivery_check_uid"] = c.DeliveryCheckUID
+	}
+
 	return cfg
 }
 
@@ -174,6 +221,21 @@ func (c *SMTPConfig) Validate() error {
 
 	if c.StartTLS && c.Port == implicitTLSPort {
 		return checkerdef.NewConfigError("starttls", "cannot use STARTTLS with port 465 (implicit TLS)")
+	}
+
+	// Shape-only: send mode requires both fields. The cross-check reference
+	// (existence, same-org, CheckTypeEmail) and the instance-wide email_inbox
+	// requirement need DB access this layer doesn't have — those live in
+	// checks/service.go's validateSMTPDeliveryConfig, which runs on both the
+	// create and PATCH paths (mirroring how tunnelCheckUid splits the same way).
+	if c.SendEmail {
+		if c.MailFrom == "" {
+			return checkerdef.NewConfigError("mail_from", "is required when send_email is set")
+		}
+
+		if c.DeliveryCheckUID == "" {
+			return checkerdef.NewConfigError("delivery_check_uid", "is required when send_email is set")
+		}
 	}
 
 	return nil

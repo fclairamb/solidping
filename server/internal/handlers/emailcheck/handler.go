@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
@@ -33,12 +34,33 @@ const (
 
 	headerSolidPingStatus = "X-SolidPing-Status"
 
-	outputKeyMessage    = "message"
-	outputKeyFrom       = "from"
-	outputKeySubject    = "subject"
-	outputKeyMessageID  = "messageId"
-	outputKeyReceivedAt = "receivedAt"
+	// headerSourceCheckUID and headerSentAt are the send-mode SMTP attribution
+	// headers (spec 2026-08-19-04), set by checksmtp when send_email is on
+	// (see checksmtp/checker.go's headerSourceCheckUID/headerSentAt — same
+	// literal values, duplicated rather than shared to keep checksmtp and
+	// emailcheck decoupled packages). Both are optional: an intermediate MTA
+	// stripping them must degrade gracefully to today's plain behavior, never
+	// break delivery.
+	headerSourceCheckUID = "X-SolidPing-Check"
+	headerSentAt         = "X-SolidPing-Sent-At"
+
+	outputKeyMessage        = "message"
+	outputKeyFrom           = "from"
+	outputKeySubject        = "subject"
+	outputKeyMessageID      = "messageId"
+	outputKeyReceivedAt     = "receivedAt"
+	outputKeySourceCheckUID = "sourceCheckUid"
+	outputKeySentAt         = "sentAt"
+	outputKeyLatencyMs      = "latencyMs"
 )
+
+// maxSaneDeliveryLatency bounds the send→receive latency that is recorded as
+// an enrichment. Greylisting can legitimately add minutes; nothing in this
+// feature's design implies delays beyond a day, so anything larger reads as a
+// clock problem (the worker's clock and the mail path's clock are not the
+// same box) rather than a genuinely slow delivery, and is dropped rather than
+// charted as if it were real.
+const maxSaneDeliveryLatency = 24 * time.Hour
 
 // recipientPattern captures the 48-hex token and an optional +status suffix
 // from the local part of the recipient address.
@@ -169,6 +191,47 @@ func findHeader(headers []jmap.EmailHeader, name string) string {
 	return ""
 }
 
+// enrichFromSMTPHeaders parses the optional send-mode attribution headers
+// (spec 2026-08-19-04) and, when present, adds sourceCheckUid/sentAt/latencyMs
+// to output and records the latency metric. Messages without the headers (or
+// with an unparsable Sent-At) are left byte-for-byte as they were before this
+// feature — full backward compatibility with human/heartbeat-style uses of
+// the email check.
+//
+// latencyMs is dropped (attribution kept) when it would be negative — the
+// worker clock and the mail path's clock are not the same box, so a
+// non-monotonic reading is a clock artifact, not a real "email arrived before
+// it was sent" — or larger than maxSaneDeliveryLatency.
+func enrichFromSMTPHeaders(
+	output, metrics models.JSONMap, email *jmap.Email, orgUID string,
+) {
+	sourceCheckUID := findHeader(email.Headers, headerSourceCheckUID)
+	sentAtRaw := findHeader(email.Headers, headerSentAt)
+
+	if sourceCheckUID == "" || sentAtRaw == "" {
+		return
+	}
+
+	sentAt, err := time.Parse(time.RFC3339, sentAtRaw)
+	if err != nil {
+		return
+	}
+
+	output[outputKeySourceCheckUID] = sourceCheckUID
+	output[outputKeySentAt] = sentAt.Format(time.RFC3339)
+
+	latency := email.ReceivedAt.Sub(sentAt)
+	if latency < 0 || latency > maxSaneDeliveryLatency {
+		return
+	}
+
+	latencyMs := float64(latency.Microseconds()) / 1000.0
+	output[outputKeyLatencyMs] = latencyMs
+	metrics[outputKeyLatencyMs] = latencyMs
+
+	prommetrics.EmailDeliveryLatency.WithLabelValues(orgUID).Observe(latency.Seconds())
+}
+
 func normalizeStatus(raw string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case statusUp:
@@ -248,6 +311,9 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 		outputKeyReceivedAt: email.ReceivedAt.Format(time.RFC3339),
 	}
 
+	metrics := make(models.JSONMap)
+	enrichFromSMTPHeaders(output, metrics, email, check.OrganizationUID)
+
 	now := time.Now()
 	result := &models.Result{
 		UID:             resultUID.String(),
@@ -257,7 +323,7 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 		PeriodStart:     now,
 		Status:          &statusInt,
 		Duration:        &durationMs,
-		Metrics:         make(models.JSONMap),
+		Metrics:         metrics,
 		Output:          output,
 		CreatedAt:       now,
 	}

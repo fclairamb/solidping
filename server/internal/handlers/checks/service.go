@@ -1250,6 +1250,19 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
 			return CheckResponse{}, versionErr
 		}
+
+		// Send-mode SMTP reference validation (spec 2026-08-19-04): the
+		// delivery_check_uid reference, org/type, and the instance's
+		// email_inbox requirement.
+		if smtpErr := s.validateSMTPDeliveryConfig(ctx, org.UID, req.Type, req.Config); smtpErr != nil {
+			return CheckResponse{}, smtpErr
+		}
+	}
+
+	// Send-mode SMTP checks need a period floor so the paired inbox can't be
+	// flooded (spec 2026-08-19-04).
+	if intervalErr := validateSMTPSendInterval(req.Type, req.Config, period); intervalErr != nil {
+		return CheckResponse{}, intervalErr
 	}
 
 	// Create CheckSpec for validation
@@ -1717,6 +1730,21 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, fmt.Errorf("recoveryPeriodSeconds: %w", vErr)
 		}
 		update.RecoveryPeriodSeconds = req.RecoveryPeriodSeconds
+	}
+
+	// Send-mode SMTP checks need a period floor so the paired inbox can't be
+	// flooded (spec 2026-08-19-04). Checked here, after both config and period
+	// are finalized, so a PATCH that flips send_email on AND shortens the
+	// period in the same request is caught regardless of field order.
+	if req.Config != nil || req.Period != nil {
+		effectivePeriod := time.Duration(check.Period)
+		if update.Period != nil {
+			effectivePeriod = time.Duration(*update.Period)
+		}
+
+		if intervalErr := validateSMTPSendInterval(check.Type, check.Config, effectivePeriod); intervalErr != nil {
+			return CheckResponse{}, intervalErr
+		}
 	}
 
 	// Update check in DB
@@ -3782,6 +3810,13 @@ func (s *Service) applyConfigUpdate(
 		ctx, check.OrganizationUID, check.Type, merged, check.Regions,
 	); tunnelErr != nil {
 		return tunnelErr
+	}
+
+	// Send-mode SMTP reference validation (spec 2026-08-19-04) — validated on
+	// the merged config so a PATCH cannot smuggle in a dangling reference or
+	// turn on send_email without a valid pairing.
+	if smtpErr := s.validateSMTPDeliveryConfig(ctx, check.OrganizationUID, check.Type, merged); smtpErr != nil {
+		return smtpErr
 	}
 
 	if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {

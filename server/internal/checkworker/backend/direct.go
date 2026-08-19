@@ -87,7 +87,9 @@ func (b *DirectBackend) ClaimJobs(
 		return nil, 0, err
 	}
 
-	return b.mergeClaimedSecrets(ctx, workerUID, jobs), nextIn, nil
+	merged := b.mergeClaimedSecrets(ctx, workerUID, jobs)
+
+	return b.resolveSMTPDelivery(ctx, workerUID, merged), nextIn, nil
 }
 
 // ClaimJobsForCheck claims any due job rows for one check (express path).
@@ -102,7 +104,9 @@ func (b *DirectBackend) ClaimJobsForCheck(
 		return nil, err
 	}
 
-	return b.mergeClaimedSecrets(ctx, workerUID, jobs), nil
+	merged := b.mergeClaimedSecrets(ctx, workerUID, jobs)
+
+	return b.resolveSMTPDelivery(ctx, workerUID, merged), nil
 }
 
 // mergeClaimedSecrets is the in-process half of the "decrypt once at the

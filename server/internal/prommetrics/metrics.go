@@ -314,6 +314,21 @@ var (
 		[]string{labelJobType},
 	)
 
+	// EmailDeliveryLatency observes the round-trip latency of a send-mode SMTP
+	// probe email (spec 2026-08-19-04): time between the sending SMTP check's
+	// X-SolidPing-Sent-At header and the receiving email check's JMAP
+	// receivedAt. Only recorded when both headers are present and the
+	// resulting latency passes the sanity clamp (non-negative, not absurdly
+	// large) — see emailcheck/handler.go.
+	EmailDeliveryLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_email_delivery_latency_seconds",
+			Help:    "Round-trip latency of a send-mode SMTP probe email from send to JMAP receipt",
+			Buckets: []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800},
+		},
+		[]string{labelOrganization},
+	)
+
 	// JobsQueueDepth is the point-in-time backlog of background jobs by status
 	// (pending | running). Set by a periodic sampler that zero-fills statuses
 	// with no rows so a drained status drops to 0 rather than going stale.
@@ -471,6 +486,7 @@ var (
 		DBQueryDuration, DBBusyRetries, ResultsRowCount,
 		CheckStageDuration, ClaimJobsResult, CheckLaneClaims,
 		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
+		EmailDeliveryLatency,
 		JobsReaped, JobsLeaseLost, ResultsReaped,
 		RealtimeConnections, RealtimeHintsPublished,
 		RealtimeHintsCoalesced, RealtimeHintsDelivered,
