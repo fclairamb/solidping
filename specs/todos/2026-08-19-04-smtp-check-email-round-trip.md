@@ -180,3 +180,142 @@ becomes its own follow-up spec once the core send/receive loop has shipped.
 `server/internal/handlers/emailcheck/handler.go:37`. Use `sourceCheckUid`, `sentAt` and
 `latencyMs` as named in the Proposal, matching the surrounding keys rather than inventing a
 new casing. No further decision needed here.
+
+## Implementation Plan
+
+### Config shape (`checksmtp/config.go`)
+Add `SendEmail bool` (`send_email`), `MailFrom string` (`mail_from`),
+`DeliveryCheckUID string` (`delivery_check_uid`) to `SMTPConfig`, with `FromMap`/`GetConfig`
+support. `Validate()` gets shape-only checks: `send_email` requires non-empty `mail_from`
+and `delivery_check_uid`. Cross-check existence/org/type/email_inbox validation needs DB
+access the checker layer doesn't have, so it lives in `checks/service.go` instead (below) —
+mirroring exactly how `tunnelCheckUid` splits shape validation (checker) from reference
+validation (service, DB-backed).
+
+### Guardrail design: resolving the reference without letting it leak (the core decision)
+`Checker.Execute` has exactly two callers in this codebase (verified, not assumed):
+`checkworker/worker.go:1167` (real job dispatch — server-resolved, org-scoped, safe) and
+`checkjs/checker.go:307` (a JS check's `check()` sub-check helper, which builds a raw config
+map from the JS SCRIPT ITSELF and calls `checker.Execute` directly, bypassing job dispatch
+entirely). `validate_check` (MCP) only calls `checker.Validate` (config shape, no I/O) and
+`diagnose_check` (MCP) only reads existing DB rows — neither ever calls `Execute`, so neither
+needs gating.
+
+The JS sub-check path is the real side-effect risk `labelSafe` doesn't cover: a JS check
+(itself `labelUnsafe`/`requires:scripting`) could otherwise construct
+`{send_email:true, mail_from:..., delivery_check_uid:"..."}` from script and fire a real
+email with no org-scoping check ever run (job dispatch's DB-backed resolution is skipped
+entirely by this path).
+
+Fix: the concrete recipient address is **never** a JSON-decodable config field. It travels
+context-only, mirroring the existing `WithTunnelDialer`/`TunnelDialerFrom` and
+`WithIPVersion`/`IPVersionFrom` seams in `checkerdef`:
+- `checkerdef.WithSMTPDeliveryRecipient(ctx, addr)` / `checkerdef.SMTPDeliveryRecipientFrom(ctx)`.
+- The resolved address is computed server-side (see below) and threaded onto the config map
+  under an internal key (`smtpResolvedRecipient`) that `SMTPConfig.FromMap` does NOT parse
+  (exactly like `tunnelCheckUid`/`timeout` are read generically off the raw map by
+  `worker.go`, never through a checker's own `FromMap`). `worker.go`'s per-job-type step
+  reads that raw key and calls `WithSMTPDeliveryRecipient` on `execCtx`, right next to the
+  existing tunnel/ipVersion context wiring, gated on `checkJob.Type == smtp`.
+- `checksmtp.Execute` reads the address ONLY via `SMTPDeliveryRecipientFrom(ctx)`. When
+  `SendEmail` is true and the context carries no address (JS sub-check path, or any other
+  direct `Execute` call outside job dispatch), it returns an explicit `StatusError` result
+  ("no delivery recipient resolved") — loud, never a silent skip. This single mechanism
+  covers both required guardrails at once: it blocks the JS sub-check bypass structurally
+  (its `execCtx` never gets the context value, since `checkJob.Type` for a JS check is
+  never `smtp`), and it produces the same loud-error behavior needed for "the referenced
+  check was deleted before dispatch" (below).
+- Documented explicitly in checksmtp's doc comment and in the SMTP docs page.
+
+### Resolving the reference (server-side, before dispatch)
+`delivery_check_uid` → concrete `<token>@<inbox-domain>` resolution needs DB access, which
+deported agents never have — so it must happen before the job ever leaves the server
+process, not inside the shared `worker.go` execution path (that code also runs verbatim on
+an agent). It is added to `checkworker/backend.DirectBackend`, in a new step
+`resolveSMTPDelivery` called right after `mergeClaimedSecrets` in both `ClaimJobs` and
+`ClaimJobsForCheck` (mirrors that function's shape exactly, including its
+error-result-on-failure behavior):
+- Skip anything whose `Type != "smtp"` or whose config lacks `send_email: true`.
+- Look up `delivery_check_uid` via `dbService.GetCheck(ctx, job.OrganizationUID, uid)` — this
+  call is ALREADY org-scoped (a cross-org uid reads as not-found), which is what makes the
+  reference-not-address indirection actually enforceable at the resolution boundary too, not
+  only at write time.
+- Require `Type == "email"`; on any failure (not found, wrong type, wrong org) OR when the
+  instance has no `email_inbox` configured, submit an explicit `StatusError` result (mirrors
+  `submitSecretsError`) and release the lease — satisfies "deleted referenced check fails
+  loudly, never silently skips."
+- On success, set `job.Config["smtpResolvedRecipient"] = "<token>@<addressDomain>"`
+  (`addressDomain` from the `email.inbox` system parameter, `token` from the target check's
+  `config.token`) — always recomputed, never trusted from storage, so nothing a user could
+  have PATCHed into their own check's public config survives to dispatch.
+
+**Known scope limit (documented, not silently dropped):** this resolution step is added to
+`DirectBackend` only (the in-process path `make dev` and the test suite exercise). The
+deported-agent claim path (`WSBackend`/`ClaimJobsForAgent`) is NOT wired for delivery
+resolution in this pass — a send-mode SMTP check scheduled onto a region served only by a
+deported agent will get no resolved recipient and will surface the same loud
+"no delivery recipient resolved" error rather than silently sending nowhere. Flagged in the
+SMTP docs page as a current limitation.
+
+### Sending (`checksmtp/checker.go`)
+After the existing EHLO/STARTTLS/AUTH sequence and before `QUIT`: if `cfg.SendEmail`, resolve
+the recipient via context; if absent, return the explicit error result described above.
+Otherwise issue `MAIL FROM:<mail_from>` / `RCPT TO:<recipient>` / `DATA` with a
+system-generated body (`X-SolidPing-Check: <check-uid-from-ctx-or-config>`,
+`X-SolidPing-Sent-At: <RFC3339>`, empty subject/body — no user input in the message ever)
+then `.` / `QUIT`. `250` after DATA → up, `submission_ms` in metrics; any rejection → down
+with the server's reply, mirroring the existing rejection-result shape used elsewhere in this
+checker.
+
+### Write-time validation (`checks/service.go`, new file `smtp_delivery.go`)
+Mirrors `tunnel.go`'s `validateTunnelConfig` shape exactly:
+- `validateSMTPDeliveryConfig(ctx, orgUID, checkType, effectiveConfig)`: shape (mail_from +
+  delivery_check_uid present when send_email), cross-check existence/org/`CheckTypeEmail`
+  (via `s.db.GetCheck`), and `email_inbox` configured (via
+  `s.db.GetSystemParameter(ctx, jmap.SystemParameterKey)`). Called from `CreateCheck` and
+  from `applyConfigUpdate` (PATCH) right next to `validateTunnelConfig`, since
+  `UpdateCheck` never calls `checker.Validate` either.
+- A separate pure `validateSMTPSendInterval(checkType, config, period)`: send-mode SMTP
+  requires period ≥ 60s. Called at the end of `CreateCheck` and `UpdateCheck` once both the
+  effective config and effective period are known (mirrors how `RegionSpread`'s
+  `effectivePeriod` is computed from `check.Period`/`update.Period`).
+
+### Receiving (`emailcheck/handler.go`)
+Parse `X-SolidPing-Check` / `X-SolidPing-Sent-At` via the existing `findHeader`. When both
+present and `Sent-At` parses as RFC3339: compute `latencyMs = receivedAt - sentAt`; clamp/drop
+(never record) when negative or `sentAt` is in the future relative to `receivedAt` — the
+worker clock and the mail path's clock are not the same box. On success, add
+`sourceCheckUid`/`sentAt`/`latencyMs` to `output` and record `latencyMs` as a metric too.
+Missing/malformed headers → byte-identical output to today (no new keys at all).
+
+### Dash0 UI
+- `components/checks/form/types/mail.tsx` (`smtpModule`): add `sendEmail`/`mailFrom`/
+  `deliveryCheckUid` to `SmtpState`; a `Switch` reveals `mail_from` input + a same-org email
+  check picker. The picker fetches `useChecks(org, {type: "email", limit: 100})` directly
+  (via the existing `useCheckFormFields()` context's `org` — no new context plumbing needed,
+  unlike `tunnelCheckUid` which is cross-type and lives in `check-form.tsx` itself). Per the
+  resolved open question: NO "create a delivery check for me" link/button anywhere in this
+  UI — empty-state is plain text only, no navigation affordance into check creation.
+  `toConfig` adds required-field errors when `sendEmail` is set without `mailFrom`/
+  `deliveryCheckUid`.
+- New `components/checks/email-delivery-card.tsx` (mirrors `dnsbl-card.tsx`): renders on
+  `checks.$checkUid.results.$resultUid.tsx` when `sourceCheckUid`/`sentAt`/`latencyMs` are
+  present in `output`, with a link to the source SMTP check; those keys are stripped from the
+  raw JSON dump exactly like `DNSBL_OUTPUT_KEYS`.
+- New `components/checks/smtp-delivery-detail.tsx` (mirrors `tunnel-detail.tsx`'s
+  `TunnelVia`/`TunnelDependents`): `DeliveryVia` on the SMTP check page links to its paired
+  email check; `DeliverySources` on the email check page lists SMTP checks pointing at it.
+  Wired into `checks.$checkUid.index.tsx` next to the existing `TunnelVia`/`TunnelDependents`.
+
+### Docs (`web/docs`)
+Extend the SMTP check page: send mode, the pairing model, interval-sizing rule (email check
+period ≥ SMTP interval + worst acceptable delivery time; greylisting can add minutes), the
+60s minimum, and the deported-agent limitation above.
+
+### Tests
+Backend: fake SMTP server assertions (envelope + headers actually sent) for send-mode;
+negative control (send_email false emits no mail commands); cross-org/wrong-type/missing
+`delivery_check_uid` rejected at write time; deleted-reference-at-dispatch loud error;
+JS-subcheck-cannot-send guardrail test; min-interval-60s enforcement; receiving-side
+enrichment present/absent/clamped-nonsense. Frontend: form toggle + picker + validation;
+result-detail card presence/absence.
