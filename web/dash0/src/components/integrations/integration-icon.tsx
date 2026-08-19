@@ -12,6 +12,7 @@ import {
   Phone,
   Router,
   Send,
+  Siren,
   Users,
   Webhook,
   Bot,
@@ -34,7 +35,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   "msteams-bot": Bot,
   ntfy: Bell,
   matrix: MessageSquareText,
-  opsgenie: Bell,
+  pagerduty: Siren,
   pushover: Bell,
   freebox: Router,
   webpush: BellRing,
@@ -73,8 +74,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "ntfy";
     case "matrix":
       return "Matrix";
-    case "opsgenie":
-      return "Opsgenie";
+    case "pagerduty":
+      return "PagerDuty";
     case "pushover":
       return "Pushover";
     case "freebox":

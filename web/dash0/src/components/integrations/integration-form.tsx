@@ -499,25 +499,21 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           />
         </div>
       );
-    case "opsgenie":
+    case "pagerduty":
       return (
         <div className="space-y-3">
           <SecretPanel
-            id="ch-opsgenie-key"
-            label={t("form.opsgenieKey", "API key")}
-            value={(settings.api_key as string) || ""}
-            onChange={(v) => update("api_key", v)}
+            id="ch-pagerduty-key"
+            label={t("form.pagerdutyKey", "Integration key")}
+            value={(settings.routing_key as string) || ""}
+            onChange={(v) => update("routing_key", v)}
           />
-          <div className="space-y-2">
-            <Label htmlFor="ch-opsgenie-team">
-              {t("form.opsgenieTeam", "Team (optional)")}
-            </Label>
-            <Input
-              id="ch-opsgenie-team"
-              value={(settings.team as string) || ""}
-              onChange={(e) => update("team", e.target.value)}
-            />
-          </div>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "form.pagerdutyKeyHint",
+              "PagerDuty → Service → Integrations → Add integration → Events API v2. Paste the generated integration key here.",
+            )}
+          </p>
         </div>
       );
     case "twilio":

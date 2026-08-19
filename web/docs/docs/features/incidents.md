@@ -99,9 +99,10 @@ channel sees it:
   web push, webhooks and email** deliver it in their normal message shape. Webhook
   receivers get an extra `data.comment` object (`text`, `authorName`, `source`)
   on `incident.comment` deliveries only.
-- **Opsgenie** adds it as a note on the existing alert — never a new alert.
-- **Twilio (SMS and voice) is excluded.** Paging someone's phone for every
-  operator note is noise with a real bill attached.
+- **Twilio (SMS and voice) and PagerDuty are excluded.** Paging someone's
+  phone for every operator note is noise with a real bill attached, and
+  PagerDuty's Events API v2 has no note/annotation concept — a `trigger` call
+  would re-open an already-resolved incident instead of just annotating it.
 
 Every delivery produces the usual `incident_notifications` audit row, so the
 incident page's **Notifications** card shows who was told and whether it landed.

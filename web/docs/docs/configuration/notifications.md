@@ -21,7 +21,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Mattermost | Available | Webhook |
 | ntfy | Available | HTTP push |
 | Matrix | Available | Client-Server API |
-| Opsgenie | Available | API integration |
+| PagerDuty | Available | Events API v2 |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
 | SMS / Voice | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
@@ -481,21 +481,34 @@ Add a Matrix connection in SolidPing with:
   crypto SDK). Use an unencrypted room for alerts.
 - SolidPing does not auto-join a room on invite — join it manually as the bot account first.
 
-## Opsgenie
+## PagerDuty
 
-Opsgenie integration for incident management and on-call alerting.
+PagerDuty integration for incident management and on-call alerting, via the
+**Events API v2** only — no OAuth, no REST API v2, no schedule import.
 
 ### Configuration
 
-Add an Opsgenie connection in SolidPing with:
-- **API Key**: Your Opsgenie API integration key
+Add a PagerDuty connection in SolidPing with:
+- **Integration key**: The routing key of a PagerDuty Events API v2 integration
 
-### Setting Up Opsgenie
+### Setting Up PagerDuty
 
-1. In Opsgenie, go to Settings → Integrations
-2. Add a new "API" integration
-3. Copy the API key
-4. Add it in SolidPing's integration settings
+1. In PagerDuty, open the service that should receive SolidPing's alerts
+2. Go to **Integrations** → **Add integration**
+3. Choose **Events API v2**
+4. Copy the generated integration key
+5. Add it in SolidPing's integration settings
+
+### Behavior
+
+- An incident opening (or reopening) sends a `trigger` event; resolving it
+  sends a `resolve` event. Both carry the incident's UID as the `dedup_key`,
+  so they correlate to **one** PagerDuty incident across its whole lifecycle.
+- A comment or an escalation sends **nothing** to PagerDuty: the Events API
+  v2 has no note/annotation concept, and reusing the `dedup_key` on a
+  `trigger` would re-open an already-resolved incident.
+- Severity (`critical`/`error`/`warning`/`info`) is derived from the result
+  that triggered or is currently failing the incident.
 
 ## Pushover
 
