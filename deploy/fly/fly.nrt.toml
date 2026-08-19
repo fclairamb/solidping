@@ -26,9 +26,21 @@ app = "solidping-agent-nrt"
 primary_region = "nrt"
 
 [build]
-  # Pinned to the release the API is running (k8xp dev is on 0.7.1). Agent mode
+  # Pinned to the release the API is running (k8xp dev is on 0.16.2). Agent mode
   # is a runtime role, not a separate artifact — same image the cluster runs.
-  image = "ghcr.io/fclairamb/solidping:0.7.1"
+  #
+  # Bumped 0.7.1 -> 0.16.2 on 2026-08-19, restoring the invariant this comment
+  # already stated: the pin had drifted nine minors behind the API. The visible
+  # symptom was that jp-1's worker row carried a NULL `capabilities` — the
+  # egress self-probe that fills it landed in v0.16.0 (commit a5ee7c439), so
+  # this agent had no code to report with. NULL means "nothing probed", not
+  # "no IPv6"; jp-1 has always passed the IPv6-only check.
+  #
+  # Safe to redeploy: identity is pinned in the SP_AGENT_KEYS secret and is
+  # already enrolled, so recreated machines take the RECONNECT path rather than
+  # enrolling fresh — no new agent rows to garbage-collect (see the NO VOLUME
+  # note below).
+  image = "ghcr.io/fclairamb/solidping:0.16.2"
 
 [env]
   # The role switch. Everything else about the process follows from it.
