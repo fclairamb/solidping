@@ -374,6 +374,84 @@ smtps://hostname:465  # With SSL
 | Auth | Test authentication | `user:password` |
 | Timeout | Connection timeout | `10s` |
 
+#### Send mode: a real probe email {#smtp-send-mode}
+
+By default the SMTP check stops at the handshake (EHLO/STARTTLS/AUTH) — it
+proves the server is reachable and, optionally, that credentials work, but not
+that mail submitted to it actually gets **delivered**. **Send mode** closes
+that gap: on every check execution, after the normal handshake, SolidPing
+submits a real, system-generated email through the monitored server and
+addresses it to a paired [Email Reception check](#email-reception-passive-inbox)'s
+tokenized address.
+
+| Option | Description |
+|--------|-------------|
+| Send a probe email | Enables send mode |
+| Mail From | Envelope sender for the probe email — the monitored server's outbound policy (SPF/DKIM alignment, relay ACLs) usually dictates it |
+| Delivery check | The paired Email Reception check the probe is addressed to (same organization only) |
+
+The message itself is entirely system-generated — there is no subject or body
+field to fill in, by design: this keeps the feature from ever becoming a way
+to send arbitrary mail through a monitored server. It carries two headers the
+Email Reception check reads to attribute and time the delivery:
+
+```
+X-SolidPing-Check: <the sending SMTP check's UID>
+X-SolidPing-Sent-At: <RFC3339 send time>
+```
+
+If an intermediate mail server strips these headers, the Email Reception
+check still ticks up as normal — only the attribution and latency are lost.
+
+**The two checks split responsibility cleanly:**
+- The **SMTP check**'s own result reflects **submission only** — a `250`
+  after `DATA` is up (with `submission_ms` recorded), any rejection is down
+  with the server's reply.
+- The paired **Email Reception check** reflects **end-to-end delivery** —
+  it goes down (via its normal passive-overdue logic) if probes stop
+  arriving within its period.
+
+Submission failures and delivery failures are different problems with
+different fixes, so keeping them as two checks gives each its own incident
+lifecycle.
+
+**Sizing the paired check's period.** The Email Reception check's period *is*
+the delivery deadline. Size it generously:
+
+```
+email check period ≥ SMTP check interval + worst acceptable delivery time
+```
+
+Greylisting in particular can legitimately delay a first-time sender by
+several minutes — a paired check sized too tightly will flap on nothing but
+normal greylisting behavior.
+
+**A 60-second floor applies to send-mode SMTP checks** — every execution
+sends a real email, so an unbounded fast interval could flood the paired
+inbox.
+
+Several SMTP checks *may* target the same Email Reception check — the
+headers keep each arrival attributable to its sender — but pairing one SMTP
+check to one dedicated Email Reception check is the recommended setup; a
+shared target's up/down state otherwise conflates multiple senders. Create
+the Email Reception check first, then select it from the SMTP check's
+delivery picker — SolidPing does not offer to create one on your behalf, to
+keep the two checks' lifecycles independent (delete/rename either one
+without surprising the other).
+
+:::note Requires a configured inbox
+Send mode requires the instance to have an email inbox configured (the same
+one Email Reception checks use to receive mail) — see [Email Reception](#email-reception-passive-inbox).
+:::
+
+:::caution Not yet available on private locations
+The delivery-recipient resolution currently runs only on the server's own
+region. A send-mode SMTP check scheduled onto a [private location / deported
+agent](./private-locations.md) reports a "no delivery recipient resolved"
+error instead of sending — run send-mode SMTP checks from a cloud region for
+now.
+:::
+
 ### IMAP {#imap}
 
 Monitor IMAP server availability and authentication.
@@ -435,7 +513,7 @@ Verify end-to-end email **delivery** rather than just server connectivity. Solid
 The receiving domain is configured by your administrator. Point a periodic test email (or your application's "send a heartbeat" job) at the generated address, and SolidPing reports an incident if expected mail stops arriving.
 
 :::note Passive check
-Email-reception checks are receive-only — SolidPing waits for mail instead of actively probing a server. Combine it with an [SMTP check](#smtp) to also monitor outbound connectivity.
+Email-reception checks are receive-only — SolidPing waits for mail instead of actively probing a server. Combine it with an [SMTP check](#smtp) to also monitor outbound connectivity, or use SMTP [send mode](#smtp-send-mode) to have SolidPing generate and submit that probe email for you automatically.
 :::
 
 ## Remote Access
