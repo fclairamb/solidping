@@ -44,6 +44,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // Close codes (mirroring the realtimews conventions).
@@ -427,6 +428,10 @@ type connState struct {
 	// egressWrittenAt throttles the workers-row refresh driven by claim frames
 	// (see recordAgentEgress). Zero means "never written on this connection".
 	egressWrittenAt time.Time
+	// versionChecked guards warnOnVersionDrift so it logs AT MOST ONCE per
+	// connection, independent of the egress throttle above — a chatty agent
+	// must not spam the log once per claim.
+	versionChecked bool
 }
 
 // agentEgressReportInterval bounds how often a claim frame refreshes the
@@ -448,6 +453,12 @@ const agentEgressReportInterval = 50 * time.Second
 func (h *Handler) recordAgentEgress(
 	ctx context.Context, state *connState, frame *agentcrypto.ClientFrame,
 ) {
+	// Independent of the throttle below: the WARN is about drift detection,
+	// not liveness, and must fire once per connection whatever the claim
+	// cadence is — a busy agent claiming several times a second must not spam
+	// the log once per claim.
+	h.warnOnVersionDrift(ctx, state, frame.Version)
+
 	now := time.Now()
 	if !state.egressWrittenAt.IsZero() && now.Sub(state.egressWrittenAt) < agentEgressReportInterval {
 		return
@@ -469,10 +480,49 @@ func (h *Handler) recordAgentEgress(
 		capabilities = nil
 	}
 
-	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities); err != nil {
+	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities, frame.Version); err != nil {
 		h.logger.WarnContext(ctx, "failed to refresh agent worker row",
 			"error", err, "agent", state.agent.UID)
 	}
+}
+
+// warnOnVersionDrift logs one WARN, at most once per connection, when the
+// agent's self-reported build version differs from this server's own (spec
+// 2026-08-19-07). Detection only — nothing here blocks, throttles or
+// disconnects the agent.
+//
+// Skipped entirely, on either side, when the version looks like a dev/
+// untagged build (version.Version's own zero value, "dev") — otherwise every
+// local dev loop and CI run would warn on every agent connection, which
+// trains operators to ignore the log line exactly when it would matter.
+func (h *Handler) warnOnVersionDrift(ctx context.Context, state *connState, reportedVersion string) {
+	if state.versionChecked {
+		return
+	}
+
+	state.versionChecked = true
+
+	if reportedVersion == "" {
+		return
+	}
+
+	serverVersion := version.Get().Version
+	if isDevBuild(serverVersion) || isDevBuild(reportedVersion) {
+		return
+	}
+
+	if reportedVersion != serverVersion {
+		h.logger.WarnContext(ctx, "agent build version differs from this server",
+			"agent", state.agent.UID, "agent_version", reportedVersion, "server_version", serverVersion)
+	}
+}
+
+// isDevBuild reports whether a version string looks like a local/CI build
+// rather than a release tag — version.Version defaults to "dev" when ldflags
+// were never set, and Get() never changes that default (it only strips a
+// leading "v").
+func isDevBuild(v string) bool {
+	return v == "" || v == "dev"
 }
 
 // runAgentConnection sends hello (for reconnects) and serves frames until the

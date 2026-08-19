@@ -1362,10 +1362,11 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 		return worker, nil
 	}
 
-	// Worker exists, update last_active_at (and the capability set when this
-	// registration reported one — a nil set keeps the stored value, so a caller
-	// that cannot answer never downgrades a known set to NULL. An empty non-nil
-	// set is a real report of "none" and IS written).
+	// Worker exists, update last_active_at (and the capability set / version
+	// when this registration reported one — nil keeps the stored value, so a
+	// caller that cannot answer never downgrades a known value to NULL. An
+	// empty non-nil capability set is a real report of "none" and IS written;
+	// there is no equivalent for version, since a real one is never empty).
 	existing.LastActiveAt = &now
 	existing.UpdatedAt = now
 
@@ -1374,6 +1375,11 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 	if worker.Capabilities != nil {
 		existing.Capabilities = worker.Capabilities
 		columns = append(columns, "capabilities")
+	}
+
+	if worker.Version != nil {
+		existing.Version = worker.Version
+		columns = append(columns, "version")
 	}
 
 	_, err = s.db.NewUpdate().
@@ -1408,7 +1414,7 @@ func workerLivenessColumns() []string {
 }
 
 func (s *Service) UpdateWorkerHeartbeat(
-	ctx context.Context, workerUID string, capabilities []string,
+	ctx context.Context, workerUID string, capabilities []string, version string,
 ) error {
 	now := time.Now()
 
@@ -1424,6 +1430,15 @@ func (s *Service) UpdateWorkerHeartbeat(
 	if capabilities != nil {
 		worker.Capabilities = capabilities
 		columns = append(columns, "capabilities")
+	}
+
+	// Empty string means "not reported" and must not touch the stored value —
+	// a real build version is never the empty string, so this sentinel is
+	// safe (unlike capabilities, there is no "reported and empty" answer to
+	// protect here).
+	if version != "" {
+		worker.Version = &version
+		columns = append(columns, "version")
 	}
 
 	_, err := s.db.NewUpdate().

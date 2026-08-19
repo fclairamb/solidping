@@ -207,14 +207,21 @@ type Service interface {
 	// Returns the registered/updated worker.
 	RegisterOrUpdateWorker(ctx context.Context, worker *models.Worker) (*models.Worker, error)
 	// UpdateWorkerHeartbeat updates the worker's last_active_at and updated_at
-	// timestamps, and refreshes its self-reported capability set.
+	// timestamps, and refreshes its self-reported capability set and build
+	// version.
 	//
-	// THE SET IS THREE-STATE. A NIL slice means "not reported" and leaves the
-	// stored column exactly as it was — an executor that cannot answer never
-	// overwrites a known set with a guess. A NON-NIL EMPTY slice is a different
-	// statement, "I reported, and I have none of them", and IS written. Anything
-	// that collapses the two turns "unknown" into "no".
-	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, capabilities []string) error
+	// THE CAPABILITY SET IS THREE-STATE. A NIL slice means "not reported" and
+	// leaves the stored column exactly as it was — an executor that cannot
+	// answer never overwrites a known set with a guess. A NON-NIL EMPTY slice
+	// is a different statement, "I reported, and I have none of them", and IS
+	// written. Anything that collapses the two turns "unknown" into "no".
+	//
+	// version IS TWO-STATE (spec 2026-08-19-07): an empty string means "not
+	// reported" and leaves the stored value untouched, same "do not overwrite
+	// a known answer with a guess" rule as capabilities — but unlike
+	// capabilities there is no "reported and empty" state to protect, because
+	// a real build version is never the empty string.
+	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, capabilities []string, version string) error
 
 	// Deported-agent operations (spec 2026-07-16-02).
 	// CreateAgentEnrollmentToken persists a one-shot enrollment token.

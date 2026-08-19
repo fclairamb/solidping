@@ -62,6 +62,15 @@ type ClientFrame struct {
 	// This is advertised capability — a hint for the region picker. It never
 	// gates execution; the per-run egress pre-flight remains the authority.
 	Capabilities []string `json:"capabilities"`
+	// Version is the agent's self-reported build version (spec
+	// 2026-08-19-07), populated from version.Get().Version and sent on both
+	// the enroll frame and every claim. OPTIONAL, AND `omitempty` IS CORRECT
+	// HERE — unlike Capabilities, a real version is never the empty string,
+	// so there is no "I have none" answer that omitempty could collapse into
+	// "not reported". An older agent simply omits the field; an older server
+	// ignores it. Detection only: this never gates execution, throttles, or
+	// disconnects an agent on a stale version.
+	Version string `json:"version,omitempty"`
 
 	// result
 	JobUID   string         `json:"jobUid,omitempty"`

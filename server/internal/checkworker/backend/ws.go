@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // Errors returned by WSBackend.
@@ -196,9 +197,9 @@ func (b *WSBackend) Register(ctx context.Context, _ *models.Worker) (*models.Wor
 }
 
 // Heartbeat is a no-op: the server refreshes last_seen_at on pings and frames,
-// and the agent's capability set rides the claim frame (see claim) for the
-// same reason.
-func (b *WSBackend) Heartbeat(_ context.Context, _ string, _ []string) error {
+// and the agent's capability set and build version ride the claim frame (see
+// claim) for the same reason.
+func (b *WSBackend) Heartbeat(_ context.Context, _ string, _ []string, _ string) error {
 	return nil
 }
 
@@ -247,6 +248,7 @@ func (b *WSBackend) claim(
 		MaxJobs:      maxJobs,
 		CheckUID:     checkUID,
 		Capabilities: egressreport.Current(ctx),
+		Version:      version.Get().Version,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -617,6 +619,7 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 		Name:             b.name,
 		Ed25519PublicKey: b.identity.Ed25519PublicKey,
 		X25519PublicKey:  b.identity.X25519Recipient,
+		Version:          version.Get().Version,
 	}); err != nil {
 		_ = conn.Close(websocket.StatusProtocolError, "enroll write failed")
 

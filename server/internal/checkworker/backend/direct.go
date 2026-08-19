@@ -63,11 +63,11 @@ func (b *DirectBackend) Register(
 }
 
 // Heartbeat updates the worker's last_active_at timestamp and the reported
-// capability set.
+// capability set and build version.
 func (b *DirectBackend) Heartbeat(
-	ctx context.Context, workerUID string, capabilities []string,
+	ctx context.Context, workerUID string, capabilities []string, version string,
 ) error {
-	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID, capabilities)
+	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID, capabilities, version)
 }
 
 // ClaimJobs claims up to fastLimit jobs for the given worker with the slow

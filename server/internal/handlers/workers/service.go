@@ -63,12 +63,13 @@ func NewService(
 }
 
 // Heartbeat updates the worker's last_active_at and, when the executor
-// reported one, its capability set (specs 2026-08-15-11, 2026-08-16-02). A nil
-// set leaves the stored capabilities untouched.
+// reported one, its capability set (specs 2026-08-15-11, 2026-08-16-02) and
+// build version (spec 2026-08-19-07). A nil capability set, or an empty
+// version string, leaves the corresponding stored value untouched.
 func (s *Service) Heartbeat(
-	ctx context.Context, workerUID string, capabilities []string,
+	ctx context.Context, workerUID string, capabilities []string, version string,
 ) error {
-	return s.db.UpdateWorkerHeartbeat(ctx, workerUID, capabilities)
+	return s.db.UpdateWorkerHeartbeat(ctx, workerUID, capabilities, version)
 }
 
 // SubmitResultRequest is the input for SubmitResult.

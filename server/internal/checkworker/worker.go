@@ -39,6 +39,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // Errors returned by the check runner.
@@ -380,12 +381,15 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		region = r.config.Server.CheckWorker.Region
 	}
 
+	agentVersion := version.Get().Version
+
 	worker := &models.Worker{
 		UID:          uuid.New().String(),
 		Slug:         identity.Slug,
 		Name:         identity.Name,
 		Region:       &region,
 		Capabilities: egressreport.Current(ctx),
+		Version:      &agentVersion,
 	}
 
 	registeredWorker, err := r.backend.Register(ctx, worker)
@@ -426,11 +430,15 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 }
 
 // updateHeartbeat updates the worker's last_active_at timestamp and re-reports
-// this host's egress families. The probe runs HERE, at report time, rather than
-// once at process start: a node that gains or loses an IPv6 route then stops
-// advertising the wrong thing within one beat, with no restart.
+// this host's egress families and build version. The egress probe runs HERE,
+// at report time, rather than once at process start: a node that gains or
+// loses an IPv6 route then stops advertising the wrong thing within one beat,
+// with no restart. The build version never changes for the life of the
+// process, so re-sending it every beat is just a cheap package-level read.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.backend.Heartbeat(ctx, r.getWorker().UID, egressreport.Current(ctx)); err != nil {
+	if err := r.backend.Heartbeat(
+		ctx, r.getWorker().UID, egressreport.Current(ctx), version.Get().Version,
+	); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
 }
