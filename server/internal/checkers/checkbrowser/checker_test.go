@@ -270,3 +270,37 @@ func TestExecPathReportsMissingChromeAsAnError(t *testing.T) {
 	r.NotEqual(checkerdef.StatusDown, result.Status)
 	r.Contains(result.Output["error"], "Chrome/Chromium not found")
 }
+
+// TestExecPathAlsoWaitsForASlot: the cap is enforced before the backend is
+// chosen, so the exec fallback is capped by the same four slots. Without a slot
+// this returns a timeout instead of the StatusError a missing binary would
+// produce, which is what proves the semaphore came first on this path too.
+//
+//nolint:paralleltest // the semaphore is process-wide
+func TestExecPathAlsoWaitsForASlot(t *testing.T) {
+	r := require.New(t)
+
+	held := make([]func(), 0, MaxConcurrentBrowsers)
+
+	for range MaxConcurrentBrowsers {
+		release, ok := acquireSlot(t.Context())
+		r.True(ok)
+
+		held = append(held, release)
+	}
+
+	defer func() {
+		for _, release := range held {
+			release()
+		}
+	}()
+
+	withSettings(t, Settings{ChromePath: "/nonexistent/definitely-not-chrome"})
+
+	checker := &BrowserChecker{}
+	result, err := checker.Execute(t.Context(), browserSpec(150*time.Millisecond))
+
+	r.NoError(err)
+	r.Equal(checkerdef.StatusTimeout, result.Status)
+	r.Contains(result.Output["error"], "browser slot")
+}
