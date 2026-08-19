@@ -440,11 +440,26 @@ func (h *Handler) UpdateResource(writer http.ResponseWriter, req *http.Request) 
 	sectionIdentifier := httpx.Param(req, "sectionUid")
 	resourceUID := httpx.Param(req, "resourceUid")
 
-	var updateReq UpdateResourceRequest
-	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
+	raw, readErr := io.ReadAll(req.Body)
+	if readErr != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
 		})
+	}
+
+	var updateReq UpdateResourceRequest
+	if err := json.Unmarshal(raw, &updateReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	// Presence detection: an omitted autoPublish leaves the override alone,
+	// while an explicit null resets it to "inherit the page". json.Unmarshal
+	// cannot tell those apart on its own — both leave the pointer nil.
+	var presence map[string]json.RawMessage
+	if json.Unmarshal(raw, &presence) == nil {
+		_, updateReq.AutoPublishSet = presence["autoPublish"]
 	}
 
 	resource, err := h.svc.UpdateResource(
@@ -823,6 +838,14 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case errors.Is(err, ErrInvalidAutoResolve):
+		return h.WriteValidationError(writer, "Invalid auto-resolve policy", []base.ValidationErrorField{
+			{Name: "autoResolve", Message: "Must be one of: always, if_untouched, never"},
+		})
+	case errors.Is(err, ErrInvalidAutoPublishDelay):
+		return h.WriteValidationError(writer, "Invalid auto-publish delay", []base.ValidationErrorField{
+			{Name: "autoPublishDelaySeconds", Message: "Must be between 0 and 86400"},
+		})
 	case errors.Is(err, ErrInvalidHistoryPeriod):
 		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
 			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
@@ -859,6 +882,14 @@ func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) e
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
+		})
+	case errors.Is(err, ErrInvalidAutoResolve):
+		return h.WriteValidationError(writer, "Invalid auto-resolve policy", []base.ValidationErrorField{
+			{Name: "autoResolve", Message: "Must be one of: always, if_untouched, never"},
+		})
+	case errors.Is(err, ErrInvalidAutoPublishDelay):
+		return h.WriteValidationError(writer, "Invalid auto-publish delay", []base.ValidationErrorField{
+			{Name: "autoPublishDelaySeconds", Message: "Must be between 0 and 86400"},
 		})
 	case errors.Is(err, ErrInvalidHistoryPeriod):
 		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
