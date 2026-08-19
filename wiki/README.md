@@ -138,6 +138,7 @@ Market analysis of uptime monitoring services.
   - [hyperping/api.md](competitors/hyperping/api.md) — API surface, webhooks, community Terraform/SDKs, pricing
   - [hyperping/sources.md](competitors/hyperping/sources.md) — Source URLs
 - [competitors/checkly.md](competitors/checkly.md) — Checkly analysis (monitoring-as-code, Playwright)
+- [competitors/checkmate.md](competitors/checkmate.md) — Checkmate analysis (Bluewave Labs; self-hosted Node/Mongo, hardware-metrics Capture agent, GlobalPing distribution)
 - Gatus — [gatus/](competitors/gatus/)
   - [gatus/README.md](competitors/gatus/README.md) — Index, at-a-glance, key features
   - [gatus/configuration.md](competitors/gatus/configuration.md) — Configuration syntax and technology stack
