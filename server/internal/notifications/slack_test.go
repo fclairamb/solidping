@@ -797,7 +797,7 @@ func (m *mockDBService) RegisterOrUpdateWorker(_ context.Context, _ *models.Work
 	panic("not implemented")
 }
 
-func (m *mockDBService) UpdateWorkerHeartbeat(_ context.Context, _ string, _ []string) error {
+func (m *mockDBService) UpdateWorkerHeartbeat(_ context.Context, _ string, _ []string, _ string) error {
 	panic("not implemented")
 }
 

@@ -427,6 +427,13 @@ type AgentResponse struct {
 	LastSeenAt  *time.Time `json:"lastSeenAt,omitempty"`
 	EnrolledAt  time.Time  `json:"enrolledAt"`
 	RevokedAt   *time.Time `json:"revokedAt,omitempty"`
+	// Version is the agent's self-reported build version (spec 2026-08-19-07),
+	// resolved from its workers row — the single source of truth, never
+	// duplicated onto the agents table. NO omitempty: the dashboard's
+	// match/drifted/unknown comparison needs an explicit `null` for "never
+	// reported", not an absent key that could be confused with "loading".
+	// nil must always render as unknown, never as drifted.
+	Version *string `json:"version"`
 }
 
 // ListAgentsResponse wraps the agent list.
@@ -446,6 +453,11 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 		return nil, err
 	}
 
+	versions, err := s.agentVersions(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+
 	data := make([]AgentResponse, 0, len(rows))
 	for _, row := range rows {
 		data = append(data, AgentResponse{
@@ -457,10 +469,48 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 			LastSeenAt:  row.LastSeenAt,
 			EnrolledAt:  row.EnrolledAt,
 			RevokedAt:   row.RevokedAt,
+			Version:     versions[row.UID],
 		})
 	}
 
 	return &ListAgentsResponse{Data: data}, nil
+}
+
+// agentVersions resolves each agent's self-reported build version
+// (workers.version) keyed by agent UID, via the deterministic worker slug
+// (agentcrypto.WorkerSlug) every enrolled agent's worker row uses — the
+// single source of truth (spec 2026-08-19-07 prefers this over a
+// denormalized agents.version). Fetches the full worker set ONCE per call
+// rather than one lookup per agent, which would turn a fleet-wide listing
+// into an N+1 query pattern.
+//
+// A missing worker row (should not happen — ensureWorkerRow runs at every
+// enroll and reconnect) resolves to nil, i.e. unknown, rather than an error:
+// version is advisory-only and must never make the agent list itself fail.
+func (s *Service) agentVersions(ctx context.Context, rows []*models.Agent) (map[string]*string, error) {
+	if len(rows) == 0 {
+		return nil, nil //nolint:nilnil // empty input, empty (nil) map is the natural answer
+	}
+
+	allWorkers, err := s.db.ListWorkers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	bySlug := make(map[string]*models.Worker, len(allWorkers))
+	for _, worker := range allWorkers {
+		bySlug[worker.Slug] = worker
+	}
+
+	versions := make(map[string]*string, len(rows))
+
+	for _, row := range rows {
+		if worker, ok := bySlug[agentcrypto.WorkerSlug(row.UID)]; ok {
+			versions[row.UID] = worker.Version
+		}
+	}
+
+	return versions, nil
 }
 
 // ListAllAgents returns every non-deleted agent across all organizations, both
@@ -480,6 +530,11 @@ func (s *Service) ListAllAgents(ctx context.Context) (*ListAgentsResponse, error
 	slugByUID := make(map[string]string, len(orgs))
 	for _, org := range orgs {
 		slugByUID[org.UID] = org.Slug
+	}
+
+	versions, err := s.agentVersions(ctx, rows)
+	if err != nil {
+		return nil, err
 	}
 
 	data := make([]AgentResponse, 0, len(rows))
@@ -502,6 +557,7 @@ func (s *Service) ListAllAgents(ctx context.Context) (*ListAgentsResponse, error
 			LastSeenAt:  row.LastSeenAt,
 			EnrolledAt:  row.EnrolledAt,
 			RevokedAt:   row.RevokedAt,
+			Version:     versions[row.UID],
 		})
 	}
 

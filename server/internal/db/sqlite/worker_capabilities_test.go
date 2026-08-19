@@ -67,11 +67,11 @@ func TestWorkerCapabilitiesThreeStatesRoundTrip(t *testing.T) {
 	both := seedCapWorker(ctx, t, svc, "wrk-both")
 
 	// A worker that never reports: nothing is written at all.
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, unknown.UID, nil))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, unknown.UID, nil, ""))
 	// A worker that reported and has none of them.
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, none.UID, []string{}))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, none.UID, []string{}, ""))
 	// A worker that reported a set.
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, both.UID, []string{"ipv4", "ipv6"}))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, both.UID, []string{"ipv4", "ipv6"}, ""))
 
 	// The raw column, before the model gets a chance to smooth anything over.
 	var rawUnknown, rawNone, rawBoth *string
@@ -115,10 +115,10 @@ func TestWorkerCapabilitiesHeartbeatWithoutReportKeepsSet(t *testing.T) {
 	ctx := t.Context()
 
 	worker := seedCapWorker(ctx, t, svc, "wrk-keep")
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{"ipv4", "ipv6"}))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{"ipv4", "ipv6"}, ""))
 
 	for range 3 {
-		r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, nil))
+		r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, nil, ""))
 		r.Equal([]string{"ipv4", "ipv6"}, reloadCaps(ctx, t, svc, worker.UID).Capabilities)
 	}
 
@@ -129,7 +129,7 @@ func TestWorkerCapabilitiesHeartbeatWithoutReportKeepsSet(t *testing.T) {
 	r.Equal([]string{"ipv4", "ipv6"}, again.Capabilities)
 
 	// But an EXPLICIT empty report is a real statement and does overwrite.
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{}))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{}, ""))
 	r.Equal([]string{}, reloadCaps(ctx, t, svc, worker.UID).Capabilities)
 }
 

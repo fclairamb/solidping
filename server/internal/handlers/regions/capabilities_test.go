@@ -138,8 +138,8 @@ func TestCapabilitySurvivesHeartbeatCycle(t *testing.T) {
 	incapable := liveWorker(t, dbSvc, "wrk-us", "us-east-1", yes(false))
 
 	for range 3 {
-		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, capable.UID, capsForV6(yes(true))))
-		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, incapable.UID, capsForV6(yes(false))))
+		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, capable.UID, capsForV6(yes(true)), ""))
+		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, incapable.UID, capsForV6(yes(false)), ""))
 
 		resp, err := svc.ListOrgRegions(ctx, org.Slug)
 		r.NoError(err)
@@ -166,7 +166,7 @@ func TestHeartbeatWithoutCapabilityKeepsStoredValue(t *testing.T) {
 
 	worker := liveWorker(t, dbSvc, "wrk-eu", "eu-west-1", yes(true))
 
-	r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, worker.UID, nil))
+	r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, worker.UID, nil, ""))
 
 	resp, err := svc.ListOrgRegions(ctx, org.Slug)
 	r.NoError(err)

@@ -104,9 +104,9 @@ func capThreeStatesPG(t *testing.T, svc *Service) {
 	none := seedCapWorkerPG(ctx, t, svc, "cap-none")
 	both := seedCapWorkerPG(ctx, t, svc, "cap-both")
 
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, unknown.UID, nil))
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, none.UID, []string{}))
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, both.UID, []string{"ipv4", "ipv6"}))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, unknown.UID, nil, ""))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, none.UID, []string{}, ""))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, both.UID, []string{"ipv4", "ipv6"}, ""))
 
 	// The raw column: NULL is NULL, and the empty set is emphatically not.
 	for _, spec := range []struct {
@@ -155,10 +155,10 @@ func capHeartbeatKeepsSetPG(t *testing.T, svc *Service) {
 	ctx := t.Context()
 
 	worker := seedCapWorkerPG(ctx, t, svc, "cap-keep")
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{"ipv4", "ipv6"}))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{"ipv4", "ipv6"}, ""))
 
 	for range 3 {
-		r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, nil))
+		r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, nil, ""))
 		r.Equal([]string{"ipv4", "ipv6"}, reloadCapsPG(ctx, t, svc, worker.UID).Capabilities)
 	}
 
@@ -166,7 +166,7 @@ func capHeartbeatKeepsSetPG(t *testing.T, svc *Service) {
 	r.NoError(err)
 	r.Equal([]string{"ipv4", "ipv6"}, again.Capabilities)
 
-	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{}))
+	r.NoError(svc.UpdateWorkerHeartbeat(ctx, worker.UID, []string{}, ""))
 	r.Equal([]string{}, reloadCapsPG(ctx, t, svc, worker.UID).Capabilities)
 }
 
