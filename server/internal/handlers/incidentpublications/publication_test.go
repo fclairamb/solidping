@@ -317,10 +317,18 @@ func TestProbeOutputNeverReachesPublicFields(t *testing.T) {
 	r.NotContains(feedText.String(), "connection refused")
 	r.NotContains(feedText.String(), *s.check.Slug)
 
-	for _, ev := range s.notifier.drain() {
-		r.NotContains(ev.Title, sentinelHostname)
+	// Subscriber mail is the third public surface. Guarding on non-emptiness
+	// first is what stops this leg from passing vacuously: a fan-out that never
+	// fired would satisfy every NotContains below without proving anything.
+	waves := s.notifier.drain()
+	r.NotEmpty(waves, "the auto-generated updates DO reach the subscriber fan-out…")
+
+	for _, ev := range waves {
+		r.NotContains(ev.Title, sentinelHostname, "…without the probe output")
 		r.NotContains(ev.BodyMarkdown, sentinelHostname)
 		r.NotContains(ev.BodyMarkdown, "connection refused")
+		r.NotContains(ev.Title, *s.check.Slug)
+		r.NotContains(ev.BodyMarkdown, *s.check.Slug)
 	}
 }
 
@@ -706,12 +714,59 @@ func TestSubscriberStormCap(t *testing.T) {
 	}
 
 	waves := s.notifier.drain()
-	r.LessOrEqual(len(waves), models.DefaultPublicationNotifyCap,
-		"the storm cap must stop subscriber mail at the configured ceiling")
+
+	// EXACTLY the cap, not merely "at most" it. `LessOrEqual` alone would pass
+	// on zero waves — i.e. on a fan-out that never fired at all — which is the
+	// vacuous-negative trap the spec's Verification section warns about. The
+	// equality is both halves at once: the first `cap` sends went out (fan-out
+	// works) and the 9 further updates sent nothing (the cap holds).
+	r.Len(waves, models.DefaultPublicationNotifyCap,
+		"exactly the first %d updates mail subscribers; every later one inside "+
+			"the hour is posted silently", models.DefaultPublicationNotifyCap)
 
 	// …but every update was written. 1 opening + extraUpdates.
 	r.Len(s.updateKinds(pubs[0]), 1+extraUpdates,
 		"capping the mail must never cost the page or the feed an update")
+}
+
+// TestStormCapWindowRollsOver is the POSITIVE CONTROL for the cap: the same
+// publication mails again once the rolling hour has elapsed. Without it, a cap
+// that had simply broken fan-out permanently would look identical to a cap that
+// works.
+func TestStormCapWindowRollsOver(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0})
+
+	s.submit(models.ResultStatusDown)
+
+	pubs := s.publications()
+	r.Len(pubs, 1)
+
+	// Burn the whole budget for this hour.
+	for i := range models.DefaultPublicationNotifyCap + 2 {
+		_, err := s.pubs.AppendUpdate(t.Context(), s.org.Slug, s.page.UID, pubs[0].UID, s.userUID,
+			&incidentpublications.AppendUpdateRequest{
+				Kind:         "info",
+				BodyMarkdown: "Note " + string(rune('a'+i)),
+			})
+		r.NoError(err)
+	}
+
+	r.Len(s.notifier.drain(), models.DefaultPublicationNotifyCap)
+
+	// An hour later the window rolls over and mail resumes.
+	s.clk.Advance(61 * time.Minute)
+
+	_, err := s.pubs.AppendUpdate(t.Context(), s.org.Slug, s.page.UID, pubs[0].UID, s.userUID,
+		&incidentpublications.AppendUpdateRequest{
+			Kind: "monitoring", BodyMarkdown: "A fix is deployed and we are watching.",
+		})
+	r.NoError(err)
+
+	r.Len(s.notifier.drain(), 1,
+		"the cap is a rolling hour, not a permanent mute")
 }
 
 // --- Manual publications -----------------------------------------------------
@@ -989,4 +1044,129 @@ func TestGroupIncidentPublishesOncePerPage(t *testing.T) {
 		"a group component never names the member check that triggered it")
 	r.NotContains(pubs[0].PublicTitle, "checks down",
 		"the internal group title, which leaks the member count, must not be reused")
+}
+
+// --- Group membership notes --------------------------------------------------
+
+// TestGroupMemberNoteIsRateLimited proves both halves of the "also affecting X"
+// behavior. A new member joining an already-published group incident appends
+// one update; a second member joining seconds later appends nothing — the
+// posts are coalesced, so a group whose members fail one after another reads as
+// one incident rather than as a wall of near-identical entries.
+//
+// The positive control is built in: the first note MUST appear, so a
+// rate-limiter that simply suppressed everything would fail the first
+// assertion instead of quietly passing the second.
+func TestGroupMemberNoteIsRateLimited(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	s := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0, noResource: true})
+
+	group := models.NewCheckGroup(s.org.UID, "Payments platform", "payments-platform")
+	r.NoError(s.dbSvc.CreateCheckGroup(ctx, group))
+
+	r.NoError(s.dbSvc.UpdateCheck(ctx, s.check.UID, &models.CheckUpdate{CheckGroupUID: &group.UID}))
+
+	// Two further members, each with its own PUBLIC component on the page, so
+	// naming them is legitimate.
+	members := make([]*models.Check, 0, 2)
+
+	for idx, name := range []string{"Payments worker", "Payments ledger"} {
+		member := models.NewCheck(s.org.UID, "payments-member-"+string(rune('a'+idx)), "http")
+		member.CheckGroupUID = &group.UID
+		r.NoError(s.dbSvc.CreateCheck(ctx, member))
+
+		publicName := name
+		resource := models.NewStatusPageResource(s.section.UID, member.UID, idx+2)
+		resource.PublicName = &publicName
+		r.NoError(s.dbSvc.CreateStatusPageResource(ctx, resource))
+
+		members = append(members, member)
+	}
+
+	// A group resource for the trigger check itself, so the incident publishes.
+	groupName := "Payments platform"
+	groupResource := models.NewStatusPageGroupResource(s.section.UID, group.UID, 1)
+	groupResource.PublicName = &groupName
+	r.NoError(s.dbSvc.CreateStatusPageResource(ctx, groupResource))
+
+	incident := models.NewIncident(s.org.UID, s.check.UID, s.clk.Now(), "Payments platform — 1/3 checks down")
+	incident.CheckGroupUID = &group.UID
+	r.NoError(s.dbSvc.CreateIncident(ctx, incident))
+
+	s.pubs.OnIncidentOpened(ctx, incident)
+
+	pubs := s.publications()
+	r.Len(pubs, 1)
+
+	baseline := len(s.updateKinds(pubs[0]))
+
+	// First member joins → a note is appended.
+	s.clk.Advance(20 * time.Second)
+	s.pubs.OnGroupMemberJoined(ctx, incident, members[0])
+
+	afterFirst := s.updateKinds(pubs[0])
+	r.Len(afterFirst, baseline+1, "a new member joining appends an 'also affecting' note")
+	r.Contains(afterFirst, models.StatusUpdateKindInfo)
+
+	// Second member joins seconds later → coalesced, nothing appended.
+	s.clk.Advance(30 * time.Second)
+	s.pubs.OnGroupMemberJoined(ctx, incident, members[1])
+
+	r.Len(s.updateKinds(pubs[0]), baseline+1,
+		"a second member joining inside the rate-limit window is coalesced")
+
+	// Past the window, a further join speaks again — the limiter is a spacing
+	// rule, not a one-shot.
+	s.clk.Advance(6 * time.Minute)
+	s.pubs.OnGroupMemberJoined(ctx, incident, members[1])
+
+	r.Len(s.updateKinds(pubs[0]), baseline+2,
+		"past the interval the next join is announced")
+}
+
+// TestGroupMemberNoteNeverNamesAnUndisplayedCheck pins the topology-hiding
+// rule: a member that is NOT a component on the page contributes no note at
+// all, because a group component never lists its members.
+func TestGroupMemberNoteNeverNamesAnUndisplayedCheck(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	s := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0, noResource: true})
+
+	group := models.NewCheckGroup(s.org.UID, "Payments platform", "payments-platform")
+	r.NoError(s.dbSvc.CreateCheckGroup(ctx, group))
+	r.NoError(s.dbSvc.UpdateCheck(ctx, s.check.UID, &models.CheckUpdate{CheckGroupUID: &group.UID}))
+
+	groupName := "Payments platform"
+	groupResource := models.NewStatusPageGroupResource(s.section.UID, group.UID, 1)
+	groupResource.PublicName = &groupName
+	r.NoError(s.dbSvc.CreateStatusPageResource(ctx, groupResource))
+
+	// A member with NO resource of its own on the page.
+	hidden := models.NewCheck(s.org.UID, "payments-internal-shard", "http")
+	hidden.CheckGroupUID = &group.UID
+	r.NoError(s.dbSvc.CreateCheck(ctx, hidden))
+
+	incident := models.NewIncident(s.org.UID, s.check.UID, s.clk.Now(), "Payments platform — 1/3 checks down")
+	incident.CheckGroupUID = &group.UID
+	r.NoError(s.dbSvc.CreateIncident(ctx, incident))
+
+	s.pubs.OnIncidentOpened(ctx, incident)
+
+	pubs := s.publications()
+	r.Len(pubs, 1)
+
+	baseline := len(s.updateKinds(pubs[0]))
+
+	s.clk.Advance(20 * time.Second)
+	s.pubs.OnGroupMemberJoined(ctx, incident, hidden)
+
+	r.Len(s.updateKinds(pubs[0]), baseline,
+		"a member that is not a public component on the page is never named")
 }

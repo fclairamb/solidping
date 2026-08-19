@@ -448,13 +448,16 @@ func (s *Service) OnGroupMemberJoined(
 			continue
 		}
 
-		names := s.resourceNamesOnPage(
-			ctx, incident.OrganizationUID, page.UID, check.UID, incident.CheckGroupUID,
-		)
+		// nil group UID ON PURPOSE: this asks "does the JOINING CHECK have a
+		// component of its own on this page?", not "is its group displayed
+		// here?". Passing the group through would match the group resource and
+		// announce "also affecting <group>" — naming the component the
+		// publication is already about, which tells the reader nothing and
+		// reads as a stutter. A group resource renders as ONE component and
+		// never lists its members, so a member that is only visible through it
+		// has nothing new to say.
+		names := s.resourceNamesOnPage(ctx, incident.OrganizationUID, page.UID, check.UID, nil)
 		if len(names) == 0 {
-			// The joining member is not a resource on this page. A group
-			// resource renders as ONE component and never lists its members, so
-			// there is nothing new to say here.
 			continue
 		}
 

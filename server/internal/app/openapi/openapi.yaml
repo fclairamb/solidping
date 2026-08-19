@@ -1721,6 +1721,47 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/status-pages/{org}/{slug}/incidents:
+    get:
+      tags: [StatusPages]
+      summary: Public incident history for a status page
+      description: >-
+        The customer-facing incidents published on this page (spec
+        2026-08-19-08). Without `active`, returns the page's history window;
+        with `active=true`, only the incidents that are still open — the same
+        set the full page view embeds as `activeIncidents[]`.
+
+        Same visibility gate as the full page view: a disabled or non-public
+        page returns 404, identical to a page that doesn't exist. No
+        authentication required.
+
+        Every field is operator-authored or templated from the page's own
+        public resource names. Probe output, error strings and internal
+        hostnames are structurally unable to reach this payload.
+      operationId: viewPublicStatusPageIncidents
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+        - name: active
+          in: query
+          description: When "true", returns only incidents that are not resolved.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The page's public incidents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicIncidentListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/status-pages/{org}/{slug}/feed.xml:
     get:
       tags: [StatusPages]

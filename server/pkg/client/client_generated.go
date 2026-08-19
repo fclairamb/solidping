@@ -4163,6 +4163,11 @@ type PublicIncidentSeverity string
 // PublicIncidentState defines model for PublicIncident.State.
 type PublicIncidentState string
 
+// PublicIncidentListResponse defines model for PublicIncidentListResponse.
+type PublicIncidentListResponse struct {
+	Data []PublicIncident `json:"data"`
+}
+
 // PublicIncidentUpdate defines model for PublicIncidentUpdate.
 type PublicIncidentUpdate struct {
 	BodyMarkdown string                   `json:"bodyMarkdown"`
@@ -5590,6 +5595,12 @@ type GetStatusPageBadgeParams struct {
 
 // GetStatusPageBadgeParamsStyle defines parameters for GetStatusPageBadge.
 type GetStatusPageBadgeParamsStyle string
+
+// ViewPublicStatusPageIncidentsParams defines parameters for ViewPublicStatusPageIncidents.
+type ViewPublicStatusPageIncidentsParams struct {
+	// Active When "true", returns only incidents that are not resolved.
+	Active *bool `form:"active,omitempty" json:"active,omitempty"`
+}
 
 // ListSystemCheckJobsParams defines parameters for ListSystemCheckJobs.
 type ListSystemCheckJobsParams struct {
@@ -7927,6 +7938,15 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 	StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ViewPublicStatusPageIncidents Public incident history for a status page
+	//
+	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
+	//
+	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
+	ViewPublicStatusPageIncidents(ctx context.Context, org OrgPath, slug string, params *ViewPublicStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ViewStatusPageSummary Lightweight status summary for a status page
 	//
@@ -12973,6 +12993,25 @@ func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug strin
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStatusPageFeedRequest(c.Server, org, slug)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ViewPublicStatusPageIncidents Public incident history for a status page
+//
+// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
+//
+// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
+func (c *Client) ViewPublicStatusPageIncidents(ctx context.Context, org OrgPath, slug string, params *ViewPublicStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewViewPublicStatusPageIncidentsRequest(c.Server, org, slug, params)
 	if err != nil {
 		return nil, err
 	}
@@ -24192,6 +24231,74 @@ func NewStatusPageFeedRequest(server string, org OrgPath, slug string) (*http.Re
 	return req, nil
 }
 
+// NewViewPublicStatusPageIncidentsRequest constructs an http.Request for the ViewPublicStatusPageIncidents method
+func NewViewPublicStatusPageIncidentsRequest(server string, org OrgPath, slug string, params *ViewPublicStatusPageIncidentsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/status-pages/%s/%s/incidents", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Active != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "active", *params.Active, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewViewStatusPageSummaryRequest constructs an http.Request for the ViewStatusPageSummary method
 func NewViewStatusPageSummaryRequest(server string, org OrgPath, slug string) (*http.Request, error) {
 	var err error
@@ -27215,6 +27322,17 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 	StatusPageFeedWithResponse(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*StatusPageFeedResult, error)
+
+	// ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
+	//
+	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
+	ViewPublicStatusPageIncidentsWithResponse(ctx context.Context, org OrgPath, slug string, params *ViewPublicStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*ViewPublicStatusPageIncidentsResult, error)
 
 	// ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 	//
@@ -39272,6 +39390,54 @@ func (r StatusPageFeedResult) ContentType() string {
 	return ""
 }
 
+type ViewPublicStatusPageIncidentsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PublicIncidentListResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ViewPublicStatusPageIncidentsResult) GetJSON200() *PublicIncidentListResponse {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ViewPublicStatusPageIncidentsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ViewPublicStatusPageIncidentsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ViewPublicStatusPageIncidentsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ViewPublicStatusPageIncidentsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ViewPublicStatusPageIncidentsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ViewStatusPageSummaryResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -44303,6 +44469,23 @@ func (c *ClientWithResponses) StatusPageFeedWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseStatusPageFeedResult(rsp)
+}
+
+// ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
+//
+// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
+func (c *ClientWithResponses) ViewPublicStatusPageIncidentsWithResponse(ctx context.Context, org OrgPath, slug string, params *ViewPublicStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*ViewPublicStatusPageIncidentsResult, error) {
+	rsp, err := c.ViewPublicStatusPageIncidents(ctx, org, slug, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseViewPublicStatusPageIncidentsResult(rsp)
 }
 
 // ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
@@ -53370,6 +53553,39 @@ func ParseStatusPageFeedResult(rsp *http.Response) (*StatusPageFeedResult, error
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseViewPublicStatusPageIncidentsResult parses an HTTP response from a ViewPublicStatusPageIncidentsWithResponse call
+func ParseViewPublicStatusPageIncidentsResult(rsp *http.Response) (*ViewPublicStatusPageIncidentsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ViewPublicStatusPageIncidentsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PublicIncidentListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
