@@ -5,6 +5,10 @@ effort: high
 
 # SMTP check can send a real probe email, delivered to a paired passive email check, to verify the full transmission loop
 
+> **⚠️ SUPERSEDED IN PART — read `## Revised design (2026-08-19)` at the bottom FIRST.**
+> Florent changed how the recipient is stored. Where this document and the revision
+> disagree, **the revision wins**. Everything the revision does not mention still stands.
+
 ## Problem
 
 The SMTP check stops at the handshake. `Execute`
@@ -319,3 +323,81 @@ negative control (send_email false emits no mail commands); cross-org/wrong-type
 JS-subcheck-cannot-send guardrail test; min-interval-60s enforcement; receiving-side
 enrichment present/absent/clamped-nonsense. Frontend: form toggle + picker + validation;
 result-detail card presence/absence.
+
+## Revised design (2026-08-19)
+
+Decided by Florent after the first implementation round, in response to the audit finding
+that send mode did not work on private locations. **This section supersedes the parts of
+the Proposal it contradicts.** Everything not mentioned here (system-generated message
+only, the two attribution headers, submission-only SMTP result, receiving-side enrichment,
+clamping, the 60s floor, the passive email check as the delivery deadline) is unchanged.
+
+### What changes: store the recipient address, not a reference
+
+The original design stored `delivery_check_uid` and resolved it to a concrete
+`<token>@<inbox-domain>` recipient **at claim time**, server-side. That resolution was only
+ever wired into the `DirectBackend` claim path, so send mode did not work on private
+locations — and wiring it into `ClaimJobsForAgent` raised an unresolved question about
+handing a resolved recipient to a **system** agent shared across orgs.
+
+**Store the email target directly on the SMTP check instead.** It becomes ordinary check
+config that flows to every worker and agent through the normal path:
+
+- **`delivery_to`** (string) — the recipient address, **the operative field**. Required
+  when `send_email` is set.
+- **`delivery_check_uid`** (string, **optional — bonus**) — retained only for attribution
+  and the UI pairing links (the "delivery via" / "delivery sources" cards). It is no longer
+  a security control and must not be treated as one. If supplied it must still name an
+  existing `CheckTypeEmail` check **in the same org** — bonus metadata must not become its
+  own hole — but it is not required, and nothing resolves it at claim time any more.
+
+Delete the claim-time resolution path entirely: no `resolveSMTPDelivery` in the backend
+claim flow, no context threading of a resolved recipient, no `smtpResolvedRecipient` config
+injection. The checker reads `delivery_to` straight from its config. This is what makes the
+agent / private-location path work with no sealing question to answer.
+
+### Validation of `delivery_to` — both rules are required
+
+1. **It must be a single bare RFC 5322 address**, validated exactly the way `mail_from`
+   now is: `net/mail.ParseAddress` must succeed **and** the parsed `addr.Address` must
+   equal the input string. Reuse `checksmtp.ValidateMailFrom`'s approach (extract a shared
+   helper rather than copying it). This is what keeps CRLF, NUL, display-name and
+   quoted-local-part forms out of the SMTP command line and the header block — the
+   injection hole closed in `c21b5b7bd` must not reopen through this new field.
+2. **Its domain must equal the instance's configured inbox domain** (from `email_inbox`).
+   Reject `send_email: true` when the instance has no `email_inbox` configured, as before.
+
+Enforce both on create **and** on PATCH (against the merged/effective config), mirroring
+what `mail_from` and the 60s interval floor already do.
+
+### Accepted residual risk — recorded deliberately
+
+The Proposal justified the reference-not-address indirection as *"what prevents one org
+pointing probes at another org's check address with SolidPing's blessing."* **That
+mechanism is intentionally given up here.** With free-text `delivery_to` constrained only
+by domain, an org that learns another org's tokenized address can aim probes at it, which
+would tick that other org's email check up.
+
+Florent was shown this trade-off explicitly and accepted it (2026-08-19). The domain
+restriction is what still holds: a recipient outside the instance's own inbox domain
+remains impossible, so the Out-of-scope guarantee — *"restricts recipients to the
+instance's own inbox, which makes a non-consenting recipient impossible by construction"* —
+is preserved. Do not silently reintroduce a same-org check on `delivery_to`; if you believe
+it should be reinstated, say so in your report rather than implementing it.
+
+### Consequence to handle: the `checkjs` sub-check path
+
+The previous implementation threaded the resolved recipient through the request **context**,
+which structurally prevented a `js` check from triggering a real send: `applySMTPDeliveryContext`
+only fires for a job whose type is `smtp`, so a `browser`/`smtp` sub-check invoked from the JS
+sandbox's `solidping.check(...)` (`server/internal/checkers/checkjs/checker.go:307`, a genuine
+second caller of `Checker.Execute`) always missed and returned a loud `StatusError`.
+
+**Making `delivery_to` a plain config field removes that protection.** A `js` check could
+construct an SMTP sub-check config with `send_email: true` and a valid inbox-domain address
+and cause real mail to be submitted. Bounded (our own inbox domain only), but no longer
+impossible.
+
+Handle it explicitly: keep send mode from executing when the checker is invoked as a JS
+sub-check rather than as a dispatched `smtp` check job, and test it. Document what you chose
+and why, with the verified caller set.
