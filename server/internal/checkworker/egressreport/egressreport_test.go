@@ -7,6 +7,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // TestFromKeepsUnknownDistinctFromNone is the producer-side half of the
@@ -101,4 +102,47 @@ func TestFromEmitsOnlyStorableNames(t *testing.T) {
 				"capability %q must stay inside the [a-z0-9-] slug charset", name)
 		}
 	}
+}
+
+// TestWithBrowserNeverTurnsUnknownIntoNo is the conflation guard for the new
+// capability. The tri-state lives on the SET: a nil set is "nothing probed", a
+// non-nil one is closed. Appending "browser" to a nil set would make it
+// non-nil and silently turn ipv4/ipv6 from unknown into a hard "no" — so a nil
+// base must stay nil, even when a browser really is available.
+func TestWithBrowserNeverTurnsUnknownIntoNo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Nil(egressreport.WithBrowser(nil, true),
+		"a nil (unknown) egress set must stay nil, browser or not")
+	r.Nil(egressreport.WithBrowser(nil, false))
+}
+
+// TestWithBrowserAppendsOnlyWhenAvailable: on a set that WAS reported, browser
+// is a plain additive name, and its absence from that closed set is the real
+// "no" the region aggregation reads.
+func TestWithBrowserAppendsOnlyWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal([]string{"ipv4", "ipv6", "browser"},
+		egressreport.WithBrowser([]string{"ipv4", "ipv6"}, true))
+	r.Equal([]string{"ipv4", "ipv6"},
+		egressreport.WithBrowser([]string{"ipv4", "ipv6"}, false))
+
+	// A reported-but-empty set is a real "none": browser may still join it.
+	r.Equal([]string{"browser"}, egressreport.WithBrowser([]string{}, true))
+	r.Empty(egressreport.WithBrowser([]string{}, false))
+}
+
+// TestWithBrowserEmitsAStorableName: "browser" must satisfy the same database
+// CHECK constraint every other capability does.
+func TestWithBrowserEmitsAStorableName(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, models.ValidateCapabilitySet(
+		egressreport.WithBrowser([]string{"ipv4", "ipv6"}, true),
+	))
 }
