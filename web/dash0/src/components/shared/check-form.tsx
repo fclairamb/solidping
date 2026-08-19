@@ -1136,6 +1136,22 @@ export function CheckForm({
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
+                  {/* Advisory only (spec 2026-08-19-03): a browser check whose
+                      selected regions report no headless Chrome. Never blocks
+                      submit — the advertised value lags by a heartbeat, and
+                      "unknown" never warns at all. */}
+                  {getFieldError(fieldWarnings, "regions") && (
+                    <Alert
+                      variant="warning"
+                      className="mt-2"
+                      data-testid="check-regions-warning"
+                    >
+                      <AlertTriangle />
+                      <AlertDescription>
+                        {getFieldError(fieldWarnings, "regions")}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   {pinnedIpv6 && (
                     <p className="text-xs text-muted-foreground" data-testid="regions-ipv6-hint">
                       {t("form.regionsIpv6Hint", {
