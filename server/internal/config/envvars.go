@@ -112,6 +112,10 @@ func manualReaderServerEnvVars() []string {
 		"SP_LOG_LEVEL",
 		"SP_APP_GITHUB_ISSUES_TOKEN",
 		"SP_APP_GITHUB_REPO",
+		// applyCheckersEnv — both keys have a snake_case segment, so koanf's
+		// env loader cannot reach them (see BrowserCheckerConfig).
+		"SP_CHECKERS_BROWSER_CDP_URL",
+		"SP_CHECKERS_BROWSER_CHROME_PATH",
 		// applyRateLimitingEnv
 		"SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE",
 		"SP_SERVER_RATE_LIMITING_BURST",
