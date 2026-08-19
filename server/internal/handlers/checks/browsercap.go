@@ -10,11 +10,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
-// browserConfigField is the field the warning is attached to. The browser
-// capability is a property of the check as a whole rather than of one config
-// key, and `url` is the field the dashboard renders at the top of the browser
-// form, so that is where the message lands.
-const browserConfigField = "url"
+// browserWarningField is the field the warning is attached to. Not a config key:
+// what is wrong is the REGION selection, not the URL, so the dashboard renders
+// this one under the region picker — the control the user would actually
+// change in response.
+const browserWarningField = "regions"
 
 // regionCapabilityWarnings is the single advisory entry point the write paths
 // call: every region-capability warning, in one slice.
@@ -73,7 +73,7 @@ func (s *Service) browserRegionWarnings(
 	}
 
 	return []base.ValidationErrorField{{
-		Name:    browserConfigField,
+		Name:    browserWarningField,
 		Message: browserRegionWarningMessage(lacking, browserCapableRegions(index)),
 	}}
 }
