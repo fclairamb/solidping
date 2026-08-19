@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
+import { EmailDeliveryCard, EMAIL_DELIVERY_OUTPUT_KEYS } from "@/components/checks/email-delivery-card";
 import { useResult, useRegions, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
 import { regionDisplayLabel } from "@/lib/region-label";
 
@@ -151,10 +152,14 @@ function ResultDetailPage() {
       : [];
 
   // DNSBL zone/code fields get a dedicated DnsblCard below (human-readable
-  // status codes); drop them from the raw JSON dump so nothing is shown twice.
+  // status codes), and the send-mode SMTP attribution fields get
+  // EmailDeliveryCard; drop both from the raw JSON dump so nothing is shown
+  // twice.
   const rawDump = Object.fromEntries(
     Object.entries(remainingOutput).filter(
-      ([key]) => !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key),
+      ([key]) =>
+        !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key) &&
+        !(EMAIL_DELIVERY_OUTPUT_KEYS as readonly string[]).includes(key),
     ),
   );
 
@@ -371,6 +376,7 @@ function ResultDetailPage() {
       )}
 
       <DnsblCard output={data.output as Record<string, unknown> | undefined} />
+      <EmailDeliveryCard org={org} output={data.output as Record<string, unknown> | undefined} />
 
       {rawDump && Object.keys(rawDump).length > 0 && (
         <Card>
