@@ -116,11 +116,37 @@ type mwCacheEntry struct {
 	fetchedAt time.Time
 }
 
+// PublicationHook is the status-page publication side of the incident
+// lifecycle (spec 2026-08-19-08). It is an interface, and deliberately a small
+// one, so this package never imports the publication service — the dependency
+// runs the other way, and the incident state machine must not be able to fail
+// because a status page could not be updated.
+//
+// Every method is best-effort and returns nothing: a missed announcement is a
+// papercut, a missed incident is an outage nobody is paged for.
+type PublicationHook interface {
+	// OnIncidentOpened resolves the auto-publish policy and schedules (or
+	// performs) publication.
+	OnIncidentOpened(ctx context.Context, incident *models.Incident)
+	// OnIncidentResolved applies the page's auto-resolve policy.
+	OnIncidentResolved(ctx context.Context, incident *models.Incident)
+	// OnIncidentReopened reopens the SAME publication on a relapse rather than
+	// minting a second public entry.
+	OnIncidentReopened(ctx context.Context, incident *models.Incident)
+	// OnGroupMemberJoined appends a rate-limited "also affecting X" note.
+	OnGroupMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check)
+}
+
 // Service provides incident management functionality.
 type Service struct {
 	db      db.Service
 	jobsSvc jobsvc.Service
 	clock   clock.Clock
+
+	// publications is the status-page publication hook. Nil-safe: every call
+	// site goes through the publish* helpers below, which no-op when unset
+	// (status pages disabled, tests).
+	publications PublicationHook
 
 	// rt publishes org-scoped live dashboard hints: `results` (coalesced) on
 	// every processed result, `checks` (immediate) on a visible status
@@ -145,6 +171,45 @@ func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock, r
 		rt:      rt,
 		mwCache: make(map[string]mwCacheEntry),
 	}
+}
+
+// SetPublicationHook wires the status-page publication side. Optional.
+func (s *Service) SetPublicationHook(hook PublicationHook) {
+	s.publications = hook
+}
+
+// publishOpened / publishResolved / publishReopened / publishMemberJoined are
+// the nil-safe wrappers every incident-lifecycle call site uses.
+func (s *Service) publishOpened(ctx context.Context, incident *models.Incident) {
+	if s.publications == nil {
+		return
+	}
+
+	s.publications.OnIncidentOpened(ctx, incident)
+}
+
+func (s *Service) publishResolved(ctx context.Context, incident *models.Incident) {
+	if s.publications == nil {
+		return
+	}
+
+	s.publications.OnIncidentResolved(ctx, incident)
+}
+
+func (s *Service) publishReopened(ctx context.Context, incident *models.Incident) {
+	if s.publications == nil {
+		return
+	}
+
+	s.publications.OnIncidentReopened(ctx, incident)
+}
+
+func (s *Service) publishMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check) {
+	if s.publications == nil {
+		return
+	}
+
+	s.publications.OnGroupMemberJoined(ctx, incident, check)
 }
 
 // isCheckInActiveMaintenance reports whether the check is inside an active
@@ -724,6 +789,8 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 		return fmt.Errorf("failed to emit incident created event: %w", err)
 	}
 
+	s.publishOpened(ctx, incident)
+
 	return nil
 }
 
@@ -757,6 +824,13 @@ func (s *Service) resolveIncident(
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident resolved event: %w", err)
 	}
+
+	// Keep the incident object in step with the row we just wrote, so the
+	// publication hook sees a resolved incident rather than a stale active one.
+	incident.State = resolvedState
+	incident.ResolvedAt = &resolvedAt
+
+	s.publishResolved(ctx, incident)
 
 	// Re-evaluate any rolled-up children: those still down need to page now.
 	if err := s.reEvaluateRollupChildren(ctx, incident); err != nil {
@@ -923,6 +997,11 @@ func (s *Service) reopenIncident(
 		return fmt.Errorf("failed to emit incident reopened event: %w", err)
 	}
 
+	incident.State = activeState
+	incident.ResolvedAt = nil
+
+	s.publishReopened(ctx, incident)
+
 	return nil
 }
 
@@ -996,6 +1075,10 @@ func (s *Service) updateGroupMemberOnFailure(
 		if err := s.db.UpsertIncidentMemberCheck(ctx, newMember); err != nil {
 			return fmt.Errorf("failed to insert new member: %w", err)
 		}
+
+		// A new component joined an outage customers may already be reading
+		// about — say so, once, rate-limited on the publication side.
+		s.publishMemberJoined(ctx, incident, check)
 	} else {
 		// Bump the member's failure count, mark currently_failing, advance the
 		// last_failure_at timestamp. Same path for "still failing" and "relapse".
@@ -1166,6 +1249,8 @@ func (s *Service) createGroupIncident(
 		return fmt.Errorf("failed to emit group incident created event: %w", err)
 	}
 
+	s.publishOpened(ctx, incident)
+
 	return nil
 }
 
@@ -1234,6 +1319,11 @@ func (s *Service) reopenGroupIncident(
 		}); err != nil {
 		return fmt.Errorf("failed to emit group reopened event: %w", err)
 	}
+
+	incident.State = activeState
+	incident.ResolvedAt = nil
+
+	s.publishReopened(ctx, incident)
 
 	return nil
 }
@@ -1329,6 +1419,11 @@ func (s *Service) resolveGroupIncident(
 		}); err != nil {
 		return fmt.Errorf("failed to emit group resolved event: %w", err)
 	}
+
+	incident.State = resolvedState
+	incident.ResolvedAt = &resolvedAt
+
+	s.publishResolved(ctx, incident)
 
 	return nil
 }

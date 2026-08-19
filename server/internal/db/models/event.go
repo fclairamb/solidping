@@ -44,6 +44,22 @@ const (
 	// slackTeamId, slackTs). Append-only, like every other event row.
 	EventTypeIncidentComment EventType = "incident.comment"
 
+	// EventTypeStatusPageIncidentPublished indicates an incident became visible
+	// on a status page (spec 2026-08-19-08). It is deliberately DISTINCT from
+	// EventTypeIncidentCreated: an operational incident opening and a
+	// customer-visible incident being published are different facts, they
+	// happen at different times (the auto-publish debounce sits between them),
+	// and a great many incidents never produce the second one at all. A
+	// webhook consumer must be able to subscribe to one without the other.
+	EventTypeStatusPageIncidentPublished EventType = "statuspage.incident.published"
+	// EventTypeStatusPageIncidentUpdated indicates a publication's public
+	// title, severity, state or narrative changed.
+	EventTypeStatusPageIncidentUpdated EventType = "statuspage.incident.updated"
+	// EventTypeStatusPageIncidentResolved indicates a publication was closed
+	// (or unpublished). The internal incident.resolved event is unchanged and
+	// still fires on its own schedule.
+	EventTypeStatusPageIncidentResolved EventType = "statuspage.incident.resolved"
+
 	// EventTypeStatusUpdateCreated indicates a status update was created.
 	EventTypeStatusUpdateCreated EventType = "status_update.created"
 	// EventTypeStatusUpdateUpdated indicates a status update was modified.

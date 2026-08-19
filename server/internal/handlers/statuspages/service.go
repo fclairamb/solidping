@@ -346,6 +346,16 @@ type Service struct {
 	// spec 2026-08-02-08's own convention, that is a bug to design out, not a
 	// flake to re-run past.
 	analytics analytics.Client
+	// publicIncidents supplies the activeIncidents[] block on the public view.
+	// nil = the feature is not wired (tests, or a build without status-page
+	// publications), in which case the field is simply omitted.
+	publicIncidents PublicIncidentProvider
+}
+
+// SetPublicIncidentProvider wires the incident-publication projection into the
+// public page view. Optional.
+func (s *Service) SetPublicIncidentProvider(p PublicIncidentProvider) {
+	s.publicIncidents = p
 }
 
 // CertStatusProvider reports the TLS certificate state of a custom domain so
@@ -444,6 +454,39 @@ type StatusUpdatePublicResponse struct {
 	PublishedAt  time.Time `json:"publishedAt"`
 }
 
+// PublicIncidentProvider supplies the active incident publications rendered on
+// a public status page (spec 2026-08-19-08). It is a small interface set by
+// server.go rather than a direct dependency, which keeps the import edge
+// one-way: incidentpublications resolves pages through db.Service, and this
+// package never has to import it.
+type PublicIncidentProvider interface {
+	ListPublicIncidents(ctx context.Context, page *models.StatusPage, activeOnly bool) ([]PublicIncident, error)
+}
+
+// PublicIncident is the wire shape of one publicly visible incident. It mirrors
+// incidentpublications.PublicIncident field for field; it is redeclared here so
+// the provider interface can be satisfied without an import cycle, and so this
+// package's response type stays self-describing.
+type PublicIncident struct {
+	UID               string                 `json:"uid"`
+	Title             string                 `json:"title"`
+	State             string                 `json:"state"`
+	Severity          *string                `json:"severity,omitempty"`
+	StartedAt         time.Time              `json:"startedAt"`
+	ResolvedAt        *time.Time             `json:"resolvedAt,omitempty"`
+	AffectedResources []string               `json:"affectedResources,omitempty"`
+	Updates           []PublicIncidentUpdate `json:"updates,omitempty"`
+}
+
+// PublicIncidentUpdate is one narrative entry on a public incident.
+type PublicIncidentUpdate struct {
+	UID          string    `json:"uid"`
+	Kind         string    `json:"kind"`
+	Title        string    `json:"title"`
+	BodyMarkdown string    `json:"bodyMarkdown"`
+	PublishedAt  time.Time `json:"publishedAt"`
+}
+
 // StatusPageResponse represents a status page in API responses.
 type StatusPageResponse struct {
 	UID              string  `json:"uid"`
@@ -494,6 +537,12 @@ type StatusPageResponse struct {
 	// StatusCounts tallies resources per OverallStatus category. Same
 	// population rule as OverallStatus.
 	StatusCounts *StatusCountsResponse `json:"statusCounts,omitempty"`
+	// ActiveIncidents are the currently-open incident publications for this
+	// page (spec 2026-08-19-08) — what the banner and the active-incidents
+	// section render. Same population rule as OverallStatus: public view paths
+	// only. Every field on them is operator-authored or templated from the
+	// page's own public resource names; no probe diagnostics can reach here.
+	ActiveIncidents []PublicIncident `json:"activeIncidents,omitempty"`
 }
 
 // StatusCountsResponse mirrors models.PageStatusCounts on the wire (spec
@@ -1597,6 +1646,19 @@ func (s *Service) ViewStatusPage(
 	}
 
 	response.Sections = sections
+
+	// Active incident publications drive the banner and the active-incidents
+	// section. Failing to load them must never blank the page — a status page
+	// that cannot render its incidents is still far more useful than a 500.
+	if s.publicIncidents != nil {
+		active, incErr := s.publicIncidents.ListPublicIncidents(ctx, page, true)
+		if incErr != nil {
+			slog.ErrorContext(ctx, "Failed to load active incident publications for status page",
+				"error", incErr, "statusPageUID", page.UID, "orgUID", org.UID)
+		} else {
+			response.ActiveIncidents = active
+		}
+	}
 
 	// Populate recent status updates (graceful — empty when table doesn't exist yet)
 	if page.HistoryDays > 0 {

@@ -71,6 +71,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
@@ -1418,8 +1419,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusUpdates.PATCH("/:uid", statusUpdatesHandler.UpdateStatusUpdate)
 	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
+	// Incident publications — the status-page publication overlay (spec
+	// 2026-08-19-08). Built before the status-page service so it can be wired
+	// into the public view, and before the incident service picks up its hook.
+	incidentPublicationsService := incidentpublications.NewService(
+		s.dbService, s.services.Clock, s.services.Realtime)
+	incidentPublicationsService.SetSubscriberNotifier(statusSubscriberNotifier)
+	incidentPublicationsService.SetJobsService(s.services.Jobs)
+	incidentPublicationsService.SetScheduler(jobtypes.NewIncidentPublishScheduler(s.services.Jobs))
+	incidentPublicationsHandler := incidentpublications.NewHandler(incidentPublicationsService, s.config)
+	incidentsService.SetPublicationHook(incidentPublicationsService)
+
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
+	statusPagesService.SetPublicIncidentProvider(publicIncidentAdapter{svc: incidentPublicationsService})
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
@@ -1444,6 +1457,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		"/:statusPageUid/sections/:sectionUid/resources/reorder", statusPagesHandler.ReorderResources)
 	orgStatusPages.PATCH("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.UpdateResource)
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.DeleteResource)
+
+	// Incident publications, page side (authenticated). Updates are
+	// append-only: there is deliberately no PATCH or DELETE on an update.
+	orgStatusPages.GET("/:statusPageUid/incidents", incidentPublicationsHandler.List)
+	orgStatusPages.POST("/:statusPageUid/incidents", incidentPublicationsHandler.Create)
+	orgStatusPages.GET("/:statusPageUid/incidents/:uid", incidentPublicationsHandler.Get)
+	orgStatusPages.PATCH("/:statusPageUid/incidents/:uid", incidentPublicationsHandler.Update)
+	orgStatusPages.POST("/:statusPageUid/incidents/:uid/updates", incidentPublicationsHandler.AppendUpdate)
+
+	// Incident publications, incident side (authenticated).
+	orgIncidentPublications := orgGroup("/orgs/:org/incidents/:incidentUid/publications")
+	orgIncidentPublications.GET("", incidentPublicationsHandler.ListForIncident)
+	orgIncidentPublications.POST("", incidentPublicationsHandler.PublishIncident)
+	orgIncidentPublications.DELETE("/:uid", incidentPublicationsHandler.Unpublish)
 
 	// Status page subscribers (public email/RSS subscriptions). The handler is
 	// shared by the authed admin routes (below) and the public routes (further
@@ -1480,6 +1507,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	publicOrgAPI.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
 	// Public Atom/RSS feed of the status-update timeline.
 	publicOrgAPI.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+	// Public incident history (spec 2026-08-19-08). `?active=true` returns only
+	// the open ones; the default returns the page's history window.
+	publicOrgAPI.GET("/status-pages/:org/:slug/incidents", incidentPublicationsHandler.ViewPublicIncidents)
 
 	// Edge-TLS "ask" endpoint (public, no auth): 204 when the queried domain is a
 	// verified+enabled+public custom domain, 404 otherwise. Contract for Caddy

@@ -34,8 +34,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -190,6 +193,21 @@ func NewCheckWorker(
 	checkJobSvc checkjobsvc.Service,
 ) *CheckWorker {
 	incidentSvc := incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime)
+
+	// The in-process worker is the path most incidents actually open on, so it
+	// needs the status-page publication hook too — without it, auto-publish
+	// would only ever fire for incidents opened through the HTTP server.
+	publicationSvc := incidentpublications.NewService(dbService, clock.Real{}, svc.Realtime)
+	publicationSvc.SetJobsService(svc.Jobs)
+	publicationSvc.SetScheduler(jobtypes.NewIncidentPublishScheduler(svc.Jobs))
+
+	if svc.EmailSender != nil && svc.EmailFormatter != nil {
+		publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
+			dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL, slog.Default()))
+	}
+
+	incidentSvc.SetPublicationHook(publicationSvc)
+
 	directBackend := backend.NewDirectBackend(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
 	)

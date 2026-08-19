@@ -77,6 +77,13 @@ const (
 	// heartbeat checks use as a legitimate long-lived status. Global,
 	// self-rescheduling (spec 2026-08-18-03).
 	JobTypeAbandonedResultReaper JobType = "abandoned_result_reaper"
+	// JobTypeIncidentPublish is the debounce timer of the incident
+	// auto-publication pipeline (spec 2026-08-19-08): scheduled at
+	// now + status_pages.auto_publish_delay_seconds when an incident opens, it
+	// re-evaluates eligibility at FIRE time and only then makes the incident
+	// visible on the status page. That re-check is the whole point — an
+	// incident that resolved inside the delay never reaches the public page.
+	JobTypeIncidentPublish JobType = "incident_publish"
 	// JobTypeAgentGC retires platform-operated ("system") agents that stopped
 	// reporting: a fly.io fleet enrolls on boot with a per-machine keypair, so
 	// every machine replacement leaves a dead agent row (and its workers row)
