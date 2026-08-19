@@ -246,3 +246,70 @@ Negatives need proving, with positive controls:
 - Existing pages upgrade with `auto_publish = false`; new pages default true.
 - Migrations apply on both dialects; `make lint`, backend tests, and a
   status0 Playwright E2E (banner + timeline render) green.
+
+## Implementation Plan
+
+1. **Schema + models + DB layer.**
+   `models/incident_publication.go` (row, state/severity/auto-resolve
+   vocabularies, update struct, filter). `status_pages` gains
+   `auto_publish` / `auto_publish_delay_seconds` / `auto_resolve`;
+   `status_page_resources` gains a nullable `auto_publish` (NULL = inherit).
+   New-page default `auto_publish = true` lives in `NewStatusPage`, never in
+   the DDL, so existing rows upgrade to `false`. Migration
+   `017_incident_publications` in BOTH `postgres/` and `sqlite/`, with the
+   partial unique index on `(incident_uid, status_page_uid)`. `db.Service`
+   gains create/get/find/list/update/soft-delete plus the public list and the
+   retention guard `CountIncidentPublicationsForIncident`.
+
+2. **Publication service + manual CRUD + public JSON.**
+   New `internal/handlers/incidentpublications` package (service + handler).
+   Routes: `GET/POST /status-pages/:uid/incidents`,
+   `GET/PATCH /status-pages/:uid/incidents/:uid`,
+   `POST .../incidents/:uid/updates`,
+   `POST/DELETE /orgs/:org/incidents/:uid/publications`. Any manual edit or
+   manual update stamps `human_touched_at`. The public status-page JSON gains
+   `activeIncidents[]` and `/status-pages/:org/:slug/incidents` returns the
+   resolved history. Public payloads carry title/state/severity/timestamps/
+   affected public names/updates only — never probe output.
+
+3. **Auto-publish policy + debounce job + templates + resolve/relapse sync +
+   fan-out + storm cap.** `policy.go` resolves the pages displaying a check
+   (directly or through its group), applies the page/resource `auto_publish`
+   override, and skips `paging_suppressed` incidents and checks in an active
+   maintenance window. `incidents.Service` gets a small
+   `PublicationHook` interface (open / resolve / reopen) wired in
+   `server.go` — no import cycle. Non-zero delay enqueues the new
+   `incident_publish` job at `now + delay`; the job re-checks eligibility at
+   fire time so a blip never publishes. Templates live in `templates.go`,
+   keyed by the page language (en/fr/de/es, en fallback), built ONLY from the
+   resource public name — probe output, error strings and `results.output`
+   are structurally unreachable. Resolve honors `auto_resolve` ×
+   `human_touched_at`; relapse reopens the same row. Subscriber fan-out goes
+   through the existing `statusupdates.SubscriberNotifier`, capped at N sends
+   per publication per hour (`status_page.publication_notify_cap` org
+   parameter, default 4) using two counter columns on the publication row.
+   Realtime `publishStatusHint` fires on every publication change.
+
+4. **status0.** Severity-colored banner when a publication is active, an
+   active-incidents section reusing `status-updates-timeline.tsx`, and an
+   incident-history view. Mobile-first, i18n strings in all four locales.
+
+5. **dash0.** Status-page settings gain the three auto-publish fields; the
+   incident detail page gains a "Published on …" block with publish /
+   unpublish; the publication editor is a dedicated route
+   (`/orgs/$org/status-pages/$statusPageUid/incidents/$uid`), never a modal.
+
+6. **Slice 3 surfaces.** Group-membership "also affecting X" updates
+   (rate-limited), the forked webhook events
+   `statuspage.incident.published|updated|resolved`, MCP tools
+   (list/create publication, post update), config-as-code / MCP fields for the
+   new page settings, OpenAPI paths and schemas, and `web/docs/` coverage
+   under the status-pages feature page.
+
+7. **Tests.** Every negative in `## Verification` with its positive control:
+   the sentinel-hostname leak test (public JSON + feed + subscriber mail vs
+   the internal incident API), blip-vs-delay-0, `paging_suppressed`,
+   maintenance window, touched-vs-untouched resolve, relapse idempotency
+   under concurrency, storm cap, private-page invisibility, and the
+   migration default (existing pages `false`, new pages `true`) on both
+   dialects. Plus a status0 Playwright spec for banner + timeline.
