@@ -50,7 +50,7 @@ const ALL_TYPES: ConnectionType[] = [
   "msteams-bot",
   "ntfy",
   "matrix",
-  "opsgenie",
+  "pagerduty",
   "pushover",
   "twilio",
   "freebox",

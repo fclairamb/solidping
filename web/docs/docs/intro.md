@@ -15,7 +15,7 @@ SolidPing is a **distributed monitoring platform** designed for checking the ava
 - **Multi-Tenant Architecture** - Organization-scoped data isolation with role-based access control and TOTP two-factor authentication
 - **Low Resource Footprint** - Single binary with PostgreSQL or SQLite as the only dependency
 - **Sub-Minute Checks** - Run checks as frequently as every 5 seconds for critical services
-- **Flexible Notifications** - Slack, Discord, Email, Webhooks, Google Chat, Mattermost, ntfy, Matrix, Opsgenie, Pushover, and Web Push
+- **Flexible Notifications** - Slack, Discord, Email, Webhooks, Google Chat, Mattermost, ntfy, Matrix, PagerDuty, Pushover, and Web Push
 - **Smart Incident Management** - Adaptive thresholds, cooldown, group-incident correlation, acknowledgment, snooze, and per-incident comments
 - **On-Call & Escalation** - Rotation schedules with overrides and iCal feeds, plus multi-step escalation policies
 - **Maintenance Windows** - One-time or recurring suppression of alerts during planned work

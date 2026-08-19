@@ -73,7 +73,7 @@
     "mattermost": "Mattermost",
     "ntfy": "ntfy",
     "matrix": "Matrix",
-    "opsgenie": "Opsgenie",
+    "pagerduty": "PagerDuty",
     "pushover": "Pushover",
     "slack": "Slack",
     "discord": "Discord",

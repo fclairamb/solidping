@@ -93,9 +93,8 @@ func (s *PagerDutySender) Send(ctx context.Context, _ *jobdef.JobContext, payloa
 		// Events API v2 has no note/annotation concept, and a `trigger` call
 		// reusing an already-resolved incident's dedup_key would RE-OPEN it.
 		// A comment or an escalation must therefore send NOTHING at all — not
-		// even a best-effort note — which is stronger than the Opsgenie
-		// sender's "add a note" behavior this API simply cannot express. This
-		// drop is deliberate and load-bearing: see spec 2026-08-19-02.
+		// even a best-effort annotation, since this API simply cannot express
+		// one. This drop is deliberate and load-bearing: see spec 2026-08-19-02.
 		return nil
 	default:
 		return s.trigger(ctx, settings, payload)

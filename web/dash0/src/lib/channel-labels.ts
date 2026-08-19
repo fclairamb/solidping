@@ -30,7 +30,7 @@ const TRANSLATED_CHANNELS = new Set([
   "mattermost",
   "ntfy",
   "matrix",
-  "opsgenie",
+  "pagerduty",
   "pushover",
   "slack",
   "discord",
