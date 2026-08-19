@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -167,7 +168,7 @@ func (b *DirectBackend) submitSecretsError(
 		Status:          int(models.ResultStatusError),
 		Duration:        0,
 		Metrics:         map[string]any{},
-		Output:          map[string]any{"error": reason.Error()},
+		Output:          map[string]any{checkerdef.OutputKeyError: reason.Error()},
 		Region:          job.Region,
 		NextScheduledAt: nextScheduledAt(job),
 	}); err != nil {

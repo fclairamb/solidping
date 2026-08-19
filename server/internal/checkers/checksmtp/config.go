@@ -123,6 +123,12 @@ func (c *SMTPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("password", "must be a string")
 	}
 
+	return c.fromMapSendMode(configMap)
+}
+
+// fromMapSendMode parses the send-mode fields (send_email/mail_from/
+// delivery_check_uid), split out of FromMap to keep its complexity down.
+func (c *SMTPConfig) fromMapSendMode(configMap map[string]any) error {
 	if sendEmail, ok := configMap["send_email"].(bool); ok {
 		c.SendEmail = sendEmail
 	} else if configMap["send_email"] != nil {
@@ -190,6 +196,14 @@ func (c *SMTPConfig) GetConfig() map[string]any {
 		cfg["password"] = c.Password
 	}
 
+	c.getConfigSendMode(cfg)
+
+	return cfg
+}
+
+// getConfigSendMode appends the send-mode fields, split out of GetConfig to
+// keep its complexity down.
+func (c *SMTPConfig) getConfigSendMode(cfg map[string]any) {
 	if c.SendEmail {
 		cfg["send_email"] = c.SendEmail
 	}
@@ -201,8 +215,6 @@ func (c *SMTPConfig) GetConfig() map[string]any {
 	if c.DeliveryCheckUID != "" {
 		cfg["delivery_check_uid"] = c.DeliveryCheckUID
 	}
-
-	return cfg
 }
 
 // Validate checks if the configuration is valid.

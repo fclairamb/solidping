@@ -421,15 +421,15 @@ func (c *SMTPChecker) executeSendMode(
 // rejected (and by what server reply) so executeSendMode's Down result stays
 // diagnostic.
 func doSendEmail(textConn *textproto.Conn, mailFrom string, info checkerdef.SMTPDeliveryInfo) error {
-	if _, err := smtpCommand(textConn, smtpCodeOK, "MAIL FROM:<%s>", mailFrom); err != nil {
+	if err := smtpCommand(textConn, smtpCodeOK, "MAIL FROM:<%s>", mailFrom); err != nil {
 		return fmt.Errorf("MAIL FROM rejected: %w", err)
 	}
 
-	if _, err := smtpCommand(textConn, smtpCodeOK, "RCPT TO:<%s>", info.Recipient); err != nil {
+	if err := smtpCommand(textConn, smtpCodeOK, "RCPT TO:<%s>", info.Recipient); err != nil {
 		return fmt.Errorf("RCPT TO rejected: %w", err)
 	}
 
-	if _, err := smtpCommand(textConn, smtpCodeStartData, "DATA"); err != nil {
+	if err := smtpCommand(textConn, smtpCodeStartData, "DATA"); err != nil {
 		return fmt.Errorf("DATA rejected: %w", err)
 	}
 
@@ -454,40 +454,39 @@ func doSendEmail(textConn *textproto.Conn, mailFrom string, info checkerdef.SMTP
 
 // smtpCommand sends an SMTP command and reads the expected response code,
 // mirroring the Cmd/StartResponse/ReadResponse/EndResponse sequence used by
-// sendEHLO/doAUTH/doSTARTTLS above.
-func smtpCommand(textConn *textproto.Conn, expectCode int, format string, args ...any) (string, error) {
+// sendEHLO/doAUTH/doSTARTTLS above. The response message is not returned: a
+// rejected response's err already carries it (textproto.Error), and no
+// caller here needs the message on success.
+func smtpCommand(textConn *textproto.Conn, expectCode int, format string, args ...any) error {
 	id, err := textConn.Cmd(format, args...)
 	if err != nil {
-		return "", fmt.Errorf("failed to send command: %w", err)
+		return fmt.Errorf("failed to send command: %w", err)
 	}
 
 	textConn.StartResponse(id)
 	defer textConn.EndResponse(id)
 
-	_, msg, err := textConn.ReadResponse(expectCode)
-	if err != nil {
-		return "", err
-	}
+	_, _, err = textConn.ReadResponse(expectCode)
 
-	return msg, nil
+	return err
 }
 
 // buildProbeMessage renders the fixed, system-generated probe email. Only the
 // From/To addresses and the two attribution headers vary per send — subject
 // and body are constants (see probeMessageSubject/probeMessageBody).
 func buildProbeMessage(mailFrom, recipient, sourceCheckUID string, sentAt time.Time) string {
-	var b strings.Builder
+	var msgBuf strings.Builder
 
-	fmt.Fprintf(&b, "From: <%s>\r\n", mailFrom)
-	fmt.Fprintf(&b, "To: <%s>\r\n", recipient)
-	fmt.Fprintf(&b, "Subject: %s\r\n", probeMessageSubject)
-	fmt.Fprintf(&b, "Date: %s\r\n", sentAt.Format(time.RFC1123Z))
-	fmt.Fprintf(&b, "%s: %s\r\n", headerSourceCheckUID, sourceCheckUID)
-	fmt.Fprintf(&b, "%s: %s\r\n", headerSentAt, sentAt.Format(time.RFC3339))
-	b.WriteString("\r\n")
-	b.WriteString(probeMessageBody)
+	fmt.Fprintf(&msgBuf, "From: <%s>\r\n", mailFrom)
+	fmt.Fprintf(&msgBuf, "To: <%s>\r\n", recipient)
+	fmt.Fprintf(&msgBuf, "Subject: %s\r\n", probeMessageSubject)
+	fmt.Fprintf(&msgBuf, "Date: %s\r\n", sentAt.Format(time.RFC1123Z))
+	fmt.Fprintf(&msgBuf, "%s: %s\r\n", headerSourceCheckUID, sourceCheckUID)
+	fmt.Fprintf(&msgBuf, "%s: %s\r\n", headerSentAt, sentAt.Format(time.RFC3339))
+	msgBuf.WriteString("\r\n")
+	msgBuf.WriteString(probeMessageBody)
 
-	return b.String()
+	return msgBuf.String()
 }
 
 // doAUTH performs SMTP AUTH PLAIN authentication.

@@ -37,11 +37,25 @@ func (r *sendModeRecording) record(mailFrom, rcptTo, body string) {
 	r.gotData = true
 }
 
-func (r *sendModeRecording) snapshot() (mailFrom, rcptTo, body string, gotData bool) {
+// sendModeSnapshot is a point-in-time copy of what the fake server has
+// recorded, safe to inspect after releasing the recording's lock.
+type sendModeSnapshot struct {
+	mailFrom string
+	rcptTo   string
+	body     string
+	gotData  bool
+}
+
+func (r *sendModeRecording) snapshot() sendModeSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return r.mailFrom, r.rcptTo, r.body, r.gotData
+	return sendModeSnapshot{
+		mailFrom: r.mailFrom,
+		rcptTo:   r.rcptTo,
+		body:     r.body,
+		gotData:  r.gotData,
+	}
 }
 
 type sendModeFakeOpts struct {
@@ -87,7 +101,6 @@ func startSendModeFakeSMTPServer(t *testing.T, opts sendModeFakeOpts) (string, i
 	return "127.0.0.1", port, rec
 }
 
-//nolint:cyclop // straight-line fake protocol handler, mirrors handleFakeSMTP's shape
 func handleSendModeFakeSMTP(conn net.Conn, opts sendModeFakeOpts, rec *sendModeRecording) {
 	defer func() { _ = conn.Close() }()
 
@@ -191,14 +204,18 @@ func extractAngleAddr(line string) string {
 	return line[start+1 : end]
 }
 
-func sendModeConfig(host string, port int, deliveryCheckUID string) *SMTPConfig {
+// sendModeConfig builds a send-mode SMTPConfig. DeliveryCheckUID is a fixed
+// placeholder — the checker itself never dereferences it (that resolution
+// happens server-side before dispatch; see checkerdef.SMTPDeliveryInfo), so
+// its exact value is irrelevant to every test in this file.
+func sendModeConfig(host string, port int) *SMTPConfig {
 	return &SMTPConfig{
 		Host:             host,
 		Port:             port,
 		Timeout:          2 * time.Second,
 		SendEmail:        true,
 		MailFrom:         "prober@example.com",
-		DeliveryCheckUID: deliveryCheckUID,
+		DeliveryCheckUID: "delivery-check-uid",
 	}
 }
 
@@ -212,7 +229,7 @@ func TestSMTPChecker_SendMode_PositiveControl(t *testing.T) {
 	r := require.New(t)
 	host, port, rec := startSendModeFakeSMTPServer(t, sendModeFakeOpts{})
 
-	cfg := sendModeConfig(host, port, "delivery-check-uid")
+	cfg := sendModeConfig(host, port)
 	ctx := checkerdef.WithSMTPDeliveryRecipient(context.Background(), checkerdef.SMTPDeliveryInfo{
 		Recipient:      "deadbeef000000000000000000000000000000000000aa@inbox.example.com",
 		SourceCheckUID: "sending-check-uid",
@@ -224,15 +241,15 @@ func TestSMTPChecker_SendMode_PositiveControl(t *testing.T) {
 	r.Equal(checkerdef.StatusUp, result.Status)
 	r.Contains(result.Metrics, "submission_ms")
 
-	mailFrom, rcptTo, body, gotData := rec.snapshot()
-	r.True(gotData, "the fake server must have received a DATA phase")
-	r.Equal("prober@example.com", mailFrom)
-	r.Equal("deadbeef000000000000000000000000000000000000aa@inbox.example.com", rcptTo)
-	r.Contains(body, "X-SolidPing-Check: sending-check-uid")
-	r.Contains(body, "X-SolidPing-Sent-At: ")
+	snap := rec.snapshot()
+	r.True(snap.gotData, "the fake server must have received a DATA phase")
+	r.Equal("prober@example.com", snap.mailFrom)
+	r.Equal("deadbeef000000000000000000000000000000000000aa@inbox.example.com", snap.rcptTo)
+	r.Contains(snap.body, "X-SolidPing-Check: sending-check-uid")
+	r.Contains(snap.body, "X-SolidPing-Sent-At: ")
 	// The message is entirely system-generated — no user-supplied subject or
 	// body ever reaches the wire.
-	r.Contains(body, "Subject: SolidPing delivery probe")
+	r.Contains(snap.body, "Subject: SolidPing delivery probe")
 }
 
 // TestSMTPChecker_SendMode_NegativeControl_Disabled is the required negative
@@ -257,8 +274,8 @@ func TestSMTPChecker_SendMode_NegativeControl_Disabled(t *testing.T) {
 	r.NoError(err)
 	r.Equal(checkerdef.StatusUp, result.Status)
 
-	_, _, _, gotData := rec.snapshot()
-	r.False(gotData, "send_email:false must never issue MAIL FROM/RCPT TO/DATA")
+	snap := rec.snapshot()
+	r.False(snap.gotData, "send_email:false must never issue MAIL FROM/RCPT TO/DATA")
 }
 
 // TestSMTPChecker_SendMode_NoResolvedRecipient is the guardrail test: this is
@@ -274,7 +291,7 @@ func TestSMTPChecker_SendMode_NoResolvedRecipient(t *testing.T) {
 	r := require.New(t)
 	host, port, rec := startSendModeFakeSMTPServer(t, sendModeFakeOpts{})
 
-	cfg := sendModeConfig(host, port, "delivery-check-uid")
+	cfg := sendModeConfig(host, port)
 
 	checker := &SMTPChecker{}
 	result, err := checker.Execute(context.Background(), cfg)
@@ -282,8 +299,8 @@ func TestSMTPChecker_SendMode_NoResolvedRecipient(t *testing.T) {
 	r.Equal(checkerdef.StatusError, result.Status)
 	r.Contains(result.Output["error"], "no delivery recipient was resolved")
 
-	_, _, _, gotData := rec.snapshot()
-	r.False(gotData, "with no resolved recipient, the checker must never reach DATA")
+	snap := rec.snapshot()
+	r.False(snap.gotData, "with no resolved recipient, the checker must never reach DATA")
 }
 
 // TestSMTPChecker_SendMode_MailFromRejected pins the Down-with-server-reply
@@ -294,7 +311,7 @@ func TestSMTPChecker_SendMode_MailFromRejected(t *testing.T) {
 	r := require.New(t)
 	host, port, _ := startSendModeFakeSMTPServer(t, sendModeFakeOpts{rejectMailFrom: true})
 
-	cfg := sendModeConfig(host, port, "delivery-check-uid")
+	cfg := sendModeConfig(host, port)
 	ctx := checkerdef.WithSMTPDeliveryRecipient(context.Background(), checkerdef.SMTPDeliveryInfo{
 		Recipient:      "deadbeef@inbox.example.com",
 		SourceCheckUID: "sending-check-uid",
@@ -315,7 +332,7 @@ func TestSMTPChecker_SendMode_DataRejected(t *testing.T) {
 	r := require.New(t)
 	host, port, _ := startSendModeFakeSMTPServer(t, sendModeFakeOpts{rejectData: true})
 
-	cfg := sendModeConfig(host, port, "delivery-check-uid")
+	cfg := sendModeConfig(host, port)
 	ctx := checkerdef.WithSMTPDeliveryRecipient(context.Background(), checkerdef.SMTPDeliveryInfo{
 		Recipient:      "deadbeef@inbox.example.com",
 		SourceCheckUID: "sending-check-uid",

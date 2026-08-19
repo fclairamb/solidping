@@ -33,33 +33,38 @@ func setupSMTPDeliveryChecksService(t *testing.T) (*checks.Service, db.Service, 
 	return checks.NewService(dbSvc, nil, creds, nil), dbSvc, org
 }
 
-func configureEmailInboxForTest(t *testing.T, dbSvc db.Service, addressDomain string) {
+func configureEmailInboxForTest(t *testing.T, dbSvc db.Service) {
 	t.Helper()
 
 	err := dbSvc.SetSystemParameter(t.Context(), jmap.SystemParameterKey, map[string]any{
 		"enabled":       true,
 		"sessionUrl":    "https://jmap.example.com/session",
-		"addressDomain": addressDomain,
+		"addressDomain": "inbox.example.com",
 	}, false)
 	require.NoError(t, err)
 }
 
-func createEmailCheck(t *testing.T, svc *checks.Service, org *models.Organization, slug string) checks.CheckResponse {
+// createEmailCheck creates a single fixed-slug email check — every test in
+// this file needs at most one paired delivery target per org, so the slug is
+// a constant rather than a parameter.
+func createEmailCheck(t *testing.T, svc *checks.Service, org *models.Organization) checks.CheckResponse {
 	t.Helper()
 
 	created, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
-		Name: slug, Slug: slug, Type: "email",
+		Name: "delivery", Slug: "delivery", Type: "email",
 	})
 	require.NoError(t, err)
 
 	return created
 }
 
-func smtpSendModeConfig(mailFrom, deliveryCheckUID string) map[string]any {
+// smtpSendModeConfig builds a send-mode SMTP check config. mail_from is fixed
+// (irrelevant to what these tests exercise); deliveryCheckUID varies per test.
+func smtpSendModeConfig(deliveryCheckUID string) map[string]any {
 	return map[string]any{
 		"host":               "mail.example.com",
 		"send_email":         true,
-		"mail_from":          mailFrom,
+		"mail_from":          "prober@example.com",
 		"delivery_check_uid": deliveryCheckUID,
 	}
 }
@@ -71,13 +76,13 @@ func TestCreateSendModeSMTPCheck(t *testing.T) {
 	r := require.New(t)
 
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
-	configureEmailInboxForTest(t, dbSvc, "inbox.example.com")
+	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org, "delivery")
+	emailCheck := createEmailCheck(t, svc, org)
 
 	created, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "probe", Slug: "probe", Type: "smtp",
-		Config: smtpSendModeConfig("prober@example.com", emailCheck.UID),
+		Config: smtpSendModeConfig(emailCheck.UID),
 	})
 	r.NoError(err)
 	r.Equal(emailCheck.UID, created.Config["delivery_check_uid"])
@@ -90,9 +95,9 @@ func TestCreateSendModeSMTPCheckRejections(t *testing.T) {
 	t.Parallel()
 
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
-	configureEmailInboxForTest(t, dbSvc, "inbox.example.com")
+	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org, "delivery")
+	emailCheck := createEmailCheck(t, svc, org)
 
 	notEmail, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "plain", Slug: "plain", Type: "http",
@@ -114,12 +119,12 @@ func TestCreateSendModeSMTPCheckRejections(t *testing.T) {
 	}{
 		{
 			name:    "cross-org delivery_check_uid rejected",
-			config:  smtpSendModeConfig("prober@example.com", foreignEmailCheck.UID),
+			config:  smtpSendModeConfig(foreignEmailCheck.UID),
 			wantErr: "does not exist in this organization",
 		},
 		{
 			name:    "wrong-type delivery_check_uid rejected",
-			config:  smtpSendModeConfig("prober@example.com", notEmail.UID),
+			config:  smtpSendModeConfig(notEmail.UID),
 			wantErr: "only email checks can be a delivery target",
 		},
 		{
@@ -134,7 +139,7 @@ func TestCreateSendModeSMTPCheckRejections(t *testing.T) {
 		},
 		{
 			name:    "nonexistent delivery_check_uid rejected",
-			config:  smtpSendModeConfig("prober@example.com", "00000000-0000-0000-0000-000000000000"),
+			config:  smtpSendModeConfig("00000000-0000-0000-0000-000000000000"),
 			wantErr: "does not exist in this organization",
 		},
 	}
@@ -164,11 +169,11 @@ func TestCreateSendModeSMTPCheckNoEmailInbox(t *testing.T) {
 	svc, _, org := setupSMTPDeliveryChecksService(t)
 	// Deliberately NOT calling configureEmailInboxForTest.
 
-	emailCheck := createEmailCheck(t, svc, org, "delivery")
+	emailCheck := createEmailCheck(t, svc, org)
 
 	_, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "probe", Slug: "probe", Type: "smtp",
-		Config: smtpSendModeConfig("prober@example.com", emailCheck.UID),
+		Config: smtpSendModeConfig(emailCheck.UID),
 	})
 	r.Error(err)
 	r.Contains(err.Error(), "no email inbox configured")
@@ -181,15 +186,15 @@ func TestCreateSendModeSMTPCheckMinInterval(t *testing.T) {
 	r := require.New(t)
 
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
-	configureEmailInboxForTest(t, dbSvc, "inbox.example.com")
+	configureEmailInboxForTest(t, dbSvc)
 
-	emailCheck := createEmailCheck(t, svc, org, "delivery")
+	emailCheck := createEmailCheck(t, svc, org)
 	shortPeriod := "10s"
 
 	_, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "probe", Slug: "probe", Type: "smtp",
 		Period: &shortPeriod,
-		Config: smtpSendModeConfig("prober@example.com", emailCheck.UID),
+		Config: smtpSendModeConfig(emailCheck.UID),
 	})
 	r.Error(err)
 	r.Contains(err.Error(), "at least 1m0s")
@@ -212,7 +217,7 @@ func TestUpdateSendModeSMTPCheckValidatesOnPatch(t *testing.T) {
 	r := require.New(t)
 
 	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
-	configureEmailInboxForTest(t, dbSvc, "inbox.example.com")
+	configureEmailInboxForTest(t, dbSvc)
 
 	notEmail, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
 		Name: "plain", Slug: "plain", Type: "http",
@@ -226,7 +231,7 @@ func TestUpdateSendModeSMTPCheckValidatesOnPatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	patchConfig := smtpSendModeConfig("prober@example.com", notEmail.UID)
+	patchConfig := smtpSendModeConfig(notEmail.UID)
 	_, err = svc.UpdateCheck(t.Context(), org.Slug, plain.UID, &checks.UpdateCheckRequest{
 		Config: &patchConfig,
 	})

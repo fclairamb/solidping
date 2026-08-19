@@ -216,7 +216,7 @@ func TestEnrichFromSMTPHeadersAbsent(t *testing.T) {
 	// Byte-identical behavior: no new keys appear when the headers are
 	// missing (backward compatibility with human/heartbeat-style uses).
 	r.Len(output, 1)
-	r.Len(metrics, 0)
+	r.Empty(metrics)
 }
 
 func TestEnrichFromSMTPHeadersMalformedSentAt(t *testing.T) {
