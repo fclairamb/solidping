@@ -4458,6 +4458,226 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Incident publication APIs (spec 2026-08-19-08)
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents:
+    get:
+      tags: [StatusPages]
+      summary: List the incident publications on a status page
+      operationId: listStatusPageIncidents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [investigating, identified, monitoring, resolved]
+        - name: active
+          in: query
+          description: When "true", returns only publications that are not resolved.
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: List of publications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublicationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Publish a hand-written incident on a status page
+      operationId: createStatusPageIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIncidentPublicationRequest"
+      responses:
+        "201":
+          description: Publication created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}:
+    get:
+      tags: [StatusPages]
+      summary: Get one incident publication with its narrative
+      operationId: getStatusPageIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      responses:
+        "200":
+          description: The publication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusPages]
+      summary: Edit a publication's title, severity or state
+      operationId: updateStatusPageIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIncidentPublicationRequest"
+      responses:
+        "200":
+          description: The updated publication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates:
+    post:
+      tags: [StatusPages]
+      summary: Append a narrative update to a published incident
+      operationId: createStatusPageIncidentUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppendPublicationUpdateRequest"
+      responses:
+        "201":
+          description: The appended update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationUpdate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{incidentUid}/publications:
+    get:
+      tags: [Incidents]
+      summary: List every status page this incident is published on
+      operationId: listIncidentPublications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidNamedPath"
+      responses:
+        "200":
+          description: List of publications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublicationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Incidents]
+      summary: Publish this incident on a status page
+      operationId: publishIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidNamedPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishIncidentRequest"
+      responses:
+        "201":
+          description: Publication created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/incidents/{incidentUid}/publications/{uid}:
+    delete:
+      tags: [Incidents]
+      summary: Unpublish this incident from a status page
+      operationId: unpublishIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidNamedPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      responses:
+        "204":
+          description: Publication removed from the page
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Status update APIs
   /api/v1/orgs/{org}/status-updates:
     get:
@@ -6455,6 +6675,27 @@ components:
         type: string
         format: uuid
       description: Resource UID
+
+    PublicationUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Incident publication UID
+
+    IncidentUidNamedPath:
+      name: incidentUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: >-
+        Incident UID. Distinct from IncidentUidPath, which is named `uid` — the
+        publication sub-routes need both an incident UID and a publication UID
+        in the same path, so the incident half is named explicitly.
 
     SubscriberUidPath:
       name: uid
@@ -9062,6 +9303,29 @@ components:
           description: History window (24h, 7d, 30d, 90d)
         language:
           type: string
+        autoPublish:
+          type: boolean
+          description: >-
+            Whether incidents affecting this page's resources are published
+            automatically as public incidents. FALSE on every page that existed
+            before this feature shipped (the migration deliberately did not opt
+            anyone in retroactively); TRUE by default on pages created since.
+        autoPublishDelaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          description: >-
+            Debounce before an incident becomes public. 0 publishes
+            immediately; an incident that resolves inside this window is never
+            published at all.
+        autoResolve:
+          type: string
+          enum: [always, if_untouched, never]
+          description: >-
+            What an auto-created publication does when its incident resolves.
+            "if_untouched" (the default) resolves it only while nobody has
+            edited it; once a human owns the narrative the automation posts a
+            "component recovered" note and leaves the final resolve to them.
         customCss:
           type: string
           nullable: true
@@ -9141,6 +9405,254 @@ components:
         statusCounts:
           $ref: "#/components/schemas/StatusCounts"
           description: Same population rule as overallStatus.
+        activeIncidents:
+          type: array
+          description: >-
+            Currently-open incident publications for this page. Same population
+            rule as overallStatus (public view paths only). Every field on them
+            is operator-authored or templated from the page's own public
+            resource names — probe output, error strings and results.output
+            never reach this payload.
+          items:
+            $ref: "#/components/schemas/PublicIncident"
+
+    PublicIncident:
+      type: object
+      description: >-
+        One customer-facing incident on a status page — the PUBLICATION, not
+        the internal incident. The operational `incidents` row carries
+        ack/snooze metadata, an auto-generated title built from the check slug,
+        and probe diagnostics; none of that has a field here.
+      required: [uid, title, state, startedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          enum: [minor, major, critical]
+          description: Display-only public badge. Absent when the operator set none.
+        startedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        affectedResources:
+          type: array
+          description: >-
+            Public display names of the page resources this incident covers.
+            Resolved by walking the PAGE's own resources, so it can only ever
+            contain names the page already renders.
+          items:
+            type: string
+        updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicIncidentUpdate"
+
+    PublicIncidentUpdate:
+      type: object
+      required: [uid, kind, title, bodyMarkdown, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [investigating, identified, monitoring, resolved, maintenance, info]
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    IncidentPublication:
+      type: object
+      description: >-
+        The operator-facing view of a publication.
+      required: [uid, statusPageUid, title, state, autoCreated, humanTouched, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        statusPageUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+          description: >-
+            The internal incident this publication tracks. Absent for a
+            hand-authored publication, which tracks nothing.
+        title:
+          type: string
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          enum: [minor, major, critical]
+        autoCreated:
+          type: boolean
+          description: >-
+            True when the auto-publish pipeline minted it. Only auto-created
+            publications are candidates for auto-resolve and relapse reopen.
+        humanTouched:
+          type: boolean
+          description: >-
+            True once a person edited the publication or posted an update on
+            it. This flag is the whole basis of the `if_untouched` auto-resolve
+            policy.
+        publishedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        affectedResources:
+          type: array
+          items:
+            type: string
+        updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicationUpdate"
+
+    PublicationUpdate:
+      type: object
+      required: [uid, kind, title, bodyMarkdown, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [investigating, identified, monitoring, resolved, maintenance, info]
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        authorUid:
+          type: string
+          format: uuid
+          description: >-
+            Absent for updates generated by the auto-publish pipeline — a
+            machine post has no author, and attributing it to a human would be
+            a lie the UI then renders.
+
+    IncidentPublicationListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentPublication"
+
+    PublicIncidentListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicIncident"
+
+    CreateIncidentPublicationRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Customer-facing title. Never paste probe output into it.
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          enum: [minor, major, critical]
+        incidentUid:
+          type: string
+          format: uuid
+        bodyMarkdown:
+          type: string
+          maxLength: 16384
+          description: Optional first narrative entry.
+
+    UpdateIncidentPublicationRequest:
+      type: object
+      description: >-
+        PATCH semantics. ANY field present stamps human_touched_at, which stops
+        the auto-resolve pipeline from closing the incident behind the
+        operator's back.
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          description: >-
+            One of minor | major | critical, or an empty string to clear the
+            badge.
+
+    AppendPublicationUpdateRequest:
+      type: object
+      required: [kind, bodyMarkdown]
+      description: >-
+        Updates are APPEND-ONLY: there is deliberately no edit and no delete
+        endpoint for them.
+      properties:
+        kind:
+          type: string
+          enum: [investigating, identified, monitoring, resolved, maintenance, info]
+          description: >-
+            The first four also advance the publication's state, so the header
+            and the timeline can never disagree.
+        title:
+          type: string
+          maxLength: 200
+        bodyMarkdown:
+          type: string
+          maxLength: 16384
+
+    PublishIncidentRequest:
+      type: object
+      required: [statusPageUid]
+      properties:
+        statusPageUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 200
+          description: >-
+            Templated from the page's public resource name when omitted. The
+            incident's internal title is never used — it is built from the
+            check slug.
+        severity:
+          type: string
+          enum: [minor, major, critical]
 
     StatusCounts:
       type: object
@@ -9434,6 +9946,14 @@ components:
           type: string
         explanation:
           type: string
+        autoPublish:
+          type: boolean
+          nullable: true
+          description: >-
+            Per-resource auto-publish override. ABSENT/null means "inherit the
+            page setting", which is NOT the same as an explicit false — a page
+            can therefore be flipped on or off without rewriting every
+            resource's intent.
         position:
           type: integer
         createdAt:

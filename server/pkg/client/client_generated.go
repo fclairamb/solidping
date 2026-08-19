@@ -87,6 +87,36 @@ func (e AdminJobStatus) Valid() bool {
 	}
 }
 
+// Defines values for AppendPublicationUpdateRequestKind.
+const (
+	AppendPublicationUpdateRequestKindIdentified    AppendPublicationUpdateRequestKind = "identified"
+	AppendPublicationUpdateRequestKindInfo          AppendPublicationUpdateRequestKind = "info"
+	AppendPublicationUpdateRequestKindInvestigating AppendPublicationUpdateRequestKind = "investigating"
+	AppendPublicationUpdateRequestKindMaintenance   AppendPublicationUpdateRequestKind = "maintenance"
+	AppendPublicationUpdateRequestKindMonitoring    AppendPublicationUpdateRequestKind = "monitoring"
+	AppendPublicationUpdateRequestKindResolved      AppendPublicationUpdateRequestKind = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the AppendPublicationUpdateRequestKind enum.
+func (e AppendPublicationUpdateRequestKind) Valid() bool {
+	switch e {
+	case AppendPublicationUpdateRequestKindIdentified:
+		return true
+	case AppendPublicationUpdateRequestKindInfo:
+		return true
+	case AppendPublicationUpdateRequestKindInvestigating:
+		return true
+	case AppendPublicationUpdateRequestKindMaintenance:
+		return true
+	case AppendPublicationUpdateRequestKindMonitoring:
+		return true
+	case AppendPublicationUpdateRequestKindResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ApproveMembershipRequestRequestRole.
 const (
 	ApproveMembershipRequestRequestRoleAdmin  ApproveMembershipRequestRequestRole = "admin"
@@ -330,6 +360,51 @@ func (e CreateDependencyRequestKind) Valid() bool {
 	case CreateDependencyRequestKindHard:
 		return true
 	case CreateDependencyRequestKindSoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateIncidentPublicationRequestSeverity.
+const (
+	CreateIncidentPublicationRequestSeverityCritical CreateIncidentPublicationRequestSeverity = "critical"
+	CreateIncidentPublicationRequestSeverityMajor    CreateIncidentPublicationRequestSeverity = "major"
+	CreateIncidentPublicationRequestSeverityMinor    CreateIncidentPublicationRequestSeverity = "minor"
+)
+
+// Valid indicates whether the value is a known member of the CreateIncidentPublicationRequestSeverity enum.
+func (e CreateIncidentPublicationRequestSeverity) Valid() bool {
+	switch e {
+	case CreateIncidentPublicationRequestSeverityCritical:
+		return true
+	case CreateIncidentPublicationRequestSeverityMajor:
+		return true
+	case CreateIncidentPublicationRequestSeverityMinor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateIncidentPublicationRequestState.
+const (
+	CreateIncidentPublicationRequestStateIdentified    CreateIncidentPublicationRequestState = "identified"
+	CreateIncidentPublicationRequestStateInvestigating CreateIncidentPublicationRequestState = "investigating"
+	CreateIncidentPublicationRequestStateMonitoring    CreateIncidentPublicationRequestState = "monitoring"
+	CreateIncidentPublicationRequestStateResolved      CreateIncidentPublicationRequestState = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the CreateIncidentPublicationRequestState enum.
+func (e CreateIncidentPublicationRequestState) Valid() bool {
+	switch e {
+	case CreateIncidentPublicationRequestStateIdentified:
+		return true
+	case CreateIncidentPublicationRequestStateInvestigating:
+		return true
+	case CreateIncidentPublicationRequestStateMonitoring:
+		return true
+	case CreateIncidentPublicationRequestStateResolved:
 		return true
 	default:
 		return false
@@ -747,6 +822,51 @@ func (e IncidentDetailState) Valid() bool {
 	}
 }
 
+// Defines values for IncidentPublicationSeverity.
+const (
+	IncidentPublicationSeverityCritical IncidentPublicationSeverity = "critical"
+	IncidentPublicationSeverityMajor    IncidentPublicationSeverity = "major"
+	IncidentPublicationSeverityMinor    IncidentPublicationSeverity = "minor"
+)
+
+// Valid indicates whether the value is a known member of the IncidentPublicationSeverity enum.
+func (e IncidentPublicationSeverity) Valid() bool {
+	switch e {
+	case IncidentPublicationSeverityCritical:
+		return true
+	case IncidentPublicationSeverityMajor:
+		return true
+	case IncidentPublicationSeverityMinor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IncidentPublicationState.
+const (
+	IncidentPublicationStateIdentified    IncidentPublicationState = "identified"
+	IncidentPublicationStateInvestigating IncidentPublicationState = "investigating"
+	IncidentPublicationStateMonitoring    IncidentPublicationState = "monitoring"
+	IncidentPublicationStateResolved      IncidentPublicationState = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the IncidentPublicationState enum.
+func (e IncidentPublicationState) Valid() bool {
+	switch e {
+	case IncidentPublicationStateIdentified:
+		return true
+	case IncidentPublicationStateInvestigating:
+		return true
+	case IncidentPublicationStateMonitoring:
+		return true
+	case IncidentPublicationStateResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IntegrationIdentitySource.
 const (
 	IntegrationIdentitySourceAuto   IntegrationIdentitySource = "auto"
@@ -1068,6 +1188,132 @@ func (e OrganizationMemberSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for PublicIncidentSeverity.
+const (
+	PublicIncidentSeverityCritical PublicIncidentSeverity = "critical"
+	PublicIncidentSeverityMajor    PublicIncidentSeverity = "major"
+	PublicIncidentSeverityMinor    PublicIncidentSeverity = "minor"
+)
+
+// Valid indicates whether the value is a known member of the PublicIncidentSeverity enum.
+func (e PublicIncidentSeverity) Valid() bool {
+	switch e {
+	case PublicIncidentSeverityCritical:
+		return true
+	case PublicIncidentSeverityMajor:
+		return true
+	case PublicIncidentSeverityMinor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublicIncidentState.
+const (
+	PublicIncidentStateIdentified    PublicIncidentState = "identified"
+	PublicIncidentStateInvestigating PublicIncidentState = "investigating"
+	PublicIncidentStateMonitoring    PublicIncidentState = "monitoring"
+	PublicIncidentStateResolved      PublicIncidentState = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the PublicIncidentState enum.
+func (e PublicIncidentState) Valid() bool {
+	switch e {
+	case PublicIncidentStateIdentified:
+		return true
+	case PublicIncidentStateInvestigating:
+		return true
+	case PublicIncidentStateMonitoring:
+		return true
+	case PublicIncidentStateResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublicIncidentUpdateKind.
+const (
+	PublicIncidentUpdateKindIdentified    PublicIncidentUpdateKind = "identified"
+	PublicIncidentUpdateKindInfo          PublicIncidentUpdateKind = "info"
+	PublicIncidentUpdateKindInvestigating PublicIncidentUpdateKind = "investigating"
+	PublicIncidentUpdateKindMaintenance   PublicIncidentUpdateKind = "maintenance"
+	PublicIncidentUpdateKindMonitoring    PublicIncidentUpdateKind = "monitoring"
+	PublicIncidentUpdateKindResolved      PublicIncidentUpdateKind = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the PublicIncidentUpdateKind enum.
+func (e PublicIncidentUpdateKind) Valid() bool {
+	switch e {
+	case PublicIncidentUpdateKindIdentified:
+		return true
+	case PublicIncidentUpdateKindInfo:
+		return true
+	case PublicIncidentUpdateKindInvestigating:
+		return true
+	case PublicIncidentUpdateKindMaintenance:
+		return true
+	case PublicIncidentUpdateKindMonitoring:
+		return true
+	case PublicIncidentUpdateKindResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublicationUpdateKind.
+const (
+	PublicationUpdateKindIdentified    PublicationUpdateKind = "identified"
+	PublicationUpdateKindInfo          PublicationUpdateKind = "info"
+	PublicationUpdateKindInvestigating PublicationUpdateKind = "investigating"
+	PublicationUpdateKindMaintenance   PublicationUpdateKind = "maintenance"
+	PublicationUpdateKindMonitoring    PublicationUpdateKind = "monitoring"
+	PublicationUpdateKindResolved      PublicationUpdateKind = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the PublicationUpdateKind enum.
+func (e PublicationUpdateKind) Valid() bool {
+	switch e {
+	case PublicationUpdateKindIdentified:
+		return true
+	case PublicationUpdateKindInfo:
+		return true
+	case PublicationUpdateKindInvestigating:
+		return true
+	case PublicationUpdateKindMaintenance:
+		return true
+	case PublicationUpdateKindMonitoring:
+		return true
+	case PublicationUpdateKindResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PublishIncidentRequestSeverity.
+const (
+	PublishIncidentRequestSeverityCritical PublishIncidentRequestSeverity = "critical"
+	PublishIncidentRequestSeverityMajor    PublishIncidentRequestSeverity = "major"
+	PublishIncidentRequestSeverityMinor    PublishIncidentRequestSeverity = "minor"
+)
+
+// Valid indicates whether the value is a known member of the PublishIncidentRequestSeverity enum.
+func (e PublishIncidentRequestSeverity) Valid() bool {
+	switch e {
+	case PublishIncidentRequestSeverityCritical:
+		return true
+	case PublishIncidentRequestSeverityMajor:
+		return true
+	case PublishIncidentRequestSeverityMinor:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RegionCapabilitiesBrowser.
 const (
 	RegionCapabilitiesBrowserNo      RegionCapabilitiesBrowser = "no"
@@ -1146,6 +1392,27 @@ func (e ResultFallbackInfoReason) Valid() bool {
 	case ResultFallbackInfoReasonRolledUpToHour:
 		return true
 	case ResultFallbackInfoReasonRolledUpToMonth:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StatusPageAutoResolve.
+const (
+	StatusPageAutoResolveAlways      StatusPageAutoResolve = "always"
+	StatusPageAutoResolveIfUntouched StatusPageAutoResolve = "if_untouched"
+	StatusPageAutoResolveNever       StatusPageAutoResolve = "never"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageAutoResolve enum.
+func (e StatusPageAutoResolve) Valid() bool {
+	switch e {
+	case StatusPageAutoResolveAlways:
+		return true
+	case StatusPageAutoResolveIfUntouched:
+		return true
+	case StatusPageAutoResolveNever:
 		return true
 	default:
 		return false
@@ -1257,6 +1524,30 @@ func (e UpdateDependencyRequestKind) Valid() bool {
 	case UpdateDependencyRequestKindHard:
 		return true
 	case UpdateDependencyRequestKindSoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateIncidentPublicationRequestState.
+const (
+	UpdateIncidentPublicationRequestStateIdentified    UpdateIncidentPublicationRequestState = "identified"
+	UpdateIncidentPublicationRequestStateInvestigating UpdateIncidentPublicationRequestState = "investigating"
+	UpdateIncidentPublicationRequestStateMonitoring    UpdateIncidentPublicationRequestState = "monitoring"
+	UpdateIncidentPublicationRequestStateResolved      UpdateIncidentPublicationRequestState = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the UpdateIncidentPublicationRequestState enum.
+func (e UpdateIncidentPublicationRequestState) Valid() bool {
+	switch e {
+	case UpdateIncidentPublicationRequestStateIdentified:
+		return true
+	case UpdateIncidentPublicationRequestStateInvestigating:
+		return true
+	case UpdateIncidentPublicationRequestStateMonitoring:
+		return true
+	case UpdateIncidentPublicationRequestStateResolved:
 		return true
 	default:
 		return false
@@ -1446,6 +1737,30 @@ func (e ListOrgMembershipRequestsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListStatusPageIncidentsParamsState.
+const (
+	ListStatusPageIncidentsParamsStateIdentified    ListStatusPageIncidentsParamsState = "identified"
+	ListStatusPageIncidentsParamsStateInvestigating ListStatusPageIncidentsParamsState = "investigating"
+	ListStatusPageIncidentsParamsStateMonitoring    ListStatusPageIncidentsParamsState = "monitoring"
+	ListStatusPageIncidentsParamsStateResolved      ListStatusPageIncidentsParamsState = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the ListStatusPageIncidentsParamsState enum.
+func (e ListStatusPageIncidentsParamsState) Valid() bool {
+	switch e {
+	case ListStatusPageIncidentsParamsStateIdentified:
+		return true
+	case ListStatusPageIncidentsParamsStateInvestigating:
+		return true
+	case ListStatusPageIncidentsParamsStateMonitoring:
+		return true
+	case ListStatusPageIncidentsParamsStateResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetStatusPageBadgeParamsStyle.
 const (
 	GetStatusPageBadgeParamsStyleFlat       GetStatusPageBadgeParamsStyle = "flat"
@@ -1569,6 +1884,18 @@ type AdminMemberContact struct {
 	// Verified Always false — an admin can never create a verified contact.
 	Verified bool `json:"verified"`
 }
+
+// AppendPublicationUpdateRequest Updates are APPEND-ONLY: there is deliberately no edit and no delete endpoint for them.
+type AppendPublicationUpdateRequest struct {
+	BodyMarkdown string `json:"bodyMarkdown"`
+
+	// Kind The first four also advance the publication's state, so the header and the timeline can never disagree.
+	Kind  AppendPublicationUpdateRequestKind `json:"kind"`
+	Title *string                            `json:"title,omitempty"`
+}
+
+// AppendPublicationUpdateRequestKind The first four also advance the publication's state, so the header and the timeline can never disagree.
+type AppendPublicationUpdateRequestKind string
 
 // ApproveMembershipRequestRequest defines model for ApproveMembershipRequestRequest.
 type ApproveMembershipRequestRequest struct {
@@ -2164,6 +2491,24 @@ type CreateEscalationPolicyRequest struct {
 	RepeatMax          *int                   `json:"repeatMax,omitempty"`
 	Steps              *[]EscalationStepInput `json:"steps,omitempty"`
 }
+
+// CreateIncidentPublicationRequest defines model for CreateIncidentPublicationRequest.
+type CreateIncidentPublicationRequest struct {
+	// BodyMarkdown Optional first narrative entry.
+	BodyMarkdown *string                                   `json:"bodyMarkdown,omitempty"`
+	IncidentUid  *openapi_types.UUID                       `json:"incidentUid,omitempty"`
+	Severity     *CreateIncidentPublicationRequestSeverity `json:"severity,omitempty"`
+	State        *CreateIncidentPublicationRequestState    `json:"state,omitempty"`
+
+	// Title Customer-facing title. Never paste probe output into it.
+	Title string `json:"title"`
+}
+
+// CreateIncidentPublicationRequestSeverity defines model for CreateIncidentPublicationRequest.Severity.
+type CreateIncidentPublicationRequestSeverity string
+
+// CreateIncidentPublicationRequestState defines model for CreateIncidentPublicationRequest.State.
+type CreateIncidentPublicationRequestState string
 
 // CreateInvitationRequest defines model for CreateInvitationRequest.
 type CreateInvitationRequest struct {
@@ -2903,6 +3248,41 @@ type IncidentDetailState string
 type IncidentListResponse struct {
 	Data       *[]IncidentDetail `json:"data,omitempty"`
 	Pagination *CursorPagination `json:"pagination,omitempty"`
+}
+
+// IncidentPublication The operator-facing view of a publication.
+type IncidentPublication struct {
+	AffectedResources *[]string `json:"affectedResources,omitempty"`
+
+	// AutoCreated True when the auto-publish pipeline minted it. Only auto-created publications are candidates for auto-resolve and relapse reopen.
+	AutoCreated bool       `json:"autoCreated"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty"`
+
+	// HumanTouched True once a person edited the publication or posted an update on it. This flag is the whole basis of the `if_untouched` auto-resolve policy.
+	HumanTouched bool `json:"humanTouched"`
+
+	// IncidentUid The internal incident this publication tracks. Absent for a hand-authored publication, which tracks nothing.
+	IncidentUid   *openapi_types.UUID          `json:"incidentUid,omitempty"`
+	PublishedAt   time.Time                    `json:"publishedAt"`
+	ResolvedAt    *time.Time                   `json:"resolvedAt,omitempty"`
+	Severity      *IncidentPublicationSeverity `json:"severity,omitempty"`
+	State         IncidentPublicationState     `json:"state"`
+	StatusPageUid openapi_types.UUID           `json:"statusPageUid"`
+	Title         string                       `json:"title"`
+	Uid           openapi_types.UUID           `json:"uid"`
+	UpdatedAt     *time.Time                   `json:"updatedAt,omitempty"`
+	Updates       *[]PublicationUpdate         `json:"updates,omitempty"`
+}
+
+// IncidentPublicationSeverity defines model for IncidentPublication.Severity.
+type IncidentPublicationSeverity string
+
+// IncidentPublicationState defines model for IncidentPublication.State.
+type IncidentPublicationState string
+
+// IncidentPublicationListResponse defines model for IncidentPublicationListResponse.
+type IncidentPublicationListResponse struct {
+	Data []IncidentPublication `json:"data"`
 }
 
 // IncidentSnoozeRequest Snooze target. Provide either an absolute `until` timestamp or a relative `duration` (e.g. "1h", "30m").
@@ -3762,6 +4142,39 @@ type PublicConfigResponse struct {
 	Whatsapp *PublicWhatsAppConfig `json:"whatsapp,omitempty"`
 }
 
+// PublicIncident One customer-facing incident on a status page — the PUBLICATION, not the internal incident. The operational `incidents` row carries ack/snooze metadata, an auto-generated title built from the check slug, and probe diagnostics; none of that has a field here.
+type PublicIncident struct {
+	// AffectedResources Public display names of the page resources this incident covers. Resolved by walking the PAGE's own resources, so it can only ever contain names the page already renders.
+	AffectedResources *[]string  `json:"affectedResources,omitempty"`
+	ResolvedAt        *time.Time `json:"resolvedAt,omitempty"`
+
+	// Severity Display-only public badge. Absent when the operator set none.
+	Severity  *PublicIncidentSeverity `json:"severity,omitempty"`
+	StartedAt time.Time               `json:"startedAt"`
+	State     PublicIncidentState     `json:"state"`
+	Title     string                  `json:"title"`
+	Uid       openapi_types.UUID      `json:"uid"`
+	Updates   *[]PublicIncidentUpdate `json:"updates,omitempty"`
+}
+
+// PublicIncidentSeverity Display-only public badge. Absent when the operator set none.
+type PublicIncidentSeverity string
+
+// PublicIncidentState defines model for PublicIncident.State.
+type PublicIncidentState string
+
+// PublicIncidentUpdate defines model for PublicIncidentUpdate.
+type PublicIncidentUpdate struct {
+	BodyMarkdown string                   `json:"bodyMarkdown"`
+	Kind         PublicIncidentUpdateKind `json:"kind"`
+	PublishedAt  time.Time                `json:"publishedAt"`
+	Title        string                   `json:"title"`
+	Uid          openapi_types.UUID       `json:"uid"`
+}
+
+// PublicIncidentUpdateKind defines model for PublicIncidentUpdate.Kind.
+type PublicIncidentUpdateKind string
+
 // PublicPostHogConfig defines model for PublicPostHogConfig.
 type PublicPostHogConfig struct {
 	// Enabled Resolved enablement, i.e. `posthog.enabled == true` **and** a
@@ -3811,6 +4224,32 @@ type PublicWhatsAppConfig struct {
 	// on any deployment that has not configured a WABA.
 	Enabled bool `json:"enabled"`
 }
+
+// PublicationUpdate defines model for PublicationUpdate.
+type PublicationUpdate struct {
+	// AuthorUid Absent for updates generated by the auto-publish pipeline — a machine post has no author, and attributing it to a human would be a lie the UI then renders.
+	AuthorUid    *openapi_types.UUID   `json:"authorUid,omitempty"`
+	BodyMarkdown string                `json:"bodyMarkdown"`
+	Kind         PublicationUpdateKind `json:"kind"`
+	PublishedAt  time.Time             `json:"publishedAt"`
+	Title        string                `json:"title"`
+	Uid          openapi_types.UUID    `json:"uid"`
+}
+
+// PublicationUpdateKind defines model for PublicationUpdate.Kind.
+type PublicationUpdateKind string
+
+// PublishIncidentRequest defines model for PublishIncidentRequest.
+type PublishIncidentRequest struct {
+	Severity      *PublishIncidentRequestSeverity `json:"severity,omitempty"`
+	StatusPageUid openapi_types.UUID              `json:"statusPageUid"`
+
+	// Title Templated from the page's public resource name when omitted. The incident's internal title is never used — it is built from the check slug.
+	Title *string `json:"title,omitempty"`
+}
+
+// PublishIncidentRequestSeverity defines model for PublishIncidentRequest.Severity.
+type PublishIncidentRequestSeverity string
 
 // RefreshRequest defines model for RefreshRequest.
 type RefreshRequest struct {
@@ -3996,6 +4435,17 @@ type StatusCounts struct {
 
 // StatusPage defines model for StatusPage.
 type StatusPage struct {
+	// ActiveIncidents Currently-open incident publications for this page. Same population rule as overallStatus (public view paths only). Every field on them is operator-authored or templated from the page's own public resource names — probe output, error strings and results.output never reach this payload.
+	ActiveIncidents *[]PublicIncident `json:"activeIncidents,omitempty"`
+
+	// AutoPublish Whether incidents affecting this page's resources are published automatically as public incidents. FALSE on every page that existed before this feature shipped (the migration deliberately did not opt anyone in retroactively); TRUE by default on pages created since.
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
+	// AutoPublishDelaySeconds Debounce before an incident becomes public. 0 publishes immediately; an incident that resolves inside this window is never published at all.
+	AutoPublishDelaySeconds *int `json:"autoPublishDelaySeconds,omitempty"`
+
+	// AutoResolve What an auto-created publication does when its incident resolves. "if_untouched" (the default) resolves it only while nobody has edited it; once a human owns the narrative the automation posts a "component recovered" note and leaves the final resolve to them.
+	AutoResolve            *StatusPageAutoResolve `json:"autoResolve,omitempty"`
 	AvailabilityThresholds AvailabilityThresholds `json:"availabilityThresholds"`
 	CreatedAt              *time.Time             `json:"createdAt,omitempty"`
 
@@ -4042,6 +4492,9 @@ type StatusPage struct {
 	Visibility string `json:"visibility"`
 }
 
+// StatusPageAutoResolve What an auto-created publication does when its incident resolves. "if_untouched" (the default) resolves it only while nobody has edited it; once a human owns the narrative the automation posts a "component recovered" note and leaves the final resolve to them.
+type StatusPageAutoResolve string
+
 // StatusPageCustomDomainCertStatus TLS certificate state for the custom domain when the server terminates TLS itself (config acme.enabled). "none" = nothing issued yet (issuance is on-demand, on the first HTTPS request), "issued" = a certificate is in storage, "error" = the last issuance attempt failed (see the server log). Omitted when in-server TLS is disabled or the domain is not verified yet. Authenticated endpoints only.
 type StatusPageCustomDomainCertStatus string
 
@@ -4058,6 +4511,9 @@ type StatusPageListResponse struct {
 
 // StatusPageResource A component displayed on a status page section. It targets either a single check (checkUid) or a whole check group (checkGroupUid) — exactly one is set. A group resource renders as ONE aggregated component: rolled up status, weighted-average availability across its members, and maintenance from a group- or member-targeted window. Its members are never listed publicly.
 type StatusPageResource struct {
+	// AutoPublish Per-resource auto-publish override. ABSENT/null means "inherit the page setting", which is NOT the same as an explicit false — a page can therefore be flipped on or off without rewriting every resource's intent.
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
 	// CheckGroupUid Set when the resource targets a check group.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
@@ -4311,6 +4767,17 @@ type UpdateEscalationPolicyRequest struct {
 	RepeatMax          *int                   `json:"repeatMax,omitempty"`
 	Steps              *[]EscalationStepInput `json:"steps,omitempty"`
 }
+
+// UpdateIncidentPublicationRequest PATCH semantics. ANY field present stamps human_touched_at, which stops the auto-resolve pipeline from closing the incident behind the operator's back.
+type UpdateIncidentPublicationRequest struct {
+	// Severity One of minor | major | critical, or an empty string to clear the badge.
+	Severity *string                                `json:"severity,omitempty"`
+	State    *UpdateIncidentPublicationRequestState `json:"state,omitempty"`
+	Title    *string                                `json:"title,omitempty"`
+}
+
+// UpdateIncidentPublicationRequestState defines model for UpdateIncidentPublicationRequest.State.
+type UpdateIncidentPublicationRequestState string
 
 // UpdateMaintenanceWindowRequest defines model for UpdateMaintenanceWindowRequest.
 type UpdateMaintenanceWindowRequest struct {
@@ -4567,6 +5034,9 @@ type FileUidPath = openapi_types.UUID
 // IdentityUserUidPath defines model for IdentityUserUidPath.
 type IdentityUserUidPath = openapi_types.UUID
 
+// IncidentUidNamedPath defines model for IncidentUidNamedPath.
+type IncidentUidNamedPath = openapi_types.UUID
+
 // IncidentUidPath defines model for IncidentUidPath.
 type IncidentUidPath = openapi_types.UUID
 
@@ -4623,6 +5093,9 @@ type OncallScheduleUidPath = openapi_types.UUID
 
 // OrgPath defines model for OrgPath.
 type OrgPath = string
+
+// PublicationUidPath defines model for PublicationUidPath.
+type PublicationUidPath = openapi_types.UUID
 
 // ResourceUidPath defines model for ResourceUidPath.
 type ResourceUidPath = openapi_types.UUID
@@ -5031,6 +5504,19 @@ type GetStatusPageParams struct {
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 }
 
+// ListStatusPageIncidentsParams defines parameters for ListStatusPageIncidents.
+type ListStatusPageIncidentsParams struct {
+	State *ListStatusPageIncidentsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Active When "true", returns only publications that are not resolved.
+	Active *bool `form:"active,omitempty" json:"active,omitempty"`
+	Limit  *int  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int  `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListStatusPageIncidentsParamsState defines parameters for ListStatusPageIncidents.
+type ListStatusPageIncidentsParamsState string
+
 // ListStatusUpdatesParams defines parameters for ListStatusUpdates.
 type ListStatusUpdatesParams struct {
 	// StatusPage Filter by status page UID
@@ -5237,6 +5723,9 @@ type CreateEscalationPolicyJSONRequestBody = CreateEscalationPolicyRequest
 // UpdateEscalationPolicyJSONRequestBody defines body for UpdateEscalationPolicy for application/json ContentType.
 type UpdateEscalationPolicyJSONRequestBody = UpdateEscalationPolicyRequest
 
+// PublishIncidentJSONRequestBody defines body for PublishIncident for application/json ContentType.
+type PublishIncidentJSONRequestBody = PublishIncidentRequest
+
 // AcknowledgeIncidentJSONRequestBody defines body for AcknowledgeIncident for application/json ContentType.
 type AcknowledgeIncidentJSONRequestBody = IncidentAckRequest
 
@@ -5308,6 +5797,15 @@ type CreateStatusPageJSONRequestBody = CreateStatusPageRequest
 
 // UpdateStatusPageJSONRequestBody defines body for UpdateStatusPage for application/json ContentType.
 type UpdateStatusPageJSONRequestBody = UpdateStatusPageRequest
+
+// CreateStatusPageIncidentJSONRequestBody defines body for CreateStatusPageIncident for application/json ContentType.
+type CreateStatusPageIncidentJSONRequestBody = CreateIncidentPublicationRequest
+
+// UpdateStatusPageIncidentJSONRequestBody defines body for UpdateStatusPageIncident for application/json ContentType.
+type UpdateStatusPageIncidentJSONRequestBody = UpdateIncidentPublicationRequest
+
+// CreateStatusPageIncidentUpdateJSONRequestBody defines body for CreateStatusPageIncidentUpdate for application/json ContentType.
+type CreateStatusPageIncidentUpdateJSONRequestBody = AppendPublicationUpdateRequest
 
 // CreateStatusPageSectionJSONRequestBody defines body for CreateStatusPageSection for application/json ContentType.
 type CreateStatusPageSectionJSONRequestBody = CreateStatusPageSectionRequest
@@ -6397,6 +6895,30 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/incidents (the `ListIncidents` operationId).
 	ListIncidents(ctx context.Context, org OrgPath, params *ListIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListIncidentPublications List every status page this incident is published on
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `ListIncidentPublications` operationId).
+	ListIncidentPublications(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PublishIncidentWithBody Publish this incident on a status page
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+	PublishIncidentWithBody(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PublishIncident Publish this incident on a status page
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+	PublishIncident(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, body PublishIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnpublishIncident Unpublish this incident from a status page
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/incidents/{incidentUid}/publications/{uid} (the `UnpublishIncident` operationId).
+	UnpublishIncident(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetIncident Get incident details
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/incidents/{uid} (the `GetIncident` operationId).
@@ -7040,6 +7562,58 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/custom-domain/verify (the `VerifyStatusPageCustomDomain` operationId).
 	VerifyStatusPageCustomDomain(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStatusPageIncidents List the incident publications on a status page
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `ListStatusPageIncidents` operationId).
+	ListStatusPageIncidents(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *ListStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageIncidentWithBody Publish a hand-written incident on a status page
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+	CreateStatusPageIncidentWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageIncident Publish a hand-written incident on a status page
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+	CreateStatusPageIncident(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStatusPageIncident Get one incident publication with its narrative
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `GetStatusPageIncident` operationId).
+	GetStatusPageIncident(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateStatusPageIncidentWithBody Edit a publication's title, severity or state
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+	UpdateStatusPageIncidentWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateStatusPageIncident Edit a publication's title, severity or state
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+	UpdateStatusPageIncident(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body UpdateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageIncidentUpdateWithBody Append a narrative update to a published incident
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+	CreateStatusPageIncidentUpdateWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageIncidentUpdate Append a narrative update to a published incident
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+	CreateStatusPageIncidentUpdate(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body CreateStatusPageIncidentUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListStatusPageSections List sections of a status page
 	//
@@ -9836,6 +10410,70 @@ func (c *Client) ListIncidents(ctx context.Context, org OrgPath, params *ListInc
 	return c.Client.Do(req)
 }
 
+// ListIncidentPublications List every status page this incident is published on
+//
+// Corresponds with GET /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `ListIncidentPublications` operationId).
+func (c *Client) ListIncidentPublications(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIncidentPublicationsRequest(c.Server, org, incidentUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PublishIncidentWithBody Publish this incident on a status page
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+func (c *Client) PublishIncidentWithBody(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishIncidentRequestWithBody(c.Server, org, incidentUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PublishIncident Publish this incident on a status page
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+func (c *Client) PublishIncident(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, body PublishIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishIncidentRequest(c.Server, org, incidentUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnpublishIncident Unpublish this incident from a status page
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/incidents/{incidentUid}/publications/{uid} (the `UnpublishIncident` operationId).
+func (c *Client) UnpublishIncident(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnpublishIncidentRequest(c.Server, org, incidentUid, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetIncident Get incident details
 //
 // Corresponds with GET /api/v1/orgs/{org}/incidents/{uid} (the `GetIncident` operationId).
@@ -11430,6 +12068,138 @@ func (c *Client) UpdateStatusPage(ctx context.Context, org OrgPath, statusPageUi
 // Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/custom-domain/verify (the `VerifyStatusPageCustomDomain` operationId).
 func (c *Client) VerifyStatusPageCustomDomain(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewVerifyStatusPageCustomDomainRequest(c.Server, org, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListStatusPageIncidents List the incident publications on a status page
+//
+// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `ListStatusPageIncidents` operationId).
+func (c *Client) ListStatusPageIncidents(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *ListStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStatusPageIncidentsRequest(c.Server, org, statusPageUid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStatusPageIncidentWithBody Publish a hand-written incident on a status page
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+func (c *Client) CreateStatusPageIncidentWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageIncidentRequestWithBody(c.Server, org, statusPageUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStatusPageIncident Publish a hand-written incident on a status page
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+func (c *Client) CreateStatusPageIncident(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageIncidentRequest(c.Server, org, statusPageUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetStatusPageIncident Get one incident publication with its narrative
+//
+// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `GetStatusPageIncident` operationId).
+func (c *Client) GetStatusPageIncident(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStatusPageIncidentRequest(c.Server, org, statusPageUid, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateStatusPageIncidentWithBody Edit a publication's title, severity or state
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+func (c *Client) UpdateStatusPageIncidentWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageIncidentRequestWithBody(c.Server, org, statusPageUid, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateStatusPageIncident Edit a publication's title, severity or state
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+func (c *Client) UpdateStatusPageIncident(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body UpdateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateStatusPageIncidentRequest(c.Server, org, statusPageUid, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStatusPageIncidentUpdateWithBody Append a narrative update to a published incident
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+func (c *Client) CreateStatusPageIncidentUpdateWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageIncidentUpdateRequestWithBody(c.Server, org, statusPageUid, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStatusPageIncidentUpdate Append a narrative update to a published incident
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+func (c *Client) CreateStatusPageIncidentUpdate(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body CreateStatusPageIncidentUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageIncidentUpdateRequest(c.Server, org, statusPageUid, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17380,6 +18150,149 @@ func NewListIncidentsRequest(server string, org OrgPath, params *ListIncidentsPa
 	return req, nil
 }
 
+// NewListIncidentPublicationsRequest constructs an http.Request for the ListIncidentPublications method
+func NewListIncidentPublicationsRequest(server string, org OrgPath, incidentUid IncidentUidNamedPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "incidentUid", incidentUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/%s/publications", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPublishIncidentRequest calls the generic PublishIncident builder with application/json body
+func NewPublishIncidentRequest(server string, org OrgPath, incidentUid IncidentUidNamedPath, body PublishIncidentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPublishIncidentRequestWithBody(server, org, incidentUid, "application/json", bodyReader)
+}
+
+// NewPublishIncidentRequestWithBody constructs an http.Request for the PublishIncident method, with any body, and a specified content type
+func NewPublishIncidentRequestWithBody(server string, org OrgPath, incidentUid IncidentUidNamedPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "incidentUid", incidentUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/%s/publications", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUnpublishIncidentRequest constructs an http.Request for the UnpublishIncident method
+func NewUnpublishIncidentRequest(server string, org OrgPath, incidentUid IncidentUidNamedPath, uid PublicationUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "incidentUid", incidentUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/incidents/%s/publications/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetIncidentRequest constructs an http.Request for the GetIncident method
 func NewGetIncidentRequest(server string, org OrgPath, uid IncidentUidPath, params *GetIncidentParams) (*http.Request, error) {
 	var err error
@@ -21131,6 +22044,334 @@ func NewVerifyStatusPageCustomDomainRequest(server string, org OrgPath, statusPa
 	return req, nil
 }
 
+// NewListStatusPageIncidentsRequest constructs an http.Request for the ListStatusPageIncidents method
+func NewListStatusPageIncidentsRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, params *ListStatusPageIncidentsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/incidents", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Active != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "active", *params.Active, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateStatusPageIncidentRequest calls the generic CreateStatusPageIncident builder with application/json body
+func NewCreateStatusPageIncidentRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageIncidentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStatusPageIncidentRequestWithBody(server, org, statusPageUid, "application/json", bodyReader)
+}
+
+// NewCreateStatusPageIncidentRequestWithBody constructs an http.Request for the CreateStatusPageIncident method, with any body, and a specified content type
+func NewCreateStatusPageIncidentRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/incidents", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetStatusPageIncidentRequest constructs an http.Request for the GetStatusPageIncident method
+func NewGetStatusPageIncidentRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/incidents/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateStatusPageIncidentRequest calls the generic UpdateStatusPageIncident builder with application/json body
+func NewUpdateStatusPageIncidentRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body UpdateStatusPageIncidentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateStatusPageIncidentRequestWithBody(server, org, statusPageUid, uid, "application/json", bodyReader)
+}
+
+// NewUpdateStatusPageIncidentRequestWithBody constructs an http.Request for the UpdateStatusPageIncident method, with any body, and a specified content type
+func NewUpdateStatusPageIncidentRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/incidents/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateStatusPageIncidentUpdateRequest calls the generic CreateStatusPageIncidentUpdate builder with application/json body
+func NewCreateStatusPageIncidentUpdateRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body CreateStatusPageIncidentUpdateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStatusPageIncidentUpdateRequestWithBody(server, org, statusPageUid, uid, "application/json", bodyReader)
+}
+
+// NewCreateStatusPageIncidentUpdateRequestWithBody constructs an http.Request for the CreateStatusPageIncidentUpdate method, with any body, and a specified content type
+func NewCreateStatusPageIncidentUpdateRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/incidents/%s/updates", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListStatusPageSectionsRequest constructs an http.Request for the ListStatusPageSections method
 func NewListStatusPageSectionsRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
 	var err error
@@ -24792,6 +26033,34 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/incidents (the `ListIncidents` operationId).
 	ListIncidentsWithResponse(ctx context.Context, org OrgPath, params *ListIncidentsParams, reqEditors ...RequestEditorFn) (*ListIncidentsResult, error)
 
+	// ListIncidentPublicationsWithResponse List every status page this incident is published on
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `ListIncidentPublications` operationId).
+	ListIncidentPublicationsWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, reqEditors ...RequestEditorFn) (*ListIncidentPublicationsResult, error)
+
+	// PublishIncidentWithBodyWithResponse Publish this incident on a status page
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+	PublishIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishIncidentResult, error)
+
+	// PublishIncidentWithResponse Publish this incident on a status page
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+	PublishIncidentWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, body PublishIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishIncidentResult, error)
+
+	// UnpublishIncidentWithResponse Unpublish this incident from a status page
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/incidents/{incidentUid}/publications/{uid} (the `UnpublishIncident` operationId).
+	UnpublishIncidentWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*UnpublishIncidentResult, error)
+
 	// GetIncidentWithResponse Get incident details
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -25533,6 +26802,62 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/custom-domain/verify (the `VerifyStatusPageCustomDomain` operationId).
 	VerifyStatusPageCustomDomainWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*VerifyStatusPageCustomDomainResult, error)
+
+	// ListStatusPageIncidentsWithResponse List the incident publications on a status page
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `ListStatusPageIncidents` operationId).
+	ListStatusPageIncidentsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *ListStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*ListStatusPageIncidentsResult, error)
+
+	// CreateStatusPageIncidentWithBodyWithResponse Publish a hand-written incident on a status page
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+	CreateStatusPageIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentResult, error)
+
+	// CreateStatusPageIncidentWithResponse Publish a hand-written incident on a status page
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+	CreateStatusPageIncidentWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentResult, error)
+
+	// GetStatusPageIncidentWithResponse Get one incident publication with its narrative
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `GetStatusPageIncident` operationId).
+	GetStatusPageIncidentWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*GetStatusPageIncidentResult, error)
+
+	// UpdateStatusPageIncidentWithBodyWithResponse Edit a publication's title, severity or state
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+	UpdateStatusPageIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageIncidentResult, error)
+
+	// UpdateStatusPageIncidentWithResponse Edit a publication's title, severity or state
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+	UpdateStatusPageIncidentWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body UpdateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageIncidentResult, error)
+
+	// CreateStatusPageIncidentUpdateWithBodyWithResponse Append a narrative update to a published incident
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+	CreateStatusPageIncidentUpdateWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentUpdateResult, error)
+
+	// CreateStatusPageIncidentUpdateWithResponse Append a narrative update to a published incident
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+	CreateStatusPageIncidentUpdateWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body CreateStatusPageIncidentUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentUpdateResult, error)
 
 	// ListStatusPageSectionsWithResponse List sections of a status page
 	//
@@ -31461,6 +32786,171 @@ func (r ListIncidentsResult) ContentType() string {
 	return ""
 }
 
+type ListIncidentPublicationsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IncidentPublicationListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIncidentPublicationsResult) GetJSON200() *IncidentPublicationListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIncidentPublicationsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListIncidentPublicationsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIncidentPublicationsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIncidentPublicationsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIncidentPublicationsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIncidentPublicationsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PublishIncidentResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *IncidentPublication
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r PublishIncidentResult) GetJSON201() *IncidentPublication {
+	return r.JSON201
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PublishIncidentResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PublishIncidentResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PublishIncidentResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r PublishIncidentResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PublishIncidentResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PublishIncidentResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PublishIncidentResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UnpublishIncidentResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UnpublishIncidentResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UnpublishIncidentResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UnpublishIncidentResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnpublishIncidentResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnpublishIncidentResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnpublishIncidentResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetIncidentResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -35673,6 +37163,288 @@ func (r VerifyStatusPageCustomDomainResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r VerifyStatusPageCustomDomainResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListStatusPageIncidentsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IncidentPublicationListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListStatusPageIncidentsResult) GetJSON200() *IncidentPublicationListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListStatusPageIncidentsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListStatusPageIncidentsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListStatusPageIncidentsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStatusPageIncidentsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStatusPageIncidentsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListStatusPageIncidentsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateStatusPageIncidentResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *IncidentPublication
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateStatusPageIncidentResult) GetJSON201() *IncidentPublication {
+	return r.JSON201
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateStatusPageIncidentResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateStatusPageIncidentResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateStatusPageIncidentResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateStatusPageIncidentResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStatusPageIncidentResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStatusPageIncidentResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateStatusPageIncidentResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetStatusPageIncidentResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IncidentPublication
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetStatusPageIncidentResult) GetJSON200() *IncidentPublication {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetStatusPageIncidentResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetStatusPageIncidentResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetStatusPageIncidentResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetStatusPageIncidentResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetStatusPageIncidentResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetStatusPageIncidentResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateStatusPageIncidentResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IncidentPublication
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateStatusPageIncidentResult) GetJSON200() *IncidentPublication {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateStatusPageIncidentResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateStatusPageIncidentResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateStatusPageIncidentResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateStatusPageIncidentResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateStatusPageIncidentResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateStatusPageIncidentResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateStatusPageIncidentUpdateResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *PublicationUpdate
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateStatusPageIncidentUpdateResult) GetJSON201() *PublicationUpdate {
+	return r.JSON201
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateStatusPageIncidentUpdateResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateStatusPageIncidentUpdateResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateStatusPageIncidentUpdateResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStatusPageIncidentUpdateResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStatusPageIncidentUpdateResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateStatusPageIncidentUpdateResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -40426,6 +42198,58 @@ func (c *ClientWithResponses) ListIncidentsWithResponse(ctx context.Context, org
 	return ParseListIncidentsResult(rsp)
 }
 
+// ListIncidentPublicationsWithResponse List every status page this incident is published on
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `ListIncidentPublications` operationId).
+func (c *ClientWithResponses) ListIncidentPublicationsWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, reqEditors ...RequestEditorFn) (*ListIncidentPublicationsResult, error) {
+	rsp, err := c.ListIncidentPublications(ctx, org, incidentUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIncidentPublicationsResult(rsp)
+}
+
+// PublishIncidentWithBodyWithResponse Publish this incident on a status page
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+func (c *ClientWithResponses) PublishIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishIncidentResult, error) {
+	rsp, err := c.PublishIncidentWithBody(ctx, org, incidentUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishIncidentResult(rsp)
+}
+
+// PublishIncidentWithResponse Publish this incident on a status page
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/incidents/{incidentUid}/publications (the `PublishIncident` operationId).
+func (c *ClientWithResponses) PublishIncidentWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, body PublishIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishIncidentResult, error) {
+	rsp, err := c.PublishIncident(ctx, org, incidentUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishIncidentResult(rsp)
+}
+
+// UnpublishIncidentWithResponse Unpublish this incident from a status page
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/incidents/{incidentUid}/publications/{uid} (the `UnpublishIncident` operationId).
+func (c *ClientWithResponses) UnpublishIncidentWithResponse(ctx context.Context, org OrgPath, incidentUid IncidentUidNamedPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*UnpublishIncidentResult, error) {
+	rsp, err := c.UnpublishIncident(ctx, org, incidentUid, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnpublishIncidentResult(rsp)
+}
+
 // GetIncidentWithResponse Get incident details
 //
 // Returns a wrapper object for the known response body format(s).
@@ -41742,6 +43566,110 @@ func (c *ClientWithResponses) VerifyStatusPageCustomDomainWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseVerifyStatusPageCustomDomainResult(rsp)
+}
+
+// ListStatusPageIncidentsWithResponse List the incident publications on a status page
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `ListStatusPageIncidents` operationId).
+func (c *ClientWithResponses) ListStatusPageIncidentsWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, params *ListStatusPageIncidentsParams, reqEditors ...RequestEditorFn) (*ListStatusPageIncidentsResult, error) {
+	rsp, err := c.ListStatusPageIncidents(ctx, org, statusPageUid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStatusPageIncidentsResult(rsp)
+}
+
+// CreateStatusPageIncidentWithBodyWithResponse Publish a hand-written incident on a status page
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+func (c *ClientWithResponses) CreateStatusPageIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentResult, error) {
+	rsp, err := c.CreateStatusPageIncidentWithBody(ctx, org, statusPageUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageIncidentResult(rsp)
+}
+
+// CreateStatusPageIncidentWithResponse Publish a hand-written incident on a status page
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents (the `CreateStatusPageIncident` operationId).
+func (c *ClientWithResponses) CreateStatusPageIncidentWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentResult, error) {
+	rsp, err := c.CreateStatusPageIncident(ctx, org, statusPageUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageIncidentResult(rsp)
+}
+
+// GetStatusPageIncidentWithResponse Get one incident publication with its narrative
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `GetStatusPageIncident` operationId).
+func (c *ClientWithResponses) GetStatusPageIncidentWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, reqEditors ...RequestEditorFn) (*GetStatusPageIncidentResult, error) {
+	rsp, err := c.GetStatusPageIncident(ctx, org, statusPageUid, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStatusPageIncidentResult(rsp)
+}
+
+// UpdateStatusPageIncidentWithBodyWithResponse Edit a publication's title, severity or state
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+func (c *ClientWithResponses) UpdateStatusPageIncidentWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateStatusPageIncidentResult, error) {
+	rsp, err := c.UpdateStatusPageIncidentWithBody(ctx, org, statusPageUid, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageIncidentResult(rsp)
+}
+
+// UpdateStatusPageIncidentWithResponse Edit a publication's title, severity or state
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid} (the `UpdateStatusPageIncident` operationId).
+func (c *ClientWithResponses) UpdateStatusPageIncidentWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body UpdateStatusPageIncidentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateStatusPageIncidentResult, error) {
+	rsp, err := c.UpdateStatusPageIncident(ctx, org, statusPageUid, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateStatusPageIncidentResult(rsp)
+}
+
+// CreateStatusPageIncidentUpdateWithBodyWithResponse Append a narrative update to a published incident
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+func (c *ClientWithResponses) CreateStatusPageIncidentUpdateWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentUpdateResult, error) {
+	rsp, err := c.CreateStatusPageIncidentUpdateWithBody(ctx, org, statusPageUid, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageIncidentUpdateResult(rsp)
+}
+
+// CreateStatusPageIncidentUpdateWithResponse Append a narrative update to a published incident
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
+func (c *ClientWithResponses) CreateStatusPageIncidentUpdateWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body CreateStatusPageIncidentUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentUpdateResult, error) {
+	rsp, err := c.CreateStatusPageIncidentUpdate(ctx, org, statusPageUid, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageIncidentUpdateResult(rsp)
 }
 
 // ListStatusPageSectionsWithResponse List sections of a status page
@@ -46600,6 +48528,129 @@ func ParseListIncidentsResult(rsp *http.Response) (*ListIncidentsResult, error) 
 	return response, nil
 }
 
+// ParseListIncidentPublicationsResult parses an HTTP response from a ListIncidentPublicationsWithResponse call
+func ParseListIncidentPublicationsResult(rsp *http.Response) (*ListIncidentPublicationsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIncidentPublicationsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IncidentPublicationListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePublishIncidentResult parses an HTTP response from a PublishIncidentWithResponse call
+func ParsePublishIncidentResult(rsp *http.Response) (*PublishIncidentResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PublishIncidentResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IncidentPublication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUnpublishIncidentResult parses an HTTP response from a UnpublishIncidentWithResponse call
+func ParseUnpublishIncidentResult(rsp *http.Response) (*UnpublishIncidentResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnpublishIncidentResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetIncidentResult parses an HTTP response from a GetIncidentWithResponse call
 func ParseGetIncidentResult(rsp *http.Response) (*GetIncidentResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -49771,6 +51822,213 @@ func ParseVerifyStatusPageCustomDomainResult(rsp *http.Response) (*VerifyStatusP
 
 	case rsp.StatusCode == 429:
 		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseListStatusPageIncidentsResult parses an HTTP response from a ListStatusPageIncidentsWithResponse call
+func ParseListStatusPageIncidentsResult(rsp *http.Response) (*ListStatusPageIncidentsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStatusPageIncidentsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IncidentPublicationListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStatusPageIncidentResult parses an HTTP response from a CreateStatusPageIncidentWithResponse call
+func ParseCreateStatusPageIncidentResult(rsp *http.Response) (*CreateStatusPageIncidentResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStatusPageIncidentResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IncidentPublication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetStatusPageIncidentResult parses an HTTP response from a GetStatusPageIncidentWithResponse call
+func ParseGetStatusPageIncidentResult(rsp *http.Response) (*GetStatusPageIncidentResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetStatusPageIncidentResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IncidentPublication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateStatusPageIncidentResult parses an HTTP response from a UpdateStatusPageIncidentWithResponse call
+func ParseUpdateStatusPageIncidentResult(rsp *http.Response) (*UpdateStatusPageIncidentResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateStatusPageIncidentResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IncidentPublication
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStatusPageIncidentUpdateResult parses an HTTP response from a CreateStatusPageIncidentUpdateWithResponse call
+func ParseCreateStatusPageIncidentUpdateResult(rsp *http.Response) (*CreateStatusPageIncidentUpdateResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStatusPageIncidentUpdateResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest PublicationUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
