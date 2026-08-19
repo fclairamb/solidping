@@ -142,6 +142,26 @@ func TestCreateSendModeSMTPCheckRejections(t *testing.T) {
 			config:  smtpSendModeConfig("00000000-0000-0000-0000-000000000000"),
 			wantErr: "does not exist in this organization",
 		},
+		{
+			name: "mail_from carrying a CRLF-smuggled SMTP command is rejected",
+			config: map[string]any{
+				"host":               "mail.example.com",
+				"send_email":         true,
+				"mail_from":          "prober@example.com\r\nRCPT TO:<victim@evil.com>",
+				"delivery_check_uid": emailCheck.UID,
+			},
+			wantErr: "must be a single valid email address",
+		},
+		{
+			name: "mail_from carrying a CRLF-injected header is rejected",
+			config: map[string]any{
+				"host":               "mail.example.com",
+				"send_email":         true,
+				"mail_from":          "prober@example.com>\r\nBcc: attacker@evil.com\r\nSubject: not a probe",
+				"delivery_check_uid": emailCheck.UID,
+			},
+			wantErr: "must be a single valid email address",
+		},
 	}
 
 	for _, tt := range tests {
@@ -237,6 +257,79 @@ func TestUpdateSendModeSMTPCheckValidatesOnPatch(t *testing.T) {
 	})
 	r.Error(err, "a PATCH turning on send_email with a wrong-type reference must be rejected")
 	r.Contains(err.Error(), "only email checks can be a delivery target")
+}
+
+// TestUpdateSendModeSMTPCheckRejectsMailFromInjectionOnPatch is the PATCH-path
+// half of the mail_from injection guard: UpdateCheck never calls
+// checker.Validate(), so validateSMTPDeliveryConfig re-validating mail_from on
+// every PATCH is the only thing stopping an existing plain SMTP check from
+// being turned into a send-mode one with an injection payload.
+func TestUpdateSendModeSMTPCheckRejectsMailFromInjectionOnPatch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
+	configureEmailInboxForTest(t, dbSvc)
+
+	emailCheck := createEmailCheck(t, svc, org)
+
+	plain, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
+		Name: "probe", Slug: "probe", Type: "smtp",
+		Config: map[string]any{"host": "mail.example.com"},
+	})
+	require.NoError(t, err)
+
+	patchConfig := map[string]any{
+		"host":               "mail.example.com",
+		"send_email":         true,
+		"mail_from":          "prober@example.com\r\nRCPT TO:<victim@evil.com>",
+		"delivery_check_uid": emailCheck.UID,
+	}
+	_, err = svc.UpdateCheck(t.Context(), org.Slug, plain.UID, &checks.UpdateCheckRequest{
+		Config: &patchConfig,
+	})
+	r.Error(err, "a PATCH carrying a CRLF-smuggled mail_from must be rejected")
+	r.Contains(err.Error(), "must be a single valid email address")
+}
+
+// TestUpdateSendModeSMTPCheckRejectsShortIntervalOnPatch pins the PATCH-path
+// half of the 60s minimum-interval guard: a single PATCH that flips
+// send_email on AND shortens period below 60s in the same request must be
+// rejected, regardless of the order the two fields are processed in.
+func TestUpdateSendModeSMTPCheckRejectsShortIntervalOnPatch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, org := setupSMTPDeliveryChecksService(t)
+	configureEmailInboxForTest(t, dbSvc)
+
+	emailCheck := createEmailCheck(t, svc, org)
+
+	// Created with a period well above the floor, unmodified so far.
+	plainPeriod := "5m"
+	plain, err := svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
+		Name: "probe", Slug: "probe", Type: "smtp",
+		Period: &plainPeriod,
+		Config: map[string]any{"host": "mail.example.com"},
+	})
+	require.NoError(t, err)
+
+	patchConfig := smtpSendModeConfig(emailCheck.UID)
+	shortPeriod := "10s"
+	_, err = svc.UpdateCheck(t.Context(), org.Slug, plain.UID, &checks.UpdateCheckRequest{
+		Config: &patchConfig,
+		Period: &shortPeriod,
+	})
+	r.Error(err, "a single PATCH turning on send_email AND shortening period below 60s must be rejected")
+	r.Contains(err.Error(), "at least 1m0s")
+
+	// Confirm the rejection actually stuck — the check must still be a plain,
+	// non-send-mode SMTP check on its original period.
+	reloaded, err := svc.GetCheck(t.Context(), org.Slug, plain.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.NotNil(reloaded.Period)
+	r.Equal("00:05:00", *reloaded.Period)
+	r.NotContains(reloaded.Config, "send_email")
 }
 
 // slugify makes a test-name-derived string into something CreateCheck's slug

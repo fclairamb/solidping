@@ -386,6 +386,25 @@ func (c *SMTPChecker) executeSendMode(
 		}
 	}
 
+	// Defense in depth: mail_from is re-validated here, immediately before it
+	// is spliced into the wire MAIL FROM command and the From: header, not
+	// just at write time (checks/service.go's validateSMTPDeliveryConfig).
+	// Write-time validation is the primary gate, but a checker must never
+	// trust that every path reaching Execute went through it — this is what
+	// keeps a CRLF-smuggled extra SMTP command or an injected header
+	// structurally impossible even if some future caller (or a config that
+	// predates this validation) bypasses it.
+	if err := ValidateMailFrom(cfg.MailFrom); err != nil {
+		baseOutput[checkerdef.OutputKeyError] = "invalid mail_from: " + err.Error()
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusError,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   baseOutput,
+		}
+	}
+
 	sendStart := time.Now()
 
 	if err := doSendEmail(textConn, cfg.MailFrom, info); err != nil {

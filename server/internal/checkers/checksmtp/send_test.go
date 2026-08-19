@@ -344,3 +344,92 @@ func TestSMTPChecker_SendMode_DataRejected(t *testing.T) {
 	r.Equal(checkerdef.StatusDown, result.Status)
 	r.Contains(result.Output["error"], "DATA rejected")
 }
+
+// smtpInjectionMailFroms are mail_from values crafted to smuggle an extra
+// SMTP command (via CRLF in the MAIL FROM command line) or an injected
+// message header (via CRLF in the From: header) if ever spliced onto the
+// wire unescaped. Every one of these must be rejected at validation — this
+// is the exact property the spec's delivery_check_uid indirection exists to
+// guarantee, and the injection this feature must never become a vector for.
+func smtpInjectionMailFroms() []string {
+	return []string{
+		"prober@example.com>\r\nBcc: attacker@evil.com\r\nSubject: totally not a probe",
+		"prober@example.com\r\nRCPT TO:<victim@evil.com>",
+		"prober@example.com\nBcc: attacker@evil.com",
+		"prober@example.com\rDATA",
+	}
+}
+
+// TestValidateMailFrom_RejectsInjection is the validation-level proof: every
+// CRLF/LF/CR-carrying payload above must fail ValidateMailFrom, which is the
+// single gate both the checker's own Validate() and checks/service.go's
+// validateSMTPDeliveryConfig call — so a config carrying one of these can
+// never be saved, on either the create or the PATCH path.
+func TestValidateMailFrom_RejectsInjection(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, mailFrom := range smtpInjectionMailFroms() {
+		err := ValidateMailFrom(mailFrom)
+		r.Error(err, "must reject mail_from %q", mailFrom)
+	}
+}
+
+// TestSMTPConfig_Validate_RejectsMailFromInjection pins the same guarantee
+// through the checker's public Validate() entry point (the create-time gate).
+func TestSMTPConfig_Validate_RejectsMailFromInjection(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, mailFrom := range smtpInjectionMailFroms() {
+		cfg := &SMTPConfig{
+			Host:             "mail.example.com",
+			SendEmail:        true,
+			MailFrom:         mailFrom,
+			DeliveryCheckUID: "delivery-check-uid",
+		}
+		err := cfg.Validate()
+		r.Error(err, "must reject mail_from %q", mailFrom)
+	}
+}
+
+// TestSMTPChecker_SendMode_MailFromInjection_NeverReachesWire is the
+// belt-and-braces proof at the send layer itself: even a config carrying an
+// injection payload (as if it had somehow bypassed write-time validation)
+// must never let the smuggled command or header reach the wire. The fake
+// server records exactly what it received; a broken defense would show up
+// either as a second command the checker never intended (an extra RCPT TO)
+// or as the raw CRLF payload landing in the DATA body.
+func TestSMTPChecker_SendMode_MailFromInjection_NeverReachesWire(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	host, port, rec := startSendModeFakeSMTPServer(t, sendModeFakeOpts{})
+
+	for _, mailFrom := range smtpInjectionMailFroms() {
+		cfg := &SMTPConfig{
+			Host:             host,
+			Port:             port,
+			Timeout:          2 * time.Second,
+			SendEmail:        true,
+			MailFrom:         mailFrom,
+			DeliveryCheckUID: "delivery-check-uid",
+		}
+		ctx := checkerdef.WithSMTPDeliveryRecipient(context.Background(), checkerdef.SMTPDeliveryInfo{
+			Recipient:      "deadbeef@inbox.example.com",
+			SourceCheckUID: "sending-check-uid",
+		})
+
+		checker := &SMTPChecker{}
+		result, err := checker.Execute(ctx, cfg)
+		r.NoError(err)
+		r.Equal(checkerdef.StatusError, result.Status, "mail_from %q must be rejected, not sent", mailFrom)
+		r.Contains(result.Output["error"], "invalid mail_from")
+
+		snap := rec.snapshot()
+		r.False(snap.gotData, "an injection payload must never reach the DATA phase for %q", mailFrom)
+		r.Empty(snap.rcptTo, "no RCPT TO — smuggled or otherwise — may reach the wire for %q", mailFrom)
+	}
+}
