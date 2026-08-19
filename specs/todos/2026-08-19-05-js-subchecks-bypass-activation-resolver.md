@@ -278,10 +278,10 @@ site) would have left the gate `nil` in an agent process, which never executes
 that HTTP route-setup code — i.e. the bypass intact exactly where checks run.
 
 **On "build the resolver once".** The resolver is built once per process *role*:
-`newCheckWorker` builds one and holds it on the `CheckWorker` (reused for the
-gate closure); `app/server.go` keeps building its own for `checktypes.Service`
-because route setup runs before `startCheckWorker` and the two are not
-reachable from one another. They cannot drift: both are
+`newCheckWorker` builds exactly one and the gate closure captures it (no second
+resolver, and no unused struct field); `app/server.go` keeps building its own
+for `checktypes.Service` because route setup runs before `startCheckWorker` and
+the two are not reachable from one another. They cannot drift: both are
 `checkerdef.NewActivationResolver(&cfg.Checkers)` — the same constructor, a pure
 function of the same `cfg.Checkers` value. A cross-reference comment is added at
 both sites so a future edit to one is visibly an edit to the other.
@@ -379,8 +379,14 @@ in `server/internal/checkers/checkjs/subcheck_gate_test.go`:
    as before.
 4. **Sandbox control** — `js`/`heartbeat` stay refused even with the gate
    enabling everything.
+5. **Typed-wrapper control** — `solidping.icmp({...})` is refused too, pinning
+   that the fifteen aliases share the one gated entry point.
+6. **Distinguishability control** — a type absent from the resolver still
+   reports *unknown check type*, never *disabled* (D1).
+7. **Budget control** — 21 refused calls hit the sub-check limit, pinning D4.
 
-Plus a **wiring test** in `server/internal/checkworker/` asserting the gate is
+Plus a **wiring test** (`server/internal/checkworker/activation_wiring_test.go`)
+asserting the gate is
 installed by the **real** construction path (`newCheckWorker`, reached from both
 `NewCheckWorker` and `NewAgentCheckWorker`) — poking the package global proves
 nothing about production, which is precisely how this bug survived.
