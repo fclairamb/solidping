@@ -34,7 +34,7 @@ Based on competitive analysis, prioritize these features:
 12. ✅ Database monitoring (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis)
 13. ✅ Message-queue monitoring (Kafka, RabbitMQ, MQTT)
 14. ✅ Docker container, SNMP, A2S/Minecraft game server, custom JS check, browser (Rod) monitoring
-15. ✅ Multiple notification channels — 10 native: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push
+15. ✅ Multiple notification channels — 10 native: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, PagerDuty, Pushover, Web Push
 16. ✅ Public status pages with sections, resources, availability metrics, locale-aware date formatting
 17. ✅ Multi-location checking (distributed workers + multi-region)
 18. ✅ Monitor grouping (check groups + group-incident correlation)

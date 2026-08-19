@@ -434,7 +434,7 @@ The split is a known papercut tracked in spec
 A channel:
 
 - has a `type` (one of nine: slack, discord, email, webhook, googlechat,
-  mattermost, ntfy, opsgenie, pushover) that picks the dispatcher;
+  mattermost, ntfy, pagerduty, pushover) that picks the dispatcher;
 - carries type-specific config in a JSONB column with secret fields split
   into a `settings_private` envelope (see the encryption-at-rest section
   of `CLAUDE.md`);

@@ -56,7 +56,7 @@ suppressor. `status`, `lastResult`, `lastStatusChange`, `createdAt` are computed
 **Slack caveat (per spec + `2026-05-25-04-fix-slack-channel-install-only`).** `POST /channels`
 with `type=slack` is rejected (`ErrSlackManualCreate`, `channels/service.go:238-240`). Slack
 channels originate only from the OAuth install flow and are **not manageable via Terraform**.
-`solidping_channel` covers webhook/email/discord/googlechat/mattermost/ntfy/opsgenie/
+`solidping_channel` covers webhook/email/discord/googlechat/mattermost/ntfy/pagerduty/
 pushover/freebox only; document the Slack exclusion in the resource docs.
 
 Minor (non-blocking): **List** (`GET /channels`) returns channels without `settings`

@@ -232,7 +232,7 @@ solidping/
         googlechat.go          # Google Chat notifications
         mattermost.go          # Mattermost notifications
         ntfy.go                # Ntfy push notifications
-        opsgenie.go            # Opsgenie alerting
+        pagerduty.go           # PagerDuty alerting
         pushover.go            # Pushover notifications
       db/                      # Database layer
         models/                # Bun ORM models
@@ -319,7 +319,7 @@ solidping/
 - **Google Chat**: Google Workspace notifications
 - **Mattermost**: Open-source Slack alternative
 - **Ntfy**: Push notifications via ntfy.sh
-- **Opsgenie**: On-call alerting and escalation
+- **PagerDuty**: On-call alerting and escalation (Events API v2)
 - **Pushover**: Mobile push notifications
 - **Web Push**: Browser push notifications (VAPID), no app install required
 
