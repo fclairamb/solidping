@@ -783,7 +783,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/config", publicConfigHandler.GetConfig)
 
 	// Check types service (constructed early so MCP can use it too)
-	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
+	activationResolver := checkerdef.NewActivationResolver(&s.config.Checkers)
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
 	// MCP endpoint (auth via PAT token, org derived from token)

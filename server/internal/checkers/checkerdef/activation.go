@@ -8,7 +8,7 @@ type ActivationResolver struct {
 }
 
 // NewActivationResolver creates a resolver from the server-level checkers configuration.
-func NewActivationResolver(cfg config.CheckersConfig) *ActivationResolver {
+func NewActivationResolver(cfg *config.CheckersConfig) *ActivationResolver {
 	allMetas := ListCheckTypeMetas()
 	enabled := resolveServerEnabled(cfg, allMetas)
 
@@ -88,7 +88,7 @@ type CheckTypeStatus struct {
 }
 
 // resolveServerEnabled applies the config precedence rules to determine server-enabled types.
-func resolveServerEnabled(cfg config.CheckersConfig, allMetas []CheckTypeMeta) []CheckType {
+func resolveServerEnabled(cfg *config.CheckersConfig, allMetas []CheckTypeMeta) []CheckType {
 	// If explicit allowlist is set, use it
 	if len(cfg.Enabled) > 0 {
 		return intersect(cfg.Enabled, allMetas)
