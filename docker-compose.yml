@@ -31,6 +31,25 @@ services:
       - NODE_ENV=development
     stop_grace_period: 1s
 
+  # Headless Chrome for `browser` checks. Optional and OFF by default — start it
+  # with `docker compose --profile browser up -d`. The main image is distroless
+  # and carries no Chrome on purpose; the checker talks CDP to this container.
+  browser:
+    image: chromedp/headless-shell:151.0.7922.109
+    container_name: solidping-browser
+    profiles: ["browser"]
+    # --remote-allow-origins is required from Chrome 111 on for a websocket
+    # client that is not a browser page.
+    command:
+      - --remote-debugging-address=0.0.0.0
+      - --remote-debugging-port=9222
+      - --remote-allow-origins=*
+      - --disable-gpu
+      - --no-sandbox
+    # Chrome mounts /dev/shm and the Docker default (64 MB) makes tabs crash.
+    shm_size: 1gb
+    stop_grace_period: 1s
+
   server:
     image: golang:1.26.6-trixie
     container_name: solidping-server
@@ -48,6 +67,9 @@ services:
       - SP_SERVER_LISTEN=:4000
       - SP_SERVER_JOB_RUNNERS=1
       - SP_REDIRECTS=/dashboard:dashboard:5173/dashboard
+      # Uncomment together with the `browser` profile above to run browser
+      # checks against the sidecar instead of a local Chrome binary.
+      # - SP_CHECKERS_BROWSER_CDP_URL=ws://browser:9222
     depends_on:
       postgres:
         condition: service_healthy
