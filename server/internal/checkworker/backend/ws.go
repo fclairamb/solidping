@@ -246,7 +246,7 @@ func (b *WSBackend) claim(
 		Type:         agents.MsgTypeClaim,
 		MaxJobs:      maxJobs,
 		CheckUID:     checkUID,
-		Capabilities: egressreport.Current(),
+		Capabilities: egressreport.Current(ctx),
 	})
 	if err != nil {
 		return nil, 0, err

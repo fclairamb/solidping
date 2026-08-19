@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
@@ -240,6 +241,16 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 
 	schedParams := scheduling.ParamsFromConfig(cfg.Server.Scheduling)
 
+	// Install the browser backend here, in the ONE constructor both the
+	// in-process worker and the deported agent go through, so a `browser` check
+	// finds the same configured Chrome (remote CDP or local binary) wherever it
+	// executes. The checker registry hands out zero-value checkers, so there is
+	// no per-instance seam to pass this through.
+	checkbrowser.Configure(checkbrowser.Settings{
+		CDPURL:     cfg.Checkers.Browser.CDPURL,
+		ChromePath: cfg.Checkers.Browser.ChromePath,
+	})
+
 	return &CheckWorker{
 		backend:     workerBackend,
 		config:      cfg,
@@ -351,7 +362,7 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		Slug:         identity.Slug,
 		Name:         identity.Name,
 		Region:       &region,
-		Capabilities: egressreport.Current(),
+		Capabilities: egressreport.Current(ctx),
 	}
 
 	registeredWorker, err := r.backend.Register(ctx, worker)
@@ -396,7 +407,7 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 // once at process start: a node that gains or loses an IPv6 route then stops
 // advertising the wrong thing within one beat, with no restart.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.backend.Heartbeat(ctx, r.getWorker().UID, egressreport.Current()); err != nil {
+	if err := r.backend.Heartbeat(ctx, r.getWorker().UID, egressreport.Current(ctx)); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
 }
