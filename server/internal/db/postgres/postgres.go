@@ -4654,6 +4654,18 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("language = ?", *update.Language)
 	}
 
+	if update.AutoPublish != nil {
+		query = query.Set("auto_publish = ?", *update.AutoPublish)
+	}
+
+	if update.AutoPublishDelaySeconds != nil {
+		query = query.Set("auto_publish_delay_seconds = ?", *update.AutoPublishDelaySeconds)
+	}
+
+	if update.AutoResolve != nil {
+		query = query.Set("auto_resolve = ?", *update.AutoResolve)
+	}
+
 	if update.CustomCSS != nil {
 		// An empty stylesheet is stored as NULL, not '': the appearance editor
 		// clears the field by submitting an empty textarea, and "no custom CSS"
@@ -4967,6 +4979,12 @@ func (s *Service) UpdateStatusPageResource(
 
 	if update.Position != nil {
 		query = query.Set("position = ?", *update.Position)
+	}
+
+	// Three-state override: SetAutoPublish is what distinguishes "reset to
+	// inherit" (nil value) from "leave alone" (flag not set).
+	if update.SetAutoPublish {
+		query = query.Set("auto_publish = ?", update.AutoPublish)
 	}
 
 	// Switching target kind always writes BOTH columns so the XOR constraint

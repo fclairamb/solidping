@@ -31,19 +31,43 @@ var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
 // admin canceling it. View-only — a used token can never enroll again.
 const UsedEnrollmentTokenListWindow = time.Hour
 
+// StatusPageTarget pairs a status page with the resource on it that displays a
+// particular check. Returned by ListStatusPageTargetsForCheck, which is the
+// entry point of the incident auto-publish policy: given a failing check, which
+// public pages are supposed to say something about it?
+//
+// ResourceAutoPublish is the resource-level override and is deliberately
+// three-state: nil means "inherit the page", which is NOT the same as an
+// explicit false.
+type StatusPageTarget struct {
+	PageUID             string
+	SectionUID          string
+	ResourceUID         string
+	ResourceAutoPublish *bool
+	ResourcePublicName  *string
+	// ViaGroup reports whether the resource targets the check's GROUP rather
+	// than the check itself. A group resource renders as one public component,
+	// so its members are never named individually.
+	ViaGroup bool
+}
+
 // PublicStatusUpdate holds a status update row for public status page display.
 // This type is used by ListPublicStatusUpdates and is independent of the admin
 // models so the DB layer does not need to know about the full status_updates model.
 type PublicStatusUpdate struct {
-	UID          string
-	SectionUID   *string
-	CheckUID     *string
-	IncidentUID  *string
-	Title        string
-	BodyMarkdown string
-	LinkURL      *string
-	Kind         string
-	PublishedAt  time.Time
+	// PublicationUID threads the update under an incident publication (spec
+	// 2026-08-19-08). nil for the loose operator-authored updates that predate
+	// publications.
+	PublicationUID *string
+	UID            string
+	SectionUID     *string
+	CheckUID       *string
+	IncidentUID    *string
+	Title          string
+	BodyMarkdown   string
+	LinkURL        *string
+	Kind           string
+	PublishedAt    time.Time
 }
 
 // ListIncidentNotificationsFilter configures what to return from ListIncidentNotifications.
@@ -800,6 +824,38 @@ type Service interface {
 	// history window. Returns an empty slice (not an error) when the status_updates table does
 	// not yet exist (graceful degradation before the backend spec migration is applied).
 	ListPublicStatusUpdates(ctx context.Context, statusPageUID string, historyDays int) ([]*PublicStatusUpdate, error)
+
+	// Incident publication operations (spec 2026-08-19-08). The publication
+	// overlay is what makes an incident visible on a status page; see
+	// models.IncidentPublication.
+	CreateIncidentPublication(ctx context.Context, pub *models.IncidentPublication) error
+	// GetIncidentPublication reads one live publication, scoped to the org.
+	GetIncidentPublication(ctx context.Context, orgUID, uid string) (*models.IncidentPublication, error)
+	// FindIncidentPublication returns the live publication for an
+	// (incident, page) pair, or sql.ErrNoRows. This is the read half of the
+	// idempotency guarantee the partial unique index enforces.
+	FindIncidentPublication(
+		ctx context.Context, incidentUID, statusPageUID string,
+	) (*models.IncidentPublication, error)
+	ListIncidentPublications(
+		ctx context.Context, filter models.ListIncidentPublicationsFilter,
+	) ([]*models.IncidentPublication, error)
+	UpdateIncidentPublication(
+		ctx context.Context, uid string, update *models.IncidentPublicationUpdate,
+	) error
+	SoftDeleteIncidentPublication(ctx context.Context, uid string) error
+	// CountIncidentPublicationsForIncident is the retention guard: the incident
+	// reaper must never delete an incident row a publication still points at,
+	// or a public status page would lose the incident it is narrating.
+	CountIncidentPublicationsForIncident(ctx context.Context, incidentUID string) (int, error)
+	// ListStatusPageTargetsForCheck returns every live status-page resource
+	// that displays the given check — directly, or through the check's group
+	// (status_page_resources reference checks AND check groups). It is the
+	// reverse of the page→resource walk the public renderer does, and the
+	// entry point of the auto-publish policy.
+	ListStatusPageTargetsForCheck(
+		ctx context.Context, checkUID string, checkGroupUID *string,
+	) ([]*StatusPageTarget, error)
 
 	// MaintenanceWindow operations
 	CreateMaintenanceWindow(ctx context.Context, window *models.MaintenanceWindow) error

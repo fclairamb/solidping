@@ -98,7 +98,7 @@ type StatusUpdateResponse struct {
 	LinkURL       *string   `json:"linkUrl,omitempty"`
 	Kind          string    `json:"kind"`
 	PublishedAt   time.Time `json:"publishedAt"`
-	AuthorUID     string    `json:"authorUid"`
+	AuthorUID     *string   `json:"authorUid,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 }

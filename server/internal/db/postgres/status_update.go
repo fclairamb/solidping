@@ -38,6 +38,10 @@ func (s *Service) ListStatusUpdates(
 		query = query.Where("incident_uid = ?", *filter.IncidentUID)
 	}
 
+	if filter.IncidentPublicationUID != nil {
+		query = query.Where("incident_publication_uid = ?", *filter.IncidentPublicationUID)
+	}
+
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = 50
@@ -116,15 +120,16 @@ func (s *Service) ListPublicStatusUpdates(
 	}
 
 	type rowResult struct {
-		UID          string    `bun:"uid"`
-		SectionUID   *string   `bun:"section_uid"`
-		CheckUID     *string   `bun:"check_uid"`
-		IncidentUID  *string   `bun:"incident_uid"`
-		Title        string    `bun:"title"`
-		BodyMarkdown string    `bun:"body_markdown"`
-		LinkURL      *string   `bun:"link_url"`
-		Kind         string    `bun:"kind"`
-		PublishedAt  time.Time `bun:"published_at"`
+		UID            string    `bun:"uid"`
+		SectionUID     *string   `bun:"section_uid"`
+		CheckUID       *string   `bun:"check_uid"`
+		IncidentUID    *string   `bun:"incident_uid"`
+		PublicationUID *string   `bun:"incident_publication_uid"`
+		Title          string    `bun:"title"`
+		BodyMarkdown   string    `bun:"body_markdown"`
+		LinkURL        *string   `bun:"link_url"`
+		Kind           string    `bun:"kind"`
+		PublishedAt    time.Time `bun:"published_at"`
 	}
 
 	var rowResults []rowResult
@@ -134,7 +139,7 @@ func (s *Service) ListPublicStatusUpdates(
 	// Postgres unbound → "there is no parameter $1" (SQLSTATE 42P02). The
 	// history-window `historyDays` is an int, so fmt.Sprintf interpolation is safe.
 	rawQuery := fmt.Sprintf(
-		`SELECT uid, section_uid, check_uid, incident_uid, title, body_markdown, link_url, kind, published_at
+		`SELECT uid, section_uid, check_uid, incident_uid, incident_publication_uid, title, body_markdown, link_url, kind, published_at
 		 FROM status_updates
 		 WHERE status_page_uid = ?
 		   AND deleted_at IS NULL
@@ -159,15 +164,16 @@ func (s *Service) ListPublicStatusUpdates(
 	for idx := range rowResults {
 		entry := &rowResults[idx]
 		result[idx] = &db.PublicStatusUpdate{
-			UID:          entry.UID,
-			SectionUID:   entry.SectionUID,
-			CheckUID:     entry.CheckUID,
-			IncidentUID:  entry.IncidentUID,
-			Title:        entry.Title,
-			BodyMarkdown: entry.BodyMarkdown,
-			LinkURL:      entry.LinkURL,
-			Kind:         entry.Kind,
-			PublishedAt:  entry.PublishedAt,
+			UID:            entry.UID,
+			SectionUID:     entry.SectionUID,
+			CheckUID:       entry.CheckUID,
+			IncidentUID:    entry.IncidentUID,
+			PublicationUID: entry.PublicationUID,
+			Title:          entry.Title,
+			BodyMarkdown:   entry.BodyMarkdown,
+			LinkURL:        entry.LinkURL,
+			Kind:           entry.Kind,
+			PublishedAt:    entry.PublishedAt,
 		}
 	}
 
