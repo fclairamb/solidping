@@ -4,15 +4,66 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/stretchr/testify/require"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
+
+// enrollWithVersion is the shared env.enroll() handshake with one addition:
+// the enroll frame carries a Version, exercising the path env.enroll() alone
+// cannot — dialEnroll (ws.go) really does send Version on the enroll frame,
+// but the shared test helper predates this spec and does not, so the tests
+// that need it get their own copy rather than changing a helper every other
+// test in this package also relies on. No caller here needs the agent keys
+// back (nothing reconnects), so unlike env.enroll() this does not return them.
+func enrollWithVersion(
+	t *testing.T, e *env, token, name, ver string,
+) (*websocket.Conn, agentcrypto.ServerFrame) {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+token)
+
+	conn, _, err := e.dial(headers)
+	r.NoError(err)
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+
+	r.NoError(wsjson.Write(ctx, conn, agentcrypto.ClientFrame{
+		Type:             agentcrypto.MsgTypeEnroll,
+		ID:               "enroll-1",
+		Name:             name,
+		Ed25519PublicKey: keys.Ed25519PublicKey,
+		X25519PublicKey:  keys.X25519Recipient,
+		Version:          ver,
+	}))
+
+	var enrolled agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &enrolled))
+	r.Equal(agentcrypto.MsgTypeEnrolled, enrolled.Type)
+	r.NotEmpty(enrolled.AgentUID)
+
+	var identityHello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &identityHello))
+	r.Equal(agentcrypto.MsgTypeHello, identityHello.Type)
+
+	return conn, enrolled
+}
 
 // withServerVersion pins version.Get().Version for the duration of the test
 // and restores it on cleanup. Tests using this are deliberately NOT
@@ -227,4 +278,95 @@ func TestClaimWithoutVersionLeavesTheStoredValueIntact(t *testing.T) {
 	r.NotNil(after.LastActiveAt)
 	r.True(after.LastActiveAt.After(stale.Add(staleMark/2)),
 		"the heartbeat must still land even though no version was reported")
+}
+
+// TestEnrollReportsVersionToWorkerRowBeforeAnyClaim closes the audit gap: the
+// enroll frame is the agent's FIRST report of its build version (dialEnroll
+// sends it, ws.go:622), and it must land on the worker row from the enroll
+// handshake alone — a claim frame is throttled at 50s, and an enroll-only
+// connection would otherwise never report at all.
+func TestEnrollReportsVersionToWorkerRowBeforeAnyClaim(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	_, enrolled := enrollWithVersion(t, e, e.mintToken(), "dc1-agent", "0.17.0")
+
+	worker := capWorker(t, e, enrolled.AgentUID)
+	r.NotNil(worker.Version, "the enroll frame's version must be stored without needing a claim first")
+	r.Equal("0.17.0", *worker.Version)
+}
+
+// TestEnrollWithoutVersionLeavesWorkerRowVersionNil is the negative control
+// for the test above: an agent that omits the field at enroll (an older
+// build, or one that simply has nothing to report yet) must leave the column
+// NULL — never an empty string masquerading as a version.
+func TestEnrollWithoutVersionLeavesWorkerRowVersionNil(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	_, _, enrolled := e.enroll(e.mintToken(), "dc1-agent")
+
+	worker := capWorker(t, e, enrolled.AgentUID)
+	r.Nil(worker.Version, "an agent that reports nothing at enroll must leave the column NULL, not ''")
+}
+
+// TestVersionDriftWarnsOnceAcrossEnrollThenClaim extends the once-per-
+// connection guard to the sequence the real wire protocol actually produces:
+// dialEnroll sends Version on the enroll frame AND on every claim, so a
+// freshly-enrolled, already-drifted agent's very first claim must not warn a
+// second time on top of the WARN enrollment itself already logged.
+//
+//nolint:paralleltest // mutates process-wide slog.Default() and version.Version
+func TestVersionDriftWarnsOnceAcrossEnrollThenClaim(t *testing.T) {
+	withServerVersion(t, "1.0.0")
+	logs := captureLogs(t)
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	conn, _ := enrollWithVersion(t, e, e.mintToken(), "dc1-agent", "2.0.0")
+
+	// The enroll alone must have warned already.
+	r.Equal(1, strings.Count(logs.String(), "agent build version differs"),
+		"enrolling with a drifted version must warn immediately, not wait for a claim")
+
+	for i := range 3 {
+		roundTrip(t, conn, agentcrypto.ClientFrame{
+			Type: agentcrypto.MsgTypeClaim, ID: fmt.Sprintf("c%d", i+1), MaxJobs: 5,
+			Version: "2.0.0",
+		})
+	}
+
+	r.Equal(1, strings.Count(logs.String(), "agent build version differs"),
+		"claims on the same connection must not warn again once enrollment already checked")
+}
+
+// TestVersionDriftWarnsOnClaimWhenEnrollOmittedVersion is the other half of
+// the enroll/claim interaction: when the enroll frame carried no version at
+// all (nothing to compare), the version-checked guard must NOT be
+// pre-emptively latched — the first claim that actually reports one still
+// gets its chance to warn.
+//
+//nolint:paralleltest // mutates process-wide slog.Default() and version.Version
+func TestVersionDriftWarnsOnClaimWhenEnrollOmittedVersion(t *testing.T) {
+	withServerVersion(t, "1.0.0")
+	logs := captureLogs(t)
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	conn, _, _ := e.enroll(e.mintToken(), "dc1-agent")
+	r.NotContains(logs.String(), "agent build version differs",
+		"enrolling with no version at all must not warn — there is nothing to compare")
+
+	roundTrip(t, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 5, Version: "2.0.0",
+	})
+
+	r.Equal(1, strings.Count(logs.String(), "agent build version differs"),
+		"the first claim must still get its chance to warn when enrollment had nothing to check")
 }

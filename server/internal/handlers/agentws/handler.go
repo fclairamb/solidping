@@ -193,7 +193,7 @@ func (h *Handler) serveEnrollment(
 		return nil //nolint:nilerr // client already gone; the socket is the response channel
 	}
 
-	agent, err := h.awaitEnroll(ctx, conn, tokenHash)
+	agent, versionChecked, err := h.awaitEnroll(ctx, conn, tokenHash)
 	if err != nil {
 		h.logger.WarnContext(ctx, "agent enrollment failed", "error", err)
 		_ = conn.Close(CloseAuthFailed, "enrollment failed")
@@ -209,43 +209,55 @@ func (h *Handler) serveEnrollment(
 		h.reseal(ctx, agent.OrgUID(), agent.Region)
 	}
 
-	h.runAgentConnection(ctx, conn, agent)
+	// versionChecked: true only when the enroll frame actually carried a
+	// version to compare — an agent that omitted it (or predates the field)
+	// leaves the drift check for the first claim to perform, same as a bare
+	// reconnect.
+	h.runAgentConnection(ctx, conn, agent, versionChecked)
 
 	return nil
 }
 
 // awaitEnroll reads the enroll frame, atomically consumes the token, creates
 // the agent, and acknowledges with the agent identity.
+//
+// The second return, versionChecked, tells the caller whether this call
+// already ran the version-drift comparison for real (frame.Version was
+// non-empty) — as opposed to having nothing to compare because the agent
+// omitted the field. The caller threads it into runAgentConnection's
+// connState so a claim landing right after enrollment on the SAME connection
+// warns again only if enrollment itself had nothing to check.
 func (h *Handler) awaitEnroll(
 	ctx context.Context, conn *websocket.Conn, tokenHash string,
-) (*models.Agent, error) {
+) (*models.Agent, bool, error) {
 	readCtx, cancel := context.WithTimeout(ctx, enrollTimeout)
 	defer cancel()
 
 	var frame agentcrypto.ClientFrame
 	if err := wsjson.Read(readCtx, conn, &frame); err != nil {
-		return nil, fmt.Errorf("read enroll frame: %w", err)
+		return nil, false, fmt.Errorf("read enroll frame: %w", err)
 	}
 
 	if frame.Type != agentcrypto.MsgTypeEnroll {
-		return nil, fmt.Errorf("expected enroll frame, got %q", frame.Type) //nolint:err113 // protocol diagnostic
+		return nil, false, fmt.Errorf("expected enroll frame, got %q", frame.Type) //nolint:err113 // protocol diagnostic
 	}
 
 	if _, err := agentcrypto.ParsePublicKey(frame.Ed25519PublicKey); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if frame.X25519PublicKey == "" || !strings.HasPrefix(frame.X25519PublicKey, "age1") {
-		return nil, errors.New("x25519PublicKey must be an age recipient (age1…)") //nolint:err113 // protocol diagnostic
+		//nolint:err113 // protocol diagnostic
+		return nil, false, errors.New("x25519PublicKey must be an age recipient (age1…)")
 	}
 
 	token, err := h.dbService.GetAgentEnrollmentTokenByHash(ctx, tokenHash)
 	if err != nil {
-		return nil, fmt.Errorf("lookup enrollment token: %w", err)
+		return nil, false, fmt.Errorf("lookup enrollment token: %w", err)
 	}
 
 	if enrollErr := h.validateEnrollmentScope(ctx, conn, token, frame.ID); enrollErr != nil {
-		return nil, enrollErr
+		return nil, false, enrollErr
 	}
 
 	name := frame.Name
@@ -259,13 +271,19 @@ func (h *Handler) awaitEnroll(
 		ctx, tokenHash, name, frame.Ed25519PublicKey, frame.X25519PublicKey, fingerprint,
 	)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	workerUID, err := h.ensureWorkerRow(ctx, agent)
+	// The enroll frame is the agent's FIRST report of its build version — see
+	// ws.go's dialEnroll — so it must not sit unused until the first claim
+	// lands (claims are throttled at 50s; enroll-only connections would never
+	// report at all). Both the write and the drift WARN happen here, once.
+	workerUID, err := h.ensureWorkerRow(ctx, agent, frame.Version)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+
+	h.warnIfVersionDrift(ctx, agent.UID, frame.Version)
 
 	if err := wsjson.Write(ctx, conn, agentcrypto.ServerFrame{
 		Type:        agentcrypto.MsgTypeEnrolled,
@@ -275,10 +293,10 @@ func (h *Handler) awaitEnroll(
 		Region:      agent.Region,
 		Fingerprint: agent.Fingerprint,
 	}); err != nil {
-		return nil, fmt.Errorf("write enrolled frame: %w", err)
+		return nil, false, fmt.Errorf("write enrolled frame: %w", err)
 	}
 
-	return agent, nil
+	return agent, frame.Version != "", nil
 }
 
 // validateEnrollmentScope runs the per-kind admission checks BEFORE the token is
@@ -386,7 +404,10 @@ func (h *Handler) serveReconnect(
 	}
 	conn.SetReadLimit(maxFrameBytes)
 
-	h.runAgentConnection(ctx, conn, agent)
+	// false: a bare reconnect carries no frame at all, so the version-drift
+	// check has never had a chance to run yet — the first claim on this
+	// connection does it.
+	h.runAgentConnection(ctx, conn, agent, false)
 
 	return nil
 }
@@ -397,7 +418,13 @@ func (h *Handler) serveReconnect(
 // ClaimJobsForAgent — so an org agent's region stays NULL (the workers.region
 // check constraint forbids the reserved `@` prefix anyway). A system agent
 // serves a real cloud region, so its row records it for fleet observability.
-func (h *Handler) ensureWorkerRow(ctx context.Context, agent *models.Agent) (string, error) {
+//
+// reportedVersion is the agent's self-reported build version, when this
+// caller has one to give (the enroll frame carries it; a bare reconnect has
+// no frame at all). Empty means "not reported" and leaves any previously
+// stored version untouched — same "do not overwrite a known answer with a
+// guess" rule UpdateWorkerHeartbeat follows for the claim path.
+func (h *Handler) ensureWorkerRow(ctx context.Context, agent *models.Agent, reportedVersion string) (string, error) {
 	slug := agentcrypto.WorkerSlug(agent.UID)
 
 	row := &models.Worker{
@@ -409,6 +436,10 @@ func (h *Handler) ensureWorkerRow(ctx context.Context, agent *models.Agent) (str
 	if agent.IsSystem() {
 		region := agent.Region
 		row.Region = &region
+	}
+
+	if reportedVersion != "" {
+		row.Version = &reportedVersion
 	}
 
 	worker, err := h.dbService.RegisterOrUpdateWorker(ctx, row)
@@ -486,15 +517,13 @@ func (h *Handler) recordAgentEgress(
 	}
 }
 
-// warnOnVersionDrift logs one WARN, at most once per connection, when the
-// agent's self-reported build version differs from this server's own (spec
-// 2026-08-19-07). Detection only — nothing here blocks, throttles or
-// disconnects the agent.
-//
-// Skipped entirely, on either side, when the version looks like a dev/
-// untagged build (version.Version's own zero value, "dev") — otherwise every
-// local dev loop and CI run would warn on every agent connection, which
-// trains operators to ignore the log line exactly when it would matter.
+// warnOnVersionDrift is the claim-path guard: it logs at most once per
+// connection (state.versionChecked), independent of the egress throttle,
+// then defers to warnIfVersionDrift for the actual comparison. The enroll
+// path (awaitEnroll) calls warnIfVersionDrift directly instead — no connState
+// exists that early — and tells runAgentConnection it already ran the check,
+// so a claim immediately following enrollment on the same connection does
+// not warn a second time (see the versionChecked param below).
 func (h *Handler) warnOnVersionDrift(ctx context.Context, state *connState, reportedVersion string) {
 	if state.versionChecked {
 		return
@@ -502,6 +531,21 @@ func (h *Handler) warnOnVersionDrift(ctx context.Context, state *connState, repo
 
 	state.versionChecked = true
 
+	h.warnIfVersionDrift(ctx, state.agent.UID, reportedVersion)
+}
+
+// warnIfVersionDrift logs one WARN when the agent's self-reported build
+// version differs from this server's own (spec 2026-08-19-07). Detection
+// only — nothing here blocks, throttles or disconnects the agent. Callers
+// are responsible for the "at most once per connection" guard (see
+// warnOnVersionDrift and awaitEnroll); this function itself is a pure
+// comparison-and-log with no dedup of its own.
+//
+// Skipped entirely, on either side, when the version looks like a dev/
+// untagged build (version.Version's own zero value, "dev") — otherwise every
+// local dev loop and CI run would warn on every agent connection, which
+// trains operators to ignore the log line exactly when it would matter.
+func (h *Handler) warnIfVersionDrift(ctx context.Context, agentUID, reportedVersion string) {
 	if reportedVersion == "" {
 		return
 	}
@@ -513,7 +557,7 @@ func (h *Handler) warnOnVersionDrift(ctx context.Context, state *connState, repo
 
 	if reportedVersion != serverVersion {
 		h.logger.WarnContext(ctx, "agent build version differs from this server",
-			"agent", state.agent.UID, "agent_version", reportedVersion, "server_version", serverVersion)
+			"agent", agentUID, "agent_version", reportedVersion, "server_version", serverVersion)
 	}
 }
 
@@ -527,8 +571,18 @@ func isDevBuild(v string) bool {
 
 // runAgentConnection sends hello (for reconnects) and serves frames until the
 // connection ends.
-func (h *Handler) runAgentConnection(ctx context.Context, conn *websocket.Conn, agent *models.Agent) {
-	workerUID, err := h.ensureWorkerRow(ctx, agent)
+//
+// versionChecked is true when the caller (serveEnrollment, via awaitEnroll)
+// already ran the version-drift WARN for this connection off the enroll
+// frame; false for a bare reconnect (serveReconnect), which carries no frame
+// at all and so has never had the chance. Either way this function's own
+// ensureWorkerRow call reports no version ("") — the enroll path already
+// wrote it, and a reconnect has nothing new to report — so it can never
+// clobber what the enroll frame (or a subsequent claim) already stored.
+func (h *Handler) runAgentConnection(
+	ctx context.Context, conn *websocket.Conn, agent *models.Agent, versionChecked bool,
+) {
+	workerUID, err := h.ensureWorkerRow(ctx, agent, "")
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to ensure agent worker row", "error", err)
 		_ = conn.Close(websocket.StatusInternalError, "worker registration failed")
@@ -536,7 +590,7 @@ func (h *Handler) runAgentConnection(ctx context.Context, conn *websocket.Conn, 
 		return
 	}
 
-	state := &connState{agent: agent, workerUID: workerUID}
+	state := &connState{agent: agent, workerUID: workerUID, versionChecked: versionChecked}
 
 	// Reconnects have not seen a hello-with-identity yet; enrollment
 	// connections got theirs in the enrolled frame — a second hello echoing
