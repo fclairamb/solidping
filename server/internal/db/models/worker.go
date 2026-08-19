@@ -58,6 +58,11 @@ const (
 	CapabilityIPv4 = "ipv4"
 	// CapabilityIPv6 means the worker can originate IPv6 traffic.
 	CapabilityIPv6 = "ipv6"
+	// CapabilityBrowser means the worker can actually run a `browser` check:
+	// a reachable remote Chrome (CDP) endpoint, or a local Chrome/Chromium
+	// binary. Self-probed like the egress families, and advisory in the same
+	// way — it drives a creation-time warning, never scheduling.
+	CapabilityBrowser = "browser"
 )
 
 // CapabilityState is the THREE-state answer to "does this worker have X?".

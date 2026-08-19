@@ -445,22 +445,61 @@ func TestAggregationDistinguishesNullFromEmptySet(t *testing.T) {
 	}
 }
 
-// TestCapabilityMapPublishesExactlyIPv4AndIPv6 pins the published key set. The
-// spec's resolved open question allows the region response to gain exactly ONE
-// key (`ipv4`) and nothing else; a stray key here is a silent API change.
-func TestCapabilityMapPublishesExactlyIPv4AndIPv6(t *testing.T) {
+// TestCapabilityMapPublishesExactlyTheRegistry pins the published key set to
+// the aggregated registry — ipv4, ipv6 and browser (spec 2026-08-19-03), and
+// nothing else. Publishing a key is a deliberate API addition; a worker
+// reporting some other name must never make one appear on its own.
+func TestCapabilityMapPublishesExactlyTheRegistry(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	env := newCapEnv(t)
 
-	env.capsWorker("wrk-keys", "eu-west-1", []string{"ipv4", "ipv6", "udp"})
+	env.capsWorker("wrk-keys", "eu-west-1", []string{"ipv4", "ipv6", "browser", "udp"})
 
 	caps := env.capsOf(t.Context(), "eu")
 	r.Equal(map[string]string{
-		regions.CapabilityIPv4: regions.CapabilityYes,
-		regions.CapabilityIPv6: regions.CapabilityYes,
+		regions.CapabilityIPv4:    regions.CapabilityYes,
+		regions.CapabilityIPv6:    regions.CapabilityYes,
+		regions.CapabilityBrowser: regions.CapabilityYes,
 	}, caps, "an unpublished capability a worker reports must not leak into the API")
+}
+
+// TestBrowserCapabilityIsThreeStateLikeTheOthers is the spec's "an agent that
+// never reports must stay unknown, never no" guard, for the new name: a worker
+// with a NULL set says nothing about browser, one that reported without it is a
+// real no, and one that reported it is a yes.
+func TestBrowserCapabilityIsThreeStateLikeTheOthers(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		caps []string
+		want string
+	}{
+		{"unreported", nil, regions.CapabilityUnknown},
+		{"without", []string{"ipv4"}, regions.CapabilityNo},
+		{"with", []string{"ipv4", "browser"}, regions.CapabilityYes},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			env := newCapEnv(t)
+
+			env.capsWorker("br-"+tc.name, "eu-west-1", tc.caps)
+
+			caps := env.capsOf(t.Context(), "eu-west-1")
+			r.Equal(tc.want, caps[regions.CapabilityBrowser])
+
+			if tc.caps == nil {
+				r.NotEqual(regions.CapabilityNo, caps[regions.CapabilityBrowser],
+					"an agent predating the browser probe must never be rendered as a NO")
+			}
+		})
+	}
 }
 
 // TestIPv4CapabilityAccessorMirrorsIPv6: the new accessor carries all three
