@@ -64,6 +64,7 @@ import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
+import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1127,6 +1128,30 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Agent version cell</h3>
+        <p className="text-sm text-muted-foreground">
+          Compares an agent's self-reported build version against this server's own (spec
+          2026-08-19-07). Unlike the IPv6 badge above, this is not a stored three-state value —
+          it is a comparison computed at read time from two inputs, each already two-state: the
+          agent's version (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code>{" "}
+          = never reported) and the server's own (from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useVersion()</code>).
+          Matching and unknown render as plain text; only a genuine mismatch gets the amber
+          "Drifted" badge — <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code>{" "}
+          must <strong>never</strong> render as drifted, or an agent that simply predates this
+          feature would look broken.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-col items-start gap-2">
+              <AgentVersionCell agentVersion="0.17.0" serverVersion="0.17.0" />
+              <AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" />
+              <AgentVersionCell agentVersion={null} serverVersion="0.17.0" />
+            </div>
+          }
+          importLine={`import { AgentVersionCell } from "@/components/shared/agent-version";\n\n<AgentVersionCell\n  agentVersion={agent.version}\n  serverVersion={versionData?.version}\n/>`}
         />
 
         <h3 className="text-sm font-medium">Check group status header</h3>

@@ -48,6 +48,7 @@ import {
   useMintEnrollmentToken,
   usePrivateRegions,
   useRevokeAgent,
+  useVersion,
   type MintedEnrollmentToken,
   type PrivateRegion,
 } from "@/api/hooks";
@@ -56,6 +57,7 @@ import {
   Ipv6CapabilityBadge,
   ipv6Capability,
 } from "@/components/shared/ipv6-capability";
+import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
@@ -377,6 +379,7 @@ function TokenRevealDialog({
 function AgentsCard({ org }: { org: string }) {
   const { t } = useTranslation(["org"]);
   const { data: agents, isLoading } = useAgents(org);
+  const { data: versionData } = useVersion();
   const revokeAgent = useRevokeAgent(org);
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
 
@@ -425,6 +428,7 @@ function AgentsCard({ org }: { org: string }) {
                   <TableHead>{t("privateLocations.agents.name", "Name")}</TableHead>
                   <TableHead>{t("privateLocations.agents.region", "Region")}</TableHead>
                   <TableHead>{t("privateLocations.agents.fingerprint", "Fingerprint")}</TableHead>
+                  <TableHead>{t("privateLocations.agents.version", "Version")}</TableHead>
                   <TableHead>{t("privateLocations.agents.lastSeen", "Last seen")}</TableHead>
                   <TableHead>{t("privateLocations.agents.status", "Status")}</TableHead>
                   <TableHead className="w-16 text-right">
@@ -441,6 +445,13 @@ function AgentsCard({ org }: { org: string }) {
                     </TableCell>
                     <TableCell>
                       <code className="text-xs text-muted-foreground">{agent.fingerprint}</code>
+                    </TableCell>
+                    <TableCell>
+                      <AgentVersionCell
+                        agentVersion={agent.version}
+                        serverVersion={versionData?.version}
+                        data-testid={`agent-version-${agent.uid}`}
+                      />
                     </TableCell>
                     <TableCell
                       className="text-sm text-muted-foreground"

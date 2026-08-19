@@ -5323,6 +5323,11 @@ export interface AgentInfo {
   lastSeenAt?: string;
   enrolledAt: string;
   revokedAt?: string;
+  /** Self-reported build version (spec 2026-08-19-07), resolved from the
+   * agent's worker row. `null`/absent means "never reported" — an agent
+   * predating this feature, or one that has not sent a claim frame yet —
+   * and must be rendered as unknown, never as drifted. */
+  version?: string | null;
 }
 
 export interface EnrollmentToken {
