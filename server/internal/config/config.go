@@ -290,6 +290,28 @@ type CheckersConfig struct {
 	Enabled       []string `koanf:"enabled"`        // Explicit allowlist (empty = all)
 	Disabled      []string `koanf:"disabled"`       // Blocklist (applied after labels)
 	EnabledLabels []string `koanf:"enabled_labels"` // Enable types matching any of these labels
+	// Browser configures the Chrome backend the `browser` check type runs on.
+	Browser BrowserCheckerConfig `koanf:"browser"`
+}
+
+// BrowserCheckerConfig selects where the `browser` check type finds Chrome.
+//
+// BOTH KEYS ARE SNAKE_CASE AND THEREFORE UNREACHABLE BY koanf's ENV LOADER —
+// SP_CHECKERS_BROWSER_CDP_URL would land on checkers.browser.cdp.url, not
+// cdp_url. They are bound by hand in applyCheckersEnv, the same quirk as
+// rate_limiting / shutdown_timeout, and listed in manualReaderEnvVars so the
+// startup env check does not flag them as typos.
+type BrowserCheckerConfig struct {
+	// CDPURL is the websocket (or http) address of a long-lived headless Chrome
+	// speaking the Chrome DevTools Protocol — e.g. `ws://browser:9222` or
+	// `http://127.0.0.1:9222`, typically a `chromedp/headless-shell` sidecar.
+	// When set it is the primary path: no local binary is needed and no Chrome
+	// process is cold-started per execution.
+	CDPURL string `koanf:"cdp_url"`
+	// ChromePath is the local Chrome/Chromium binary used by the exec fallback
+	// when CDPURL is empty. Empty means "probe the usual names", which is
+	// today's zero-config dev-laptop behavior. Nothing is ever downloaded.
+	ChromePath string `koanf:"chrome_path"`
 }
 
 // SentryConfig contains Sentry error tracking configuration.
@@ -1554,6 +1576,7 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyCheckersEnv(&cfg.Checkers)
 	applyAgentEnv(&cfg.Agent)
 	applyAuthEnv(&cfg.Auth)
 	applyPasswordHashingEnv(&cfg.Auth.Password)
@@ -1644,6 +1667,24 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	intEnv("SP_SERVER_RATE_LIMITING_RATE_QUEUE", &cfg.RateQueue)
 	intEnv("SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE", &cfg.ConcurrencyQueue)
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
+}
+
+// applyCheckersEnv reads SP_CHECKERS_BROWSER_* into cfg. koanf's env loader
+// collapses every underscore in SP_*-prefixed names to a dot, so it would map
+// these onto checkers.browser.cdp.url / checkers.browser.chrome.path and miss
+// the snake_case koanf tags (cdp_url, chrome_path) entirely — the variable
+// would parse and then silently do nothing. Same quirk as rate_limiting.
+//
+// checkers.enabled / disabled are single words and stay koanf-reachable;
+// enabled_labels is a slice and keeps its existing YAML-only binding.
+func applyCheckersEnv(cfg *CheckersConfig) {
+	if v := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL"); v != "" {
+		cfg.Browser.CDPURL = v
+	}
+
+	if v := os.Getenv("SP_CHECKERS_BROWSER_CHROME_PATH"); v != "" {
+		cfg.Browser.ChromePath = v
+	}
 }
 
 // applyPasswordHashingEnv reads SP_AUTH_PASSWORD_* into cfg. koanf's env loader
