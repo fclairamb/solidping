@@ -313,6 +313,14 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		}, nil
 	}
 
+	// Send-mode: submit a system-generated probe email to the paired email
+	// check's tokenized address instead of the normal bare QUIT. The result
+	// reflects submission only (spec 2026-08-19-04) — this replaces the
+	// generic "handshake succeeded" Up result below with a send-specific one.
+	if cfg.SendEmail {
+		return c.executeSendMode(ctx, textConn, cfg, hostLabel, params.port, start, metrics), nil
+	}
+
 	// Send QUIT
 	_ = textConn.PrintfLine("QUIT")
 
@@ -324,6 +332,162 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		Metrics:  metrics,
 		Output:   output,
 	}, nil
+}
+
+// probeMessageSubject and probeMessageBody are fixed, system-generated text —
+// there is no user-supplied subject or body, ever (spec 2026-08-19-04): a
+// customizable message here would turn the feature into a spam template
+// engine. Only the attribution headers vary per send.
+const (
+	probeMessageSubject = "SolidPing delivery probe"
+	probeMessageBody    = "This is an automated delivery probe sent by SolidPing to verify SMTP " +
+		"submission and delivery. No action is required.\r\n"
+	headerSourceCheckUID = "X-SolidPing-Check"
+	headerSentAt         = "X-SolidPing-Sent-At"
+	smtpCodeOK           = 250
+	smtpCodeStartData    = 354
+)
+
+// executeSendMode issues MAIL FROM / RCPT TO / DATA / QUIT for a send-mode
+// SMTP check, after the normal EHLO/STARTTLS/AUTH sequence above already
+// succeeded. It replaces the generic post-handshake Up result: the check's
+// own result reflects submission only — a 250 after DATA is Up (with
+// submission_ms in metrics), any rejection is Down with the server's reply.
+//
+// When no delivery recipient was resolved onto ctx, this returns an explicit
+// StatusError result rather than silently skipping the send — see
+// checkerdef.SMTPDeliveryRecipientFrom for why that can happen (a deleted
+// reference at dispatch time, or an Execute call outside normal job
+// dispatch such as a JS check's sub-check helper).
+func (c *SMTPChecker) executeSendMode(
+	ctx context.Context,
+	textConn *textproto.Conn,
+	cfg *SMTPConfig,
+	hostLabel string,
+	port int,
+	start time.Time,
+	metrics map[string]any,
+) *checkerdef.Result {
+	baseOutput := map[string]any{
+		checkerdef.OutputKeyHost: hostLabel,
+		checkerdef.OutputKeyPort: port,
+	}
+
+	info, ok := checkerdef.SMTPDeliveryRecipientFrom(ctx)
+	if !ok {
+		baseOutput[checkerdef.OutputKeyError] = "send_email is set but no delivery recipient was resolved; " +
+			"this config was executed outside normal job dispatch"
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusError,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   baseOutput,
+		}
+	}
+
+	sendStart := time.Now()
+
+	if err := doSendEmail(textConn, cfg.MailFrom, info); err != nil {
+		_ = textConn.PrintfLine("QUIT")
+
+		baseOutput[checkerdef.OutputKeyError] = err.Error()
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusDown,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   baseOutput,
+		}
+	}
+
+	metrics["submission_ms"] = durationMs(time.Since(sendStart))
+	metrics["total_time_ms"] = durationMs(time.Since(start))
+
+	_ = textConn.PrintfLine("QUIT")
+
+	baseOutput["submitted"] = true
+
+	return &checkerdef.Result{
+		Status:   checkerdef.StatusUp,
+		Duration: time.Since(start),
+		Metrics:  metrics,
+		Output:   baseOutput,
+	}
+}
+
+// doSendEmail issues MAIL FROM / RCPT TO / DATA and writes the fixed,
+// system-generated probe message. Returns an error naming which step was
+// rejected (and by what server reply) so executeSendMode's Down result stays
+// diagnostic.
+func doSendEmail(textConn *textproto.Conn, mailFrom string, info checkerdef.SMTPDeliveryInfo) error {
+	if _, err := smtpCommand(textConn, smtpCodeOK, "MAIL FROM:<%s>", mailFrom); err != nil {
+		return fmt.Errorf("MAIL FROM rejected: %w", err)
+	}
+
+	if _, err := smtpCommand(textConn, smtpCodeOK, "RCPT TO:<%s>", info.Recipient); err != nil {
+		return fmt.Errorf("RCPT TO rejected: %w", err)
+	}
+
+	if _, err := smtpCommand(textConn, smtpCodeStartData, "DATA"); err != nil {
+		return fmt.Errorf("DATA rejected: %w", err)
+	}
+
+	dw := textConn.DotWriter()
+	_, writeErr := dw.Write([]byte(buildProbeMessage(mailFrom, info.Recipient, info.SourceCheckUID, time.Now())))
+	closeErr := dw.Close()
+
+	if writeErr != nil {
+		return fmt.Errorf("failed to write message body: %w", writeErr)
+	}
+
+	if closeErr != nil {
+		return fmt.Errorf("failed to send message body: %w", closeErr)
+	}
+
+	if _, _, err := textConn.ReadResponse(smtpCodeOK); err != nil {
+		return fmt.Errorf("message rejected: %w", err)
+	}
+
+	return nil
+}
+
+// smtpCommand sends an SMTP command and reads the expected response code,
+// mirroring the Cmd/StartResponse/ReadResponse/EndResponse sequence used by
+// sendEHLO/doAUTH/doSTARTTLS above.
+func smtpCommand(textConn *textproto.Conn, expectCode int, format string, args ...any) (string, error) {
+	id, err := textConn.Cmd(format, args...)
+	if err != nil {
+		return "", fmt.Errorf("failed to send command: %w", err)
+	}
+
+	textConn.StartResponse(id)
+	defer textConn.EndResponse(id)
+
+	_, msg, err := textConn.ReadResponse(expectCode)
+	if err != nil {
+		return "", err
+	}
+
+	return msg, nil
+}
+
+// buildProbeMessage renders the fixed, system-generated probe email. Only the
+// From/To addresses and the two attribution headers vary per send — subject
+// and body are constants (see probeMessageSubject/probeMessageBody).
+func buildProbeMessage(mailFrom, recipient, sourceCheckUID string, sentAt time.Time) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "From: <%s>\r\n", mailFrom)
+	fmt.Fprintf(&b, "To: <%s>\r\n", recipient)
+	fmt.Fprintf(&b, "Subject: %s\r\n", probeMessageSubject)
+	fmt.Fprintf(&b, "Date: %s\r\n", sentAt.Format(time.RFC1123Z))
+	fmt.Fprintf(&b, "%s: %s\r\n", headerSourceCheckUID, sourceCheckUID)
+	fmt.Fprintf(&b, "%s: %s\r\n", headerSentAt, sentAt.Format(time.RFC3339))
+	b.WriteString("\r\n")
+	b.WriteString(probeMessageBody)
+
+	return b.String()
 }
 
 // doAUTH performs SMTP AUTH PLAIN authentication.
