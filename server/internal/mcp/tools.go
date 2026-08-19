@@ -37,6 +37,13 @@ func (h *Handler) registerTools() {
 		{createStatusPageResourceDef(), h.toolCreateStatusPageResource},
 		{updateStatusPageResourceDef(), h.toolUpdateStatusPageResource},
 		{deleteStatusPageResourceDef(), h.toolDeleteStatusPageResource},
+		// Status page incidents (publication overlay — spec 2026-08-19-08)
+		{listStatusPageIncidentsDef(), h.toolListStatusPageIncidents},
+		{createStatusPageIncidentDef(), h.toolCreateStatusPageIncident},
+		{updateStatusPageIncidentDef(), h.toolUpdateStatusPageIncident},
+		{createStatusPageIncidentUpdateDef(), h.toolCreateStatusPageIncidentUpdate},
+		{createIncidentPublicationDef(), h.toolCreateIncidentPublication},
+		{deleteIncidentPublicationDef(), h.toolDeleteIncidentPublication},
 		// Maintenance windows
 		{listMaintenanceWindowsDef(), h.toolListMaintenanceWindows},
 		{getMaintenanceWindowDef(), h.toolGetMaintenanceWindow},
