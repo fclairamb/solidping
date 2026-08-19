@@ -908,3 +908,85 @@ func TestTemplatesFallBackToEnglish(t *testing.T) {
 		"a fr-FR page renders French copy")
 	r.Contains(pubs[0].PublicTitle, s.publicName)
 }
+
+// TestRollupParentPublishesExactlyOnce is the other half of the
+// paging-suppressed rule: when one root cause takes several checks down, the
+// PARENT incident produces exactly one public incident and its suppressed
+// children produce none. Without this, a single upstream failure would paint
+// the status page with a wall of near-identical incidents.
+func TestRollupParentPublishesExactlyOnce(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0})
+
+	// A second check, also displayed on the page, standing in for the child.
+	child := models.NewCheck(s.org.UID, "payments-worker", "http")
+	child.Status = models.CheckStatusUp
+	r.NoError(s.dbSvc.CreateCheck(t.Context(), child))
+
+	childName := "Payments worker"
+	childResource := models.NewStatusPageResource(s.section.UID, child.UID, 2)
+	childResource.PublicName = &childName
+	r.NoError(s.dbSvc.CreateStatusPageResource(t.Context(), childResource))
+
+	// The root cause opens and publishes.
+	parent := models.NewIncident(s.org.UID, s.check.UID, s.clk.Now(), "payments-api is down")
+	r.NoError(s.dbSvc.CreateIncident(t.Context(), parent))
+	s.pubs.OnIncidentOpened(t.Context(), parent)
+
+	// The child rolls up under it: paging suppressed, cause recorded.
+	childIncident := models.NewIncident(s.org.UID, child.UID, s.clk.Now(), "payments-worker is down")
+	childIncident.PagingSuppressed = true
+	childIncident.CausedByIncidentUID = &parent.UID
+	r.NoError(s.dbSvc.CreateIncident(t.Context(), childIncident))
+	s.pubs.OnIncidentOpened(t.Context(), childIncident)
+
+	pubs := s.publications()
+	r.Len(pubs, 1, "one root cause must yield exactly one public incident")
+	r.NotNil(pubs[0].IncidentUID)
+	r.Equal(parent.UID, *pubs[0].IncidentUID, "the PARENT is the one that publishes")
+}
+
+// TestGroupIncidentPublishesOncePerPage covers the group path end to end: a
+// group rendered as one public component yields one publication, titled with
+// the GROUP's public name — never with a member check's name, since a group
+// component never exposes its members.
+func TestGroupIncidentPublishesOncePerPage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	// Build the group first so the setup can attach the check to it.
+	probe := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0, noResource: true})
+
+	group := models.NewCheckGroup(probe.org.UID, "Payments platform", "payments-platform")
+	r.NoError(probe.dbSvc.CreateCheckGroup(ctx, group))
+
+	// Attach the existing check to the group and put the GROUP on the page.
+	probe.check.CheckGroupUID = &group.UID
+	r.NoError(probe.dbSvc.UpdateCheck(ctx, probe.check.UID, &models.CheckUpdate{
+		CheckGroupUID: &group.UID,
+	}))
+
+	groupName := "Payments platform"
+	resource := models.NewStatusPageGroupResource(probe.section.UID, group.UID, 1)
+	resource.PublicName = &groupName
+	r.NoError(probe.dbSvc.CreateStatusPageResource(ctx, resource))
+
+	incident := models.NewIncident(probe.org.UID, probe.check.UID, probe.clk.Now(),
+		"Payments platform — 1/3 checks down")
+	incident.CheckGroupUID = &group.UID
+	r.NoError(probe.dbSvc.CreateIncident(ctx, incident))
+
+	probe.pubs.OnIncidentOpened(ctx, incident)
+
+	pubs := probe.publications()
+	r.Len(pubs, 1, "a group incident publishes once per page")
+	r.Contains(pubs[0].PublicTitle, groupName)
+	r.NotContains(pubs[0].PublicTitle, *probe.check.Slug,
+		"a group component never names the member check that triggered it")
+	r.NotContains(pubs[0].PublicTitle, "checks down",
+		"the internal group title, which leaks the member count, must not be reused")
+}
