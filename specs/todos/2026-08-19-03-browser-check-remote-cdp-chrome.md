@@ -204,7 +204,30 @@ Resolved with Florent (2026-08-19), folded into the sections above:
   shape only), and it must not gain one: the wire format is deliberately
   additive, so a newer agent reporting a capability this server has never heard
   of must still store it. Nothing to add there.
-- `labelSafe` gates nothing but `checkers.enabled_labels` activation, and no
-  ad-hoc validate/diagnose path executes a checker (`Execute` has exactly one
-  caller, the worker). So there is no ad-hoc flow that could fire a real browser
-  execution as a side effect, and none is added.
+- `labelSafe` gates nothing but `checkers.enabled_labels` activation. The
+  guardrail question was whether an ad-hoc validate/diagnose flow could fire a
+  real browser execution as a side effect; it cannot, because **no such flow
+  executes a checker at all** — `ValidateCheck`
+  ([service.go:466](../../server/internal/handlers/checks/service.go)) only
+  parses/validates the config and emits warnings, and the MCP `diagnose` tool
+  ([mcp/tools_diagnose.go](../../server/internal/mcp/tools_diagnose.go)) only
+  reads stored results. Nothing is added here.
+
+  `Checker.Execute` has **two** non-test callers, not one:
+  [checkworker/worker.go:1167](../../server/internal/checkworker/worker.go) and
+  [checkjs/checker.go:307](../../server/internal/checkers/checkjs/checker.go),
+  the latter reached from the JS sandbox's `solidping.check(type, config)`,
+  which blocks only `js` and `heartbeat`
+  ([checkjs/checker.go:263](../../server/internal/checkers/checkjs/checker.go)).
+  So a `js` check CAN drive a real browser execution. That is covered rather
+  than exempt: it goes through the very same guarded `Execute`, so it inherits
+  the concurrency semaphore, the StatusError-not-StatusDown mapping and
+  `recordOutcome`'s capability feedback.
+
+- **Pre-existing, OUT OF SCOPE for this spec (recorded so it is not lost):**
+  `checkjs` resolves sub-checkers through
+  [registry.go:52](../../server/internal/checkers/registry/registry.go) →
+  `GetChecker`, which consults no `ActivationResolver`. A `browser` sub-check
+  therefore still runs on a server whose `checkers.enabled_labels` /
+  `checkers.disabled` deactivated the unsafe `browser` type. This predates this
+  spec, is unchanged by it, and is deliberately NOT fixed here.
