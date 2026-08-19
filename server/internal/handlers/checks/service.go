@@ -466,10 +466,10 @@ func (s *Service) ValidateCheck(
 
 	// Advisory only, and evaluated LAST so it can never mask a real error: the
 	// config is valid, we just have reason to think one of its regions cannot
-	// currently do IPv6.
+	// currently do IPv6 (or run a browser).
 	var warnings []base.ValidationErrorField
 	if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
-		warnings = s.ipVersionRegionWarnings(ctx, org.UID, req.Type, req.Config, req.Regions)
+		warnings = s.regionCapabilityWarnings(ctx, org.UID, req.Type, req.Config, req.Regions)
 	}
 
 	return ValidateCheckResponse{Valid: true, Warnings: warnings}, nil
@@ -1434,9 +1434,9 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		response.Labels = req.Labels
 	}
 
-	// The check is already written at this point — the IPv6/region mismatch is
-	// reported, never enforced.
-	response.Warnings = s.ipVersionRegionWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
+	// The check is already written at this point — a region-capability mismatch
+	// (IPv6, headless Chrome) is reported, never enforced.
+	response.Warnings = s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
 
 	return response, nil
 }
@@ -1767,8 +1767,8 @@ func (s *Service) UpdateCheck(
 	response := s.convertCheckToResponse(updatedCheck)
 
 	// Same advisory as on create: the update is already persisted, this only
-	// tells the user what the region last reported about IPv6.
-	response.Warnings = s.ipVersionRegionWarnings(
+	// tells the user what the region last reported about IPv6 / headless Chrome.
+	response.Warnings = s.regionCapabilityWarnings(
 		ctx, org.UID, updatedCheck.Type, updatedCheck.Config, updatedCheck.Regions,
 	)
 
