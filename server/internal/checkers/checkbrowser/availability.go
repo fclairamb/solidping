@@ -40,6 +40,7 @@ type availabilityCache struct {
 	answer bool
 }
 
+//nolint:unparam // ttl is a parameter so tests can pin a short/zero TTL explicitly
 func newAvailabilityCache(
 	ttl time.Duration, now func() time.Time, probe func(context.Context, Settings) bool,
 ) *availabilityCache {
