@@ -143,6 +143,15 @@ drain.
 | `SP_NODE_NAME` | hostname | Pins the worker identity. Without it the worker slug is derived from the (truncated) hostname, so a pod that gets a new name on every restart lands on a new `workers` row each time |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
+**Version reporting needs no configuration.** Every agent automatically
+reports its own build version on connect and on every claim — there is no
+env var to set. If an agent's version ever drifts from the server it talks
+to, that shows up on **Server → Agents** (superadmin) or on this
+organization's **Private locations** page as an amber "Drifted" badge next
+to the agent, so identifying a stale deployment no longer means shelling
+into every machine one by one. An agent that predates this feature simply
+shows as "unknown" — never as drifted.
+
 ### Kubernetes
 
 Keep the identity in a Secret and inject it as `SP_AGENT_KEYS`. The agent then

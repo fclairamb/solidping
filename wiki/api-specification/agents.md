@@ -59,7 +59,14 @@ Auth: org **admin**.
 
 ### GET /api/v1/orgs/:org/agents
 List the org's enrolled agents, with their region, connection state, and last
-heartbeat.
+heartbeat. Each row carries `version` — the agent's self-reported build
+version (spec 2026-08-19-07), resolved from its `workers` row (the
+`workers.version` column is the single source of truth; see
+[../database-model/checks.md](../database-model/checks.md)). `null` means
+"never reported" — an agent predating this feature, or one that has not sent
+a claim frame yet — and must be rendered as **unknown**, never as drifted.
+Detection only: nothing about this field gates, throttles or disconnects an
+agent.
 
 ### DELETE /api/v1/orgs/:org/agents/:uid
 Deregister an agent. Its key is invalidated and further connects are refused.

@@ -25,6 +25,15 @@ string; see [../conventions/regions.md](../conventions/regions.md)).
 | enrolled_at | timestamptz | When the agent completed enrollment |
 | revoked_at | timestamptz | When the agent was revoked (NULL if live) |
 
+**No `version` column here on purpose.** An agent's self-reported build
+version (spec 2026-08-19-07), like its capability set, lives on its
+`workers` row (`workers.version`, `workers.capabilities` —
+[checks.md](checks.md)) rather than being denormalized onto `agents` — every
+enrolled agent already gets a worker row via `ensureWorkerRow`, so one column
+covers deported agents and in-cluster workers alike. The API resolves it by
+the deterministic worker slug (`agentcrypto.WorkerSlug(agent.uid)`) — see
+[../api-specification/agents.md](../api-specification/agents.md).
+
 **Foreign Keys**: `organization_uid` → organizations(uid)
 
 **Indexes**:
