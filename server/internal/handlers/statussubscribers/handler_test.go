@@ -173,7 +173,7 @@ func TestHandlerFeed(t *testing.T) {
 	// author_uid has an FK to users; create a user.
 	user := models.NewUser("feed-author@example.com")
 	r.NoError(h.dbSvc.CreateUser(ctx, user))
-	update.AuthorUID = user.UID
+	update.AuthorUID = &user.UID
 	r.NoError(h.dbSvc.CreateStatusUpdate(ctx, update))
 
 	rec := h.do(t, http.MethodGet,

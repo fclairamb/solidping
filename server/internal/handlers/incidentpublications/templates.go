@@ -42,7 +42,10 @@ type templateSet struct {
 	AlsoAffectingBody  string
 }
 
-//nolint:gochecknoglobals // static translation table, treated as a constant.
+// The Spanish entries below trip the English-only spell checker on words like
+// "problemas"; the table is translated copy, not prose.
+//
+//nolint:gochecknoglobals,misspell // static translation table, treated as a constant.
 var publicTemplates = map[string]templateSet{
 	"en": {
 		OpenedTitle:        "%s is experiencing issues",

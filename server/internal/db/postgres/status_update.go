@@ -139,7 +139,8 @@ func (s *Service) ListPublicStatusUpdates(
 	// Postgres unbound → "there is no parameter $1" (SQLSTATE 42P02). The
 	// history-window `historyDays` is an int, so fmt.Sprintf interpolation is safe.
 	rawQuery := fmt.Sprintf(
-		`SELECT uid, section_uid, check_uid, incident_uid, incident_publication_uid, title, body_markdown, link_url, kind, published_at
+		`SELECT uid, section_uid, check_uid, incident_uid, incident_publication_uid,
+		        title, body_markdown, link_url, kind, published_at
 		 FROM status_updates
 		 WHERE status_page_uid = ?
 		   AND deleted_at IS NULL

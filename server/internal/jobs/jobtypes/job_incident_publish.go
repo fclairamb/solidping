@@ -75,16 +75,16 @@ func (r *IncidentPublishJobRun) Run(ctx context.Context, jctx *jobdef.JobContext
 	}
 
 	var (
-		clk clockpkg.Clock
-		rt  *realtime.Publisher
+		clk       clockpkg.Clock
+		publisher *realtime.Publisher
 	)
 
 	if jctx.Services != nil {
 		clk = jctx.Services.Clock
-		rt = jctx.Services.Realtime
+		publisher = jctx.Services.Realtime
 	}
 
-	svc := incidentpublications.NewService(jctx.DBService, clk, rt)
+	svc := incidentpublications.NewService(jctx.DBService, clk, publisher)
 	svc.SetLogger(jctx.Logger)
 
 	if jctx.Services != nil {
@@ -124,7 +124,7 @@ func NewIncidentPublishScheduler(jobs jobsvc.Service) *IncidentPublishScheduler 
 
 // SchedulePublish enqueues the debounce job for `at`.
 func (s *IncidentPublishScheduler) SchedulePublish(
-	ctx context.Context, orgUID, incidentUID, statusPageUID string, at time.Time,
+	ctx context.Context, orgUID, incidentUID, statusPageUID string, fireAt time.Time,
 ) error {
 	if s == nil || s.jobs == nil {
 		return nil
@@ -139,7 +139,7 @@ func (s *IncidentPublishScheduler) SchedulePublish(
 		return fmt.Errorf("marshal incident publish config: %w", err)
 	}
 
-	scheduledAt := at
+	scheduledAt := fireAt
 
 	if _, err := s.jobs.CreateJob(
 		ctx, orgUID, string(jobdef.JobTypeIncidentPublish), config,

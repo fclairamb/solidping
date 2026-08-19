@@ -41,6 +41,9 @@ var (
 	ErrBodyRequired = errors.New("body is required")
 	// ErrBodyTooLong is returned when an update body exceeds the limit.
 	ErrBodyTooLong = errors.New("body must be at most 16384 characters")
+	// ErrUpdateWriteFailed is returned when the narrative row could not be
+	// persisted, so the caller cannot be told the update was posted.
+	ErrUpdateWriteFailed = errors.New("failed to append publication update")
 	// ErrAlreadyPublished is returned when the incident is already published on
 	// that page. It is a CONFLICT, not a silent no-op: the caller asked for a
 	// second public incident and there can only be one.
@@ -87,7 +90,7 @@ type PublishScheduler interface {
 	// SchedulePublish asks for AutoPublish(incidentUID, statusPageUID) to be
 	// run at `at`. Implementations must tolerate duplicates — the publication
 	// itself is idempotent.
-	SchedulePublish(ctx context.Context, orgUID, incidentUID, statusPageUID string, at time.Time) error
+	SchedulePublish(ctx context.Context, orgUID, incidentUID, statusPageUID string, fireAt time.Time) error
 }
 
 // NewService builds the publication service. clk may be nil (real clock);
@@ -316,7 +319,7 @@ func (s *Service) ListPublications(
 		return nil, err
 	}
 
-	pubs, err := s.db.ListIncidentPublications(ctx, models.ListIncidentPublicationsFilter{
+	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
 		OrganizationUID: org.UID,
 		StatusPageUID:   page.UID,
 		State:           opts.State,
@@ -365,6 +368,8 @@ func (s *Service) GetPublication(
 // CreatePublication creates a hand-authored publication. It is always
 // human-touched from birth: a person wrote it, so no automation may ever
 // resolve or rewrite it behind their back.
+//
+//nolint:cyclop // one branch per optional field; splitting only hides the shape.
 func (s *Service) CreatePublication(
 	ctx context.Context, orgSlug, pageIdentifier, actorUID string, req *CreatePublicationRequest,
 ) (PublicationResponse, error) {
@@ -577,7 +582,7 @@ func (s *Service) AppendUpdate(
 
 	written := s.postUpdate(ctx, page, pub, kind, title, req.BodyMarkdown, &actorUID)
 	if written == nil {
-		return PublicationUpdateResponse{}, fmt.Errorf("failed to append publication update")
+		return PublicationUpdateResponse{}, ErrUpdateWriteFailed
 	}
 
 	eventType := models.EventTypeStatusPageIncidentUpdated
@@ -697,7 +702,7 @@ func (s *Service) ListForIncident(
 		return nil, err
 	}
 
-	pubs, err := s.db.ListIncidentPublications(ctx, models.ListIncidentPublicationsFilter{
+	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
 		OrganizationUID: org.UID,
 		IncidentUID:     incidentUID,
 	})
@@ -867,7 +872,7 @@ func (s *Service) fanOut(
 // consumeNotifyBudget reserves one subscriber send inside the publication's
 // rolling hour. Returns false when the cap is already spent.
 func (s *Service) consumeNotifyBudget(ctx context.Context, pub *models.IncidentPublication) bool {
-	cap := s.notifyCap(ctx, pub.OrganizationUID)
+	budget := s.notifyCap(ctx, pub.OrganizationUID)
 	now := s.clock.Now()
 
 	windowStart := pub.NotifyWindowStart
@@ -878,7 +883,7 @@ func (s *Service) consumeNotifyBudget(ctx context.Context, pub *models.IncidentP
 		count = 0
 	}
 
-	if count >= cap {
+	if count >= budget {
 		return false
 	}
 
@@ -1015,7 +1020,7 @@ type PublicIncidentUpdate struct {
 func (s *Service) ListPublicIncidents(
 	ctx context.Context, page *models.StatusPage, activeOnly bool,
 ) ([]PublicIncident, error) {
-	filter := models.ListIncidentPublicationsFilter{
+	filter := &models.ListIncidentPublicationsFilter{
 		OrganizationUID: page.OrganizationUID,
 		StatusPageUID:   page.UID,
 		ActiveOnly:      activeOnly,
@@ -1049,13 +1054,14 @@ func (s *Service) ListPublicIncidents(
 			AffectedResources: s.affectedResourceNames(ctx, page.OrganizationUID, pub),
 		}
 
-		for _, upd := range s.loadUpdates(ctx, page.OrganizationUID, pub) {
+		updates := s.loadUpdates(ctx, page.OrganizationUID, pub)
+		for idx := range updates {
 			entry.Updates = append(entry.Updates, PublicIncidentUpdate{
-				UID:          upd.UID,
-				Kind:         upd.Kind,
-				Title:        upd.Title,
-				BodyMarkdown: upd.BodyMarkdown,
-				PublishedAt:  upd.PublishedAt,
+				UID:          updates[idx].UID,
+				Kind:         updates[idx].Kind,
+				Title:        updates[idx].Title,
+				BodyMarkdown: updates[idx].BodyMarkdown,
+				PublishedAt:  updates[idx].PublishedAt,
 			})
 		}
 

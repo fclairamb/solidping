@@ -838,7 +838,7 @@ type Service interface {
 		ctx context.Context, incidentUID, statusPageUID string,
 	) (*models.IncidentPublication, error)
 	ListIncidentPublications(
-		ctx context.Context, filter models.ListIncidentPublicationsFilter,
+		ctx context.Context, filter *models.ListIncidentPublicationsFilter,
 	) ([]*models.IncidentPublication, error)
 	UpdateIncidentPublication(
 		ctx context.Context, uid string, update *models.IncidentPublicationUpdate,

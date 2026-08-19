@@ -157,6 +157,8 @@ func (s *Service) checkInMaintenance(ctx context.Context, checkUID string) bool 
 //
 // Idempotency is belt-and-braces: the read below catches the common case, and
 // the partial unique index catches the racing writers the read cannot.
+//
+//nolint:cyclop // a flat list of fire-time guards; nesting them would hide them.
 func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPageUID string) error {
 	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
 	if err != nil || incident == nil {
@@ -177,9 +179,11 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 		return nil
 	}
 
-	page, err := s.db.GetStatusPage(ctx, orgUID, statusPageUID)
-	if err != nil || page == nil || !page.Enabled {
-		return nil
+	// A page that vanished, or was disabled, during the debounce is not an
+	// error worth retrying the job over — there is simply nowhere to publish.
+	page, pageErr := s.db.GetStatusPage(ctx, orgUID, statusPageUID)
+	if pageErr != nil || page == nil || !page.Enabled {
+		return nil //nolint:nilerr // a missing/disabled page means "nothing to publish", not a failure.
 	}
 
 	// The page's own settings are re-read at fire time too: an operator who
@@ -188,11 +192,15 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 		return nil
 	}
 
-	if existing, findErr := s.db.FindIncidentPublication(ctx, incidentUID, statusPageUID); findErr == nil &&
-		existing != nil {
+	existing, findErr := s.db.FindIncidentPublication(ctx, incidentUID, statusPageUID)
+
+	switch {
+	case findErr == nil && existing != nil:
+		// Already published — a concurrent job fire, or an operator who
+		// published by hand while the timer ran. Reuse, never duplicate.
 		return nil
-	} else if findErr != nil && !errors.Is(findErr, sql.ErrNoRows) {
-		return findErr
+	case findErr != nil && !errors.Is(findErr, sql.ErrNoRows):
+		return fmt.Errorf("auto-publish: look up existing publication: %w", findErr)
 	}
 
 	title := s.templatedTitle(ctx, orgUID, page, incident)
@@ -257,7 +265,7 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 		return
 	}
 
-	pubs, err := s.db.ListIncidentPublications(ctx, models.ListIncidentPublicationsFilter{
+	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
 		OrganizationUID: incident.OrganizationUID,
 		IncidentUID:     incident.UID,
 		Limit:           100,
@@ -349,7 +357,7 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 		return
 	}
 
-	pubs, err := s.db.ListIncidentPublications(ctx, models.ListIncidentPublicationsFilter{
+	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
 		OrganizationUID: incident.OrganizationUID,
 		IncidentUID:     incident.UID,
 		Limit:           100,
@@ -424,7 +432,7 @@ func (s *Service) OnGroupMemberJoined(
 		return
 	}
 
-	pubs, err := s.db.ListIncidentPublications(ctx, models.ListIncidentPublicationsFilter{
+	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
 		OrganizationUID: incident.OrganizationUID,
 		IncidentUID:     incident.UID,
 		ActiveOnly:      true,

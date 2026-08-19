@@ -33,7 +33,8 @@ func (a publicIncidentAdapter) ListPublicIncidents(
 
 	out := make([]statuspages.PublicIncident, 0, len(incidents))
 
-	for _, inc := range incidents {
+	for i := range incidents {
+		inc := &incidents[i]
 		entry := statuspages.PublicIncident{
 			UID:               inc.UID,
 			Title:             inc.Title,
@@ -44,7 +45,8 @@ func (a publicIncidentAdapter) ListPublicIncidents(
 			AffectedResources: inc.AffectedResources,
 		}
 
-		for _, upd := range inc.Updates {
+		for j := range inc.Updates {
+			upd := &inc.Updates[j]
 			entry.Updates = append(entry.Updates, statuspages.PublicIncidentUpdate{
 				UID:          upd.UID,
 				Kind:         upd.Kind,

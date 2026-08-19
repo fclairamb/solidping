@@ -1521,6 +1521,13 @@ func (s *Service) emitEvent(
 		models.EventTypeIncidentEscalationFailed,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
+		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
+		// one: it reaches subscribers and webhooks from the publication
+		// service, and an on-call channel must not be paged twice for one
+		// outage. See incidentpublications.Service.dispatchWebhooks.
+		models.EventTypeStatusPageIncidentPublished,
+		models.EventTypeStatusPageIncidentUpdated,
+		models.EventTypeStatusPageIncidentResolved,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,

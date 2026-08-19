@@ -60,7 +60,7 @@ func (s *Service) FindIncidentPublication(
 // ListIncidentPublications returns publications matching the filter, newest
 // first.
 func (s *Service) ListIncidentPublications(
-	ctx context.Context, filter models.ListIncidentPublicationsFilter,
+	ctx context.Context, filter *models.ListIncidentPublicationsFilter,
 ) ([]*models.IncidentPublication, error) {
 	var pubs []*models.IncidentPublication
 
@@ -112,8 +112,6 @@ func (s *Service) ListIncidentPublications(
 // UpdateIncidentPublication applies a tri-state patch. Nothing but the listed
 // columns (plus updated_at) is written, so two concurrent writers touching
 // different fields do not clobber each other's work.
-//
-//nolint:cyclop // one branch per optional column; splitting it would only hide the shape.
 func (s *Service) UpdateIncidentPublication(
 	ctx context.Context, uid string, update *models.IncidentPublicationUpdate,
 ) error {

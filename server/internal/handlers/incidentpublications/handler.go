@@ -19,6 +19,7 @@ const (
 	paramPage      = "statusPageUid"
 	paramUID       = "uid"
 	paramIncident  = "incidentUid"
+	keyData        = "data"
 )
 
 // Handler exposes the publication overlay over HTTP.
@@ -74,7 +75,7 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": pubs})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: pubs})
 }
 
 // Create handles POST /api/v1/orgs/:org/status-pages/:statusPageUid/incidents.
@@ -152,7 +153,7 @@ func (h *Handler) ListForIncident(writer http.ResponseWriter, req *http.Request)
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": pubs})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: pubs})
 }
 
 // PublishIncident handles POST /api/v1/orgs/:org/incidents/:incidentUid/publications.
@@ -205,10 +206,9 @@ func (h *Handler) ViewPublicIncidents(writer http.ResponseWriter, req *http.Requ
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": incidents})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: incidents})
 }
 
-//nolint:cyclop // one branch per domain error; a map would only hide the mapping.
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):

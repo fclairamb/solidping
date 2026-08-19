@@ -4603,6 +4603,8 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 }
 
 // UpdateStatusPage updates a status page by UID.
+//
+//nolint:cyclop // one branch per optional column; splitting it would only hide the shape.
 func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *models.StatusPageUpdate) error {
 	query := s.db.NewUpdate().
 		Model((*models.StatusPage)(nil)).

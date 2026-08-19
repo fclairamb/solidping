@@ -134,7 +134,8 @@ func (s *Service) ListPublicStatusUpdates(
 	var rowResults []rowResult
 
 	rawQuery := fmt.Sprintf(
-		`SELECT uid, section_uid, check_uid, incident_uid, incident_publication_uid, title, body_markdown, link_url, kind, published_at
+		`SELECT uid, section_uid, check_uid, incident_uid, incident_publication_uid,
+		        title, body_markdown, link_url, kind, published_at
 		 FROM status_updates
 		 WHERE status_page_uid = ?
 		   AND deleted_at IS NULL

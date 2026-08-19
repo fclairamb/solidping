@@ -1604,6 +1604,8 @@ func (s *Service) DeleteResource(
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
+//
+//nolint:cyclop // a flat sequence of optional enrichment blocks, each independently degradable.
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageResponse, error) {
