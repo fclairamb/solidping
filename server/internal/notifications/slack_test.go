@@ -2126,6 +2126,54 @@ func (m *mockDBService) ListPublicStatusUpdates(
 	return nil, nil
 }
 
+// --- IncidentPublication stubs (spec 2026-08-19-08) ---
+
+func (m *mockDBService) CreateIncidentPublication(
+	_ context.Context, _ *models.IncidentPublication,
+) error {
+	return nil
+}
+
+func (m *mockDBService) GetIncidentPublication(
+	_ context.Context, _, _ string,
+) (*models.IncidentPublication, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *mockDBService) FindIncidentPublication(
+	_ context.Context, _, _ string,
+) (*models.IncidentPublication, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *mockDBService) ListIncidentPublications(
+	_ context.Context, _ *models.ListIncidentPublicationsFilter,
+) ([]*models.IncidentPublication, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) UpdateIncidentPublication(
+	_ context.Context, _ string, _ *models.IncidentPublicationUpdate,
+) error {
+	return nil
+}
+
+func (m *mockDBService) SoftDeleteIncidentPublication(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) CountIncidentPublicationsForIncident(
+	_ context.Context, _ string,
+) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) ListStatusPageTargetsForCheck(
+	_ context.Context, _ string, _ *string,
+) ([]*db.StatusPageTarget, error) {
+	return nil, nil
+}
+
 func (m *mockDBService) CreateSubscriber(_ context.Context, _ *models.StatusPageSubscriber) error {
 	return nil
 }

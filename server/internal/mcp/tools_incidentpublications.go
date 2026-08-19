@@ -65,7 +65,7 @@ func createStatusPageIncidentDef() ToolDefinition {
 		Description: "Publish a hand-written incident on a status page. The title and body are shown to " +
 			"CUSTOMERS: never paste probe output, error strings, internal hostnames or IPs into them.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier: stringProp("Status page UID or slug."),
+			propPageIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propTitle:          stringProp("Customer-facing title (required), e.g. \"Payments API is degraded\"."),
 			propState: stringProp(
 				"Initial public state (default \"investigating\"). Allowed: \"investigating\", " +
@@ -118,8 +118,8 @@ func updateStatusPageIncidentDef() ToolDefinition {
 		Description: "Update a published incident's title, severity or state (PATCH semantics). Any edit " +
 			"marks the publication as human-authored, which stops the auto-resolve pipeline from closing it.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier: stringProp("Status page UID or slug."),
-			propPublicationUID: stringProp("Publication UID."),
+			propPageIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propPublicationUID: stringProp("UID of the incident publication to act on."),
 			propTitle:          stringProp("New customer-facing title."),
 			propState: stringProp(
 				"New public state. Allowed: \"investigating\", \"identified\", \"monitoring\", \"resolved\"."),
@@ -167,8 +167,8 @@ func createStatusPageIncidentUpdateDef() ToolDefinition {
 		Description: "Append a narrative update to a published incident. Updates are APPEND-ONLY — there " +
 			"is no edit or delete. The body is shown to customers: never include probe output or internal names.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier: stringProp("Status page UID or slug."),
-			propPublicationUID: stringProp("Publication UID."),
+			propPageIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propPublicationUID: stringProp("UID of the incident publication to act on."),
 			propKind: stringProp(
 				"Update kind (required). Allowed: \"investigating\", \"identified\", \"monitoring\", " +
 					"\"resolved\", \"maintenance\", \"info\". The first four also advance the publication's state."),
@@ -210,8 +210,8 @@ func createIncidentPublicationDef() ToolDefinition {
 			"templated from the page's own public resource name — the incident's internal title, which is " +
 			"built from the check slug, is never exposed.",
 		InputSchema: objectSchema(map[string]any{
-			propIncidentUID:    stringProp("Internal incident UID."),
-			propPageIdentifier: stringProp("Status page UID or slug to publish on."),
+			propIncidentUID:    stringProp("UID of the internal monitoring incident."),
+			propPageIdentifier: stringProp("UID or URL-friendly slug of the status page to publish on."),
 			propTitle:          stringProp("Optional customer-facing title; templated from the page when omitted."),
 			propSeverity:       stringProp("Public badge severity. Allowed: \"minor\", \"major\", \"critical\"."),
 		}, []string{propIncidentUID, propPageIdentifier}),
@@ -251,8 +251,8 @@ func deleteIncidentPublicationDef() ToolDefinition {
 		Description: "Unpublish an incident from a status page. The publication row is kept for audit but " +
 			"disappears from the public page, and the same incident can be published again later.",
 		InputSchema: objectSchema(map[string]any{
-			propIncidentUID:    stringProp("Internal incident UID."),
-			propPublicationUID: stringProp("Publication UID to remove."),
+			propIncidentUID:    stringProp("UID of the internal monitoring incident."),
+			propPublicationUID: stringProp("UID of the incident publication to remove from the page."),
 		}, []string{propIncidentUID, propPublicationUID}),
 	}
 }
