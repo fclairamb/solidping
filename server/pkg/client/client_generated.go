@@ -1068,6 +1068,27 @@ func (e OrganizationMemberSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for RegionCapabilitiesBrowser.
+const (
+	RegionCapabilitiesBrowserNo      RegionCapabilitiesBrowser = "no"
+	RegionCapabilitiesBrowserUnknown RegionCapabilitiesBrowser = "unknown"
+	RegionCapabilitiesBrowserYes     RegionCapabilitiesBrowser = "yes"
+)
+
+// Valid indicates whether the value is a known member of the RegionCapabilitiesBrowser enum.
+func (e RegionCapabilitiesBrowser) Valid() bool {
+	switch e {
+	case RegionCapabilitiesBrowserNo:
+		return true
+	case RegionCapabilitiesBrowserUnknown:
+		return true
+	case RegionCapabilitiesBrowserYes:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RegionCapabilitiesIpv4.
 const (
 	RegionCapabilitiesIpv4No      RegionCapabilitiesIpv4 = "no"
@@ -3816,12 +3837,18 @@ type Region struct {
 
 // RegionCapabilities What a region's LIVE workers report they can do. Derived from worker heartbeats at read time, never configured. Additive: a client that ignores this object behaves exactly as before it existed.
 type RegionCapabilities struct {
+	// Browser Whether `browser` checks can actually run in this region, i.e. whether its live workers have a Chrome to drive — a reachable remote CDP endpoint, or a local Chrome/Chromium binary. Same three states and the same any-not-all rule as the families above; `unknown` (no live worker, or agents predating the probe) is a real state and MUST NOT be rendered as `no`. Advisory only: it drives a creation-time warning and never gates scheduling.
+	Browser *RegionCapabilitiesBrowser `json:"browser,omitempty"`
+
 	// Ipv4 Whether checks pinned to `ipVersion: ipv4` can leave this region. Same three states and the same any-not-all rule as `ipv6` below; `unknown` is a real state and MUST NOT be rendered as `no`.
 	Ipv4 *RegionCapabilitiesIpv4 `json:"ipv4,omitempty"`
 
 	// Ipv6 Whether checks pinned to `ipVersion: ipv6` can leave this region. `yes` when at least one live worker there reports IPv6 egress (any-not-all: a job runs on one worker). `no` when live workers reported and none has it. `unknown` when nothing live has reported — no live worker, or only workers predating the capability report. `unknown` is a real state and MUST NOT be rendered as `no`. The value is a hint with a heartbeat of lag: it never gates execution, and the run-time egress pre-flight is the authority.
 	Ipv6 *RegionCapabilitiesIpv6 `json:"ipv6,omitempty"`
 }
+
+// RegionCapabilitiesBrowser Whether `browser` checks can actually run in this region, i.e. whether its live workers have a Chrome to drive — a reachable remote CDP endpoint, or a local Chrome/Chromium binary. Same three states and the same any-not-all rule as the families above; `unknown` (no live worker, or agents predating the probe) is a real state and MUST NOT be rendered as `no`. Advisory only: it drives a creation-time warning and never gates scheduling.
+type RegionCapabilitiesBrowser string
 
 // RegionCapabilitiesIpv4 Whether checks pinned to `ipVersion: ipv4` can leave this region. Same three states and the same any-not-all rule as `ipv6` below; `unknown` is a real state and MUST NOT be rendered as `no`.
 type RegionCapabilitiesIpv4 string

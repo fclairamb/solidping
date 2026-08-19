@@ -10586,6 +10586,17 @@ components:
             `unknown` is a real state and MUST NOT be rendered as `no`.
             The value is a hint with a heartbeat of lag: it never gates
             execution, and the run-time egress pre-flight is the authority.
+        browser:
+          type: string
+          enum: ["yes", "no", "unknown"]
+          description: >
+            Whether `browser` checks can actually run in this region, i.e.
+            whether its live workers have a Chrome to drive — a reachable
+            remote CDP endpoint, or a local Chrome/Chromium binary. Same three
+            states and the same any-not-all rule as the families above;
+            `unknown` (no live worker, or agents predating the probe) is a real
+            state and MUST NOT be rendered as `no`. Advisory only: it drives a
+            creation-time warning and never gates scheduling.
 
     Region:
       type: object
