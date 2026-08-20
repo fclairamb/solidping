@@ -1,4 +1,96 @@
-import { test, expect } from "./fixtures";
+import { test, expect, API_BASE, type Page } from "./fixtures";
+
+async function getAuthToken(page: Page): Promise<string> {
+  const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { org: "test", email: "test@test.com", password: "test" },
+  });
+  return (await resp.json()).accessToken;
+}
+
+async function createStatusPageViaApi(
+  page: Page,
+  token: string,
+  name: string,
+  slug: string,
+): Promise<{ uid: string }> {
+  const resp = await page.request.post(
+    `${API_BASE}/api/v1/orgs/test/status-pages`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name, slug, visibility: "public" },
+    },
+  );
+  expect(resp.status()).toBe(201);
+  return resp.json();
+}
+
+async function deleteStatusPageViaApi(page: Page, token: string, uid: string) {
+  await page.request.delete(`${API_BASE}/api/v1/orgs/test/status-pages/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+async function createEscalationPolicyViaApi(
+  page: Page,
+  token: string,
+  name: string,
+): Promise<{ uid: string }> {
+  const resp = await page.request.post(
+    `${API_BASE}/api/v1/orgs/test/escalation-policies`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name, repeatMax: 0, steps: [] },
+    },
+  );
+  expect(resp.status()).toBe(201);
+  return resp.json();
+}
+
+async function deleteEscalationPolicyViaApi(page: Page, token: string, uid: string) {
+  await page.request.delete(
+    `${API_BASE}/api/v1/orgs/test/escalation-policies/${uid}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+}
+
+async function createCheckViaApi(
+  page: Page,
+  token: string,
+  name: string,
+): Promise<{ uid: string }> {
+  const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name, type: "http", config: { url: "https://example.com" }, enabled: false },
+  });
+  expect(resp.status()).toBe(201);
+  return resp.json();
+}
+
+async function deleteCheckViaApi(page: Page, token: string, uid: string) {
+  await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+async function createSloViaApi(
+  page: Page,
+  token: string,
+  name: string,
+  checkUid: string,
+): Promise<{ uid: string }> {
+  const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/slos`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name, checkUid, targetPct: 99 },
+  });
+  expect(resp.status()).toBe(201);
+  return resp.json();
+}
+
+async function deleteSloViaApi(page: Page, token: string, uid: string) {
+  await page.request.delete(`${API_BASE}/api/v1/orgs/test/slos/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
 
 test.describe("Command Menu (Cmd+K)", () => {
   test("should open command menu with Cmd+K and show pages", async ({
@@ -295,5 +387,158 @@ test.describe("Command Menu (Cmd+K)", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 5000 });
     expect(page.url()).toContain("/checks/");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+  });
+
+  test("shows the newer sidebar pages without duplicating On-call", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // Spec 2026-08-20-07: the palette had drifted from AppSidebar and was
+    // missing these four entries.
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Updates" })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "Maintenance" })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "SLOs" })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "My pages" })).toBeVisible();
+
+    // "On call" already existed — must render exactly once, never duplicated.
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "On-call" })).toHaveCount(1);
+  });
+
+  test("navigates to the SLOs page when typing 'slo'", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    await input.fill("slo");
+    const sloPageItem = page.locator('[cmdk-item]').filter({ hasText: "SLOs" }).first();
+    await expect(sloPageItem).toBeVisible();
+    await sloPageItem.click();
+
+    await page.waitForURL(/\/slos(\?|$)/, { timeout: 5000 });
+    expect(page.url()).toContain("/slos");
+    await expect(input).not.toBeVisible();
+  });
+
+  test("searches status pages and navigates to the matching one", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const suffix = Date.now().toString().slice(-9);
+    const name = `CmdKSP ${suffix}`;
+    const slug = `cmdk-sp-${suffix}`.slice(0, 40);
+
+    const statusPage = await createStatusPageViaApi(page, token, name, slug);
+
+    try {
+      await page.waitForLoadState("networkidle");
+      await page.keyboard.press("Meta+k");
+      const input = page.locator('[cmdk-input]');
+      await expect(input).toBeVisible({ timeout: 3000 });
+
+      await input.fill(name);
+
+      // The new "Status pages" group renders below Checks and holds the
+      // client-filtered match — scope the heading assertion to
+      // [cmdk-group-heading] since the item text below repeats the name.
+      await expect(
+        page.locator("[cmdk-group-heading]", { hasText: "Status pages" }),
+      ).toBeVisible({ timeout: 8000 });
+      const item = page.locator('[cmdk-item]').filter({ hasText: name });
+      await expect(item).toBeVisible();
+
+      await page.keyboard.press("Enter");
+      await page.waitForURL(new RegExp(`/status-pages/${statusPage.uid}`), {
+        timeout: 5000,
+      });
+      expect(page.url()).toContain(`/status-pages/${statusPage.uid}`);
+      await expect(input).not.toBeVisible();
+    } finally {
+      await deleteStatusPageViaApi(page, token, statusPage.uid);
+    }
+  });
+
+  test("searches escalation policies and navigates to the matching one", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const suffix = Date.now().toString().slice(-9);
+    const name = `CmdKEP ${suffix}`;
+
+    const policy = await createEscalationPolicyViaApi(page, token, name);
+
+    try {
+      await page.waitForLoadState("networkidle");
+      await page.keyboard.press("Meta+k");
+      const input = page.locator('[cmdk-input]');
+      await expect(input).toBeVisible({ timeout: 3000 });
+
+      await input.fill(name);
+
+      await expect(
+        page.locator("[cmdk-group-heading]", { hasText: "Escalation policies" }),
+      ).toBeVisible({ timeout: 8000 });
+      const item = page.locator('[cmdk-item]').filter({ hasText: name });
+      await expect(item).toBeVisible();
+
+      await page.keyboard.press("Enter");
+      await page.waitForURL(new RegExp(`/escalation-policies/${policy.uid}`), {
+        timeout: 5000,
+      });
+      expect(page.url()).toContain(`/escalation-policies/${policy.uid}`);
+      await expect(input).not.toBeVisible();
+    } finally {
+      await deleteEscalationPolicyViaApi(page, token, policy.uid);
+    }
+  });
+
+  test("searches SLOs and navigates to the matching one", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const suffix = Date.now().toString().slice(-9);
+    const name = `CmdKSlo ${suffix}`;
+
+    const check = await createCheckViaApi(page, token, `CmdK SLO scope ${suffix}`);
+    const slo = await createSloViaApi(page, token, name, check.uid);
+
+    try {
+      await page.waitForLoadState("networkidle");
+      await page.keyboard.press("Meta+k");
+      const input = page.locator('[cmdk-input]');
+      await expect(input).toBeVisible({ timeout: 3000 });
+
+      await input.fill(name);
+
+      // The static "SLOs" page entry and this entity group's heading render
+      // the same text — scope to [cmdk-group-heading] to disambiguate, same
+      // pattern as the Account/Organization collision above.
+      await expect(
+        page.locator("[cmdk-group-heading]", { hasText: "SLOs" }),
+      ).toBeVisible({ timeout: 8000 });
+      const item = page.locator('[cmdk-item]').filter({ hasText: name });
+      await expect(item).toBeVisible();
+
+      await page.keyboard.press("Enter");
+      await page.waitForURL(new RegExp(`/slos/${slo.uid}`), { timeout: 5000 });
+      expect(page.url()).toContain(`/slos/${slo.uid}`);
+      await expect(input).not.toBeVisible();
+    } finally {
+      await deleteSloViaApi(page, token, slo.uid);
+      await deleteCheckViaApi(page, token, check.uid);
+    }
   });
 });
