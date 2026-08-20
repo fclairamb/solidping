@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
+import { slugify } from "@/lib/utils";
 
 export interface SloFormProps {
   org: string;
@@ -40,6 +41,10 @@ export function SloForm({ org, mode, initial, isPending, onSubmit, onCancel }: S
 
   const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
+  // Auto-derive the slug from the name until the operator edits it by hand —
+  // create mode only, mirroring status-page-form.tsx. Edit mode never
+  // rewrites a stored slug out from under the operator.
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
   const [scopeKind, setScopeKind] = useState<"check" | "group">(
     initial?.checkGroupUid ? "group" : "check",
   );
@@ -95,7 +100,13 @@ export function SloForm({ org, mode, initial, isPending, onSubmit, onCancel }: S
               data-testid="slo-name"
               value={name}
               placeholder={t("slos:form.namePlaceholder")}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setName(value);
+                if (mode === "create" && !slugManuallyEdited) {
+                  setSlug(slugify(value));
+                }
+              }}
             />
           </div>
 
@@ -105,7 +116,10 @@ export function SloForm({ org, mode, initial, isPending, onSubmit, onCancel }: S
               id="slo-slug"
               data-testid="slo-slug"
               value={slug}
-              onChange={(event) => setSlug(event.target.value)}
+              onChange={(event) => {
+                setSlug(event.target.value);
+                setSlugManuallyEdited(true);
+              }}
             />
             <p className="text-xs text-muted-foreground">{t("slos:form.slugHelp")}</p>
           </div>

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, X } from "lucide-react";
 
-import { useCheckGroups, type CheckGroup } from "@/api/hooks";
+import { useCheckGroup, useCheckGroups, type CheckGroup } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -46,6 +46,12 @@ export function CheckGroupPicker({
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Self-resolved label for `value`, independent of the caller's optional
+  // `selectedLabel` override. Set synchronously on select() so the trigger
+  // never flashes the raw uid between picking an entity and the next render.
+  const [pickedUid, setPickedUid] = useState<string | undefined>();
+  const [pickedLabel, setPickedLabel] = useState<string | undefined>();
+
   const { data: groups = [] } = useCheckGroups(org);
 
   const filtered = useMemo(() => {
@@ -66,11 +72,41 @@ export function CheckGroupPicker({
   // which is where the state actually belongs.
   const active = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
 
-  const triggerLabel =
-    selectedLabel ??
-    (value ? value : placeholder ?? t("statusPages:resources.selectGroup"));
+  // The group list endpoint returns every group at once, so a `value` set by
+  // something other than this component's own select() almost always
+  // resolves from `groups` already in hand; the single-group fetch only
+  // fires when it genuinely doesn't (e.g. a deleted group).
+  const needsResolve = !selectedLabel && !!value && value !== pickedUid;
+  const fromList = needsResolve ? groups.find((g) => g.uid === value) : undefined;
+  const {
+    data: fetchedGroup,
+    isError: fetchFailed,
+  } = useCheckGroup(org, needsResolve && !fromList ? value! : "", {});
+
+  let triggerLabel: string;
+  let isResolving = false;
+  if (selectedLabel) {
+    triggerLabel = selectedLabel;
+  } else if (!value) {
+    triggerLabel = placeholder ?? t("statusPages:resources.selectGroup");
+  } else if (value === pickedUid && pickedLabel) {
+    triggerLabel = pickedLabel;
+  } else if (fromList) {
+    triggerLabel = fromList.name;
+  } else if (fetchedGroup) {
+    triggerLabel = fetchedGroup.name;
+  } else if (fetchFailed) {
+    // Genuinely deleted (or otherwise inaccessible) group: fall back to the
+    // uid so the field stays visible and clearable instead of crashing.
+    triggerLabel = value;
+  } else {
+    triggerLabel = "…";
+    isResolving = true;
+  }
 
   const select = (uid: string, group?: CheckGroup) => {
+    setPickedUid(uid);
+    setPickedLabel(group?.name ?? uid);
     onChange(uid, group);
     setOpen(false);
     setQuery("");
@@ -91,7 +127,7 @@ export function CheckGroupPicker({
           data-testid={triggerTestId}
           className={cn(
             "h-9 w-full justify-between text-left font-normal",
-            !value && "text-muted-foreground",
+            (!value || isResolving) && "text-muted-foreground",
           )}
         >
           <span className="truncate">{triggerLabel}</span>
