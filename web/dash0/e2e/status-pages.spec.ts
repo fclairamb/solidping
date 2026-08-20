@@ -126,8 +126,8 @@ test.describe("Status page history period (24h)", () => {
   });
 });
 
-test.describe("Status pages list header", () => {
-  test("Refresh sits in the header action cluster, left of New Status Page, and the empty state has no CTA", async ({
+test.describe("Status pages list toolbar", () => {
+  test("Refresh sits in the search toolbar row, and the header carries only New Status Page", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -137,43 +137,29 @@ test.describe("Status pages list header", () => {
     await page.waitForURL(/\/status-pages$/);
     await page.waitForLoadState("networkidle");
 
-    // Both header actions exist: Refresh (icon-only label hidden below sm, but
-    // its accessible name is always "Refresh") and the New Status Page link.
+    // Refresh (icon-only label hidden below sm, but its accessible name is
+    // always "Refresh") and the New Status Page link both exist.
     const refreshButton = page.getByRole("button", { name: "Refresh" });
     await expect(refreshButton).toBeVisible();
 
     const newLink = page.getByRole("link", { name: "New Status Page" });
     await expect(newLink.first()).toBeVisible();
 
-    // Refresh and New Status Page share the same right-aligned PageHeader action
-    // cluster (`ml-auto flex shrink-0 items-center gap-2`), with Refresh first in
-    // DOM order.
-    const cluster = page
-      .locator("div.ml-auto.flex.shrink-0.items-center.gap-2")
-      .filter({ has: refreshButton });
-    await expect(cluster).toHaveCount(1);
-    await expect(cluster.getByRole("link", { name: "New Status Page" })).toBeVisible();
+    // The PageHeader action cluster (`ml-auto flex shrink-0 items-center
+    // gap-2`) carries only the primary "New Status Page" action now —
+    // Refresh is a toolbar control, not a page-level action, so it moved out.
+    const headerCluster = page.locator("div.ml-auto.flex.shrink-0.items-center.gap-2");
+    await expect(headerCluster.getByRole("button", { name: "Refresh" })).toHaveCount(0);
+    await expect(headerCluster.getByRole("link", { name: "New Status Page" })).toBeVisible();
 
-    const refreshFirst = await refreshButton.evaluate((refresh) => {
-      const clusterEl = refresh.closest("div.ml-auto.flex.shrink-0.items-center.gap-2");
-      if (!clusterEl) return false;
-      const newAction = clusterEl.querySelector("a[href*='/status-pages/new']");
-      if (!newAction) return false;
-      // Refresh must come before New Status Page in document order.
-      return Boolean(
-        refresh.compareDocumentPosition(newAction) & Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    });
-    expect(refreshFirst).toBe(true);
-
-    // The redundant empty-state CTA is gone: there is no "Create your first
-    // status page" button anywhere on the page (regardless of empty/non-empty).
-    await expect(
-      page.getByRole("button", { name: "Create your first status page" }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("link", { name: "Create your first status page" }),
-    ).toHaveCount(0);
+    // Refresh sits in the same toolbar row as the search input, to its right.
+    const searchInput = page.getByPlaceholder("Search status pages...");
+    await expect(searchInput).toBeVisible();
+    const toolbarRow = page
+      .locator("div.flex.flex-wrap.items-center.gap-4")
+      .filter({ has: refreshButton })
+      .filter({ has: searchInput });
+    await expect(toolbarRow).toHaveCount(1);
   });
 });
 
