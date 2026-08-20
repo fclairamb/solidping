@@ -435,12 +435,6 @@ function StatusUpdatesIndexPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("statusUpdates:noStatusUpdatesHint")}
           </p>
-          <Button asChild size="sm">
-            <Link to="/orgs/$org/status-updates/new" params={{ org }}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              {t("statusUpdates:newStatusUpdate")}
-            </Link>
-          </Button>
         </div>
       )}
 

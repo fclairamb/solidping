@@ -179,13 +179,6 @@ function SlosIndexPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("list.emptyHint")}
           </p>
-          <Button
-            size="sm"
-            onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            {t("list.new")}
-          </Button>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border">

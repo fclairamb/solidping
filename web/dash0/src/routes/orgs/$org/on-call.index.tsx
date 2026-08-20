@@ -130,12 +130,6 @@ function OnCallListPage() {
                 {t("oncall:list.emptyHint")}
               </p>
             </div>
-            <Button asChild size="sm">
-              <Link to="/orgs/$org/on-call/new" params={{ org }}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                {t("oncall:list.create")}
-              </Link>
-            </Button>
           </div>
         ) : (
           <Table>

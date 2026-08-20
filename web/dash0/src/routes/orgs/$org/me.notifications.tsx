@@ -87,12 +87,6 @@ function MyNotificationsPage() {
               <p className="mx-auto max-w-sm text-xs text-muted-foreground">
                 {t("common:myNotifications.empty.hint")}
               </p>
-              <Button asChild size="sm" variant="outline">
-                <Link to="/orgs/$org/account/notifications" params={{ org }}>
-                  <Settings className="mr-1.5 h-3.5 w-3.5" />
-                  {t("common:myNotifications.empty.cta")}
-                </Link>
-              </Button>
             </div>
           )}
 
