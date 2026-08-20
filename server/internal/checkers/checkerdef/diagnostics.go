@@ -25,6 +25,49 @@ type Diagnostics struct {
 	// response, so the capture degrades to absent and the existing error
 	// output remains the only evidence.
 	FailureResponse *FailureResponse `json:"failureResponse,omitempty"`
+
+	// Screenshot is the capture of what a FAILING browser check's page looked
+	// like. Nil unless the check opted in (browser: `screenshot`) and the
+	// capture succeeded.
+	//
+	// See Screenshot's own doc comment for why its bytes never cross the agent
+	// WS control channel.
+	Screenshot *Screenshot `json:"screenshot,omitempty"`
+}
+
+// Screenshot is a PNG capture of the page a failing browser check was looking
+// at, taken before the browser context is disposed.
+//
+// HONESTY ABOUT WHAT THIS IS: it is what the page looked like a moment AFTER
+// the check decided the target was unhealthy, not the frame at the instant of
+// failure. Every surface that renders it must say so — presenting it as "the
+// failure" invites an operator to conclude the wrong thing from a page that
+// finished loading half a second later.
+//
+// THE BYTES NEVER CROSS THE CONTROL CHANNEL. Diagnostics is serialized onto
+// the agent WebSocket result frame (internal/agents/protocol.go), which is
+// JSON: a megabyte PNG would become a multi-megabyte base64 blob on the socket
+// every agent uses to claim work. PNG is therefore `json:"-"` — a deported
+// agent uploads its bytes out-of-band to POST /api/v1/agent/attachments and
+// advertises only the marker fields below. The IN-PROCESS worker path keeps
+// the bytes in memory and never serializes them at all, which is why the field
+// works there with no wire representation.
+type Screenshot struct {
+	// PNG is the raw image. NEVER SERIALIZED — see the type doc.
+	PNG []byte `json:"-"`
+	// CapturedAt is when the screenshot was taken.
+	CapturedAt time.Time `json:"capturedAt,omitzero"`
+	// Available is the agent-side MARKER: "I hold a capture for this result".
+	// It is what crosses the wire in place of the bytes, so the server can ask
+	// for the upload if (and only if) this result opens an incident.
+	Available bool `json:"available,omitempty"`
+	// CaptureID names the capture in the agent's local LRU, so the server's
+	// upload request can identify which one it wants.
+	CaptureID string `json:"captureId,omitempty"`
+	// Region is the probing region. Filled SERVER-SIDE from the persisted
+	// result row, never by the checker — a deported agent must not be the
+	// authority on where it ran.
+	Region string `json:"region,omitempty"`
 }
 
 // FailureResponse is the textual capture of the response a failing probe
