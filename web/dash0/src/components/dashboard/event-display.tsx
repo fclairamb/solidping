@@ -40,6 +40,17 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "incident.unacknowledged": { emoji: "↩️", tone: TONE_AMBER },
   "incident.snoozed": { emoji: "💤", tone: TONE_SLATE },
   "incident.comment": { emoji: "💬", tone: TONE_BLUE },
+  // Status-page publication lifecycle (spec 2026-08-19-08). These are
+  // CUSTOMER-VISIBLE facts and are deliberately distinct from the internal
+  // incident.* pair above: an operational incident opening and a public
+  // incident being published are different events, at different times, and
+  // most incidents never produce the second at all. The 📣 / 📝 / ✅-adjacent
+  // emoji set says "announcement", not "outage", so a mixed feed reads
+  // correctly at a glance; the tones follow the same severity language as the
+  // internal events (opened = destructive, edited = blue, closed = emerald).
+  "statuspage.incident.published": { emoji: "📣", tone: TONE_DESTRUCTIVE },
+  "statuspage.incident.updated": { emoji: "📝", tone: TONE_BLUE },
+  "statuspage.incident.resolved": { emoji: "📗", tone: TONE_EMERALD },
 };
 
 // getEventEmoji returns the registry emoji for an event type, or undefined

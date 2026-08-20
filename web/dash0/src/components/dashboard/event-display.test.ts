@@ -148,6 +148,15 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["incident.unacknowledged", "↩️"],
     ["incident.snoozed", "💤"],
     ["incident.comment", "💬"],
+    // Status-page publication lifecycle (spec 2026-08-19-08). Unlike the
+    // incident.* pairs above these have NO backend chat-integration
+    // counterpart to stay aligned with — publication events fan out to
+    // `webhook` connections only (see incidentpublications/webhooks.go), and
+    // the chat integrations deliberately stay on the internal incident.*
+    // lifecycle. So dash0 is the sole owner of this pairing.
+    ["statuspage.incident.published", "📣"],
+    ["statuspage.incident.updated", "📝"],
+    ["statuspage.incident.resolved", "📗"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {
