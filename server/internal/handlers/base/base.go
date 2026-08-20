@@ -8,9 +8,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/getsentry/sentry-go"
-
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/errorreport"
 )
 
 // ErrorCode represents a machine-readable error code.
@@ -181,20 +180,38 @@ func (h *HandlerBase) WriteValidationError(
 	return h.WriteJSON(writer, http.StatusUnprocessableEntity, resp)
 }
 
-// WriteError writes an error response without an internal error.
+// WriteError writes an error response without an internal error. It never
+// reports to Sentry: it carries no error to report, and every caller uses it
+// for an expected, client-visible outcome.
 func (h *HandlerBase) WriteError(w http.ResponseWriter, status int, code ErrorCode, message string) error {
 	return h.writeJSONError(w, status, code, message, nil, 0)
 }
 
-// WriteErrorErr writes an error response with an internal error.
+// WriteErrorErr writes an error response with an internal error. The request is
+// required because a 5xx written this way is a server fault and is reported to
+// Sentry on the request-scoped hub; 4xx statuses are client faults and never
+// produce an event.
 func (h *HandlerBase) WriteErrorErr(
-	w http.ResponseWriter, status int, code ErrorCode, message string, internalErr error,
+	writer http.ResponseWriter, request *http.Request,
+	status int, code ErrorCode, message string, internalErr error,
 ) error {
-	return h.writeJSONError(w, status, code, message, internalErr, 0)
+	if status >= http.StatusInternalServerError {
+		errorreport.CaptureOnRequest(request, internalErr)
+	}
+
+	return h.writeJSONError(writer, status, code, message, internalErr, 0)
 }
 
-// WriteInternalError writes a 500 internal server error response.
-func (h *HandlerBase) WriteInternalError(w http.ResponseWriter, err error) error {
+// WriteInternalError writes a 500 internal server error response and reports the
+// error to Sentry on the request-scoped hub.
+//
+// Reporting is deliberately not opt-in: this is the single funnel for "the
+// server broke", so taking the request is what makes every 500 visible without
+// each new handler having to remember. When no hub is on the context (a unit
+// test, a non-HTTP caller) the capture is a silent no-op.
+func (h *HandlerBase) WriteInternalError(w http.ResponseWriter, r *http.Request, err error) error {
+	errorreport.CaptureOnRequest(r, err)
+
 	return h.writeJSONError(
 		w,
 		http.StatusInternalServerError,
@@ -203,17 +220,6 @@ func (h *HandlerBase) WriteInternalError(w http.ResponseWriter, err error) error
 		err,
 		0,
 	)
-}
-
-// WriteInternalErrorR writes a 500 internal server error response and reports
-// the error to Sentry if a hub is available on the request context.
-// Prefer this over WriteInternalError when you have access to the request.
-func (h *HandlerBase) WriteInternalErrorR(w http.ResponseWriter, r *http.Request, err error) error {
-	if hub := sentry.GetHubFromContext(r.Context()); hub != nil {
-		hub.CaptureException(err)
-	}
-
-	return h.WriteInternalError(w, err)
 }
 
 // ExtractRemoteAddr extracts the caller's IP address from a request for

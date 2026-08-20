@@ -72,7 +72,7 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 	pubs, err := h.svc.ListPublications(
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramPage), opts)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: pubs})
@@ -90,7 +90,7 @@ func (h *Handler) Create(writer http.ResponseWriter, req *http.Request) error {
 	pub, err := h.svc.CreatePublication(
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramPage), h.actorUID(req), &body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, pub)
@@ -101,7 +101,7 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 	pub, err := h.svc.GetPublication(
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramPage), httpx.Param(req, paramUID))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, pub)
@@ -120,7 +120,7 @@ func (h *Handler) Update(writer http.ResponseWriter, req *http.Request) error {
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramPage),
 		httpx.Param(req, paramUID), h.actorUID(req), &body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, pub)
@@ -139,7 +139,7 @@ func (h *Handler) AppendUpdate(writer http.ResponseWriter, req *http.Request) er
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramPage),
 		httpx.Param(req, paramUID), h.actorUID(req), &body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, update)
@@ -150,7 +150,7 @@ func (h *Handler) ListForIncident(writer http.ResponseWriter, req *http.Request)
 	pubs, err := h.svc.ListForIncident(
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramIncident))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: pubs})
@@ -174,7 +174,7 @@ func (h *Handler) PublishIncident(writer http.ResponseWriter, req *http.Request)
 	pub, err := h.svc.PublishIncident(
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramIncident), h.actorUID(req), &body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, pub)
@@ -186,7 +186,7 @@ func (h *Handler) Unpublish(writer http.ResponseWriter, req *http.Request) error
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, paramIncident),
 		httpx.Param(req, paramUID), h.actorUID(req))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -203,13 +203,13 @@ func (h *Handler) ViewPublicIncidents(writer http.ResponseWriter, req *http.Requ
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, "slug"),
 		req.URL.Query().Get("active") == "true")
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: incidents})
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Organization not found")
@@ -253,6 +253,6 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			{Name: "bodyMarkdown", Message: "Body must be at most 16384 characters"},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

@@ -33,7 +33,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 	rows, err := h.svc.List(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": rows})
@@ -50,7 +50,7 @@ func (h *Handler) Create(writer http.ResponseWriter, req *http.Request) error {
 
 	row, err := h.svc.Create(req.Context(), httpx.Param(req, "org"), &createReq)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, row)
@@ -60,7 +60,7 @@ func (h *Handler) Create(writer http.ResponseWriter, req *http.Request) error {
 func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 	row, err := h.svc.Get(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, row)
@@ -77,7 +77,7 @@ func (h *Handler) Update(writer http.ResponseWriter, req *http.Request) error {
 
 	row, err := h.svc.Update(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), updateReq)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, row)
@@ -86,7 +86,7 @@ func (h *Handler) Update(writer http.ResponseWriter, req *http.Request) error {
 // Delete handles deleting a report schedule.
 func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
 	if err := h.svc.Delete(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -124,7 +124,7 @@ func (h *Handler) TestSend(writer http.ResponseWriter, req *http.Request) error 
 		req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), recipient, time.Now(),
 	)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusAccepted)
@@ -132,14 +132,14 @@ func (h *Handler) TestSend(writer http.ResponseWriter, req *http.Request) error 
 	return nil
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrReportScheduleNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeReportScheduleNotFound, "Report schedule not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeReportScheduleNotFound, "Report schedule not found", err)
 	case errors.Is(err, ErrNameRequired):
 		return h.WriteValidationError(writer, msgValidation, []base.ValidationErrorField{
 			{Name: "name", Message: "Name is required"},
@@ -165,6 +165,6 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			{Name: "recipient", Message: ErrNoTestRecipient.Error()},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

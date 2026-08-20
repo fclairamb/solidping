@@ -32,7 +32,7 @@ func (h *Handler) ListCheckGroups(writer http.ResponseWriter, req *http.Request)
 
 	groups, err := h.svc.ListCheckGroups(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleOrgError(writer, err)
+		return h.handleOrgError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
@@ -59,7 +59,7 @@ func (h *Handler) CreateCheckGroup(writer http.ResponseWriter, req *http.Request
 
 	group, err := h.svc.CreateCheckGroup(req.Context(), orgSlug, createReq)
 	if err != nil {
-		return h.handleCreateError(writer, err)
+		return h.handleCreateError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, group)
@@ -72,7 +72,7 @@ func (h *Handler) GetCheckGroup(writer http.ResponseWriter, req *http.Request) e
 
 	group, err := h.svc.GetCheckGroup(req.Context(), orgSlug, identifier)
 	if err != nil {
-		return h.handleGroupError(writer, err)
+		return h.handleGroupError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, group)
@@ -92,7 +92,7 @@ func (h *Handler) UpdateCheckGroup(writer http.ResponseWriter, req *http.Request
 
 	group, err := h.svc.UpdateCheckGroup(req.Context(), orgSlug, identifier, updateReq)
 	if err != nil {
-		return h.handleUpdateError(writer, err)
+		return h.handleUpdateError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, group)
@@ -104,7 +104,7 @@ func (h *Handler) DeleteCheckGroup(writer http.ResponseWriter, req *http.Request
 	identifier := httpx.Param(req, "uid")
 
 	if err := h.svc.DeleteCheckGroup(req.Context(), orgSlug, identifier); err != nil {
-		return h.handleGroupError(writer, err)
+		return h.handleGroupError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -112,33 +112,33 @@ func (h *Handler) DeleteCheckGroup(writer http.ResponseWriter, req *http.Request
 	return nil
 }
 
-func (h *Handler) handleOrgError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleOrgError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if errors.Is(err, ErrOrganizationNotFound) {
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	}
 
-	return h.WriteInternalError(writer, err)
+	return h.WriteInternalError(writer, request, err)
 }
 
-func (h *Handler) handleGroupError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleGroupError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckGroupNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: "A check group with this slug already exists in this organization"},
@@ -152,18 +152,18 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 			},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckGroupNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: "A check group with this slug already exists in this organization"},
@@ -177,6 +177,6 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 			},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

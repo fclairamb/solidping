@@ -61,7 +61,7 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 
 	resp, err := h.svc.ListFiles(req.Context(), orgSlug, query.Get("q"), offset, limit)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -71,7 +71,7 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 	resp, err := h.svc.GetFile(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -81,7 +81,7 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 func (h *Handler) GetContent(writer http.ResponseWriter, req *http.Request) error {
 	file, body, err := h.svc.GetFileContent(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	defer func() { _ = body.Close() }()
@@ -92,7 +92,7 @@ func (h *Handler) GetContent(writer http.ResponseWriter, req *http.Request) erro
 // Delete handles DELETE /api/v1/orgs/:org/files/:uid.
 func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
 	if err := h.svc.DeleteFile(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -125,7 +125,7 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error
 	case errors.Is(verifyErr, signedurl.ErrSignedURLExpired):
 		return h.WriteError(writer, http.StatusGone, errCodeURLExpired, "Signed URL has expired")
 	case verifyErr != nil:
-		return h.WriteInternalError(writer, verifyErr)
+		return h.WriteInternalError(writer, req, verifyErr)
 	}
 
 	file, err := h.svc.GetFileByUID(req.Context(), uid)
@@ -134,12 +134,12 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error
 			return h.WriteError(writer, http.StatusNotFound, errCodeFileNotFound, "File not found")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	body, err := h.svc.OpenContent(req.Context(), file)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	defer func() { _ = body.Close() }()
@@ -219,16 +219,16 @@ func sanitizeFilename(name string) string {
 	return cleaned
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrFileNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, errCodeFileNotFound, "File not found", err)
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, errCodeFileNotFound, "File not found", err)
 	case errors.Is(err, ErrFileTooLarge):
-		return h.WriteErrorErr(writer, http.StatusRequestEntityTooLarge, errCodeFileTooLarge, "File too large", err)
+		return h.WriteErrorErr(writer, request, http.StatusRequestEntityTooLarge, errCodeFileTooLarge, "File too large", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

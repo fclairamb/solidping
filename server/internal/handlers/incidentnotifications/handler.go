@@ -29,7 +29,7 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 	}
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -40,7 +40,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrForbidden):
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Forbidden")
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -79,7 +79,7 @@ func parseListFilter(req *http.Request) ListFilter {
 func (h *Handler) ListForIncident(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	incidentUID := httpx.Param(req, "uid")
@@ -87,7 +87,7 @@ func (h *Handler) ListForIncident(writer http.ResponseWriter, req *http.Request)
 
 	rows, err := h.svc.ListForIncident(req.Context(), orgUID, incidentUID, filter)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
@@ -98,7 +98,7 @@ func (h *Handler) ListForIncident(writer http.ResponseWriter, req *http.Request)
 func (h *Handler) GetForIncident(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	incidentUID := httpx.Param(req, "uid")
@@ -106,7 +106,7 @@ func (h *Handler) GetForIncident(writer http.ResponseWriter, req *http.Request) 
 
 	detail, err := h.svc.GetForIncident(req.Context(), orgUID, incidentUID, notifUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, detail)
@@ -117,14 +117,14 @@ func (h *Handler) GetForIncident(writer http.ResponseWriter, req *http.Request) 
 func (h *Handler) GetByOrg(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	notifUID := httpx.Param(req, "notifUid")
 
 	detail, err := h.svc.GetByOrg(req.Context(), orgUID, notifUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, detail)
@@ -135,7 +135,7 @@ func (h *Handler) GetByOrg(writer http.ResponseWriter, req *http.Request) error 
 func (h *Handler) ListByOrg(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	connectionUID := req.URL.Query().Get("connectionUid")
@@ -157,7 +157,7 @@ func (h *Handler) ListByOrg(writer http.ResponseWriter, req *http.Request) error
 
 	rows, err := h.svc.ListByConnection(req.Context(), orgUID, connectionUID, limit)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
@@ -168,7 +168,7 @@ func (h *Handler) ListByOrg(writer http.ResponseWriter, req *http.Request) error
 func (h *Handler) ListForUser(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	targetUID := httpx.Param(req, "uid")
@@ -182,7 +182,7 @@ func (h *Handler) ListForUser(writer http.ResponseWriter, req *http.Request) err
 	if callerUser.UID != targetUID {
 		member, memberErr := h.svc.db.GetMemberByUserAndOrg(req.Context(), callerUser.UID, orgUID)
 		if memberErr != nil || !member.Role.AtLeast(models.MemberRoleAdmin) {
-			return h.handleError(writer, ErrForbidden)
+			return h.handleError(writer, req, ErrForbidden)
 		}
 	}
 
@@ -190,7 +190,7 @@ func (h *Handler) ListForUser(writer http.ResponseWriter, req *http.Request) err
 
 	rows, err := h.svc.ListForUser(req.Context(), orgUID, targetUID, filter)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
@@ -201,7 +201,7 @@ func (h *Handler) ListForUser(writer http.ResponseWriter, req *http.Request) err
 func (h *Handler) ListForMe(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	callerUser, ok := middleware.GetUserFromContext(req.Context())
@@ -213,7 +213,7 @@ func (h *Handler) ListForMe(writer http.ResponseWriter, req *http.Request) error
 
 	rows, err := h.svc.ListForUser(req.Context(), orgUID, callerUser.UID, filter)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})

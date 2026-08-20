@@ -33,7 +33,7 @@ func (h *Handler) ListChannels(writer http.ResponseWriter, req *http.Request) er
 
 	connections, err := h.svc.ListChannels(req.Context(), orgSlug, checkID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, connections)
@@ -52,7 +52,7 @@ func (h *Handler) SetChannels(writer http.ResponseWriter, req *http.Request) err
 	}
 
 	if err := h.svc.SetChannels(req.Context(), orgSlug, checkID, setReq); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -66,7 +66,7 @@ func (h *Handler) AddChannel(writer http.ResponseWriter, req *http.Request) erro
 	connectionUID := httpx.Param(req, "connection")
 
 	if err := h.svc.AddChannel(req.Context(), orgSlug, checkID, connectionUID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusCreated)
@@ -80,7 +80,7 @@ func (h *Handler) RemoveConnection(writer http.ResponseWriter, req *http.Request
 	connectionUID := httpx.Param(req, "connection")
 
 	if err := h.svc.RemoveConnection(req.Context(), orgSlug, checkID, connectionUID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -95,7 +95,7 @@ func (h *Handler) GetConnectionSettings(writer http.ResponseWriter, req *http.Re
 
 	response, err := h.svc.GetConnectionSettings(req.Context(), orgSlug, checkID, connectionUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
@@ -115,14 +115,14 @@ func (h *Handler) UpdateConnectionSettings(writer http.ResponseWriter, req *http
 	}
 
 	if err := h.svc.UpdateConnectionSettings(req.Context(), orgSlug, checkID, connectionUID, updateReq); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
 	return nil
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -141,6 +141,6 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			"That Microsoft Teams channel is not one this bot has been added to.",
 		)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

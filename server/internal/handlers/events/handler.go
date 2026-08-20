@@ -59,13 +59,14 @@ func (h *Handler) ListEvents(writer http.ResponseWriter, req *http.Request) erro
 	// Parse limit (canonical) or size (deprecated alias). Default 20, max 100.
 	limit, err := base.ParsePageLimit(query, opts.Size, 100)
 	if err != nil {
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
 	opts.Size = limit
 
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
@@ -92,13 +93,14 @@ func (h *Handler) ListIncidentEvents(writer http.ResponseWriter, req *http.Reque
 	// Parse limit (canonical) or size (deprecated alias). Default 20, max 100.
 	limit, err := base.ParsePageLimit(query, opts.Size, 100)
 	if err != nil {
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
 	opts.Size = limit
 
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
@@ -125,24 +127,25 @@ func (h *Handler) ListCheckEvents(writer http.ResponseWriter, req *http.Request)
 	// Parse limit (canonical) or size (deprecated alias). Default 20, max 100.
 	limit, err := base.ParsePageLimit(query, opts.Size, 100)
 	if err != nil {
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
 	opts.Size = limit
 
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
 }
 
 // handleError translates service errors to HTTP responses.
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

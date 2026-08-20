@@ -19,7 +19,7 @@ func (h *Handler) ListIdentities(writer http.ResponseWriter, req *http.Request) 
 
 	resp, err := h.svc.ListIdentities(req.Context(), orgSlug, integrationUID)
 	if err != nil {
-		return h.handleIdentityError(writer, err)
+		return h.handleIdentityError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -34,7 +34,7 @@ func (h *Handler) SyncIdentities(writer http.ResponseWriter, req *http.Request) 
 
 	resp, err := h.svc.SyncIdentities(req.Context(), orgSlug, integrationUID)
 	if err != nil {
-		return h.handleIdentityError(writer, err)
+		return h.handleIdentityError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -57,7 +57,7 @@ func (h *Handler) SetIdentity(writer http.ResponseWriter, req *http.Request) err
 
 	resp, err := h.svc.SetIdentity(req.Context(), orgSlug, integrationUID, userUID, body)
 	if err != nil {
-		return h.handleIdentityError(writer, err)
+		return h.handleIdentityError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -72,7 +72,7 @@ func (h *Handler) DeleteIdentity(writer http.ResponseWriter, req *http.Request) 
 	userUID := httpx.Param(req, "userUid")
 
 	if err := h.svc.DeleteIdentity(req.Context(), orgSlug, integrationUID, userUID); err != nil {
-		return h.handleIdentityError(writer, err)
+		return h.handleIdentityError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -82,7 +82,7 @@ func (h *Handler) DeleteIdentity(writer http.ResponseWriter, req *http.Request) 
 
 // handleIdentityError maps the identity-specific service errors, falling back
 // to the shared integration error mapping.
-func (h *Handler) handleIdentityError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleIdentityError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrIdentitiesUnsupportedType):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
@@ -101,6 +101,6 @@ func (h *Handler) handleIdentityError(writer http.ResponseWriter, err error) err
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
 			"That workspace user is already mapped to another member")
 	default:
-		return h.handleError(writer, err)
+		return h.handleError(writer, request, err)
 	}
 }

@@ -48,7 +48,7 @@ func (h *Handler) StartDeviceAuthorization(writer http.ResponseWriter, req *http
 			})
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -93,7 +93,7 @@ func (h *Handler) PollDeviceToken(writer http.ResponseWriter, req *http.Request)
 
 	token, err := h.svc.PollDeviceToken(req.Context(), body.DeviceCode)
 	if err != nil {
-		return h.writeDeviceTokenError(writer, err)
+		return h.writeDeviceTokenError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, DeviceTokenResponse{
@@ -104,7 +104,7 @@ func (h *Handler) PollDeviceToken(writer http.ResponseWriter, req *http.Request)
 
 // writeDeviceTokenError maps the service sentinels onto RFC 8628 §3.5 error
 // codes. Anything unrecognized is a genuine server fault.
-func (h *Handler) writeDeviceTokenError(writer http.ResponseWriter, err error) error {
+func (h *Handler) writeDeviceTokenError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrDeviceAuthorizationPending):
 		return h.writeOAuthError(writer, "authorization_pending", "the authorization request is still pending")
@@ -115,7 +115,7 @@ func (h *Handler) writeDeviceTokenError(writer http.ResponseWriter, err error) e
 	case errors.Is(err, ErrDeviceExpiredToken):
 		return h.writeOAuthError(writer, "expired_token", "the device_code has expired, is unknown, or was already used")
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -190,14 +190,14 @@ func (h *Handler) RespondToDeviceConsent(writer http.ResponseWriter, req *http.R
 
 	err := h.svc.RespondToDeviceConsent(req.Context(), claims, body.UserCode, body.Org, body.Approve)
 	if err != nil {
-		return h.writeDeviceConsentError(writer, err)
+		return h.writeDeviceConsentError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"approved": body.Approve})
 }
 
 // writeDeviceConsentError maps consent failures onto the house error shape.
-func (h *Handler) writeDeviceConsentError(writer http.ResponseWriter, err error) error {
+func (h *Handler) writeDeviceConsentError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrDeviceAuthNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound,
@@ -212,6 +212,6 @@ func (h *Handler) writeDeviceConsentError(writer http.ResponseWriter, err error)
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden,
 			"You are not a member of the selected organization")
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

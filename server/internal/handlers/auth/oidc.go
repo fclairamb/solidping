@@ -51,13 +51,13 @@ func (h *OIDCOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) 
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "OIDC provider is not configured")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	// Generate and store state with org slug
 	state, err := h.svc.GenerateOAuthState(req.Context(), redirectURI, orgSlug)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	authURL := oauth2Cfg.AuthCodeURL(state)

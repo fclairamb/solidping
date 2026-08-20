@@ -43,7 +43,7 @@ func (h *Handler) ListLabels(writer http.ResponseWriter, req *http.Request) erro
 		parsed, err := strconv.Atoi(limitParam)
 		if err != nil {
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError,
 				"Invalid limit parameter", err)
 		}
 
@@ -62,18 +62,18 @@ func (h *Handler) ListLabels(writer http.ResponseWriter, req *http.Request) erro
 
 	suggestions, err := h.svc.ListLabels(req.Context(), orgSlug, key, prefix, limit)
 	if err != nil {
-		return h.handleListError(writer, err)
+		return h.handleListError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: suggestions})
 }
 
-func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleListError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if errors.Is(err, ErrOrganizationNotFound) {
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
 			"Organization not found", err)
 	}
 
-	return h.WriteInternalError(writer, err)
+	return h.WriteInternalError(writer, request, err)
 }

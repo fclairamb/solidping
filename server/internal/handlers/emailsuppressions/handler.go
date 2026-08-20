@@ -29,7 +29,7 @@ func (h *Handler) ListSuppressions(writer http.ResponseWriter, req *http.Request
 
 	rows, err := h.svc.List(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": rows})
@@ -42,7 +42,7 @@ func (h *Handler) DeleteSuppression(writer http.ResponseWriter, req *http.Reques
 	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.Delete(req.Context(), orgSlug, uid); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -50,17 +50,17 @@ func (h *Handler) DeleteSuppression(writer http.ResponseWriter, req *http.Reques
 	return nil
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
 			"Organization not found", err)
 	case errors.Is(err, ErrSuppressionNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeNotFound,
+			writer, request, http.StatusNotFound, base.ErrorCodeNotFound,
 			"Email suppression not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

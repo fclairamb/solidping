@@ -78,7 +78,7 @@ func (h *Handler) ListStatusUpdates(writer http.ResponseWriter, req *http.Reques
 
 	updates, err := h.svc.ListStatusUpdates(req.Context(), orgSlug, &opts)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
@@ -99,7 +99,7 @@ func (h *Handler) CreateStatusUpdate(writer http.ResponseWriter, req *http.Reque
 
 	update, err := h.svc.CreateStatusUpdate(req.Context(), orgSlug, h.actorUID(req), &createReq)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, update)
@@ -112,7 +112,7 @@ func (h *Handler) GetStatusUpdate(writer http.ResponseWriter, req *http.Request)
 
 	update, err := h.svc.GetStatusUpdate(req.Context(), orgSlug, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, update)
@@ -132,7 +132,7 @@ func (h *Handler) UpdateStatusUpdate(writer http.ResponseWriter, req *http.Reque
 
 	update, err := h.svc.UpdateStatusUpdate(req.Context(), orgSlug, uid, h.actorUID(req), &updateReq)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, update)
@@ -144,7 +144,7 @@ func (h *Handler) DeleteStatusUpdate(writer http.ResponseWriter, req *http.Reque
 	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.DeleteStatusUpdate(req.Context(), orgSlug, uid, h.actorUID(req)); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -153,7 +153,7 @@ func (h *Handler) DeleteStatusUpdate(writer http.ResponseWriter, req *http.Reque
 }
 
 //nolint:cyclop // error taxonomy requires all cases
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -204,6 +204,6 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			{Name: "checkUid", Message: "Check does not match the incident's check"},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

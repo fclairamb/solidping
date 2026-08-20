@@ -60,7 +60,7 @@ func (h *SAMLHandler) Login(writer http.ResponseWriter, req *http.Request) error
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "SAML provider is not configured")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	http.Redirect(writer, req, redirectURL, http.StatusFound)
@@ -115,7 +115,7 @@ func (h *SAMLHandler) Metadata(writer http.ResponseWriter, req *http.Request) er
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "SAML provider is not configured")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	writer.Header().Set("Content-Type", "application/samlmetadata+xml")

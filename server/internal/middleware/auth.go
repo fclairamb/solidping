@@ -68,14 +68,14 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 		claims, err := m.authService.ValidateToken(req.Context(), token)
 		if err != nil {
 			return m.WriteErrorErr(
-				writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
+				writer, req, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
 		}
 
 		// Load user
 		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
 		if err != nil {
 			return m.WriteErrorErr(
-				writer, http.StatusUnauthorized, base.ErrorCodeUserNotFound, "User not found", err)
+				writer, req, http.StatusUnauthorized, base.ErrorCodeUserNotFound, "User not found", err)
 		}
 
 		// Add claims and user to context

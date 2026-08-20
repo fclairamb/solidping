@@ -86,7 +86,7 @@ func (h *Handler) toScheduleResponse(
 	}
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrScheduleNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "On-call schedule not found")
@@ -102,7 +102,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		errors.Is(err, ErrScheduleNotYetActive):
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, err.Error())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -157,7 +157,7 @@ func (h *Handler) ListSchedules(writer http.ResponseWriter, req *http.Request) e
 
 	schedules, err := h.svc.ListSchedules(req.Context(), orgUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	out := make([]*scheduleResponse, 0, len(schedules))
@@ -208,7 +208,7 @@ func (h *Handler) CreateSchedule(writer http.ResponseWriter, req *http.Request) 
 		UserUIDs:        body.UserUIDs,
 	})
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, h.toScheduleResponse(
@@ -228,7 +228,7 @@ func (h *Handler) GetSchedule(writer http.ResponseWriter, req *http.Request) err
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, h.toScheduleResponse(
@@ -260,7 +260,7 @@ func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req *http.Request) 
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	var body UpdateScheduleBody
@@ -285,7 +285,7 @@ func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req *http.Request) 
 
 	updated, err := h.svc.UpdateSchedule(req.Context(), orgUID, schedule.UID, input)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, h.toScheduleResponse(
@@ -305,11 +305,11 @@ func (h *Handler) DeleteSchedule(writer http.ResponseWriter, req *http.Request) 
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	if err := h.svc.DeleteSchedule(req.Context(), orgUID, schedule.UID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -327,7 +327,7 @@ func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req *http.Request)
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	from := time.Now()
@@ -352,7 +352,7 @@ func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req *http.Request)
 
 	slots, err := h.svc.Preview(req.Context(), schedule.UID, from, time.Duration(days)*24*time.Hour)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	type previewSlotJSON struct {
@@ -383,7 +383,7 @@ func (h *Handler) ListOverrides(writer http.ResponseWriter, req *http.Request) e
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	var from, until *time.Time
@@ -408,7 +408,7 @@ func (h *Handler) ListOverrides(writer http.ResponseWriter, req *http.Request) e
 
 	overrides, err := h.svc.ListOverrides(req.Context(), schedule.UID, from, until)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: overrides})
@@ -432,7 +432,7 @@ func (h *Handler) CreateOverride(writer http.ResponseWriter, req *http.Request) 
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	var body CreateOverrideBody
@@ -449,7 +449,7 @@ func (h *Handler) CreateOverride(writer http.ResponseWriter, req *http.Request) 
 		CreatedByUID: h.currentUserUID(req),
 	})
 	if createErr != nil {
-		return h.handleError(writer, createErr)
+		return h.handleError(writer, req, createErr)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, override)
@@ -460,7 +460,7 @@ func (h *Handler) DeleteOverride(writer http.ResponseWriter, req *http.Request) 
 	overrideUID := httpx.Param(req, "overrideUid")
 
 	if err := h.svc.DeleteOverride(req.Context(), overrideUID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -478,12 +478,12 @@ func (h *Handler) EnableICalFeed(writer http.ResponseWriter, req *http.Request) 
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	secret, err := h.svc.EnableICalFeed(req.Context(), orgUID, schedule.UID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{
@@ -505,12 +505,12 @@ func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req *http.Request) 
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	secret, err := h.svc.RotateICalFeed(req.Context(), orgUID, schedule.UID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{
@@ -529,11 +529,11 @@ func (h *Handler) DisableICalFeed(writer http.ResponseWriter, req *http.Request)
 
 	schedule, err := h.svc.GetScheduleByUID(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	if err := h.svc.DisableICalFeed(req.Context(), orgUID, schedule.UID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)

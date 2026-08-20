@@ -37,7 +37,7 @@ func (h *Handler) CreateMembershipRequestHandler(
 
 	resp, err := h.svc.CreateMembershipRequest(req.Context(), claims.UserUID, body)
 	if err != nil {
-		return h.writeMembershipRequestError(writer, err)
+		return h.writeMembershipRequestError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
@@ -57,7 +57,7 @@ func (h *Handler) ListOwnMembershipRequestsHandler(
 
 	resp, err := h.svc.ListOwnMembershipRequests(req.Context(), claims.UserUID)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -77,7 +77,7 @@ func (h *Handler) CancelMembershipRequestHandler(
 
 	requestUID := httpx.Param(req, "uid")
 	if err := h.svc.CancelMembershipRequest(req.Context(), claims.UserUID, requestUID); err != nil {
-		return h.writeMembershipRequestError(writer, err)
+		return h.writeMembershipRequestError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -109,7 +109,7 @@ func (h *Handler) ListOrgMembershipRequestsHandler(
 
 	resp, err := h.svc.ListOrgMembershipRequests(req.Context(), orgSlug, status)
 	if err != nil {
-		return h.writeMembershipRequestError(writer, err)
+		return h.writeMembershipRequestError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -149,7 +149,7 @@ func (h *Handler) ApproveMembershipRequestHandler(
 	if err := h.svc.ApproveMembershipRequest(
 		req.Context(), claims.UserUID, orgSlug, requestUID, body.Role,
 	); err != nil {
-		return h.writeMembershipRequestError(writer, err)
+		return h.writeMembershipRequestError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusOK)
@@ -191,7 +191,7 @@ func (h *Handler) RejectMembershipRequestHandler(
 	if err := h.svc.RejectMembershipRequest(
 		req.Context(), claims.UserUID, orgSlug, requestUID, body.Reason,
 	); err != nil {
-		return h.writeMembershipRequestError(writer, err)
+		return h.writeMembershipRequestError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusOK)
@@ -201,37 +201,37 @@ func (h *Handler) RejectMembershipRequestHandler(
 
 // writeMembershipRequestError translates the service errors to HTTP.
 func (h *Handler) writeMembershipRequestError(
-	writer http.ResponseWriter, err error,
+	writer http.ResponseWriter, request *http.Request, err error,
 ) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound,
+			writer, request, http.StatusNotFound,
 			base.ErrorCodeOrganizationNotFound, "Organization not found", err,
 		)
 	case errors.Is(err, ErrAlreadyAMember):
 		return h.WriteErrorErr(
-			writer, http.StatusConflict,
+			writer, request, http.StatusConflict,
 			base.ErrorCodeAlreadyAMember, "Already a member", err,
 		)
 	case errors.Is(err, ErrRequestPending):
 		return h.WriteErrorErr(
-			writer, http.StatusConflict,
+			writer, request, http.StatusConflict,
 			base.ErrorCodeRequestPending, "A request is already pending", err,
 		)
 	case errors.Is(err, ErrRequestNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound,
+			writer, request, http.StatusNotFound,
 			base.ErrorCodeRequestNotFound, "Membership request not found", err,
 		)
 	case errors.Is(err, ErrRequestCooldownActive):
 		return h.WriteErrorErr(
-			writer, http.StatusConflict,
+			writer, request, http.StatusConflict,
 			base.ErrorCodeRequestCooldownActive,
 			"A previous request was rejected — please wait before re-requesting",
 			err,
 		)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

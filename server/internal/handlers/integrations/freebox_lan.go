@@ -35,7 +35,7 @@ func (h *Handler) LanHostsHandler(writer http.ResponseWriter, req *http.Request)
 
 	hosts, err := h.svc.ListFreeboxLanHosts(req.Context(), orgSlug, connectionUID)
 	if err != nil {
-		return h.handleLanHostsError(writer, err)
+		return h.handleLanHostsError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, ListLanHostsResponse{Data: hosts})
@@ -44,13 +44,13 @@ func (h *Handler) LanHostsHandler(writer http.ResponseWriter, req *http.Request)
 // handleLanHostsError translates the LAN-hosts-specific service errors
 // before delegating to the shared error mapper. Kept inline here so the
 // generic handleError stays free of LAN-discovery noise.
-func (h *Handler) handleLanHostsError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleLanHostsError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrFreeboxNotGranted):
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
 			"Freebox channel is not paired yet")
 	default:
-		return h.handleError(writer, err)
+		return h.handleError(writer, request, err)
 	}
 }
 

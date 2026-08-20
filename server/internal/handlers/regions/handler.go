@@ -26,7 +26,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 func (h *Handler) ListGlobalRegions(writer http.ResponseWriter, req *http.Request) error {
 	response, err := h.svc.ListGlobalRegions(req.Context())
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
@@ -39,7 +39,7 @@ func (h *Handler) ListOrgRegions(writer http.ResponseWriter, req *http.Request) 
 	response, err := h.svc.ListOrgRegions(req.Context(), orgSlug)
 	if err != nil {
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)

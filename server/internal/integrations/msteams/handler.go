@@ -132,7 +132,7 @@ func (h *Handler) StartLink(writer http.ResponseWriter, req *http.Request) error
 			return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
 				"This integration is already linked to a Microsoft 365 tenant")
 		default:
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 	}
 
@@ -157,7 +157,7 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req *http.Request)
 			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 				"Channel is not of type msteams-bot")
 		default:
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 	}
 
@@ -173,7 +173,7 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req *http.Request)
 // anyone who asks.
 //
 // Route: GET /api/v1/orgs/:org/integrations/msteams/manifest.zip.
-func (h *Handler) DownloadManifest(writer http.ResponseWriter, _ *http.Request) error {
+func (h *Handler) DownloadManifest(writer http.ResponseWriter, request *http.Request) error {
 	if h.cfg.MSTeams.AppID == "" {
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeValidationError,
 			"Set the Microsoft Teams app ID in the server settings before downloading the app package")
@@ -181,7 +181,7 @@ func (h *Handler) DownloadManifest(writer http.ResponseWriter, _ *http.Request) 
 
 	pkg, err := BuildAppPackage(h.cfg.MSTeams.AppID, h.cfg.Server.BaseURL)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 
 	writer.Header().Set("Content-Type", "application/zip")

@@ -48,7 +48,7 @@ func (h *GitHubOAuthHandler) Login(writer http.ResponseWriter, req *http.Request
 	// Generate and store state with org slug
 	state, err := h.svc.GenerateOAuthState(req.Context(), redirectURI, orgSlug)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	// Build GitHub OAuth URL

@@ -39,7 +39,7 @@ func (h *SlackOAuthHandler) Login(writer http.ResponseWriter, req *http.Request)
 	// Generate and store state
 	state, err := h.svc.GenerateOAuthState(req.Context(), redirectURI)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	// Build Slack OAuth URL

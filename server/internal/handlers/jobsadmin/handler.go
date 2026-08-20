@@ -68,7 +68,7 @@ func (h *Handler) parseListOptions(req *http.Request) ListOptions {
 func (h *Handler) ListSystemJobs(writer http.ResponseWriter, req *http.Request) error {
 	jobs, err := h.svc.ListJobs(req.Context(), "", h.parseListOptions(req))
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: jobs})
@@ -96,7 +96,7 @@ func (h *Handler) ListOrgJobs(writer http.ResponseWriter, req *http.Request) err
 
 	jobs, err := h.svc.ListJobs(req.Context(), orgUID, h.parseListOptions(req))
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: jobs})
@@ -131,7 +131,7 @@ func (h *Handler) getJob(writer http.ResponseWriter, req *http.Request, orgUID s
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Job not found")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: job})
@@ -144,7 +144,7 @@ func (h *Handler) getChain(writer http.ResponseWriter, req *http.Request, orgUID
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Job not found")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: chain})

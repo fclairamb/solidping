@@ -85,7 +85,7 @@ func (h *Handler) ListResults(writer http.ResponseWriter, req *http.Request) err
 	limit, err := base.ParsePageLimit(query, 100, 1000)
 	if err != nil {
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
 	opts.Size = limit
 
@@ -97,7 +97,7 @@ func (h *Handler) ListResults(writer http.ResponseWriter, req *http.Request) err
 	// Call service
 	results, err := h.svc.ListResults(req.Context(), orgSlug, &opts)
 	if err != nil {
-		return h.handleListError(writer, err)
+		return h.handleListError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, results)
@@ -117,22 +117,22 @@ func parseRFC3339(value string) (*time.Time, error) {
 	return &parsedTime, nil
 }
 
-func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleListError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrInvalidCursor):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid cursor", err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid cursor", err)
 	case errors.Is(err, regions.ErrForeignPrivateRegion):
 		// A legacy `@<org>/<slug>` region naming somebody else's org. Answering
 		// 400 rather than an empty series is deliberate: an unexplained empty
 		// chart is the exact failure mode this spec exists to remove.
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -156,18 +156,18 @@ func (h *Handler) GetResult(writer http.ResponseWriter, req *http.Request) error
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		case errors.Is(err, ErrCheckNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 		case errors.Is(err, ErrResultNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeResultNotFound, "Result not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeResultNotFound, "Result not found", err)
 		case errors.Is(err, regions.ErrForeignPrivateRegion):
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		default:
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 	}
 

@@ -44,7 +44,7 @@ func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 
 	subject, html, text, err := h.formatter.Format(templateName, data)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	format := req.URL.Query().Get("format")

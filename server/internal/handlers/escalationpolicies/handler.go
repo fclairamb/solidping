@@ -29,7 +29,7 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 	}
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -47,7 +47,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		errors.Is(err, ErrDelayTooLarge):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -135,12 +135,12 @@ func toPolicyHeaderJSON(policy *models.EscalationPolicy) policyJSON {
 func (h *Handler) ListPolicies(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	items, err := h.svc.ListPoliciesWithCounts(req.Context(), orgUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	out := make([]policyJSON, 0, len(items))
@@ -204,7 +204,7 @@ func toStepInputs(steps []stepBody) []StepInput {
 func (h *Handler) CreatePolicy(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	var body CreatePolicyBody
@@ -221,12 +221,12 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req *http.Request) er
 		Steps:              toStepInputs(body.Steps),
 	})
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	detail, err := h.svc.GetPolicy(req.Context(), orgUID, policy.UID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, toPolicyJSON(detail))
@@ -236,13 +236,13 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req *http.Request) er
 func (h *Handler) GetPolicy(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 	uid := httpx.Param(req, "uid")
 
 	detail, err := h.svc.GetPolicy(req.Context(), orgUID, uid)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, toPolicyJSON(detail))
@@ -261,7 +261,7 @@ type UpdatePolicyBody struct {
 func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 	uid := httpx.Param(req, "uid")
 
@@ -284,7 +284,7 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req *http.Request) er
 
 	detail, err := h.svc.UpdatePolicy(req.Context(), orgUID, uid, input)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, toPolicyJSON(detail))
@@ -294,12 +294,12 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req *http.Request) er
 func (h *Handler) DeletePolicy(writer http.ResponseWriter, req *http.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.DeletePolicy(req.Context(), orgUID, uid); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
