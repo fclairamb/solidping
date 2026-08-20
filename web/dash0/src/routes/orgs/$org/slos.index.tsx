@@ -142,7 +142,7 @@ function SlosIndexPage() {
   const [pendingDelete, setPendingDelete] = useState<Slo | null>(null);
 
   if (error) {
-    return <QueryErrorView error={error} onRetry={() => refetch()} />;
+    return <QueryErrorView error={error} org={org} onRetry={() => refetch()} />;
   }
 
   return (

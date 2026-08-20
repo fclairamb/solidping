@@ -98,6 +98,12 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 		return err
 	}
 
+	// Seed an objective over a check with a month rollup, so the SLO list and
+	// detail pages have deterministic non-null attainment (spec 2026-08-20-01).
+	if err := createTestSLOData(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
 	slog.InfoContext(ctx, "Test data creation completed successfully")
 
 	return nil
@@ -540,6 +546,99 @@ func createTestFailureResponseCaptures(
 
 	slog.InfoContext(ctx, "Created test failure-response capture incidents",
 		"count", len(captures))
+
+	return nil
+}
+
+// Fixture UIDs for the SLO happy path (spec 2026-08-20-01).
+const (
+	sloCheckUID       = "00000000-0000-0000-0000-000000000022"
+	sloUID            = "00000000-0000-0000-0000-000000000023"
+	sloMonthResultUID = "00000000-0000-0000-0000-000000000024"
+
+	// 9995/10000 = 99.95%, comfortably above the 99.9% target, so the fixture
+	// renders "healthy" with a distinctive attainment nobody could produce by
+	// accident (100.000% would also be what a broken "no data reads as perfect"
+	// bug produces, which is exactly the failure this feature must not have).
+	sloFixtureTotalChecks      = 10000
+	sloFixtureSuccessfulChecks = 9995
+	sloFixtureTargetPct        = 99.9
+)
+
+// createTestSLOData seeds one check carrying a month rollup for the CURRENT
+// calendar month, plus an objective over it — so the SLO list and detail pages
+// have deterministic, non-null attainment to assert on without waiting for a
+// probe or an aggregation run.
+//
+// The rollup is written directly as a `month` row: month rollups are terminal
+// (never rolled further, never deleted), so the aggregation job will not touch
+// it, and uptimebar.WindowAvailability reads the month tier for exactly this
+// kind of window.
+func createTestSLOData(ctx context.Context, dbService db.Service, orgUID string, now time.Time) error {
+	check := models.NewCheck(orgUID, "slo-api", "http")
+	check.UID = sloCheckUID
+	name := "SLO API"
+	check.Name = &name
+	check.Config = models.JSONMap{"url": "https://acme.com/api/health"}
+	check.Status = models.CheckStatusUp
+	check.StatusChangedAt = &now
+	// Disabled on purpose: an enabled fixture check would be probed live in test
+	// mode, and every real (failing) probe lands in the SAME calendar month as
+	// the seeded rollup — dragging attainment off the fixture value within
+	// seconds and making any assertion on it a flake by construction.
+	check.Enabled = false
+	// Created before the window opens, so the objective reports a full month
+	// rather than a partial one clamped to "the check did not exist yet".
+	check.CreatedAt = now.AddDate(0, -2, 0)
+	check.UpdatedAt = now
+
+	if err := dbService.CreateCheck(ctx, check); err != nil {
+		return fmt.Errorf("failed to create SLO test check: %w", err)
+	}
+
+	utcNow := now.UTC()
+	monthStart := time.Date(utcNow.Year(), utcNow.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthEnd := monthStart.AddDate(0, 1, 0)
+
+	status := int(models.ResultStatusUp)
+	total := sloFixtureTotalChecks
+	successful := sloFixtureSuccessfulChecks
+	maintenance := 0
+	durationAvg := float32(120)
+
+	rollup := &models.Result{
+		UID:              sloMonthResultUID,
+		OrganizationUID:  orgUID,
+		CheckUID:         sloCheckUID,
+		PeriodType:       models.PeriodTypeMonth,
+		PeriodStart:      monthStart,
+		PeriodEnd:        &monthEnd,
+		Status:           &status,
+		TotalChecks:      &total,
+		SuccessfulChecks: &successful,
+		// Explicitly zero rather than nil: this rollup postdates maintenance
+		// tagging, so "no maintenance" is a known fact, not missing evidence.
+		MaintenanceChecks:           &maintenance,
+		MaintenanceSuccessfulChecks: &maintenance,
+		DurationAvg:                 &durationAvg,
+		CreatedAt:                   now,
+	}
+
+	if err := dbService.CreateResult(ctx, rollup); err != nil {
+		return fmt.Errorf("failed to create SLO test rollup: %w", err)
+	}
+
+	objective := models.NewSLO(orgUID, "API availability", "api-availability", sloFixtureTargetPct)
+	objective.UID = sloUID
+	objective.CheckUID = &check.UID
+	objective.CreatedAt = now
+	objective.UpdatedAt = now
+
+	if err := dbService.CreateSLO(ctx, objective); err != nil {
+		return fmt.Errorf("failed to create test SLO: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test SLO", "sloUID", sloUID, "checkUID", sloCheckUID)
 
 	return nil
 }

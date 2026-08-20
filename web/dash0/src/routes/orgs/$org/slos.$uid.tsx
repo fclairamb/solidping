@@ -70,7 +70,7 @@ function SloDetailPage() {
   const updateSlo = useUpdateSlo(org, uid);
 
   if (error) {
-    return <QueryErrorView error={error} onRetry={() => refetch()} />;
+    return <QueryErrorView error={error} org={org} onRetry={() => refetch()} />;
   }
 
   if (isLoading || !slo) {

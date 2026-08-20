@@ -50,7 +50,7 @@ function ReportSchedulesIndexPage() {
   const [pendingDelete, setPendingDelete] = useState<ReportSchedule | null>(null);
 
   if (error) {
-    return <QueryErrorView error={error} onRetry={() => refetch()} />;
+    return <QueryErrorView error={error} org={org} onRetry={() => refetch()} />;
   }
 
   return (
