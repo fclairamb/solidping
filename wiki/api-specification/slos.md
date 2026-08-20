@@ -94,6 +94,22 @@ Field notes:
 - `state` is `healthy` | `at_risk` | `breached` | `unknown`. `unknown` is the
   no-data state and must never render as healthy.
 
+### GET /api/v1/orgs/:org/slos/:uid/burndown
+Error-budget burn-down for the current window. Auth: required.
+Response: `{ window, targetPct, budgetTotalSeconds, data: [ { at,
+budgetRemainingSeconds, idealRemainingSeconds, attainmentPct, hasData } ] }`.
+
+The series is **cumulative**: every point re-evaluates the whole window from its
+start up to that instant, so `budgetRemainingSeconds` is monotonically
+non-increasing. It is deliberately not clamped at zero — an overspent budget
+reports a negative remainder, because the magnitude of a breach is the thing the
+chart exists to show. `idealRemainingSeconds` is the straight line from the full
+budget at the window start to zero at its end: the pace that spends the budget
+exactly, no faster.
+
+Steps are fixed 24h slices from the window start rather than local calendar
+days; the window itself stays calendar-exact, only the sampling grid is uniform.
+
 ### GET /api/v1/orgs/:org/slos/:uid/history?months=12
 Past calendar windows, most recent first, computed off the permanent month
 rollups. `months` defaults to 12 and is capped at 60. Auth: required.

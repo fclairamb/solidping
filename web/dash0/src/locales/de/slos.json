@@ -50,7 +50,11 @@
     "never": "Nicht prognostiziert",
     "partial": "Teilzeitraum",
     "edit": "Ziel bearbeiten",
-    "budgetLabel": "{{remaining}} von {{total}} verbleibend"
+    "budgetLabel": "{{remaining}} von {{total}} verbleibend",
+    "burndown": "Fehlerbudget-Verlauf",
+    "burndownHelp": "Verbleibendes Budget im aktuellen Zeitraum, verglichen mit dem Tempo, das es genau aufbrauchen würde.",
+    "burndownEmpty": "Der Zeitraum hat gerade erst begonnen — noch keine Punkte.",
+    "burndownIdeal": "Ideales Tempo"
   },
   "form": {
     "newTitle": "Neues Ziel",

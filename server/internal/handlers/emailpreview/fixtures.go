@@ -14,6 +14,9 @@ const (
 	keyOrgName      = "OrgName"
 	keyDashboardURL = "DashboardURL"
 	keySubject      = "Subject"
+	keyName         = "Name"
+	keyHasData      = "HasData"
+	keyAvailability = "AvailabilityPct"
 )
 
 // fixtureBuilders maps a shipped template name to the function that returns
@@ -225,20 +228,20 @@ func uptimeReportFixture() map[string]any {
 		"PeriodLabel":     "July 2026",
 		"ScopeLabel":      "All checks (2)",
 		"Timezone":        "Europe/Paris",
-		"HasData":         true,
-		"AvailabilityPct": "99.950",
+		keyHasData:        true,
+		keyAvailability:   "99.950",
 		"CheckCount":      2,
 		"IncidentCount":   3,
 		"LongestIncident": "42m 0s",
 		"TotalDowntime":   "1h 5m",
 		"Checks": []map[string]any{
-			{"Name": fixtureCheckName, "HasData": true, "AvailabilityPct": "99.980"},
-			{"Name": "Marketing site", "HasData": false, "AvailabilityPct": ""},
+			{keyName: fixtureCheckName, keyHasData: true, keyAvailability: "99.980"},
+			{keyName: "Marketing site", keyHasData: false, keyAvailability: ""},
 		},
 		"SLOs": []map[string]any{
 			{
-				"Name":            "API availability",
-				"HasData":         true,
+				keyName:           "API availability",
+				keyHasData:        true,
 				"AttainmentPct":   "99.950",
 				"TargetPct":       "99.900",
 				"StateLabel":      "Healthy",

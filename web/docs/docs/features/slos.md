@@ -59,6 +59,16 @@ The status chip summarises it:
 | **Breached** | The window's budget is spent. |
 | **No data** | The window carries no countable probe. |
 
+## Burn-down
+
+The objective's detail page plots the **error-budget burn-down** for the current
+window: how much budget is left, day by day, against the straight line that
+would spend it exactly by the end of the window. Above the line you are fine;
+below it you are on the burn rate that reaches zero early.
+
+The actual line is not clamped at zero — once the budget is overspent it keeps
+going, because how far past the line you are is the thing worth seeing.
+
 ## Scope
 
 An objective covers **exactly one check or exactly one check group** — never

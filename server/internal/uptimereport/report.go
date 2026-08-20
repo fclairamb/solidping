@@ -37,17 +37,22 @@ const maxCheckRows = 50
 // and the `{{.OrgName}}` / `{{.HasData}}` references in uptime-report.html.
 //
 // This is NOT cosmetic. A report never reaches the template as this struct: it
-// is stored in the email job's config, marshalled to JSON, persisted, and
-// unmarshalled back into an `any` — so html/template sees a map[string]any and
+// is stored in the email job's config, marshaled to JSON, persisted, and
+// unmarshaled back into an `any` — so html/template sees a map[string]any and
 // looks fields up BY THE JSON KEY. camelCase tags therefore make every
 // `{{.OrgName}}` render as `<no value>` and every `{{if .HasData}}` evaluate
 // false, which silently produces a blank "No data" digest rather than an error.
 //
 // PascalCase view-model keys are the house convention for every other template
-// in the repo (auth, status subscribers, the notifier). TestUptimeReportRenders
-// pins the round trip.
+// in the repo (auth, status subscribers, the notifier), which all pass plain
+// map[string]any. This struct exists only to build that map with types; it is
+// never a REST payload, so tagliatelle's camelCase rule — which guards the API
+// surface — is exempted per-type below rather than repo-wide.
+// TestUptimeReportRendersRealContent pins the round trip.
 
 // CheckRow is one check's line in the report.
+//
+//nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
 type CheckRow struct {
 	Name            string `json:"Name"`
 	HasData         bool   `json:"HasData"`
@@ -55,6 +60,8 @@ type CheckRow struct {
 }
 
 // SLORow is one objective's line in the report.
+//
+//nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
 type SLORow struct {
 	Name            string `json:"Name"`
 	HasData         bool   `json:"HasData"`
@@ -69,6 +76,8 @@ type SLORow struct {
 // It carries no recipient-specific value except UnsubscribeURL, which the
 // caller fills per recipient — recipients are PII and must never leak into
 // another recipient's copy.
+//
+//nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
 type Data struct {
 	OrgName     string `json:"OrgName"`
 	PeriodLabel string `json:"PeriodLabel"`

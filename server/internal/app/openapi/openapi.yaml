@@ -5045,6 +5045,33 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/slos/{uid}/burndown:
+    get:
+      tags: [SLOs]
+      summary: Error-budget burn-down for the current window
+      description: >-
+        Cumulative series: each point re-evaluates the whole window from its
+        start up to that instant, so `budgetRemainingSeconds` is monotonically
+        non-increasing. It is not clamped at zero — an overspent budget reports
+        a negative remainder.
+      operationId: getSloBurndown
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Burn-down series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOBurndownResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/report-schedules:
     get:
       tags: [SLOs]
@@ -11462,6 +11489,44 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SLOStatusRow"
+
+    SLOBurndownPoint:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: End of the step, exclusive, in UTC.
+        budgetRemainingSeconds:
+          type: integer
+          format: int64
+          description: Negative once the budget is overspent.
+        idealRemainingSeconds:
+          type: integer
+          format: int64
+          description: The pace that spends the budget exactly over the window.
+        attainmentPct:
+          type: number
+          format: double
+          nullable: true
+        hasData:
+          type: boolean
+
+    SLOBurndownResponse:
+      type: object
+      properties:
+        window:
+          $ref: "#/components/schemas/SLOWindow"
+        targetPct:
+          type: number
+          format: double
+        budgetTotalSeconds:
+          type: integer
+          format: int64
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLOBurndownPoint"
 
     ReportSchedule:
       type: object

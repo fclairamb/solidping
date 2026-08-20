@@ -50,7 +50,11 @@
     "never": "Sin previsión",
     "partial": "Ventana parcial",
     "edit": "Editar objetivo",
-    "budgetLabel": "{{remaining}} de {{total}} restante"
+    "budgetLabel": "{{remaining}} de {{total}} restante",
+    "burndown": "Consumo del presupuesto de error",
+    "burndownHelp": "Presupuesto restante en la ventana actual, frente al ritmo que lo gastaría exactamente.",
+    "burndownEmpty": "La ventana acaba de empezar: todavía no hay puntos.",
+    "burndownIdeal": "Ritmo ideal"
   },
   "form": {
     "newTitle": "Nuevo objetivo",

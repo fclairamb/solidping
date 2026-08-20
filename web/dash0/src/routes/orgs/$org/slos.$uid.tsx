@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ApiError } from "@/api/client";
 import {
   useSlo,
+  useSloBurndown,
   useSloHistory,
   useSloStatus,
   useUpdateSlo,
@@ -12,6 +13,7 @@ import {
 } from "@/api/hooks";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { StatTile } from "@/components/shared/stat-tile";
+import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
 import { SloForm } from "@/components/slos/slo-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,6 +69,7 @@ function SloDetailPage() {
   const { data: slo, isLoading, error, refetch } = useSlo(org, uid);
   const { data: status } = useSloStatus(org, uid);
   const { data: history } = useSloHistory(org, uid, 12);
+  const { data: burndown, isLoading: burndownLoading } = useSloBurndown(org, uid);
   const updateSlo = useUpdateSlo(org, uid);
 
   if (error) {
@@ -139,6 +142,8 @@ function SloDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <BudgetBurndownChart burndown={burndown} isLoading={burndownLoading} />
 
       <Card>
         <CardHeader>

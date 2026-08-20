@@ -68,6 +68,16 @@ test.describe("SLOs", () => {
     await expect(page.getByTestId("slo-status-card")).toBeVisible();
     await expect(page.getByTestId("slo-state")).toHaveText("Healthy");
     await expect(page.getByTestId("slo-budget-bar")).toBeVisible();
+
+    // The burn-down chart. Count `circle:has(title)` rather than every
+    // `circle`: recharts' hover activeDot is an extra, nondeterministic circle
+    // with no <title>, so a plain count flakes.
+    const burndown = page.getByTestId("slo-burndown-card");
+    await expect(burndown).toBeVisible();
+    await expect
+      .poll(async () => burndown.locator("circle:has(title)").count(), { timeout: 10000 })
+      .toBeGreaterThan(0);
+
     await expect(page.getByTestId("slo-history-table")).toBeVisible();
 
     // Editing happens on a dedicated route, never in a modal — the form is

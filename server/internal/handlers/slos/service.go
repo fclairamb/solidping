@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -726,4 +727,171 @@ func (s *Service) incidentBlock(
 	}
 
 	return availability.IncidentBlock(all, window.Start.UTC(), window.End.UTC(), now.UTC()), nil
+}
+
+// BurndownPoint is one step of the error-budget burn-down.
+type BurndownPoint struct {
+	// At is the end of the step (exclusive), in UTC.
+	At time.Time `json:"at"`
+	// BudgetRemainingSeconds is what was left of the window's budget at that
+	// instant, given everything observed from the window start up to it.
+	// Negative once the budget is overspent — clamping it would hide the very
+	// thing the chart exists to show.
+	BudgetRemainingSeconds int64 `json:"budgetRemainingSeconds"`
+	// IdealRemainingSeconds is the straight line from the full budget at the
+	// window start to zero at the window end: the pace that spends the budget
+	// exactly, no faster.
+	IdealRemainingSeconds int64 `json:"idealRemainingSeconds"`
+	// AttainmentPct is the window-to-date attainment, nil when nothing
+	// countable has been recorded yet. Never rendered as 100%.
+	AttainmentPct *float64 `json:"attainmentPct"`
+	HasData       bool     `json:"hasData"`
+}
+
+// BurndownResponse is the /burndown payload.
+type BurndownResponse struct {
+	Window             WindowResponse  `json:"window"`
+	TargetPct          float64         `json:"targetPct"`
+	BudgetTotalSeconds int64           `json:"budgetTotalSeconds"`
+	Data               []BurndownPoint `json:"data"`
+}
+
+// burndownStep is the resolution of the burn-down. A calendar month is at most
+// 31 points at this step — enough to see a slope, few enough to stay legible
+// on a phone.
+const burndownStep = 24 * time.Hour
+
+// maxBurndownPoints bounds the series defensively.
+const maxBurndownPoints = 40
+
+// GetBurndown returns the error-budget burn-down for the SLO's current window.
+//
+// It is deliberately CUMULATIVE: each point re-evaluates the whole window from
+// its start up to that instant, which is what "budget remaining" means. A chart
+// of per-day consumption would look similar and mean something else entirely.
+//
+// Steps are fixed 24h slices from the window start rather than local calendar
+// days: the underlying bucketing engine works in fixed durations, and a DST day
+// being an hour off is invisible at this resolution. The window itself stays
+// calendar-exact — only the sampling grid is uniform.
+func (s *Service) GetBurndown(
+	ctx context.Context, orgSlug, ident string, now time.Time,
+) (*BurndownResponse, error) {
+	org, row, err := s.resolve(ctx, orgSlug, ident)
+	if err != nil {
+		return nil, err
+	}
+
+	loc, err := slo.LoadLocation(row.Timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+
+	scoped, err := s.resolveScope(ctx, org.UID, row)
+	if err != nil {
+		return nil, err
+	}
+
+	window := slo.MonthWindow(loc, now)
+
+	full, err := s.evaluate(ctx, org.UID, row, scoped, window, now)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &BurndownResponse{
+		Window: WindowResponse{
+			Start: window.Start,
+			End:   window.End,
+			Label: window.Start.Format("2006-01"),
+		},
+		TargetPct:          row.TargetPct,
+		BudgetTotalSeconds: full.BudgetTotalSeconds,
+	}
+
+	points, err := s.burndownPoints(ctx, org.UID, row, scoped, window, now)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.Data = points
+
+	return resp, nil
+}
+
+// burndownPoints walks the elapsed part of the window one step at a time,
+// accumulating buckets and re-running the budget math on each prefix.
+func (s *Service) burndownPoints(
+	ctx context.Context, orgUID string, row *models.SLO, scoped scope, window slo.Window, now time.Time,
+) ([]BurndownPoint, error) {
+	elapsedEnd := window.End
+	if now.Before(elapsedEnd) {
+		elapsedEnd = now
+	}
+
+	if !elapsedEnd.After(window.Start) || len(scoped.checkUIDs) == 0 {
+		return []BurndownPoint{}, nil
+	}
+
+	steps := int(elapsedEnd.Sub(window.Start)/burndownStep) + 1
+	if steps > maxBurndownPoints {
+		steps = maxBurndownPoints
+	}
+
+	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
+	hints := uptimebar.Hints{
+		RetentionRawHours: rawHours,
+		RetentionHourDays: hourDays,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
+	}
+
+	byCheck, err := uptimebar.BucketAvailability(
+		ctx, s.db, orgUID, scoped.checkUIDs, burndownStep, window.Start, steps, hints,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("bucket availability: %w", err)
+	}
+
+	windowSeconds := window.Seconds()
+	points := make([]BurndownPoint, 0, steps)
+
+	var cumulative uptimebar.BucketStats
+
+	for i := range steps {
+		bucketStart := window.Start.UTC().Add(time.Duration(i) * burndownStep)
+
+		for _, uid := range scoped.checkUIDs {
+			cumulative.Add(byCheck[uid][bucketStart])
+		}
+
+		stepEnd := bucketStart.Add(burndownStep)
+		if stepEnd.After(elapsedEnd) {
+			stepEnd = elapsedEnd
+		}
+
+		computed := slo.Compute(&slo.Input{
+			TargetPct:          row.TargetPct,
+			Stats:              cumulative,
+			Window:             window,
+			Now:                stepEnd,
+			CoverageStart:      scoped.coverageStart,
+			ExcludeMaintenance: row.ExcludeMaintenance,
+		})
+
+		ideal := float64(0)
+		if windowSeconds > 0 {
+			progress := stepEnd.Sub(window.Start).Seconds() / windowSeconds
+			ideal = float64(computed.BudgetTotalSeconds) * (1 - progress)
+		}
+
+		points = append(points, BurndownPoint{
+			At:                     stepEnd.UTC(),
+			BudgetRemainingSeconds: computed.BudgetRemainingSeconds,
+			IdealRemainingSeconds:  int64(math.Round(ideal)),
+			AttainmentPct:          computed.AttainmentPct,
+			HasData:                computed.HasData,
+		})
+	}
+
+	return points, nil
 }

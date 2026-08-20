@@ -1527,6 +1527,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSLOs.DELETE("/:uid", sloHandler.Delete)
 	orgSLOs.GET("/:uid/status", sloHandler.Status)
 	orgSLOs.GET("/:uid/history", sloHandler.History)
+	orgSLOs.GET("/:uid/burndown", sloHandler.Burndown)
 
 	// Scheduled uptime reports (spec 2026-08-20-01, authentication required)
 	reportBuilder := uptimereport.NewBuilder(s.dbService, s.config, sloService)

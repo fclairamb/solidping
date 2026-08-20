@@ -69,6 +69,8 @@ import {
   sloBudgetBarClass,
   sloStateBadgeClass,
 } from "@/lib/slo-format";
+import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
+import type { SloBurndown } from "@/api/hooks";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -385,6 +387,25 @@ function Section({
     </section>
   );
 }
+
+// Static burn-down fixture for the design reference. Fixed timestamps (not
+// Date.now()) so the rendered example is identical on every visit.
+const designReferenceBurndown: SloBurndown = {
+  window: {
+    start: "2026-08-01T00:00:00Z",
+    end: "2026-09-01T00:00:00Z",
+    label: "2026-08",
+  },
+  targetPct: 99.9,
+  budgetTotalSeconds: 2678,
+  data: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+    at: new Date(Date.UTC(2026, 7, day + 1)).toISOString(),
+    budgetRemainingSeconds: 2678 - day * 380,
+    idealRemainingSeconds: Math.round(2678 * (1 - (day + 1) / 31)),
+    attainmentPct: 99.94 - day * 0.01,
+    hasData: true,
+  })),
+};
 
 function CodeSnippet({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -1171,6 +1192,28 @@ function ButtonsBadgesSection() {
             </div>
           }
           importLine={`import {\n  budgetRemainingFraction,\n  formatAttainment,\n  formatBudgetSeconds,\n  sloBudgetBarClass,\n  sloStateBadgeClass,\n} from "@/lib/slo-format";\n\n<Badge className={sloStateBadgeClass(row.state)}>\n  {t(\`state.\${row.state}\`)}\n</Badge>`}
+        />
+
+        <h3 className="text-sm font-medium">Error-budget burn-down chart</h3>
+        <p className="text-sm text-muted-foreground">
+          The objective detail page's burn-down (spec 2026-08-20-01): remaining budget over the
+          current window against the straight "ideal" line that spends it exactly. Two
+          conventions are load-bearing. The actual series is{" "}
+          <strong>never clamped at zero</strong> — an overspent budget dips below the dashed
+          destructive reference line, and flattening it there would hide the magnitude of a
+          breach. And every DATA dot renders a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">&lt;title&gt;</code>, which
+          recharts' hover activeDot does not, so an E2E can count{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">circle:has(title)</code>{" "}
+          deterministically.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-lg">
+              <BudgetBurndownChart burndown={designReferenceBurndown} />
+            </div>
+          }
+          importLine={`import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";\n\n<BudgetBurndownChart\n  burndown={burndown}\n  isLoading={burndownLoading}\n/>`}
         />
 
         <h3 className="text-sm font-medium">Agent version cell</h3>

@@ -50,7 +50,11 @@
     "never": "Non prévu",
     "partial": "Fenêtre partielle",
     "edit": "Modifier l'objectif",
-    "budgetLabel": "{{remaining}} restant sur {{total}}"
+    "budgetLabel": "{{remaining}} restant sur {{total}}",
+    "burndown": "Consommation du budget d'erreur",
+    "burndownHelp": "Budget restant sur la fenêtre en cours, comparé au rythme qui le consommerait exactement.",
+    "burndownEmpty": "La fenêtre vient de commencer : pas encore de points.",
+    "burndownIdeal": "Rythme idéal"
   },
   "form": {
     "newTitle": "Nouvel objectif",

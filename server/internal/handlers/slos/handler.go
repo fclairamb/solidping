@@ -124,6 +124,18 @@ func (h *Handler) Status(writer http.ResponseWriter, req *http.Request) error {
 	return h.WriteJSON(writer, http.StatusOK, status)
 }
 
+// Burndown handles the current window's error-budget burn-down series.
+func (h *Handler) Burndown(writer http.ResponseWriter, req *http.Request) error {
+	series, err := h.svc.GetBurndown(
+		req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), time.Now(),
+	)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, series)
+}
+
 // History handles the past monthly windows.
 func (h *Handler) History(writer http.ResponseWriter, req *http.Request) error {
 	months := 0

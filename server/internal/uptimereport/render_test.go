@@ -40,8 +40,8 @@ func sampleData() *uptimereport.Data {
 }
 
 // roundTrip reproduces what actually happens to the view model in production:
-// it is stored in the email job's config, marshalled to JSON, persisted, and
-// unmarshalled back into an `any`. html/template therefore sees a map keyed by
+// it is stored in the email job's config, marshaled to JSON, persisted, and
+// unmarshaled back into an `any`. html/template therefore sees a map keyed by
 // the JSON TAG, not the Go field name.
 //
 // Rendering the struct directly would pass even with camelCase tags — which is

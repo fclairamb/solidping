@@ -50,7 +50,11 @@
     "never": "Not projected",
     "partial": "Partial window",
     "edit": "Edit objective",
-    "budgetLabel": "{{remaining}} of {{total}} remaining"
+    "budgetLabel": "{{remaining}} of {{total}} remaining",
+    "burndown": "Error-budget burn-down",
+    "burndownHelp": "Remaining budget over the current window, against the pace that would spend it exactly.",
+    "burndownEmpty": "The window has only just started — no points yet.",
+    "burndownIdeal": "Ideal pace"
   },
   "form": {
     "newTitle": "New objective",

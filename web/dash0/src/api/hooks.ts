@@ -5893,6 +5893,31 @@ export function useSloHistory(org: string, uid: string, months = 12) {
   });
 }
 
+export interface SloBurndownPoint {
+  at: string;
+  /** Negative once the budget is overspent — never clamped. */
+  budgetRemainingSeconds: number;
+  /** The pace that spends the budget exactly over the window, no faster. */
+  idealRemainingSeconds: number;
+  attainmentPct: number | null;
+  hasData: boolean;
+}
+
+export interface SloBurndown {
+  window: SloWindow;
+  targetPct: number;
+  budgetTotalSeconds: number;
+  data: SloBurndownPoint[];
+}
+
+export function useSloBurndown(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["sloBurndown", org, uid],
+    queryFn: () => apiFetch<SloBurndown>(`/api/v1/orgs/${org}/slos/${uid}/burndown`),
+    enabled: !!org && !!uid,
+  });
+}
+
 export function useCreateSlo(org: string) {
   const queryClient = useQueryClient();
 
@@ -5921,6 +5946,7 @@ export function useUpdateSlo(org: string, uid: string) {
       queryClient.invalidateQueries({ queryKey: ["slos", org] });
       queryClient.invalidateQueries({ queryKey: ["slo", org, uid] });
       queryClient.invalidateQueries({ queryKey: ["sloStatus", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["sloBurndown", org, uid] });
     },
   });
 }
