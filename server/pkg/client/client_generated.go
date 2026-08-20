@@ -480,6 +480,24 @@ func (e CreateInvitationRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for CreateReportScheduleRequestFrequency.
+const (
+	CreateReportScheduleRequestFrequencyMonthly CreateReportScheduleRequestFrequency = "monthly"
+	CreateReportScheduleRequestFrequencyWeekly  CreateReportScheduleRequestFrequency = "weekly"
+)
+
+// Valid indicates whether the value is a known member of the CreateReportScheduleRequestFrequency enum.
+func (e CreateReportScheduleRequestFrequency) Valid() bool {
+	switch e {
+	case CreateReportScheduleRequestFrequencyMonthly:
+		return true
+	case CreateReportScheduleRequestFrequencyWeekly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateStatusPageRequestAutoResolve.
 const (
 	CreateStatusPageRequestAutoResolveAlways      CreateStatusPageRequestAutoResolve = "always"
@@ -1398,6 +1416,24 @@ func (e RegionCapabilitiesIpv6) Valid() bool {
 	}
 }
 
+// Defines values for ReportScheduleFrequency.
+const (
+	ReportScheduleFrequencyMonthly ReportScheduleFrequency = "monthly"
+	ReportScheduleFrequencyWeekly  ReportScheduleFrequency = "weekly"
+)
+
+// Valid indicates whether the value is a known member of the ReportScheduleFrequency enum.
+func (e ReportScheduleFrequency) Valid() bool {
+	switch e {
+	case ReportScheduleFrequencyMonthly:
+		return true
+	case ReportScheduleFrequencyWeekly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ResultFallbackInfoReason.
 const (
 	ResultFallbackInfoReasonRolledUpToDay   ResultFallbackInfoReason = "rolled_up_to_day"
@@ -1413,6 +1449,30 @@ func (e ResultFallbackInfoReason) Valid() bool {
 	case ResultFallbackInfoReasonRolledUpToHour:
 		return true
 	case ResultFallbackInfoReasonRolledUpToMonth:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SLOStatusRowState.
+const (
+	SLOStatusRowStateAtRisk   SLOStatusRowState = "at_risk"
+	SLOStatusRowStateBreached SLOStatusRowState = "breached"
+	SLOStatusRowStateHealthy  SLOStatusRowState = "healthy"
+	SLOStatusRowStateUnknown  SLOStatusRowState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the SLOStatusRowState enum.
+func (e SLOStatusRowState) Valid() bool {
+	switch e {
+	case SLOStatusRowStateAtRisk:
+		return true
+	case SLOStatusRowStateBreached:
+		return true
+	case SLOStatusRowStateHealthy:
+		return true
+	case SLOStatusRowStateUnknown:
 		return true
 	default:
 		return false
@@ -2064,7 +2124,7 @@ type Check struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification) and `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -2222,7 +2282,7 @@ type CheckListItem struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification) and `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -2469,7 +2529,7 @@ type CreateCheckRequest struct {
 	// CheckGroupUid Group to place this check in.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) — see the Check schema above for details.
+	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
 	// Description Optional documentation about the check
@@ -2634,6 +2694,37 @@ type CreateOrgRequest struct {
 
 	// Slug URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
 	Slug string `json:"slug"`
+}
+
+// CreateReportScheduleRequest defines model for CreateReportScheduleRequest.
+type CreateReportScheduleRequest struct {
+	CheckGroupUids *[]string                             `json:"checkGroupUids,omitempty"`
+	CheckUids      *[]string                             `json:"checkUids,omitempty"`
+	Enabled        *bool                                 `json:"enabled,omitempty"`
+	Frequency      *CreateReportScheduleRequestFrequency `json:"frequency,omitempty"`
+	IncludeSlos    *bool                                 `json:"includeSlos,omitempty"`
+	Name           string                                `json:"name"`
+	Recipients     *[]openapi_types.Email                `json:"recipients,omitempty"`
+	Timezone       *string                               `json:"timezone,omitempty"`
+}
+
+// CreateReportScheduleRequestFrequency defines model for CreateReportScheduleRequest.Frequency.
+type CreateReportScheduleRequestFrequency string
+
+// CreateSLORequest Exactly one of checkUid / checkGroupUid must be set; sending both or neither is a validation error (the database carries the same rule as a CHECK constraint).
+type CreateSLORequest struct {
+	CheckGroupUid      *string `json:"checkGroupUid,omitempty"`
+	CheckUid           *string `json:"checkUid,omitempty"`
+	Enabled            *bool   `json:"enabled,omitempty"`
+	ExcludeMaintenance *bool   `json:"excludeMaintenance,omitempty"`
+	Name               string  `json:"name"`
+
+	// Slug URL-safe identifier; derived from the name when omitted
+	Slug *string `json:"slug,omitempty"`
+
+	// TargetPct 0 < value <= 100 (default 99.9)
+	TargetPct *float64 `json:"targetPct,omitempty"`
+	Timezone  *string  `json:"timezone,omitempty"`
 }
 
 // CreateSeverityRequest defines model for CreateSeverityRequest.
@@ -3002,6 +3093,9 @@ type EntitlementLimits struct {
 	// MaxChecksPerMinute Aggregate check dispatch rate per minute (null = unlimited)
 	MaxChecksPerMinute *int `json:"maxChecksPerMinute,omitempty"`
 
+	// MaxSlos Maximum service-level objectives (null = unlimited)
+	MaxSlos *int `json:"maxSlos,omitempty"`
+
 	// MaxSmsPerMonth Outbound SMS per UTC month (null = unlimited)
 	MaxSmsPerMonth *int `json:"maxSmsPerMonth,omitempty"`
 
@@ -3285,6 +3379,8 @@ type IncidentDetail struct {
 	Description *string             `json:"description,omitempty"`
 
 	// Details Snapshot of the failing result captured at incident open/reopen: `failure_reason` (string), `first_result` (object — resultUid/status/region/duration/periodStart/output), and, after a relapse, `last_failure` (same shape as `first_result`).
+	//
+	// `failureResponse` (object) is present only for HTTP checks with `capture_failure_response` enabled that failed AFTER receiving a response: what the probe saw at the incident's current onset — `url`, `statusLine`, `statusCode`, `headers` (sensitive values replaced with `[redacted]`; request headers are never captured), `body` (16 KiB cap, with `truncated` and the original `contentLength`), `contentType`, `bodyBytes`, `bodySha256`, `binary` (true when only metadata was kept), `capturedAt`, `remoteAddr` and `region`. It is overwritten on reopen, and dropped when the new onset has no capture. **This block is operator-only — it is never serialized onto a status page or a subscriber payload.**
 	Details      *map[string]interface{} `json:"details,omitempty"`
 	EscalatedAt  *time.Time              `json:"escalatedAt,omitempty"`
 	FailureCount *int                    `json:"failureCount,omitempty"`
@@ -4375,6 +4471,33 @@ type ReorderUidsRequest struct {
 	Uids []openapi_types.UUID `json:"uids"`
 }
 
+// ReportSchedule defines model for ReportSchedule.
+type ReportSchedule struct {
+	CheckGroupUids  *[]string                `json:"checkGroupUids,omitempty"`
+	CheckUids       *[]string                `json:"checkUids,omitempty"`
+	CreatedAt       *time.Time               `json:"createdAt,omitempty"`
+	Enabled         *bool                    `json:"enabled,omitempty"`
+	Frequency       *ReportScheduleFrequency `json:"frequency,omitempty"`
+	IncludeSlos     *bool                    `json:"includeSlos,omitempty"`
+	LastPeriodStart *time.Time               `json:"lastPeriodStart,omitempty"`
+	LastRunAt       *time.Time               `json:"lastRunAt,omitempty"`
+	Name            *string                  `json:"name,omitempty"`
+
+	// Recipients PII — returned only to the organization's own admins.
+	Recipients *[]string  `json:"recipients,omitempty"`
+	Timezone   *string    `json:"timezone,omitempty"`
+	Uid        *string    `json:"uid,omitempty"`
+	UpdatedAt  *time.Time `json:"updatedAt,omitempty"`
+}
+
+// ReportScheduleFrequency defines model for ReportSchedule.Frequency.
+type ReportScheduleFrequency string
+
+// ReportScheduleListResponse defines model for ReportScheduleListResponse.
+type ReportScheduleListResponse struct {
+	Data *[]ReportSchedule `json:"data,omitempty"`
+}
+
 // RequestPasswordResetRequest defines model for RequestPasswordResetRequest.
 type RequestPasswordResetRequest struct {
 	Email openapi_types.Email `json:"email"`
@@ -4407,6 +4530,113 @@ type ResultsCursorPagination struct {
 	// Cursor Cursor for next page (empty if no more results)
 	Cursor *string `json:"cursor,omitempty"`
 	Size   *int    `json:"size,omitempty"`
+}
+
+// SLO defines model for SLO.
+type SLO struct {
+	CheckGroupName *string `json:"checkGroupName,omitempty"`
+
+	// CheckGroupUid Set when the objective is scoped to one check group
+	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
+	CheckName     *string `json:"checkName,omitempty"`
+
+	// CheckUid Set when the objective is scoped to one check
+	CheckUid           *string    `json:"checkUid,omitempty"`
+	CreatedAt          *time.Time `json:"createdAt,omitempty"`
+	Enabled            *bool      `json:"enabled,omitempty"`
+	ExcludeMaintenance *bool      `json:"excludeMaintenance,omitempty"`
+	Name               *string    `json:"name,omitempty"`
+	Slug               *string    `json:"slug,omitempty"`
+	TargetPct          *float64   `json:"targetPct,omitempty"`
+
+	// Timezone IANA zone the calendar month is resolved in
+	Timezone  *string    `json:"timezone,omitempty"`
+	Uid       *string    `json:"uid,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
+// SLOBurndownPoint defines model for SLOBurndownPoint.
+type SLOBurndownPoint struct {
+	// At End of the step, exclusive, in UTC.
+	At            *time.Time `json:"at,omitempty"`
+	AttainmentPct *float64   `json:"attainmentPct,omitempty"`
+
+	// BudgetRemainingSeconds Negative once the budget is overspent.
+	BudgetRemainingSeconds *int64 `json:"budgetRemainingSeconds,omitempty"`
+	HasData                *bool  `json:"hasData,omitempty"`
+
+	// IdealRemainingSeconds The pace that spends the budget exactly over the window, drawn against the response-level `budgetTotalSeconds` so the two series stay comparable.
+	IdealRemainingSeconds *int64 `json:"idealRemainingSeconds,omitempty"`
+}
+
+// SLOBurndownResponse defines model for SLOBurndownResponse.
+type SLOBurndownResponse struct {
+	// BudgetTotalSeconds The window's whole allowance, evaluated once. Every point's `budgetRemainingSeconds` is this value minus the consumption accrued up to it, and every point's `idealRemainingSeconds` is this value decayed linearly.
+	BudgetTotalSeconds *int64              `json:"budgetTotalSeconds,omitempty"`
+	Data               *[]SLOBurndownPoint `json:"data,omitempty"`
+	TargetPct          *float64            `json:"targetPct,omitempty"`
+	Window             *SLOWindow          `json:"window,omitempty"`
+}
+
+// SLOHistoryResponse defines model for SLOHistoryResponse.
+type SLOHistoryResponse struct {
+	Data *[]SLOStatusRow `json:"data,omitempty"`
+}
+
+// SLOListResponse defines model for SLOListResponse.
+type SLOListResponse struct {
+	Data *[]SLO `json:"data,omitempty"`
+}
+
+// SLOStatusResponse defines model for SLOStatusResponse.
+type SLOStatusResponse struct {
+	Current   *SLOStatusRow `json:"current,omitempty"`
+	Incidents *struct {
+		AverageSeconds       *int64 `json:"averageSeconds,omitempty"`
+		Count                *int   `json:"count,omitempty"`
+		LongestSeconds       *int64 `json:"longestSeconds,omitempty"`
+		TotalDowntimeSeconds *int64 `json:"totalDowntimeSeconds,omitempty"`
+	} `json:"incidents,omitempty"`
+	Slo *SLO `json:"slo,omitempty"`
+}
+
+// SLOStatusRow defines model for SLOStatusRow.
+type SLOStatusRow struct {
+	// AttainmentPct null when the window carries no countable probe. No data is NOT 100% — the same rule the availability API follows.
+	AttainmentPct         *float64 `json:"attainmentPct,omitempty"`
+	BudgetConsumedSeconds *int64   `json:"budgetConsumedSeconds,omitempty"`
+
+	// BudgetRemainingSeconds Negative when the budget is overspent.
+	BudgetRemainingSeconds *int64 `json:"budgetRemainingSeconds,omitempty"`
+	BudgetTotalSeconds     *int64 `json:"budgetTotalSeconds,omitempty"`
+
+	// BurnRate Observed error rate divided by allowed error rate.
+	BurnRate *float64 `json:"burnRate,omitempty"`
+
+	// ElapsedSeconds The part of monitoredSeconds already elapsed; the consumption basis.
+	ElapsedSeconds             *int64 `json:"elapsedSeconds,omitempty"`
+	ExcludedMaintenanceSeconds *int64 `json:"excludedMaintenanceSeconds,omitempty"`
+	HasData                    *bool  `json:"hasData,omitempty"`
+
+	// MonitoredSeconds The whole window's monitorable duration; the budget basis.
+	MonitoredSeconds      *int64             `json:"monitoredSeconds,omitempty"`
+	Partial               *bool              `json:"partial,omitempty"`
+	ProjectedExhaustionAt *time.Time         `json:"projectedExhaustionAt,omitempty"`
+	State                 *SLOStatusRowState `json:"state,omitempty"`
+	SuccessfulChecks      *int               `json:"successfulChecks,omitempty"`
+	TargetPct             *float64           `json:"targetPct,omitempty"`
+	TotalChecks           *int               `json:"totalChecks,omitempty"`
+	Window                *SLOWindow         `json:"window,omitempty"`
+}
+
+// SLOStatusRowState defines model for SLOStatusRow.State.
+type SLOStatusRowState string
+
+// SLOWindow defines model for SLOWindow.
+type SLOWindow struct {
+	End   *time.Time `json:"end,omitempty"`
+	Label *string    `json:"label,omitempty"`
+	Start *time.Time `json:"start,omitempty"`
 }
 
 // SetCheckChannelsRequest defines model for SetCheckChannelsRequest.
@@ -4910,6 +5140,12 @@ type UpdateProfileRequest struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// UpdateReportScheduleRequest Partial update; every field is optional.
+type UpdateReportScheduleRequest = CreateReportScheduleRequest
+
+// UpdateSLORequest Partial update; every field is optional.
+type UpdateSLORequest = CreateSLORequest
+
 // UpdateSeverityRequest defines model for UpdateSeverityRequest.
 type UpdateSeverityRequest struct {
 	Channels    *[]string `json:"channels,omitempty"`
@@ -4990,7 +5226,7 @@ type UpdateStatusUpdateRequest struct {
 
 // UpsertCheckRequest defines model for UpsertCheckRequest.
 type UpsertCheckRequest struct {
-	// Config Check-specific configuration. HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) — see the Check schema above for details.
+	// Config Check-specific configuration. HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
 	// DependsOn Replaces the full dependsOn set when present. Omit to leave deps
@@ -5174,11 +5410,17 @@ type OrgPath = string
 // PublicationUidPath defines model for PublicationUidPath.
 type PublicationUidPath = openapi_types.UUID
 
+// ReportScheduleUidPath defines model for ReportScheduleUidPath.
+type ReportScheduleUidPath = openapi_types.UUID
+
 // ResourceUidPath defines model for ResourceUidPath.
 type ResourceUidPath = openapi_types.UUID
 
 // RouteUidPath defines model for RouteUidPath.
 type RouteUidPath = string
+
+// SLOUidPath defines model for SLOUidPath.
+type SLOUidPath = string
 
 // ScanJobUidPath defines model for ScanJobUidPath.
 type ScanJobUidPath = openapi_types.UUID
@@ -5548,6 +5790,11 @@ type PreviewOncallScheduleParams struct {
 	Days *int `form:"days,omitempty" json:"days,omitempty"`
 }
 
+// TestReportScheduleJSONBody defines parameters for TestReportSchedule.
+type TestReportScheduleJSONBody struct {
+	Recipient *openapi_types.Email `json:"recipient,omitempty"`
+}
+
 // ListOrgResultsParams defines parameters for ListOrgResults.
 type ListOrgResultsParams struct {
 	// CheckUid Filter by check UID or slug (comma-separated for multiple)
@@ -5573,6 +5820,21 @@ type ListOrgResultsParams struct {
 
 	// With Comma-separated optional fields to include. durationAvgMs and durationP95Ms are populated on aggregated rollup rows (hour/day/ month) from the stored duration_avg/duration_p95 columns; both are absent on raw rows, which don't store them.
 	With *string `form:"with,omitempty" json:"with,omitempty"`
+}
+
+// ListSlosParams defines parameters for ListSlos.
+type ListSlosParams struct {
+	// CheckUid Restrict to objectives scoped directly to this check
+	CheckUid *string `form:"checkUid,omitempty" json:"checkUid,omitempty"`
+
+	// Limit Maximum results (1-200)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetSloHistoryParams defines parameters for GetSloHistory.
+type GetSloHistoryParams struct {
+	// Months How many calendar months to return (default 12, max 60)
+	Months *int `form:"months,omitempty" json:"months,omitempty"`
 }
 
 // GetStatusPageParams defines parameters for GetStatusPage.
@@ -5866,6 +6128,15 @@ type UpdateOncallScheduleJSONRequestBody = UpdateOncallScheduleRequest
 // CreateOncallOverrideJSONRequestBody defines body for CreateOncallOverride for application/json ContentType.
 type CreateOncallOverrideJSONRequestBody = CreateOncallOverrideRequest
 
+// CreateReportScheduleJSONRequestBody defines body for CreateReportSchedule for application/json ContentType.
+type CreateReportScheduleJSONRequestBody = CreateReportScheduleRequest
+
+// UpdateReportScheduleJSONRequestBody defines body for UpdateReportSchedule for application/json ContentType.
+type UpdateReportScheduleJSONRequestBody = UpdateReportScheduleRequest
+
+// TestReportScheduleJSONRequestBody defines body for TestReportSchedule for application/json ContentType.
+type TestReportScheduleJSONRequestBody TestReportScheduleJSONBody
+
 // UpdateOrgSettingsJSONRequestBody defines body for UpdateOrgSettings for application/json ContentType.
 type UpdateOrgSettingsJSONRequestBody = UpdateOrgSettingsRequest
 
@@ -5874,6 +6145,12 @@ type CreateSeverityJSONRequestBody = CreateSeverityRequest
 
 // UpdateSeverityJSONRequestBody defines body for UpdateSeverity for application/json ContentType.
 type UpdateSeverityJSONRequestBody = UpdateSeverityRequest
+
+// CreateSloJSONRequestBody defines body for CreateSlo for application/json ContentType.
+type CreateSloJSONRequestBody = CreateSLORequest
+
+// UpdateSloJSONRequestBody defines body for UpdateSlo for application/json ContentType.
+type UpdateSloJSONRequestBody = UpdateSLORequest
 
 // CreateStatusPageJSONRequestBody defines body for CreateStatusPage for application/json ContentType.
 type CreateStatusPageJSONRequestBody = CreateStatusPageRequest
@@ -7529,6 +7806,67 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/regions (the `ListRegions` operationId).
 	ListRegions(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListReportSchedules List scheduled uptime reports
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/report-schedules (the `ListReportSchedules` operationId).
+	ListReportSchedules(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateReportScheduleWithBody Create a scheduled uptime report
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+	CreateReportScheduleWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateReportSchedule Create a scheduled uptime report
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+	CreateReportSchedule(ctx context.Context, org OrgPath, body CreateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteReportSchedule Delete a scheduled uptime report
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/report-schedules/{uid} (the `DeleteReportSchedule` operationId).
+	DeleteReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetReportSchedule Get a scheduled uptime report
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/report-schedules/{uid} (the `GetReportSchedule` operationId).
+	GetReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateReportScheduleWithBody Update a scheduled uptime report
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+	UpdateReportScheduleWithBody(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateReportSchedule Update a scheduled uptime report
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+	UpdateReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body UpdateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestReportScheduleWithBody Send the report immediately to the caller
+	//
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+	TestReportScheduleWithBody(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestReportSchedule Send the report immediately to the caller
+	//
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+	TestReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body TestReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListOrgResults List results across all checks in organization
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/results (the `ListOrgResults` operationId).
@@ -7595,6 +7933,66 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/severities/{uid} (the `UpdateSeverity` operationId).
 	UpdateSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSlos List service-level objectives
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos (the `ListSlos` operationId).
+	ListSlos(ctx context.Context, org OrgPath, params *ListSlosParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSloWithBody Create a service-level objective
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+	CreateSloWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSlo Create a service-level objective
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+	CreateSlo(ctx context.Context, org OrgPath, body CreateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSlo Delete a service-level objective
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/slos/{uid} (the `DeleteSlo` operationId).
+	DeleteSlo(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSlo Get a service-level objective
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid} (the `GetSlo` operationId).
+	GetSlo(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSloWithBody Update a service-level objective
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+	UpdateSloWithBody(ctx context.Context, org OrgPath, uid SLOUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSlo Update a service-level objective
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+	UpdateSlo(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSloBurndown Error-budget burn-down for the current window
+	//
+	// Cumulative series. Consumption is accrued per step and summed forward, so `budgetRemainingSeconds` is monotonically non-increasing by construction — it cannot climb back up when probe density changes. It is not clamped at zero: an overspent budget reports a negative remainder. A step with no countable probe spends nothing (no data is not downtime).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/burndown (the `GetSloBurndown` operationId).
+	GetSloBurndown(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSloHistory Past monthly windows for an objective
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/history (the `GetSloHistory` operationId).
+	GetSloHistory(ctx context.Context, org OrgPath, uid SLOUidPath, params *GetSloHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSloStatus Evaluate an objective over the current calendar window
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/status (the `GetSloStatus` operationId).
+	GetSloStatus(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListStatusPages List status pages
 	//
@@ -11863,6 +12261,157 @@ func (c *Client) ListRegions(ctx context.Context, org OrgPath, reqEditors ...Req
 	return c.Client.Do(req)
 }
 
+// ListReportSchedules List scheduled uptime reports
+//
+// Corresponds with GET /api/v1/orgs/{org}/report-schedules (the `ListReportSchedules` operationId).
+func (c *Client) ListReportSchedules(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListReportSchedulesRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateReportScheduleWithBody Create a scheduled uptime report
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+func (c *Client) CreateReportScheduleWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateReportScheduleRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateReportSchedule Create a scheduled uptime report
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+func (c *Client) CreateReportSchedule(ctx context.Context, org OrgPath, body CreateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateReportScheduleRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteReportSchedule Delete a scheduled uptime report
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/report-schedules/{uid} (the `DeleteReportSchedule` operationId).
+func (c *Client) DeleteReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteReportScheduleRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetReportSchedule Get a scheduled uptime report
+//
+// Corresponds with GET /api/v1/orgs/{org}/report-schedules/{uid} (the `GetReportSchedule` operationId).
+func (c *Client) GetReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetReportScheduleRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateReportScheduleWithBody Update a scheduled uptime report
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+func (c *Client) UpdateReportScheduleWithBody(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateReportScheduleRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateReportSchedule Update a scheduled uptime report
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+func (c *Client) UpdateReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body UpdateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateReportScheduleRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestReportScheduleWithBody Send the report immediately to the caller
+//
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+func (c *Client) TestReportScheduleWithBody(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestReportScheduleRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestReportSchedule Send the report immediately to the caller
+//
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+func (c *Client) TestReportSchedule(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body TestReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestReportScheduleRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListOrgResults List results across all checks in organization
 //
 // Corresponds with GET /api/v1/orgs/{org}/results (the `ListOrgResults` operationId).
@@ -12030,6 +12579,166 @@ func (c *Client) UpdateSeverityWithBody(ctx context.Context, org OrgPath, uid Se
 // Corresponds with PATCH /api/v1/orgs/{org}/severities/{uid} (the `UpdateSeverity` operationId).
 func (c *Client) UpdateSeverity(ctx context.Context, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateSeverityRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSlos List service-level objectives
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos (the `ListSlos` operationId).
+func (c *Client) ListSlos(ctx context.Context, org OrgPath, params *ListSlosParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSlosRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSloWithBody Create a service-level objective
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+func (c *Client) CreateSloWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSloRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSlo Create a service-level objective
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+func (c *Client) CreateSlo(ctx context.Context, org OrgPath, body CreateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSloRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSlo Delete a service-level objective
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/slos/{uid} (the `DeleteSlo` operationId).
+func (c *Client) DeleteSlo(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSloRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSlo Get a service-level objective
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid} (the `GetSlo` operationId).
+func (c *Client) GetSlo(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSloRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSloWithBody Update a service-level objective
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+func (c *Client) UpdateSloWithBody(ctx context.Context, org OrgPath, uid SLOUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSloRequestWithBody(c.Server, org, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSlo Update a service-level objective
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+func (c *Client) UpdateSlo(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSloRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSloBurndown Error-budget burn-down for the current window
+//
+// Cumulative series. Consumption is accrued per step and summed forward, so `budgetRemainingSeconds` is monotonically non-increasing by construction — it cannot climb back up when probe density changes. It is not clamped at zero: an overspent budget reports a negative remainder. A step with no countable probe spends nothing (no data is not downtime).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/burndown (the `GetSloBurndown` operationId).
+func (c *Client) GetSloBurndown(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSloBurndownRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSloHistory Past monthly windows for an objective
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/history (the `GetSloHistory` operationId).
+func (c *Client) GetSloHistory(ctx context.Context, org OrgPath, uid SLOUidPath, params *GetSloHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSloHistoryRequest(c.Server, org, uid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSloStatus Evaluate an objective over the current calendar window
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/status (the `GetSloStatus` operationId).
+func (c *Client) GetSloStatus(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSloStatusRequest(c.Server, org, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -21427,6 +22136,277 @@ func NewListRegionsRequest(server string, org OrgPath) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListReportSchedulesRequest constructs an http.Request for the ListReportSchedules method
+func NewListReportSchedulesRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/report-schedules", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateReportScheduleRequest calls the generic CreateReportSchedule builder with application/json body
+func NewCreateReportScheduleRequest(server string, org OrgPath, body CreateReportScheduleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateReportScheduleRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateReportScheduleRequestWithBody constructs an http.Request for the CreateReportSchedule method, with any body, and a specified content type
+func NewCreateReportScheduleRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/report-schedules", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteReportScheduleRequest constructs an http.Request for the DeleteReportSchedule method
+func NewDeleteReportScheduleRequest(server string, org OrgPath, uid ReportScheduleUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/report-schedules/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetReportScheduleRequest constructs an http.Request for the GetReportSchedule method
+func NewGetReportScheduleRequest(server string, org OrgPath, uid ReportScheduleUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/report-schedules/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateReportScheduleRequest calls the generic UpdateReportSchedule builder with application/json body
+func NewUpdateReportScheduleRequest(server string, org OrgPath, uid ReportScheduleUidPath, body UpdateReportScheduleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateReportScheduleRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateReportScheduleRequestWithBody constructs an http.Request for the UpdateReportSchedule method, with any body, and a specified content type
+func NewUpdateReportScheduleRequestWithBody(server string, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/report-schedules/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestReportScheduleRequest calls the generic TestReportSchedule builder with application/json body
+func NewTestReportScheduleRequest(server string, org OrgPath, uid ReportScheduleUidPath, body TestReportScheduleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestReportScheduleRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewTestReportScheduleRequestWithBody constructs an http.Request for the TestReportSchedule method, with any body, and a specified content type
+func NewTestReportScheduleRequestWithBody(server string, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/report-schedules/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListOrgResultsRequest constructs an http.Request for the ListOrgResults method
 func NewListOrgResultsRequest(server string, org OrgPath, params *ListOrgResultsParams) (*http.Request, error) {
 	var err error
@@ -21866,6 +22846,412 @@ func NewUpdateSeverityRequestWithBody(server string, org OrgPath, uid SeverityUi
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSlosRequest constructs an http.Request for the ListSlos method
+func NewListSlosRequest(server string, org OrgPath, params *ListSlosParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.CheckUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "checkUid", *params.CheckUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSloRequest calls the generic CreateSlo builder with application/json body
+func NewCreateSloRequest(server string, org OrgPath, body CreateSloJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSloRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewCreateSloRequestWithBody constructs an http.Request for the CreateSlo method, with any body, and a specified content type
+func NewCreateSloRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSloRequest constructs an http.Request for the DeleteSlo method
+func NewDeleteSloRequest(server string, org OrgPath, uid SLOUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSloRequest constructs an http.Request for the GetSlo method
+func NewGetSloRequest(server string, org OrgPath, uid SLOUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSloRequest calls the generic UpdateSlo builder with application/json body
+func NewUpdateSloRequest(server string, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSloRequestWithBody(server, org, uid, "application/json", bodyReader)
+}
+
+// NewUpdateSloRequestWithBody constructs an http.Request for the UpdateSlo method, with any body, and a specified content type
+func NewUpdateSloRequestWithBody(server string, org OrgPath, uid SLOUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetSloBurndownRequest constructs an http.Request for the GetSloBurndown method
+func NewGetSloBurndownRequest(server string, org OrgPath, uid SLOUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/burndown", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSloHistoryRequest constructs an http.Request for the GetSloHistory method
+func NewGetSloHistoryRequest(server string, org OrgPath, uid SLOUidPath, params *GetSloHistoryParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/history", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Months != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "months", *params.Months, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSloStatusRequest constructs an http.Request for the GetSloStatus method
+func NewGetSloStatusRequest(server string, org OrgPath, uid SLOUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/status", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -26847,6 +28233,73 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/regions (the `ListRegions` operationId).
 	ListRegionsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListRegionsResult, error)
 
+	// ListReportSchedulesWithResponse List scheduled uptime reports
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/report-schedules (the `ListReportSchedules` operationId).
+	ListReportSchedulesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListReportSchedulesResult, error)
+
+	// CreateReportScheduleWithBodyWithResponse Create a scheduled uptime report
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+	CreateReportScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReportScheduleResult, error)
+
+	// CreateReportScheduleWithResponse Create a scheduled uptime report
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+	CreateReportScheduleWithResponse(ctx context.Context, org OrgPath, body CreateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReportScheduleResult, error)
+
+	// DeleteReportScheduleWithResponse Delete a scheduled uptime report
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/report-schedules/{uid} (the `DeleteReportSchedule` operationId).
+	DeleteReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*DeleteReportScheduleResult, error)
+
+	// GetReportScheduleWithResponse Get a scheduled uptime report
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/report-schedules/{uid} (the `GetReportSchedule` operationId).
+	GetReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*GetReportScheduleResult, error)
+
+	// UpdateReportScheduleWithBodyWithResponse Update a scheduled uptime report
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+	UpdateReportScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateReportScheduleResult, error)
+
+	// UpdateReportScheduleWithResponse Update a scheduled uptime report
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+	UpdateReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body UpdateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateReportScheduleResult, error)
+
+	// TestReportScheduleWithBodyWithResponse Send the report immediately to the caller
+	//
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+	TestReportScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestReportScheduleResult, error)
+
+	// TestReportScheduleWithResponse Send the report immediately to the caller
+	//
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+	TestReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body TestReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*TestReportScheduleResult, error)
+
 	// ListOrgResultsWithResponse List results across all checks in organization
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -26923,6 +28376,78 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/severities/{uid} (the `UpdateSeverity` operationId).
 	UpdateSeverityWithResponse(ctx context.Context, org OrgPath, uid SeverityUidPath, body UpdateSeverityJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSeverityResult, error)
+
+	// ListSlosWithResponse List service-level objectives
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos (the `ListSlos` operationId).
+	ListSlosWithResponse(ctx context.Context, org OrgPath, params *ListSlosParams, reqEditors ...RequestEditorFn) (*ListSlosResult, error)
+
+	// CreateSloWithBodyWithResponse Create a service-level objective
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+	CreateSloWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSloResult, error)
+
+	// CreateSloWithResponse Create a service-level objective
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+	CreateSloWithResponse(ctx context.Context, org OrgPath, body CreateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSloResult, error)
+
+	// DeleteSloWithResponse Delete a service-level objective
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/slos/{uid} (the `DeleteSlo` operationId).
+	DeleteSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*DeleteSloResult, error)
+
+	// GetSloWithResponse Get a service-level objective
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid} (the `GetSlo` operationId).
+	GetSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*GetSloResult, error)
+
+	// UpdateSloWithBodyWithResponse Update a service-level objective
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+	UpdateSloWithBodyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSloResult, error)
+
+	// UpdateSloWithResponse Update a service-level objective
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+	UpdateSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloResult, error)
+
+	// GetSloBurndownWithResponse Error-budget burn-down for the current window
+	//
+	// Cumulative series. Consumption is accrued per step and summed forward, so `budgetRemainingSeconds` is monotonically non-increasing by construction — it cannot climb back up when probe density changes. It is not clamped at zero: an overspent budget reports a negative remainder. A step with no countable probe spends nothing (no data is not downtime).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/burndown (the `GetSloBurndown` operationId).
+	GetSloBurndownWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*GetSloBurndownResult, error)
+
+	// GetSloHistoryWithResponse Past monthly windows for an objective
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/history (the `GetSloHistory` operationId).
+	GetSloHistoryWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, params *GetSloHistoryParams, reqEditors ...RequestEditorFn) (*GetSloHistoryResult, error)
+
+	// GetSloStatusWithResponse Evaluate an objective over the current calendar window
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/status (the `GetSloStatus` operationId).
+	GetSloStatusWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*GetSloStatusResult, error)
 
 	// ListStatusPagesWithResponse List status pages
 	//
@@ -36540,6 +38065,343 @@ func (r ListRegionsResult) ContentType() string {
 	return ""
 }
 
+type ListReportSchedulesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ReportScheduleListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListReportSchedulesResult) GetJSON200() *ReportScheduleListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListReportSchedulesResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListReportSchedulesResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListReportSchedulesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListReportSchedulesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListReportSchedulesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListReportSchedulesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateReportScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ReportSchedule
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateReportScheduleResult) GetJSON201() *ReportSchedule {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateReportScheduleResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateReportScheduleResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateReportScheduleResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateReportScheduleResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateReportScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateReportScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateReportScheduleResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteReportScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteReportScheduleResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteReportScheduleResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteReportScheduleResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteReportScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteReportScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteReportScheduleResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetReportScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ReportSchedule
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetReportScheduleResult) GetJSON200() *ReportSchedule {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetReportScheduleResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetReportScheduleResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetReportScheduleResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetReportScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetReportScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetReportScheduleResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateReportScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ReportSchedule
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateReportScheduleResult) GetJSON200() *ReportSchedule {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateReportScheduleResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateReportScheduleResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateReportScheduleResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateReportScheduleResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateReportScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateReportScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateReportScheduleResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TestReportScheduleResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r TestReportScheduleResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r TestReportScheduleResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r TestReportScheduleResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r TestReportScheduleResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TestReportScheduleResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestReportScheduleResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TestReportScheduleResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListOrgResultsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -37009,6 +38871,453 @@ func (r UpdateSeverityResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateSeverityResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSlosResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSlosResult) GetJSON200() *SLOListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSlosResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSlosResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSlosResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSlosResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSlosResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSlosResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateSloResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SLO
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSloResult) GetJSON201() *SLO {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateSloResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateSloResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateSloResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSloResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSloResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSloResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSloResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSloResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteSloResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteSloResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSloResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSloResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSloResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSloResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSloResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLO
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSloResult) GetJSON200() *SLO {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSloResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSloResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSloResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSloResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSloResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSloResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateSloResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLO
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSloResult) GetJSON200() *SLO {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateSloResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateSloResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateSloResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSloResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSloResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSloResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSloResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSloBurndownResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOBurndownResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSloBurndownResult) GetJSON200() *SLOBurndownResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSloBurndownResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSloBurndownResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSloBurndownResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSloBurndownResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSloBurndownResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSloBurndownResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSloHistoryResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOHistoryResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSloHistoryResult) GetJSON200() *SLOHistoryResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSloHistoryResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSloHistoryResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSloHistoryResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSloHistoryResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSloHistoryResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSloHistoryResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSloStatusResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOStatusResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSloStatusResult) GetJSON200() *SLOStatusResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSloStatusResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSloStatusResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSloStatusResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSloStatusResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSloStatusResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSloStatusResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -43557,6 +45866,127 @@ func (c *ClientWithResponses) ListRegionsWithResponse(ctx context.Context, org O
 	return ParseListRegionsResult(rsp)
 }
 
+// ListReportSchedulesWithResponse List scheduled uptime reports
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/report-schedules (the `ListReportSchedules` operationId).
+func (c *ClientWithResponses) ListReportSchedulesWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListReportSchedulesResult, error) {
+	rsp, err := c.ListReportSchedules(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListReportSchedulesResult(rsp)
+}
+
+// CreateReportScheduleWithBodyWithResponse Create a scheduled uptime report
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+func (c *ClientWithResponses) CreateReportScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReportScheduleResult, error) {
+	rsp, err := c.CreateReportScheduleWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateReportScheduleResult(rsp)
+}
+
+// CreateReportScheduleWithResponse Create a scheduled uptime report
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules (the `CreateReportSchedule` operationId).
+func (c *ClientWithResponses) CreateReportScheduleWithResponse(ctx context.Context, org OrgPath, body CreateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReportScheduleResult, error) {
+	rsp, err := c.CreateReportSchedule(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateReportScheduleResult(rsp)
+}
+
+// DeleteReportScheduleWithResponse Delete a scheduled uptime report
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/report-schedules/{uid} (the `DeleteReportSchedule` operationId).
+func (c *ClientWithResponses) DeleteReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*DeleteReportScheduleResult, error) {
+	rsp, err := c.DeleteReportSchedule(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteReportScheduleResult(rsp)
+}
+
+// GetReportScheduleWithResponse Get a scheduled uptime report
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/report-schedules/{uid} (the `GetReportSchedule` operationId).
+func (c *ClientWithResponses) GetReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, reqEditors ...RequestEditorFn) (*GetReportScheduleResult, error) {
+	rsp, err := c.GetReportSchedule(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetReportScheduleResult(rsp)
+}
+
+// UpdateReportScheduleWithBodyWithResponse Update a scheduled uptime report
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+func (c *ClientWithResponses) UpdateReportScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateReportScheduleResult, error) {
+	rsp, err := c.UpdateReportScheduleWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateReportScheduleResult(rsp)
+}
+
+// UpdateReportScheduleWithResponse Update a scheduled uptime report
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/report-schedules/{uid} (the `UpdateReportSchedule` operationId).
+func (c *ClientWithResponses) UpdateReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body UpdateReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateReportScheduleResult, error) {
+	rsp, err := c.UpdateReportSchedule(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateReportScheduleResult(rsp)
+}
+
+// TestReportScheduleWithBodyWithResponse Send the report immediately to the caller
+//
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+func (c *ClientWithResponses) TestReportScheduleWithBodyWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestReportScheduleResult, error) {
+	rsp, err := c.TestReportScheduleWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestReportScheduleResult(rsp)
+}
+
+// TestReportScheduleWithResponse Send the report immediately to the caller
+//
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/report-schedules/{uid}/test (the `TestReportSchedule` operationId).
+func (c *ClientWithResponses) TestReportScheduleWithResponse(ctx context.Context, org OrgPath, uid ReportScheduleUidPath, body TestReportScheduleJSONRequestBody, reqEditors ...RequestEditorFn) (*TestReportScheduleResult, error) {
+	rsp, err := c.TestReportSchedule(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestReportScheduleResult(rsp)
+}
+
 // ListOrgResultsWithResponse List results across all checks in organization
 //
 // Returns a wrapper object for the known response body format(s).
@@ -43698,6 +46128,138 @@ func (c *ClientWithResponses) UpdateSeverityWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseUpdateSeverityResult(rsp)
+}
+
+// ListSlosWithResponse List service-level objectives
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos (the `ListSlos` operationId).
+func (c *ClientWithResponses) ListSlosWithResponse(ctx context.Context, org OrgPath, params *ListSlosParams, reqEditors ...RequestEditorFn) (*ListSlosResult, error) {
+	rsp, err := c.ListSlos(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSlosResult(rsp)
+}
+
+// CreateSloWithBodyWithResponse Create a service-level objective
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+func (c *ClientWithResponses) CreateSloWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSloResult, error) {
+	rsp, err := c.CreateSloWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSloResult(rsp)
+}
+
+// CreateSloWithResponse Create a service-level objective
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/slos (the `CreateSlo` operationId).
+func (c *ClientWithResponses) CreateSloWithResponse(ctx context.Context, org OrgPath, body CreateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSloResult, error) {
+	rsp, err := c.CreateSlo(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSloResult(rsp)
+}
+
+// DeleteSloWithResponse Delete a service-level objective
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/slos/{uid} (the `DeleteSlo` operationId).
+func (c *ClientWithResponses) DeleteSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*DeleteSloResult, error) {
+	rsp, err := c.DeleteSlo(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSloResult(rsp)
+}
+
+// GetSloWithResponse Get a service-level objective
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid} (the `GetSlo` operationId).
+func (c *ClientWithResponses) GetSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*GetSloResult, error) {
+	rsp, err := c.GetSlo(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSloResult(rsp)
+}
+
+// UpdateSloWithBodyWithResponse Update a service-level objective
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+func (c *ClientWithResponses) UpdateSloWithBodyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSloResult, error) {
+	rsp, err := c.UpdateSloWithBody(ctx, org, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSloResult(rsp)
+}
+
+// UpdateSloWithResponse Update a service-level objective
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
+func (c *ClientWithResponses) UpdateSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloResult, error) {
+	rsp, err := c.UpdateSlo(ctx, org, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSloResult(rsp)
+}
+
+// GetSloBurndownWithResponse Error-budget burn-down for the current window
+//
+// Cumulative series. Consumption is accrued per step and summed forward, so `budgetRemainingSeconds` is monotonically non-increasing by construction — it cannot climb back up when probe density changes. It is not clamped at zero: an overspent budget reports a negative remainder. A step with no countable probe spends nothing (no data is not downtime).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/burndown (the `GetSloBurndown` operationId).
+func (c *ClientWithResponses) GetSloBurndownWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*GetSloBurndownResult, error) {
+	rsp, err := c.GetSloBurndown(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSloBurndownResult(rsp)
+}
+
+// GetSloHistoryWithResponse Past monthly windows for an objective
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/history (the `GetSloHistory` operationId).
+func (c *ClientWithResponses) GetSloHistoryWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, params *GetSloHistoryParams, reqEditors ...RequestEditorFn) (*GetSloHistoryResult, error) {
+	rsp, err := c.GetSloHistory(ctx, org, uid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSloHistoryResult(rsp)
+}
+
+// GetSloStatusWithResponse Evaluate an objective over the current calendar window
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/status (the `GetSloStatus` operationId).
+func (c *ClientWithResponses) GetSloStatusWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*GetSloStatusResult, error) {
+	rsp, err := c.GetSloStatus(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSloStatusResult(rsp)
 }
 
 // ListStatusPagesWithResponse List status pages
@@ -51465,6 +54027,259 @@ func ParseListRegionsResult(rsp *http.Response) (*ListRegionsResult, error) {
 	return response, nil
 }
 
+// ParseListReportSchedulesResult parses an HTTP response from a ListReportSchedulesWithResponse call
+func ParseListReportSchedulesResult(rsp *http.Response) (*ListReportSchedulesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListReportSchedulesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ReportScheduleListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateReportScheduleResult parses an HTTP response from a CreateReportScheduleWithResponse call
+func ParseCreateReportScheduleResult(rsp *http.Response) (*CreateReportScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateReportScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ReportSchedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteReportScheduleResult parses an HTTP response from a DeleteReportScheduleWithResponse call
+func ParseDeleteReportScheduleResult(rsp *http.Response) (*DeleteReportScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteReportScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetReportScheduleResult parses an HTTP response from a GetReportScheduleWithResponse call
+func ParseGetReportScheduleResult(rsp *http.Response) (*GetReportScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetReportScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ReportSchedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateReportScheduleResult parses an HTTP response from a UpdateReportScheduleWithResponse call
+func ParseUpdateReportScheduleResult(rsp *http.Response) (*UpdateReportScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateReportScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ReportSchedule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestReportScheduleResult parses an HTTP response from a TestReportScheduleWithResponse call
+func ParseTestReportScheduleResult(rsp *http.Response) (*TestReportScheduleResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestReportScheduleResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListOrgResultsResult parses an HTTP response from a ListOrgResultsWithResponse call
 func ParseListOrgResultsResult(rsp *http.Response) (*ListOrgResultsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -51803,6 +54618,342 @@ func ParseUpdateSeverityResult(rsp *http.Response) (*UpdateSeverityResult, error
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSlosResult parses an HTTP response from a ListSlosWithResponse call
+func ParseListSlosResult(rsp *http.Response) (*ListSlosResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSlosResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSloResult parses an HTTP response from a CreateSloWithResponse call
+func ParseCreateSloResult(rsp *http.Response) (*CreateSloResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSloResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SLO
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case rsp.StatusCode == 402:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case rsp.StatusCode == 409:
+		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSloResult parses an HTTP response from a DeleteSloWithResponse call
+func ParseDeleteSloResult(rsp *http.Response) (*DeleteSloResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSloResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSloResult parses an HTTP response from a GetSloWithResponse call
+func ParseGetSloResult(rsp *http.Response) (*GetSloResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSloResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLO
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSloResult parses an HTTP response from a UpdateSloWithResponse call
+func ParseUpdateSloResult(rsp *http.Response) (*UpdateSloResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSloResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLO
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSloBurndownResult parses an HTTP response from a GetSloBurndownWithResponse call
+func ParseGetSloBurndownResult(rsp *http.Response) (*GetSloBurndownResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSloBurndownResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOBurndownResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSloHistoryResult parses an HTTP response from a GetSloHistoryWithResponse call
+func ParseGetSloHistoryResult(rsp *http.Response) (*GetSloHistoryResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSloHistoryResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOHistoryResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSloStatusResult parses an HTTP response from a GetSloStatusWithResponse call
+func ParseGetSloStatusResult(rsp *http.Response) (*GetSloStatusResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSloStatusResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
