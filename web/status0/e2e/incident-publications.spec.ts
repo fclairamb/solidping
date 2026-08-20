@@ -133,6 +133,16 @@ test.describe("Incident publications on the public status page", () => {
     ).toBeVisible();
     await expect(card.getByTestId("status-update-kind").first()).toBeVisible();
 
+    // The nested update must NOT double-box: it renders through the "plain"
+    // variant (spec 2026-08-20-13), so it carries none of its own
+    // rounded/border/bg chrome — that chrome belongs to the incident card
+    // it already sits inside.
+    const nestedUpdate = card.locator('[id^="update-"]').first();
+    await expect(nestedUpdate).toBeVisible();
+    await expect(nestedUpdate).not.toHaveClass(/rounded-lg/);
+    await expect(nestedUpdate).not.toHaveClass(/\bborder\b/);
+    await expect(nestedUpdate).not.toHaveClass(/\bbg-card\b/);
+
     // Negative: nothing internal leaks into the public card. A check slug or a
     // probe error string appearing here would be the security failure this
     // feature is built to avoid.
