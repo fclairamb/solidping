@@ -4,7 +4,7 @@
  *
  * Prerequisites (handled by the test runner / CI):
  *   - Server running at API_BASE with SP_RUNMODE=test
- *   - 017_incident_publications migration applied
+ *   - 014_v0_17_0 migration applied (incident-publications section)
  *
  * Coverage:
  *   - a hand-written publication renders as a severity-coloured card carrying

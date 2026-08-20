@@ -20,19 +20,20 @@ import (
 const lifecyclePendingIndexDDL = "CREATE INDEX idx_results_lifecycle_pending on results (period_start)\n" +
 	"  where period_type = 'raw' and status = 1"
 
-// resultsStatusDomainMigrationSQL is migration 014 read straight out of the
-// embedded FS, so this test can never drift from the file that actually ships.
+// resultsStatusDomainMigrationSQL is the results-status-domain SECTION of the
+// consolidated v0.17.0 migration, read straight out of the embedded FS so this
+// test can never drift from the SQL that actually ships. Only that section is
+// replayed: 014 is the whole release folded into one file, and its later
+// sections (worker-version, incident-publications, slo-reporting) add columns
+// with no IF NOT EXISTS and would fail on a second pass.
 func resultsStatusDomainMigrationSQL(t *testing.T) string {
 	t.Helper()
 
-	body, err := migrationsFS.ReadFile("migrations/014_v0_17_0.up.sql")
-	require.NoError(t, err)
-
-	return string(body)
+	return migrationSection(t, "results-status-domain")
 }
 
-// TestResultsStatusDomainMigration covers what the consolidated 014 actually
-// guarantees on SQLite: the `results` status CHECK domain now admits
+// TestResultsStatusDomainMigration covers what 014's results-status-domain
+// section actually guarantees on SQLite: the `results` status CHECK domain now admits
 // ResultStatusAbandoned (9) and still rejects everything outside the domain,
 // the reaper's partial index exists with its exact definition, and — the
 // load-bearing part — the table rebuild 014 needs in order to widen an inline
@@ -148,7 +149,7 @@ func TestResultsStatusDomainMigration(t *testing.T) {
 		"a second region-less hour rollup for the same bucket must collide — "+
 			"results_aggregated_unique_idx has to keep its coalesce(region, '') form")
 
-	// 5. Replay the shipped file over a POPULATED table. The SQLite half of
+	// 5. Replay the shipped section over a POPULATED table. The SQLite half of
 	//    this migration is a positional INSERT ... SELECT table rebuild, so a
 	//    column-order slip would surface here as scrambled counters — and on a
 	//    freshly-initialized database there would be no rows to scramble.

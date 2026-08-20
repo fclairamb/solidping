@@ -1,10 +1,44 @@
 package postgres
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// migrationSection slices one `-- SECTION: <name>` block out of the
+// consolidated v0.17.0 migration (014_v0_17_0.up.sql).
+//
+// That file is a whole release folded into one migration, so replaying it
+// wholesale against an already-initialized database fails on the statements
+// that are deliberately not re-runnable (a table rebuild, an ADD COLUMN with
+// no IF NOT EXISTS). A test that wants to exercise one block's behavior
+// replays just that block. Reading it out of the embedded FS rather than
+// restating the SQL here is what keeps the test from drifting from the file
+// that actually ships — renaming a section breaks these tests loudly, which is
+// why the banners are documented as a machine-readable anchor in the migration
+// itself.
+func migrationSection(t *testing.T, name string) string {
+	t.Helper()
+
+	body, err := migrationsFS.ReadFile("migrations/014_v0_17_0.up.sql")
+	require.NoError(t, err)
+
+	// The file's table of contents indents its entries ("--   SECTION: ..."),
+	// so only the real banner matches, and only when the name is the whole line.
+	marker := "-- SECTION: " + name + "\n"
+
+	start := strings.Index(string(body), marker)
+	require.GreaterOrEqual(t, start, 0, "section %q not found in the consolidated migration", name)
+
+	section := string(body)[start+len(marker):]
+	if end := strings.Index(section, "\n-- SECTION: "); end >= 0 {
+		section = section[:end]
+	}
+
+	return section
+}
 
 // portRemoveOpsgenieMigration is distinct from every other _postgres_test.go
 // embedded port in the repo (see the port-numbering note in
@@ -41,8 +75,10 @@ func TestRemoveOpsgenieMigrationDeletesIntegrationAndDependents_Postgres(t *test
 		t.Skipf("embedded postgres init failed: %v", initErr)
 	}
 
-	migration, err := migrationsFS.ReadFile("migrations/015_remove_opsgenie_integrations.up.sql")
-	r.NoError(err)
+	// Only the remove-opsgenie-integrations section is replayed: the rest of
+	// the consolidated v0.17.0 migration is not re-runnable, while this section
+	// (two DELETEs) is.
+	migration := migrationSection(t, "remove-opsgenie-integrations")
 
 	exec := func(query string, args ...any) {
 		t.Helper()
@@ -88,7 +124,7 @@ func TestRemoveOpsgenieMigrationDeletesIntegrationAndDependents_Postgres(t *test
 		org, incident, intOpsgenie)
 
 	// The migration itself.
-	_, err = svc.DB().ExecContext(ctx, string(migration))
+	_, err = svc.DB().ExecContext(ctx, migration)
 	r.NoError(err)
 
 	count := func(query string, args ...any) int {
@@ -121,6 +157,6 @@ func TestRemoveOpsgenieMigrationDeletesIntegrationAndDependents_Postgres(t *test
 		"the slack escalation_policy_targets row must survive")
 
 	// Idempotent — re-running against an already-clean database is a no-op.
-	_, err = svc.DB().ExecContext(ctx, string(migration))
+	_, err = svc.DB().ExecContext(ctx, migration)
 	r.NoError(err)
 }

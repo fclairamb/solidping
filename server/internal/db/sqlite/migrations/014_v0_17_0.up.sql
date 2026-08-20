@@ -1,4 +1,46 @@
--- SQLite mirror of postgres/migrations/014_v0_17_0.up.sql — the
+-- v0.17.0 — the ONE consolidated migration for the (still unreleased) v0.17.0
+-- release. 013_v0_16_0 is the last RELEASED migration, so everything this
+-- cycle produced lands here, in a single file per dialect, per the repo
+-- convention documented in wiki/conventions/database.md.
+--
+-- It is long because it is a whole release, not because anything here is
+-- subtle. It is organised into SECTIONs, each one a scratch migration that was
+-- folded in at consolidation time and each one preserving that migration's own
+-- rationale verbatim:
+--
+--   SECTION: results-status-domain      abandoned-result reaper status + index
+--   SECTION: remove-opsgenie-integrations  drop the sunsetting Opsgenie type
+--   SECTION: worker-version             workers.version self-report column
+--   SECTION: incident-publications      public incident overlay + auto-publish
+--   SECTION: slo-reporting              SLOs, report schedules, maintenance tags
+--
+-- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
+-- earlier ones (on SQLite in particular, results-status-domain REBUILDS
+-- `results` before slo-reporting adds columns to it). The .down.sql unwinds
+-- them in the exact reverse order.
+--
+-- The SECTION banners are also a machine-readable anchor: migration tests slice
+-- one section out of this file so they can replay just that block against a
+-- populated database. Renaming a section renames a test fixture — see
+-- migrationSection() in the db test packages.
+--
+-- NOTE ON THE "015 + 016" MENTIONED IN THE FIRST SECTION BELOW: that is an
+-- EARLIER, different pair (the short-lived `results.abandoned` flag), already
+-- folded away before the sections below were even written. It is unrelated to
+-- the 015-018 folded in here.
+--
+-- Consolidation caveat: a database that already applied 014 in an earlier,
+-- shorter form has 014 recorded in bun_migrations, so the sections folded in
+-- afterwards will be SKIPPED there and the migration guard will flag the
+-- checksum drift on boot. Development databases must be RESET, not repaired.
+
+-- ==========================================================================
+-- SECTION: results-status-domain
+-- The v0.17.0 file's original body (specs 2026-08-18-03 and 2026-08-18-10).
+-- ==========================================================================
+
+-- SQLite mirror of the results-status-domain section of
+-- postgres/migrations/014_v0_17_0.up.sql — the
 -- abandoned-result reaper: the dedicated ResultStatusAbandoned (9) status
 -- value plus the partial index the reaper scans on (specs 2026-08-18-03 and
 -- 2026-08-18-10, consolidated). See the Postgres file for why the reaper
@@ -112,3 +154,298 @@ create index idx_results_lifecycle_pending on results (period_start)
 --bun:split
 
 PRAGMA foreign_keys=ON;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: remove-opsgenie-integrations
+-- Was scratch migration 015_remove_opsgenie_integrations (spec 2026-08-19-02).
+-- ==========================================================================
+
+-- SQLite mirror of the remove-opsgenie-integrations section of
+-- postgres/migrations/014_v0_17_0.up.sql
+-- — remove the sunsetting Opsgenie integration type, replaced by PagerDuty
+-- (spec 2026-08-19-02: Atlassian is retiring Opsgenie in April 2027). Hard
+-- delete, not a tombstone: the product is pre-1.0 and keeping a dead
+-- connection_type around would force every type switch in the code to carry
+-- a zombie case forever.
+--
+-- See the Postgres file for the FK graph this deletion order
+-- relies on:
+--   - check_channels.integration_uid              ON DELETE CASCADE  (automatic)
+--   - user_integration_identities.integration_uid  ON DELETE CASCADE  (automatic, 011_v0_14_0)
+--   - incident_notifications.connection_uid        ON DELETE SET NULL (automatic — keeps audit history)
+--   - escalation_policy_targets.target_uid          NOT a foreign key (polymorphic
+--     column shared by every target_type), so a 'connection' target pointing at an
+--     opsgenie integration is deleted explicitly below.
+--
+-- No PRAGMA foreign_keys toggling needed: this only deletes rows, it does not
+-- rebuild any table.
+
+delete from escalation_policy_targets
+where target_type = 'connection'
+  and target_uid in (select uid from integrations where type = 'opsgenie');
+
+--bun:split
+
+delete from integrations where type = 'opsgenie';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: worker-version
+-- Was scratch migration 016_worker_version (spec 2026-08-19-07).
+-- ==========================================================================
+
+-- SQLite mirror of the worker-version section of
+-- postgres/migrations/014_v0_17_0.up.sql — workers
+-- self-report their own build version (spec 2026-08-19-07). See the Postgres
+-- file for the full rationale: NULL-only-unknown, no backfill, and why this
+-- is a two-state column (scalar) rather than three-state (set) the way
+-- `capabilities` is.
+--
+-- SQLite has no `ADD COLUMN IF NOT EXISTS`, so this is not re-runnable —
+-- same as every other scratch migration this cycle. No triggers are needed
+-- here (unlike `capabilities`): a plain column CHECK is enough to validate a
+-- single scalar, where the array-element rules for `capabilities` needed
+-- `json_each` triggers because SQLite forbids subqueries in a CHECK and
+-- json_each is table-valued.
+
+alter table workers add column version text
+  check (version is null or version <> '');
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: incident-publications
+-- Was scratch migration 017_incident_publications (spec 2026-08-19-08).
+-- ==========================================================================
+
+-- SQLite mirror of the incident-publications section of
+-- postgres/migrations/014_v0_17_0.up.sql — the
+-- incident publication overlay (spec 2026-08-19-08). See the Postgres file for
+-- the full rationale, in particular why nothing derived from an incident's
+-- probe diagnostics has a column to land in here.
+--
+-- SQLite has no ADD COLUMN IF NOT EXISTS, so this file is not re-runnable —
+-- same as every other scratch migration this cycle.
+
+create table if not exists incident_publications (
+  uid                 text primary key,
+  organization_uid    text not null references organizations(uid),
+  incident_uid        text references incidents(uid),
+  status_page_uid     text not null references status_pages(uid),
+  public_title        text not null,
+  public_state        text not null default 'investigating'
+                        check (public_state in ('investigating', 'identified', 'monitoring', 'resolved')),
+  severity            text check (severity is null or severity in ('minor', 'major', 'critical')),
+  auto_created        integer not null default 0,
+  human_touched_at    text,
+  published_at        text not null default (datetime('now')),
+  resolved_at         text,
+  notify_window_start text,
+  notify_window_count integer not null default 0,
+  created_at          text not null default (datetime('now')),
+  updated_at          text not null default (datetime('now')),
+  deleted_at          text
+);
+
+--bun:split
+
+-- Idempotency for the debounce job: a concurrent job fire and a manual publish
+-- race into the same row rather than minting two public incidents.
+create unique index if not exists uq_incident_publications_incident_page
+  on incident_publications (incident_uid, status_page_uid)
+  where incident_uid is not null and deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_incident_publications_page_published
+  on incident_publications (status_page_uid, published_at desc)
+  where deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_incident_publications_incident
+  on incident_publications (incident_uid)
+  where incident_uid is not null and deleted_at is null;
+
+--bun:split
+
+-- FALSE for every pre-existing page by design; new pages opt in through
+-- models.NewStatusPage. See the Postgres file.
+alter table status_pages add column auto_publish integer not null default 0;
+
+--bun:split
+
+alter table status_pages add column auto_publish_delay_seconds integer not null default 60
+  check (auto_publish_delay_seconds >= 0 and auto_publish_delay_seconds <= 86400);
+
+--bun:split
+
+alter table status_pages add column auto_resolve text not null default 'if_untouched'
+  check (auto_resolve in ('always', 'if_untouched', 'never'));
+
+--bun:split
+
+-- NULL = inherit the page.
+alter table status_page_resources add column auto_publish integer;
+
+--bun:split
+
+-- status_updates needs BOTH a publication link (so a hand-authored publication,
+-- which has no incident_uid to thread on, still has a thread) and a nullable
+-- author_uid: an auto-generated update has no author, and
+-- attributing a machine post to a human would be a lie the UI then renders.
+-- SQLite cannot relax NOT NULL in place, so status_updates is rebuilt with the
+-- same *_new technique 002/005/009 used. foreign_keys is disabled around the
+-- rebuild (in autocommit, isolated with --bun:split, since a PRAGMA inside a
+-- transaction is silently a no-op) so nothing else loses its references.
+PRAGMA foreign_keys=OFF;
+
+--bun:split
+
+create table status_updates_new (
+  uid                      text primary key,
+  organization_uid         text not null references organizations(uid),
+  status_page_uid          text not null references status_pages(uid),
+  section_uid              text references status_page_sections(uid),
+  check_uid                text references checks(uid),
+  incident_uid             text references incidents(uid),
+  incident_publication_uid text references incident_publications(uid),
+  title                    text not null,
+  body_markdown            text not null,
+  link_url                 text,
+  kind                     text not null check (kind in ('investigating', 'identified', 'monitoring', 'resolved', 'maintenance', 'info')),
+  published_at             text not null default (datetime('now')),
+  author_uid               text references users(uid),
+  created_at               text not null default (datetime('now')),
+  updated_at               text not null default (datetime('now')),
+  deleted_at               text
+);
+
+insert into status_updates_new (
+  uid, organization_uid, status_page_uid, section_uid, check_uid, incident_uid,
+  title, body_markdown, link_url, kind, published_at,
+  author_uid, created_at, updated_at, deleted_at
+)
+select
+  uid, organization_uid, status_page_uid, section_uid, check_uid, incident_uid,
+  title, body_markdown, link_url, kind, published_at,
+  author_uid, created_at, updated_at, deleted_at
+from status_updates;
+
+drop table status_updates;
+alter table status_updates_new rename to status_updates;
+
+create index idx_status_updates_org_page_pub on status_updates (organization_uid, status_page_uid, published_at desc);
+create index idx_status_updates_incident on status_updates (incident_uid);
+create index idx_status_updates_check on status_updates (check_uid);
+create index idx_status_updates_publication on status_updates (incident_publication_uid);
+
+--bun:split
+
+PRAGMA foreign_keys=ON;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: slo-reporting
+-- Was scratch migration 018_slo_reporting (spec 2026-08-20-01).
+-- ==========================================================================
+
+-- SQLite mirror of the slo-reporting section of
+-- postgres/migrations/014_v0_17_0.up.sql — SLA/SLO
+-- reporting (spec 2026-08-20-01). See the Postgres file for the full rationale,
+-- in particular why the maintenance counters are subsets of the existing ones
+-- and therefore change no existing consumer.
+--
+-- SQLite has no ADD COLUMN IF NOT EXISTS, so this file is not re-runnable —
+-- same as every other scratch migration this cycle.
+
+alter table results add column maintenance integer not null default 0;
+
+--bun:split
+
+alter table results add column maintenance_checks integer;
+
+--bun:split
+
+alter table results add column maintenance_successful_checks integer;
+
+--bun:split
+
+create table if not exists slos (
+  uid                 text primary key,
+  organization_uid    text not null references organizations(uid),
+  name                text not null,
+  slug                text not null,
+  check_uid           text references checks(uid) on delete cascade,
+  check_group_uid     text references check_groups(uid) on delete cascade,
+  target_pct          real not null,
+  timezone            text not null default 'UTC',
+  exclude_maintenance integer not null default 1,
+  enabled             integer not null default 1,
+  created_at          text not null default (datetime('now')),
+  updated_at          text not null default (datetime('now')),
+  deleted_at          text,
+  -- Exactly one scope; see the Postgres file.
+  constraint slos_scope_xor check (
+    (check_uid is not null and check_group_uid is null)
+    or (check_uid is null and check_group_uid is not null)
+  ),
+  constraint slos_target_pct_range check (target_pct > 0 and target_pct <= 100)
+);
+
+--bun:split
+
+create unique index if not exists uq_slos_org_slug
+  on slos (organization_uid, slug)
+  where deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_slos_org_enabled
+  on slos (organization_uid, enabled)
+  where deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_slos_check
+  on slos (check_uid)
+  where check_uid is not null and deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_slos_check_group
+  on slos (check_group_uid)
+  where check_group_uid is not null and deleted_at is null;
+
+--bun:split
+
+-- recipients / check_uids / check_group_uids are JSON arrays stored as text.
+-- recipients is PII — never log it, never emit it into events.
+create table if not exists report_schedules (
+  uid               text primary key,
+  organization_uid  text not null references organizations(uid),
+  name              text not null,
+  frequency         text not null default 'monthly'
+                      check (frequency in ('weekly', 'monthly')),
+  timezone          text not null default 'UTC',
+  recipients        text,
+  check_uids        text,
+  check_group_uids  text,
+  include_slos      integer not null default 1,
+  enabled           integer not null default 1,
+  last_period_start text,
+  last_run_at       text,
+  created_at        text not null default (datetime('now')),
+  updated_at        text not null default (datetime('now')),
+  deleted_at        text
+);
+
+--bun:split
+
+create index if not exists idx_report_schedules_org_enabled
+  on report_schedules (organization_uid, enabled)
+  where deleted_at is null;

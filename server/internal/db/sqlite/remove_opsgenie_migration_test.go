@@ -6,9 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// removeOpsgenieMigrationSQL is migration 015 read straight out of the
-// embedded FS, so this test can never drift from the file that actually
-// ships. The migration is idempotent (a DELETE ... WHERE type = 'opsgenie'
+// removeOpsgenieMigrationSQL is the remove-opsgenie-integrations SECTION of
+// the consolidated v0.17.0 migration, read straight out of the embedded FS so
+// this test can never drift from the SQL that actually ships. Only that
+// section is replayed: the rest of the consolidated file is not re-runnable.
+// The section itself is idempotent (a DELETE ... WHERE type = 'opsgenie'
 // against rows that no longer exist is a no-op), so re-running it after
 // Initialize() already applied it to an empty database is safe — same
 // pattern as the other migration tests in this package (e.g.
@@ -16,10 +18,7 @@ import (
 func removeOpsgenieMigrationSQL(t *testing.T) string {
 	t.Helper()
 
-	body, err := migrationsFS.ReadFile("migrations/015_remove_opsgenie_integrations.up.sql")
-	require.NoError(t, err)
-
-	return string(body)
+	return migrationSection(t, "remove-opsgenie-integrations")
 }
 
 // TestRemoveOpsgenieMigrationDeletesIntegrationAndDependents pins spec
