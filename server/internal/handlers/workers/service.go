@@ -142,7 +142,16 @@ func (s *Service) SubmitResult(
 		Diagnostics: req.Diagnostics,
 	}
 
-	// 3. Save with status tracking.
+	// 3. Tag the row as maintenance BEFORE the insert (spec 2026-08-20-01),
+	// then save with status tracking. Best-effort: a failed maintenance lookup
+	// records the probe as production traffic rather than dropping it.
+	if inMaintenance, mwErr := s.incidentSvc.IsCheckInActiveMaintenance(ctx, job.CheckUID); mwErr != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", mwErr, "check_uid", job.CheckUID)
+	} else {
+		result.Maintenance = inMaintenance
+	}
+
 	if saveErr := s.db.SaveResultWithStatusTracking(ctx, result); saveErr != nil {
 		return nil, fmt.Errorf("failed to save result: %w", saveErr)
 	}

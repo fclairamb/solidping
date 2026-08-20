@@ -339,6 +339,15 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 		CreatedAt:       now,
 	}
 
+	// Tag as maintenance before the insert (spec 2026-08-20-01) — see
+	// incidents.Service.IsCheckInActiveMaintenance. Best-effort.
+	if inMaintenance, mwErr := h.incidentSvc.IsCheckInActiveMaintenance(ctx, check.UID); mwErr != nil {
+		h.logger.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"check_uid", check.UID, "error", mwErr)
+	} else {
+		result.Maintenance = inMaintenance
+	}
+
 	if err := h.db.SaveResultWithStatusTracking(ctx, result); err != nil {
 		return err
 	}

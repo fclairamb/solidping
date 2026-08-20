@@ -3,6 +3,7 @@ package heartbeat
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -206,6 +207,15 @@ func (s *Service) ReceiveHeartbeat(
 		Metrics:         make(models.JSONMap),
 		Output:          buildHeartbeatOutput(outputMessage, userAgent, remoteAddr, httpMethod, callerData),
 		CreatedAt:       time.Now(),
+	}
+
+	// Tag as maintenance before the insert (spec 2026-08-20-01) — see
+	// incidents.Service.IsCheckInActiveMaintenance. Best-effort.
+	if inMaintenance, mwErr := s.incidentSvc.IsCheckInActiveMaintenance(ctx, check.UID); mwErr != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", mwErr, "check_uid", check.UID)
+	} else {
+		result.Maintenance = inMaintenance
 	}
 
 	if err := s.db.SaveResultWithStatusTracking(ctx, result); err != nil {

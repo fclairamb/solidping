@@ -227,6 +227,18 @@ func (b *DirectBackend) SubmitResult(
 		Diagnostics: req.Diagnostics,
 	}
 
+	// Tag the row as maintenance BEFORE the insert (spec 2026-08-20-01).
+	// Rollup buckets cannot be sliced after the fact, so a planned-work tag
+	// that arrives after aggregation is worthless. Best-effort: a maintenance
+	// lookup failure must never cost us the result itself, so the row is
+	// simply recorded as production traffic and the error logged.
+	if inMaintenance, mwErr := b.incidentSvc.IsCheckInActiveMaintenance(ctx, job.CheckUID); mwErr != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", mwErr, "check_uid", job.CheckUID)
+	} else {
+		result.Maintenance = inMaintenance
+	}
+
 	saveStart := time.Now()
 	saveErr := b.dbService.SaveResultWithStatusTracking(ctx, result)
 	prommetrics.RecordCheckStage("save_result", time.Since(saveStart).Seconds())

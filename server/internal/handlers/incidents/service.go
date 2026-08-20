@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -17,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/maintenance"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -100,22 +100,6 @@ const (
 	keyEffectiveRecoveryThreshold = "effective_recovery_threshold"
 )
 
-// maintenanceWindowCacheTTL bounds how long a check's maintenance-window
-// definitions are cached in-process before re-fetching. Windows are mutated
-// infrequently and emit no event today, so a 60 s TTL trades a small staleness
-// window (≤60 s after a create/edit/delete) for eliminating a DB round-trip on
-// the per-result hot path. Active/inactive transitions stay exact because
-// models.IsActiveAt(now) is re-evaluated on every result against the cached
-// definitions.
-const maintenanceWindowCacheTTL = 60 * time.Second
-
-// mwCacheEntry is one check's cached maintenance-window definitions plus the
-// clock time they were fetched at.
-type mwCacheEntry struct {
-	windows   []*models.MaintenanceWindow
-	fetchedAt time.Time
-}
-
 // PublicationHook is the status-page publication side of the incident
 // lifecycle (spec 2026-08-19-08). It is an interface, and deliberately a small
 // one, so this package never imports the publication service — the dependency
@@ -154,22 +138,22 @@ type Service struct {
 	// Nil-safe — a nil publisher no-ops (realtime disabled, tests).
 	rt *realtime.Publisher
 
-	// mwCache caches per-check maintenance-window definitions with a TTL.
-	// Strong-reference map (not internal/utils/cache, whose weak.Pointer
-	// values would be GC'd almost immediately here). Keyed by checkUID.
-	mwCache   map[string]mwCacheEntry
-	mwCacheMu sync.RWMutex
+	// maintenance resolves "is this check in an active maintenance window?".
+	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
+	// suppressed as maintenance and a result tagged as maintenance can never
+	// disagree — they read the same instance and therefore the same cache.
+	maintenance *maintenance.Resolver
 }
 
 // NewService creates a new incident service. rt may be nil (realtime
 // disabled): every publish through it is a nil-safe no-op.
 func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock, rt *realtime.Publisher) *Service {
 	return &Service{
-		db:      dbService,
-		jobsSvc: jobsSvc,
-		clock:   clk,
-		rt:      rt,
-		mwCache: make(map[string]mwCacheEntry),
+		db:          dbService,
+		jobsSvc:     jobsSvc,
+		clock:       clk,
+		rt:          rt,
+		maintenance: maintenance.NewResolver(dbService, clk),
 	}
 }
 
@@ -212,38 +196,23 @@ func (s *Service) publishMemberJoined(ctx context.Context, incident *models.Inci
 	s.publications.OnGroupMemberJoined(ctx, incident, check)
 }
 
-// isCheckInActiveMaintenance reports whether the check is inside an active
-// maintenance window right now. Window definitions are cached per check for
-// maintenanceWindowCacheTTL; on a hit within TTL we evaluate models.IsActiveAt
-// against the cached slice (so the clock advancing can flip a window active
-// mid-TTL without a re-fetch), and on a miss we re-fetch, cache and evaluate.
-func (s *Service) isCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
-	now := s.clock.Now()
+// IsCheckInActiveMaintenance reports whether the check is inside an active
+// maintenance window right now.
+//
+// Exported because the result-ingest paths call it BEFORE the insert, to tag
+// `results.maintenance` (spec 2026-08-20-01): rollup buckets cannot be sliced
+// after the fact, so the tag has to exist before aggregation runs. Both this
+// call and the one ProcessCheckResult makes go through the same cached
+// resolver, so a result tagged as maintenance and an incident suppressed as
+// maintenance always agree.
+func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
+	return s.maintenance.IsActive(ctx, checkUID)
+}
 
-	s.mwCacheMu.RLock()
-	entry, ok := s.mwCache[checkUID]
-	s.mwCacheMu.RUnlock()
-
-	if !ok || now.Sub(entry.fetchedAt) >= maintenanceWindowCacheTTL {
-		windows, err := s.db.ListMaintenanceWindowsForCheck(ctx, checkUID)
-		if err != nil {
-			return false, err
-		}
-
-		entry = mwCacheEntry{windows: windows, fetchedAt: now}
-
-		s.mwCacheMu.Lock()
-		s.mwCache[checkUID] = entry
-		s.mwCacheMu.Unlock()
-	}
-
-	for _, window := range entry.windows {
-		if models.IsActiveAt(window, now) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+// MaintenanceResolver exposes the shared resolver so a caller that already
+// holds this service does not have to build (and separately cache) its own.
+func (s *Service) MaintenanceResolver() *maintenance.Resolver {
+	return s.maintenance
 }
 
 // ProcessCheckResult processes a check result and manages incidents.
@@ -259,7 +228,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	// Skip incident processing if the check is in an active maintenance window
-	inMaintenance, mwErr := s.isCheckInActiveMaintenance(ctx, check.UID)
+	inMaintenance, mwErr := s.IsCheckInActiveMaintenance(ctx, check.UID)
 	if mwErr != nil {
 		slog.WarnContext(ctx, "Failed to check maintenance window status",
 			"checkUID", check.UID, "error", mwErr)

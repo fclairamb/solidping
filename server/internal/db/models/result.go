@@ -137,6 +137,17 @@ type Result struct {
 	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
 	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
 
+	// Maintenance records that an active maintenance window covered this
+	// check at the moment the probe was recorded (spec 2026-08-20-01). It is
+	// set at ingest and never backfilled: rollup buckets cannot be sliced
+	// after the fact, so the tag has to exist before aggregation runs. Raw
+	// rows only.
+	//
+	// It changes NO existing availability number. Status pages, badges and the
+	// availability API keep counting maintenance probes exactly as before;
+	// only an SLO with ExcludeMaintenance set subtracts them.
+	Maintenance bool `bun:"maintenance,notnull"`
+
 	// Diagnostics is the opt-in capture of what the probe saw (spec
 	// 2026-08-20-01). It is TRANSIENT by construction: `bun:"-"` keeps it out
 	// of every INSERT/UPDATE/SELECT so it can never reach the `output` JSONB
@@ -150,12 +161,26 @@ type Result struct {
 	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year').
 	// availability_pct is intentionally absent: it is derived at read time from
 	// successful_checks / total_checks rather than stored (spec 2026-07-24-02).
-	TotalChecks      *int     `bun:"total_checks"`
-	SuccessfulChecks *int     `bun:"successful_checks"`
-	DurationMin      *float32 `bun:"duration_min"`
-	DurationMax      *float32 `bun:"duration_max"`
-	DurationP95      *float32 `bun:"duration_p95"`
-	DurationAvg      *float32 `bun:"duration_avg"`
+	TotalChecks      *int `bun:"total_checks"`
+	SuccessfulChecks *int `bun:"successful_checks"`
+	// MaintenanceChecks / MaintenanceSuccessfulChecks are SUBSETS of the two
+	// counters above: how many of the probes folded into this bucket were
+	// recorded while an active maintenance window covered the check
+	// (spec 2026-08-20-01).
+	//
+	// They are additive across tiers exactly like their parents, and the tiers
+	// are disjoint by construction (the aggregation job compacts and deletes in
+	// one transaction), so a month row's counters are the exact count of raw
+	// probes it descends from — no double counting.
+	//
+	// Being subsets rather than replacements is what keeps this change inert
+	// for every existing consumer: availability stays successful/total.
+	MaintenanceChecks           *int     `bun:"maintenance_checks"`
+	MaintenanceSuccessfulChecks *int     `bun:"maintenance_successful_checks"`
+	DurationMin                 *float32 `bun:"duration_min"`
+	DurationMax                 *float32 `bun:"duration_max"`
+	DurationP95                 *float32 `bun:"duration_p95"`
+	DurationAvg                 *float32 `bun:"duration_avg"`
 
 	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
 
