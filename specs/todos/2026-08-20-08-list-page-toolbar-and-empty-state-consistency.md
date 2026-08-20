@@ -126,6 +126,19 @@ rendered like the existing `Section` blocks:
   `PageHeader` `actions` while having a search toolbar, so the convention the
   reference documents is actually true everywhere.
 
+  **Sweep outcome:** `status-updates.index.tsx` matched the pattern (Refresh
+  in the header, a genuine page-level search + filter toolbar row below it)
+  and was fixed the same way as status-pages/maintenance-windows.
+  `discovery.index.tsx` and `jobs.index.tsx` were examined and deliberately
+  left with Refresh in the header: their filter controls (Discovery's
+  source-type select, Jobs' per-tab status filter) are scoped to and
+  rendered inside a specific table/card's own header, not in a page-level
+  toolbar row under `PageHeader` — the design reference's "Button placement"
+  section now names this as a third case, equivalent to having no toolbar at
+  all. `dependencies.index.tsx`, `incidents.index.tsx`, and `checks.index.tsx`
+  were already conformant (Refresh already lived in their toolbar row) and
+  needed no change.
+
 ### 3. Apply the clarified empty-state pattern to the divergent pages
 
 Each gets the card-elevated empty state with icon, i18n'd title + hint, and a

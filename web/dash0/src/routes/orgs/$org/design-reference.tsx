@@ -866,6 +866,19 @@ function ButtonPlacementSection() {
         field, so it keeps Refresh in the header, to the left of the primary
         button.
       </p>
+      <p className="text-sm text-muted-foreground">
+        A third case reads like a toolbar but isn't one:{" "}
+        <strong>filters scoped to a single table or card</strong>, rendered
+        inside that card's own header next to its title (e.g. a
+        source-type select next to a &quot;Scans&quot; card title, or a
+        per-tab status filter above one tab's table). That's card-level
+        chrome, not a page-level toolbar row — the row this section means
+        sits directly under <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>,
+        outside and above any card. A page whose only filtering controls are
+        card-nested like this has, from the page's point of view, no
+        toolbar at all — Refresh stays in the header, per the exception
+        above.
+      </p>
 
       <h3 className="text-sm font-medium">
         Toolbar row: search, filters, then Refresh
