@@ -624,8 +624,12 @@ func TestCaptureIsVerdictInertForJSONPathOnlyChecks(t *testing.T) {
 	r.Equal(checkerdef.StatusDown, failed.Status)
 	r.NotNil(failed.Diagnostics, "the capture path must genuinely be active in this configuration")
 	r.NotNil(failed.Diagnostics.FailureResponse)
-	r.Equal(body, failed.Diagnostics.FailureResponse.Body,
+	// Byte-exact, not merely JSON-equivalent: the capture is evidence, so it
+	// must be what the wire carried. JSONEq proves the content, BodyBytes
+	// proves nothing was dropped or re-encoded on the way.
+	r.JSONEq(body, failed.Diagnostics.FailureResponse.Body,
 		"the capture still gets the full body even though the assertions never saw it")
+	r.Equal(len(body), failed.Diagnostics.FailureResponse.BodyBytes)
 }
 
 // TestCaptureIsVerdictInertAcrossConfigurations sweeps the other assertion
@@ -732,7 +736,8 @@ func TestCaptureIsVerdictInertAcrossConfigurations(t *testing.T) {
 			// really produced, and carries the real body.
 			r.NotNil(on.Diagnostics)
 			r.NotNil(on.Diagnostics.FailureResponse)
-			r.Equal(body, on.Diagnostics.FailureResponse.Body)
+			r.JSONEq(body, on.Diagnostics.FailureResponse.Body)
+			r.Equal(len(body), on.Diagnostics.FailureResponse.BodyBytes)
 		})
 	}
 }
