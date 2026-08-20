@@ -537,14 +537,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// middleware closure, not threaded through here; the contextcheck linter
 	// can't see that.
 	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration)
-	// Order is load-bearing (spec 2026-08-20-10): Recoverer sits inside
-	// SentryMiddleware so the panic reports on the request hub with its
-	// user/org, and inside logging + HTTPMetrics so a panicking handler is
-	// logged and counted as an ordinary 500 instead of dropping the connection.
+	// Order is load-bearing (spec 2026-08-20-10). Recoverer sits:
+	//   - inside SentryMiddleware, so the panic reports on the request hub
+	//     carrying the user/org RequireAuth attached, and is reported once;
+	//   - inside logging + HTTPMetrics, so a panicking handler is logged and
+	//     counted as an ordinary 500 instead of dropping the connection;
+	//   - inside timeoutMW, which runs the handler on its OWN goroutine —
+	//     recover() only catches panics on the goroutine it runs on, so a
+	//     recoverer above the timeout would let every handler panic take the
+	//     whole process down.
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
 		Use(middleware.HTTPMetrics).
-		Use(middleware.Recoverer).
 		Use(timeoutMW).
+		Use(middleware.Recoverer).
 		Use(rateLimiter.RateLimit).
 		Use(rateLimiter.ConcurrencyLimit)
 

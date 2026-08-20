@@ -369,3 +369,33 @@ func TestRecoverer_ErrAbortHandlerIsNotReported(t *testing.T) {
 	r.Error(doErr, "ErrAbortHandler aborts the response, it does not answer 500")
 	r.Equal(0, transport.Len())
 }
+
+// TestRecoverer_CatchesPanicsUnderTheRequestTimeout pins the last ordering
+// constraint, and the sharpest one: RequestTimeout runs the handler on its own
+// goroutine, and recover() only catches panics on the goroutine it runs on. A
+// recoverer mounted ABOVE the timeout therefore catches nothing and every
+// handler panic takes the whole process down.
+//
+// If the production chain ever puts Recoverer outside timeoutMW, this test does
+// not fail politely — it crashes the test binary. That is the point.
+func TestRecoverer_CatchesPanicsUnderTheRequestTimeout(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	hub, transport, err := errorreporttest.NewHub()
+	r.NoError(err)
+
+	resp := serve(t, "/api/v1/timed-panic",
+		[]httpx.Middleware{
+			hubInjector(hub),
+			middleware.SentryMiddleware(),
+			middleware.HTTPMetrics,
+			middleware.RequestTimeout(30 * time.Second),
+			middleware.Recoverer,
+		},
+		panickingHandler, "")
+
+	r.Equal(http.StatusInternalServerError, resp.status)
+	r.Len(transport.Events(), 1)
+}
