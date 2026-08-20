@@ -2029,10 +2029,7 @@ func mergeBuckets(
 		for bucket := range byBucket {
 			stats := byBucket[bucket]
 			acc := merged[bucket]
-			acc.Up += stats.Up
-			acc.Total += stats.Total
-			acc.DurCnt += stats.DurCnt
-			acc.DurSum += stats.DurSum
+			acc.Add(stats)
 			merged[bucket] = acc
 		}
 	}

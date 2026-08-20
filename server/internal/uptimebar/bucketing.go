@@ -55,6 +55,41 @@ type BucketStats struct {
 	Total  int     // countable checks (raw: non-lifecycle rows; rollup: TotalChecks)
 	DurCnt int     // number of checks contributing to DurSum
 	DurSum float64 // sum of durations (weighted by check count for rollups)
+
+	// MaintUp / MaintTotal are strict SUBSETS of Up / Total: the share of this
+	// bucket recorded while an active maintenance window covered the check
+	// (spec 2026-08-20-01).
+	//
+	// They are carried alongside rather than pre-subtracted precisely so that
+	// AvailabilityPct — what badges, status pages and the availability API all
+	// read — is byte-identical to what it was before this feature existed.
+	// Only ExcludingMaintenance() subtracts them, and only the SLO read path
+	// calls it.
+	MaintUp    int
+	MaintTotal int
+}
+
+// ExcludingMaintenance returns the same bucket with maintenance-tagged probes
+// removed from both numerator and denominator.
+//
+// Defensive clamping: the counters are subsets by construction, but a bucket
+// merged from rows written before the tagging existed could in principle carry
+// a larger subset than parent if anything ever went wrong upstream. Clamping
+// here means the worst case is "maintenance exclusion did nothing", never a
+// negative denominator that renders as a nonsense attainment.
+func (b BucketStats) ExcludingMaintenance() BucketStats {
+	out := b
+
+	maintTotal := min(b.MaintTotal, b.Total)
+	maintUp := min(b.MaintUp, b.Up)
+	maintUp = min(maintUp, maintTotal)
+
+	out.Total -= maintTotal
+	out.Up -= maintUp
+	out.MaintTotal = 0
+	out.MaintUp = 0
+
+	return out
 }
 
 // AvailabilityPct returns up/total*100 and ok=true when the bucket has any
@@ -78,6 +113,19 @@ func (b BucketStats) AvgDuration() (float64, bool) {
 	return b.DurSum / float64(b.DurCnt), true
 }
 
+// Add folds another bucket into this one. This is the ONLY place buckets are
+// merged, so a new counter can never be added to BucketStats and silently
+// forgotten by the group-merge path (that is exactly how MaintUp/MaintTotal
+// would have gone missing on group SLOs).
+func (b *BucketStats) Add(other BucketStats) {
+	b.Up += other.Up
+	b.Total += other.Total
+	b.DurCnt += other.DurCnt
+	b.DurSum += other.DurSum
+	b.MaintUp += other.MaintUp
+	b.MaintTotal += other.MaintTotal
+}
+
 // accumulateRaw merges a raw result row into the bucket. Lifecycle markers
 // (created/running) and reaped attempts (models.ResultStatusAbandoned) are
 // excluded from the denominator (models.Result.ExcludedFromAvailability,
@@ -99,6 +147,14 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 		b.Up++
 	}
 
+	if result.Maintenance {
+		b.MaintTotal++
+
+		if status.CountsAsUp() {
+			b.MaintUp++
+		}
+	}
+
 	if result.Duration != nil {
 		b.DurSum += float64(*result.Duration)
 		b.DurCnt++
@@ -116,6 +172,16 @@ func (b *BucketStats) accumulateAgg(result *models.Result) {
 
 	if result.SuccessfulChecks != nil {
 		b.Up += *result.SuccessfulChecks
+	}
+
+	// nil (a row rolled up before maintenance tagging shipped) contributes
+	// nothing — "no evidence" rather than "zero, confidently".
+	if result.MaintenanceChecks != nil {
+		b.MaintTotal += *result.MaintenanceChecks
+	}
+
+	if result.MaintenanceSuccessfulChecks != nil {
+		b.MaintUp += *result.MaintenanceSuccessfulChecks
 	}
 
 	if result.DurationAvg != nil && result.TotalChecks != nil && *result.TotalChecks > 0 {
