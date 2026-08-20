@@ -121,52 +121,72 @@ export function AvailabilityBar({
             {dailyAvailability.map((point, index) => {
               const { fill, opacity } = getSegmentFill(point.status);
               return (
-              <Tooltip key={point.time ?? point.date}>
-                <TooltipTrigger asChild>
-                  <rect
-                    data-testid="availability-bar-segment"
-                    x={index * geometry.pitch}
-                    y={0}
-                    width={geometry.width}
-                    height={BAR_HEIGHT_PX}
-                    rx={SEGMENT_RADIUS_PX}
-                    fill={fill}
-                    fillOpacity={opacity}
-                    // Hover grows the segment instead of fading it — the old
-                    // opacity fade desaturated the status color, which is the
-                    // one thing on this page that has to stay readable.
-                    // fill-box scopes the scale to the rect itself; without it
-                    // an SVG child scales about the whole canvas.
-                    className="origin-center [transform-box:fill-box] transition-transform duration-150 ease-out hover:scale-y-[1.18]"
-                  />
-                </TooltipTrigger>
-                {/* translate="no" — this whole subtree is poll-driven text whose
+                <Tooltip
+                  key={point.time ?? point.date}
+                  // Segments are narrow and packed tightly; the shared
+                  // TooltipProvider's hoverable-content "grace area" tracks a
+                  // POINTER-IN-TRANSIT flag at the provider level (not per
+                  // Tooltip root). While that flag is set — which happens the
+                  // instant the pointer leaves an open segment's trigger,
+                  // heading toward its much-wider floating content — every
+                  // OTHER trigger's onPointerMove handler becomes a no-op
+                  // (Radix source: TooltipTrigger's onPointerMove is gated on
+                  // `!providerContext.isPointerInTransitRef.current`). Moving
+                  // the pointer along the bar can then leave a neighboring
+                  // segment's tooltip never asked to open while the old one
+                  // stays open or closes without a successor — a stale/blank
+                  // tooltip. These tooltips are read-only labels; nothing here
+                  // needs the pointer to travel into the content itself, so
+                  // disabling hoverable content removes the grace area (and
+                  // the shared transit flag) entirely and makes every segment
+                  // open/close independently and immediately.
+                  disableHoverableContent
+                >
+                  <TooltipTrigger asChild>
+                    <rect
+                      data-testid="availability-bar-segment"
+                      x={index * geometry.pitch}
+                      y={0}
+                      width={geometry.width}
+                      height={BAR_HEIGHT_PX}
+                      rx={SEGMENT_RADIUS_PX}
+                      fill={fill}
+                      fillOpacity={opacity}
+                      // Hover grows the segment instead of fading it — the old
+                      // opacity fade desaturated the status color, which is the
+                      // one thing on this page that has to stay readable.
+                      // fill-box scopes the scale to the rect itself; without it
+                      // an SVG child scales about the whole canvas.
+                      className="origin-center [transform-box:fill-box] transition-transform duration-150 ease-out hover:scale-y-[1.18]"
+                    />
+                  </TooltipTrigger>
+                  {/* translate="no" — this whole subtree is poll-driven text whose
                     shape changes between renders (the noData branch swaps one <p>
                     for another). A machine translator re-parents those text nodes
                     into <font> wrappers and React's next commit then fails with
                     "removeChild on Node". See NO_TRANSLATE in status-page-view.tsx. */}
-                <TooltipContent translate="no">
-                  {/* Status is carried by a dot rather than by the tooltip's own
+                  <TooltipContent translate="no">
+                    {/* Status is carried by a dot rather than by the tooltip's own
                       background, so the surface stays neutral in both themes and
                       the color still says up / degraded / down at a glance. */}
-                  <p className="flex items-center gap-1.5 font-medium">
-                    <span
-                      aria-hidden="true"
-                      className={`inline-block size-2 shrink-0 rounded-full ${getBarColor(point.status)}`}
-                    />
-                    {isHourly ? formatHour(point) : formatDate(point.date)}
-                  </p>
-                  {point.status !== "noData" ? (
-                    <p className="mt-0.5 pl-3.5 text-muted-foreground tabular-nums">
-                      {point.availabilityPct.toFixed(2)}% {t("uptime")}
+                    <p className="flex items-center gap-1.5 font-medium">
+                      <span
+                        aria-hidden="true"
+                        className={`inline-block size-2 shrink-0 rounded-full ${getBarColor(point.status)}`}
+                      />
+                      {isHourly ? formatHour(point) : formatDate(point.date)}
                     </p>
-                  ) : (
-                    <p className="mt-0.5 pl-3.5 text-muted-foreground">
-                      {t("noData")}
-                    </p>
-                  )}
-                </TooltipContent>
-              </Tooltip>
+                    {point.status !== "noData" ? (
+                      <p className="mt-0.5 pl-3.5 text-muted-foreground tabular-nums">
+                        {point.availabilityPct.toFixed(2)}% {t("uptime")}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 pl-3.5 text-muted-foreground">
+                        {t("noData")}
+                      </p>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
               );
             })}
           </svg>
