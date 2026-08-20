@@ -23,7 +23,7 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 
 ## Limits
 
-`EntitlementLimits` carries seven fields. Each is a `*int`; `nil` means
+`EntitlementLimits` carries nine fields. Each is a `*int`; `nil` means
 **unlimited**.
 
 | Field | Meaning | Enforced at |
@@ -35,6 +35,8 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 | `maxCustomDomains` | Status pages served on a customer-owned domain. | `CustomDomainAllowed` → [`entitlements/usage.go:144`](../../server/internal/entitlements/usage.go), called from [`statuspages/custom_domain.go:208-212`](../../server/internal/handlers/statuspages/custom_domain.go) |
 | `maxSmsPerMonth` | Outbound SMS sent by the org per UTC calendar month. | notification dispatch (SMS channel) |
 | `maxCallsPerMonth` | Outbound voice calls placed by the org per UTC calendar month. | notification dispatch (voice channel) |
+| `maxWhatsappPerMonth` | Outbound WhatsApp template messages per UTC calendar month. | notification dispatch (WhatsApp channel) |
+| `maxSlos` | Service-level objectives the org may hold. | `SloCreateAllowed` → [`entitlements/usage.go`](../../server/internal/entitlements/usage.go), called from [`slos/service.go` (`CreateSLO`)](../../server/internal/handlers/slos/service.go) |
 
 `maxCustomDomains` is a **soft, one-directional gate**: only the transition
 from "page has no custom domain" to "page has one" is checked against the
@@ -73,10 +75,10 @@ after an upgrade or after deleting another agent.
 
 `DefaultsFor(mode)` — anything not listed is `nil` (unlimited):
 
-| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | Display identity |
-|---|---|---|---|---|---|---|---|---|
-| Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | 🏠 Self-hosted |
-| SaaS | 100 | 5 | 6 | 1 | 0 | 0 | 0 | 🆓 Free |
+| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | maxWhatsappPerMonth | maxSlos | Display identity |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | 🏠 Self-hosted |
+| SaaS | 100 | 5 | 10 | 1 | 0 | 0 | 0 | 0 | 2 | 🆓 Free |
 
 Self-hosted's unlimited `maxDeportedAgents` preserves the "free private
 locations" competitive positioning (see
@@ -117,7 +119,7 @@ composing three things:
 The resolver always merges defaults in first, so external callers never see a
 nil-means-default ambiguity.
 
-`Usage` has five fields:
+`Usage` has seven fields:
 
 | Field | Meaning |
 |---|---|
@@ -126,6 +128,8 @@ nil-means-default ambiguity.
 | `ssoUsers` | Total member count. **The wire key stays `ssoUsers` for back-compat** even though it is enforced against `maxUsers`. |
 | `agents` | Active (non-revoked, non-deleted) deported agents across all private regions. Enforced against `maxDeportedAgents`. |
 | `customDomains` | Live status pages with a custom domain set. Enforced against `maxCustomDomains` (soft, one-directional — see [Limits](#limits)). |
+| `whatsappThisMonth` | Outbound WhatsApp template messages in the current UTC month. A persistent counter, not a live count. |
+| `slos` | Live service-level objectives. Enforced against `maxSlos`. |
 
 ## Sources
 

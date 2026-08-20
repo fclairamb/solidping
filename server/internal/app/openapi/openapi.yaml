@@ -41,6 +41,8 @@ tags:
     description: System-wide configuration (super admin only)
   - name: MaintenanceWindows
     description: Scheduled maintenance windows and their check coverage
+  - name: SLOs
+    description: Service-level objectives, error budgets, and scheduled uptime reports
   - name: CheckGroups
     description: Check group management
   - name: Severities
@@ -4866,6 +4868,331 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/slos:
+    get:
+      tags: [SLOs]
+      summary: List service-level objectives
+      operationId: listSlos
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: checkUid
+          in: query
+          description: Restrict to objectives scoped directly to this check
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-200)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of objectives
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [SLOs]
+      summary: Create a service-level objective
+      operationId: createSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSLORequest"
+      responses:
+        "201":
+          description: Objective created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLO"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: The organization's maxSlos entitlement is exhausted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Slug already in use
+
+  /api/v1/orgs/{org}/slos/{uid}:
+    get:
+      tags: [SLOs]
+      summary: Get a service-level objective
+      operationId: getSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [SLOs]
+      summary: Update a service-level objective
+      operationId: updateSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSLORequest"
+      responses:
+        "200":
+          description: Objective updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLO"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [SLOs]
+      summary: Delete a service-level objective
+      operationId: deleteSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "204":
+          description: Objective deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos/{uid}/status:
+    get:
+      tags: [SLOs]
+      summary: Evaluate an objective over the current calendar window
+      operationId: getSloStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Current window status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos/{uid}/history:
+    get:
+      tags: [SLOs]
+      summary: Past monthly windows for an objective
+      operationId: getSloHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+        - name: months
+          in: query
+          description: How many calendar months to return (default 12, max 60)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Monthly history, most recent first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOHistoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/report-schedules:
+    get:
+      tags: [SLOs]
+      summary: List scheduled uptime reports
+      operationId: listReportSchedules
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of report schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportScheduleListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [SLOs]
+      summary: Create a scheduled uptime report
+      operationId: createReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportScheduleRequest"
+      responses:
+        "201":
+          description: Report schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/report-schedules/{uid}:
+    get:
+      tags: [SLOs]
+      summary: Get a scheduled uptime report
+      operationId: getReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      responses:
+        "200":
+          description: Report schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [SLOs]
+      summary: Update a scheduled uptime report
+      operationId: updateReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportScheduleRequest"
+      responses:
+        "200":
+          description: Report schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [SLOs]
+      summary: Delete a scheduled uptime report
+      operationId: deleteReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      responses:
+        "204":
+          description: Report schedule deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/report-schedules/{uid}/test:
+    post:
+      tags: [SLOs]
+      summary: Send the report immediately to the caller
+      description: >-
+        Renders the report for the period that most recently closed and mails it
+        to the authenticated caller (or to `recipient`). It never fans out to the
+        schedule's recipient list.
+      operationId: testReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recipient:
+                  type: string
+                  format: email
+      responses:
+        "202":
+          description: Report queued
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/maintenance-windows:
     get:
       tags: [MaintenanceWindows]
@@ -6755,6 +7082,23 @@ components:
         type: string
         format: uuid
       description: Status update UID
+
+    SLOUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: SLO UID or slug
+
+    ReportScheduleUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Report schedule UID
 
     MaintenanceWindowUidPath:
       name: uid
@@ -10940,6 +11284,269 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    SLO:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        checkUid:
+          type: string
+          description: Set when the objective is scoped to one check
+        checkGroupUid:
+          type: string
+          description: Set when the objective is scoped to one check group
+        checkName:
+          type: string
+        checkGroupName:
+          type: string
+        targetPct:
+          type: number
+          format: double
+        timezone:
+          type: string
+          description: IANA zone the calendar month is resolved in
+        excludeMaintenance:
+          type: boolean
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SLOListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLO"
+
+    CreateSLORequest:
+      type: object
+      required: [name]
+      description: >-
+        Exactly one of checkUid / checkGroupUid must be set; sending both or
+        neither is a validation error (the database carries the same rule as a
+        CHECK constraint).
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          description: URL-safe identifier; derived from the name when omitted
+        checkUid:
+          type: string
+          nullable: true
+        checkGroupUid:
+          type: string
+          nullable: true
+        targetPct:
+          type: number
+          format: double
+          description: 0 < value <= 100 (default 99.9)
+        timezone:
+          type: string
+        excludeMaintenance:
+          type: boolean
+        enabled:
+          type: boolean
+
+    UpdateSLORequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateSLORequest"
+      description: Partial update; every field is optional.
+
+    SLOWindow:
+      type: object
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        label:
+          type: string
+
+    SLOStatusRow:
+      type: object
+      properties:
+        window:
+          $ref: "#/components/schemas/SLOWindow"
+        attainmentPct:
+          type: number
+          format: double
+          nullable: true
+          description: >-
+            null when the window carries no countable probe. No data is NOT
+            100% — the same rule the availability API follows.
+        hasData:
+          type: boolean
+        targetPct:
+          type: number
+          format: double
+        totalChecks:
+          type: integer
+        successfulChecks:
+          type: integer
+        monitoredSeconds:
+          type: integer
+          format: int64
+          description: The whole window's monitorable duration; the budget basis.
+        elapsedSeconds:
+          type: integer
+          format: int64
+          description: The part of monitoredSeconds already elapsed; the consumption basis.
+        budgetTotalSeconds:
+          type: integer
+          format: int64
+        budgetConsumedSeconds:
+          type: integer
+          format: int64
+        budgetRemainingSeconds:
+          type: integer
+          format: int64
+          description: Negative when the budget is overspent.
+        excludedMaintenanceSeconds:
+          type: integer
+          format: int64
+        burnRate:
+          type: number
+          format: double
+          nullable: true
+          description: Observed error rate divided by allowed error rate.
+        projectedExhaustionAt:
+          type: string
+          format: date-time
+          nullable: true
+        state:
+          type: string
+          enum: [healthy, at_risk, breached, unknown]
+        partial:
+          type: boolean
+
+    SLOStatusResponse:
+      type: object
+      properties:
+        slo:
+          $ref: "#/components/schemas/SLO"
+        current:
+          $ref: "#/components/schemas/SLOStatusRow"
+        incidents:
+          type: object
+          properties:
+            count:
+              type: integer
+            longestSeconds:
+              type: integer
+              format: int64
+            averageSeconds:
+              type: integer
+              format: int64
+            totalDowntimeSeconds:
+              type: integer
+              format: int64
+
+    SLOHistoryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLOStatusRow"
+
+    ReportSchedule:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [weekly, monthly]
+        timezone:
+          type: string
+        recipients:
+          type: array
+          description: PII — returned only to the organization's own admins.
+          items:
+            type: string
+        checkUids:
+          type: array
+          items:
+            type: string
+        checkGroupUids:
+          type: array
+          items:
+            type: string
+        includeSlos:
+          type: boolean
+        enabled:
+          type: boolean
+        lastPeriodStart:
+          type: string
+          format: date-time
+        lastRunAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReportScheduleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportSchedule"
+
+    CreateReportScheduleRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [weekly, monthly]
+        timezone:
+          type: string
+        recipients:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: email
+        checkUids:
+          type: array
+          items:
+            type: string
+        checkGroupUids:
+          type: array
+          items:
+            type: string
+        includeSlos:
+          type: boolean
+        enabled:
+          type: boolean
+
+    UpdateReportScheduleRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateReportScheduleRequest"
+      description: Partial update; every field is optional.
 
     MaintenanceWindowListResponse:
       type: object

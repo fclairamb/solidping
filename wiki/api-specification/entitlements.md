@@ -85,6 +85,8 @@ no-op-ing.
 | `limits.maxCustomDomains` | int / null | null ⇒ unlimited; caps status pages served on a customer-owned domain. Only the none→some transition is gated (soft cap: dropping below the cap keeps existing custom domains working) |
 | `limits.maxSmsPerMonth` | int / null | null ⇒ unlimited; caps outbound SMS per UTC calendar month |
 | `limits.maxCallsPerMonth` | int / null | null ⇒ unlimited; caps outbound voice calls per UTC calendar month |
+| `limits.maxWhatsappPerMonth` | int / null | null ⇒ unlimited; caps outbound WhatsApp template messages per UTC calendar month |
+| `limits.maxSlos` | int / null | null ⇒ unlimited; caps service-level objectives |
 | `limits.maxSsoUsers` | int / null | **deprecated alias** for `maxUsers`; sending both is rejected (`ErrConflictingUserLimitKeys`) |
 | `source` | string | defaults to `billing` for a service token, `admin` for an admin JWT |
 | `displayName` | string | display-only plan name, e.g. `Team` |

@@ -112,14 +112,18 @@ follow-up (also a BetterStack differentiator).
 **Dependencies**: None remaining.
 
 ### 2.3 SLA reporting — SLO targets, error budgets, scheduled uptime reports
-**Why P2**: Nothing exists today — no SLO concept, no scheduled reports — yet the
-data is already there: results are aggregated per period with min/max/avg/p95 and
-timezone-aware availability. A per-check/group SLO target ("99.9% monthly"), an
-error-budget readout, and a weekly/monthly emailed uptime report reach the
-manager who approves the invoice. No spec yet — needs one.
+**Shipped** (spec `2026-08-20-01`). Per-check and per-group objectives with a
+calendar-month error budget in the objective's own timezone, a burn rate and a
+projected-exhaustion readout, monthly history off the permanent month rollups,
+and weekly/monthly emailed uptime digests. Planned maintenance is excluded from
+the objective's denominator via ingest-time `results.maintenance` tagging — the
+part that had to ship first, because rollup buckets cannot be sliced after the
+fact. API: [`api-specification/slos.md`](api-specification/slos.md).
 
-**Dependencies**: None; builds on the existing aggregation + availability
-services and the email sender.
+**Still open**: burn-rate *alerting* through the escalation pipeline
+(multiwindow fast/slow burn — the `burnRate` field is deliberately its
+foundation), rolling windows, per-region objectives, public SLA sections on
+status pages, and CSV/PDF report attachments.
 
 ---
 

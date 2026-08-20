@@ -45,7 +45,7 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 `SP_DEPLOYMENT_MODE=saas` switches per-org defaults to the SaaS tier and lets a
 separate billing service (`../solidping-billing`) drive plan upgrades. Per-org
 limits live in `org_entitlements` (`maxChecks`, `maxUsers` — `maxSsoUsers` is a
-deprecated decode-only alias, `maxChecksPerMinute`) plus display-only plan identity (`displayName`,
+deprecated decode-only alias, `maxChecksPerMinute`, `maxSlos`) plus display-only plan identity (`displayName`,
 `displayEmoji`, e.g. "🚀 Team") — both shown on the org **Usage** page
 (`/orgs/$org/organization/usage`).
 
