@@ -990,15 +990,26 @@ type Service interface {
 	// --- UserContacts / UserNotificationRoutes ---
 
 	// ListUserContactsWithRoutes returns the ordered notification routes for a user in an org,
-	// with the Contact relation eagerly loaded. Soft-deleted contacts are excluded.
+	// with the Contact relation eagerly loaded. A route is returned ONLY if its contact
+	// joined — soft-deleted and missing contacts are both excluded — so every returned
+	// route is guaranteed to carry a non-nil Contact.
 	ListUserContactsWithRoutes(ctx context.Context, userUID, orgUID string) ([]*models.UserNotificationRoute, error)
 
 	// EnsureDefaultEmailRoute idempotently creates one email contact and one enabled route
 	// for the user in the org. Safe to call concurrently — uses INSERT … ON CONFLICT DO NOTHING.
+	//
+	// Deliberately a NO-OP when a contact matching (user, org, email) exists but is
+	// soft-deleted: the user removed that method on purpose, and this is called on
+	// every notification-list load, so re-seeding would make the email method
+	// undeletable. Re-adding the address explicitly (UpsertUserContact) still revives it.
 	EnsureDefaultEmailRoute(ctx context.Context, userUID, orgUID, email string) error
 
 	// UpsertUserContact creates or restores a contact. On conflict (same user+org+type+value)
 	// it undeletes the row and updates the label.
+	//
+	// Writes the CANONICAL uid back into c: a restore keeps the uid of the row already
+	// in the table, so c.UID after this call is the uid that actually exists — not the
+	// one the caller generated, which on the restore path was never inserted.
 	UpsertUserContact(ctx context.Context, c *models.UserContact) error
 
 	// GetUserContact returns a single non-deleted contact by UID.
@@ -1031,7 +1042,14 @@ type Service interface {
 		ctx context.Context, contactType, value string,
 	) ([]*models.UserContact, error)
 
-	// DeleteUserContact soft-deletes a contact by UID.
+	// DeleteUserContact soft-deletes a contact by UID and, in the SAME transaction,
+	// hard-deletes the user_notification_routes row pointing at it.
+	//
+	// Removing the route is part of the contract, not an implementation detail:
+	// the FK's `on delete cascade` only fires on a HARD delete, so a soft delete
+	// alone would strand the route forever as an undeletable ghost row in the
+	// dashboard. user_notification_routes has no deleted_at — hard delete is the
+	// design for that table.
 	DeleteUserContact(ctx context.Context, uid string) error
 
 	// EnsureUserNotificationRoute idempotently creates an enabled route for an

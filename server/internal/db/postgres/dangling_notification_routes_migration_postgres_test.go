@@ -66,8 +66,10 @@ func TestDanglingNotificationRoutesMigration_Postgres(t *testing.T) {
 	user := "22222222-2222-2222-2222-222222222222"
 	contactLive := "33333333-3333-3333-3333-333333333333"
 	contactDeleted := "44444444-4444-4444-4444-444444444444"
+	contactVanished := "77777777-7777-7777-7777-777777777777"
 	routeLive := "55555555-5555-5555-5555-555555555555"
 	routeGhost := "66666666-6666-6666-6666-666666666666"
+	routeOrphan := "88888888-8888-8888-8888-888888888888"
 
 	exec(`insert into organizations (uid, slug, name) values (?, 'acme', 'Acme')`, org)
 	exec(`insert into users (uid, email) values (?, 'alice@acme.com')`, user)
@@ -86,8 +88,35 @@ func TestDanglingNotificationRoutesMigration_Postgres(t *testing.T) {
 	exec(`insert into user_notification_routes (uid, user_uid, org_uid, contact_uid)
 	      values (?, ?, ?, ?)`, routeGhost, user, org, contactDeleted)
 
-	r.Equal(2, count(`select count(*) from user_notification_routes`),
-		"the fixture must actually have created both routes")
+	// A route whose contact row does not exist AT ALL. The FK should make this
+	// unreachable, so the fixture has to drop the constraint to build it — but
+	// the cleanup must collect it anyway: `not exists` is deliberately written
+	// to cover "no row" as well as "soft-deleted row", and a migration that
+	// only handled the shape the FK already protects would be untested on the
+	// shape it does not.
+	//
+	// The constraint name is looked up rather than hardcoded: 001_v0_1_0 uses
+	// an inline `references`, so Postgres named it, and betting on
+	// `user_notification_routes_contact_uid_fkey` would make this test a
+	// tripwire for a rename it does not care about.
+	var fkName string
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `
+		select c.conname
+		from pg_constraint c
+		join pg_class t on t.oid = c.conrelid
+		where t.relname = 'user_notification_routes'
+		  and c.contype = 'f'
+		  and pg_get_constraintdef(c.oid) ilike '%user_contacts%'
+		limit 1`).Scan(&fkName))
+	r.NotEmpty(fkName, "the contact_uid foreign key must exist to be dropped")
+
+	exec(`alter table user_notification_routes drop constraint ` + fkName)
+	exec(`insert into user_notification_routes (uid, user_uid, org_uid, contact_uid)
+	      values (?, ?, ?, ?)`, routeOrphan, user, org, contactVanished)
+
+	r.Equal(3, count(`select count(*) from user_notification_routes`),
+		"the fixture must actually have created all three routes")
 
 	// The migration itself.
 	_, err = svc.DB().ExecContext(ctx, migration)
@@ -95,8 +124,15 @@ func TestDanglingNotificationRoutesMigration_Postgres(t *testing.T) {
 
 	r.Equal(0, count(`select count(*) from user_notification_routes where uid = ?`, routeGhost),
 		"the route whose contact is soft-deleted must be removed")
+	r.Equal(0, count(`select count(*) from user_notification_routes where uid = ?`, routeOrphan),
+		"the route whose contact row is gone must be removed")
 	r.Equal(1, count(`select count(*) from user_notification_routes where uid = ?`, routeLive),
 		"the route backed by a live contact must survive")
+
+	// Restoring the FK is itself an assertion: it can only succeed if the
+	// cleanup left NO route pointing at a nonexistent contact.
+	exec(`alter table user_notification_routes
+	      add constraint ` + fkName + ` foreign key (contact_uid) references user_contacts(uid) on delete cascade`)
 
 	// The contacts themselves are untouched — this cleans up join rows, it does
 	// not hard-delete anybody's soft-deleted contact history.
