@@ -41,6 +41,7 @@ import {
 import { toast } from "sonner";
 
 import { EventTypeBadge, getEventTone } from "@/components/dashboard/event-display";
+import { CheckTypeBadge, CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
@@ -180,7 +181,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "brand", label: "Brand" },
   { id: "elevation", label: "Elevation & aurora" },
   { id: "buttons-badges", label: "Buttons & badges" },
-  { id: "protocol-badge", label: "Protocol badge" },
+  { id: "check-type-badge", label: "Check type identity" },
   { id: "event-tone", label: "Event tone badge" },
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
@@ -226,7 +227,7 @@ function DesignReferencePage() {
       <BrandSection />
       <ElevationSection />
       <ButtonsBadgesSection />
-      <ProtocolBadgeSection />
+      <CheckTypeIdentitySection />
       <EventToneSection />
       <LiveDotSection />
       <FormsSection />
@@ -2804,43 +2805,147 @@ function BrandSection() {
   );
 }
 
-const PROTOCOL_BADGE_BASE =
-  "text-[10px] font-mono font-medium uppercase px-1.5 py-0.5";
+// CHECK_TYPE_FAMILY_TABLE documents the family → tone grouping for the
+// design-reference page. It is display-only prose (kept in sync with
+// CHECK_TYPE_IDENTITY by eye, same as the spec's own table) — the canonical,
+// enforced source is CHECK_TYPE_IDENTITY in check-type-identity.tsx, guarded
+// by check-type-identity.test.ts.
+const CHECK_TYPE_FAMILY_TABLE: { family: string; types: string; tone: string }[] = [
+  { family: "Web", types: "http/https, websocket, browser", tone: "blue (shipped)" },
+  { family: "Raw network", types: "tcp, udp, ntp, snmp", tone: "cyan (shipped)" },
+  { family: "Naming", types: "dns, domain, dnsbl", tone: "amber (shipped)" },
+  { family: "Reachability", types: "icmp/ping", tone: "purple (shipped)" },
+  { family: "Certificates", types: "ssl/tls", tone: "emerald (shipped)" },
+  { family: "Remote access", types: "ssh, sftp, ftp, rdp", tone: "teal" },
+  { family: "Mail", types: "smtp, pop3, imap, email", tone: "rose" },
+  {
+    family: "Databases",
+    types: "postgresql, mysql, mssql, oracle, clickhouse, redis, mongodb",
+    tone: "indigo",
+  },
+  { family: "Messaging/RPC", types: "grpc, kafka, mqtt, rabbitmq", tone: "fuchsia" },
+  { family: "Game", types: "a2s, minecraft", tone: "lime" },
+  {
+    family: "Infra",
+    types: "docker, prometheus, freebox_line, kubernetes",
+    tone: "sky",
+  },
+  { family: "Scripted/synthetic", types: "js, sleep, heartbeat, sip", tone: "slate" },
+];
 
-const PROTOCOL_BADGE_TONES: Record<string, string> = {
-  HTTP: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25",
-  TCP: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25",
-  DNS: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25",
-  ICMP: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25",
-  TLS: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25",
-};
+const CHECK_TYPE_BADGE_SAMPLES = [
+  "http",
+  "tcp",
+  "dns",
+  "icmp",
+  "ssl",
+  "ssh",
+  "smtp",
+  "postgresql",
+  "grpc",
+  "minecraft",
+  "docker",
+  "heartbeat",
+];
 
-function ProtocolBadgeSection() {
+function CheckTypeIdentitySection() {
   return (
     <Section
-      id="protocol-badge"
-      title="Protocol badge"
-      description="The check-type chip used in list rows. Uppercase mono at 10px so a column of them aligns like a fixed-width key, with one tinted family per protocol — the tint is decoration, never the only signal, so the label always spells the protocol out. An unrecognized type falls back to the plain outline badge rather than inventing a sixth color."
+      id="check-type-badge"
+      title="Check type identity"
+      description="The one canonical visual identity for a check type — label, tint, and icon — sourced from CHECK_TYPE_IDENTITY (check-type-identity.tsx) and used everywhere a check type is rendered: the checks list chip, the check detail page, and the new-check type picker. Keyed by the raw backend type string; a drift-guard test fails the build if a check type or docs-anchor entry ships without a registry entry."
     >
-      <ExampleRow
-        preview={
-          <div className="flex flex-wrap items-center gap-2">
-            {Object.entries(PROTOCOL_BADGE_TONES).map(([label, tone]) => (
-              <Badge
-                key={label}
-                variant="outline"
-                className={cn(PROTOCOL_BADGE_BASE, tone)}
-              >
-                {label}
-              </Badge>
-            ))}
-            <Badge variant="outline" className={PROTOCOL_BADGE_BASE}>
-              custom
-            </Badge>
-          </div>
-        }
-        importLine={`import { Badge } from "@/components/ui/badge";\n\n// One tinted family per protocol; the fallback keeps the plain outline.\n<Badge\n  variant="outline"\n  className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5\n             bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25"\n>\n  HTTP\n</Badge>\n\n// http/https → blue · tcp → cyan · dns → amber · icmp/ping → purple\n// tls/ssl → emerald · anything else → no tint classes at all`}
-      />
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">CheckTypeBadge — the 10px chip</h3>
+        <p className="text-xs text-muted-foreground">
+          Uppercase mono at 10px so a column of them aligns like a
+          fixed-width key, one tinted family per type. Text-first,
+          deliberately no icon inside the chip — at this size an abstract
+          glyph is noise and the acronym is the signal. An unrecognized type
+          falls back to the plain outline badge with its raw name, rather
+          than inventing a new color.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-2">
+              {CHECK_TYPE_BADGE_SAMPLES.map((type) => (
+                <CheckTypeBadge key={type} type={type} />
+              ))}
+              <CheckTypeBadge type="custom" />
+            </div>
+          }
+          importLine={`import { CheckTypeBadge } from "@/components/shared/check-type-identity";\n\n<CheckTypeBadge type={check.type} />\n\n// Tone comes from the registry; an unknown type renders the plain\n// outline badge with its raw name — never a guessed color.`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          CheckTypeIcon — leading glyph (type picker, check detail)
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          A leading icon tinted to the same tone, for surfaces with room for
+          one — the new-check type picker rows and the check detail header.
+          Never inside the 10px badge itself. Lucide today; the slot accepts
+          any component rendering <code>currentColor</code> on a square
+          viewBox, so an internally designed icon set can replace entries in
+          the registry later with no call-site changes.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-3">
+              {CHECK_TYPE_BADGE_SAMPLES.slice(0, 6).map((type) => (
+                <span key={type} className="inline-flex items-center gap-1.5">
+                  <CheckTypeIcon type={type} />
+                  <CheckTypeBadge type={type} />
+                </span>
+              ))}
+            </div>
+          }
+          importLine={`import { CheckTypeIcon, CheckTypeBadge } from "@/components/shared/check-type-identity";\n\n<span className="inline-flex items-center gap-1.5">\n  <CheckTypeIcon type={check.type} />\n  <CheckTypeBadge type={check.type} />\n</span>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Family → tone table</h3>
+        <p className="text-xs text-muted-foreground">
+          40 distinguishable hues don't exist, so tones are assigned per
+          family. The five marked "shipped" are the original protocol-badge
+          tints and must never change color — they're in users' muscle
+          memory. Every other family gets its own hue, none colliding with
+          the status colors (green=ok / red=down stay reserved).
+        </p>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-muted/30 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 font-medium">Family</th>
+                <th className="px-3 py-2 font-medium">Types</th>
+                <th className="px-3 py-2 font-medium">Tone</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {CHECK_TYPE_FAMILY_TABLE.map((row) => (
+                <tr key={row.family}>
+                  <td className="px-3 py-2 font-medium">{row.family}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{row.types}</td>
+                  <td className="px-3 py-2">{row.tone}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Accessibility</h3>
+        <p className="text-xs text-muted-foreground">
+          Same rule as every other tinted badge in this app: the tint and the
+          icon are decoration layered on the label, never the only signal.
+          The text label always spells the check type out — <code>CheckTypeBadge</code>{" "}
+          renders it even for a type with no registry entry, and the icon is
+          marked <code>aria-hidden</code>.
+        </p>
+      </div>
     </Section>
   );
 }
@@ -3029,8 +3134,8 @@ function ListSurfaceSection() {
                 </TableHeader>
                 <TableBody>
                   {[
-                    { name: "api.example.com", type: "HTTP" },
-                    { name: "db.internal", type: "TCP" },
+                    { name: "api.example.com", type: "http" },
+                    { name: "db.internal", type: "tcp" },
                   ].map((row) => (
                     <TableRow
                       key={row.name}
@@ -3042,15 +3147,7 @@ function ListSurfaceSection() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            PROTOCOL_BADGE_BASE,
-                            PROTOCOL_BADGE_TONES[row.type],
-                          )}
-                        >
-                          {row.type}
-                        </Badge>
+                        <CheckTypeBadge type={row.type} />
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs text-muted-foreground">
                         60s

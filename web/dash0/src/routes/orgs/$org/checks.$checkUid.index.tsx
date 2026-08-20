@@ -73,6 +73,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
 import { DeliverySources, DeliveryVia } from "@/components/checks/smtp-delivery-detail";
 import { StatusDot } from "@/components/shared/status-dot";
+import { CheckTypeBadge, CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
@@ -810,9 +811,10 @@ function CheckDetailPage() {
               <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
                 {check.name || check.slug || check.uid?.slice(0, 8)}
               </h1>
-              <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
-                {check.type}
-              </Badge>
+              <span className="hidden shrink-0 items-center gap-1.5 sm:inline-flex">
+                <CheckTypeIcon type={check.type} />
+                <CheckTypeBadge type={check.type} />
+              </span>
               {check.uid && <SloCoverageChip org={org} checkUid={check.uid} />}
               {isPendingFirstRun && (
                 <Badge
@@ -1174,7 +1176,10 @@ function CheckDetailPage() {
               <div className="text-sm font-medium text-muted-foreground">
                 {t("checks:detail.typeLabel")}
               </div>
-              <div className="capitalize">{check.type}</div>
+              <div className="flex items-center gap-1.5">
+                <CheckTypeIcon type={check.type} />
+                <CheckTypeBadge type={check.type} />
+              </div>
             </div>
             {check.period && (
               <div>

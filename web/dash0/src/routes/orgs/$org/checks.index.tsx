@@ -98,6 +98,7 @@ import {
 import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { checkLabel, tunnelCheckUidOf } from "@/components/checks/tunnel";
+import { CheckTypeBadge } from "@/components/shared/check-type-identity";
 import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
@@ -404,50 +405,6 @@ function HostSection({
   );
 }
 
-function ProtocolBadge({ type }: { type?: string }) {
-  const t = (type || "http").toLowerCase();
-  if (t === "http" || t === "https") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25">
-        HTTP
-      </Badge>
-    );
-  }
-  if (t === "tcp") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25">
-        TCP
-      </Badge>
-    );
-  }
-  if (t === "dns") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25">
-        DNS
-      </Badge>
-    );
-  }
-  if (t === "icmp" || t === "ping") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25">
-        ICMP
-      </Badge>
-    );
-  }
-  if (t === "tls" || t === "ssl") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25">
-        TLS
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5">
-      {type}
-    </Badge>
-  );
-}
-
 function CheckRow({
   check,
   org,
@@ -534,7 +491,7 @@ function CheckRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
-          <ProtocolBadge type={check.type} />
+          <CheckTypeBadge type={check.type} />
           {check.internal && (
             <Badge variant="secondary" className="text-xs">
               {t("internal")}
