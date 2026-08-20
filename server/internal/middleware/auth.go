@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -82,8 +84,34 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
 		ctx = context.WithValue(ctx, base.ContextKeyUser, user)
+		setSentryIdentity(ctx, claims)
 
 		return next(writer, req.WithContext(ctx))
+	}
+}
+
+// setSentryIdentity attaches the authenticated principal to the request-scoped
+// Sentry hub. It lives here, not in SentryMiddleware, because SentryMiddleware
+// runs before any authentication: the claims only exist from this point on.
+//
+// The hub was installed by SentryMiddleware and is the same object the whole
+// request reports on, so mutating its scope here is what makes every later
+// event — a 500 from a handler, a panic caught by Recoverer — carry the user
+// and organization.
+func setSentryIdentity(ctx context.Context, claims *auth.Claims) {
+	if claims == nil {
+		return
+	}
+
+	hub := sentry.GetHubFromContext(ctx)
+	if hub == nil {
+		return
+	}
+
+	hub.Scope().SetUser(sentry.User{ID: claims.UserUID})
+
+	if claims.OrgSlug != "" {
+		hub.Scope().SetTag("organization", claims.OrgSlug)
 	}
 }
 
@@ -126,6 +154,7 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
 		ctx = context.WithValue(ctx, base.ContextKeyUser, user)
+		setSentryIdentity(ctx, claims)
 
 		return next(writer, req.WithContext(ctx))
 	}
