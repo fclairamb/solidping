@@ -148,7 +148,6 @@ func (h *Handler) History(writer http.ResponseWriter, req *http.Request) error {
 	return h.WriteJSON(writer, http.StatusOK, history)
 }
 
-//nolint:cyclop // a flat error-to-status mapping.
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):

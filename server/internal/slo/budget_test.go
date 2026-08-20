@@ -197,7 +197,7 @@ func TestComputeBudgetTable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			tt.check(require.New(t), slo.Compute(tt.in))
+			tt.check(require.New(t), slo.Compute(&tt.in))
 		})
 	}
 }
@@ -221,7 +221,7 @@ func TestComputeMaintenanceSubtraction(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
-		got := slo.Compute(slo.Input{
+		got := slo.Compute(&slo.Input{
 			TargetPct: 99.9, Stats: stats, Window: window, Now: afterWindow,
 			ExcludeMaintenance: true,
 		})
@@ -242,7 +242,7 @@ func TestComputeMaintenanceSubtraction(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
-		got := slo.Compute(slo.Input{
+		got := slo.Compute(&slo.Input{
 			TargetPct: 99.9, Stats: stats, Window: window, Now: afterWindow,
 			ExcludeMaintenance: false,
 		})
@@ -294,7 +294,7 @@ func TestMergeStatsGroupSemantics(t *testing.T) {
 	r.Equal(a, single)
 
 	window := juneWindow()
-	groupStatus := slo.Compute(slo.Input{
+	groupStatus := slo.Compute(&slo.Input{
 		TargetPct: 99, Stats: merged, Window: window, Now: window.End.Add(time.Hour),
 	})
 	r.InDelta(90.0, *groupStatus.AttainmentPct, 0.0001)
@@ -305,7 +305,7 @@ func TestMergeStatsGroupSemantics(t *testing.T) {
 		{Up: 300, Total: 300},
 		{Up: 50, Total: 100},
 	})
-	unevenStatus := slo.Compute(slo.Input{
+	unevenStatus := slo.Compute(&slo.Input{
 		TargetPct: 99, Stats: uneven, Window: window, Now: window.End.Add(time.Hour),
 	})
 	r.InDelta(87.5, *unevenStatus.AttainmentPct, 0.0001)
@@ -320,7 +320,7 @@ func TestGroupWithNoResultsIsUnknown(t *testing.T) {
 	window := juneWindow()
 
 	merged := slo.MergeStats([]uptimebar.BucketStats{{}, {}, {}})
-	got := slo.Compute(slo.Input{
+	got := slo.Compute(&slo.Input{
 		TargetPct: 99.9, Stats: merged, Window: window, Now: window.End.Add(time.Hour),
 	})
 
@@ -343,10 +343,10 @@ func TestBudgetTracksDSTMonthLength(t *testing.T) {
 	spring := slo.MonthWindow(paris, time.Date(2026, 3, 10, 0, 0, 0, 0, paris))
 	autumn := slo.MonthWindow(paris, time.Date(2026, 10, 10, 0, 0, 0, 0, paris))
 
-	springStatus := slo.Compute(slo.Input{
+	springStatus := slo.Compute(&slo.Input{
 		TargetPct: 99, Stats: perfect, Window: spring, Now: spring.End.Add(time.Hour),
 	})
-	autumnStatus := slo.Compute(slo.Input{
+	autumnStatus := slo.Compute(&slo.Input{
 		TargetPct: 99, Stats: perfect, Window: autumn, Now: autumn.End.Add(time.Hour),
 	})
 

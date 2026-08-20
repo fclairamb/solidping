@@ -1308,6 +1308,89 @@ func (m *mockDBService) ListMaintenanceWindowsForCheck(
 	panic("not implemented")
 }
 
+// SLO + report-schedule operations (spec 2026-08-20-01). Notifications never
+// touch either, so every one panics rather than pretending to answer.
+
+func (m *mockDBService) CreateSLO(_ context.Context, _ *models.SLO) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetSLO(_ context.Context, _, _ string) (*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetSLOBySlug(_ context.Context, _, _ string) (*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSLOs(
+	_ context.Context, _ string, _ models.ListSLOsFilter,
+) ([]*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateSLO(_ context.Context, _ string, _ models.SLOUpdate) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteSLO(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountSLOs(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSLOsForChecks(
+	_ context.Context, _ string, _ []string,
+) ([]*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateReportSchedule(_ context.Context, _ *models.ReportSchedule) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetReportSchedule(
+	_ context.Context, _, _ string,
+) (*models.ReportSchedule, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListReportSchedules(
+	_ context.Context, _ string,
+) ([]*models.ReportSchedule, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListEnabledReportSchedules(
+	_ context.Context,
+) ([]*models.ReportSchedule, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateReportSchedule(
+	_ context.Context, _ string, _ models.ReportScheduleUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteReportSchedule(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) MarkReportScheduleRun(
+	_ context.Context, _ string, _, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RemoveRecipientFromReportSchedules(
+	_ context.Context, _, _ string,
+) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListMaintenanceWindowsForCheckGroup(
 	_ context.Context, _ string,
 ) ([]*models.MaintenanceWindow, error) {

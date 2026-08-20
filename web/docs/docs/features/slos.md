@@ -105,5 +105,5 @@ scope.
 ## API
 
 Full endpoint reference: `GET /api/v1/orgs/:org/slos`, `/slos/:uid/status`,
-`/slos/:uid/history`, and `/report-schedules`. See the
-[API reference](/openapi) for request and response schemas.
+`/slos/:uid/history`, and `/report-schedules`. The generated API reference
+documents every request and response schema under the **SLOs** tag.

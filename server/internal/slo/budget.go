@@ -93,30 +93,30 @@ type Status struct {
 // Compute evaluates an objective over one window.
 //
 //nolint:cyclop,funlen // one linear formula; splitting it hides the arithmetic.
-func Compute(in Input) Status {
-	allowedFraction := 1 - in.TargetPct/100
+func Compute(input *Input) Status {
+	allowedFraction := 1 - input.TargetPct/100
 	if allowedFraction < 0 {
 		allowedFraction = 0
 	}
 
-	out := Status{TargetPct: in.TargetPct, State: StateUnknown}
+	out := Status{TargetPct: input.TargetPct, State: StateUnknown}
 
-	start := in.Window.Start
-	if !in.CoverageStart.IsZero() && in.CoverageStart.After(start) {
-		start = in.CoverageStart
+	start := input.Window.Start
+	if !input.CoverageStart.IsZero() && input.CoverageStart.After(start) {
+		start = input.CoverageStart
 	}
 
-	end := in.Window.End
+	end := input.Window.End
 	elapsedEnd := end
 
-	if in.Now.Before(end) {
-		elapsedEnd = in.Now
+	if input.Now.Before(end) {
+		elapsedEnd = input.Now
 	}
 
 	monitored := math.Max(0, end.Sub(start).Seconds())
 	elapsed := math.Max(0, elapsedEnd.Sub(start).Seconds())
 
-	raw := in.Stats
+	raw := input.Stats
 	stats := raw
 
 	// Maintenance share of the elapsed time, inferred from the probe ratio.
@@ -130,7 +130,7 @@ func Compute(in Input) Status {
 		excluded = float64(raw.MaintTotal) / float64(raw.Total) * elapsed
 	}
 
-	if in.ExcludeMaintenance {
+	if input.ExcludeMaintenance {
 		stats = raw.ExcludingMaintenance()
 		elapsed = math.Max(0, elapsed-excluded)
 		monitored = math.Max(0, monitored-excluded)
@@ -141,7 +141,7 @@ func Compute(in Input) Status {
 	out.ElapsedSeconds = int64(math.Round(elapsed))
 	out.TotalChecks = stats.Total
 	out.SuccessfulChecks = stats.Up
-	out.Partial = elapsedEnd.Before(end) || start.After(in.Window.Start)
+	out.Partial = elapsedEnd.Before(end) || start.After(input.Window.Start)
 
 	budgetTotal := allowedFraction * monitored
 	out.BudgetTotalSeconds = int64(math.Round(budgetTotal))
@@ -181,7 +181,7 @@ func Compute(in Input) Status {
 		out.State = StateHealthy
 	}
 
-	out.ProjectedExhaustionAt = projectExhaustion(in, out, consumed, elapsed)
+	out.ProjectedExhaustionAt = projectExhaustion(input, &out, consumed, elapsed)
 
 	return out
 }
@@ -190,7 +190,7 @@ func Compute(in Input) Status {
 // remaining budget hits zero. It deliberately refuses to answer beyond the end
 // of the window: an SLO window resets, so "you run out in March" is not a
 // statement this month's budget can make.
-func projectExhaustion(in Input, out Status, consumed, elapsed float64) *time.Time {
+func projectExhaustion(input *Input, out *Status, consumed, elapsed float64) *time.Time {
 	if !out.HasData || elapsed <= 0 || consumed <= 0 {
 		return nil
 	}
@@ -205,8 +205,8 @@ func projectExhaustion(in Input, out Status, consumed, elapsed float64) *time.Ti
 		return nil
 	}
 
-	at := in.Now.Add(time.Duration(remaining/ratePerSecond) * time.Second)
-	if !at.Before(in.Window.End) {
+	at := input.Now.Add(time.Duration(remaining/ratePerSecond) * time.Second)
+	if !at.Before(input.Window.End) {
 		return nil
 	}
 
@@ -224,8 +224,8 @@ func projectExhaustion(in Input, out Status, consumed, elapsed float64) *time.Ti
 func MergeStats(stats []uptimebar.BucketStats) uptimebar.BucketStats {
 	var merged uptimebar.BucketStats
 
-	for _, s := range stats {
-		merged.Add(s)
+	for i := range stats {
+		merged.Add(stats[i])
 	}
 
 	return merged

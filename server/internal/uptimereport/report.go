@@ -102,7 +102,7 @@ func Window(schedule *models.ReportSchedule, now time.Time) (slo.Window, *time.L
 
 // Build assembles the report for one schedule over one window.
 //
-//nolint:cyclop,funlen // a linear assembly of one view model.
+//nolint:funlen // a linear assembly of one view model.
 func (b *Builder) Build(
 	ctx context.Context, org *models.Organization, schedule *models.ReportSchedule,
 	window slo.Window, now time.Time,
@@ -413,15 +413,15 @@ func formatPct(pct float64) string {
 }
 
 func formatDuration(seconds int64) string {
-	d := time.Duration(seconds) * time.Second
+	span := time.Duration(seconds) * time.Second
 
 	switch {
-	case d >= 24*time.Hour:
-		return fmt.Sprintf("%dd %dh", int(d.Hours())/24, int(d.Hours())%24)
-	case d >= time.Hour:
-		return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
-	case d >= time.Minute:
-		return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
+	case span >= 24*time.Hour:
+		return fmt.Sprintf("%dd %dh", int(span.Hours())/24, int(span.Hours())%24)
+	case span >= time.Hour:
+		return fmt.Sprintf("%dh %dm", int(span.Hours()), int(span.Minutes())%60)
+	case span >= time.Minute:
+		return fmt.Sprintf("%dm %ds", int(span.Minutes()), int(span.Seconds())%60)
 	default:
 		return fmt.Sprintf("%ds", seconds)
 	}

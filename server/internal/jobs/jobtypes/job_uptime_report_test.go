@@ -63,7 +63,9 @@ func (s *capturingJobService) recipients(t *testing.T) []string {
 	return out
 }
 
-func newReportEnv(t *testing.T, now time.Time) (*sqlite.Service, *models.Organization, *jobdef.JobContext, *capturingJobService) {
+func newReportEnv(
+	t *testing.T, now time.Time,
+) (*sqlite.Service, *models.Organization, *jobdef.JobContext, *capturingJobService) {
 	t.Helper()
 
 	r := require.New(t)

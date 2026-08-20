@@ -5945,7 +5945,7 @@ func (s *Service) ListSLOsForChecks(
 		Model(&slos).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
-		Where("check_uid IN (?)", bun.In(checkUIDs)).
+		Where("check_uid IN (?)", bun.List(checkUIDs)).
 		Scan(ctx)
 
 	return slos, err

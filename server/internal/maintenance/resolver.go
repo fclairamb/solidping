@@ -70,17 +70,18 @@ func (r *Resolver) IsActive(ctx context.Context, checkUID string) (bool, error) 
 
 // IsActiveAt reports whether the check is inside an active maintenance window
 // at the given instant. The cache is keyed only by check UID — window
-// definitions do not depend on `at`, only the IsActiveAt evaluation does, so a
+// definitions do not depend on the instant, only the IsActiveAt evaluation
+// does, so a
 // backdated query (result backfill, test-data generation) reuses the same
 // cached definitions without polluting them.
-func (r *Resolver) IsActiveAt(ctx context.Context, checkUID string, at time.Time) (bool, error) {
+func (r *Resolver) IsActiveAt(ctx context.Context, checkUID string, instant time.Time) (bool, error) {
 	windows, err := r.windowsFor(ctx, checkUID)
 	if err != nil {
 		return false, err
 	}
 
 	for _, window := range windows {
-		if models.IsActiveAt(window, at) {
+		if models.IsActiveAt(window, instant) {
 			return true, nil
 		}
 	}

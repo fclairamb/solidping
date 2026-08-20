@@ -95,15 +95,15 @@ func WeekWindow(loc *time.Location, at time.Time) Window {
 // PreviousWindow returns the period immediately before the one containing
 // `at`, for the given frequency ("weekly" / "monthly"). It is what the report
 // job asks for: "which period just closed?".
-func PreviousWindow(loc *time.Location, at time.Time, weekly bool) Window {
+func PreviousWindow(loc *time.Location, now time.Time, weekly bool) Window {
 	if weekly {
-		current := WeekWindow(loc, at)
+		current := WeekWindow(loc, now)
 		start := current.Start.AddDate(0, 0, -7)
 
 		return Window{Start: start, End: start.AddDate(0, 0, 7)}
 	}
 
-	current := MonthWindow(loc, at)
+	current := MonthWindow(loc, now)
 	start := current.Start.AddDate(0, -1, 0)
 
 	return Window{Start: start, End: start.AddDate(0, 1, 0)}

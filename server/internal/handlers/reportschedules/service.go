@@ -167,7 +167,7 @@ func (s *Service) Create(ctx context.Context, orgSlug string, req *CreateRequest
 		timezone = models.DefaultReportTimezone
 	}
 
-	if _, err := slo.LoadLocation(timezone); err != nil {
+	if _, tzErr := slo.LoadLocation(timezone); tzErr != nil {
 		return Response{}, ErrInvalidTimezone
 	}
 
@@ -237,8 +237,8 @@ func (s *Service) Update(ctx context.Context, orgSlug, uid string, req UpdateReq
 		update.Recipients = &recipients
 	}
 
-	if err := s.db.UpdateReportSchedule(ctx, row.UID, update); err != nil {
-		return Response{}, err
+	if updateErr := s.db.UpdateReportSchedule(ctx, row.UID, update); updateErr != nil {
+		return Response{}, updateErr
 	}
 
 	updated, err := s.db.GetReportSchedule(ctx, org.UID, row.UID)

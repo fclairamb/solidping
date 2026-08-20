@@ -53,6 +53,9 @@ const maxHistoryMonths = 60
 // defaultHistoryMonths is what the history endpoint returns without ?months=.
 const defaultHistoryMonths = 12
 
+// defaultTargetPct is the objective a create request gets when it names none.
+const defaultTargetPct = 99.9
+
 // incidentFetchLimit mirrors the availability API's per-window incident cap.
 const incidentFetchLimit = 1000
 
@@ -192,45 +195,17 @@ func (s *Service) CreateSLO(ctx context.Context, orgSlug string, req *CreateRequ
 		}
 	}
 
-	if req.Name == "" {
-		return Response{}, ErrNameRequired
-	}
-
-	slug := req.Slug
-	if slug == "" {
-		slug = Slugify(req.Name)
-	}
-
-	if !slugPattern.MatchString(slug) {
-		return Response{}, ErrInvalidSlug
-	}
-
-	target := 99.9
-	if req.TargetPct != nil {
-		target = *req.TargetPct
-	}
-
-	if target <= 0 || target > 100 {
-		return Response{}, ErrInvalidTarget
-	}
-
-	timezone := req.Timezone
-	if timezone == "" {
-		timezone = models.DefaultSLOTimezone
-	}
-
-	if _, err := slo.LoadLocation(timezone); err != nil {
-		return Response{}, ErrInvalidTimezone
-	}
-
-	if err := s.validateScope(ctx, org.UID, req.CheckUID, req.CheckGroupUID); err != nil {
+	slug, target, timezone, err := normalizeCreateRequest(req)
+	if err != nil {
 		return Response{}, err
 	}
 
-	if existing, err := s.db.GetSLOBySlug(ctx, org.UID, slug); err == nil && existing != nil {
-		return Response{}, ErrSlugTaken
-	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return Response{}, err
+	if scopeErr := s.validateScope(ctx, org.UID, req.CheckUID, req.CheckGroupUID); scopeErr != nil {
+		return Response{}, scopeErr
+	}
+
+	if takenErr := s.assertSlugFree(ctx, org.UID, slug); takenErr != nil {
+		return Response{}, takenErr
 	}
 
 	row := models.NewSLO(org.UID, req.Name, slug, target)
@@ -290,8 +265,8 @@ func (s *Service) UpdateSLO(ctx context.Context, orgSlug, ident string, req Upda
 	// A scope change must name exactly one side; the schema's XOR constraint
 	// would reject anything else anyway, but a 400 beats a 500.
 	if req.CheckUID != nil || req.CheckGroupUID != nil {
-		if err := s.validateScope(ctx, org.UID, req.CheckUID, req.CheckGroupUID); err != nil {
-			return Response{}, err
+		if scopeErr := s.validateScope(ctx, org.UID, req.CheckUID, req.CheckGroupUID); scopeErr != nil {
+			return Response{}, scopeErr
 		}
 	}
 
@@ -306,8 +281,8 @@ func (s *Service) UpdateSLO(ctx context.Context, orgSlug, ident string, req Upda
 		Enabled:            req.Enabled,
 	}
 
-	if err := s.db.UpdateSLO(ctx, row.UID, update); err != nil {
-		return Response{}, err
+	if updateErr := s.db.UpdateSLO(ctx, row.UID, update); updateErr != nil {
+		return Response{}, updateErr
 	}
 
 	updated, err := s.db.GetSLO(ctx, org.UID, row.UID)
@@ -326,6 +301,61 @@ func (s *Service) DeleteSLO(ctx context.Context, orgSlug, ident string) error {
 	}
 
 	return s.db.DeleteSLO(ctx, org.UID, row.UID)
+}
+
+// normalizeCreateRequest applies the defaults and validates the scalar fields,
+// returning the effective slug, target and timezone.
+func normalizeCreateRequest(req *CreateRequest) (string, float64, string, error) {
+	if req.Name == "" {
+		return "", 0, "", ErrNameRequired
+	}
+
+	slug := req.Slug
+	if slug == "" {
+		slug = Slugify(req.Name)
+	}
+
+	if !slugPattern.MatchString(slug) {
+		return "", 0, "", ErrInvalidSlug
+	}
+
+	target := defaultTargetPct
+	if req.TargetPct != nil {
+		target = *req.TargetPct
+	}
+
+	if target <= 0 || target > 100 {
+		return "", 0, "", ErrInvalidTarget
+	}
+
+	timezone := req.Timezone
+	if timezone == "" {
+		timezone = models.DefaultSLOTimezone
+	}
+
+	if _, err := slo.LoadLocation(timezone); err != nil {
+		return "", 0, "", ErrInvalidTimezone
+	}
+
+	return slug, target, timezone, nil
+}
+
+// assertSlugFree rejects a slug another live objective in the org already owns.
+func (s *Service) assertSlugFree(ctx context.Context, orgUID, slug string) error {
+	existing, err := s.db.GetSLOBySlug(ctx, orgUID, slug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+
+		return err
+	}
+
+	if existing != nil {
+		return ErrSlugTaken
+	}
+
+	return nil
 }
 
 // validateScope enforces the XOR and that the referenced entity exists.
@@ -419,24 +449,24 @@ func (s *Service) decorate(ctx context.Context, orgUID string, rows []*models.SL
 
 // Slugify derives a URL-safe slug from a display name.
 func Slugify(name string) string {
-	var b strings.Builder
+	var builder strings.Builder
 
 	prevHyphen := false
 
 	for _, r := range strings.ToLower(name) {
 		switch {
 		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
-			b.WriteRune(r)
+			builder.WriteRune(r)
 
 			prevHyphen = false
-		case !prevHyphen && b.Len() > 0:
-			b.WriteRune('-')
+		case !prevHyphen && builder.Len() > 0:
+			builder.WriteRune('-')
 
 			prevHyphen = true
 		}
 	}
 
-	out := strings.Trim(b.String(), "-")
+	out := strings.Trim(builder.String(), "-")
 	if len(out) > 64 {
 		out = strings.Trim(out[:64], "-")
 	}
@@ -459,12 +489,12 @@ type scope struct {
 // semantic, documented rather than hidden.
 func (s *Service) resolveScope(ctx context.Context, orgUID string, row *models.SLO) (scope, error) {
 	if row.CheckUID != nil {
-		check, err := s.db.GetCheck(ctx, orgUID, *row.CheckUID)
-		if err != nil {
-			// The FK cascades on delete, so this means the check is
-			// soft-deleted: report an empty scope, which reads as "no data"
-			// rather than as a perfect month.
-			return scope{}, nil
+		// The FK cascades on hard delete, so a lookup miss here means the check
+		// is soft-deleted. Report an empty scope, which reads as "no data"
+		// rather than as a perfect month — deliberately swallowing the error.
+		check, lookupErr := s.db.GetCheck(ctx, orgUID, *row.CheckUID)
+		if lookupErr != nil {
+			return scope{}, nil //nolint:nilerr // a missing check is "no data", not a failure
 		}
 
 		return scope{checkUIDs: []string{check.UID}, coverageStart: check.CreatedAt}, nil
@@ -507,19 +537,19 @@ func (s *Service) GetStatus(ctx context.Context, orgSlug, ident string, now time
 		loc = time.UTC
 	}
 
-	sc, err := s.resolveScope(ctx, org.UID, row)
+	scoped, err := s.resolveScope(ctx, org.UID, row)
 	if err != nil {
 		return nil, err
 	}
 
 	window := slo.MonthWindow(loc, now)
 
-	status, err := s.evaluate(ctx, org.UID, row, sc, window, now)
+	status, err := s.evaluate(ctx, org.UID, row, scoped, window, now)
 	if err != nil {
 		return nil, err
 	}
 
-	incidents, err := s.incidentBlock(ctx, org.UID, sc, window, now)
+	incidents, err := s.incidentBlock(ctx, org.UID, scoped, window, now)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +584,7 @@ func (s *Service) GetHistory(
 		loc = time.UTC
 	}
 
-	sc, err := s.resolveScope(ctx, org.UID, row)
+	scoped, err := s.resolveScope(ctx, org.UID, row)
 	if err != nil {
 		return nil, err
 	}
@@ -562,8 +592,8 @@ func (s *Service) GetHistory(
 	windows := slo.PreviousMonthWindows(loc, now, months)
 	rows := make([]StatusRow, 0, len(windows))
 
-	for _, window := range windows {
-		status, evalErr := s.evaluate(ctx, org.UID, row, sc, window, now)
+	for i := range windows {
+		status, evalErr := s.evaluate(ctx, org.UID, row, scoped, windows[i], now)
 		if evalErr != nil {
 			return nil, evalErr
 		}
@@ -580,31 +610,31 @@ func (s *Service) GetHistory(
 func (s *Service) EvaluateWindow(
 	ctx context.Context, orgUID string, row *models.SLO, window slo.Window, now time.Time,
 ) (StatusRow, error) {
-	sc, err := s.resolveScope(ctx, orgUID, row)
+	scoped, err := s.resolveScope(ctx, orgUID, row)
 	if err != nil {
 		return StatusRow{}, err
 	}
 
-	return s.evaluate(ctx, orgUID, row, sc, window, now)
+	return s.evaluate(ctx, orgUID, row, scoped, window, now)
 }
 
 // ScopeCheckUIDs expands an SLO to the check UIDs it evaluates over.
 func (s *Service) ScopeCheckUIDs(ctx context.Context, orgUID string, row *models.SLO) ([]string, error) {
-	sc, err := s.resolveScope(ctx, orgUID, row)
+	scoped, err := s.resolveScope(ctx, orgUID, row)
 	if err != nil {
 		return nil, err
 	}
 
-	return sc.checkUIDs, nil
+	return scoped.checkUIDs, nil
 }
 
 // evaluate computes one window's objective state.
 func (s *Service) evaluate(
-	ctx context.Context, orgUID string, row *models.SLO, sc scope, window slo.Window, now time.Time,
+	ctx context.Context, orgUID string, row *models.SLO, scoped scope, window slo.Window, now time.Time,
 ) (StatusRow, error) {
 	var merged uptimebar.BucketStats
 
-	if len(sc.checkUIDs) > 0 {
+	if len(scoped.checkUIDs) > 0 {
 		rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
 		hints := uptimebar.Hints{
 			RetentionRawHours: rawHours,
@@ -613,26 +643,26 @@ func (s *Service) evaluate(
 		}
 
 		byCheck, err := uptimebar.WindowAvailability(
-			ctx, s.db, orgUID, sc.checkUIDs, window.Start, window.End, hints,
+			ctx, s.db, orgUID, scoped.checkUIDs, window.Start, window.End, hints,
 		)
 		if err != nil {
 			return StatusRow{}, fmt.Errorf("window availability: %w", err)
 		}
 
-		stats := make([]uptimebar.BucketStats, 0, len(sc.checkUIDs))
-		for _, uid := range sc.checkUIDs {
+		stats := make([]uptimebar.BucketStats, 0, len(scoped.checkUIDs))
+		for _, uid := range scoped.checkUIDs {
 			stats = append(stats, byCheck[uid])
 		}
 
 		merged = slo.MergeStats(stats)
 	}
 
-	computed := slo.Compute(slo.Input{
+	computed := slo.Compute(&slo.Input{
 		TargetPct:          row.TargetPct,
 		Stats:              merged,
 		Window:             window,
 		Now:                now,
-		CoverageStart:      sc.coverageStart,
+		CoverageStart:      scoped.coverageStart,
 		ExcludeMaintenance: row.ExcludeMaintenance,
 	})
 
@@ -665,12 +695,12 @@ func (s *Service) evaluate(
 // are de-duplicated by UID: a group incident naming several members would
 // otherwise be counted once per member.
 func (s *Service) incidentBlock(
-	ctx context.Context, orgUID string, sc scope, window slo.Window, now time.Time,
+	ctx context.Context, orgUID string, scoped scope, window slo.Window, now time.Time,
 ) (availability.PeriodIncidents, error) {
 	seen := make(map[string]struct{})
 	all := make([]*models.Incident, 0)
 
-	for _, checkUID := range sc.checkUIDs {
+	for _, checkUID := range scoped.checkUIDs {
 		filter := &models.ListIncidentsFilter{
 			OrganizationUID: orgUID,
 			MemberCheckUID:  checkUID,
