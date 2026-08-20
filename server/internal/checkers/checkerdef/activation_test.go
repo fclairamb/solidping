@@ -13,7 +13,7 @@ func TestActivationResolver_DefaultAllEnabled(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(config.CheckersConfig{})
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{})
 	enabled := resolver.ListEnabledTypes(nil)
 
 	r.Len(enabled, len(checkerdef.ListCheckTypeMetas()))
@@ -25,7 +25,7 @@ func TestActivationResolver_ExplicitAllowlist(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(config.CheckersConfig{
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		Enabled: []string{"http", "tcp"},
 	})
 
@@ -39,7 +39,7 @@ func TestActivationResolver_EnabledLabels(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(config.CheckersConfig{
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		EnabledLabels: []string{"safe"},
 	})
 
@@ -54,7 +54,7 @@ func TestActivationResolver_DisabledList(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(config.CheckersConfig{
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		Disabled: []string{"docker", "js"},
 	})
 
@@ -67,7 +67,7 @@ func TestActivationResolver_OrgDisabled(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(config.CheckersConfig{})
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{})
 
 	r.True(resolver.IsTypeEnabled(checkerdef.CheckTypeMySQL, nil))
 	r.False(resolver.IsTypeEnabled(checkerdef.CheckTypeMySQL, []string{"mysql"}))
@@ -77,7 +77,7 @@ func TestActivationResolver_ListAllWithStatus(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(config.CheckersConfig{
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		Disabled: []string{"docker"},
 	})
 

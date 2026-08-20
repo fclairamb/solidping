@@ -6,14 +6,22 @@ import (
 
 	"github.com/getsentry/sentry-go"
 
-	"github.com/fclairamb/solidping/server/internal/handlers/auth"
-	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
-// SentryMiddleware returns a middleware that integrates Sentry error tracking.
-// It clones the Sentry hub per request, sets request context and user info,
-// and recovers panics to report them to Sentry before re-panicking.
+// SentryMiddleware returns a middleware that puts a per-request Sentry hub on
+// the request context: it clones the hub, attaches the request to its scope,
+// and hands the context down.
+//
+// That is all it does, deliberately:
+//
+//   - It does NOT read the JWT claims. It runs before RequireAuth, so the
+//     claims are never on the context yet — the block that used to live here
+//     was dead code, and every event Sentry received was anonymous. Identity is
+//     attached by RequireAuth / RequireMCPAuth instead (setSentryIdentity),
+//     onto the very hub installed here.
+//   - It does NOT recover panics. Recoverer does, and it is the single
+//     reporter, so a panic can never produce two events.
 func SentryMiddleware() httpx.Middleware {
 	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
 		return func(writer http.ResponseWriter, req *http.Request) error {
@@ -24,26 +32,9 @@ func SentryMiddleware() httpx.Middleware {
 
 			hub.Scope().SetRequest(req)
 
-			// Add user context if authenticated
-			if claims, ok := req.Context().Value(base.ContextKeyClaims).(*auth.Claims); ok && claims != nil {
-				hub.Scope().SetUser(sentry.User{
-					ID: claims.UserUID,
-				})
-				hub.Scope().SetTag("organization", claims.OrgSlug)
-			}
-
 			ctx := sentry.SetHubOnContext(req.Context(), hub)
-			req = req.WithContext(ctx)
 
-			defer func() {
-				if r := recover(); r != nil {
-					hub.RecoverWithContext(ctx, r)
-					// Re-panic so the existing recovery middleware can handle the HTTP response
-					panic(r)
-				}
-			}()
-
-			return next(writer, req)
+			return next(writer, req.WithContext(ctx))
 		}
 	}
 }

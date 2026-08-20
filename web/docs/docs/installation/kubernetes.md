@@ -249,6 +249,55 @@ spec:
             # ... other environment variables
 ```
 
+## Browser checks (headless Chrome sidecar)
+
+The SolidPing image is distroless and ships no browser. To run
+[browser checks](/features/check-types#browser), add a headless Chrome
+**sidecar to each checks-worker Deployment** and talk to it over localhost:
+
+```yaml
+    spec:
+      containers:
+        - name: solidping
+          image: ghcr.io/fclairamb/solidping:latest
+          env:
+            - name: SP_CHECKERS_BROWSER_CDP_URL
+              value: "ws://127.0.0.1:9222"
+        - name: browser
+          image: chromedp/headless-shell:151.0.7922.109
+          args:
+            - --remote-debugging-address=0.0.0.0
+            - --remote-debugging-port=9222
+            # Required from Chrome 111 on for a non-browser websocket client.
+            - --remote-allow-origins=*
+            - --disable-gpu
+            - --no-sandbox
+          ports:
+            - containerPort: 9222
+          volumeMounts:
+            # Chrome mounts /dev/shm; the container default is far too small.
+            - name: dshm
+              mountPath: /dev/shm
+          resources:
+            requests: { memory: "512Mi" }
+            limits: { memory: "2Gi" }
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+```
+
+A sidecar rather than a shared browser Deployment: the CDP endpoint stays on
+localhost (never exposed as a Service — a reachable CDP endpoint is remote
+control of a browser), and the browser's lifecycle is coupled to the worker
+that uses it. Pin the image tag so every region runs the same Chrome version.
+
+Each worker caps itself at 4 concurrent browser executions, so size the sidecar
+for four tabs. Workers that can reach their sidecar advertise a `browser`
+capability per region; if the sidecar dies, checks report an **error** (not a
+"down") and the region stops advertising the capability on the next heartbeat.
+
 ## Monitoring
 
 SolidPing exposes metrics that can be scraped by Prometheus:

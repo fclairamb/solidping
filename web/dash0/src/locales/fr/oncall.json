@@ -3,6 +3,7 @@
     "title": "Astreintes",
     "subtitle": "Une rotation, un fuseau horaire, une heure de relais. Utilisez les politiques d'escalade pour brancher les astreintes sur les notifications.",
     "empty": "Aucune astreinte pour le moment.",
+    "emptyHint": "Créez une rotation pour acheminer les alertes vers les répondants actifs pendant les créneaux planifiés.",
     "create": "Créer une astreinte",
     "currentlyOnCall": "D'astreinte maintenant",
     "noOneOnCall": "Personne d'astreinte",

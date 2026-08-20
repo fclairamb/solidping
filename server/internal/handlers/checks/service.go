@@ -25,6 +25,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -465,10 +466,10 @@ func (s *Service) ValidateCheck(
 
 	// Advisory only, and evaluated LAST so it can never mask a real error: the
 	// config is valid, we just have reason to think one of its regions cannot
-	// currently do IPv6.
+	// currently do IPv6 (or run a browser).
 	var warnings []base.ValidationErrorField
 	if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
-		warnings = s.ipVersionRegionWarnings(ctx, org.UID, req.Type, req.Config, req.Regions)
+		warnings = s.regionCapabilityWarnings(ctx, org.UID, req.Type, req.Config, req.Regions)
 	}
 
 	return ValidateCheckResponse{Valid: true, Warnings: warnings}, nil
@@ -899,7 +900,7 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 	}
 
 	// Get checks for the organization
-	checks, total, err := s.db.ListChecks(ctx, org.UID, filter)
+	checks, total, err := s.db.ListChecks(sloghook.WithCallsite(ctx, "checks.list"), org.UID, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1249,6 +1250,19 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
 			return CheckResponse{}, versionErr
 		}
+
+		// Send-mode SMTP reference validation (spec 2026-08-19-04): the
+		// delivery_check_uid reference, org/type, and the instance's
+		// email_inbox requirement.
+		if smtpErr := s.validateSMTPDeliveryConfig(ctx, org.UID, req.Type, req.Config); smtpErr != nil {
+			return CheckResponse{}, smtpErr
+		}
+	}
+
+	// Send-mode SMTP checks need a period floor so the paired inbox can't be
+	// flooded (spec 2026-08-19-04).
+	if intervalErr := validateSMTPSendInterval(req.Type, req.Config, period); intervalErr != nil {
+		return CheckResponse{}, intervalErr
 	}
 
 	// Create CheckSpec for validation
@@ -1386,9 +1400,14 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.EscalationPolicyUID = req.EscalationPolicyUID
 	}
 
-	// Create check in DB
-	if err := s.db.CreateCheck(ctx, check); err != nil { //nolint:govet
-		return CheckResponse{}, err
+	// Create check in DB. The slug resolved above is an optimistic guess: a
+	// concurrent create in this org can claim it in the gap before the insert,
+	// so the insert re-resolves and retries rather than surfacing the raw
+	// unique-index violation.
+	if errCreate := s.insertCheckResolvingSlugRace(
+		ctx, org.UID, spec.Slug, userProvidedSlug, check,
+	); errCreate != nil {
+		return CheckResponse{}, errCreate
 	}
 
 	// Handle labels if provided
@@ -1433,9 +1452,9 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		response.Labels = req.Labels
 	}
 
-	// The check is already written at this point — the IPv6/region mismatch is
-	// reported, never enforced.
-	response.Warnings = s.ipVersionRegionWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
+	// The check is already written at this point — a region-capability mismatch
+	// (IPv6, headless Chrome) is reported, never enforced.
+	response.Warnings = s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
 
 	return response, nil
 }
@@ -1718,8 +1737,31 @@ func (s *Service) UpdateCheck(
 		update.RecoveryPeriodSeconds = req.RecoveryPeriodSeconds
 	}
 
-	// Update check in DB
+	// Send-mode SMTP checks need a period floor so the paired inbox can't be
+	// flooded (spec 2026-08-19-04). Checked here, after both config and period
+	// are finalized, so a PATCH that flips send_email on AND shortens the
+	// period in the same request is caught regardless of field order.
+	if req.Config != nil || req.Period != nil {
+		effectivePeriod := time.Duration(check.Period)
+		if update.Period != nil {
+			effectivePeriod = time.Duration(*update.Period)
+		}
+
+		if intervalErr := validateSMTPSendInterval(check.Type, check.Config, effectivePeriod); intervalErr != nil {
+			return CheckResponse{}, intervalErr
+		}
+	}
+
+	// Update check in DB. A rename carries the same optimistic-slug gap as
+	// creation — validateAndCheckSlugConflict above only proves the slug was
+	// free when it looked — but a rename slug is always user-provided, so the
+	// loser reports the conflict it would have reported synchronously instead
+	// of being silently renamed to something else.
 	if errUpdate := s.db.UpdateCheck(ctx, check.UID, &update); errUpdate != nil {
+		if update.Slug != nil && db.IsCheckSlugCollision(errUpdate) {
+			return CheckResponse{}, ErrSlugConflict
+		}
+
 		return CheckResponse{}, errUpdate
 	}
 
@@ -1766,8 +1808,8 @@ func (s *Service) UpdateCheck(
 	response := s.convertCheckToResponse(updatedCheck)
 
 	// Same advisory as on create: the update is already persisted, this only
-	// tells the user what the region last reported about IPv6.
-	response.Warnings = s.ipVersionRegionWarnings(
+	// tells the user what the region last reported about IPv6 / headless Chrome.
+	response.Warnings = s.regionCapabilityWarnings(
 		ctx, org.UID, updatedCheck.Type, updatedCheck.Config, updatedCheck.Regions,
 	)
 
@@ -2289,6 +2331,120 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 	return slug, nil
 }
 
+// checkSlugStallAttempts bounds how many CONSECUTIVE inserts the slug loop may
+// make WITHOUT MAKING PROGRESS before it gives up and surfaces the violation.
+//
+// It counts stalls, not retries, and the distinction is the whole point. Losing
+// the slug race is not a failure: it means a competing creation committed, so
+// the re-read that follows returns a DIFFERENT slug and the next insert aims
+// somewhere new. N simultaneous creations for one target make the unluckiest
+// one lose up to N-1 times, and N is set by the caller — a scripted import, a
+// burst of dashboard tabs, parallel E2E workers — not by this loop. Charging
+// those legitimate losses to a small constant is what made a 24-way burst fail
+// outright while a 2-way one looked perfectly healthy; the same lesson is
+// written up on IncidentNumberAttempts in internal/db/incidentnumber.go.
+//
+// A stall is the genuinely pathological case: the re-read handed back the very
+// slug that just failed, so retrying it can only fail identically. Termination
+// does not rest on this constant alone — ensureUniqueSlug itself gives up after
+// the "-99" suffix — but a bounded stall keeps a spinning loop from holding a
+// request open while it re-reads the same answer forever.
+const checkSlugStallAttempts = 8
+
+// insertCheckResolvingSlugRace inserts a check, re-resolving an auto-generated
+// slug and retrying whenever a concurrent creation committed the same one first.
+//
+// ensureUniqueSlug is a SELECT-then-INSERT with a gap in the middle: between the
+// two, another request in the same organization can take the slug it just found
+// free. checks_slug_idx — not the SELECT — is what actually guarantees
+// uniqueness, so the read is only an optimistic guess and losing the race costs
+// one retry rather than a duplicate.
+//
+// This is not a rare interleaving. An auto-generated slug derives from the
+// check's target, not from its name, so two checks pointed at the same URL get
+// the same base slug by construction — two dashboard tabs, a scripted import,
+// or two parallel E2E workers creating checks for one host collide on the first
+// try. Before this loop the loser surfaced as a bare 23505 from the driver,
+// which the handler could only render as a 500 "Internal server error".
+//
+// A user-provided slug is never re-resolved: silently storing something other
+// than what was asked for would be a surprise. Its collision becomes
+// ErrSlugConflict — the same 400 the pre-check returns when it sees the row —
+// so the outcome no longer depends on which side of the gap the conflict landed.
+//
+// The whole insert (check + check_jobs + initial result) runs in one
+// transaction, so a losing attempt leaves nothing behind to clean up before the
+// next one.
+func (s *Service) insertCheckResolvingSlugRace(
+	ctx context.Context, orgUID, baseSlug string, userProvidedSlug bool, check *models.Check,
+) error {
+	return insertResolvingSlugRace(ctx, check, userProvidedSlug,
+		func(ctx context.Context) error {
+			return s.db.CreateCheck(ctx, check)
+		},
+		func(ctx context.Context) (string, error) {
+			return s.ensureUniqueSlug(ctx, orgUID, baseSlug, false)
+		},
+	)
+}
+
+// insertResolvingSlugRace is the loop itself, with the database reached only
+// through the two closures its caller supplies: insert writes the check as it
+// currently stands, resolve re-reads a free slug for it.
+//
+// Split out this way for the same reason db.CreateIncidentWithNumber is — the
+// interesting behavior is entirely in the interleaving, and whether two
+// goroutines actually collide is up to the scheduler. With the I/O injected,
+// every branch (retry, stall, give up, refuse to retry) is pinned by a
+// deterministic test instead of by a lucky run.
+func insertResolvingSlugRace(
+	ctx context.Context,
+	check *models.Check,
+	userProvidedSlug bool,
+	insert func(context.Context) error,
+	resolve func(context.Context) (string, error),
+) error {
+	stalls := 0
+
+	for {
+		err := insert(ctx)
+		if err == nil || !db.IsCheckSlugCollision(err) {
+			return err
+		}
+
+		if userProvidedSlug {
+			return ErrSlugConflict
+		}
+
+		lost := ""
+		if check.Slug != nil {
+			lost = *check.Slug
+		}
+
+		nextSlug, resolveErr := resolve(ctx)
+		if resolveErr != nil {
+			return resolveErr
+		}
+
+		if nextSlug == lost {
+			// No progress: the re-read handed back the slug that just failed,
+			// so the next insert can only fail the same way. Bounded, then
+			// surfaced as the violation it is.
+			stalls++
+			if stalls >= checkSlugStallAttempts {
+				return err
+			}
+		} else {
+			// A competing creation committed and we aimed elsewhere. That is
+			// contention to ride out, not a livelock — it must not be charged
+			// to the stall budget.
+			stalls = 0
+		}
+
+		check.Slug = &nextSlug
+	}
+}
+
 // ReconcileStaleJobSchedules re-reconciles every enabled check that has at
 // least one check_job whose period no longer matches the check's period, and
 // returns the number of checks reconciled (spec 2026-07-20-05). It exists for
@@ -2655,6 +2811,10 @@ func resultStatusString(result *models.Result) string {
 			statusStr = "error"
 		case int(models.ResultStatusCreated):
 			statusStr = "created"
+		case int(models.ResultStatusAbandoned):
+			// Reaper-minted terminal status: the attempt was never reported
+			// on. Rendered neutrally, never as a failure (spec 2026-08-18-10).
+			statusStr = "abandoned"
 		}
 	}
 
@@ -3434,7 +3594,7 @@ func (s *Service) CloneCheck(
 		return CheckResponse{}, ErrCheckNotFound
 	}
 
-	finalSlug, err := s.cloneResolveSlug(ctx, org.UID, source, req)
+	finalSlug, baseSlug, userProvidedSlug, err := s.cloneResolveSlug(ctx, org.UID, source, req)
 	if err != nil {
 		return CheckResponse{}, err
 	}
@@ -3450,7 +3610,13 @@ func (s *Service) CloneCheck(
 		}
 	}
 
-	if createErr := s.db.CreateCheck(ctx, clone); createErr != nil {
+	// Same optimistic-slug race as CreateCheck: two clones of one check, or a
+	// clone racing a create for the same target, resolve to the same slug.
+	if createErr := s.insertCheckResolvingSlugRace(
+		ctx, org.UID, baseSlug, userProvidedSlug, clone,
+	); createErr != nil {
+		// %w keeps errors.Is(err, ErrSlugConflict) true, so the handler still
+		// maps a lost user-named-slug race to the same 400 as the pre-check.
 		return CheckResponse{}, fmt.Errorf("create clone: %w", createErr)
 	}
 
@@ -3480,25 +3646,29 @@ func (s *Service) CloneCheck(
 	return response, nil
 }
 
+// cloneResolveSlug picks the clone's slug. It returns the resolved slug, the
+// base it was derived from and whether the caller asked for it by name — the
+// last two so the insert can re-resolve after losing the slug race (see
+// insertCheckResolvingSlugRace).
 func (s *Service) cloneResolveSlug(
 	ctx context.Context, orgUID string, source *models.Check, req *CloneCheckRequest,
-) (string, error) {
+) (string, string, bool, error) {
 	sourceSlug := ""
 	if source.Slug != nil {
 		sourceSlug = *source.Slug
 	}
 
 	var (
-		targetSlug       string
+		baseSlug         string
 		userProvidedSlug bool
 	)
 
 	if req != nil && req.Slug != nil && *req.Slug != "" {
 		if err := validateSlug(*req.Slug); err != nil {
-			return "", err
+			return "", "", false, err
 		}
 
-		targetSlug = *req.Slug
+		baseSlug = *req.Slug
 		userProvidedSlug = true
 	} else {
 		base := sourceSlug
@@ -3506,10 +3676,15 @@ func (s *Service) cloneResolveSlug(
 			base = source.Type
 		}
 
-		targetSlug = base + "-copy"
+		baseSlug = base + "-copy"
 	}
 
-	return s.ensureUniqueSlug(ctx, orgUID, targetSlug, userProvidedSlug)
+	finalSlug, err := s.ensureUniqueSlug(ctx, orgUID, baseSlug, userProvidedSlug)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	return finalSlug, baseSlug, userProvidedSlug, nil
 }
 
 func (s *Service) cloneBuildCheck(
@@ -3777,6 +3952,13 @@ func (s *Service) applyConfigUpdate(
 		ctx, check.OrganizationUID, check.Type, merged, check.Regions,
 	); tunnelErr != nil {
 		return tunnelErr
+	}
+
+	// Send-mode SMTP reference validation (spec 2026-08-19-04) — validated on
+	// the merged config so a PATCH cannot smuggle in a dangling reference or
+	// turn on send_email without a valid pairing.
+	if smtpErr := s.validateSMTPDeliveryConfig(ctx, check.OrganizationUID, check.Type, merged); smtpErr != nil {
+		return smtpErr
 	}
 
 	if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {

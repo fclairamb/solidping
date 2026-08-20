@@ -72,15 +72,33 @@ function formatRelativeTime(dateStr: string): string {
   return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
 }
 
+/**
+ * "card" (default): full chrome — rounded border, surface background, own
+ * padding. "plain": no chrome/padding, for embedding inside a container that
+ * already provides them (e.g. StatusUpdateThreadList's own `p-4` row nested
+ * in an already-bordered incident card or "Incident thread" section).
+ * Everything else — id/scroll anchor, header row, badges, hardened Markdown
+ * body, "Read more" link, and all data-testid hooks — is unchanged.
+ */
+export type StatusUpdateCardVariant = "card" | "plain";
+
 interface StatusUpdateCardProps {
   update: StatusUpdatePublicResponse;
+  variant?: StatusUpdateCardVariant;
 }
 
-export function StatusUpdateCard({ update }: StatusUpdateCardProps) {
+export function StatusUpdateCard({
+  update,
+  variant = "card",
+}: StatusUpdateCardProps) {
   return (
     <div
       id={`update-${update.uid}`}
-      className="scroll-mt-24 rounded-lg border border-border bg-card p-4 space-y-2"
+      className={
+        variant === "plain"
+          ? "scroll-mt-24 space-y-2"
+          : "scroll-mt-24 rounded-lg border border-border bg-card p-4 space-y-2"
+      }
     >
       {/* Header row: title (left) + kind badge + timestamp (right) */}
       <div className="flex items-start justify-between gap-2 flex-wrap">

@@ -32,7 +32,7 @@ func (h *Handler) ListForCheck(writer http.ResponseWriter, req *http.Request) er
 
 	deps, err := h.svc.ListForCheck(req.Context(), orgSlug, check)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": deps})
@@ -52,7 +52,7 @@ func (h *Handler) Create(writer http.ResponseWriter, req *http.Request) error {
 
 	dep, err := h.svc.Create(req.Context(), orgSlug, check, body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, dep)
@@ -72,7 +72,7 @@ func (h *Handler) Update(writer http.ResponseWriter, req *http.Request) error {
 
 	dep, err := h.svc.Update(req.Context(), orgSlug, depUID, body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, dep)
@@ -84,7 +84,7 @@ func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
 	depUID := httpx.Param(req, "uid")
 
 	if err := h.svc.Delete(req.Context(), orgSlug, depUID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -98,44 +98,44 @@ func (h *Handler) Graph(writer http.ResponseWriter, req *http.Request) error {
 
 	graph, err := h.svc.Graph(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": graph})
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	case errors.Is(err, ErrDependencyNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeDependencyNotFound, "Dependency not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeDependencyNotFound, "Dependency not found", err)
 	case errors.Is(err, ErrSelfEdge):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeDependencySelf,
+			writer, request, http.StatusBadRequest, base.ErrorCodeDependencySelf,
 			"A check cannot depend on itself", err)
 	case errors.Is(err, ErrCrossOrg):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeDependencyCrossOrg,
+			writer, request, http.StatusBadRequest, base.ErrorCodeDependencyCrossOrg,
 			"Parent check belongs to a different organization", err)
 	case errors.Is(err, ErrCycle):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeDependencyCycle,
+			writer, request, http.StatusBadRequest, base.ErrorCodeDependencyCycle,
 			"Adding this dependency would create a cycle", err)
 	case errors.Is(err, ErrDuplicate):
 		return h.WriteErrorErr(
-			writer, http.StatusConflict, base.ErrorCodeDependencyDuplicate,
+			writer, request, http.StatusConflict, base.ErrorCodeDependencyDuplicate,
 			"Dependency already exists", err)
 	case errors.Is(err, ErrInvalidKind):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeDependencyInvalidKind,
+			writer, request, http.StatusBadRequest, base.ErrorCodeDependencyInvalidKind,
 			"Dependency kind must be 'hard' or 'soft'", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

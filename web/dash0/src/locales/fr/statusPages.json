@@ -3,6 +3,7 @@
   "subtitle": "Gérez vos pages de statut publiques",
   "newStatusPage": "Nouvelle page de statut",
   "noStatusPages": "Aucune page de statut configurée",
+  "noStatusPagesHint": "Créez votre première page de statut pour partager la disponibilité avec vos utilisateurs.",
   "noMatch": "Aucune page de statut ne correspond à votre recherche",
   "searchPlaceholder": "Rechercher des pages de statut...",
   "viewDetails": "Voir les détails",

@@ -26,13 +26,20 @@ const (
 //
 //nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
 var connectionSecretFields = map[models.ConnectionType][]string{
-	models.ConnectionTypeSlack:    {"access_token"},
-	models.ConnectionTypeWebhook:  {secretKeyAuthToken, "signingSecret", "signingSecretPrevious"},
-	models.ConnectionTypeEmail:    {"smtp_password"},
-	models.ConnectionTypeNtfy:     {secretKeyAuthToken},
-	models.ConnectionTypeOpsgenie: {"api_key"},
-	models.ConnectionTypePushover: {"user_key", "api_token"},
-	models.ConnectionTypeFreebox:  {"appToken"},
+	models.ConnectionTypeSlack:   {"access_token"},
+	models.ConnectionTypeWebhook: {secretKeyAuthToken, "signingSecret", "signingSecretPrevious"},
+	models.ConnectionTypeEmail:   {"smtp_password"},
+	models.ConnectionTypeNtfy:    {secretKeyAuthToken},
+	// Matrix: the bot/dedicated user's access token. homeserverUrl and roomId
+	// stay public so the dashboard can render them on the edit form (same
+	// reasoning as the webhook/Discord/GoogleChat/Mattermost/MSTeams URLs
+	// above).
+	models.ConnectionTypeMatrix: {"accessToken"},
+	// PagerDuty: the Events API v2 integration (routing) key. There is no
+	// OAuth, REST API v2 or schedule import — see server/CLAUDE.md.
+	models.ConnectionTypePagerduty: {"routing_key"},
+	models.ConnectionTypePushover:  {"user_key", "api_token"},
+	models.ConnectionTypeFreebox:   {"appToken"},
 	// Kubernetes cluster credentials: a bearer token or a pasted kubeconfig.
 	// The API server URL and CA cert stay public (endpoint URLs are not secret
 	// under the DB-theft-only threat model — same as webhook URLs above).

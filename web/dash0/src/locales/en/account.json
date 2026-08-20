@@ -4,6 +4,21 @@
     "subtitle": "Manage your personal settings and access tokens"
   },
   "security": {
+    "password": {
+      "title": "Change password",
+      "setTitle": "Set a password",
+      "subtitle": "Rotate the password you use to sign in. Your other sessions will be signed out.",
+      "setSubtitle": "This account currently signs in through an identity provider. Set a password to also sign in directly.",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Change password",
+      "setSubmit": "Set password",
+      "changed": "Password updated.",
+      "mismatch": "The two new passwords do not match.",
+      "tooShort": "Password must be at least {{min}} characters.",
+      "invalidCurrent": "That is not your current password."
+    },
     "passkeys": {
       "title": "Passkeys",
       "subtitle": "Sign in without a password using your device, a hardware key, or a password manager.",
@@ -37,7 +52,8 @@
       "savedCheck": "I have saved these codes in a safe place.",
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
-      "disableSubtitle": "Enter a current 6-digit code to confirm."
+      "disableSubtitle": "Enter a current 6-digit code to confirm.",
+      "setupFailed": "Unable to set up two-factor authentication. Try again."
     }
   },
   "profile": {

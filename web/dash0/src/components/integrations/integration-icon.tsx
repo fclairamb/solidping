@@ -6,11 +6,13 @@ import {
   Mail,
   MessageCircle,
   MessageSquare,
+  MessageSquareText,
   MessagesSquare,
   MonitorSmartphone,
   Phone,
   Router,
   Send,
+  Siren,
   Users,
   Webhook,
   Bot,
@@ -32,7 +34,8 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   msteams: Users,
   "msteams-bot": Bot,
   ntfy: Bell,
-  opsgenie: Bell,
+  matrix: MessageSquareText,
+  pagerduty: Siren,
   pushover: Bell,
   freebox: Router,
   webpush: BellRing,
@@ -69,8 +72,10 @@ export function integrationLabel(type: ConnectionType): string {
       return "Microsoft Teams (bot)";
     case "ntfy":
       return "ntfy";
-    case "opsgenie":
-      return "Opsgenie";
+    case "matrix":
+      return "Matrix";
+    case "pagerduty":
+      return "PagerDuty";
     case "pushover":
       return "Pushover";
     case "freebox":

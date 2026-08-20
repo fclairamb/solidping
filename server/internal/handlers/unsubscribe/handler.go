@@ -56,7 +56,7 @@ func (h *Handler) OneClickUnsubscribe(writer http.ResponseWriter, req *http.Requ
 			return nil
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusOK)
@@ -88,7 +88,7 @@ func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req *http.Request
 
 	result, err := h.svc.Unsubscribe(req.Context(), token, scope, models.EmailSuppressionSourceLink)
 	if err != nil {
-		return h.renderErrorPage(writer, err)
+		return h.renderErrorPage(writer, req, err)
 	}
 
 	writePage(writer, http.StatusOK, "Unsubscribed", successBody(token, result))
@@ -102,7 +102,7 @@ func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req *http.Request
 func (h *Handler) renderChoicePage(writer http.ResponseWriter, req *http.Request, token string) error {
 	org, email, checkUID, err := h.svc.resolve(req.Context(), token, ScopeFromToken)
 	if err != nil {
-		return h.renderErrorPage(writer, err)
+		return h.renderErrorPage(writer, req, err)
 	}
 
 	checkName := ""
@@ -136,7 +136,7 @@ func (h *Handler) Undo(writer http.ResponseWriter, req *http.Request) error {
 	}
 
 	if err := h.svc.ResubscribeByUID(req.Context(), token, uid); err != nil {
-		return h.renderErrorPage(writer, err)
+		return h.renderErrorPage(writer, req, err)
 	}
 
 	writePage(writer, http.StatusOK, "Re-subscribed", resubscribedBody())
@@ -145,14 +145,14 @@ func (h *Handler) Undo(writer http.ResponseWriter, req *http.Request) error {
 }
 
 // renderErrorPage maps a Service error to the right status/page.
-func (h *Handler) renderErrorPage(writer http.ResponseWriter, err error) error {
+func (h *Handler) renderErrorPage(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrTokenInvalid):
 		writePage(writer, http.StatusBadRequest, "Invalid or expired link", invalidTokenBody())
 	case errors.Is(err, ErrOrgNotFound):
 		writePage(writer, http.StatusNotFound, "Organization not found", orgNotFoundBody())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 
 	return nil

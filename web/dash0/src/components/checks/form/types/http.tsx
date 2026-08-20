@@ -40,6 +40,12 @@ export interface HttpState {
   // GetConfig style.
   verifySsl: boolean;
   followRedirects: boolean;
+  // Opt-in capture of what the probe received when the check FAILS, kept as
+  // incident diagnostics. Defaults to false (off) — unlike the two above, whose
+  // default is on — because a response body can contain PII or session
+  // material. Only `true` is ever written to config, mirroring the server's
+  // omit-at-default GetConfig.
+  captureFailureResponse: boolean;
   // Per-section dirty flags. Secrets are never returned by GET, so an untouched
   // section's inputs are empty and MUST NOT be serialized — omitting the keys is
   // what makes the server's preserve-absent-secrets merge keep the stored
@@ -84,6 +90,12 @@ function fromConfig(config: CheckConfig): HttpState {
   // malformed value) means "on", matching the server's default.
   const verifySsl = config.verifySsl !== false;
   const followRedirects = config.followRedirects !== false;
+  // Canonical key is snake_case (the server accepts the camelCase alias on
+  // read but always re-emits the snake one), so read both and prefer the
+  // canonical spelling.
+  const captureFailureResponse =
+    config.capture_failure_response === true ||
+    config.captureFailureResponse === true;
   return {
     url: getConfigField(config, "url"),
     method: getConfigField(config, "method") || "GET",
@@ -93,6 +105,7 @@ function fromConfig(config: CheckConfig): HttpState {
     secretHeaders,
     verifySsl,
     followRedirects,
+    captureFailureResponse,
     // Seeding matters three ways: a legacy row's username is public and comes
     // back, so it round-trips and folds into `basicAuth` on save; a prefill link
     // (`?username=probe`) must submit what it prefilled; and on a deployment
@@ -141,6 +154,8 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
   // round-trips without ever writing the key.
   if (!state.verifySsl) cfg.verifySsl = false;
   if (!state.followRedirects) cfg.followRedirects = false;
+  // Written only when opted in, under the canonical snake_case key.
+  if (state.captureFailureResponse) cfg.capture_failure_response = true;
   const errors: FieldErrors = [];
   if (!state.url) errors.push({ name: "url", message: "URL is required" });
   // Invalid chips block save with a field-scoped error, the same mechanism
@@ -422,6 +437,31 @@ export function HttpOptionsFields({
           following it to its destination.
         </p>
       )}
+      <div className="flex items-center gap-2">
+        <Switch
+          id="http-capture-failure-response"
+          checked={state.captureFailureResponse}
+          onCheckedChange={(captureFailureResponse) =>
+            onChange({ ...state, captureFailureResponse })
+          }
+          data-testid="check-capture-failure-response-switch"
+        />
+        <Label htmlFor="http-capture-failure-response">
+          Capture the failing response
+        </Label>
+      </div>
+      {state.captureFailureResponse && (
+        <p
+          className="text-xs text-yellow-700 dark:text-yellow-400"
+          data-testid="check-capture-failure-response-warning"
+        >
+          When this check fails, the response it received (status line, headers
+          with sensitive values redacted, and up to 16 KB of the body) is kept
+          on the incident it opens. Response bodies can contain personal data —
+          the capture is visible to your team only and never appears on a status
+          page.
+        </p>
+      )}
     </div>
   );
 }
@@ -435,6 +475,7 @@ export function httpOptionsSummary(state: HttpState): {
   const parts: string[] = [];
   if (!state.verifySsl) parts.push("TLS verification off");
   if (!state.followRedirects) parts.push("redirects not followed");
+  if (state.captureFailureResponse) parts.push("failure response captured");
   return { text: parts.join(" · "), customized: parts.length > 0 };
 }
 

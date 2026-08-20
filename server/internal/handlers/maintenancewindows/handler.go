@@ -52,7 +52,7 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 
 	windows, err := h.svc.ListMaintenanceWindows(req.Context(), orgSlug, status, limit)
 	if err != nil {
-		return h.handleOrgError(writer, err)
+		return h.handleOrgError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
@@ -73,7 +73,7 @@ func (h *Handler) Create(writer http.ResponseWriter, req *http.Request) error {
 
 	window, err := h.svc.CreateMaintenanceWindow(req.Context(), orgSlug, &createReq)
 	if err != nil {
-		return h.handleCreateError(writer, err)
+		return h.handleCreateError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, window)
@@ -86,7 +86,7 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 
 	window, err := h.svc.GetMaintenanceWindow(req.Context(), orgSlug, uid)
 	if err != nil {
-		return h.handleWindowError(writer, err)
+		return h.handleWindowError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, window)
@@ -106,7 +106,7 @@ func (h *Handler) Update(writer http.ResponseWriter, req *http.Request) error {
 
 	window, err := h.svc.UpdateMaintenanceWindow(req.Context(), orgSlug, uid, updateReq)
 	if err != nil {
-		return h.handleUpdateError(writer, err)
+		return h.handleUpdateError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, window)
@@ -118,7 +118,7 @@ func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
 	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.DeleteMaintenanceWindow(req.Context(), orgSlug, uid); err != nil {
-		return h.handleWindowError(writer, err)
+		return h.handleWindowError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -133,7 +133,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 
 	checks, err := h.svc.ListChecks(req.Context(), orgSlug, uid)
 	if err != nil {
-		return h.handleWindowError(writer, err)
+		return h.handleWindowError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
@@ -154,7 +154,7 @@ func (h *Handler) SetChecks(writer http.ResponseWriter, req *http.Request) error
 	}
 
 	if err := h.svc.SetChecks(req.Context(), orgSlug, uid, setReq); err != nil {
-		return h.handleWindowError(writer, err)
+		return h.handleWindowError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -162,34 +162,34 @@ func (h *Handler) SetChecks(writer http.ResponseWriter, req *http.Request) error
 	return nil
 }
 
-func (h *Handler) handleOrgError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleOrgError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if errors.Is(err, ErrOrganizationNotFound) {
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	}
 
-	return h.WriteInternalError(writer, err)
+	return h.WriteInternalError(writer, request, err)
 }
 
-func (h *Handler) handleWindowError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleWindowError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrMaintenanceWindowNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeMaintenanceWindowNotFound,
+			writer, request, http.StatusNotFound, base.ErrorCodeMaintenanceWindowNotFound,
 			"Maintenance window not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrTitleRequired):
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 			{Name: "title", Message: "Title is required"},
@@ -203,18 +203,18 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 			{Name: "recurrence", Message: "Recurrence must be none, daily, weekly, or monthly"},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrMaintenanceWindowNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeMaintenanceWindowNotFound,
+			writer, request, http.StatusNotFound, base.ErrorCodeMaintenanceWindowNotFound,
 			"Maintenance window not found", err)
 	case errors.Is(err, ErrInvalidTimeRange):
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
@@ -225,6 +225,6 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 			{Name: "recurrence", Message: "Recurrence must be none, daily, weekly, or monthly"},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

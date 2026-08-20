@@ -14,7 +14,7 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 - **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP), labels with autocomplete
 - **Low footprint**: Single binary; SQLite, embedded Postgres, or external Postgres
 - **Fast checks**: Sub-minute frequencies supported
-- **Notifications (10 native)**: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push (VAPID)
+- **Notifications (10 native)**: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, PagerDuty, Pushover, Web Push (VAPID)
 - **Incidents**: Adaptive resolution with cooldown, group-incident correlation (one alert per outage, not per check), acknowledgment, snooze, manual resolve, and per-incident comments
 - **Check groups**: Organize checks into groups with grouped pagination and group-level incident correlation
 - **On-call & escalation**: Rotation schedules with overrides, multi-step escalation policies (user / schedule / connection / all-admins targets, repeats)
@@ -230,7 +230,7 @@ Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable an OAuth provider.
 - **Dashboard** (`web/dash0`): Admin UI (React + TanStack Router + shadcn/ui)
 - **Status Page** (`web/status0`): Public-facing status dashboard
 - **Workers**: Distributed agents executing monitoring checks
-- **Notifications**: Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push
+- **Notifications**: Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy, PagerDuty, Pushover, Web Push
 - **Database**: PostgreSQL (partitioned results) or SQLite
 
 ### Technology Stack

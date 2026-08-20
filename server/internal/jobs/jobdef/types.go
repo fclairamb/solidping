@@ -68,6 +68,22 @@ const (
 	// failures (domain release/takeover protection). Global, self-rescheduling
 	// every 6h (spec 2026-07-22-01).
 	JobTypeCustomDomainVerify JobType = "custom_domain_verify"
+	// JobTypeAbandonedResultReaper periodically finalizes raw results left in
+	// ResultStatusCreated (most visibly CreateCheck's one-time "Check created"
+	// marker) once they are well past any plausible execution window for their
+	// check: each is flipped to a terminal error carrying Abandoned=true,
+	// which keeps it out of availability math while still recording that an
+	// attempt happened. Deliberately does NOT touch ResultStatusRunning, which
+	// heartbeat checks use as a legitimate long-lived status. Global,
+	// self-rescheduling (spec 2026-08-18-03).
+	JobTypeAbandonedResultReaper JobType = "abandoned_result_reaper"
+	// JobTypeIncidentPublish is the debounce timer of the incident
+	// auto-publication pipeline (spec 2026-08-19-08): scheduled at
+	// now + status_pages.auto_publish_delay_seconds when an incident opens, it
+	// re-evaluates eligibility at FIRE time and only then makes the incident
+	// visible on the status page. That re-check is the whole point — an
+	// incident that resolved inside the delay never reaches the public page.
+	JobTypeIncidentPublish JobType = "incident_publish"
 	// JobTypeAgentGC retires platform-operated ("system") agents that stopped
 	// reporting: a fly.io fleet enrolls on boot with a per-machine keypair, so
 	// every machine replacement leaves a dead agent row (and its workers row)
@@ -75,6 +91,16 @@ const (
 	// user-managed and never touched. Global, self-rescheduling every 6h
 	// (spec 2026-07-27-01).
 	JobTypeAgentGC JobType = "agent_gc"
+	// JobTypeUptimeReport emits the scheduled uptime-report digests
+	// (spec 2026-08-20-01). Global and self-rescheduling hourly; each run
+	// looks for schedules whose weekly/monthly period has just closed in
+	// their own timezone. Multi-replica safety comes from the conditional
+	// last_period_start claim in MarkReportScheduleRun, not from a leader.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes: it sends mail to
+	// arbitrary stored addresses, so a public creation endpoint for it would
+	// be a spam primitive with extra steps.
+	JobTypeUptimeReport JobType = "uptime_report"
 )
 
 // publiclyCreatableJobTypes is the allowlist of job types that may be enqueued

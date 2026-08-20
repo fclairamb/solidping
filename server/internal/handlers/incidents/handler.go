@@ -45,7 +45,7 @@ func (h *Handler) ListIncidents(writer http.ResponseWriter, req *http.Request) e
 
 	response, err := h.svc.ListIncidents(req.Context(), orgSlug, opts)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
@@ -112,8 +112,11 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 func applyListIncidentsExtras(query url.Values, opts *ListIncidentsOptions) {
 	if v := query.Get("with"); v != "" {
 		for _, w := range strings.Split(v, ",") {
-			if w == "check" {
+			switch w {
+			case "check":
 				opts.WithCheck = true
+			case "members":
+				opts.WithMembers = true
 			}
 		}
 	}
@@ -132,19 +135,22 @@ func (h *Handler) GetIncident(writer http.ResponseWriter, req *http.Request) err
 	orgSlug := httpx.Param(req, "org")
 	incidentUID := httpx.Param(req, "uid")
 
-	// Parse with parameter (e.g., ?with=check)
+	// Parse with parameter (e.g., ?with=check,members)
 	opts := &GetIncidentOptions{}
 	if withParam := req.URL.Query().Get("with"); withParam != "" {
 		for _, w := range strings.Split(withParam, ",") {
-			if w == "check" {
+			switch w {
+			case "check":
 				opts.WithCheck = true
+			case "members":
+				opts.WithMembers = true
 			}
 		}
 	}
 
 	response, err := h.svc.GetIncident(req.Context(), orgSlug, incidentUID, opts)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
@@ -165,7 +171,7 @@ func parseRFC3339(value string) (*time.Time, error) {
 }
 
 // handleError translates service errors to HTTP responses.
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -179,7 +185,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		errors.Is(err, ErrCommentTooLong):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -269,7 +275,7 @@ func (h *Handler) AcknowledgeIncident(writer http.ResponseWriter, req *http.Requ
 		Via:            viaWeb,
 	})
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
@@ -282,7 +288,7 @@ func (h *Handler) UnacknowledgeIncident(writer http.ResponseWriter, req *http.Re
 
 	incident, err := h.svc.UnacknowledgeIncident(req.Context(), orgSlug, incidentUID, h.actorUID(req), viaWeb)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
@@ -324,7 +330,7 @@ func (h *Handler) SnoozeIncident(writer http.ResponseWriter, req *http.Request) 
 
 	incident, err := h.svc.SnoozeIncident(req.Context(), orgSlug, snoozeReq)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
@@ -337,7 +343,7 @@ func (h *Handler) UnsnoozeIncident(writer http.ResponseWriter, req *http.Request
 
 	incident, err := h.svc.UnsnoozeIncident(req.Context(), orgSlug, incidentUID, h.actorUID(req), "manual")
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
@@ -363,7 +369,7 @@ func (h *Handler) ResolveIncident(writer http.ResponseWriter, req *http.Request)
 		Via:         viaWeb,
 	})
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
@@ -406,7 +412,7 @@ func (h *Handler) AddComment(writer http.ResponseWriter, req *http.Request) erro
 		ActorUID:    h.actorUID(req),
 	})
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, commentEventResponse{

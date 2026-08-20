@@ -3,6 +3,7 @@ package heartbeat
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -82,6 +83,24 @@ func buildHeartbeatOutput(message, userAgent, remoteAddr, httpMethod string, cal
 	return output
 }
 
+// tagMaintenance sets results.maintenance before the insert (spec
+// 2026-08-20-01): rollup buckets cannot be sliced after the fact, so the tag
+// has to exist before aggregation runs.
+//
+// Best-effort — a failed maintenance lookup records the beat as production
+// traffic rather than losing it.
+func (s *Service) tagMaintenance(ctx context.Context, checkUID string, result *models.Result) {
+	inMaintenance, err := s.incidentSvc.IsCheckInActiveMaintenance(ctx, checkUID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", err, "check_uid", checkUID)
+
+		return
+	}
+
+	result.Maintenance = inMaintenance
+}
+
 // parseHeartbeatStatus maps a status string to a checkerdef.Status.
 func parseHeartbeatStatus(status string) (checkerdef.Status, bool) {
 	switch status {
@@ -107,11 +126,27 @@ type Service struct {
 
 // NewService creates a new heartbeat service. rt may be nil (realtime
 // disabled) — hint publishing is a nil-safe no-op then.
-func NewService(dbService db.Service, jobSvc jobsvc.Service, rt *realtime.Publisher) *Service {
+//
+// publicationHook is the status-page publication side (spec 2026-08-19-08) and
+// may be nil. It is a REQUIRED PARAMETER rather than a setter on purpose: a
+// heartbeat ping opens and resolves incidents exactly like a probe result
+// does, so an instance without the hook silently never auto-publishes anything
+// — a gap that is invisible until someone notices their heartbeat outage never
+// reached the status page. Making it part of the signature means a new call
+// site has to make a deliberate choice instead of inheriting the bug.
+func NewService(
+	dbService db.Service, jobSvc jobsvc.Service, realtimePublisher *realtime.Publisher,
+	publicationHook incidents.PublicationHook,
+) *Service {
+	incidentSvc := incidents.NewService(dbService, jobSvc, clock.Real{}, realtimePublisher)
+	if publicationHook != nil {
+		incidentSvc.SetPublicationHook(publicationHook)
+	}
+
 	return &Service{
 		db:          dbService,
-		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}, rt),
-		rt:          rt,
+		incidentSvc: incidentSvc,
+		rt:          realtimePublisher,
 	}
 }
 
@@ -191,6 +226,8 @@ func (s *Service) ReceiveHeartbeat(
 		Output:          buildHeartbeatOutput(outputMessage, userAgent, remoteAddr, httpMethod, callerData),
 		CreatedAt:       time.Now(),
 	}
+
+	s.tagMaintenance(ctx, check.UID, result)
 
 	if err := s.db.SaveResultWithStatusTracking(ctx, result); err != nil {
 		return err

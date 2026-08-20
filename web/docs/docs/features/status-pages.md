@@ -90,6 +90,128 @@ Status pages are managed per organization from the dashboard (**Settings → Sta
 | History Days | Size of the lookback window (default 90 days) |
 | Language | Locale used for date formatting on the public page |
 | Custom CSS | Your own stylesheet, applied to the public page (see below) |
+| Auto-publish incidents | Turn monitoring incidents into public incidents automatically (see below) |
+| Publication delay | Debounce before an incident goes public (default 60 s) |
+| When the incident resolves | `always` / `if_untouched` / `never` |
+
+## Incidents
+
+A status page shows two different things, and it is worth keeping them apart:
+
+- the **component grid** — a dot per check or group, flipping green/amber/red
+  on its own;
+- **incidents** — the narrative. A title, a state, and an append-only list of
+  updates explaining what is going on.
+
+Before this feature, only the grid was automatic: a check going down turned a
+dot red and said nothing else. If nobody was awake to write an update, visitors
+saw a red dot with no explanation. Incidents fix that.
+
+### Automatic publication
+
+When `Auto-publish incidents` is on, an incident that opens on a check
+displayed by the page becomes a public incident, with a templated title built
+from the component's **public name** and a first "investigating" update.
+
+Four things stop a publication:
+
+| Situation | Behaviour |
+|---|---|
+| The incident resolves inside the publication delay | Nothing is ever published — a short blip stays private |
+| The incident is rolled up under a parent | The parent (or group) incident publishes; members never do |
+| The check is inside a maintenance window | Planned work is not an incident |
+| The page — or that one component — has auto-publish off | Nothing is published |
+
+The per-component override is three-state: leaving it unset means "inherit the
+page", which is not the same as switching it off. So you can turn a page on
+without silently opting in a component you deliberately excluded — and vice
+versa.
+
+:::info Existing pages are not opted in
+Pages that existed before this feature shipped keep `auto-publish` **off**.
+Nobody's internal blips become public because they upgraded. Pages created
+since default to **on**.
+:::
+
+### What customers see — and what they never see
+
+Public incident copy is built from exactly one incident-derived value: the
+**public display name** of the affected component (falling back to the check
+name, which is the same fallback the component list already uses).
+
+Probe output, error strings, response bodies and internal hostnames are
+**never** written into a public field. This is a structural guarantee, not a
+convention — the publication table has no column any of it could land in, and
+the templates interpolate only that one name.
+
+### Resolving
+
+When the underlying incident recovers, what happens depends on the page's
+`When the incident resolves` setting and on whether a human has touched the
+public incident:
+
+| Setting | Nobody edited it | Somebody edited it |
+|---|---|---|
+| `if_untouched` (default) | Resolved automatically, with a "resolved" update | A "component has recovered" note is posted; **you** close it |
+| `always` | Resolved automatically | Resolved automatically |
+| `never` | Nothing posted, nothing resolved | Nothing posted, nothing resolved |
+
+The default exists because the moment you edit a public incident, its narrative
+is yours. Auto-resolving under you would overwrite a deliberate editorial
+decision with a machine's opinion.
+
+If the check relapses shortly after recovering, the **same** incident is
+reopened rather than a second one being created — a flapping service reads as
+one incident with a history, not five.
+
+### Writing them by hand
+
+You do not need an underlying monitoring incident at all. From
+**Status Pages → (page) → Incidents** you can publish a hand-written incident
+with its own title, severity badge (`minor` / `major` / `critical`) and
+updates. You can also publish an existing incident onto a page from the
+incident's own detail view, and take it down again later.
+
+Updates are **append-only**: there is no edit and no delete. A posted update is
+a promise, not a draft — correcting one means posting the correction.
+
+### API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/orgs/{org}/status-pages/{page}/incidents` | List publications |
+| `POST /api/v1/orgs/{org}/status-pages/{page}/incidents` | Publish a hand-written incident |
+| `GET`/`PATCH` `…/incidents/{uid}` | Read / edit title, severity, state |
+| `POST …/incidents/{uid}/updates` | Append an update |
+| `GET`/`POST` `/api/v1/orgs/{org}/incidents/{uid}/publications` | List / publish from the incident side |
+| `DELETE …/publications/{uid}` | Unpublish |
+| `GET /api/v1/status-pages/{org}/{slug}/incidents` | **Public** incident history (`?active=true` for open ones) |
+
+The public page payload also gains an `activeIncidents[]` array, so a single
+request renders the banner, the components and the incidents together.
+
+### Webhooks
+
+Publication lifecycle fires its own events on your `webhook` connections,
+separate from the internal incident events:
+
+| Event | When |
+|---|---|
+| `statuspage.incident.published` | An incident became visible on a page |
+| `statuspage.incident.updated` | Title, severity, state or narrative changed |
+| `statuspage.incident.resolved` | The public incident was closed or unpublished |
+
+`incident.created` / `incident.resolved` are unchanged and still describe the
+internal incident. The two are deliberately distinct: they happen at different
+times (the publication delay sits between them), and most incidents never
+produce a public one at all.
+
+### Subscriber storm cap
+
+Each public incident may trigger at most **4 subscriber email waves per hour**
+(org parameter `status_page.publication_notify_cap`). Beyond that, updates are
+still posted to the page and the feed — only the mail stops. A flapping group
+incident must not fill anyone's inbox.
 
 ## Custom CSS
 

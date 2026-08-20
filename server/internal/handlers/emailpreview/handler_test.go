@@ -36,6 +36,7 @@ func shippedTemplates() []string {
 		"password-changed.html",
 		"membership_request_new.html",
 		"membership_request_decision.html",
+		"uptime-report.html",
 	}
 }
 

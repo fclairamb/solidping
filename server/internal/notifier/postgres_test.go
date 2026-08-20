@@ -21,7 +21,7 @@ func TestPgEventNotifier(t *testing.T) {
 
 	ctx := t.Context()
 	port := uint32(15436)
-	svc, err := postgres.NewEmbedded(ctx, "notifier", port, false, "", false)
+	svc, err := postgres.NewEmbedded(ctx, "notifier", port, false, "", false, 0)
 	require.NoError(t, err, "Failed to create PostgreSQL service")
 
 	t.Cleanup(func() {
@@ -349,7 +349,7 @@ func TestPgEventNotifier_factory(t *testing.T) {
 
 	ctx := t.Context()
 	port := uint32(15437)
-	svc, err := postgres.NewEmbedded(ctx, "notifier-factory", port, false, "", false)
+	svc, err := postgres.NewEmbedded(ctx, "notifier-factory", port, false, "", false, 0)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

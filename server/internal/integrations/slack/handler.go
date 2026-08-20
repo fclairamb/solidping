@@ -157,7 +157,7 @@ func (h *Handler) BuildInstallURLForOrg(writer http.ResponseWriter, req *http.Re
 
 		slog.ErrorContext(req.Context(), "Failed to build org-scoped Slack install URL", "error", err)
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, installURLResponse{URL: authorizeURL})

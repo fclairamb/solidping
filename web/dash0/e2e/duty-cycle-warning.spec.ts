@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, mockSloCoverage } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 // Duty-cycle warning on the check detail page (spec 2026-07-01-04 D3): when
@@ -21,6 +21,11 @@ async function mockScheduling(
     dutyCyclePct: number;
   } | null,
 ) {
+  // The check-detail header's SLO coverage chip fires an unconditional
+  // GET /slos?checkUid=… (spec 2026-08-20-01). Stub it so the networkidle
+  // wait in the tests below has nothing real left to settle.
+  await mockSloCoverage(page);
+
   await page.route("**/api/v1/orgs/*/checks/*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

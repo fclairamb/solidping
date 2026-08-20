@@ -48,11 +48,11 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) er
 	if err := req.ParseMultipartForm(MaxReportSize); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			return h.WriteErrorErr(writer, http.StatusRequestEntityTooLarge,
+			return h.WriteErrorErr(writer, req, http.StatusRequestEntityTooLarge,
 				errCodeRequestTooBig, "Report exceeds 10 MB", err)
 		}
 
-		return h.WriteErrorErr(writer, http.StatusBadRequest, errCodeBadRequest, "Invalid multipart body", err)
+		return h.WriteErrorErr(writer, req, http.StatusBadRequest, errCodeBadRequest, "Invalid multipart body", err)
 	}
 
 	form := req.MultipartForm
@@ -65,7 +65,7 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) er
 	}
 
 	if submission.URL == "" {
-		return h.WriteErrorErr(writer, http.StatusBadRequest, errCodeBadRequest, "Missing 'url' field", ErrURLRequired)
+		return h.WriteErrorErr(writer, req, http.StatusBadRequest, errCodeBadRequest, "Missing 'url' field", ErrURLRequired)
 	}
 
 	if rawCtx := formValue(form, "context"); rawCtx != "" {
@@ -79,7 +79,7 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) er
 
 		opened, err := header.Open()
 		if err != nil {
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 
 		defer func() { _ = opened.Close() }()
@@ -94,12 +94,12 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) er
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):
-			return h.WriteErrorErr(writer, http.StatusNotFound,
+			return h.WriteErrorErr(writer, req, http.StatusNotFound,
 				base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		case errors.Is(err, ErrURLRequired):
-			return h.WriteErrorErr(writer, http.StatusBadRequest, errCodeBadRequest, "Missing 'url' field", err)
+			return h.WriteErrorErr(writer, req, http.StatusBadRequest, errCodeBadRequest, "Missing 'url' field", err)
 		default:
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 	}
 

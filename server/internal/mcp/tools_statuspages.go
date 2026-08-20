@@ -21,7 +21,27 @@ const (
 	propLanguage          = "language"
 	propCustomCSS         = "customCss"
 	propCheckUID          = "checkUid"
+	propAutoPublish       = "autoPublish"
+	propAutoPublishDelay  = "autoPublishDelaySeconds"
+	propAutoResolve       = "autoResolve"
 )
+
+// autoPublishProps are the incident auto-publication settings (spec
+// 2026-08-19-08), shared verbatim by create_status_page and update_status_page
+// so the two descriptions can never drift.
+func autoPublishProps(schema map[string]any) map[string]any {
+	schema[propAutoPublish] = boolProp(
+		"Automatically publish incidents affecting this page's resources as public incidents. " +
+			"New pages default to true; pages that existed before this feature shipped default to false.")
+	schema[propAutoPublishDelay] = intProp(
+		"Debounce in seconds before an incident becomes public (default 60). 0 publishes immediately. " +
+			"An incident that resolves inside the delay is never published at all.")
+	schema[propAutoResolve] = stringProp(
+		"What an auto-created publication does when its incident resolves. Allowed: \"always\", " +
+			"\"if_untouched\" (default — a publication a human has edited is left for them to close), \"never\".")
+
+	return schema
+}
 
 // --- Pages ---
 
@@ -73,7 +93,7 @@ func createStatusPageDef() ToolDefinition {
 		Name: "create_status_page",
 		Description: "Create a new status page for the organization. A status page is the " +
 			"public-facing dashboard that displays the current health of selected checks.",
-		InputSchema: objectSchema(map[string]any{
+		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			schemaKeyName:        stringProp("Status page display name (required), e.g. \"Public status\"."),
 			schemaKeySlug:        stringProp("URL-friendly slug (required, unique per org), e.g. \"public\"."),
 			schemaKeyDescription: stringProp("Optional free-text description shown in the UI."),
@@ -90,7 +110,7 @@ func createStatusPageDef() ToolDefinition {
 					"custom properties (--brand, --background, --foreground, --card, --border, the status " +
 					"colors, and the .dark variant). Max 64 KB; @import is rejected.",
 			),
-		}, []string{schemaKeyName, schemaKeySlug}),
+		}), []string{schemaKeyName, schemaKeySlug}),
 	}
 }
 
@@ -126,6 +146,14 @@ func (h *Handler) toolCreateStatusPage(ctx context.Context, orgSlug string, args
 		v := getStringArg(args, propCustomCSS)
 		req.CustomCSS = &v
 	}
+	req.AutoPublish = getBoolArg(args, propAutoPublish)
+	if _, ok := args[propAutoPublishDelay]; ok {
+		v := getIntArg(args, propAutoPublishDelay, 0)
+		req.AutoPublishDelaySeconds = &v
+	}
+	if v := getStringArg(args, propAutoResolve); v != "" {
+		req.AutoResolve = &v
+	}
 	page, err := h.statusPagesSvc.CreateStatusPage(ctx, orgSlug, req)
 	if err != nil {
 		return errorResult(err.Error())
@@ -137,7 +165,7 @@ func updateStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name:        "update_status_page",
 		Description: "Update an existing status page (PATCH semantics — only provided fields change).",
-		InputSchema: objectSchema(map[string]any{
+		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			propIdentifier:       stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			schemaKeyName:        stringProp("New display name, e.g. \"Public status page\"."),
 			schemaKeySlug:        stringProp("New URL-friendly slug, e.g. \"public\"."),
@@ -153,7 +181,7 @@ func updateStatusPageDef() ToolDefinition {
 				"Custom CSS injected into the public page as a <style> element (see create_status_page). " +
 					"Max 64 KB; @import is rejected. Pass an empty string to clear it.",
 			),
-		}, []string{propIdentifier}),
+		}), []string{propIdentifier}),
 	}
 }
 
@@ -198,6 +226,14 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 	if _, ok := args[propCustomCSS]; ok {
 		v := getStringArg(args, propCustomCSS)
 		req.CustomCSS = &v
+	}
+	req.AutoPublish = getBoolArg(args, propAutoPublish)
+	if _, ok := args[propAutoPublishDelay]; ok {
+		v := getIntArg(args, propAutoPublishDelay, 0)
+		req.AutoPublishDelaySeconds = &v
+	}
+	if v := getStringArg(args, propAutoResolve); v != "" {
+		req.AutoResolve = &v
 	}
 	return req
 }

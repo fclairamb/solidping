@@ -18,8 +18,14 @@ import { ResponseTimeChart } from "./response-time-chart";
 import { LanguageSwitcher } from "./language-switcher";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
+import { ActiveIncidents } from "./active-incidents";
+import { IncidentHistory } from "./incident-history";
 import { SubscribeWidget } from "./subscribe-widget";
-import { statusStyle } from "@/lib/status-style";
+import {
+  highestSeverity,
+  severityStyle,
+  statusStyle,
+} from "@/lib/status-style";
 import { usePreviewCss } from "@/lib/preview-css";
 
 function getStatusColor(status: string) {
@@ -96,6 +102,18 @@ interface ResourceCardProps {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  /**
+   * Public display names covered by an OPEN incident publication, keyed by the
+   * severity to colour the badge with (empty string = the operator graded the
+   * incident with no severity).
+   *
+   * Keying on the display name is deliberate: `affectedResources` is exactly
+   * the set of public names the SERVER resolved by walking this page's own
+   * resources, so matching on the same string is matching on the same thing.
+   * No check UID crosses into the public payload to join on, and inventing one
+   * would mean exposing internal identity to do it.
+   */
+  affectedSeverities: Map<string, string>;
 }
 
 function ResourceCard({
@@ -103,15 +121,23 @@ function ResourceCard({
   showAvailability,
   showResponseTime,
   historyDays,
+  affectedSeverities,
 }: ResourceCardProps) {
   const { t } = useTranslation();
   const name = resource.publicName || resource.check?.name || t("unknown");
+  const incidentSeverity = affectedSeverities.get(name);
+  const isAffected = incidentSeverity !== undefined;
+  const incidentStyle = severityStyle(incidentSeverity);
   const status = resource.check?.status ?? "unknown";
   const inMaintenance = resource.check?.inMaintenance ?? false;
   const avail = resource.availability;
 
   return (
-    <div className="py-3 px-4 sm:px-6 transition-colors hover:bg-muted/40">
+    <div
+      className="py-3 px-4 sm:px-6 transition-colors hover:bg-muted/40"
+      data-testid="resource-row"
+      data-resource-affected={isAffected ? "true" : "false"}
+    >
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -139,6 +165,22 @@ function ResourceCard({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* "Affected" sits BEFORE the status badge: it explains the red dot
+              to the left of it, and a reader scanning the row should meet the
+              explanation on the way to the verdict. Only rendered for a
+              resource an open publication actually names — that is the whole
+              point of the badge, and rendering it everywhere would make it
+              meaningless. */}
+          {isAffected && (
+            <Badge
+              variant={incidentStyle?.badgeVariant ?? "secondary"}
+              data-testid="resource-incident-badge"
+              data-incident-severity={incidentSeverity || "none"}
+              {...NO_TRANSLATE}
+            >
+              {t("resourceAffected")}
+            </Badge>
+          )}
           {showAvailability && avail?.overallAvailabilityPct != null && (
             <span
               className="text-sm font-medium tabular-nums text-status-ok-foreground"
@@ -191,6 +233,7 @@ interface SectionCardProps {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  affectedSeverities: Map<string, string>;
 }
 
 function SectionCard({
@@ -198,6 +241,7 @@ function SectionCard({
   showAvailability,
   showResponseTime,
   historyDays,
+  affectedSeverities,
 }: SectionCardProps) {
   const { t } = useTranslation();
   const resources = section.resources ?? [];
@@ -230,6 +274,7 @@ function SectionCard({
                   showAvailability={showAvailability}
                   showResponseTime={showResponseTime}
                   historyDays={historyDays}
+                  affectedSeverities={affectedSeverities}
                 />
               ))}
           </div>
@@ -259,6 +304,28 @@ export function StatusPageView({
   // maintenance masking a down check). Absent on a cached/older response, in
   // which case the line is simply omitted.
   const counts = page.statusCounts;
+  // Open incident publications drive three things at once: the banner colour,
+  // the active-incidents section, and the per-resource "Affected" badge. They
+  // are all derived here so a resource can never be badged as affected by an
+  // incident the page is not also showing.
+  const activeIncidents = page.activeIncidents ?? [];
+  const affectedSeverities = new Map<string, string>();
+
+  for (const incident of activeIncidents) {
+    for (const resourceName of incident.affectedResources ?? []) {
+      const existing = affectedSeverities.get(resourceName);
+      // A resource caught by two incidents wears the worse severity.
+      const worst = highestSeverity([existing, incident.severity]);
+      affectedSeverities.set(resourceName, worst ?? existing ?? "");
+    }
+  }
+
+  // The banner takes the WORST severity across the open incidents. When no
+  // open incident carries one — the operator graded none — it stays on the
+  // rollup colour rather than inventing a severity for them.
+  const bannerSeverity = severityStyle(
+    highestSeverity(activeIncidents.map((incident) => incident.severity)),
+  );
   const resourceTotal = counts
     ? counts.operational +
       counts.degraded +
@@ -340,7 +407,13 @@ export function StatusPageView({
           )}
 
           <div
-            className={`sp-status-banner relative overflow-hidden mt-5 rounded-xl border p-3.5 sm:p-4 shadow-sm ${overallStyle.bannerSurface}`}
+            className={`sp-status-banner relative overflow-hidden mt-5 rounded-xl border p-3.5 sm:p-4 shadow-sm ${
+              bannerSeverity?.bannerSurface ?? overallStyle.bannerSurface
+            }`}
+            data-testid="overall-status-banner"
+            data-incident-severity={
+              bannerSeverity ? bannerSeverity.labelKey.split(".")[1] : "none"
+            }
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -365,7 +438,9 @@ export function StatusPageView({
                       for all five rollup values. Renaming the testid would break
                       that suite for no gain. */}
                   <h2
-                    className={`text-sm sm:text-base font-semibold ${overallStyle.bannerTitle}`}
+                    className={`text-sm sm:text-base font-semibold ${
+                      bannerSeverity?.bannerTitle ?? overallStyle.bannerTitle
+                    }`}
                     data-testid="overall-status-badge"
                     {...NO_TRANSLATE}
                   >
@@ -391,7 +466,9 @@ export function StatusPageView({
                   bug — the two sat side by side with identical text. */}
               {aggregateUptimePct != null && (
                 <div
-                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${overallStyle.bannerPill}`}
+                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${
+                    bannerSeverity?.bannerPill ?? overallStyle.bannerPill
+                  }`}
                   data-testid="overall-uptime-pill"
                   {...NO_TRANSLATE}
                 >
@@ -401,6 +478,11 @@ export function StatusPageView({
             </div>
           </div>
         </div>
+
+        {/* Open incidents. Rendered ABOVE the component grid: a visitor who
+            arrived because something is broken should read the explanation
+            before hunting for a red dot. Renders nothing when all is well. */}
+        <ActiveIncidents incidents={activeIncidents} />
 
         {/* Sections */}
         <div className="space-y-6">
@@ -422,6 +504,7 @@ export function StatusPageView({
                   showAvailability={page.showAvailability}
                   showResponseTime={page.showResponseTime}
                   historyDays={page.historyDays}
+                  affectedSeverities={affectedSeverities}
                 />
               ))
           )}
@@ -436,6 +519,10 @@ export function StatusPageView({
             <StatusUpdatesTimeline updates={page.recentUpdates} />
           </section>
         )}
+
+        {/* Past incidents, collapsed by default — history matters, but not
+            more than the current state. */}
+        <IncidentHistory org={org} slug={page.slug} />
 
         {/* Subscribe to updates (email double opt-in) + RSS/Atom feed */}
         <section aria-label="Subscribe to updates" className="mt-8">

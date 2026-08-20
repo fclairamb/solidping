@@ -130,8 +130,13 @@
     "groupAccount": "Account",
     "groupOrganization": "Organization",
     "groupChecks": "Checks",
+    "groupStatusPages": "Status pages",
+    "groupEscalationPolicies": "Escalation policies",
+    "groupSlos": "SLOs",
     "newCheck": "New Check",
     "newCheckDescription": "Create a new monitoring check",
     "aiDescription": "Connect AI assistants via MCP"
-  }
+  },
+  "slos": "SLOs",
+  "reportSchedules": "Uptime reports"
 }

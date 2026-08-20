@@ -266,7 +266,7 @@ func statusPagesCreateAction(ctx context.Context, cmd *cli.Command) error {
 
 	body := client.CreateStatusPageJSONRequestBody{
 		Name:             name,
-		Slug:             slug,
+		Slug:             &slug,
 		Description:      optString(cmd, flagDescription),
 		Visibility:       optString(cmd, flagVisibility),
 		Language:         optString(cmd, flagLanguage),
@@ -514,7 +514,7 @@ func statusPagesSectionsCreateAction(ctx context.Context, cmd *cli.Command) erro
 
 	body := client.CreateStatusPageSectionJSONRequestBody{
 		Name:     name,
-		Slug:     slug,
+		Slug:     &slug,
 		Position: optInt(cmd, flagPosition),
 	}
 

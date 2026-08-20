@@ -72,12 +72,20 @@
     "googlechat": "Google Chat",
     "mattermost": "Mattermost",
     "ntfy": "ntfy",
-    "opsgenie": "Opsgenie",
+    "matrix": "Matrix",
+    "pagerduty": "PagerDuty",
     "pushover": "Pushover",
     "slack": "Slack",
     "discord": "Discord",
     "webhook": "Webhook",
     "telegram": "Telegram"
+  },
+  "myNotifications": {
+    "empty": {
+      "title": "Aucune notification pour le moment",
+      "hint": "Vous n'avez encore été alerté pour aucun incident.",
+      "cta": "Paramètres de notification"
+    }
   },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "Modèle de message WhatsApp indisponible — demandez à un administrateur de vérifier son statut d’approbation",

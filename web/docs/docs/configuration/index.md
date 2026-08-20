@@ -139,6 +139,13 @@ SP_REGIONS='[{"slug": "default", "emoji": "🇪🇺", "name": "EU1 (default)"}, 
 When unset, the stored parameter (or the built-in `default` region) is
 used, so edits made through the API are preserved across restarts.
 
+### Check Types
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_CHECKERS_BROWSER_CDP_URL` | - | Remote headless Chrome (CDP) endpoint for [browser checks](/features/check-types#browser), e.g. `ws://browser:9222`. Required in containers — the image ships no browser |
+| `SP_CHECKERS_BROWSER_CHROME_PATH` | - | Local Chrome/Chromium binary used when no CDP URL is set. Empty means "probe the usual names"; nothing is ever downloaded |
+
 ### Logging
 
 | Variable | Default | Description |

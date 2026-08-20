@@ -26,6 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CheckTypeBadge } from "@/components/shared/check-type-identity";
 import {
   useDiscoveryScan,
   useListDiscoveredChecks,
@@ -272,7 +273,7 @@ function GroupCard({
                 disabled={!!check.promotedToCheckUid}
               />
               <span className="font-medium">{check.name}</span>
-              <Badge variant="secondary" className="text-xs">{check.type}</Badge>
+              <CheckTypeBadge type={check.type} />
               {configHint(check) && (
                 <span className="font-mono text-xs text-muted-foreground">
                   {configHint(check)}

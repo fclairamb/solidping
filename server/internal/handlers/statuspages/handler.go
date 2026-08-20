@@ -151,7 +151,7 @@ func (h *Handler) ListStatusPages(writer http.ResponseWriter, req *http.Request)
 
 	pages, err := h.svc.ListStatusPages(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleOrgError(writer, err)
+		return h.handleOrgError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
@@ -182,14 +182,14 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req *http.Request
 	// is irrelevant at create time — there's nothing to merge against.
 	settings, _, settingsErr := parseSettingsField(body)
 	if settingsErr != nil {
-		return h.handleCreatePageError(writer, settingsErr)
+		return h.handleCreatePageError(writer, req, settingsErr)
 	}
 
 	createReq.Settings = settings
 
 	page, err := h.svc.CreateStatusPage(req.Context(), orgSlug, &createReq)
 	if err != nil {
-		return h.handleCreatePageError(writer, err)
+		return h.handleCreatePageError(writer, req, err)
 	}
 
 	// No analytics capture here on purpose: status_page_published is emitted by
@@ -216,7 +216,7 @@ func (h *Handler) GetStatusPage(writer http.ResponseWriter, req *http.Request) e
 
 	page, err := h.svc.GetStatusPage(req.Context(), orgSlug, identifier, opts)
 	if err != nil {
-		return h.handlePageError(writer, err)
+		return h.handlePageError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, page)
@@ -251,7 +251,7 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req *http.Request
 
 	settings, settingsPresent, settingsErr := parseSettingsField(body)
 	if settingsErr != nil {
-		return h.handleUpdatePageError(writer, settingsErr)
+		return h.handleUpdatePageError(writer, req, settingsErr)
 	}
 
 	updateReq.Settings = settings
@@ -259,7 +259,7 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req *http.Request
 
 	page, err := h.svc.UpdateStatusPage(req.Context(), orgSlug, identifier, &updateReq)
 	if err != nil {
-		return h.handleUpdatePageError(writer, err)
+		return h.handleUpdatePageError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, page)
@@ -273,7 +273,7 @@ func (h *Handler) VerifyCustomDomain(writer http.ResponseWriter, req *http.Reque
 
 	page, err := h.svc.VerifyCustomDomain(req.Context(), orgSlug, identifier)
 	if err != nil {
-		return h.handleVerifyError(writer, err)
+		return h.handleVerifyError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, page)
@@ -303,7 +303,7 @@ func (h *Handler) DeleteStatusPage(writer http.ResponseWriter, req *http.Request
 	identifier := httpx.Param(req, "statusPageUid")
 
 	if err := h.svc.DeleteStatusPage(req.Context(), orgSlug, identifier); err != nil {
-		return h.handlePageError(writer, err)
+		return h.handlePageError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -318,7 +318,7 @@ func (h *Handler) ListSections(writer http.ResponseWriter, req *http.Request) er
 
 	sections, err := h.svc.ListSections(req.Context(), orgSlug, pageIdentifier)
 	if err != nil {
-		return h.handlePageError(writer, err)
+		return h.handlePageError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
@@ -340,7 +340,7 @@ func (h *Handler) CreateSection(writer http.ResponseWriter, req *http.Request) e
 
 	section, err := h.svc.CreateSection(req.Context(), orgSlug, pageIdentifier, createReq)
 	if err != nil {
-		return h.handleCreateSectionError(writer, err)
+		return h.handleCreateSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, section)
@@ -354,7 +354,7 @@ func (h *Handler) GetSection(writer http.ResponseWriter, req *http.Request) erro
 
 	section, err := h.svc.GetSection(req.Context(), orgSlug, pageIdentifier, sectionIdentifier)
 	if err != nil {
-		return h.handleSectionError(writer, err)
+		return h.handleSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, section)
@@ -375,7 +375,7 @@ func (h *Handler) UpdateSection(writer http.ResponseWriter, req *http.Request) e
 
 	section, err := h.svc.UpdateSection(req.Context(), orgSlug, pageIdentifier, sectionIdentifier, updateReq)
 	if err != nil {
-		return h.handleUpdateSectionError(writer, err)
+		return h.handleUpdateSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, section)
@@ -388,7 +388,7 @@ func (h *Handler) DeleteSection(writer http.ResponseWriter, req *http.Request) e
 	sectionIdentifier := httpx.Param(req, "sectionUid")
 
 	if err := h.svc.DeleteSection(req.Context(), orgSlug, pageIdentifier, sectionIdentifier); err != nil {
-		return h.handleSectionError(writer, err)
+		return h.handleSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -404,7 +404,7 @@ func (h *Handler) ListResources(writer http.ResponseWriter, req *http.Request) e
 
 	resources, err := h.svc.ListResources(req.Context(), orgSlug, pageIdentifier, sectionIdentifier)
 	if err != nil {
-		return h.handleSectionError(writer, err)
+		return h.handleSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
@@ -427,7 +427,7 @@ func (h *Handler) CreateResource(writer http.ResponseWriter, req *http.Request) 
 
 	resource, err := h.svc.CreateResource(req.Context(), orgSlug, pageIdentifier, sectionIdentifier, createReq)
 	if err != nil {
-		return h.handleResourceError(writer, err)
+		return h.handleResourceError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resource)
@@ -440,18 +440,33 @@ func (h *Handler) UpdateResource(writer http.ResponseWriter, req *http.Request) 
 	sectionIdentifier := httpx.Param(req, "sectionUid")
 	resourceUID := httpx.Param(req, "resourceUid")
 
-	var updateReq UpdateResourceRequest
-	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
+	raw, readErr := io.ReadAll(req.Body)
+	if readErr != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
 		})
+	}
+
+	var updateReq UpdateResourceRequest
+	if err := json.Unmarshal(raw, &updateReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	// Presence detection: an omitted autoPublish leaves the override alone,
+	// while an explicit null resets it to "inherit the page". json.Unmarshal
+	// cannot tell those apart on its own — both leave the pointer nil.
+	var presence map[string]json.RawMessage
+	if json.Unmarshal(raw, &presence) == nil {
+		_, updateReq.AutoPublishSet = presence["autoPublish"]
 	}
 
 	resource, err := h.svc.UpdateResource(
 		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, resourceUID, updateReq,
 	)
 	if err != nil {
-		return h.handleResourceError(writer, err)
+		return h.handleResourceError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resource)
@@ -486,7 +501,7 @@ func (h *Handler) ReorderResources(writer http.ResponseWriter, req *http.Request
 			})
 		}
 
-		return h.handleSectionError(writer, err)
+		return h.handleSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -520,7 +535,7 @@ func (h *Handler) ReorderSections(writer http.ResponseWriter, req *http.Request)
 			})
 		}
 
-		return h.handleSectionError(writer, err)
+		return h.handleSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -536,7 +551,7 @@ func (h *Handler) DeleteResource(writer http.ResponseWriter, req *http.Request) 
 	if err := h.svc.DeleteResource(
 		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, resourceUID,
 	); err != nil {
-		return h.handleSectionError(writer, err)
+		return h.handleSectionError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -551,7 +566,7 @@ func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req *http.Request) 
 
 	page, err := h.svc.ViewStatusPage(req.Context(), orgSlug, slug)
 	if err != nil {
-		return h.handlePublicError(writer, err)
+		return h.handlePublicError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, page)
@@ -563,7 +578,7 @@ func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Re
 
 	page, err := h.svc.ViewDefaultStatusPage(req.Context(), orgSlug)
 	if err != nil {
-		return h.handlePublicError(writer, err)
+		return h.handlePublicError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, page)
@@ -600,7 +615,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 
 	summary, err := h.svc.ViewStatusPageSummary(req.Context(), orgSlug, slug)
 	if err != nil {
-		return h.handlePublicError(writer, err)
+		return h.handlePublicError(writer, req, err)
 	}
 
 	response := StatusPageSummaryResponse{
@@ -665,7 +680,7 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req *http.Request) error 
 
 	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, slug, opts)
 	if err != nil {
-		return h.handlePublicError(writer, err)
+		return h.handlePublicError(writer, req, err)
 	}
 
 	writer.Header().Set("Content-Type", "image/svg+xml")
@@ -728,37 +743,37 @@ func requestOrigin(req *http.Request) string {
 
 // --- Error handlers ---
 
-func (h *Handler) handleOrgError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleOrgError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if errors.Is(err, ErrOrganizationNotFound) {
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	}
 
-	return h.WriteInternalError(writer, err)
+	return h.WriteInternalError(writer, request, err)
 }
 
-func (h *Handler) handlePageError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handlePageError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // mapCustomDomainError maps the custom-domain-specific service errors to HTTP.
 // Returns handled=false when err is not a custom-domain error so the caller can
 // fall through to its own switch.
-func (h *Handler) mapCustomDomainError(writer http.ResponseWriter, err error) (bool, error) {
+func (h *Handler) mapCustomDomainError(writer http.ResponseWriter, request *http.Request, err error) (bool, error) {
 	switch {
 	case errors.Is(err, entcore.ErrEntitlementExceeded):
 		var qe *entcore.QuotaError
 		if !errors.As(err, &qe) {
-			return true, h.WriteInternalError(writer, err)
+			return true, h.WriteInternalError(writer, request, err)
 		}
 
 		body := entitlementshandler.FormatQuotaError(qe)
@@ -775,14 +790,14 @@ func (h *Handler) mapCustomDomainError(writer http.ResponseWriter, err error) (b
 		})
 	case errors.Is(err, ErrCustomDomainTaken):
 		return true, h.WriteErrorErr(
-			writer, http.StatusConflict, base.ErrorCodeConflict, "Custom domain already in use", err)
+			writer, request, http.StatusConflict, base.ErrorCodeConflict, "Custom domain already in use", err)
 	case errors.Is(err, ErrCustomDomainNotSet):
 		return true, h.WriteValidationError(writer, "No custom domain configured", []base.ValidationErrorField{
 			{Name: fieldCustomDomain, Message: "Set a custom domain before verifying it"},
 		})
 	case errors.Is(err, ErrCustomDomainRateLimited):
 		return true, h.WriteErrorErr(
-			writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
 			"Too many verification attempts, please retry shortly", err)
 	default:
 		return false, nil
@@ -790,16 +805,16 @@ func (h *Handler) mapCustomDomainError(writer http.ResponseWriter, err error) (b
 }
 
 // handleVerifyError maps errors from the verify-now endpoint.
-func (h *Handler) handleVerifyError(writer http.ResponseWriter, err error) error {
-	if handled, result := h.mapCustomDomainError(writer, err); handled {
+func (h *Handler) handleVerifyError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if handled, result := h.mapCustomDomainError(writer, request, err); handled {
 		return result
 	}
 
-	return h.handlePageError(writer, err)
+	return h.handlePageError(writer, request, err)
 }
 
-func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) error {
-	if handled, result := h.mapCustomDomainError(writer, err); handled {
+func (h *Handler) handleCreatePageError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if handled, result := h.mapCustomDomainError(writer, request, err); handled {
 		return result
 	}
 
@@ -814,7 +829,7 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: "A status page with this slug already exists in this organization"},
@@ -823,17 +838,25 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case errors.Is(err, ErrInvalidAutoResolve):
+		return h.WriteValidationError(writer, "Invalid auto-resolve policy", []base.ValidationErrorField{
+			{Name: "autoResolve", Message: "Must be one of: always, if_untouched, never"},
+		})
+	case errors.Is(err, ErrInvalidAutoPublishDelay):
+		return h.WriteValidationError(writer, "Invalid auto-publish delay", []base.ValidationErrorField{
+			{Name: "autoPublishDelaySeconds", Message: "Must be between 0 and 86400"},
+		})
 	case errors.Is(err, ErrInvalidHistoryPeriod):
 		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
 			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) error {
-	if handled, result := h.mapCustomDomainError(writer, err); handled {
+func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, request *http.Request, err error) error {
+	if handled, result := h.mapCustomDomainError(writer, request, err); handled {
 		return result
 	}
 
@@ -848,10 +871,10 @@ func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) e
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: "A status page with this slug already exists in this organization"},
@@ -860,39 +883,47 @@ func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) e
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case errors.Is(err, ErrInvalidAutoResolve):
+		return h.WriteValidationError(writer, "Invalid auto-resolve policy", []base.ValidationErrorField{
+			{Name: "autoResolve", Message: "Must be one of: always, if_untouched, never"},
+		})
+	case errors.Is(err, ErrInvalidAutoPublishDelay):
+		return h.WriteValidationError(writer, "Invalid auto-publish delay", []base.ValidationErrorField{
+			{Name: "autoPublishDelaySeconds", Message: "Must be between 0 and 86400"},
+		})
 	case errors.Is(err, ErrInvalidHistoryPeriod):
 		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
 			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleSectionError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleSectionError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	case errors.Is(err, ErrStatusPageSectionNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleCreateSectionError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleCreateSectionError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: "A section with this slug already exists in this status page"},
@@ -902,21 +933,21 @@ func (h *Handler) handleCreateSectionError(writer http.ResponseWriter, err error
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	case errors.Is(err, ErrStatusPageSectionNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: "A section with this slug already exists in this status page"},
@@ -926,31 +957,31 @@ func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, err error
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
-func (h *Handler) handleResourceError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleResourceError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	case errors.Is(err, ErrStatusPageSectionNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found", err)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	case errors.Is(err, ErrCheckGroupNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
 	case errors.Is(err, ErrResourceTargetInvalid):
 		return h.writeResourceTargetError(writer)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -967,12 +998,12 @@ func (h *Handler) writeResourceTargetError(writer http.ResponseWriter) error {
 	})
 }
 
-func (h *Handler) handlePublicError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handlePublicError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound), errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

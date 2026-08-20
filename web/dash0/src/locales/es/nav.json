@@ -127,9 +127,14 @@
     "groupAccount": "Cuenta",
     "groupOrganization": "Organización",
     "groupChecks": "Comprobaciones",
+    "groupStatusPages": "Páginas de estado",
+    "groupEscalationPolicies": "Políticas de escalada",
+    "groupSlos": "SLO",
     "newCheck": "Nueva comprobación",
     "newCheckDescription": "Crear una nueva comprobación de monitorización",
     "aiDescription": "Conectar asistentes de IA vía MCP"
   },
-  "security": "Seguridad"
+  "security": "Seguridad",
+  "slos": "SLO",
+  "reportSchedules": "Informes de dispo."
 }

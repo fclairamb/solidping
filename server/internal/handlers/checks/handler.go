@@ -97,7 +97,7 @@ func (h *Handler) ValidateCheck(
 
 	resp, err := h.svc.ValidateCheck(req.Context(), orgSlug, &validateReq)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -147,7 +147,7 @@ func (h *Handler) GetCheckStats(writer http.ResponseWriter, req *http.Request) e
 
 	stats, err := h.svc.GetCheckStats(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleListError(writer, err)
+		return h.handleListError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, stats)
@@ -199,7 +199,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		limit, err := strconv.Atoi(limitParam)
 		if err != nil {
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 		}
 		if limit < 1 {
 			return h.WriteError(
@@ -231,7 +231,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		statuses, err := parseStatusFilter(statusParam)
 		if err != nil {
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		}
 		opts.Statuses = statuses
 	}
@@ -251,7 +251,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 
 	response, err := h.svc.ListChecks(req.Context(), orgSlug, opts)
 	if err != nil {
-		return h.handleListError(writer, err)
+		return h.handleListError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
@@ -305,7 +305,7 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req *http.Request) err
 
 	check, err := h.svc.CreateCheck(req.Context(), orgSlug, createReq)
 	if err != nil {
-		return h.handleCreateError(writer, err)
+		return h.handleCreateError(writer, req, err)
 	}
 
 	// Product analytics (spec 2026-08-02-08). No-op unless PostHog is
@@ -359,7 +359,7 @@ func (h *Handler) GetCheck(writer http.ResponseWriter, req *http.Request) error 
 
 	check, err := h.svc.GetCheck(req.Context(), orgSlug, identifier, opts)
 	if err != nil {
-		return h.handleGetError(writer, err)
+		return h.handleGetError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, check)
@@ -379,7 +379,7 @@ func (h *Handler) UpdateCheck(writer http.ResponseWriter, req *http.Request) err
 
 	check, err := h.svc.UpdateCheck(req.Context(), orgSlug, identifier, &updateReq)
 	if err != nil {
-		return h.handleUpdateError(writer, err)
+		return h.handleUpdateError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, check)
@@ -395,26 +395,26 @@ func (h *Handler) RotateHeartbeatToken(writer http.ResponseWriter, req *http.Req
 
 	check, err := h.svc.RotateHeartbeatToken(req.Context(), orgSlug, identifier)
 	if err != nil {
-		return h.handleRotateHeartbeatTokenError(writer, err)
+		return h.handleRotateHeartbeatTokenError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, check)
 }
 
 // handleRotateHeartbeatTokenError handles errors from RotateHeartbeatToken.
-func (h *Handler) handleRotateHeartbeatTokenError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleRotateHeartbeatTokenError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	case errors.Is(err, ErrNotHeartbeatCheck):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Check is not a heartbeat check", err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, "Check is not a heartbeat check", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -465,7 +465,7 @@ func (h *Handler) UpsertCheck(writer http.ResponseWriter, req *http.Request) err
 
 	check, created, err := h.svc.UpsertCheck(req.Context(), orgSlug, slug, &upsertReq)
 	if err != nil {
-		return h.handleUpsertError(writer, err)
+		return h.handleUpsertError(writer, req, err)
 	}
 
 	if created {
@@ -481,7 +481,7 @@ func (h *Handler) DeleteCheck(writer http.ResponseWriter, req *http.Request) err
 	identifier := httpx.Param(req, "checkUid")
 
 	if err := h.svc.DeleteCheck(req.Context(), orgSlug, identifier); err != nil {
-		return h.handleDeleteError(writer, err)
+		return h.handleDeleteError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -503,7 +503,7 @@ func (h *Handler) CloneCheck(writer http.ResponseWriter, req *http.Request) erro
 
 	check, err := h.svc.CloneCheck(req.Context(), orgSlug, identifier, &cloneReq)
 	if err != nil {
-		return h.handleCloneError(writer, err)
+		return h.handleCloneError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, check)
@@ -541,14 +541,14 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req *http.Request) er
 
 	doc, err := h.svc.ExportChecks(req.Context(), orgSlug, opts)
 	if err != nil {
-		return h.handleListError(writer, err)
+		return h.handleListError(writer, req, err)
 	}
 
 	// Render the v2 wire format: pretty-printed, with the defaults block and
 	// duration strings. The document is meant to be read and diffed by humans.
 	body, err := MarshalExportDocument(doc)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	// Set download headers
@@ -589,10 +589,10 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) er
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		default:
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		}
 	}
 
@@ -638,16 +638,16 @@ func (h *Handler) ApplyChecks(writer http.ResponseWriter, req *http.Request) err
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		case errors.Is(err, ErrDeletionCapExceeded):
 			return h.WriteErrorErr(
-				writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
+				writer, req, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 		case errors.Is(err, ErrUnresolvedSecretRef):
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		default:
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		}
 	}
 
@@ -655,21 +655,21 @@ func (h *Handler) ApplyChecks(writer http.ResponseWriter, req *http.Request) err
 }
 
 // handleListError handles errors from ListChecks.
-func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleListError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrInvalidCursor):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid cursor parameter", err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid cursor parameter", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleCreateError handles errors from CreateCheck.
-func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Request, err error) error {
 	// Check for configuration validation errors
 	if configErr := checkerdef.IsConfigError(err); configErr != nil {
 		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
@@ -684,7 +684,7 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, entcore.ErrEntitlementExceeded):
 		var qe *entcore.QuotaError
 		if !errors.As(err, &qe) {
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, request, err)
 		}
 		body := entitlementshandler.FormatQuotaError(qe)
 		body["code"] = string(base.ErrorCodeQuotaExceeded)
@@ -692,16 +692,16 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 		return h.WriteJSON(writer, http.StatusPaymentRequired, body)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrInvalidCheckType):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid check type", err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid check type", err)
 	case errors.Is(err, ErrNoAgentsToSealTo):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case isCheckFieldValidationError(err):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
@@ -718,26 +718,26 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 			},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleGetError handles errors from GetCheck.
-func (h *Handler) handleGetError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleGetError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleUpdateError handles errors from UpdateCheck.
-func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Request, err error) error {
 	// Configuration validation errors (e.g. the uniform per-check timeout
 	// cap) surface as field-level VALIDATION_ERRORs, same as on create.
 	if configErr := checkerdef.IsConfigError(err); configErr != nil {
@@ -752,19 +752,19 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	case errors.Is(err, ErrTunnelRegionNarrowed):
 		return h.WriteErrorErr(
-			writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
+			writer, request, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 	case errors.Is(err, ErrNoAgentsToSealTo):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case isCheckFieldValidationError(err):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
@@ -781,7 +781,7 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 			},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -805,7 +805,7 @@ func isCheckFieldValidationError(err error) bool {
 }
 
 // handleUpsertError handles errors from UpsertCheck.
-func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleUpsertError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if configErr := checkerdef.IsConfigError(err); configErr != nil {
 		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
 			{
@@ -818,7 +818,7 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrInvalidCheckType):
 		return h.WriteValidationError(writer, "Invalid check type", []base.ValidationErrorField{
 			{
@@ -828,36 +828,36 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error
 		})
 	case isCheckFieldValidationError(err):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleDeleteError handles errors from DeleteCheck.
-func (h *Handler) handleDeleteError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleDeleteError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrTunnelInUse):
 		return h.WriteErrorErr(
-			writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
+			writer, request, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleCloneError handles errors from CloneCheck.
-func (h *Handler) handleCloneError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, entcore.ErrEntitlementExceeded):
 		var qe *entcore.QuotaError
 		if !errors.As(err, &qe) {
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, request, err)
 		}
 		body := entitlementshandler.FormatQuotaError(qe)
 		body["code"] = string(base.ErrorCodeQuotaExceeded)
@@ -865,10 +865,10 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, err error) error 
 		return h.WriteJSON(writer, http.StatusPaymentRequired, body)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
@@ -885,6 +885,6 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, err error) error 
 			},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -470,10 +472,36 @@ func (w *JobWorker) executeWithRecovery(
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = fmt.Errorf("%w: %v", ErrJobPanic, rec)
+
+			// The stack goes to Sentry only: the returned error is persisted as
+			// the job's terminal message, and a full goroutine dump does not
+			// belong in a DB column.
+			errorreport.CaptureWithTags(
+				ctx, fmt.Errorf("%w\n%s", err, debug.Stack()), jobPanicTags(jctx))
 		}
 	}()
 
 	return job.Run(ctx, jctx)
+}
+
+// jobPanicTags builds the Sentry facets for a crashed job: which job type, and
+// which row, so a recurring crash is one issue instead of noise.
+func jobPanicTags(jctx *jobdef.JobContext) map[string]string {
+	tags := map[string]string{}
+	if jctx == nil {
+		return tags
+	}
+
+	if jctx.Job != nil {
+		tags["job.type"] = jctx.Job.Type
+		tags["job.uid"] = jctx.Job.UID
+	}
+
+	if jctx.OrganizationUID != nil {
+		tags["organization"] = *jctx.OrganizationUID
+	}
+
+	return tags
 }
 
 // handleResult writes the terminal job status and returns the outcome label

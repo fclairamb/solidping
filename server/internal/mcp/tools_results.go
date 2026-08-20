@@ -49,8 +49,11 @@ func listResultsDef() ToolDefinition {
 					"Example: \"http,dns\".",
 			),
 			"status": stringProp(
-				"Comma-separated check statuses. Allowed: up, down, unknown. " +
-					"Example: \"down\" or \"down,unknown\".",
+				"Comma-separated result statuses. Allowed: up, down, created, running, " +
+					"abandoned. \"down\" covers every genuine failure (down, timeout, " +
+					"error); \"abandoned\" is separate on purpose — it marks an attempt " +
+					"nothing was ever reported for, which is excluded from availability " +
+					"and is NOT downtime. Example: \"down\" or \"down,abandoned\".",
 			),
 			"region": stringProp(descRegionsFilter),
 			propPeriodType: stringProp(

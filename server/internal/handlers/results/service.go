@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
@@ -35,6 +36,12 @@ const (
 	statusStrWarning  = "warning"
 	statusStrDegraded = "degraded"
 	statusStrUnknown  = "unknown"
+	// statusStrAbandoned surfaces models.ResultStatusAbandoned as its own
+	// filterable, renderable state: an attempt nobody ever reported on. It is
+	// deliberately NOT folded into statusStrDown — an abandoned row is
+	// precisely *not* downtime (spec 2026-08-18-10), so `?status=down` must
+	// keep excluding it, exactly as availability does.
+	statusStrAbandoned = "abandoned"
 )
 
 // Service provides business logic for results.
@@ -108,9 +115,12 @@ type ResultResponse struct {
 	SuccessfulChecks *int           `json:"successfulChecks,omitempty"`
 }
 
-// PaginationResponse contains pagination metadata.
+// PaginationResponse contains pagination metadata. Deliberately no `total`:
+// results is the largest table in the system, so this endpoint is
+// cursor-paginated only — walk pages via `cursor` until it comes back empty
+// (spec 2026-08-18-04). Contrast with incidents/checks, which return a real
+// total from a bounded query.
 type PaginationResponse struct {
-	Total  int64  `json:"total"`
 	Cursor string `json:"cursor,omitempty"`
 	Size   int    `json:"size"`
 }
@@ -174,7 +184,7 @@ func (s *Service) ListResults(
 	filter.IncludeCheckInfo = s.needsCheckInfo(opts.With)
 
 	// Execute query
-	dbResults, err := s.db.ListResults(ctx, &filter)
+	dbResults, err := s.db.ListResults(sloghook.WithCallsite(ctx, "results.list"), &filter)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +212,6 @@ func (s *Service) ListResults(
 	return &ListResultsResponse{
 		Data: responses,
 		Pagination: PaginationResponse{
-			Total:  dbResults.Total,
 			Cursor: nextCursor,
 			Size:   len(responses),
 		},
@@ -235,6 +244,8 @@ func (s *Service) mapStatusStringsToInts(statuses []string) []int {
 		statusStrRunning: {int(models.ResultStatusRunning)},
 		"up":             {int(models.ResultStatusUp)},
 		statusStrDown:    {int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError)},
+		// Filterable on its own; never part of `down` — see statusStrAbandoned.
+		statusStrAbandoned: {int(models.ResultStatusAbandoned)},
 	}
 
 	var result []int
@@ -348,6 +359,18 @@ func (s *Service) applyDetailFields(resp *ResultResponse, result *models.Result,
 		resp.Region = result.Region
 	}
 
+	// CheckSlug/CheckName are only populated on the model when the query
+	// joined `checks` (ListResultsFilter.IncludeCheckInfo, set whenever
+	// needsCheckInfo saw checkslug/checkname in `with`) — nil here for any
+	// other read path, or for an orphaned check_uid behind a LEFT JOIN.
+	if withSet["checkslug"] && result.CheckSlug != nil {
+		resp.CheckSlug = result.CheckSlug
+	}
+
+	if withSet["checkname"] && result.CheckName != nil {
+		resp.CheckName = result.CheckName
+	}
+
 	if withSet["metrics"] && len(result.Metrics) > 0 {
 		resp.Metrics = result.Metrics
 	}
@@ -398,6 +421,11 @@ func (s *Service) statusIntToString(status *int) string {
 	case int(models.ResultStatusDegraded):
 		// Aggregated rollup status (hour/day/month rows).
 		return statusStrDegraded
+	case int(models.ResultStatusAbandoned):
+		// Reaper-minted: nothing was ever reported for this attempt. Neutral,
+		// never "down" — it is excluded from availability, not counted as an
+		// outage (spec 2026-08-18-10).
+		return statusStrAbandoned
 	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
 		return statusStrDown
 	default:

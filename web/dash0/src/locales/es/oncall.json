@@ -3,6 +3,7 @@
     "title": "Turnos de guardia",
     "subtitle": "Una rotación, una zona horaria, una hora de relevo. Use políticas de escalado para conectar los turnos a las notificaciones.",
     "empty": "Aún no hay turnos de guardia.",
+    "emptyHint": "Cree una rotación para dirigir las alertas a los encargados activos durante los turnos programados.",
     "create": "Crear turno",
     "currentlyOnCall": "De guardia ahora",
     "noOneOnCall": "Nadie de guardia",

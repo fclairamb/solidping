@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -30,19 +31,43 @@ var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
 // admin canceling it. View-only — a used token can never enroll again.
 const UsedEnrollmentTokenListWindow = time.Hour
 
+// StatusPageTarget pairs a status page with the resource on it that displays a
+// particular check. Returned by ListStatusPageTargetsForCheck, which is the
+// entry point of the incident auto-publish policy: given a failing check, which
+// public pages are supposed to say something about it?
+//
+// ResourceAutoPublish is the resource-level override and is deliberately
+// three-state: nil means "inherit the page", which is NOT the same as an
+// explicit false.
+type StatusPageTarget struct {
+	PageUID             string
+	SectionUID          string
+	ResourceUID         string
+	ResourceAutoPublish *bool
+	ResourcePublicName  *string
+	// ViaGroup reports whether the resource targets the check's GROUP rather
+	// than the check itself. A group resource renders as one public component,
+	// so its members are never named individually.
+	ViaGroup bool
+}
+
 // PublicStatusUpdate holds a status update row for public status page display.
 // This type is used by ListPublicStatusUpdates and is independent of the admin
 // models so the DB layer does not need to know about the full status_updates model.
 type PublicStatusUpdate struct {
-	UID          string
-	SectionUID   *string
-	CheckUID     *string
-	IncidentUID  *string
-	Title        string
-	BodyMarkdown string
-	LinkURL      *string
-	Kind         string
-	PublishedAt  time.Time
+	// PublicationUID threads the update under an incident publication (spec
+	// 2026-08-19-08). nil for the loose operator-authored updates that predate
+	// publications.
+	PublicationUID *string
+	UID            string
+	SectionUID     *string
+	CheckUID       *string
+	IncidentUID    *string
+	Title          string
+	BodyMarkdown   string
+	LinkURL        *string
+	Kind           string
+	PublishedAt    time.Time
 }
 
 // ListIncidentNotificationsFilter configures what to return from ListIncidentNotifications.
@@ -62,6 +87,11 @@ type ListIncidentNotificationsFilter struct {
 type Service interface {
 	// Initialize sets up the database schema (runs migrations)
 	Initialize(ctx context.Context) error
+
+	// RepairMigrationChecksums re-records checksums for every applied
+	// migration this binary ships, without running any migration. Backs the
+	// `solidping migrate repair` CLI command; see internal/db/migrationguard.
+	RepairMigrationChecksums(ctx context.Context) ([]migrationguard.RepairResult, error)
 
 	// DB returns the underlying bun.DB instance for direct queries
 	DB() *bun.DB
@@ -201,14 +231,21 @@ type Service interface {
 	// Returns the registered/updated worker.
 	RegisterOrUpdateWorker(ctx context.Context, worker *models.Worker) (*models.Worker, error)
 	// UpdateWorkerHeartbeat updates the worker's last_active_at and updated_at
-	// timestamps, and refreshes its self-reported capability set.
+	// timestamps, and refreshes its self-reported capability set and build
+	// version.
 	//
-	// THE SET IS THREE-STATE. A NIL slice means "not reported" and leaves the
-	// stored column exactly as it was — an executor that cannot answer never
-	// overwrites a known set with a guess. A NON-NIL EMPTY slice is a different
-	// statement, "I reported, and I have none of them", and IS written. Anything
-	// that collapses the two turns "unknown" into "no".
-	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, capabilities []string) error
+	// THE CAPABILITY SET IS THREE-STATE. A NIL slice means "not reported" and
+	// leaves the stored column exactly as it was — an executor that cannot
+	// answer never overwrites a known set with a guess. A NON-NIL EMPTY slice
+	// is a different statement, "I reported, and I have none of them", and IS
+	// written. Anything that collapses the two turns "unknown" into "no".
+	//
+	// version IS TWO-STATE (spec 2026-08-19-07): an empty string means "not
+	// reported" and leaves the stored value untouched, same "do not overwrite
+	// a known answer with a guess" rule as capabilities — but unlike
+	// capabilities there is no "reported and empty" state to protect, because
+	// a real build version is never the empty string.
+	UpdateWorkerHeartbeat(ctx context.Context, workerUID string, capabilities []string, version string) error
 
 	// Deported-agent operations (spec 2026-07-16-02).
 	// CreateAgentEnrollmentToken persists a one-shot enrollment token.
@@ -264,10 +301,21 @@ type Service interface {
 	UpdateAgentLastSeen(ctx context.Context, uid string, at time.Time) error
 	// RevokeAgent marks an agent revoked (it can no longer authenticate).
 	RevokeAgent(ctx context.Context, orgUID, uid string) error
+	// ListPurgeableRevokedAgents returns live agents (any kind) revoked before
+	// cutoff (falling back to updated_at when revoked_at is NULL) — the
+	// agent_gc job's purge candidates.
+	ListPurgeableRevokedAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error)
+	// PurgeAgent soft-deletes a revoked agent. Scoped to status='revoked' so it
+	// can never touch a live agent.
+	PurgeAgent(ctx context.Context, uid string) error
 
 	// Check operations
 	CreateCheck(ctx context.Context, check *models.Check) error
 	GetCheck(ctx context.Context, orgUID, checkUID string) (*models.Check, error)
+	// GetChecksByUIDs returns the requested checks keyed by UID, in a single
+	// batched query (absent UIDs simply have no entry) — replaces one GetCheck
+	// call per row with a single IN(...) query for a whole response page.
+	GetChecksByUIDs(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Check, error)
 	GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.Check, error)
 	// GetCheckByEmailToken finds an email-type check by its config.token across all
 	// organizations. The token alone is unique because it's 24 random bytes.
@@ -315,6 +363,11 @@ type Service interface {
 	UpsertAggregatedResult(ctx context.Context, result *models.Result) error
 	GetResult(ctx context.Context, uid string) (*models.Result, error)
 	ListResults(ctx context.Context, filter *models.ListResultsFilter) (*models.ListResultsResponse, error)
+	// CountResultsByPeriodType returns the total row count in `results` grouped
+	// by period_type, across every organization. Table-wide and uncached —
+	// only the aggregation-job-cadence gauge sampler may call this, never a
+	// request path (spec 2026-08-17-04 §3).
+	CountResultsByPeriodType(ctx context.Context) (map[string]int64, error)
 	// GetResultNeighbors returns the UID of the next-older (prevUID) and
 	// next-newer (nextUID) row in the same organization+check+periodType
 	// series (optionally narrowed to regions), relative to the pivot
@@ -336,6 +389,19 @@ type Service interface {
 	GetLastResultForChecks(
 		ctx context.Context, orgUID string, checkUIDs []string,
 	) (map[string]*models.Result, error)
+	// ReapAbandonedResults finalizes raw results still sitting in
+	// ResultStatusCreated well past any plausible execution window for their
+	// check — models.AbandonedResultThreshold, "the check's period plus the
+	// worker lease timeout, with a generous multiplier" (spec 2026-08-18-03).
+	// Each eligible row is atomically flipped to ResultStatusAbandoned — the
+	// dedicated terminal status that is excluded from availability everywhere
+	// (spec 2026-08-18-10) — with an output explaining the worker never
+	// reported, re-asserting the row's current status in the guard so a
+	// legitimate finish racing the sweep is a no-op rather than a clobber.
+	// ResultStatusRunning is deliberately left alone: heartbeat checks use it
+	// as a legitimate long-lived status with no period/lease relationship.
+	// Global, not per-org — mirrors ReapStuckJobs.
+	ReapAbandonedResults(ctx context.Context) (models.ReapAbandonedResultsOutcome, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)
 	// CompactResults atomically compacts one source bucket into a single
 	// aggregated row inside one transaction: it fetches the source rows matching
@@ -433,6 +499,13 @@ type Service interface {
 
 	// Incident member operations (group incidents only)
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
+	// ListIncidentMemberChecksByIncidentUIDs returns member rows for several
+	// group incidents at once, grouped by incident UID — one batched query
+	// instead of one ListIncidentMemberChecks call per group incident on a
+	// response page.
+	ListIncidentMemberChecksByIncidentUIDs(
+		ctx context.Context, incidentUIDs []string,
+	) (map[string][]*models.IncidentMemberCheck, error)
 	GetIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string) (*models.IncidentMemberCheck, error)
 	UpsertIncidentMemberCheck(ctx context.Context, member *models.IncidentMemberCheck) error
 	UpdateIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string, update *models.IncidentMemberUpdate) error
@@ -651,6 +724,9 @@ type Service interface {
 	// CheckGroup operations
 	CreateCheckGroup(ctx context.Context, group *models.CheckGroup) error
 	GetCheckGroup(ctx context.Context, orgUID, uid string) (*models.CheckGroup, error)
+	// GetCheckGroupsByUIDs returns the requested check groups keyed by UID, in
+	// a single batched query (absent UIDs simply have no entry).
+	GetCheckGroupsByUIDs(ctx context.Context, orgUID string, groupUIDs []string) (map[string]*models.CheckGroup, error)
 	GetCheckGroupBySlug(ctx context.Context, orgUID, slug string) (*models.CheckGroup, error)
 	GetCheckGroupByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.CheckGroup, error)
 	ListCheckGroups(ctx context.Context, orgUID string) ([]*models.CheckGroup, error)
@@ -749,6 +825,38 @@ type Service interface {
 	// not yet exist (graceful degradation before the backend spec migration is applied).
 	ListPublicStatusUpdates(ctx context.Context, statusPageUID string, historyDays int) ([]*PublicStatusUpdate, error)
 
+	// Incident publication operations (spec 2026-08-19-08). The publication
+	// overlay is what makes an incident visible on a status page; see
+	// models.IncidentPublication.
+	CreateIncidentPublication(ctx context.Context, pub *models.IncidentPublication) error
+	// GetIncidentPublication reads one live publication, scoped to the org.
+	GetIncidentPublication(ctx context.Context, orgUID, uid string) (*models.IncidentPublication, error)
+	// FindIncidentPublication returns the live publication for an
+	// (incident, page) pair, or sql.ErrNoRows. This is the read half of the
+	// idempotency guarantee the partial unique index enforces.
+	FindIncidentPublication(
+		ctx context.Context, incidentUID, statusPageUID string,
+	) (*models.IncidentPublication, error)
+	ListIncidentPublications(
+		ctx context.Context, filter *models.ListIncidentPublicationsFilter,
+	) ([]*models.IncidentPublication, error)
+	UpdateIncidentPublication(
+		ctx context.Context, uid string, update *models.IncidentPublicationUpdate,
+	) error
+	SoftDeleteIncidentPublication(ctx context.Context, uid string) error
+	// CountIncidentPublicationsForIncident is the retention guard: the incident
+	// reaper must never delete an incident row a publication still points at,
+	// or a public status page would lose the incident it is narrating.
+	CountIncidentPublicationsForIncident(ctx context.Context, incidentUID string) (int, error)
+	// ListStatusPageTargetsForCheck returns every live status-page resource
+	// that displays the given check — directly, or through the check's group
+	// (status_page_resources reference checks AND check groups). It is the
+	// reverse of the page→resource walk the public renderer does, and the
+	// entry point of the auto-publish policy.
+	ListStatusPageTargetsForCheck(
+		ctx context.Context, checkUID string, checkGroupUID *string,
+	) ([]*StatusPageTarget, error)
+
 	// MaintenanceWindow operations
 	CreateMaintenanceWindow(ctx context.Context, window *models.MaintenanceWindow) error
 	GetMaintenanceWindow(ctx context.Context, orgUID, uid string) (*models.MaintenanceWindow, error)
@@ -772,6 +880,41 @@ type Service interface {
 	// evaluated — callers decide active/inactive via models.IsActiveAt. Feeds
 	// the status page group component (spec 2026-08-01-03).
 	ListMaintenanceWindowsForCheckGroup(ctx context.Context, groupUID string) ([]*models.MaintenanceWindow, error)
+
+	// SLO operations (spec 2026-08-20-01)
+	CreateSLO(ctx context.Context, slo *models.SLO) error
+	GetSLO(ctx context.Context, orgUID, uid string) (*models.SLO, error)
+	GetSLOBySlug(ctx context.Context, orgUID, slug string) (*models.SLO, error)
+	ListSLOs(ctx context.Context, orgUID string, filter models.ListSLOsFilter) ([]*models.SLO, error)
+	UpdateSLO(ctx context.Context, uid string, update models.SLOUpdate) error
+	DeleteSLO(ctx context.Context, orgUID, uid string) error
+	// CountSLOs counts an org's live SLOs. Feeds the maxSlos entitlement.
+	CountSLOs(ctx context.Context, orgUID string) (int, error)
+	// ListSLOsForChecks returns the live SLOs scoped directly to any of the
+	// given checks. Powers the "covered by an SLO" chip on check detail.
+	ListSLOsForChecks(ctx context.Context, orgUID string, checkUIDs []string) ([]*models.SLO, error)
+
+	// ReportSchedule operations (spec 2026-08-20-01)
+	CreateReportSchedule(ctx context.Context, schedule *models.ReportSchedule) error
+	GetReportSchedule(ctx context.Context, orgUID, uid string) (*models.ReportSchedule, error)
+	ListReportSchedules(ctx context.Context, orgUID string) ([]*models.ReportSchedule, error)
+	// ListEnabledReportSchedules returns every enabled, non-deleted schedule
+	// across all orgs — the report job's work list.
+	ListEnabledReportSchedules(ctx context.Context) ([]*models.ReportSchedule, error)
+	UpdateReportSchedule(ctx context.Context, uid string, update models.ReportScheduleUpdate) error
+	DeleteReportSchedule(ctx context.Context, orgUID, uid string) error
+	// MarkReportScheduleRun records the period a schedule was last reported
+	// for. It is conditional on the stored last_period_start being NULL or
+	// strictly older than periodStart, so two replicas racing on the same
+	// closed period produce exactly one report: the loser updates 0 rows and
+	// skips. Returns whether this caller won.
+	MarkReportScheduleRun(ctx context.Context, uid string, periodStart, runAt time.Time) (bool, error)
+	// RemoveRecipientFromReportSchedules drops an address from every one of the
+	// org's report schedules. It is what makes an unsubscribe stick: leaving
+	// the address on the schedule would keep re-suppressing the same send
+	// forever, and the operator editing the schedule would silently re-enable
+	// mail to someone who asked to stop. Returns how many schedules changed.
+	RemoveRecipientFromReportSchedules(ctx context.Context, orgUID, email string) (int, error)
 
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error
@@ -847,15 +990,26 @@ type Service interface {
 	// --- UserContacts / UserNotificationRoutes ---
 
 	// ListUserContactsWithRoutes returns the ordered notification routes for a user in an org,
-	// with the Contact relation eagerly loaded. Soft-deleted contacts are excluded.
+	// with the Contact relation eagerly loaded. A route is returned ONLY if its contact
+	// joined — soft-deleted and missing contacts are both excluded — so every returned
+	// route is guaranteed to carry a non-nil Contact.
 	ListUserContactsWithRoutes(ctx context.Context, userUID, orgUID string) ([]*models.UserNotificationRoute, error)
 
 	// EnsureDefaultEmailRoute idempotently creates one email contact and one enabled route
 	// for the user in the org. Safe to call concurrently — uses INSERT … ON CONFLICT DO NOTHING.
+	//
+	// Deliberately a NO-OP when a contact matching (user, org, email) exists but is
+	// soft-deleted: the user removed that method on purpose, and this is called on
+	// every notification-list load, so re-seeding would make the email method
+	// undeletable. Re-adding the address explicitly (UpsertUserContact) still revives it.
 	EnsureDefaultEmailRoute(ctx context.Context, userUID, orgUID, email string) error
 
 	// UpsertUserContact creates or restores a contact. On conflict (same user+org+type+value)
 	// it undeletes the row and updates the label.
+	//
+	// Writes the CANONICAL uid back into c: a restore keeps the uid of the row already
+	// in the table, so c.UID after this call is the uid that actually exists — not the
+	// one the caller generated, which on the restore path was never inserted.
 	UpsertUserContact(ctx context.Context, c *models.UserContact) error
 
 	// GetUserContact returns a single non-deleted contact by UID.
@@ -888,7 +1042,14 @@ type Service interface {
 		ctx context.Context, contactType, value string,
 	) ([]*models.UserContact, error)
 
-	// DeleteUserContact soft-deletes a contact by UID.
+	// DeleteUserContact soft-deletes a contact by UID and, in the SAME transaction,
+	// hard-deletes the user_notification_routes row pointing at it.
+	//
+	// Removing the route is part of the contract, not an implementation detail:
+	// the FK's `on delete cascade` only fires on a HARD delete, so a soft delete
+	// alone would strand the route forever as an undeletable ghost row in the
+	// dashboard. user_notification_routes has no deleted_at — hard delete is the
+	// design for that table.
 	DeleteUserContact(ctx context.Context, uid string) error
 
 	// EnsureUserNotificationRoute idempotently creates an enabled route for an

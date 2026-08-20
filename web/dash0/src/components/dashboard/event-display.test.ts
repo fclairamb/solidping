@@ -68,7 +68,6 @@ const INTENTIONALLY_UNMAPPED: Record<string, string> = {
   "check.updated": "configuration change — family fallback (blue) is enough",
   "check.deleted": "configuration change — family fallback (blue) is enough",
   "incident.unsnoozed": "minor lifecycle event — amber family fallback is enough",
-  "incident.comment": "rendered by its own comment UI, not the event badge",
   "status_update.created": "status-page activity — family fallback (blue) is enough",
   "status_update.updated": "status-page activity — family fallback (blue) is enough",
   "status_update.deleted": "status-page activity — family fallback (blue) is enough",
@@ -131,10 +130,13 @@ describe("dash0 has an identity for every backend event type", () => {
   });
 });
 
-// The 8 binding emoji picks from the spec's "Resolved open questions"
+// The binding emoji picks from the spec's "Resolved open questions"
 // (2026-08-15-02) — exactly one emoji per event type, product-wide, matching
 // server/internal/notifications/msteamsbot.go, slack.go and
-// server/internal/integrations/telegram/message.go.
+// server/internal/integrations/telegram/message.go. `incident.comment` joined
+// the list when comments started fanning out through the notification
+// pipeline: its 💬 is `commentEmoji` in server/internal/notifications/comment.go,
+// which names this registry as the other half of the pairing.
 describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
   const BINDING_PAIRS: [string, string][] = [
     ["incident.created", "🔴"],
@@ -145,6 +147,16 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["incident.acknowledged", "✅"],
     ["incident.unacknowledged", "↩️"],
     ["incident.snoozed", "💤"],
+    ["incident.comment", "💬"],
+    // Status-page publication lifecycle (spec 2026-08-19-08). Unlike the
+    // incident.* pairs above these have NO backend chat-integration
+    // counterpart to stay aligned with — publication events fan out to
+    // `webhook` connections only (see incidentpublications/webhooks.go), and
+    // the chat integrations deliberately stay on the internal incident.*
+    // lifecycle. So dash0 is the sole owner of this pairing.
+    ["statuspage.incident.published", "📣"],
+    ["statuspage.incident.updated", "📝"],
+    ["statuspage.incident.resolved", "📗"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {

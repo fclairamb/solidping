@@ -641,3 +641,11 @@ func TestSeverityHelpers(t *testing.T) {
 	r.True(severityAllowsWebPush(map[string]bool{"push": true}))
 	r.True(severityAllowsWebPush(map[string]bool{"critical_push": true}))
 }
+
+// allForms returns every captured Twilio form, in order.
+func (f *fakeTwilio) allForms() []url.Values {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]url.Values{}, f.forms...)
+}

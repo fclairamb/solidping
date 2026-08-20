@@ -237,3 +237,100 @@ func TestService_ResubscribeByUID_WrongEmailRejected(t *testing.T) {
 	r.NoError(err)
 	r.True(suppressed, "the victim's suppression must remain intact")
 }
+
+// seedReportSchedule attaches an uptime-report schedule with the given
+// recipients to the fixture's org.
+func (f *testFixture) seedReportSchedule(t *testing.T, recipients ...string) *models.ReportSchedule {
+	t.Helper()
+
+	schedule := models.NewReportSchedule(f.org.UID, "Monthly digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = recipients
+	require.NoError(t, f.svc.CreateReportSchedule(t.Context(), schedule))
+
+	return schedule
+}
+
+// TestService_Unsubscribe_OrgWideRemovesFromReportSchedules is the behavioral
+// half of spec 2026-08-20-01's unsubscribe contract.
+//
+// The suppression row alone would already stop delivery, but leaving the
+// address on the schedule means the operator still sees it in the recipient
+// list and can "fix" it by re-saving — silently mailing someone who asked to
+// stop. The unsubscribe is only really honored when the address is gone from
+// the source of truth too.
+func TestService_Unsubscribe_OrgWideRemovesFromReportSchedules(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newTestFixture(t)
+	svc := unsubscribe.NewService(f.svc, []byte(testSecret))
+
+	schedule := f.seedReportSchedule(t, "alice@acme.com", "bob@acme.com")
+
+	result, err := svc.Unsubscribe(
+		t.Context(), f.orgWideToken("alice@acme.com", time.Now().Add(time.Hour)),
+		unsubscribe.ScopeFromToken, models.EmailSuppressionSourceLink,
+	)
+	r.NoError(err)
+	r.Equal("alice@acme.com", result.Email)
+	r.Empty(result.CheckUID, "an org-wide token carries no check scope")
+
+	stored, err := f.svc.GetReportSchedule(t.Context(), f.org.UID, schedule.UID)
+	r.NoError(err)
+	// Positive control attached: bob is still there, so the assertion below is
+	// about alice specifically rather than about a wiped list.
+	r.Equal([]string{"bob@acme.com"}, stored.Recipients)
+
+	// Idempotent: the RFC 8058 one-click POST is retried by mail clients, and a
+	// second call must neither error nor disturb the surviving recipients.
+	_, err = svc.Unsubscribe(
+		t.Context(), f.orgWideToken("alice@acme.com", time.Now().Add(time.Hour)),
+		unsubscribe.ScopeFromToken, models.EmailSuppressionSourceHeader,
+	)
+	r.NoError(err)
+
+	stored, err = f.svc.GetReportSchedule(t.Context(), f.org.UID, schedule.UID)
+	r.NoError(err)
+	r.Equal([]string{"bob@acme.com"}, stored.Recipients)
+}
+
+// A CHECK-scoped unsubscribe says "stop paging me about this check", which is
+// not a statement about a monthly digest covering forty others. The recipient
+// must stay on the schedule.
+func TestService_Unsubscribe_CheckScopedLeavesReportSchedulesAlone(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newTestFixture(t)
+	svc := unsubscribe.NewService(f.svc, []byte(testSecret))
+
+	schedule := f.seedReportSchedule(t, "alice@acme.com", "bob@acme.com")
+
+	result, err := svc.Unsubscribe(
+		t.Context(), f.checkToken("alice@acme.com", time.Now().Add(time.Hour)),
+		unsubscribe.ScopeFromToken, models.EmailSuppressionSourceLink,
+	)
+	r.NoError(err)
+	// Positive control: the unsubscribe really happened — it was check-scoped
+	// and created a suppression row — so "the schedule is untouched" is a
+	// statement about scope, not about a no-op.
+	r.Equal(f.check.UID, result.CheckUID)
+	r.NotEmpty(result.SuppressionUID)
+
+	stored, err := f.svc.GetReportSchedule(t.Context(), f.org.UID, schedule.UID)
+	r.NoError(err)
+	r.Equal([]string{"alice@acme.com", "bob@acme.com"}, stored.Recipients)
+
+	// Negative control on the other axis: escalating the SAME token to the
+	// org-wide scope does remove her, proving the early return is keyed on the
+	// effective scope rather than on the token's shape.
+	_, err = svc.Unsubscribe(
+		t.Context(), f.checkToken("alice@acme.com", time.Now().Add(time.Hour)),
+		unsubscribe.ScopeOrg, models.EmailSuppressionSourceLink,
+	)
+	r.NoError(err)
+
+	stored, err = f.svc.GetReportSchedule(t.Context(), f.org.UID, schedule.UID)
+	r.NoError(err)
+	r.Equal([]string{"bob@acme.com"}, stored.Recipients)
+}

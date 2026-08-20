@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres/embeddedpg"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
@@ -71,6 +73,14 @@ type Config struct {
 	// Reset drops all tables before running migrations (only for test/demo run modes)
 	Reset bool
 
+	// GuardMode controls the migration guard's behavior on a checksum
+	// mismatch: migrationguard.ModeStrict (default, fails boot) or
+	// migrationguard.ModeWarn (logs and continues). The zero value behaves as
+	// ModeStrict. Not threaded through the Embedded branch's positional
+	// NewEmbedded — New sets it on the returned Service afterward instead, so
+	// NewEmbedded's signature (and its other test callers) stays unchanged.
+	GuardMode migrationguard.Mode
+
 	// Connection-pool bounds. Zero values leave database/sql's defaults
 	// (MaxOpenConns unlimited, MaxIdleConns 2, no lifetime), so an unset config
 	// behaves exactly as before.
@@ -82,6 +92,11 @@ type Config struct {
 	// MaxIdleConns × replica-count connections against the Postgres role's
 	// rolconnlimit indefinitely. See spec 2026-07-05-09 (D2).
 	ConnMaxIdleTime time.Duration
+
+	// SlowQueryThreshold logs a successful query at WARN once it takes at
+	// least this long (see internal/db/sloghook). 0 disables slow-query
+	// logging.
+	SlowQueryThreshold time.Duration
 }
 
 // applyPoolLimits bounds the connection pool. Left unbounded, a burst can open
@@ -149,10 +164,11 @@ func checkRoleConnLimitHeadroom(ctx context.Context, bunDB *bun.DB, maxOpenConns
 
 // Service implements db.Service for PostgreSQL.
 type Service struct {
-	db       *bun.DB
-	embedded *embeddedpg.Instance
-	reset    bool   // Reset database before migrations
-	runMode  string // Run mode (test, demo, etc.)
+	db        *bun.DB
+	embedded  *embeddedpg.Instance
+	reset     bool   // Reset database before migrations
+	runMode   string // Run mode (test, demo, etc.)
+	guardMode migrationguard.Mode
 
 	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
 	// rollup upsert and before the source delete. It exists only so same-package
@@ -177,7 +193,17 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 			suite = "app"
 		}
 
-		return NewEmbedded(ctx, suite, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset)
+		svc, err := NewEmbedded(ctx, suite, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset, cfg.SlowQueryThreshold)
+		if err != nil {
+			return nil, err
+		}
+
+		// NewEmbedded's signature is shared with several test callers that
+		// all want the strict default, so GuardMode travels via the returned
+		// Service instead of an extra positional parameter.
+		svc.guardMode = cfg.GuardMode
+
+		return svc, nil
 	}
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
@@ -186,7 +212,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 
 	// Query hook is always installed: it emits Prometheus histograms
 	// (solidping_db_query_duration_seconds) regardless of cfg.LogSQL.
-	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel))
+	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel, cfg.SlowQueryThreshold))
 
 	// Expose connection-pool stats via /metrics. Idempotent per backend.
 	prommetrics.RegisterDB(sqldb, backendLabel)
@@ -197,9 +223,10 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 	checkRoleConnLimitHeadroom(ctx, bunDB, cfg.MaxOpenConns)
 
 	return &Service{
-		db:      bunDB,
-		reset:   cfg.Reset,
-		runMode: cfg.RunMode,
+		db:        bunDB,
+		reset:     cfg.Reset,
+		runMode:   cfg.RunMode,
+		guardMode: cfg.GuardMode,
 	}, nil
 }
 
@@ -210,6 +237,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 // embeddedpg package; callers no longer manage their own data directory.
 func NewEmbedded(
 	_ context.Context, suite string, port uint32, logSQL bool, runMode string, reset bool,
+	slowQueryThreshold time.Duration,
 ) (*Service, error) {
 	// contextcheck: the watchdog subprocess embeddedpg.Start spawns is
 	// intentionally detached from any request/caller context — it must
@@ -234,7 +262,7 @@ func NewEmbedded(
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
 	// Query hook is always installed for metrics; verbose slog logging is opt-in.
-	bunDB.AddQueryHook(sloghook.New(logSQL, backendLabel))
+	bunDB.AddQueryHook(sloghook.New(logSQL, backendLabel, slowQueryThreshold))
 
 	// Expose connection-pool stats via /metrics. Idempotent per backend.
 	prommetrics.RegisterDB(sqldb, backendLabel)
@@ -261,16 +289,68 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to discover migrations: %w", err)
 	}
 
-	migrator := migrate.NewMigrator(s.db, migrations)
-	if err := migrator.Init(ctx); err != nil {
-		return fmt.Errorf("failed to init migrator: %w", err)
+	guard, err := newMigrationGuard(s.db)
+	if err != nil {
+		return err
 	}
 
-	if _, err := migrator.Migrate(ctx); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	migrator := migrate.NewMigrator(s.db, migrations)
+	if initErr := migrator.Init(ctx); initErr != nil {
+		return fmt.Errorf("failed to init migrator: %w", initErr)
+	}
+
+	// Verify (and, on a database that predates the guard, backfill) what is
+	// already applied BEFORE migrating: a migration rewritten after it was
+	// applied must fail the boot, not be silently skipped (spec 2026-08-18-02).
+	mismatches, err := guard.Reconcile(ctx, s.guardMode)
+	if err != nil {
+		return err
+	}
+
+	if applyErr := s.guardMode.Apply(mismatches); applyErr != nil {
+		return applyErr
+	}
+
+	migrationguard.LogMismatches(ctx, mismatches)
+
+	if _, migrateErr := migrator.Migrate(ctx); migrateErr != nil {
+		return fmt.Errorf("failed to run migrations: %w", migrateErr)
+	}
+
+	// Record what this boot just applied.
+	mismatches, err = guard.Reconcile(ctx, s.guardMode)
+	if err != nil {
+		return err
+	}
+
+	if applyErr := s.guardMode.Apply(mismatches); applyErr != nil {
+		return applyErr
 	}
 
 	return nil
+}
+
+// newMigrationGuard builds the checksum guard over the embedded SQL migrations.
+func newMigrationGuard(db *bun.DB) (*migrationguard.Guard, error) {
+	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
+	}
+
+	return migrationguard.New(db, expected), nil
+}
+
+// RepairMigrationChecksums re-records checksums for every applied migration
+// this binary ships — inserting a missing row or updating a drifted one to
+// the current file checksum — without running any migration. Used by the
+// `solidping migrate repair` CLI command; see internal/db/migrationguard.
+func (s *Service) RepairMigrationChecksums(ctx context.Context) ([]migrationguard.RepairResult, error) {
+	guard, err := newMigrationGuard(s.db)
+	if err != nil {
+		return nil, err
+	}
+
+	return guard.Repair(ctx)
 }
 
 // resetDatabase drops all tables in the database.
@@ -1282,10 +1362,11 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 		return worker, nil
 	}
 
-	// Worker exists, update last_active_at (and the capability set when this
-	// registration reported one — a nil set keeps the stored value, so a caller
-	// that cannot answer never downgrades a known set to NULL. An empty non-nil
-	// set is a real report of "none" and IS written).
+	// Worker exists, update last_active_at (and the capability set / version
+	// when this registration reported one — nil keeps the stored value, so a
+	// caller that cannot answer never downgrades a known value to NULL. An
+	// empty non-nil capability set is a real report of "none" and IS written;
+	// there is no equivalent for version, since a real one is never empty).
 	existing.LastActiveAt = &now
 	existing.UpdatedAt = now
 
@@ -1294,6 +1375,11 @@ func (s *Service) RegisterOrUpdateWorker(ctx context.Context, worker *models.Wor
 	if worker.Capabilities != nil {
 		existing.Capabilities = worker.Capabilities
 		columns = append(columns, "capabilities")
+	}
+
+	if worker.Version != nil {
+		existing.Version = worker.Version
+		columns = append(columns, "version")
 	}
 
 	_, err = s.db.NewUpdate().
@@ -1328,7 +1414,7 @@ func workerLivenessColumns() []string {
 }
 
 func (s *Service) UpdateWorkerHeartbeat(
-	ctx context.Context, workerUID string, capabilities []string,
+	ctx context.Context, workerUID string, capabilities []string, version string,
 ) error {
 	now := time.Now()
 
@@ -1344,6 +1430,15 @@ func (s *Service) UpdateWorkerHeartbeat(
 	if capabilities != nil {
 		worker.Capabilities = capabilities
 		columns = append(columns, "capabilities")
+	}
+
+	// Empty string means "not reported" and must not touch the stored value —
+	// a real build version is never the empty string, so this sentinel is
+	// safe (unlike capabilities, there is no "reported and empty" answer to
+	// protect here).
+	if version != "" {
+		worker.Version = &version
+		columns = append(columns, "version")
 	}
 
 	_, err := s.db.NewUpdate().
@@ -1462,6 +1557,58 @@ func (s *Service) GetCheck(ctx context.Context, orgUID, checkUID string) (*model
 	}
 
 	return check, nil
+}
+
+// checksByUIDsChunkSize caps how many check UIDs go into a single IN(...)
+// query. Unlike the incident/group UID batches this method's other two
+// siblings deal with, checkUIDs here is NOT bounded by the response page
+// size — incidents.buildIncidentEnrichment folds in every distinct member
+// check across every group incident on the page, and check-group membership
+// itself has no size cap anywhere in the checkgroups/checks handlers.
+//
+// This does NOT guard SQLITE_MAX_VARIABLE_NUMBER or Postgres's
+// 65535-parameter ceiling specifically: bun's
+// `Where("uid IN (?)", bun.List(...))` renders every UID as an inlined SQL
+// literal rather than a driver-bound placeholder (confirmed by inspecting
+// the emitted SQL and by a manual probe — a single unchunked query with two
+// million inlined UUID literals raised no error against this repo's SQLite
+// driver). What this bounds instead is how large a single generated SQL
+// statement gets — keeping query text size and parse/plan cost small and
+// predictable regardless of how big one check group happens to be. 500 is
+// comfortably small on that basis, and identical on both engines.
+const checksByUIDsChunkSize = 500
+
+// GetChecksByUIDs returns the requested checks keyed by UID, in one or more
+// batched queries (absent UIDs — deleted or unknown — simply have no entry).
+// Mirrors GetLabelsForChecks's shape: used to replace one GetCheck call per
+// row with a small number of IN(...) queries for a whole response page.
+func (s *Service) GetChecksByUIDs(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) (map[string]*models.Check, error) {
+	if len(checkUIDs) == 0 {
+		return make(map[string]*models.Check), nil
+	}
+
+	checkMap := make(map[string]*models.Check, len(checkUIDs))
+
+	for batch := range slices.Chunk(checkUIDs, checksByUIDsChunkSize) {
+		var checks []*models.Check
+		err := s.db.NewSelect().
+			Model(&checks).
+			Where("uid IN (?)", bun.List(batch)).
+			Where("organization_uid = ?", orgUID).
+			Where("deleted_at IS NULL").
+			Scan(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get checks by uids: %w", err)
+		}
+
+		for _, check := range checks {
+			checkMap[check.UID] = check
+		}
+	}
+
+	return checkMap, nil
 }
 
 func (s *Service) GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.Check, error) {
@@ -2146,6 +2293,36 @@ func (s *Service) GetResult(ctx context.Context, uid string) (*models.Result, er
 	return result, nil
 }
 
+// CountResultsByPeriodType returns the total row count in `results` grouped
+// by period_type (raw/hour/day/month), across every organization. Deliberately
+// table-wide and uncached: this is only ever called by the periodic gauge
+// sampler tied to the aggregation job's own cadence
+// (internal/jobs/jobtypes/job_aggregation.go), never per-request — a
+// table-wide COUNT(*) is exactly what results cannot afford on every page
+// load (spec 2026-08-17-04 §3).
+func (s *Service) CountResultsByPeriodType(ctx context.Context) (map[string]int64, error) {
+	var rows []struct {
+		PeriodType string `bun:"period_type"`
+		Count      int64  `bun:"count"`
+	}
+
+	if err := s.db.NewSelect().
+		Model((*models.Result)(nil)).
+		ColumnExpr("period_type").
+		ColumnExpr("COUNT(*) AS count").
+		Group("period_type").
+		Scan(ctx, &rows); err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		counts[row.PeriodType] = row.Count
+	}
+
+	return counts, nil
+}
+
 func (s *Service) ListResults(
 	ctx context.Context, filter *models.ListResultsFilter,
 ) (*models.ListResultsResponse, error) {
@@ -2166,75 +2343,103 @@ func (s *Service) ListResults(
 		return nil, err
 	}
 
-	// For now, we don't calculate total count as it's expensive
-	// It can be added later as an optional feature
+	// No total count: results is the largest table in the system, and an
+	// unbounded COUNT(*) on every page load is exactly what this endpoint
+	// cannot afford (spec 2026-08-18-04).
 	return &models.ListResultsResponse{
 		Results: results,
-		Total:   0,
 	}, nil
 }
 
 // applyResultsFilter narrows a results SELECT by filter. Shared by ListResults
 // and CompactResults so both read exactly the same rows for a bucket.
+//
+// Every column reference below is qualified with the "result" alias (bun's
+// default alias for the results model) because IncludeCheckInfo can add a
+// JOIN against `checks`, and results/checks share several column names (uid,
+// organization_uid, status, created_at) — left unqualified, those become
+// ambiguous the moment the join is present. Qualifying unconditionally keeps
+// one code path for both cases instead of two.
 func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter) *bun.SelectQuery {
 	query = query.
-		Where("organization_uid = ?", filter.OrganizationUID).
-		Order("period_start DESC").
-		Order("uid DESC")
+		Where("result.organization_uid = ?", filter.OrganizationUID).
+		Order("result.period_start DESC").
+		Order("result.uid DESC")
 
 	// Filter by multiple check UIDs
 	if len(filter.CheckUIDs) > 0 {
-		query = query.Where("check_uid IN (?)", bun.List(filter.CheckUIDs))
+		query = query.Where("result.check_uid IN (?)", bun.List(filter.CheckUIDs))
 	}
 
 	// Filter by check types (requires subquery to checks table)
 	if len(filter.CheckTypes) > 0 {
 		//nolint:lll // Long SQL query for readability
-		query = query.Where("check_uid IN (SELECT uid FROM checks WHERE organization_uid = ? AND type IN (?) AND deleted_at IS NULL)",
+		query = query.Where("result.check_uid IN (SELECT uid FROM checks WHERE organization_uid = ? AND type IN (?) AND deleted_at IS NULL)",
 			filter.OrganizationUID, bun.List(filter.CheckTypes))
 	}
 
 	// Filter by multiple regions
 	if len(filter.Regions) > 0 {
-		query = query.Where("region IN (?)", bun.List(filter.Regions))
+		query = query.Where("result.region IN (?)", bun.List(filter.Regions))
 	}
 	// Filter by multiple period types
 	if len(filter.PeriodTypes) > 0 {
-		query = query.Where("period_type IN (?)", bun.List(filter.PeriodTypes))
+		query = query.Where("result.period_type IN (?)", bun.List(filter.PeriodTypes))
 	}
 
 	// Filter by multiple statuses
 	if len(filter.Statuses) > 0 {
-		query = query.Where("status IN (?)", bun.List(filter.Statuses))
+		query = query.Where("result.status IN (?)", bun.List(filter.Statuses))
 	}
 
 	// Exclude statuses (e.g. lifecycle markers in aggregation discovery). A NULL
 	// status is never a marker, so it stays included.
 	if len(filter.ExcludeStatuses) > 0 {
-		query = query.Where("(status IS NULL OR status NOT IN (?))", bun.List(filter.ExcludeStatuses))
+		query = query.Where("(result.status IS NULL OR result.status NOT IN (?))", bun.List(filter.ExcludeStatuses))
 	}
 
 	// Skip rows whose check has been hard-deleted (FK-orphan rows). A no-op here
 	// by FK construction (Postgres cannot hold orphans), kept for parity with
 	// SQLite and defense in depth. See RequireCheckExists.
 	if filter.RequireCheckExists {
-		query = query.Where("check_uid IN (SELECT uid FROM checks)")
+		query = query.Where("result.check_uid IN (SELECT uid FROM checks)")
 	}
 
 	// Time range filters
 	if filter.PeriodStartAfter != nil {
-		query = query.Where("period_start >= ?", *filter.PeriodStartAfter)
+		query = query.Where("result.period_start >= ?", *filter.PeriodStartAfter)
 	}
 
 	if filter.PeriodEndBefore != nil {
-		query = query.Where("period_start < ?", *filter.PeriodEndBefore)
+		query = query.Where("result.period_start < ?", *filter.PeriodEndBefore)
 	}
 
 	// Cursor-based pagination
 	if filter.CursorTimestamp != nil && filter.CursorUID != nil {
 		// Results with period_start < cursor_timestamp OR (period_start = cursor_timestamp AND uid < cursor_uid)
-		query = query.Where("(period_start < ?) OR (period_start = ? AND uid < ?)",
+		query = query.Where("(result.period_start < ?) OR (result.period_start = ? AND result.uid < ?)",
 			*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
+	}
+
+	// Only join `checks` when the caller explicitly asked for check info via
+	// with=checkSlug,checkName (needsCheckInfo in the results service) — most
+	// callers of ListResults/CompactResults (aggregation work-discovery,
+	// availability computation, uptime bars) don't and shouldn't pay for a
+	// join they never read. A single LEFT JOIN here costs one query total,
+	// independent of page size — cheaper than a second batch round-trip
+	// (db.Service.GetChecksByUIDs, the pattern the incidents list endpoint
+	// uses) for what is a straight 1:1 FK lookup, and keeps the results page
+	// itself transactionally consistent with the join. LEFT JOIN (not INNER):
+	// a result whose check was hard-deleted must still come back on the page
+	// with nil CheckSlug/CheckName rather than silently vanishing (see
+	// RequireCheckExists above for why an orphaned check_uid is possible at
+	// all).
+	if filter.IncludeCheckInfo {
+		query = query.
+			ColumnExpr("result.*").
+			ColumnExpr("c.slug AS check_slug").
+			ColumnExpr("c.name AS check_name").
+			Join("LEFT JOIN checks AS c ON c.uid = result.check_uid")
 	}
 
 	// Apply limit
@@ -2423,6 +2628,32 @@ func (s *Service) GetLastResultForChecks(
 	// (spec 2026-08-09-07: 1690 ms and 24 MB of temp spill for 356 checks,
 	// versus 47 ms and zero spill here). The returned rows are identical: the
 	// newest raw row per requested check, at most one each.
+	//
+	// The status filter excludes only ResultStatusCreated (spec 2026-08-18-03):
+	// a "created" row means an attempt started, not that the check was
+	// checked, so it must never win "last checked" over an older terminal
+	// row — or leave a fresh check reading "Last checked" at all when the only
+	// row it has is its own creation marker (CreateCheck's one-time "Check
+	// created" row, the observed source of the bug).
+	//
+	// ResultStatusRunning is deliberately NOT excluded here despite also being
+	// a models.ResultStatus.IsLifecycleMarker() value: heartbeat checks
+	// (handlers/heartbeat) use "running" as a legitimate, externally-reported,
+	// possibly long-lived status — "the monitored job started and hasn't
+	// pinged again yet" — that the API is meant to surface as the check's
+	// current/last result, not hide (spec 2026-08-18-03 discovered this via
+	// TestReceiveHeartbeat*RunningStatus regressing). Excluding it here would
+	// wrongly hide a heartbeat's genuine "running" report. Nothing else in the
+	// codebase ever writes a raw row with status=running, so this exclusion is
+	// narrower than IsLifecycleMarker() on purpose, for this one call site
+	// only — availability math (RawAvailability, the hour rollup, the
+	// uptimebar union) is unaffected and still excludes Running via
+	// IsLifecycleMarker() as before.
+	//
+	// A reaped row (ResultStatusAbandoned, written by the reaper) is
+	// also deliberately NOT excluded: once terminal it is a legitimate, if
+	// uninformative, last-checked entry. Only an OPEN `created` marker is
+	// hidden here — "an attempt started" is not "the check was checked".
 	query := `
 		SELECT r.*
 		FROM unnest(?::uuid[]) AS cu(uid)
@@ -2432,12 +2663,13 @@ func (s *Service) GetLastResultForChecks(
 			WHERE res.organization_uid = ?
 				AND res.check_uid = cu.uid
 				AND res.period_type = 'raw'
+				AND (res.status IS NULL OR res.status != ?)
 			ORDER BY res.period_start DESC
 			LIMIT 1
 		) AS r
 	`
 
-	err := s.db.NewRaw(query, pgdialect.Array(checkUIDs), orgUID).Scan(ctx, &results)
+	err := s.db.NewRaw(query, pgdialect.Array(checkUIDs), orgUID, int(models.ResultStatusCreated)).Scan(ctx, &results)
 	if err != nil {
 		return nil, err
 	}
@@ -2450,6 +2682,179 @@ func (s *Service) GetLastResultForChecks(
 	}
 
 	return resultMap, nil
+}
+
+// abandonedResultLifecycleStatuses is the raw statuses ReapAbandonedResults
+// scans for: ResultStatusCreated only — the sole status any code path writes
+// and then may leave open (CreateCheck's one-time "Check created" marker).
+// ResultStatusRunning is deliberately EXCLUDED even though
+// models.ResultStatus.IsLifecycleMarker() also treats it as a lifecycle
+// marker: heartbeat checks (handlers/heartbeat) write "running" as a
+// legitimate, externally-reported, possibly long-lived status ("the
+// monitored job started and hasn't pinged again yet") with no check_jobs
+// period/lease relationship for AbandonedResultThreshold to measure against
+// — reaping it would finalize a heartbeat's genuine in-progress report into a
+// fake error the moment its own period math (which does not apply to it)
+// says it should have finished (spec 2026-08-18-03, discovered via
+// TestReceiveHeartbeat*RunningStatus regressing during implementation).
+func abandonedResultLifecycleStatuses() []int {
+	return []int{int(models.ResultStatusCreated)}
+}
+
+// ReapAbandonedResults finalizes raw results stuck in a lifecycle-marker
+// status well past any plausible execution window for their check. See the
+// db.Service interface doc for the contract.
+//
+// There is no proactive check_jobs lease sweep to piggyback on here (spec
+// 2026-08-18-03, resolved from the code as instructed): check_jobs leases are
+// only ever reclaimed lazily, inside ClaimJobs's own SELECT, when a worker
+// happens to ask for work in that job's scope — never on a timer against the
+// whole table. More fundamentally, nothing in this codebase ties an open raw
+// result row to a check_jobs lease at all: the one persistent status=created
+// row is CreateCheck's one-time "Check created" marker, written outside any
+// claim/lease flow. So this has to be its own sweep, over `results` directly,
+// keyed off each row's own check's period rather than any check_jobs state.
+func (s *Service) ReapAbandonedResults(ctx context.Context) (models.ReapAbandonedResultsOutcome, error) {
+	var candidates []*models.Result
+
+	// idx_results_lifecycle_pending (period_start) WHERE period_type='raw' AND
+	// status = 1 backs this: `results` is the largest table in the system, and
+	// a periodic sweep for a handful of stuck marker rows must never fall back
+	// to scanning it. The partial predicate is what does the work here — no
+	// other index leads with anything this query filters on (results_raw_idx
+	// leads with organization_uid), so without it the 5-minute sweep degrades
+	// to scanning every raw row. status = 2 (running) is deliberately outside
+	// the index: heartbeat checks report it as a legitimate long-lived state,
+	// so it is neither reaped nor worth carrying here.
+	err := s.db.NewSelect().
+		Model(&candidates).
+		Column("uid", "check_uid", "status", "period_start").
+		Where("period_type = 'raw'").
+		Where("status IN (?)", bun.List(abandonedResultLifecycleStatuses())).
+		Scan(ctx)
+	if err != nil {
+		return models.ReapAbandonedResultsOutcome{}, fmt.Errorf("failed to list abandoned-result candidates: %w", err)
+	}
+
+	outcome := models.ReapAbandonedResultsOutcome{Candidates: len(candidates)}
+	if len(candidates) == 0 {
+		return outcome, nil
+	}
+
+	periods, err := s.checkPeriodsFor(ctx, candidates)
+	if err != nil {
+		return models.ReapAbandonedResultsOutcome{}, fmt.Errorf("failed to fetch check periods: %w", err)
+	}
+
+	now := time.Now()
+
+	for _, candidate := range candidates {
+		period, ok := periods[candidate.CheckUID]
+		if !ok {
+			// Check hard-deleted since; nothing reads its "last checked" any
+			// more, and it will never be joinable again — leave it alone.
+			continue
+		}
+
+		if now.Sub(candidate.PeriodStart) < models.AbandonedResultThreshold(period) {
+			continue // still inside the plausible execution window
+		}
+
+		claimed, claimErr := s.claimAbandonedResult(ctx, candidate)
+		if claimErr != nil {
+			slog.WarnContext(ctx, "failed to reap abandoned result", "result_uid", candidate.UID, "error", claimErr)
+
+			continue
+		}
+
+		if claimed {
+			outcome.Reaped++
+		}
+	}
+
+	return outcome, nil
+}
+
+// checkPeriodsFor batch-fetches the period of every distinct check referenced
+// by candidates, in one query. A check_uid absent from the returned map has
+// been hard-deleted since the candidate row was written.
+func (s *Service) checkPeriodsFor(ctx context.Context, candidates []*models.Result) (map[string]time.Duration, error) {
+	seen := make(map[string]struct{}, len(candidates))
+	checkUIDs := make([]string, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		if _, ok := seen[candidate.CheckUID]; ok {
+			continue
+		}
+
+		seen[candidate.CheckUID] = struct{}{}
+		checkUIDs = append(checkUIDs, candidate.CheckUID)
+	}
+
+	var checks []*models.Check
+
+	if err := s.db.NewSelect().
+		Model(&checks).
+		Column("uid", "period").
+		Where("uid IN (?)", bun.List(checkUIDs)).
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	periods := make(map[string]time.Duration, len(checks))
+	for _, check := range checks {
+		periods[check.UID] = time.Duration(check.Period)
+	}
+
+	return periods, nil
+}
+
+// abandonedResultOutput is the output payload written on a reaped result: a
+// human message (checkerdef.OutputKeyError, the conventional key every other
+// error-result writer uses) plus a machine-readable "reason" so a reaped row
+// stays distinguishable from a genuine error by output alone, mirroring the
+// stuck-job reaper's "reason":"stuck_timeout" convention.
+func abandonedResultOutput() models.JSONMap {
+	return models.JSONMap{
+		checkerdef.OutputKeyError: "No result was ever reported for this attempt — the worker likely crashed, " +
+			"restarted, or lost its lease before finishing. Excluded from availability.",
+		"reason": "abandoned",
+	}
+}
+
+// claimAbandonedResult atomically flips one candidate to a terminal
+// ResultStatusAbandoned row, re-asserting its current status in the WHERE
+// clause so a concurrent transition (another reaper replica, or the row
+// somehow being legitimately finalized between the SELECT and here) is a
+// no-op rather than a clobber — same guard shape as jobsvc.ReapStuckJobs.
+// Returns false when the row had already moved.
+//
+// The status IS the marker (spec 2026-08-18-10): 9 is terminal, so it never
+// re-enters the created-only candidate scan above, and it is excluded from
+// availability by models.ResultStatus.ExcludedFromAvailability without any
+// second column for a reader to have to know about.
+func (s *Service) claimAbandonedResult(ctx context.Context, candidate *models.Result) (bool, error) {
+	if candidate.Status == nil {
+		return false, nil
+	}
+
+	res, err := s.db.NewUpdate().
+		Model((*models.Result)(nil)).
+		Set("status = ?", int(models.ResultStatusAbandoned)).
+		Set("output = ?", abandonedResultOutput()).
+		Where("uid = ?", candidate.UID).
+		Where("status = ?", *candidate.Status).
+		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n > 0, nil
 }
 
 // Job operations
@@ -2880,6 +3285,38 @@ func (s *Service) ListIncidentMemberChecks(
 	}
 
 	return members, nil
+}
+
+// ListIncidentMemberChecksByIncidentUIDs returns member rows for several
+// group incidents at once, grouped by incident UID. A single batched query
+// replaces one ListIncidentMemberChecks call per group incident on a
+// response page. Unlike GetChecksByUIDs, incidentUIDs is NOT chunked: it is
+// at most one entry per incident on the page, and the page itself is capped
+// by base.ParsePageLimit (100) — nowhere near either engine's bound-parameter
+// ceiling.
+func (s *Service) ListIncidentMemberChecksByIncidentUIDs(
+	ctx context.Context, incidentUIDs []string,
+) (map[string][]*models.IncidentMemberCheck, error) {
+	if len(incidentUIDs) == 0 {
+		return make(map[string][]*models.IncidentMemberCheck), nil
+	}
+
+	var members []*models.IncidentMemberCheck
+	err := s.db.NewSelect().
+		Model(&members).
+		Where("incident_uid IN (?)", bun.List(incidentUIDs)).
+		Order("incident_uid ASC", "first_failure_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list incident member checks by incident uids: %w", err)
+	}
+
+	membersByIncident := make(map[string][]*models.IncidentMemberCheck)
+	for _, member := range members {
+		membersByIncident[member.IncidentUID] = append(membersByIncident[member.IncidentUID], member)
+	}
+
+	return membersByIncident, nil
 }
 
 // GetIncidentMemberCheck returns a single member row, or sql.ErrNoRows.
@@ -4166,6 +4603,8 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 }
 
 // UpdateStatusPage updates a status page by UID.
+//
+//nolint:cyclop // one branch per optional column; splitting it would only hide the shape.
 func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *models.StatusPageUpdate) error {
 	query := s.db.NewUpdate().
 		Model((*models.StatusPage)(nil)).
@@ -4215,6 +4654,18 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 
 	if update.Language != nil {
 		query = query.Set("language = ?", *update.Language)
+	}
+
+	if update.AutoPublish != nil {
+		query = query.Set("auto_publish = ?", *update.AutoPublish)
+	}
+
+	if update.AutoPublishDelaySeconds != nil {
+		query = query.Set("auto_publish_delay_seconds = ?", *update.AutoPublishDelaySeconds)
+	}
+
+	if update.AutoResolve != nil {
+		query = query.Set("auto_resolve = ?", *update.AutoResolve)
 	}
 
 	if update.CustomCSS != nil {
@@ -4532,6 +4983,12 @@ func (s *Service) UpdateStatusPageResource(
 		query = query.Set("position = ?", *update.Position)
 	}
 
+	// Three-state override: SetAutoPublish is what distinguishes "reset to
+	// inherit" (nil value) from "leave alone" (flag not set).
+	if update.SetAutoPublish {
+		query = query.Set("auto_publish = ?", update.AutoPublish)
+	}
+
 	// Switching target kind always writes BOTH columns so the XOR constraint
 	// holds (spec 2026-08-01-03).
 	if update.SetTarget {
@@ -4577,6 +5034,37 @@ func (s *Service) GetCheckGroup(ctx context.Context, orgUID, uid string) (*model
 	}
 
 	return group, nil
+}
+
+// GetCheckGroupsByUIDs returns the requested check groups keyed by UID, in a
+// single batched query (absent UIDs simply have no entry). Unlike
+// GetChecksByUIDs, groupUIDs is NOT chunked: at most one entry per group
+// incident on the page, itself capped by base.ParsePageLimit (100) — nowhere
+// near either engine's bound-parameter ceiling.
+func (s *Service) GetCheckGroupsByUIDs(
+	ctx context.Context, orgUID string, groupUIDs []string,
+) (map[string]*models.CheckGroup, error) {
+	if len(groupUIDs) == 0 {
+		return make(map[string]*models.CheckGroup), nil
+	}
+
+	var groups []*models.CheckGroup
+	err := s.db.NewSelect().
+		Model(&groups).
+		Where("uid IN (?)", bun.List(groupUIDs)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get check groups by uids: %w", err)
+	}
+
+	groupMap := make(map[string]*models.CheckGroup, len(groups))
+	for _, group := range groups {
+		groupMap[group.UID] = group
+	}
+
+	return groupMap, nil
 }
 
 func (s *Service) GetCheckGroupBySlug(ctx context.Context, orgUID, slug string) (*models.CheckGroup, error) {
@@ -5402,4 +5890,374 @@ func (s *Service) ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.
 	}
 
 	return checks, nil
+}
+
+// --- SLOs (spec 2026-08-20-01) ---------------------------------------------
+
+// CreateSLO inserts a new service-level objective.
+func (s *Service) CreateSLO(ctx context.Context, slo *models.SLO) error {
+	_, err := s.db.NewInsert().Model(slo).Exec(ctx)
+
+	return err
+}
+
+// GetSLO retrieves an SLO by UID within an organization.
+func (s *Service) GetSLO(ctx context.Context, orgUID, uid string) (*models.SLO, error) {
+	slo := new(models.SLO)
+
+	err := s.db.NewSelect().
+		Model(slo).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return slo, nil
+}
+
+// GetSLOBySlug retrieves an SLO by its per-org slug.
+func (s *Service) GetSLOBySlug(ctx context.Context, orgUID, slug string) (*models.SLO, error) {
+	slo := new(models.SLO)
+
+	err := s.db.NewSelect().
+		Model(slo).
+		Where("slug = ?", slug).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return slo, nil
+}
+
+// ListSLOs lists an organization's SLOs.
+func (s *Service) ListSLOs(
+	ctx context.Context, orgUID string, filter models.ListSLOsFilter,
+) ([]*models.SLO, error) {
+	var slos []*models.SLO
+
+	query := s.db.NewSelect().
+		Model(&slos).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("name ASC")
+
+	if filter.CheckUID != "" {
+		query = query.Where("check_uid = ?", filter.CheckUID)
+	}
+
+	if filter.EnabledOnly {
+		query = query.Where("enabled = ?", true)
+	}
+
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+
+	err := query.Scan(ctx)
+
+	return slos, err
+}
+
+// CountSLOs counts an organization's live SLOs.
+func (s *Service) CountSLOs(ctx context.Context, orgUID string) (int, error) {
+	return s.db.NewSelect().
+		Model((*models.SLO)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+}
+
+// ListSLOsForChecks returns the live SLOs scoped directly to any of the checks.
+func (s *Service) ListSLOsForChecks(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) ([]*models.SLO, error) {
+	if len(checkUIDs) == 0 {
+		return nil, nil
+	}
+
+	var slos []*models.SLO
+
+	err := s.db.NewSelect().
+		Model(&slos).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("check_uid IN (?)", bun.List(checkUIDs)).
+		Scan(ctx)
+
+	return slos, err
+}
+
+// UpdateSLO applies a partial update to an SLO.
+func (s *Service) UpdateSLO(ctx context.Context, uid string, update models.SLOUpdate) error {
+	query := s.db.NewUpdate().
+		Model((*models.SLO)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	if update.Name != nil {
+		query = query.Set("name = ?", *update.Name)
+	}
+
+	if update.Slug != nil {
+		query = query.Set("slug = ?", *update.Slug)
+	}
+
+	// Scope is an XOR at the schema level, so a scope change always writes
+	// BOTH columns — setting one without clearing the other would violate the
+	// constraint rather than silently producing a two-scoped SLO.
+	if update.CheckUID != nil {
+		query = query.Set("check_uid = ?", *update.CheckUID).Set("check_group_uid = ?", nil)
+	} else if update.CheckGroupUID != nil {
+		query = query.Set("check_group_uid = ?", *update.CheckGroupUID).Set("check_uid = ?", nil)
+	}
+
+	if update.TargetPct != nil {
+		query = query.Set("target_pct = ?", *update.TargetPct)
+	}
+
+	if update.Timezone != nil {
+		query = query.Set("timezone = ?", *update.Timezone)
+	}
+
+	if update.ExcludeMaintenance != nil {
+		query = query.Set("exclude_maintenance = ?", *update.ExcludeMaintenance)
+	}
+
+	if update.Enabled != nil {
+		query = query.Set("enabled = ?", *update.Enabled)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// DeleteSLO soft-deletes an SLO.
+func (s *Service) DeleteSLO(ctx context.Context, orgUID, uid string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.SLO)(nil)).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// --- Report schedules (spec 2026-08-20-01) ---------------------------------
+
+// CreateReportSchedule inserts a new report schedule.
+func (s *Service) CreateReportSchedule(ctx context.Context, schedule *models.ReportSchedule) error {
+	_, err := s.db.NewInsert().Model(schedule).Exec(ctx)
+
+	return err
+}
+
+// GetReportSchedule retrieves a report schedule by UID within an organization.
+func (s *Service) GetReportSchedule(ctx context.Context, orgUID, uid string) (*models.ReportSchedule, error) {
+	schedule := new(models.ReportSchedule)
+
+	err := s.db.NewSelect().
+		Model(schedule).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return schedule, nil
+}
+
+// ListReportSchedules lists an organization's report schedules.
+func (s *Service) ListReportSchedules(ctx context.Context, orgUID string) ([]*models.ReportSchedule, error) {
+	var schedules []*models.ReportSchedule
+
+	err := s.db.NewSelect().
+		Model(&schedules).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("name ASC").
+		Scan(ctx)
+
+	return schedules, err
+}
+
+// ListEnabledReportSchedules returns every enabled schedule across all orgs.
+func (s *Service) ListEnabledReportSchedules(ctx context.Context) ([]*models.ReportSchedule, error) {
+	var schedules []*models.ReportSchedule
+
+	err := s.db.NewSelect().
+		Model(&schedules).
+		Where("enabled = ?", true).
+		Where("deleted_at IS NULL").
+		Order("uid ASC").
+		Scan(ctx)
+
+	return schedules, err
+}
+
+// UpdateReportSchedule applies a partial update to a report schedule.
+func (s *Service) UpdateReportSchedule(
+	ctx context.Context, uid string, update models.ReportScheduleUpdate,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	if update.Name != nil {
+		query = query.Set("name = ?", *update.Name)
+	}
+
+	if update.Frequency != nil {
+		query = query.Set("frequency = ?", *update.Frequency)
+	}
+
+	if update.Timezone != nil {
+		query = query.Set("timezone = ?", *update.Timezone)
+	}
+
+	if update.Recipients != nil {
+		query = query.Set("recipients = ?", jsonArray(*update.Recipients))
+	}
+
+	if update.CheckUIDs != nil {
+		query = query.Set("check_uids = ?", jsonArray(*update.CheckUIDs))
+	}
+
+	if update.CheckGroupUIDs != nil {
+		query = query.Set("check_group_uids = ?", jsonArray(*update.CheckGroupUIDs))
+	}
+
+	if update.IncludeSLOs != nil {
+		query = query.Set("include_slos = ?", *update.IncludeSLOs)
+	}
+
+	if update.Enabled != nil {
+		query = query.Set("enabled = ?", *update.Enabled)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// DeleteReportSchedule soft-deletes a report schedule.
+func (s *Service) DeleteReportSchedule(ctx context.Context, orgUID, uid string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// MarkReportScheduleRun claims a closed period for a schedule.
+//
+// The WHERE clause is the whole point: it only matches when the stored
+// last_period_start is NULL or strictly older than the period being claimed,
+// so two replicas that both notice the same closed period race into the same
+// UPDATE and exactly one of them sees a row affected. That is what makes the
+// report job safe under multi-replica claiming without leader election — the
+// same reasoning as SELECT ... FOR UPDATE SKIP LOCKED elsewhere, expressed as
+// an idempotency key instead of a lock.
+func (s *Service) MarkReportScheduleRun(
+	ctx context.Context, uid string, periodStart, runAt time.Time,
+) (bool, error) {
+	res, err := s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Where("last_period_start IS NULL OR last_period_start < ?", periodStart).
+		Set("last_period_start = ?", periodStart).
+		Set("last_run_at = ?", runAt).
+		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return affected > 0, nil
+}
+
+// jsonArray renders a possibly-nil slice as a JSON array literal for a partial
+// UPDATE. It must be a marshaled string, not the Go slice: bun would otherwise
+// render []string as a SQL array, which is not a JSON value on either dialect.
+// A nil slice becomes `[]` rather than `null`, so an empty scope can never read
+// back as "no scope" on one path and "org-wide" on another.
+func jsonArray(values []string) string {
+	if values == nil {
+		return "[]"
+	}
+
+	data, err := json.Marshal(values)
+	if err != nil {
+		return "[]"
+	}
+
+	return string(data)
+}
+
+// RemoveRecipientFromReportSchedules drops an address from every one of the
+// org's report schedules (spec 2026-08-20-01). Done in Go rather than in SQL
+// because the recipients column is a JSON array on Postgres and a JSON string
+// on SQLite, and one loop is easier to keep honest than two dialect-specific
+// JSON mutations.
+func (s *Service) RemoveRecipientFromReportSchedules(ctx context.Context, orgUID, email string) (int, error) {
+	schedules, err := s.ListReportSchedules(ctx, orgUID)
+	if err != nil {
+		return 0, err
+	}
+
+	changed := 0
+
+	for _, schedule := range schedules {
+		kept := make([]string, 0, len(schedule.Recipients))
+		removed := false
+
+		for _, recipient := range schedule.Recipients {
+			if strings.EqualFold(strings.TrimSpace(recipient), email) {
+				removed = true
+
+				continue
+			}
+
+			kept = append(kept, recipient)
+		}
+
+		if !removed {
+			continue
+		}
+
+		if _, updateErr := s.db.NewUpdate().
+			Model((*models.ReportSchedule)(nil)).
+			Where("uid = ?", schedule.UID).
+			Set("recipients = ?", jsonArray(kept)).
+			Set("updated_at = ?", time.Now()).
+			Exec(ctx); updateErr != nil {
+			return changed, updateErr
+		}
+
+		changed++
+	}
+
+	return changed, nil
 }

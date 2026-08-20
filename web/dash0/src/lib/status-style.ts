@@ -79,6 +79,21 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         defaultLabel: "Validating",
         isDown: false,
       };
+    case "abandoned":
+      // Server-minted by the abandoned-result reaper: nothing was ever
+      // reported for this attempt because OUR side died, not because the
+      // target was down. Excluded from every availability calculation, so it
+      // must read as a neutral "not counted" state — never red, never
+      // isDown (spec 2026-08-18-10).
+      return {
+        color: "bg-gray-300",
+        dotColor: "bg-gray-400",
+        chartColor: NEUTRAL_CHART,
+        badgeVariant: "secondary",
+        labelKey: "status.abandoned",
+        defaultLabel: "Abandoned",
+        isDown: false,
+      };
     case "down":
     case "error":
     case "timeout":

@@ -89,6 +89,14 @@ export function clearToken(): void {
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
   suppress401Redirect?: boolean;
+  /** Treat a 401 as an ordinary API error: no silent refresh-and-retry, no
+   * clearToken(), no redirect — just an ApiError carrying the server's code.
+   *
+   * Only for endpoints where 401 means "the credential *in the body* is
+   * wrong", not "your session expired" — today that is
+   * POST /auth/change-password returning INVALID_CURRENT_PASSWORD. Without
+   * this, mistyping your current password would log you out. */
+  suppress401Handling?: boolean;
   /** Internal: set on the single retry attempt after a refresh-and-retry, so
    * a second 401 clears/redirects instead of looping back into another
    * refresh. Callers should never set this themselves. */
@@ -207,7 +215,12 @@ export async function apiFetch<T>(
   url: string,
   options: FetchOptions = {}
 ): Promise<T> {
-  const { skipAuth = false, suppress401Redirect = false, ...fetchOptions } = options;
+  const {
+    skipAuth = false,
+    suppress401Redirect = false,
+    suppress401Handling = false,
+    ...fetchOptions
+  } = options;
 
   const headers = new Headers(fetchOptions.headers);
 
@@ -233,7 +246,7 @@ export async function apiFetch<T>(
   // retried request itself 401ing (e.g. the refresh succeeded but the new
   // token is somehow still rejected, or the refresh raced a logout) —
   // without it a second 401 would try to refresh again and loop.
-  if (response.status === 401 && !skipAuth && !options._isRetry) {
+  if (response.status === 401 && !skipAuth && !suppress401Handling && !options._isRetry) {
     const newToken = await refreshAccessToken();
 
     if (newToken) {
@@ -247,14 +260,18 @@ export async function apiFetch<T>(
     }
   }
 
-  return handleResponse<T>(response, { skipAuth, suppress401Redirect });
+  return handleResponse<T>(response, { skipAuth, suppress401Redirect, suppress401Handling });
 }
 
 async function handleResponse<T>(
   response: Response,
-  { skipAuth, suppress401Redirect }: { skipAuth: boolean; suppress401Redirect: boolean }
+  {
+    skipAuth,
+    suppress401Redirect,
+    suppress401Handling = false,
+  }: { skipAuth: boolean; suppress401Redirect: boolean; suppress401Handling?: boolean }
 ): Promise<T> {
-  if (response.status === 401 && !skipAuth) {
+  if (response.status === 401 && !skipAuth && !suppress401Handling) {
     clearToken();
     if (!suppress401Redirect) {
       redirectToExpiredLogin();

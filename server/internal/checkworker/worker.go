@@ -20,7 +20,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
@@ -32,11 +34,16 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/errorreport"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // Errors returned by the check runner.
@@ -187,6 +194,21 @@ func NewCheckWorker(
 	checkJobSvc checkjobsvc.Service,
 ) *CheckWorker {
 	incidentSvc := incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime)
+
+	// The in-process worker is the path most incidents actually open on, so it
+	// needs the status-page publication hook too — without it, auto-publish
+	// would only ever fire for incidents opened through the HTTP server.
+	publicationSvc := incidentpublications.NewService(dbService, clock.Real{}, svc.Realtime)
+	publicationSvc.SetJobsService(svc.Jobs)
+	publicationSvc.SetScheduler(jobtypes.NewIncidentPublishScheduler(svc.Jobs))
+
+	if svc.EmailSender != nil && svc.EmailFormatter != nil {
+		publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
+			dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL, slog.Default()))
+	}
+
+	incidentSvc.SetPublicationHook(publicationSvc)
+
 	directBackend := backend.NewDirectBackend(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
 	)
@@ -239,6 +261,38 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 	}
 
 	schedParams := scheduling.ParamsFromConfig(cfg.Server.Scheduling)
+
+	// Install the browser backend here, in the ONE constructor both the
+	// in-process worker and the deported agent go through, so a `browser` check
+	// finds the same configured Chrome (remote CDP or local binary) wherever it
+	// executes. The checker registry hands out zero-value checkers, so there is
+	// no per-instance seam to pass this through.
+	checkbrowser.Configure(checkbrowser.Settings{
+		CDPURL:     cfg.Checkers.Browser.CDPURL,
+		ChromePath: cfg.Checkers.Browser.ChromePath,
+	})
+
+	// Same reasoning, same place: install the server-level check-type
+	// activation gate consulted by `js` sub-checks here, in the ONE constructor
+	// the in-process worker and the deported agent both go through. Wiring it
+	// only in the HTTP route setup (app/server.go, where the resolver is also
+	// built for checktypes.Service) would leave it nil in an agent process,
+	// which never runs that code — i.e. exactly where checks execute.
+	//
+	// Sibling construction site: app/server.go's `activationResolver`. Both are
+	// checkerdef.NewActivationResolver(&cfg.Checkers) — the same constructor
+	// over the same pure input — so they cannot diverge; keep them in step.
+	//
+	// nil orgDisabled: server-level only. The JS runtime has no org identity,
+	// so per-org overrides are not enforced through this gate (see checkjs).
+	//
+	// Agent semantics: an agent reads its OWN checkers.* config, not the
+	// control plane's, so it enforces the configuration of the host it runs on.
+	// An agent left at defaults enables every type.
+	activation := checkerdef.NewActivationResolver(&cfg.Checkers)
+	checkjs.TypeEnabled = func(checkType checkerdef.CheckType) bool {
+		return activation.IsTypeEnabled(checkType, nil)
+	}
 
 	return &CheckWorker{
 		backend:     workerBackend,
@@ -346,12 +400,15 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		region = r.config.Server.CheckWorker.Region
 	}
 
+	agentVersion := version.Get().Version
+
 	worker := &models.Worker{
 		UID:          uuid.New().String(),
 		Slug:         identity.Slug,
 		Name:         identity.Name,
 		Region:       &region,
-		Capabilities: egressreport.Current(),
+		Capabilities: egressreport.Current(ctx),
+		Version:      &agentVersion,
 	}
 
 	registeredWorker, err := r.backend.Register(ctx, worker)
@@ -392,11 +449,15 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 }
 
 // updateHeartbeat updates the worker's last_active_at timestamp and re-reports
-// this host's egress families. The probe runs HERE, at report time, rather than
-// once at process start: a node that gains or loses an IPv6 route then stops
-// advertising the wrong thing within one beat, with no restart.
+// this host's egress families and build version. The egress probe runs HERE,
+// at report time, rather than once at process start: a node that gains or
+// loses an IPv6 route then stops advertising the wrong thing within one beat,
+// with no restart. The build version never changes for the life of the
+// process, so re-sending it every beat is just a cheap package-level read.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.backend.Heartbeat(ctx, r.getWorker().UID, egressreport.Current()); err != nil {
+	if err := r.backend.Heartbeat(
+		ctx, r.getWorker().UID, egressreport.Current(ctx), version.Get().Version,
+	); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
 }
@@ -953,6 +1014,8 @@ func (r *CheckWorker) executeJob(
 		execCtx = checkerdef.WithIPVersion(execCtx, version)
 	}
 
+	execCtx = applySMTPDeliveryContext(execCtx, checkJob)
+
 	execStart := time.Now()
 	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
@@ -1074,6 +1137,30 @@ func configWithDefaultTimeout(config map[string]any, timeout time.Duration) map[
 	return clone
 }
 
+// applySMTPDeliveryContext marks execCtx as a real, dispatched SMTP check job
+// (revised design, 2026-08-19 — spec 2026-08-19-04). send_email's recipient
+// (`delivery_to`) is now a plain config field the checker reads directly, no
+// longer resolved/threaded here — see checksmtp.SMTPConfig's DeliveryTo doc
+// comment for why. What still needs threading is a narrower marker: only a
+// job that reached this exact worker.go dispatch path is trusted to run send
+// mode at all.
+//
+// Gated on check type so a JS check's own job (type "js") never carries this
+// context value — the JS sub-check path (checkjs/checker.go:307) calls
+// Execute directly with its own context that never passes through here,
+// which is the guardrail: it can request send_email with a valid
+// inbox-domain delivery_to in a sub-check's config, but it can never make the
+// checker believe it is a real dispatched job.
+func applySMTPDeliveryContext(execCtx context.Context, checkJob *models.CheckJob) context.Context {
+	if checkJob.Type != string(checkerdef.CheckTypeSMTP) {
+		return execCtx
+	}
+
+	return checkerdef.WithSMTPJobIdentity(execCtx, checkerdef.SMTPJobIdentity{
+		CheckUID: checkJob.CheckUID,
+	})
+}
+
 // perCheckTimeout extracts the optional per-check `timeout` duration from a
 // job's config. Returns (0, false) when the key is absent, not a duration
 // string, or non-positive — the caller then falls back to the global /
@@ -1145,7 +1232,17 @@ func (r *CheckWorker) runCheckerGuarded(
 	go func() {
 		defer func() {
 			if p := recover(); p != nil {
-				outcomeCh <- execOutcome{err: fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())}
+				panicErr := fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())
+
+				// A checker that crashes is our bug; a checker that reports its
+				// target down is the product working. Only this path reports.
+				errorreport.CaptureWithTags(ctx, panicErr, map[string]string{
+					"check.type":   checkJob.Type,
+					"check.uid":    checkJob.CheckUID,
+					"organization": checkJob.OrganizationUID,
+				})
+
+				outcomeCh <- execOutcome{err: panicErr}
 			}
 
 			if abandoned.Load() {
@@ -1233,6 +1330,7 @@ func (r *CheckWorker) buildSubmitRequest(
 		Duration:        float32(result.Duration.Seconds() * 1000),
 		Metrics:         result.Metrics,
 		Output:          result.Output,
+		Diagnostics:     result.Diagnostics,
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: nextScheduledAt,
 		ExecStart:       execStart,

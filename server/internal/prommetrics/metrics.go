@@ -14,6 +14,7 @@ const (
 	labelWorkerUID    = "worker_uid"
 	labelBackend      = "backend"
 	labelOperation    = "operation"
+	labelCallsite     = "callsite"
 	labelStage        = "stage"
 	labelMethod       = "method"
 	labelRoute        = "route"
@@ -194,16 +195,37 @@ var (
 		[]string{labelMethod, labelRoute, labelStatus},
 	)
 
-	// DBQueryDuration observes SQL query latency by operation and backend.
-	// Recorded from the bun sloghook on every query (SELECT, INSERT, UPDATE,
-	// DELETE, BEGIN/COMMIT). Status is "ok" or "error".
+	// DBQueryDuration observes SQL query latency by operation, backend and
+	// callsite. Recorded from the bun sloghook on every query (SELECT, INSERT,
+	// UPDATE, DELETE, BEGIN/COMMIT). Status is "ok" or "error". callsite is a
+	// low-cardinality label threaded through ctx by the calling package (see
+	// internal/db/sloghook.WithCallsite) — bounded by construction to the
+	// handful of packages that annotate their context, plus "unlabelled" for
+	// everything else, so cardinality stays proportional to the number of
+	// annotated call paths rather than to traffic or argument values.
 	DBQueryDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "solidping_db_query_duration_seconds",
-			Help:    "SQL query duration in seconds, by operation and backend",
+			Help:    "SQL query duration in seconds, by operation, backend and callsite",
 			Buckets: []float64{0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5},
 		},
-		[]string{labelOperation, labelBackend, labelStatus},
+		[]string{labelOperation, labelBackend, labelStatus, labelCallsite},
+	)
+
+	// ResultsRowCount gauges the total row count in the results table by
+	// period_type (raw/hour/day/month), across all organizations. Refreshed on
+	// the aggregation job's cadence (internal/jobs/jobtypes/job_aggregation.go),
+	// never per-request — a table-wide COUNT(*) is exactly what this table
+	// cannot afford on every page load. Makes ingest growth visible before it
+	// crosses a shared_buffers cache cliff (spec 2026-08-17-04).
+	ResultsRowCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			// Deliberately not "..._row_count": promlinter reserves the
+			// "_count" suffix for histograms/summaries.
+			Name: "solidping_results_rows",
+			Help: "Total rows in the results table, by period_type",
+		},
+		[]string{"period_type"},
 	)
 
 	// DBBusyRetries counts SQLite SQLITE_BUSY and PostgreSQL
@@ -292,6 +314,21 @@ var (
 		[]string{labelJobType},
 	)
 
+	// EmailDeliveryLatency observes the round-trip latency of a send-mode SMTP
+	// probe email (spec 2026-08-19-04): time between the sending SMTP check's
+	// X-SolidPing-Sent-At header and the receiving email check's JMAP
+	// receivedAt. Only recorded when both headers are present and the
+	// resulting latency passes the sanity clamp (non-negative, not absurdly
+	// large) — see emailcheck/handler.go.
+	EmailDeliveryLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_email_delivery_latency_seconds",
+			Help:    "Round-trip latency of a send-mode SMTP probe email from send to JMAP receipt",
+			Buckets: []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800},
+		},
+		[]string{labelOrganization},
+	)
+
 	// JobsQueueDepth is the point-in-time backlog of background jobs by status
 	// (pending | running). Set by a periodic sampler that zero-fills statuses
 	// with no rows so a drained status drops to 0 rather than going stale.
@@ -325,6 +362,19 @@ var (
 			Help: "Worker terminal writes discarded because the reaper already transitioned the job, by job type",
 		},
 		[]string{labelJobType},
+	)
+
+	// ResultsReaped counts raw results the abandoned-result reaper finalized
+	// from a stale created marker into a terminal error (spec 2026-08-18-03).
+	// A spike signals a worker that crashed or restarted mid-cycle across many
+	// checks, not normal operation — these results are deliberately excluded
+	// from availability, so a spike here should never itself be read as a
+	// customer-facing availability dip.
+	ResultsReaped = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_results_reaped_total",
+			Help: "Total raw results finalized by the abandoned-result reaper (stale created rows)",
+		},
 	)
 
 	// RealtimeConnections tracks currently open realtime hint WebSocket
@@ -433,10 +483,11 @@ var (
 		ChecksRateLimited,
 		HTTPRateLimited,
 		HTTPRequestDuration, HTTPRequestsTotal,
-		DBQueryDuration, DBBusyRetries,
+		DBQueryDuration, DBBusyRetries, ResultsRowCount,
 		CheckStageDuration, ClaimJobsResult, CheckLaneClaims,
 		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
-		JobsReaped, JobsLeaseLost,
+		EmailDeliveryLatency,
+		JobsReaped, JobsLeaseLost, ResultsReaped,
 		RealtimeConnections, RealtimeHintsPublished,
 		RealtimeHintsCoalesced, RealtimeHintsDelivered,
 		RealtimeSubscriptions, RealtimeMessagesReceived,

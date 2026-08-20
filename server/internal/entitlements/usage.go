@@ -43,6 +43,9 @@ type Usage struct {
 	// instance-spend guard at all. A breach must never fail silently, so it
 	// surfaces here as well as in the logs.
 	SMSGuard *SMSGuardStatus `json:"smsGuard,omitempty"`
+	// Slos is the org's count of live service-level objectives. Enforced
+	// against MaxSlos.
+	Slos int `json:"slos"`
 }
 
 // Usage computes the org's current resource consumption. Non-internal
@@ -94,12 +97,53 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 		whatsapp = 0
 	}
 
+	sloCount, err := s.db.CountSLOs(ctx, orgUID)
+	if err != nil {
+		return Usage{}, fmt.Errorf("count slos: %w", err)
+	}
+
 	return Usage{
 		Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members,
 		Agents: agentCount, CustomDomains: customDomains,
 		WhatsappThisMonth: whatsapp,
 		SMSGuard:          s.SMSGuardStatusFor(orgUID),
+		Slos:              sloCount,
 	}, nil
+}
+
+// SloCreateAllowed returns ErrEntitlementExceeded (wrapped in QuotaError) when
+// creating another SLO would breach the org's MaxSlos cap. nil cap = unlimited
+// (the self-hosted default).
+//
+// Race window: the count and the caller's insert are not atomic, mirroring
+// CheckCreateAllowed. A tight race may slip one extra objective past the cap;
+// acceptable for a soft quota guard.
+func (s *Service) SloCreateAllowed(ctx context.Context, orgUID string) error {
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	if resolved.Limits.MaxSlos == nil {
+		return nil
+	}
+
+	limit := *resolved.Limits.MaxSlos
+
+	count, err := s.db.CountSLOs(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("count slos: %w", err)
+	}
+
+	if count >= limit {
+		return &QuotaError{
+			LimitName:    "MaxSlos",
+			Limit:        limit,
+			CurrentUsage: count,
+		}
+	}
+
+	return nil
 }
 
 // countActiveAgents counts the org's active (non-revoked, non-deleted)

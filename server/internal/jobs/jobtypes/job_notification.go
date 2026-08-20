@@ -96,7 +96,7 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	}
 
 	// Decrypt and merge any encrypted settings (slack tokens, webhook
-	// URLs, opsgenie keys, etc.) before passing them down to the sender.
+	// URLs, PagerDuty routing keys, etc.) before passing them down to the sender.
 	// On decrypt failure we don't ship a half-credential — fail the job.
 	if connection.SettingsPrivate != nil && *connection.SettingsPrivate != "" {
 		creds := jctx.Services.Credentials

@@ -112,12 +112,12 @@ func (h *Handler) StartScan(writer http.ResponseWriter, req *http.Request) error
 
 	job, err := h.svc.StartScan(req.Context(), org.UID, body.Type, body.Parameters)
 	if err != nil {
-		return h.writeScanError(writer, err)
+		return h.writeScanError(writer, req, err)
 	}
 
 	progress, progErr := h.svc.GetScanProgress(req.Context(), org.UID, job.UID)
 	if progErr != nil {
-		return h.WriteInternalError(writer, progErr)
+		return h.WriteInternalError(writer, req, progErr)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: job, "progress": progress})
@@ -125,7 +125,7 @@ func (h *Handler) StartScan(writer http.ResponseWriter, req *http.Request) error
 
 // writeScanError maps a StartScan error (coded DiscoveryError, already-running,
 // or unexpected) to the proper HTTP response.
-func (h *Handler) writeScanError(writer http.ResponseWriter, err error) error {
+func (h *Handler) writeScanError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if errors.Is(err, ErrAlreadyRunning) {
 		return h.WriteError(
 			writer, http.StatusConflict, ErrorCodeDiscoveryAlreadyRunning,
@@ -140,7 +140,7 @@ func (h *Handler) writeScanError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, status, base.ErrorCode(de.Code), de.Message)
 	}
 
-	return h.WriteInternalError(writer, err)
+	return h.WriteInternalError(writer, request, err)
 }
 
 // statusForDiscoveryCode maps a discovery error code to an HTTP status.
@@ -170,7 +170,7 @@ func (h *Handler) ListScans(writer http.ResponseWriter, req *http.Request) error
 		Types: scanJobTypes(),
 	})
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	// Child network_discovery jobs (those carrying a parentJobUid) are an
@@ -211,7 +211,7 @@ func (h *Handler) GetScan(writer http.ResponseWriter, req *http.Request) error {
 
 	progress, progErr := h.svc.GetScanProgress(req.Context(), org.UID, jobUID)
 	if progErr != nil {
-		return h.WriteInternalError(writer, progErr)
+		return h.WriteInternalError(writer, req, progErr)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: job, "progress": progress})
@@ -235,7 +235,7 @@ func (h *Handler) CancelScan(writer http.ResponseWriter, req *http.Request) erro
 	if errors.Is(err, ErrScanNotFound) {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "scan not found")
 	} else if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -273,7 +273,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 
 	rows, err := h.svc.ListDiscoveredChecks(req.Context(), org.UID, &opts)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: rows})
@@ -303,7 +303,7 @@ func (h *Handler) PromoteChecks(writer http.ResponseWriter, req *http.Request) e
 
 	org2, err := h.svc.dbSvc.GetOrganization(req.Context(), org.UID)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	checkResps, err := h.svc.PromoteChecks(req.Context(), org.UID, org2.Slug, promoteReq)
@@ -314,7 +314,7 @@ func (h *Handler) PromoteChecks(writer http.ResponseWriter, req *http.Request) e
 	case errors.Is(err, ErrAlreadyPromoted):
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "discovered check already promoted")
 	case err != nil:
-		return h.WriteInternalErrorR(writer, req, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: checkResps})
@@ -337,7 +337,7 @@ func (h *Handler) DismissCheck(writer http.ResponseWriter, req *http.Request) er
 	if errors.Is(err, ErrCheckNotFound) {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "discovered check not found")
 	} else if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -368,7 +368,7 @@ func (h *Handler) DismissGroup(writer http.ResponseWriter, req *http.Request) er
 	if errors.Is(err, ErrCheckNotFound) {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "no checks found for group")
 	} else if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)

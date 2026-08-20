@@ -72,12 +72,20 @@
     "googlechat": "Google Chat",
     "mattermost": "Mattermost",
     "ntfy": "ntfy",
-    "opsgenie": "Opsgenie",
+    "matrix": "Matrix",
+    "pagerduty": "PagerDuty",
     "pushover": "Pushover",
     "slack": "Slack",
     "discord": "Discord",
     "webhook": "Webhook",
     "telegram": "Telegram"
+  },
+  "myNotifications": {
+    "empty": {
+      "title": "Aún no hay notificaciones",
+      "hint": "Todavía no ha sido avisado de ningún incidente.",
+      "cta": "Ajustes de notificaciones"
+    }
   },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "Plantilla de mensaje de WhatsApp no disponible — pide a un administrador que revise su estado de aprobación",

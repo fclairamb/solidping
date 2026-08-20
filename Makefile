@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 build-docs copy-dash copy-dash0 copy-status0 copy-docs \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-scenario test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
+	test test-scenario test-dash test-dash0 lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
 	showcase \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -262,17 +262,20 @@ DEVLOOP_PROCS := -proc "dash0:$(CURDIR)/$(DASH0_DIR):bun run dev" -proc "status0
 dev: kill ## Run backend, dash0 and status0 in development mode
 	@echo "Running application in development mode..."
 	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" SP_PROFILER_ENABLED=true \
+		SP_DB_MIGRATION_GUARD_MODE=warn \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
 	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
+		SP_DB_MIGRATION_GUARD_MODE=warn \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
 	@echo "Running application in SaaS mode (billing via ../solidping-billing on :4050)..."
 	@echo "  upgrade URL template: $(SAAS_UPGRADE_URL)"
 	@cd $(BACK_DIR) && \
+		SP_DB_MIGRATION_GUARD_MODE=warn \
 		SP_DEPLOYMENT_MODE=saas \
 		SP_ENTITLEMENTS_SERVICE_TOKEN="$(SAAS_BILLING_TOKEN)" \
 		SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE="$(SAAS_UPGRADE_URL)" \
@@ -317,6 +320,11 @@ test-dash: ## Run dash tests
 	@echo "Running dash tests..."
 	@cd $(DASH_DIR) && bun test
 	@echo "Dash tests complete"
+
+test-dash0: ## Run dash0 unit tests (mirrors the CI step)
+	@echo "Running dash0 unit tests..."
+	@cd $(DASH0_DIR) && bun run test:unit
+	@echo "Dash0 unit tests complete"
 
 showcase: ## Regenerate the docs showcase media (screenshots + AV1 video) from the real dash0 UI
 	@echo "Recording showcase media (needs a running SolidPing server)..."

@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, mockSloCoverage } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 /**
@@ -36,6 +36,11 @@ function buildResults() {
 // Navigate to a freshly-created check's detail page with mocked results, and
 // return the list of results-request URLs captured so far (mutated live).
 async function gotoCheckDetail(page: Page): Promise<string[]> {
+  // The check-detail header's SLO coverage chip fires an unconditional
+  // GET /slos?checkUid=… (spec 2026-08-20-01). Stub it so the networkidle
+  // wait below has nothing real left to settle.
+  await mockSloCoverage(page);
+
   const resultsUrls: string[] = [];
   const points = buildResults();
 

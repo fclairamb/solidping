@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // ResultStatus represents the status of a check result.
@@ -29,6 +31,18 @@ const (
 	// ResultStatusWarning indicates the target is up but there is something to
 	// report. Stored on raw rows; counts as up for availability.
 	ResultStatusWarning ResultStatus = 8
+	// ResultStatusAbandoned marks a raw attempt the abandoned-result reaper
+	// finalized from a stale `created` marker (spec 2026-08-18-03): nothing was
+	// ever reported for it because OUR side died — a worker crash, a devloop
+	// restart, a lost lease — not because the monitored service was down. It is
+	// terminal (the timeline keeps honest evidence an attempt happened) but is
+	// excluded from availability math everywhere, unlike a genuine
+	// ResultStatusError; see ExcludedFromAvailability.
+	//
+	// Server-minted ONLY, by ReapAbandonedResults. A worker or a deported agent
+	// can never report it: handlers/agentws validates inbound statuses to
+	// [ResultStatusCreated..ResultStatusError] and so rejects 9 outright.
+	ResultStatusAbandoned ResultStatus = 9
 )
 
 // PeriodType values for the Result.PeriodType column.
@@ -58,6 +72,8 @@ func StatusToString(status int) string {
 		return "DEGRADED"
 	case int(ResultStatusWarning):
 		return "WARNING"
+	case int(ResultStatusAbandoned):
+		return "ABANDONED"
 	default:
 		return "UNKNOWN"
 	}
@@ -75,18 +91,27 @@ func (s ResultStatus) CountsAsUp() bool {
 	return s == ResultStatusUp || s == ResultStatusWarning
 }
 
+// ExcludedFromAvailability reports whether a raw status must be dropped from
+// both availability's numerator and denominator: a lifecycle marker (still in
+// flight — created/running) OR ResultStatusAbandoned (terminal, but evidence
+// of OUR infrastructure failing, not the monitored service — spec
+// 2026-08-18-03). This is the one place the rule lives; (*Result) delegates to
+// it so a caller holding only a status and a caller holding a whole row can
+// never disagree.
+func (s ResultStatus) ExcludedFromAvailability() bool {
+	return s == ResultStatusAbandoned || s.IsLifecycleMarker()
+}
+
 // RawAvailability computes (successCount, countableTotal) over raw results, skipping
-// lifecycle markers. Callers derive pct = 100*success/total when total > 0.
+// lifecycle markers and reaped/abandoned attempts. Callers derive
+// pct = 100*success/total when total > 0.
 func RawAvailability(results []*Result) (int, int) {
 	var success, total int
 	for _, r := range results {
-		if r.Status == nil {
+		if r.Status == nil || r.ExcludedFromAvailability() {
 			continue
 		}
 		s := ResultStatus(*r.Status)
-		if s.IsLifecycleMarker() {
-			continue
-		}
 		total++
 		if s.CountsAsUp() {
 			success++
@@ -112,17 +137,109 @@ type Result struct {
 	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
 	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
 
+	// Maintenance records that an active maintenance window covered this
+	// check at the moment the probe was recorded (spec 2026-08-20-01). It is
+	// set at ingest and never backfilled: rollup buckets cannot be sliced
+	// after the fact, so the tag has to exist before aggregation runs. Raw
+	// rows only.
+	//
+	// It changes NO existing availability number. Status pages, badges and the
+	// availability API keep counting maintenance probes exactly as before;
+	// only an SLO with ExcludeMaintenance set subtracts them.
+	Maintenance bool `bun:"maintenance,notnull"`
+
+	// Diagnostics is the opt-in capture of what the probe saw (spec
+	// 2026-08-20-01). It is TRANSIENT by construction: `bun:"-"` keeps it out
+	// of every INSERT/UPDATE/SELECT so it can never reach the `output` JSONB
+	// column or any other column, and `json:"-"` keeps it off every API
+	// response built from this struct. It exists on the model only so the
+	// result-submission path can hand it to the incident pipeline, which is
+	// the ONLY thing allowed to persist it (onto incidents.details, and only
+	// on an incident open/reopen).
+	Diagnostics *checkerdef.Diagnostics `bun:"-" json:"-"`
+
 	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year').
 	// availability_pct is intentionally absent: it is derived at read time from
 	// successful_checks / total_checks rather than stored (spec 2026-07-24-02).
-	TotalChecks      *int     `bun:"total_checks"`
-	SuccessfulChecks *int     `bun:"successful_checks"`
-	DurationMin      *float32 `bun:"duration_min"`
-	DurationMax      *float32 `bun:"duration_max"`
-	DurationP95      *float32 `bun:"duration_p95"`
-	DurationAvg      *float32 `bun:"duration_avg"`
+	TotalChecks      *int `bun:"total_checks"`
+	SuccessfulChecks *int `bun:"successful_checks"`
+	// MaintenanceChecks / MaintenanceSuccessfulChecks are SUBSETS of the two
+	// counters above: how many of the probes folded into this bucket were
+	// recorded while an active maintenance window covered the check
+	// (spec 2026-08-20-01).
+	//
+	// They are additive across tiers exactly like their parents, and the tiers
+	// are disjoint by construction (the aggregation job compacts and deletes in
+	// one transaction), so a month row's counters are the exact count of raw
+	// probes it descends from — no double counting.
+	//
+	// Being subsets rather than replacements is what keeps this change inert
+	// for every existing consumer: availability stays successful/total.
+	MaintenanceChecks           *int     `bun:"maintenance_checks"`
+	MaintenanceSuccessfulChecks *int     `bun:"maintenance_successful_checks"`
+	DurationMin                 *float32 `bun:"duration_min"`
+	DurationMax                 *float32 `bun:"duration_max"`
+	DurationP95                 *float32 `bun:"duration_p95"`
+	DurationAvg                 *float32 `bun:"duration_avg"`
 
 	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
+
+	// CheckSlug and CheckName are populated only when the query joined
+	// `checks` (ListResultsFilter.IncludeCheckInfo, set when the results
+	// endpoint's caller requests with=checkSlug,checkName). Scan-only and
+	// transient — never selected, inserted, or updated outside that query;
+	// bun scans the joined `check_slug`/`check_name` aliases straight into
+	// these tags without a real relation. A LEFT JOIN leaves both nil for a
+	// result whose check has since been hard-deleted (results can outlive a
+	// hard-deleted check, see ListResultsFilter.RequireCheckExists) rather
+	// than dropping the row from the page.
+	CheckSlug *string `bun:"check_slug,scanonly"`
+	CheckName *string `bun:"check_name,scanonly"`
+}
+
+// ExcludedFromAvailability reports whether a raw result must be dropped from
+// both availability's numerator and denominator: a lifecycle marker (still in
+// flight — created/running) OR a row the abandoned-result reaper finalized
+// (ResultStatusAbandoned — terminal, but evidence of OUR infrastructure
+// failing, not the monitored service — spec 2026-08-18-03). RawAvailability,
+// the hour rollup's processRawResult (job_aggregation.go), and uptimebar's
+// accumulateRaw (uptimebar/bucketing.go) all route through this one predicate
+// so the three surfaces can never drift apart on what counts.
+//
+// A row with no status at all is NOT excluded: that is an aggregated rollup
+// row, which never reaches this predicate's raw-only callers, and treating a
+// missing status as "skip" would silently swallow a malformed raw row instead
+// of counting it.
+func (r *Result) ExcludedFromAvailability() bool {
+	if r.Status == nil {
+		return false
+	}
+
+	return ResultStatus(*r.Status).ExcludedFromAvailability()
+}
+
+// Constants behind AbandonedResultThreshold — see its doc comment.
+const (
+	// AbandonedResultLeaseGrace mirrors the check_jobs lease formula
+	// (scheduled_at + period + 30s, see checkjobsvc.Service.ClaimJobs): the
+	// worst-case slack a legitimately in-flight attempt could still need on
+	// top of the check's own period.
+	AbandonedResultLeaseGrace = 30 * time.Second
+
+	// AbandonedResultMultiplier pads (period + lease grace) generously so a
+	// single routine worker restart mid-cycle is never mistaken for
+	// abandonment. Only a check that has had no chance to produce ANY result
+	// across several of its own periods is reaped.
+	AbandonedResultMultiplier = 5
+)
+
+// AbandonedResultThreshold returns how old a lifecycle-marker raw row must be,
+// relative to its check's period, before the abandoned-result reaper may
+// finalize it: AbandonedResultMultiplier * (period + AbandonedResultLeaseGrace).
+// This is "the check's period plus the worker lease timeout, with a generous
+// multiplier" from spec 2026-08-18-03's Proposal.
+func AbandonedResultThreshold(checkPeriod time.Duration) time.Duration {
+	return AbandonedResultMultiplier * (checkPeriod + AbandonedResultLeaseGrace)
 }
 
 // NewResult creates a new raw result with generated UID.
@@ -191,12 +308,15 @@ type ListResultsFilter struct {
 	SkipBlobs bool
 }
 
-// ListResultsResponse wraps results with pagination info.
+// ListResultsResponse wraps a page of results. There is deliberately no total
+// count, next-cursor, or has-more field here: `results` is the largest table
+// in the system, so this endpoint is cursor-paginated and the DB layer never
+// computes any of the three (spec 2026-08-18-04). The service layer derives
+// its own cursor/has-more by over-fetching one extra row
+// (internal/handlers/results/service.go), which is why those fields would be
+// dead weight on this struct even if the DB layer did populate them.
 type ListResultsResponse struct {
-	Results    []*Result // The result records
-	Total      int64     // Total count of results (expensive, may be 0)
-	NextCursor string    // Encoded cursor for next page (empty if no more results)
-	HasMore    bool      // Whether there are more results
+	Results []*Result // The result records
 }
 
 // AggregateResultsFunc computes the single rollup row for one bucket from its
@@ -220,4 +340,15 @@ type CompactResultsOutcome struct {
 	Compacted bool
 	// DeletedCount is the number of source rows actually deleted.
 	DeletedCount int64
+}
+
+// ReapAbandonedResultsOutcome reports what one abandoned-result reaper sweep
+// did (see db.Service.ReapAbandonedResults).
+type ReapAbandonedResultsOutcome struct {
+	// Candidates is the number of raw rows found sitting in ResultStatusCreated
+	// (see abandonedResultLifecycleStatuses), before threshold filtering.
+	Candidates int
+	// Reaped is the number of those candidates that were past
+	// AbandonedResultThreshold for their check and got finalized this sweep.
+	Reaped int
 }

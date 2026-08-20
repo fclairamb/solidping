@@ -309,6 +309,40 @@ region whose only v6 agent goes away stops advertising `yes` on its own.
 > immediately; one that lost it still fails with `ErrWorkerNoEgress` — *"run
 > this check from a region with IPv6 egress"* — rather than a false DOWN.
 
+### Build version
+
+Shipped by spec `2026-08-19-07`, mirroring the `capabilities` precedent above
+as closely as a scalar allows. An agent sends its own build version
+(`internal/version.Get().Version`) on the enroll frame and on every claim; the
+server writes it to the worker row (`workers.version`, **nullable**) from the
+same throttled claim path that refreshes capabilities.
+
+Unlike `capabilities`, this is a **two-state** column, not three: a real
+build version is never the empty string, so there is no "reported, and has
+none" answer to protect — only `NULL` (never reported) versus a reported
+value. `NULL` is still the only unknown, and it must never be rendered as
+"drifted": an agent that predates version reporting must not look broken.
+
+**Reading it.** `version` appears on `GET /orgs/:org/agents` and
+`GET /system/agents` (resolved from the agent's worker row, not a
+denormalized column — see [../database-model/agents.md](../database-model/agents.md)),
+and is rendered in the dashboard against this server's own version
+(`useVersion()`):
+
+| Comparison | Rendering |
+|---|---|
+| Agent version == server version | Plain text — nothing to flag |
+| Agent version != server version | Amber "Drifted" badge |
+| Agent version is `null` | Plain "unknown" text — **never** the drifted badge |
+
+**Server-side drift WARN.** The server logs one WARN per connection when a
+reported version differs from its own, skipped entirely when either side
+looks like a dev/untagged build (`version.Version`'s default, `"dev"`) — so a
+local dev loop or CI run never spams the log. This is **detection only**:
+nothing here blocks, throttles, or disconnects an agent on a stale version,
+and there is no automated remediation (a Prometheus per-version gauge is a
+possible follow-up, not shipped here).
+
 ### Surfaces
 
 - **Admin API** (under `/api/v1/orgs/:org`): `GET|POST /private-regions`,
@@ -513,9 +547,11 @@ Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../..
 | Egress self-probe | `server/internal/checkers/checkerdef/egress.go` (built on `ipversion.go`'s `DialEgressProbe`) |
 | Region capability aggregation | `server/internal/regions/capabilities.go` |
 | Capability badge (UI) | `web/dash0/src/components/shared/ipv6-capability.tsx` |
+| Version drift WARN | `server/internal/handlers/agentws/handler.go` (`warnOnVersionDrift`) |
+| Version badge (UI) | `web/dash0/src/components/shared/agent-version.tsx` |
 | Sealing | `server/internal/crypto/credentials/sealing.go` |
 | Models | `server/internal/db/models/agent.go` |
-| Migrations | `server/internal/db/{postgres,sqlite}/migrations/006_v0_5_0.up.sql`, `008_v0_7_0.up.sql` |
+| Migrations | `server/internal/db/{postgres,sqlite}/migrations/006_v0_5_0.up.sql`, `008_v0_7_0.up.sql`, `014_v0_17_0.up.sql` (worker-version section) |
 | Fly deploy reference | `deploy/fly/` |
 | Dashboard | `web/dash0/src/routes/orgs/$org/organization.private-locations*.tsx` |
 | E2E | `web/dash0/e2e/private-locations.spec.ts`, `deported-agent-wizard.spec.ts`, `check-region-ipv6-capability.spec.ts` |

@@ -1,0 +1,157 @@
+{
+  "layout": {
+    "title": "Objectifs de niveau de service",
+    "subtitle": "Suivez les cibles de disponibilité et les budgets d'erreur"
+  },
+  "list": {
+    "empty": "Aucun objectif pour l'instant",
+    "emptyHint": "Un objectif transforme « est-ce en ligne ? » en « est-ce assez en ligne ? » : fixez une cible et surveillez le budget d'erreur.",
+    "new": "Nouvel objectif",
+    "searchPlaceholder": "Rechercher des objectifs...",
+    "columns": {
+      "name": "Objectif",
+      "scope": "Portée",
+      "target": "Cible",
+      "attainment": "Ce mois-ci",
+      "budget": "Budget restant",
+      "state": "État",
+      "actions": ""
+    },
+    "quotaReached": "Limite d'objectifs atteinte pour ce forfait."
+  },
+  "state": {
+    "healthy": "Sain",
+    "at_risk": "À risque",
+    "breached": "Dépassé",
+    "unknown": "Aucune donnée"
+  },
+  "scope": {
+    "check": "Test",
+    "group": "Groupe",
+    "missing": "Portée supprimée"
+  },
+  "detail": {
+    "currentWindow": "Fenêtre en cours",
+    "attainment": "Atteinte",
+    "target": "Cible",
+    "budgetTotal": "Budget",
+    "budgetConsumed": "Consommé",
+    "budgetRemaining": "Restant",
+    "burnRate": "Vitesse de consommation",
+    "projectedExhaustion": "Épuisement prévu",
+    "excludedMaintenance": "Maintenance exclue",
+    "monitored": "Surveillé",
+    "incidents": "Incidents",
+    "longestIncident": "Le plus long",
+    "totalDowntime": "Indisponibilité totale",
+    "history": "Historique mensuel",
+    "historyEmpty": "Pas encore d'historique",
+    "noData": "Aucune donnée",
+    "never": "Non prévu",
+    "partial": "Fenêtre partielle",
+    "edit": "Modifier l'objectif",
+    "budgetLabel": "{{remaining}} restant sur {{total}}",
+    "burndown": "Consommation du budget d'erreur",
+    "burndownHelp": "Budget restant sur la fenêtre en cours, comparé au rythme qui le consommerait exactement.",
+    "burndownEmpty": "La fenêtre vient de commencer : pas encore de points.",
+    "burndownIdeal": "Rythme idéal"
+  },
+  "form": {
+    "newTitle": "Nouvel objectif",
+    "editTitle": "Modifier l'objectif",
+    "name": "Nom",
+    "namePlaceholder": "Disponibilité de l'API",
+    "slug": "Identifiant",
+    "slugHelp": "Identifiant compatible URL, généré à partir du nom s'il est laissé vide",
+    "scope": "Portée",
+    "scopeHelp": "Exactement un test ou un groupe de tests",
+    "scopeCheck": "Test",
+    "scopeGroup": "Groupe de tests",
+    "selectCheck": "Choisir un test",
+    "selectGroup": "Choisir un groupe de tests",
+    "target": "Cible (%)",
+    "targetHelp": "Entre 0 et 100, par ex. 99,9",
+    "timezone": "Fuseau horaire",
+    "timezoneHelp": "Les mois civils sont calculés dans ce fuseau IANA",
+    "excludeMaintenance": "Exclure la maintenance planifiée",
+    "excludeMaintenanceHelp": "Les mesures enregistrées pendant une fenêtre de maintenance active ne consomment pas de budget d'erreur. Effectif seulement depuis la mise en place du marquage : les mois antérieurs ne changent pas.",
+    "enabled": "Activé",
+    "save": "Enregistrer",
+    "create": "Créer l'objectif",
+    "cancel": "Annuler",
+    "created": "Objectif créé",
+    "updated": "Objectif mis à jour",
+    "saveFailed": "Échec de l'enregistrement de l'objectif"
+  },
+  "delete": {
+    "action": "Supprimer",
+    "title": "Supprimer cet objectif ?",
+    "description": "L'objectif <strong>{{name}}</strong> sera supprimé. Les résultats historiques ne sont pas touchés : seul l'objectif disparaît.",
+    "confirm": "Supprimer",
+    "cancel": "Annuler",
+    "deleted": "Objectif supprimé",
+    "failed": "Échec de la suppression de l'objectif"
+  },
+  "chip": {
+    "covered": "Couvert par {{count}} objectif",
+    "covered_other": "Couvert par {{count}} objectifs"
+  },
+  "reports": {
+    "title": "Rapports de disponibilité",
+    "subtitle": "Envoyer un résumé de disponibilité récurrent",
+    "new": "Nouveau rapport",
+    "empty": "Aucun rapport planifié",
+    "emptyHint": "Un résumé mensuel atteint ceux qui n'ouvrent jamais le tableau de bord.",
+    "columns": {
+      "name": "Rapport",
+      "frequency": "Fréquence",
+      "recipients": "Destinataires",
+      "scope": "Portée",
+      "lastRun": "Dernier envoi",
+      "actions": ""
+    },
+    "frequency": {
+      "weekly": "Hebdomadaire",
+      "monthly": "Mensuel"
+    },
+    "scopeOrgWide": "Tous les tests",
+    "scopeCounts": "{{checks}} tests, {{groups}} groupes",
+    "never": "Jamais",
+    "recipientCount": "{{count}} destinataire",
+    "recipientCount_other": "{{count}} destinataires",
+    "test": "M'envoyer un test",
+    "testSent": "Rapport de test mis en file vers votre adresse",
+    "testFailed": "Échec de l'envoi du rapport de test",
+    "form": {
+      "newTitle": "Nouveau rapport de disponibilité",
+      "editTitle": "Modifier le rapport de disponibilité",
+      "name": "Nom",
+      "namePlaceholder": "Résumé mensuel de disponibilité",
+      "frequency": "Fréquence",
+      "timezone": "Fuseau horaire",
+      "timezoneHelp": "La période se clôt à minuit dans ce fuseau IANA",
+      "recipients": "Destinataires",
+      "recipientsHelp": "Adresses e-mail qui reçoivent le résumé. Toute personne qui se désabonne est retirée automatiquement de cette liste.",
+      "checks": "Tests",
+      "groups": "Groupes de tests",
+      "scopeHelp": "Laissez les deux vides pour couvrir tous les tests de l'organisation",
+      "includeSlos": "Inclure les objectifs",
+      "includeSlosHelp": "Ajouter un résumé du budget d'erreur pour chaque objectif concerné",
+      "enabled": "Activé",
+      "save": "Enregistrer",
+      "create": "Créer le rapport",
+      "cancel": "Annuler",
+      "created": "Rapport planifié créé",
+      "updated": "Rapport planifié mis à jour",
+      "saveFailed": "Échec de l'enregistrement du rapport planifié"
+    },
+    "delete": {
+      "title": "Supprimer ce rapport ?",
+      "description": "La planification <strong>{{name}}</strong> cessera d'envoyer. Les destinataires ne sont pas prévenus.",
+      "confirm": "Supprimer",
+      "cancel": "Annuler",
+      "deleted": "Rapport planifié supprimé",
+      "failed": "Échec de la suppression du rapport planifié"
+    }
+  }
+}

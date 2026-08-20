@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -72,6 +73,10 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 	orgUID := *jctx.OrganizationUID // Never nil for aggregation jobs
 
 	log.InfoContext(ctx, "Starting aggregation job", "organization_uid", orgUID)
+
+	// Table-wide gauge refresh, throttled process-wide — see
+	// maybeSampleResultsRowCount for why this must not run on every org's job.
+	maybeSampleResultsRowCount(ctx, jctx)
 
 	// Define aggregation stages in priority order
 	aggregations := []struct {
@@ -346,24 +351,20 @@ func measurableSourceUIDs(results []*models.Result) []string {
 // each run is what lets a server "Aggregation" settings edit take effect on the
 // next scheduled run without a restart. The historical 1/1/1 fallback is gone.
 func retentionFromConfig(ctx context.Context, jctx *jobdef.JobContext) (int, int, int) {
-	legacyRaw, legacyHour, legacyDay := 0, 0, 0
-	if jctx != nil && jctx.AppConfig != nil {
-		legacyRaw = jctx.AppConfig.Aggregation.RetentionRaw
-		legacyHour = jctx.AppConfig.Aggregation.RetentionHour
-		legacyDay = jctx.AppConfig.Aggregation.RetentionDay
+	var (
+		dbSvc systemconfig.RetentionParameterReader
+		cfg   *config.Config
+	)
+
+	if jctx != nil {
+		if jctx.DBService != nil {
+			dbSvc = jctx.DBService
+		}
+
+		cfg = jctx.AppConfig
 	}
 
-	rawHours := resolveRetentionTier(ctx, jctx,
-		systemconfig.KeyPerfAggRetentionRawHours, "SP_PERFORMANCE_AGGREGATION_RETENTION_RAW_HOURS",
-		legacyRaw, defaultRetentionRawHours)
-	hourDays := resolveRetentionTier(ctx, jctx,
-		systemconfig.KeyPerfAggRetentionHourDays, "SP_PERFORMANCE_AGGREGATION_RETENTION_HOUR_DAYS",
-		legacyHour, defaultRetentionHourDays)
-	dayMonths := resolveRetentionTier(ctx, jctx,
-		systemconfig.KeyPerfAggRetentionDayMonths, "SP_PERFORMANCE_AGGREGATION_RETENTION_DAY_MONTHS",
-		legacyDay, defaultRetentionDayMonths)
-
-	return rawHours, hourDays, dayMonths
+	return systemconfig.ResolveAggregationRetention(ctx, dbSvc, cfg)
 }
 
 // resolveRetentionTier resolves a single retention tier through the documented
@@ -540,9 +541,7 @@ func aggregateResults(
 	// Process all results
 	for _, result := range results {
 		if state.isRawData {
-			processRawResult(
-				result, &state.totalDuration, &state.durations, &state.minDuration, &state.maxDuration,
-				&state.maxStatus, state.statusCounts, &state.successCount, &state.totalChecks)
+			processRawResult(result, state)
 		} else {
 			processAggregatedResult(result, state)
 		}
@@ -925,17 +924,29 @@ func toInt64(v any) *int64 {
 }
 
 // processRawResult processes a single raw result and updates aggregation state.
-func processRawResult(
-	result *models.Result,
-	totalDuration *float32,
-	durations *[]float32,
-	minDuration, maxDuration *float32,
-	maxStatus *int,
-	statusCounts map[int]int,
-	successCount, totalChecks *int,
-) {
-	// Skip non-data statuses (initial, running) — they are lifecycle markers, not measurements
-	if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
+func processRawResult(result *models.Result, state *aggregationState) {
+	totalDuration := &state.totalDuration
+	durations := &state.durations
+	minDuration := &state.minDuration
+	maxDuration := &state.maxDuration
+	maxStatus := &state.maxStatus
+	statusCounts := state.statusCounts
+	successCount := &state.successCount
+	totalChecks := &state.totalChecks
+
+	// Skip non-data statuses (created, running — lifecycle markers, not
+	// measurements) and rows the abandoned-result reaper finalized
+	// (models.ResultStatusAbandoned: evidence of OUR worker crashing, not the
+	// monitored service — specs 2026-08-18-03 / 2026-08-18-10).
+	// Duration/statusCounts/totalChecks/successCount must never see either:
+	// this is the hour rollup's half of the shared
+	// models.Result.ExcludedFromAvailability contract.
+	//
+	// This is deliberately narrower than measurableSourceUIDs below,
+	// which does NOT skip an abandoned row: contributing nothing to the stats
+	// and being deletable once rolled up are different questions, and an
+	// abandoned row is still an ordinary retention candidate.
+	if result.ExcludedFromAvailability() {
 		return
 	}
 
@@ -962,10 +973,21 @@ func processRawResult(
 		// selection, not here, so availability can be 100% on a Degraded row.
 		if models.ResultStatus(*result.Status).CountsAsUp() {
 			*successCount++
+
+			if result.Maintenance {
+				state.maintenanceSuccessCount++
+			}
 		}
 	}
 
 	*totalChecks++
+
+	// Subset counter: this probe is still in total_checks (and in
+	// successful_checks when it succeeded). Existing consumers see no change;
+	// only the SLO read path subtracts these.
+	if result.Maintenance {
+		state.maintenanceChecks++
+	}
 }
 
 // processAggregatedResult processes a single aggregated result and updates aggregation state.
@@ -1023,6 +1045,17 @@ func processAggregatedResult(
 	if result.SuccessfulChecks != nil {
 		*successCount += *result.SuccessfulChecks
 	}
+
+	// Maintenance counters are additive exactly like their parents. A child
+	// that predates the tagging carries nil and contributes nothing, which is
+	// the honest answer for a bucket rolled up before maintenance tagging
+	// existed — not zero-with-confidence, just no evidence either way.
+	if result.MaintenanceChecks != nil {
+		state.maintenanceChecks += *result.MaintenanceChecks
+	}
+	if result.MaintenanceSuccessfulChecks != nil {
+		state.maintenanceSuccessCount += *result.MaintenanceSuccessfulChecks
+	}
 }
 
 // aggregationState holds the state during result aggregation.
@@ -1035,8 +1068,16 @@ type aggregationState struct {
 	statusCounts  map[int]int // Track count of each status for dominant calculation
 	successCount  int
 	totalChecks   int
-	durations     []float32
-	workerUIDs    map[string]bool
+	// maintenanceChecks / maintenanceSuccessCount are strict SUBSETS of
+	// totalChecks / successCount: the share of this bucket recorded while an
+	// active maintenance window covered the check (spec 2026-08-20-01). They
+	// ride the same additive path up every tier, and because the tiers are
+	// disjoint (compact + delete in one transaction) a month row's counters
+	// are the exact count of raw probes it descends from.
+	maintenanceChecks       int
+	maintenanceSuccessCount int
+	durations               []float32
+	workerUIDs              map[string]bool
 
 	// durationAvg tracks the total_checks-weighted average duration across
 	// children for hour/day/month rollups. For raw data the average is computed
@@ -1151,6 +1192,8 @@ func buildAggregatedResult(
 
 	totalChecksInt := state.totalChecks
 	successfulChecksInt := state.successCount
+	maintenanceChecksInt := state.maintenanceChecks
+	maintenanceSuccessfulChecksInt := state.maintenanceSuccessCount
 
 	return &models.Result{
 		UID:              uuid.Must(uuid.NewV7()).String(),
@@ -1169,6 +1212,9 @@ func buildAggregatedResult(
 		DurationAvg:      durationAvg,
 		TotalChecks:      &totalChecksInt,
 		SuccessfulChecks: &successfulChecksInt,
+		// Subsets of the two above; see models.Result.
+		MaintenanceChecks:           &maintenanceChecksInt,
+		MaintenanceSuccessfulChecks: &maintenanceSuccessfulChecksInt,
 		// availability_pct is intentionally not stored: it is derived at read time
 		// from successful_checks / total_checks (handlers/results, availability,
 		// badges).

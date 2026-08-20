@@ -64,6 +64,25 @@ type StatusPage struct {
 	HistoryDays      int     `bun:"history_days,notnull,default:90"`
 	HistoryPeriod    string  `bun:"history_period,notnull,default:'90d'"`
 	Language         *string `bun:"language"`
+	// AutoPublish turns the incident auto-publication pipeline on for this
+	// page. The DDL default is FALSE so that upgrading an existing
+	// installation never makes yesterday's internal blips public; NEW pages
+	// opt in through NewStatusPage instead (spec 2026-08-19-08).
+	AutoPublish bool `bun:"auto_publish,notnull,default:false"`
+	// AutoPublishDelaySeconds debounces publication: an incident must still be
+	// open this long after it opened before customers hear about it.
+	//
+	// 0 is legal and means "publish immediately", which is why the bun tag
+	// carries NO `default:` clause even though the column has one. bun omits a
+	// zero-valued field from an INSERT when the tag declares a default, so
+	// `default:60` here would silently turn an operator's deliberate "publish
+	// immediately" into a one-minute delay — the value would never reach the
+	// database at all. The DDL default still applies to rows inserted outside
+	// the application (an upgraded installation's existing pages).
+	AutoPublishDelaySeconds int `bun:"auto_publish_delay_seconds,notnull"`
+	// AutoResolve decides what an auto-created publication does when its
+	// incident resolves: always | if_untouched | never.
+	AutoResolve string `bun:"auto_resolve,notnull,default:'if_untouched'"`
 	// CustomCSS is operator-authored CSS injected into the public status page
 	// as a <style> text node (never dangerouslySetInnerHTML). nil = none.
 	// Capped at 64 KB and @import-free by API validation; unlike the
@@ -110,8 +129,13 @@ func NewStatusPage(orgUID, name, slug string) *StatusPage {
 		ShowResponseTime: true,
 		HistoryDays:      90,
 		HistoryPeriod:    string(StatusPagePeriod90d),
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		// Auto-publish is ON for pages created from here on. The migration
+		// deliberately leaves existing rows at false — see the column comment.
+		AutoPublish:             true,
+		AutoPublishDelaySeconds: DefaultAutoPublishDelaySeconds,
+		AutoResolve:             string(AutoResolveIfUntouched),
+		CreatedAt:               now,
+		UpdatedAt:               now,
 	}
 }
 
@@ -128,6 +152,11 @@ type StatusPageUpdate struct {
 	HistoryDays      *int
 	HistoryPeriod    *string
 	Language         *string
+	// AutoPublish / AutoPublishDelaySeconds / AutoResolve are the incident
+	// auto-publication settings (spec 2026-08-19-08). nil leaves untouched.
+	AutoPublish             *bool
+	AutoPublishDelaySeconds *int
+	AutoResolve             *string
 	// CustomCSS updates the page's custom stylesheet. A pointer to the empty
 	// string clears the column (the appearance editor's "empty textarea"), a
 	// nil pointer leaves it untouched.
@@ -203,12 +232,17 @@ type StatusPageResource struct {
 	CheckUID *string `bun:"check_uid"`
 	// CheckGroupUID is the check group to display as one aggregated component.
 	// nil when the resource targets an individual check.
-	CheckGroupUID *string   `bun:"check_group_uid"`
-	PublicName    *string   `bun:"public_name"`
-	Explanation   *string   `bun:"explanation"`
-	Position      int       `bun:"position,notnull,default:0"`
-	CreatedAt     time.Time `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt     time.Time `bun:"updated_at,notnull,default:current_timestamp"`
+	CheckGroupUID *string `bun:"check_group_uid"`
+	PublicName    *string `bun:"public_name"`
+	Explanation   *string `bun:"explanation"`
+	// AutoPublish overrides the page-level auto-publish setting for this one
+	// resource. nil (the default) means "inherit the page" — it is a
+	// three-state column on purpose, so a page can be flipped on or off
+	// without silently rewriting every resource's intent.
+	AutoPublish *bool     `bun:"auto_publish"`
+	Position    int       `bun:"position,notnull,default:0"`
+	CreatedAt   time.Time `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt   time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }
 
 // IsGroup reports whether the resource targets a check group rather than an
@@ -251,6 +285,11 @@ type StatusPageResourceUpdate struct {
 	PublicName  *string
 	Explanation *string
 	Position    *int
+	// SetAutoPublish must be true for AutoPublish to be written at all; that
+	// is what lets a caller reset the override back to "inherit" (SetAutoPublish
+	// true, AutoPublish nil) as distinct from "leave alone".
+	SetAutoPublish bool
+	AutoPublish    *bool
 	// SetTarget switches the resource's target kind. When true, BOTH target
 	// columns are written: exactly one of CheckUID / CheckGroupUID must be
 	// non-nil and the other column is set to NULL, so the XOR constraint always

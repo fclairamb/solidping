@@ -4,6 +4,7 @@
   "degraded": "Degradado",
   "warning": "Advertencia",
   "scheduledMaintenance": "Mantenimiento programado",
+  "abandoned": "Abandonado",
   "unknown": "Desconocido",
   "allSystemsOperational": "Todos los sistemas operativos",
   "someSystemsDegraded": "Algunos sistemas degradados",
@@ -28,6 +29,7 @@
   "switchToDarkMode": "Cambiar a modo oscuro",
   "switchToLightMode": "Cambiar a modo claro",
   "status": {
+    "abandoned": "Abandonado",
     "up": "Disponible",
     "down": "Caído",
     "timeout": "Tiempo de espera",
@@ -46,5 +48,27 @@
     "error": "Algo salió mal. Inténtalo de nuevo.",
     "feedLink": "Suscribirse por RSS"
   },
-  "servicesOperational": "{{ok}} de {{total}} servicios operativos"
+  "servicesOperational": "{{ok}} de {{total}} servicios operativos",
+  "activeIncidents": "Incidencias activas",
+  "incidentHistory": "Historial de incidencias",
+  "showIncidentHistory": "Mostrar incidencias anteriores",
+  "hideIncidentHistory": "Ocultar incidencias anteriores",
+  "noPastIncidents": "No hay incidencias anteriores en este periodo.",
+  "incidentAffects": "Afectado: {{names}}",
+  "incidentStartedAt": "Inicio {{when}}",
+  "incidentResolvedAt": "Resuelto {{when}}",
+  "incidentState": {
+    "investigating": "En investigación",
+    "identified": "Identificado",
+    "monitoring": "En seguimiento",
+    "resolved": "Resuelto",
+    "maintenance": "Mantenimiento",
+    "info": "Actualización"
+  },
+  "incidentSeverity": {
+    "minor": "Menor",
+    "major": "Mayor",
+    "critical": "Crítica"
+  },
+  "resourceAffected": "Afectado"
 }

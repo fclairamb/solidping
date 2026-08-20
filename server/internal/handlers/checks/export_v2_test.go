@@ -343,3 +343,59 @@ func TestImportV2ChildBeforeParentOrdering(t *testing.T) {
 	r.NoError(err)
 	r.Len(parents, 1)
 }
+
+// TestExportV2CarriesCaptureFailureResponse pins the config-as-code half of
+// spec 2026-08-20-01: `capture_failure_response` is an ordinary check-config
+// key, so it must survive export -> import unchanged (and, being off by
+// default, must be absent from a check that never enabled it).
+func TestExportV2CarriesCaptureFailureResponse(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, srcOrg := setupApplyService(t, true)
+	ctx := t.Context()
+
+	_, err := svc.CreateCheck(ctx, srcOrg.Slug, checks.CreateCheckRequest{
+		Name: "captured", Slug: "captured", Type: "http",
+		Config: map[string]any{
+			"url":                      "https://acme.com/health",
+			"capture_failure_response": true,
+		},
+		Regions: []string{"default"},
+	})
+	r.NoError(err)
+
+	_, err = svc.CreateCheck(ctx, srcOrg.Slug, checks.CreateCheckRequest{
+		Name: "plain", Slug: "plain", Type: "http",
+		Config:  map[string]any{"url": "https://acme.com/other"},
+		Regions: []string{"default"},
+	})
+	r.NoError(err)
+
+	export, err := svc.ExportChecks(ctx, srcOrg.Slug, checks.ListChecksOptions{})
+	r.NoError(err)
+
+	raw, err := checks.MarshalExportDocument(export)
+	r.NoError(err)
+	// Positive control: the document really carries both checks.
+	r.Contains(string(raw), "https://acme.com/health")
+	r.Contains(string(raw), "capture_failure_response")
+
+	cleanOrg := makeCleanOrg(ctx, t, dbSvc, "capture-clean-org")
+
+	var reimport checks.ExportDocument
+
+	r.NoError(json.Unmarshal(raw, &reimport))
+
+	result, err := svc.ImportChecks(ctx, cleanOrg.Slug, &reimport, false)
+	r.NoError(err)
+	r.Empty(result.Errors)
+
+	captured, err := dbSvc.GetCheckByUidOrSlug(ctx, cleanOrg.UID, "captured")
+	r.NoError(err)
+	r.Equal(true, captured.Config["capture_failure_response"])
+
+	plain, err := dbSvc.GetCheckByUidOrSlug(ctx, cleanOrg.UID, "plain")
+	r.NoError(err)
+	r.NotContains(plain.Config, "capture_failure_response")
+}

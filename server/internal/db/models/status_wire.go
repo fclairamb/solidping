@@ -23,6 +23,10 @@ const (
 	WireStatusError = "error"
 	// WireStatusRunning is the wire name for an in-progress status.
 	WireStatusRunning = "running"
+	// WireStatusAbandoned is the wire name for a raw attempt the
+	// abandoned-result reaper finalized: terminal, but excluded from every
+	// availability calculation (spec 2026-08-18-10).
+	WireStatusAbandoned = "abandoned"
 	// WireStatusUnknown is the fallback wire name for an unrecognized status.
 	WireStatusUnknown = "unknown"
 )

@@ -52,6 +52,21 @@
     "expiryNone": "Sin caducidad"
   },
   "security": {
+    "password": {
+      "title": "Cambiar contraseña",
+      "setTitle": "Establecer una contraseña",
+      "subtitle": "Cambia la contraseña que usas para iniciar sesión. Tus otras sesiones se cerrarán.",
+      "setSubtitle": "Esta cuenta inicia sesión actualmente a través de un proveedor de identidad. Establece una contraseña para iniciar sesión también directamente.",
+      "current": "Contraseña actual",
+      "new": "Nueva contraseña",
+      "confirm": "Confirmar nueva contraseña",
+      "submit": "Cambiar contraseña",
+      "setSubmit": "Establecer contraseña",
+      "changed": "Contraseña actualizada.",
+      "mismatch": "Las dos contraseñas nuevas no coinciden.",
+      "tooShort": "La contraseña debe tener al menos {{min}} caracteres.",
+      "invalidCurrent": "Esa no es tu contraseña actual."
+    },
     "passkeys": {
       "title": "Passkeys",
       "subtitle": "Sign in without a password using your device or a hardware key.",
@@ -85,7 +100,8 @@
       "savedCheck": "I have saved these codes in a safe place.",
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
-      "disableSubtitle": "Enter a current 6-digit code to confirm."
+      "disableSubtitle": "Enter a current 6-digit code to confirm.",
+      "setupFailed": "Unable to set up two-factor authentication. Try again."
     }
   },
   "organizations": {

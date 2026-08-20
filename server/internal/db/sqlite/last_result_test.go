@@ -110,7 +110,8 @@ func TestGetLastResultForChecks_UsesTheRawIndex(t *testing.T) {
 		Detail  string `bun:"detail"`
 	}
 	r.NoError(s.DB().NewRaw(
-		"EXPLAIN QUERY PLAN "+lastResultForChecksQuery, org.UID, bun.List([]string{check.UID}),
+		"EXPLAIN QUERY PLAN "+lastResultForChecksQuery,
+		org.UID, int(models.ResultStatusCreated), bun.List([]string{check.UID}),
 	).Scan(ctx, &plan))
 
 	var builder strings.Builder
@@ -189,6 +190,89 @@ func TestGetLastResultForChecks_Parity(t *testing.T) {
 	r.InDelta(*newest.Duration, *got.Duration, 0.001)
 
 	r.NotContains(results, noHistory.UID, "a check with no raw row is absent, not nil-valued")
+}
+
+// TestGetLastResultForChecks_ExcludesCreatedMarkerOnly is the read-path half
+// of spec 2026-08-18-03 (Proposal Part 2): a raw row still in
+// ResultStatusCreated must never win "last checked" over an older terminal
+// row, and a check whose only raw row IS such a marker (e.g. a fresh check
+// that has never executed — CreateCheck's own "Check created" marker) must
+// read as having no last result at all, not as "created". ResultStatusRunning
+// is deliberately NOT excluded — heartbeat checks (handlers/heartbeat) use it
+// as a legitimate, possibly long-lived status the API must still surface as
+// the check's current/last result (see TestReceiveHeartbeat*RunningStatus in
+// handlers/heartbeat, which this behavior exists to keep passing).
+func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	s, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(s.Initialize(ctx))
+	t.Cleanup(func() { _ = s.Close() })
+
+	org := models.NewOrganization("lifecycle-marker-org", "Lifecycle Marker Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	stale := models.NewCheck(org.UID, "stale-marker-only", "http")
+	withHistory := models.NewCheck(org.UID, "with-history-then-marker", "http")
+	r.NoError(s.CreateCheck(ctx, stale))
+	r.NoError(s.CreateCheck(ctx, withHistory))
+
+	// `stale` keeps only CreateCheck's own "Check created" marker (status
+	// created) — exactly the scenario from the bug report: a check that
+	// stopped reporting long enough for every real row to have aged out.
+	// It must be absent from the result map, not present with status=created.
+	results, err := s.GetLastResultForChecks(ctx, org.UID, []string{stale.UID})
+	r.NoError(err)
+	r.NotContains(results, stale.UID,
+		"a check whose only raw row is the created marker must read as having no last result")
+
+	// `withHistory` has a real terminal row, THEN a newer created row
+	// (simulating a fresh execution attempt that has not finished yet). The
+	// terminal row must still win — "last checked" must not regress to a
+	// non-terminal reading just because something newer, but unfinished, was
+	// written.
+	terminal := models.NewResult(org.UID, withHistory.UID, models.ResultStatusUp, 42)
+	terminal.PeriodStart = time.Now().Add(time.Hour)
+	r.NoError(s.CreateResult(ctx, terminal))
+
+	newerCreated := models.NewResult(org.UID, withHistory.UID, models.ResultStatusCreated, 0)
+	newerCreated.PeriodStart = terminal.PeriodStart.Add(time.Minute)
+	r.NoError(s.CreateResult(ctx, newerCreated))
+
+	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})
+	r.NoError(err)
+	r.Contains(results, withHistory.UID)
+	r.Equal(terminal.UID, results[withHistory.UID].UID,
+		"a newer created row must never win over an older terminal row")
+
+	// A newer RUNNING row, in contrast, must win: heartbeat checks rely on
+	// this to surface "the monitored job is currently running" as the check's
+	// last result.
+	newerRunning := models.NewResult(org.UID, withHistory.UID, models.ResultStatusRunning, 0)
+	newerRunning.PeriodStart = newerCreated.PeriodStart.Add(time.Minute)
+	r.NoError(s.CreateResult(ctx, newerRunning))
+
+	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})
+	r.NoError(err)
+	r.Contains(results, withHistory.UID)
+	r.Equal(newerRunning.UID, results[withHistory.UID].UID,
+		"a running row is a legitimate heartbeat report and must win as the newest row")
+
+	// A reaped row (models.ResultStatusAbandoned) is also
+	// eligible: once finalized it is a legitimate, if uninformative,
+	// last-checked entry — only an open created marker is excluded.
+	abandoned := models.NewResult(org.UID, withHistory.UID, models.ResultStatusAbandoned, 0)
+	abandoned.PeriodStart = newerRunning.PeriodStart.Add(time.Minute)
+	r.NoError(s.CreateResult(ctx, abandoned))
+
+	results, err = s.GetLastResultForChecks(ctx, org.UID, []string{withHistory.UID})
+	r.NoError(err)
+	r.Contains(results, withHistory.UID)
+	r.Equal(abandoned.UID, results[withHistory.UID].UID,
+		"a reaped/abandoned row is terminal and must still be eligible as the last result")
 }
 
 // TestGetLastResultForChecks_FiltersByOrganization seeds a check in another

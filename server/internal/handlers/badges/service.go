@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -61,16 +62,25 @@ func NewService(dbSvc db.Service, cfg *config.Config) *Service {
 	return &Service{dbSvc: dbSvc, cfg: cfg}
 }
 
-// retentionHints returns the org's configured raw/hour retention (hours of
-// raw kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
-// uptimebar.BucketAvailability treats as "use the documented defaults" when
-// sizing its safety cap.
-func (s *Service) retentionHints() (int, int) {
-	if s.cfg == nil {
-		return 0, 0
-	}
+// uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
+// per request: the live raw/hour aggregation retention and the org's measured
+// probe rate.
+//
+// Retention is resolved with the same precedence as the aggregation job itself —
+// env > performance.* global parameter > legacy koanf field > documented default
+// (systemconfig.ResolveReadSideRetention). It must NOT read the koanf config
+// alone: the server "Aggregation" settings tab writes the performance.*
+// parameters, which never reach the koanf struct, so a stale hint would make
+// uptimebar clamp its raw-tier query shorter than the window the job actually
+// keeps raw for — silently dropping raw rows no rollup covers yet.
+func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.dbSvc, s.cfg)
 
-	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
+	return uptimebar.Hints{
+		RetentionRawHours: rawHours,
+		RetentionHourDays: hourDays,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.dbSvc, orgUID),
+	}
 }
 
 func isAllowedComponent(token string) bool {
@@ -278,11 +288,11 @@ func (s *Service) bucketStatsForPeriod(
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 	win := barWindow{bucketStart: bucketStart, n: n, bucketDuration: bucketDuration}
 
-	retentionRawHours, retentionHourDays := s.retentionHints()
+	hints := s.uptimebarHints(ctx, orgUID)
 
 	byCheck, err := uptimebar.BucketAvailability(
 		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,
-		retentionRawHours, retentionHourDays,
+		hints,
 	)
 	if err != nil {
 		return nil, barWindow{}, err
@@ -702,6 +712,14 @@ func formatResponseTime(results []*models.Result) string {
 // calculateStatusDuration returns the time since last status change, a
 // boolean indicating whether the current status is up, and a third boolean
 // indicating whether the status is known at all.
+//
+// Rows excluded from availability are skipped in BOTH walks: lifecycle
+// markers (created/running) as before, and — since spec 2026-08-18-10 —
+// models.ResultStatusAbandoned. A reaped attempt is not a reading of the
+// service, so a badge whose newest row is abandoned must fall back to the
+// last real observation rather than announcing "down for 3 days" because our
+// own worker crashed. Under the previous encoding these rows carried
+// status=error and did exactly that.
 func calculateStatusDuration(results []*models.Result) (time.Duration, bool, bool) {
 	// Find the most recent actionable status.
 	currentStatus := -1
@@ -712,7 +730,7 @@ func calculateStatusDuration(results []*models.Result) (time.Duration, bool, boo
 		}
 
 		s := models.ResultStatus(*res.Status)
-		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
+		if s.ExcludedFromAvailability() {
 			continue
 		}
 
@@ -738,7 +756,7 @@ func calculateStatusDuration(results []*models.Result) (time.Duration, bool, boo
 		}
 
 		s := models.ResultStatus(*res.Status)
-		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
+		if s.ExcludedFromAvailability() {
 			continue
 		}
 

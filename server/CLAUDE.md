@@ -88,6 +88,13 @@ Mechanics worth knowing before you touch an existing file:
 - Rename **both** dialects (`postgres/` and `sqlite/`) and **both** directions
   (`.up.sql`/`.down.sql`) together, and grep for the filename first: migration tests read
   these files by name via `migrationsFS.ReadFile`.
+- Editing an **already-applied** migration in place (renumbering, or rewriting content) is
+  caught at boot by `internal/db/migrationguard`, which checksums every applied `.up.sql`.
+  Default mode `strict` fails the boot on a mismatch; `db.migration_guard_mode` /
+  `SP_DB_MIGRATION_GUARD_MODE=warn` logs and continues instead — the local dev loop
+  (`make dev` / `dev-test` / `dev-saas`) always runs warn. `solidping migrate repair`
+  re-records checksums for applied migrations (no migration runs) to clear a cosmetic-edit
+  mismatch. See `wiki/conventions/database.md` for the full guard/repair writeup.
 - **`internal/middleware/`**: Authentication, CORS, logging, and organization context
 - **`internal/config/`**: Configuration management using koanf (YAML + environment variables)
 
@@ -175,7 +182,7 @@ Mechanics worth knowing before you touch an existing file:
 
 Raw-only fields (period_type = 'raw'):
 - `worker_uid` - Worker that executed the check
-- `status` - 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error
+- `status` - 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error, 8=warning, 9=abandoned (7=degraded is aggregated-only). 9 is server-minted by the abandoned-result reaper and, like the created/running lifecycle markers, is excluded from every availability calculation — see `models.ResultStatus.ExcludedFromAvailability`
 - `duration` (float32) - Response time
 - `metrics` (jsonb) - Per-execution metrics (the HTTP checker leaves this NULL — response time lives in `duration`)
 - `output` (jsonb) - Detailed results and error messages
@@ -226,15 +233,30 @@ Define error codes in `internal/handlers/base/`:
 
 ### Handler Error Methods
 ```go
-// Standard error response
+// Standard error response (no internal error to attach, never reported)
 h.WriteError(w, http.StatusNotFound, base.ErrorCodeNotFound, "Check not found")
 
-// Internal error (logs and returns 500)
-h.WriteInternalError(w, err)
+// Error response carrying an internal error. Takes the request: a 5xx written
+// this way is reported to Sentry, a 4xx never is.
+h.WriteErrorErr(w, r, http.StatusNotFound, base.ErrorCodeNotFound, "Check not found", err)
+
+// Internal error (returns 500 and reports to Sentry)
+h.WriteInternalError(w, r, err)
 
 // Success response
 h.WriteJSON(w, http.StatusOK, data)
 ```
+
+**`WriteInternalError` and `WriteErrorErr` both take the request** — that is what
+makes error reporting structural rather than opt-in (spec 2026-08-20-10). They capture
+on the request-scoped Sentry hub that `SentryMiddleware` installs, so a handler cannot
+return a 500 that Sentry never hears about. `WriteErrorErr` reports only when the status
+is >= 500; 4xx is a client fault and must never mint an event. With no hub on the request
+(a unit test, a non-HTTP caller) the capture is a silent no-op.
+
+An error-translation helper that writes these responses therefore needs the request too —
+`func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error`
+is the shape the codebase uses.
 
 ## Testing
 - **Framework**: Table-driven tests with testcontainers for integration tests

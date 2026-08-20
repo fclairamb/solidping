@@ -276,42 +276,42 @@ function MaintenanceWindowsIndexPage() {
         description={t("maintenanceWindows:subtitle")}
         docsHref="/docs/features/maintenance-windows"
         actions={
-          <>
+          <Link to="/orgs/$org/maintenance-windows/new" params={{ org }}>
             <Button
-              variant="outline"
-              onClick={() => refetch()}
-              disabled={isRefetching}
-              aria-label={t("common:refresh")}
+              data-testid="mw-new-button"
+              aria-label={t("maintenanceWindows:new")}
             >
-              <RefreshCw
-                className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
-              />
-              <span className="hidden sm:inline">{t("common:refresh")}</span>
+              <Plus className="sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">
+                {t("maintenanceWindows:new")}
+              </span>
             </Button>
-            <Link to="/orgs/$org/maintenance-windows/new" params={{ org }}>
-              <Button
-                data-testid="mw-new-button"
-                aria-label={t("maintenanceWindows:new")}
-              >
-                <Plus className="sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t("maintenanceWindows:new")}
-                </span>
-              </Button>
-            </Link>
-          </>
+          </Link>
         }
         className="flex-wrap"
       />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder={t("maintenanceWindows:searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t("maintenanceWindows:searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          aria-label={t("common:refresh")}
+        >
+          <RefreshCw
+            className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
+          />
+          <span className="hidden sm:inline">{t("common:refresh")}</span>
+        </Button>
       </div>
 
       {error ? (

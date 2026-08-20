@@ -1,6 +1,7 @@
 package checksmtp
 
 import (
+	"net/mail"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -27,6 +28,43 @@ type SMTPConfig struct {
 	CheckAuth      bool          `json:"check_auth,omitempty"`      //nolint:tagliatelle // API uses snake_case
 	Username       string        `json:"username,omitempty"`
 	Password       string        `json:"password,omitempty"`
+
+	// SendEmail opts this check into send mode: after the normal
+	// EHLO/STARTTLS/AUTH sequence, submit a system-generated probe email
+	// addressed to DeliveryTo. Default false; existing checks are completely
+	// unaffected.
+	SendEmail bool `json:"send_email,omitempty"` //nolint:tagliatelle // API uses snake_case
+	// MailFrom is the envelope sender for the probe email. Required when
+	// SendEmail is set — the monitored server's sender policy usually
+	// dictates it (SPF/DKIM alignment, relay ACLs, etc.).
+	MailFrom string `json:"mail_from,omitempty"` //nolint:tagliatelle // API uses snake_case
+	// DeliveryTo is the recipient address for the probe email — the
+	// OPERATIVE field for send mode (revised design, 2026-08-19). Stored
+	// directly rather than resolved from a reference at dispatch time: that
+	// resolution only ever worked in-process (DirectBackend), so send mode
+	// never worked on a private-location/deported agent, and wiring
+	// resolution into the agent claim path raised an unresolved question
+	// about handing a resolved recipient to a system agent shared across
+	// orgs. Storing the address directly sidesteps both — it flows to every
+	// worker/agent through the normal config path, no claim-time resolution
+	// or context threading needed. Required when SendEmail is set; must be a
+	// bare RFC 5322 address (ValidateDeliveryTo) whose domain equals the
+	// instance's configured email_inbox domain (enforced server-side in
+	// checks/service.go, which has DB access this package doesn't).
+	//
+	// Accepted residual risk (Florent, 2026-08-19): giving up the
+	// reference-not-address indirection means one org that learns another
+	// org's tokenized address can aim probes at it. The domain restriction is
+	// what still holds — a non-instance recipient remains impossible.
+	DeliveryTo string `json:"delivery_to,omitempty"` //nolint:tagliatelle // API uses snake_case
+	// DeliveryCheckUID is OPTIONAL bonus metadata (revised design,
+	// 2026-08-19): purely for attribution and the dashboard's pairing links
+	// ("delivery via" / "delivery sources"). It is NOT a security control and
+	// resolves nothing — DeliveryTo above is what the probe is actually
+	// addressed to. If supplied it must still name an existing CheckTypeEmail
+	// check in the same org (checks/service.go), so the bonus metadata itself
+	// can't become a cross-org information leak, but it is never required.
+	DeliveryCheckUID string `json:"delivery_check_uid,omitempty"` //nolint:tagliatelle // API uses snake_case
 }
 
 // FromMap populates the configuration from a map.
@@ -106,6 +144,37 @@ func (c *SMTPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("password", "must be a string")
 	}
 
+	return c.fromMapSendMode(configMap)
+}
+
+// fromMapSendMode parses the send-mode fields (send_email/mail_from/
+// delivery_to/delivery_check_uid), split out of FromMap to keep its
+// complexity down.
+func (c *SMTPConfig) fromMapSendMode(configMap map[string]any) error {
+	if sendEmail, ok := configMap["send_email"].(bool); ok {
+		c.SendEmail = sendEmail
+	} else if configMap["send_email"] != nil {
+		return checkerdef.NewConfigError("send_email", "must be a boolean")
+	}
+
+	if mailFrom, ok := configMap["mail_from"].(string); ok {
+		c.MailFrom = mailFrom
+	} else if configMap["mail_from"] != nil {
+		return checkerdef.NewConfigError("mail_from", "must be a string")
+	}
+
+	if deliveryTo, ok := configMap["delivery_to"].(string); ok {
+		c.DeliveryTo = deliveryTo
+	} else if configMap["delivery_to"] != nil {
+		return checkerdef.NewConfigError("delivery_to", "must be a string")
+	}
+
+	if deliveryCheckUID, ok := configMap["delivery_check_uid"].(string); ok {
+		c.DeliveryCheckUID = deliveryCheckUID
+	} else if configMap["delivery_check_uid"] != nil {
+		return checkerdef.NewConfigError("delivery_check_uid", "must be a string")
+	}
+
 	return nil
 }
 
@@ -155,7 +224,29 @@ func (c *SMTPConfig) GetConfig() map[string]any {
 		cfg["password"] = c.Password
 	}
 
+	c.getConfigSendMode(cfg)
+
 	return cfg
+}
+
+// getConfigSendMode appends the send-mode fields, split out of GetConfig to
+// keep its complexity down.
+func (c *SMTPConfig) getConfigSendMode(cfg map[string]any) {
+	if c.SendEmail {
+		cfg["send_email"] = c.SendEmail
+	}
+
+	if c.MailFrom != "" {
+		cfg["mail_from"] = c.MailFrom
+	}
+
+	if c.DeliveryTo != "" {
+		cfg["delivery_to"] = c.DeliveryTo
+	}
+
+	if c.DeliveryCheckUID != "" {
+		cfg["delivery_check_uid"] = c.DeliveryCheckUID
+	}
 }
 
 // Validate checks if the configuration is valid.
@@ -176,5 +267,74 @@ func (c *SMTPConfig) Validate() error {
 		return checkerdef.NewConfigError("starttls", "cannot use STARTTLS with port 465 (implicit TLS)")
 	}
 
+	// Shape-only: send mode requires mail_from and delivery_to, both
+	// validated as real addresses (never just non-empty — see
+	// validateAddressField). delivery_to's domain-matches-email_inbox rule
+	// and delivery_check_uid's cross-check reference (existence, same-org,
+	// CheckTypeEmail, when supplied — it is optional bonus metadata, revised
+	// design 2026-08-19) need DB access this layer doesn't have — those live
+	// in checks/service.go's validateSMTPDeliveryConfig, which runs on both
+	// the create and PATCH paths (mirroring how tunnelCheckUid splits the
+	// same way).
+	//
+	// mail_from and delivery_to are both spliced verbatim into the wire
+	// protocol (checker.go): mail_from into the MAIL FROM command and the
+	// From: header, delivery_to into RCPT TO and the To: header. Validating
+	// both as real RFC 5322 addresses here (not just non-empty) is what stops
+	// either from being used to smuggle a CRLF-terminated extra SMTP command
+	// or an injected header — see validateAddressField.
+	if c.SendEmail {
+		if err := ValidateMailFrom(c.MailFrom); err != nil {
+			return err
+		}
+
+		if err := ValidateDeliveryTo(c.DeliveryTo); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// validateAddressField is the shared address-format check behind both
+// ValidateMailFrom and ValidateDeliveryTo: mail.ParseAddress must succeed AND
+// the parsed addr.Address must equal the input verbatim. This is what keeps
+// CRLF, NUL, U+2028, display-name forms, and quoted-local-parts containing
+// '>' out of the SMTP command line and the header block for EITHER field —
+// mirrors the net/mail.ParseAddress check used elsewhere in the repo
+// (statussubscribers.normalizeEmail). ParseAddress alone is not enough: it
+// happily accepts "Display Name <addr>", which would let the "Display Name"
+// portion carry attacker-controlled text into the wire value verbatim (it is
+// not itself CRLF, so ParseAddress accepts it, but it still is NOT the bare
+// address the caller asked to store) — the equality check is what forces the
+// stored/wire value to be exactly the bare address, nothing else.
+func validateAddressField(field, value string) error {
+	if value == "" {
+		return checkerdef.NewConfigError(field, "is required when send_email is set")
+	}
+
+	addr, err := mail.ParseAddress(value)
+	if err != nil {
+		return checkerdef.NewConfigError(field, "must be a single valid email address")
+	}
+
+	if addr.Address != value {
+		return checkerdef.NewConfigError(field, "must be a bare email address, not a display name + address")
+	}
+
+	return nil
+}
+
+// ValidateMailFrom requires a non-empty, single bare RFC 5322 address — see
+// validateAddressField for what that rules out and why.
+func ValidateMailFrom(mailFrom string) error {
+	return validateAddressField("mail_from", mailFrom)
+}
+
+// ValidateDeliveryTo requires a non-empty, single bare RFC 5322 address — the
+// same rule as ValidateMailFrom (see validateAddressField), since delivery_to
+// is now the operative send-mode recipient (revised design, 2026-08-19) and
+// therefore carries exactly the same injection surface mail_from does.
+func ValidateDeliveryTo(deliveryTo string) error {
+	return validateAddressField("delivery_to", deliveryTo)
 }

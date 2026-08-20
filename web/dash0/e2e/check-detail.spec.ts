@@ -1,4 +1,13 @@
-import { test, expect } from "./fixtures";
+import { test, expect, mockSloCoverage } from "./fixtures";
+
+// Every test in this file lands on the check detail page and immediately waits
+// on networkidle, and several mock the rest of that page's traffic to stay
+// hermetic. The header's SLO coverage chip fires an unconditional
+// GET /slos?checkUid=… (spec 2026-08-20-01), so stub it here once rather than
+// leaving one real request for each of those waits to sit through.
+test.beforeEach(async ({ authenticatedPage }) => {
+  await mockSloCoverage(authenticatedPage);
+});
 
 test.describe("Check Detail Page", () => {
   test("should not make excessive API requests", async ({

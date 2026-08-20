@@ -18,7 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { regionDisplayLabel } from "@/lib/region-label";
-import { useAllAgents, useRegions, type AgentInfo } from "@/api/hooks";
+import { useAllAgents, useRegions, useVersion, type AgentInfo } from "@/api/hooks";
+import { AgentVersionCell } from "@/components/shared/agent-version";
 
 export const Route = createFileRoute("/orgs/$org/server/agents")({
   component: AgentsFleetPage,
@@ -45,6 +46,7 @@ function AgentsFleetPage() {
   // slug for anything unmatched (e.g. a shared system-agent cloud region),
   // so borrowing the current org's catalog for labeling is fine here.
   const { data: regionsData } = useRegions(org);
+  const { data: versionData } = useVersion();
 
   return (
     <Card data-testid="agents-fleet-card">
@@ -71,6 +73,7 @@ function AgentsFleetPage() {
                   <TableHead>{t("server:agents.name")}</TableHead>
                   <TableHead>{t("server:agents.region")}</TableHead>
                   <TableHead>{t("server:agents.fingerprint")}</TableHead>
+                  <TableHead>{t("server:agents.version")}</TableHead>
                   <TableHead>{t("server:agents.lastSeen")}</TableHead>
                   <TableHead>{t("server:agents.status")}</TableHead>
                 </TableRow>
@@ -99,6 +102,13 @@ function AgentsFleetPage() {
                       </TableCell>
                       <TableCell>
                         <code className="text-xs text-muted-foreground">{agent.fingerprint}</code>
+                      </TableCell>
+                      <TableCell>
+                        <AgentVersionCell
+                          agentVersion={agent.version}
+                          serverVersion={versionData?.version}
+                          data-testid={`fleet-agent-version-${agent.uid}`}
+                        />
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         <span

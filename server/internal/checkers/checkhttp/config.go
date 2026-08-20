@@ -112,6 +112,16 @@ type HTTPConfig struct {
 	// VerifySsl.
 	FollowRedirects *bool `json:"followRedirects,omitempty"`
 
+	// CaptureFailureResponse opts this check into capturing what the probe
+	// actually received when the check FAILS — status line, redacted response
+	// headers and a size-capped body — for persistence as incident
+	// diagnostics. Default false: response bodies can carry PII or session
+	// material, so the org decides per check.
+	//
+	// A plain bool, not a pointer: unlike VerifySsl/FollowRedirects there is
+	// no legacy "unset behaves like true" to preserve — off is off.
+	CaptureFailureResponse bool `json:"capture_failure_response,omitempty"` //nolint:tagliatelle // API uses snake_case
+
 	// Compiled regex patterns (not serialized, populated during validation)
 	bodyPatternRegex       *regexp.Regexp            `json:"-"`
 	bodyPatternRejectRegex *regexp.Regexp            `json:"-"`
@@ -327,6 +337,17 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.FollowRedirects = &b
 	}
 
+	// Extract CaptureFailureResponse (optional). Canonical key is the
+	// snake_case one; the camelCase spelling is accepted so a config written
+	// by the frontend's usual convention still parses.
+	if v, key, ok := resolveKey(configMap, "capture_failure_response", "captureFailureResponse"); ok {
+		b, ok := v.(bool)
+		if !ok {
+			return checkerdef.NewConfigError(key, "must be a boolean")
+		}
+		c.CaptureFailureResponse = b
+	}
+
 	return nil
 }
 
@@ -450,9 +471,16 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		}
 	}
 
-	// VerifySsl / FollowRedirects are only emitted at their non-default
-	// (false) value, matching the omit-empty style of the other fields — an
-	// unset/true config round-trips without ever writing the key.
+	c.addToggleConfig(cfg)
+
+	return cfg
+}
+
+// addToggleConfig writes the three boolean toggles, each omitted at its own
+// default so an untouched config round-trips without ever gaining a key:
+// VerifySsl / FollowRedirects default to ON and are written only at false;
+// CaptureFailureResponse defaults to OFF and is written only at true.
+func (c *HTTPConfig) addToggleConfig(cfg map[string]any) {
 	if c.VerifySsl != nil && !*c.VerifySsl {
 		cfg["verifySsl"] = false
 	}
@@ -461,7 +489,9 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		cfg["followRedirects"] = false
 	}
 
-	return cfg
+	if c.CaptureFailureResponse {
+		cfg["capture_failure_response"] = true
+	}
 }
 
 // SkipTLSVerify reports whether TLS certificate verification should be

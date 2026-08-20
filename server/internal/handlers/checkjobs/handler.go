@@ -71,7 +71,7 @@ func (h *Handler) ListCheckJobs(writer http.ResponseWriter, req *http.Request) e
 
 	views, err := h.svc.ListCheckJobs(req.Context(), orgUID, h.parseListOptions(req))
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: views})
@@ -91,7 +91,7 @@ func (h *Handler) GetCheckJob(writer http.ResponseWriter, req *http.Request) err
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Check job not found")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: view})
@@ -107,7 +107,7 @@ func (h *Handler) Stats(writer http.ResponseWriter, req *http.Request) error {
 
 	stats, err := h.svc.Stats(req.Context(), orgUID)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: stats})
@@ -118,7 +118,7 @@ func (h *Handler) Stats(writer http.ResponseWriter, req *http.Request) error {
 func (h *Handler) ListSystemCheckJobs(writer http.ResponseWriter, req *http.Request) error {
 	views, err := h.svc.ListCheckJobs(req.Context(), "", h.parseListOptions(req))
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: views})
@@ -133,7 +133,7 @@ func (h *Handler) GetSystemCheckJob(writer http.ResponseWriter, req *http.Reques
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Check job not found")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: view})
@@ -144,7 +144,7 @@ func (h *Handler) GetSystemCheckJob(writer http.ResponseWriter, req *http.Reques
 func (h *Handler) SystemStats(writer http.ResponseWriter, req *http.Request) error {
 	stats, err := h.svc.Stats(req.Context(), "")
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{responseKeyData: stats})

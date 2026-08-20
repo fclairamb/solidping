@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -94,7 +95,11 @@ func (m *mockDBService) Close() error {
 
 // Stub implementations for all other db.Service methods (not used in tests).
 func (m *mockDBService) Initialize(_ context.Context) error { panic("not implemented") }
-func (m *mockDBService) DB() *bun.DB                        { panic("not implemented") }
+
+func (m *mockDBService) RepairMigrationChecksums(_ context.Context) ([]migrationguard.RepairResult, error) {
+	panic("not implemented")
+}
+func (m *mockDBService) DB() *bun.DB { panic("not implemented") }
 func (m *mockDBService) CreateOrganization(_ context.Context, _ *models.Organization) error {
 	panic("not implemented")
 }
@@ -259,6 +264,10 @@ func (m *mockDBService) GetCheck(_ context.Context, _, _ string) (*models.Check,
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetChecksByUIDs(_ context.Context, _ string, _ []string) (map[string]*models.Check, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListChecks(
 	_ context.Context, _ string, _ *models.ListChecksFilter,
 ) ([]*models.Check, int64, error) {
@@ -325,6 +334,10 @@ func (m *mockDBService) GetResult(_ context.Context, _ string) (*models.Result, 
 func (m *mockDBService) ListResults(
 	_ context.Context, _ *models.ListResultsFilter,
 ) (*models.ListResultsResponse, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountResultsByPeriodType(_ context.Context) (map[string]int64, error) {
 	panic("not implemented")
 }
 
@@ -784,7 +797,7 @@ func (m *mockDBService) RegisterOrUpdateWorker(_ context.Context, _ *models.Work
 	panic("not implemented")
 }
 
-func (m *mockDBService) UpdateWorkerHeartbeat(_ context.Context, _ string, _ []string) error {
+func (m *mockDBService) UpdateWorkerHeartbeat(_ context.Context, _ string, _ []string, _ string) error {
 	panic("not implemented")
 }
 
@@ -884,6 +897,14 @@ func (m *mockDBService) RevokeAgent(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListPurgeableRevokedAgents(_ context.Context, _ time.Time) ([]*models.Agent, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) PurgeAgent(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetCheckByUidOrSlug( //nolint:revive // Interface method name
 	_ context.Context, _, _ string,
 ) (*models.Check, error) {
@@ -907,6 +928,12 @@ func (m *mockDBService) FindRecentlyResolvedIncidentByGroupUID(
 func (m *mockDBService) ListIncidentMemberChecks(
 	_ context.Context, _ string,
 ) ([]*models.IncidentMemberCheck, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListIncidentMemberChecksByIncidentUIDs(
+	_ context.Context, _ []string,
+) (map[string][]*models.IncidentMemberCheck, error) {
 	panic("not implemented")
 }
 
@@ -962,6 +989,10 @@ func (m *mockDBService) GetLastResultForChecks(
 	_ context.Context, _ string, _ []string,
 ) (map[string]*models.Result, error) {
 	panic("not implemented")
+}
+
+func (m *mockDBService) ReapAbandonedResults(_ context.Context) (models.ReapAbandonedResultsOutcome, error) {
+	return models.ReapAbandonedResultsOutcome{}, errMockNotImplemented
 }
 
 func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *models.Result) error {
@@ -1189,6 +1220,12 @@ func (m *mockDBService) GetCheckGroup(_ context.Context, _, _ string) (*models.C
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetCheckGroupsByUIDs(
+	_ context.Context, _ string, _ []string,
+) (map[string]*models.CheckGroup, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetCheckGroupBySlug(_ context.Context, _, _ string) (*models.CheckGroup, error) {
 	panic("not implemented")
 }
@@ -1268,6 +1305,89 @@ func (m *mockDBService) ListMaintenanceWindowChecks(
 func (m *mockDBService) ListMaintenanceWindowsForCheck(
 	_ context.Context, _ string,
 ) ([]*models.MaintenanceWindow, error) {
+	panic("not implemented")
+}
+
+// SLO + report-schedule operations (spec 2026-08-20-01). Notifications never
+// touch either, so every one panics rather than pretending to answer.
+
+func (m *mockDBService) CreateSLO(_ context.Context, _ *models.SLO) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetSLO(_ context.Context, _, _ string) (*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetSLOBySlug(_ context.Context, _, _ string) (*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSLOs(
+	_ context.Context, _ string, _ models.ListSLOsFilter,
+) ([]*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateSLO(_ context.Context, _ string, _ models.SLOUpdate) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteSLO(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountSLOs(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSLOsForChecks(
+	_ context.Context, _ string, _ []string,
+) ([]*models.SLO, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateReportSchedule(_ context.Context, _ *models.ReportSchedule) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetReportSchedule(
+	_ context.Context, _, _ string,
+) (*models.ReportSchedule, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListReportSchedules(
+	_ context.Context, _ string,
+) ([]*models.ReportSchedule, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListEnabledReportSchedules(
+	_ context.Context,
+) ([]*models.ReportSchedule, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateReportSchedule(
+	_ context.Context, _ string, _ models.ReportScheduleUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteReportSchedule(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) MarkReportScheduleRun(
+	_ context.Context, _ string, _, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RemoveRecipientFromReportSchedules(
+	_ context.Context, _, _ string,
+) (int, error) {
 	panic("not implemented")
 }
 
@@ -2086,6 +2206,54 @@ func (m *mockDBService) SoftDeleteStatusUpdate(_ context.Context, _ string) erro
 func (m *mockDBService) ListPublicStatusUpdates(
 	_ context.Context, _ string, _ int,
 ) ([]*db.PublicStatusUpdate, error) {
+	return nil, nil
+}
+
+// --- IncidentPublication stubs (spec 2026-08-19-08) ---
+
+func (m *mockDBService) CreateIncidentPublication(
+	_ context.Context, _ *models.IncidentPublication,
+) error {
+	return nil
+}
+
+func (m *mockDBService) GetIncidentPublication(
+	_ context.Context, _, _ string,
+) (*models.IncidentPublication, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *mockDBService) FindIncidentPublication(
+	_ context.Context, _, _ string,
+) (*models.IncidentPublication, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *mockDBService) ListIncidentPublications(
+	_ context.Context, _ *models.ListIncidentPublicationsFilter,
+) ([]*models.IncidentPublication, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) UpdateIncidentPublication(
+	_ context.Context, _ string, _ *models.IncidentPublicationUpdate,
+) error {
+	return nil
+}
+
+func (m *mockDBService) SoftDeleteIncidentPublication(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) CountIncidentPublicationsForIncident(
+	_ context.Context, _ string,
+) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) ListStatusPageTargetsForCheck(
+	_ context.Context, _ string, _ *string,
+) ([]*db.StatusPageTarget, error) {
 	return nil, nil
 }
 

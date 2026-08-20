@@ -38,6 +38,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -70,6 +71,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
@@ -83,8 +85,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
+	"github.com/fclairamb/solidping/server/internal/handlers/reportschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
+	"github.com/fclairamb/solidping/server/internal/handlers/slos"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
@@ -118,6 +122,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
+	"github.com/fclairamb/solidping/server/internal/uptimereport"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -213,45 +218,53 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	switch cfg.Database.Type {
 	case "postgres":
 		dbService, err = postgres.New(ctx, &postgres.Config{
-			DSN:             cfg.Database.URL,
-			Embedded:        false,
-			LogSQL:          cfg.Database.LogSQL,
-			RunMode:         cfg.RunMode,
-			Reset:           cfg.Database.Reset,
-			MaxOpenConns:    cfg.Database.MaxOpenConns,
-			MaxIdleConns:    cfg.Database.MaxIdleConns,
-			ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
-			ConnMaxIdleTime: cfg.Database.ConnMaxIdleTime,
+			DSN:                cfg.Database.URL,
+			Embedded:           false,
+			LogSQL:             cfg.Database.LogSQL,
+			RunMode:            cfg.RunMode,
+			Reset:              cfg.Database.Reset,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
+			MaxOpenConns:       cfg.Database.MaxOpenConns,
+			MaxIdleConns:       cfg.Database.MaxIdleConns,
+			ConnMaxLifetime:    cfg.Database.ConnMaxLifetime,
+			ConnMaxIdleTime:    cfg.Database.ConnMaxIdleTime,
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create PostgreSQL service: %w", err)
 		}
 	case "postgres-embedded":
 		dbService, err = postgres.New(ctx, &postgres.Config{
-			Embedded: true,
-			Port:     embeddedPostgresPort,
-			LogSQL:   cfg.Database.LogSQL,
-			RunMode:  cfg.RunMode,
-			Reset:    cfg.Database.Reset,
+			Embedded:           true,
+			Port:               embeddedPostgresPort,
+			LogSQL:             cfg.Database.LogSQL,
+			RunMode:            cfg.RunMode,
+			Reset:              cfg.Database.Reset,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create embedded PostgreSQL service: %w", err)
 		}
 	case "sqlite":
 		dbService, err = sqlite.New(ctx, sqlite.Config{
-			DataDir:  cfg.Database.Dir,
-			InMemory: false,
-			LogSQL:   cfg.Database.LogSQL,
-			RunMode:  cfg.RunMode,
-			Reset:    cfg.Database.Reset,
+			DataDir:            cfg.Database.Dir,
+			InMemory:           false,
+			LogSQL:             cfg.Database.LogSQL,
+			RunMode:            cfg.RunMode,
+			Reset:              cfg.Database.Reset,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite service: %w", err)
 		}
 	case dbTypeSQLiteMemory:
 		dbService, err = sqlite.New(ctx, sqlite.Config{
-			InMemory: true,
-			LogSQL:   cfg.Database.LogSQL,
+			InMemory:           true,
+			LogSQL:             cfg.Database.LogSQL,
+			GuardMode:          migrationguard.Mode(cfg.Database.MigrationGuardMode),
+			SlowQueryThreshold: cfg.Database.SlowQueryThreshold,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite in-memory service: %w", err)
@@ -491,6 +504,44 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 	}
 }
 
+// buildMainGroup installs the process-wide middleware chain and returns the
+// root group every route below hangs off.
+//
+// It is a function of its own so the order is testable: this is the SINGLE
+// place the global chain is defined, and internal/app's Sentry chain test
+// drives a panicking route through this very call rather than through a
+// hand-copied imitation of it. Reorder anything here and that test moves.
+//
+// Order is load-bearing (spec 2026-08-20-10). Recoverer sits:
+//   - inside SentryMiddleware, so the panic reports on the request hub carrying
+//     the user/org RequireAuth attached, and is reported exactly once;
+//   - inside logging + HTTPMetrics, so a panicking handler is logged and
+//     counted as an ordinary 500 instead of dropping the connection;
+//   - inside timeoutMW, which runs the handler on its OWN goroutine —
+//     recover() only catches panics on the goroutine it runs on, so a recoverer
+//     above the timeout would let every handler panic take the whole process
+//     down.
+func (s *Server) buildMainGroup(ctx context.Context, router *httpx.Router) *httpx.Group {
+	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
+	s.rateLimiter = rateLimiter
+
+	// ctx for RequestTimeout is taken from each request's context inside the
+	// middleware closure, not threaded through here; the contextcheck linter
+	// can't see that.
+	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration)
+
+	return router.Use(
+		s.corsMiddleware,
+		middleware.SentryMiddleware(),
+		s.loggingMiddleware,
+		middleware.HTTPMetrics,
+		timeoutMW,
+		middleware.Recoverer,
+		rateLimiter.RateLimit,
+		rateLimiter.ConcurrencyLimit,
+	)
+}
+
 // SetupRoutes builds the HTTP router and registers every handler. It must
 // be called after InitializeSystemConfig so handlers see the post-overlay
 // config (e.g. PasskeyService deriving its RP ID from cfg.Server.BaseURL,
@@ -518,17 +569,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	resolveTelegramSettings(ctx, s.dbService, s.config)
 
 	router := httpx.New()
-	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
-	s.rateLimiter = rateLimiter
-	// ctx for RequestTimeout is taken from each request's context inside the
-	// middleware closure, not threaded through here; the contextcheck linter
-	// can't see that.
-	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration)
-	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
-		Use(middleware.HTTPMetrics).
-		Use(timeoutMW).
-		Use(rateLimiter.RateLimit).
-		Use(rateLimiter.ConcurrencyLimit)
+	mainGroup := s.buildMainGroup(ctx, router)
 
 	// API routes
 	api := mainGroup.NewGroup("/api/v1")
@@ -573,6 +614,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.POST("/switch-org", authHandler.SwitchOrg)
 	rootAuthProtected.GET("/me", authHandler.Me)
 	rootAuthProtected.PATCH("/me", authHandler.UpdateMe)
+	// Authenticated password rotation (and the SSO-only "set a password"
+	// case). The unauthenticated /reset-password above stays for the
+	// forgotten-password flow; this one needs no email round-trip.
+	rootAuthProtected.POST("/change-password", authHandler.ChangePassword)
 	rootAuthProtected.GET("/tokens", authHandler.GetAllUserTokens)
 	rootAuthProtected.POST("/2fa/setup", authHandler.Setup2FA)
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
@@ -769,8 +814,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	publicConfigHandler := publicconfig.NewHandler(s.config)
 	api.GET("/config", publicConfigHandler.GetConfig)
 
-	// Check types service (constructed early so MCP can use it too)
-	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
+	// Check types service (constructed early so MCP can use it too).
+	//
+	// This resolver answers the metadata endpoints (what the dashboard and MCP
+	// list_check_types render). ENFORCEMENT at execution time lives elsewhere:
+	// checkworker.newCheckWorker builds its own resolver from the same
+	// cfg.Checkers and installs it as checkjs.TypeEnabled, because this route
+	// setup is never reached by a standalone agent process. Same constructor,
+	// same pure input, so the two cannot diverge — keep them in step.
+	activationResolver := checkerdef.NewActivationResolver(&s.config.Checkers)
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
 	// MCP endpoint (auth via PAT token, org derived from token)
@@ -965,8 +1017,26 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	badgesHandler := badges.NewHandler(badgesService, s.config)
 	publicOrgAPI.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
+	// The status-page publication overlay (spec 2026-08-19-08) is built HERE,
+	// ahead of every incidents.Service, because there are several of them —
+	// the main one, the agent-workers one, heartbeat and email checks — and
+	// each is a path real results arrive on. An instance without the hook
+	// silently never auto-publishes, which is invisible until someone notices
+	// their outage never reached the status page. One instance, wired into all
+	// of them, is the only arrangement where that cannot happen by omission.
+	statusSubscriberNotifier := statussubscribers.NewNotifier(
+		s.dbService, s.services.EmailSender, s.services.EmailFormatter,
+		s.config.Server.BaseURL, slog.Default())
+
+	incidentPublicationsService := incidentpublications.NewService(
+		s.dbService, s.services.Clock, s.services.Realtime)
+	incidentPublicationsService.SetSubscriberNotifier(statusSubscriberNotifier)
+	incidentPublicationsService.SetJobsService(s.services.Jobs)
+	incidentPublicationsService.SetScheduler(jobtypes.NewIncidentPublishScheduler(s.services.Jobs))
+
 	// Heartbeat ingestion routes (public, token-based auth)
-	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc, s.services.Realtime)
+	heartbeatService := heartbeat.NewService(
+		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
 	publicOrgAPI.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	publicOrgAPI.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
@@ -1003,10 +1073,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// signed headers on every reconnect. The claim/submit service logic is the
 	// same code the historical HTTP worker API used; incidents always process
 	// server-side.
+	// Deported agents submit their results through this service, so its
+	// incident pipeline needs the publication hook just as much as the
+	// in-process one does.
+	agentWorkerIncidents := incidents.NewService(
+		s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
+	agentWorkerIncidents.SetPublicationHook(incidentPublicationsService)
+
 	agentWorkersSvc := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
+		agentWorkerIncidents,
 		scheduling.ParamsFromConfig(s.config.Server.Scheduling),
 	)
 	agentWSHandler := agentws.NewHandler(
@@ -1032,13 +1109,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
 
 	// Per-check availability statistics (real per-period probe-ratio + incidents)
-	availabilityService := availability.NewService(s.dbService)
+	availabilityService := availability.NewService(s.dbService, s.config)
 	availabilityHandler := availability.NewHandler(availabilityService, s.config)
 	orgChecksAvail := orgGroup("/orgs/:org/checks/:check/availability")
 	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
 
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
+	incidentsService.SetPublicationHook(incidentPublicationsService)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := orgGroup("/orgs/:org/incidents")
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -1254,7 +1332,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// The supervisor is started from Server.Start() once we have a real
 	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
-	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, s.services.Realtime, slog.Default()))
+	s.jmapManager.RegisterHandler(emailcheck.NewHandler(
+		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService, slog.Default()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	systemHandler := system.NewHandler(systemService, s.config)
@@ -1386,9 +1465,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
 	// Fan published status updates out to confirmed status-page subscribers by
-	// email. The notifier runs detached (fire-and-forget) inside the service.
-	statusSubscriberNotifier := statussubscribers.NewNotifier(
-		s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config.Server.BaseURL, slog.Default())
+	// email. The notifier runs detached (fire-and-forget) inside the service;
+	// it is the same instance the publication overlay uses, built above.
 	statusUpdatesService.SetSubscriberNotifier(statusSubscriberNotifier)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
 	orgStatusUpdates := orgGroup("/orgs/:org/status-updates")
@@ -1398,8 +1476,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusUpdates.PATCH("/:uid", statusUpdatesHandler.UpdateStatusUpdate)
 	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
+	// The publication service itself was built far earlier (see the comment
+	// there): every incidents.Service in this file shares that one instance.
+	incidentPublicationsHandler := incidentpublications.NewHandler(incidentPublicationsService, s.config)
+
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
+	statusPagesService.SetPublicIncidentProvider(publicIncidentAdapter{svc: incidentPublicationsService})
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
@@ -1425,6 +1508,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.PATCH("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.UpdateResource)
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.DeleteResource)
 
+	// Incident publications, page side (authenticated). Updates are
+	// append-only: there is deliberately no PATCH or DELETE on an update.
+	orgStatusPages.GET("/:statusPageUid/incidents", incidentPublicationsHandler.List)
+	orgStatusPages.POST("/:statusPageUid/incidents", incidentPublicationsHandler.Create)
+	orgStatusPages.GET("/:statusPageUid/incidents/:uid", incidentPublicationsHandler.Get)
+	orgStatusPages.PATCH("/:statusPageUid/incidents/:uid", incidentPublicationsHandler.Update)
+	orgStatusPages.POST("/:statusPageUid/incidents/:uid/updates", incidentPublicationsHandler.AppendUpdate)
+
+	// Incident publications, incident side (authenticated).
+	orgIncidentPublications := orgGroup("/orgs/:org/incidents/:incidentUid/publications")
+	orgIncidentPublications.GET("", incidentPublicationsHandler.ListForIncident)
+	orgIncidentPublications.POST("", incidentPublicationsHandler.PublishIncident)
+	orgIncidentPublications.DELETE("/:uid", incidentPublicationsHandler.Unpublish)
+
 	// Status page subscribers (public email/RSS subscriptions). The handler is
 	// shared by the authed admin routes (below) and the public routes (further
 	// down, outside RequireAuth).
@@ -1447,6 +1544,33 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgMW.GET("/:uid/checks", mwHandler.ListChecks)
 	orgMW.PUT("/:uid/checks", mwHandler.SetChecks)
 
+	// SLO routes (spec 2026-08-20-01, authentication required)
+	sloService := slos.NewService(s.dbService, s.config, s.services.Entitlements)
+	sloHandler := slos.NewHandler(sloService, s.config)
+	orgSLOs := orgGroup("/orgs/:org/slos")
+	orgSLOs.GET("", sloHandler.List)
+	orgSLOs.POST("", sloHandler.Create)
+	orgSLOs.GET("/:uid", sloHandler.Get)
+	orgSLOs.PATCH("/:uid", sloHandler.Update)
+	orgSLOs.DELETE("/:uid", sloHandler.Delete)
+	orgSLOs.GET("/:uid/status", sloHandler.Status)
+	orgSLOs.GET("/:uid/history", sloHandler.History)
+	orgSLOs.GET("/:uid/burndown", sloHandler.Burndown)
+
+	// Scheduled uptime reports (spec 2026-08-20-01, authentication required)
+	reportBuilder := uptimereport.NewBuilder(s.dbService, s.config, sloService)
+	reportSchedulesService := reportschedules.NewService(
+		s.dbService, s.config, reportBuilder, &uptimeReportMailer{services: s.services},
+	)
+	reportSchedulesHandler := reportschedules.NewHandler(reportSchedulesService, s.config)
+	orgReports := orgGroup("/orgs/:org/report-schedules")
+	orgReports.GET("", reportSchedulesHandler.List)
+	orgReports.POST("", reportSchedulesHandler.Create)
+	orgReports.GET("/:uid", reportSchedulesHandler.Get)
+	orgReports.PATCH("/:uid", reportSchedulesHandler.Update)
+	orgReports.DELETE("/:uid", reportSchedulesHandler.Delete)
+	orgReports.POST("/:uid/test", reportSchedulesHandler.TestSend)
+
 	// Public status page endpoints (no authentication)
 	publicOrgAPI.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
 	publicOrgAPI.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
@@ -1460,6 +1584,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	publicOrgAPI.GET("/status-pages/:org/:slug/badge", statusPagesHandler.GetBadge)
 	// Public Atom/RSS feed of the status-update timeline.
 	publicOrgAPI.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+	// Public incident history (spec 2026-08-19-08). `?active=true` returns only
+	// the open ones; the default returns the page's history window.
+	publicOrgAPI.GET("/status-pages/:org/:slug/incidents", incidentPublicationsHandler.ViewPublicIncidents)
 
 	// Edge-TLS "ask" endpoint (public, no auth): 204 when the queried domain is a
 	// verified+enabled+public custom domain, 404 otherwise. Contract for Caddy
@@ -1525,12 +1652,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Twilio inbound callbacks (voice TwiML + DTMF ack + delivery status).
 	// No org auth — authenticity is the per-request X-Twilio-Signature check in
-	// VerifyMiddleware, which resolves the connection from the `cid` query param.
+	// the verify middleware, which resolves the credentials from the `cid` query
+	// param. Voice and status get DIFFERENT middlewares: a server-credential
+	// status callback is validated with the instance credentials of the
+	// capability it belongs to (SMS or voice), which are configured separately.
 	twilioHandler := twiliocb.NewHandler(s.dbService, s.services.Credentials, s.config, incidentsService)
 	twilioIntegration := api.NewGroup("/integrations/twilio")
-	twilioIntegration.POST("/voice", twilioHandler.VerifyMiddleware(twilioHandler.HandleVoice))
-	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyMiddleware(twilioHandler.HandleGather))
-	twilioIntegration.POST("/status", twilioHandler.VerifyMiddleware(twilioHandler.HandleStatus))
+	twilioIntegration.POST("/voice", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleVoice))
+	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleGather))
+	twilioIntegration.POST("/status", twilioHandler.VerifyStatusMiddleware(twilioHandler.HandleStatus))
 
 	// OVH SMS delivery receipts. OVH does not sign its callbacks and offers no
 	// per-job callback field, so the route authenticates by construction with a

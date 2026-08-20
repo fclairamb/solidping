@@ -46,7 +46,7 @@ func NewHandler(
 	}
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -61,7 +61,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrTelegramNotEnabled):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -85,7 +85,7 @@ func (h *Handler) ListRoutes(writer http.ResponseWriter, req *http.Request) erro
 
 	resp, err := h.svc.ListRoutes(req.Context(), httpx.Param(req, "org"), user)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -113,7 +113,7 @@ func (h *Handler) CreateContact(writer http.ResponseWriter, req *http.Request) e
 
 	route, err := h.svc.CreateContact(req.Context(), httpx.Param(req, "org"), user, body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, route)
@@ -133,7 +133,7 @@ func (h *Handler) CreateTelegramLink(writer http.ResponseWriter, req *http.Reque
 
 	resp, err := h.svc.CreateTelegramLink(req.Context(), httpx.Param(req, "org"), user)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
@@ -155,7 +155,7 @@ func (h *Handler) PatchRoute(writer http.ResponseWriter, req *http.Request) erro
 
 	route, err := h.svc.PatchRoute(req.Context(), httpx.Param(req, "org"), user, routeUID, body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, route)
@@ -171,7 +171,7 @@ func (h *Handler) DeleteContact(writer http.ResponseWriter, req *http.Request) e
 	contactUID := httpx.Param(req, "contactUid")
 
 	if err := h.svc.DeleteContact(req.Context(), httpx.Param(req, "org"), user, contactUID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -190,7 +190,7 @@ func (h *Handler) VerifyContact(writer http.ResponseWriter, req *http.Request) e
 	contactUID := httpx.Param(req, "contactUid")
 
 	if err := h.svc.VerifyContact(req.Context(), httpx.Param(req, "org"), user, contactUID); err != nil {
-		return h.handleVerifyError(writer, err)
+		return h.handleVerifyError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -219,7 +219,7 @@ func (h *Handler) ConfirmVerify(writer http.ResponseWriter, req *http.Request) e
 	contactUID := httpx.Param(req, "contactUid")
 
 	if err := h.svc.ConfirmVerify(req.Context(), httpx.Param(req, "org"), user, contactUID, body.Code); err != nil {
-		return h.handleVerifyError(writer, err)
+		return h.handleVerifyError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -228,7 +228,7 @@ func (h *Handler) ConfirmVerify(writer http.ResponseWriter, req *http.Request) e
 }
 
 // handleVerifyError maps verification-flow errors to HTTP responses.
-func (h *Handler) handleVerifyError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleVerifyError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrContactNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification contact not found")
@@ -250,7 +250,7 @@ func (h *Handler) handleVerifyError(writer http.ResponseWriter, err error) error
 		errors.Is(err, ErrCodeMismatch):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 

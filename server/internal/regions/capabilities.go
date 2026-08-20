@@ -23,6 +23,10 @@ const (
 	// CapabilityIPv6 reports whether checks pinned to `ipVersion: ipv6` can
 	// actually leave this region.
 	CapabilityIPv6 = models.CapabilityIPv6
+	// CapabilityBrowser reports whether `browser` checks can actually run in
+	// this region — i.e. whether its live workers have a Chrome to drive
+	// (spec 2026-08-19-03).
+	CapabilityBrowser = models.CapabilityBrowser
 )
 
 // Capability values. THREE states, deliberately — not a boolean.
@@ -86,6 +90,7 @@ func aggregate(workers []*models.Worker, name string) string {
 var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the published capability registry
 	CapabilityIPv4,
 	CapabilityIPv6,
+	CapabilityBrowser,
 }
 
 // capabilitiesFor renders the capability map for a worker set.
@@ -263,4 +268,9 @@ func (d RegionDefinition) IPv4Capability() string {
 // IPv6Capability reads the IPv6 verdict off a definition.
 func (d RegionDefinition) IPv6Capability() string {
 	return d.CapabilityFor(CapabilityIPv6)
+}
+
+// BrowserCapability reads the headless-Chrome verdict off a definition.
+func (d RegionDefinition) BrowserCapability() string {
+	return d.CapabilityFor(CapabilityBrowser)
 }

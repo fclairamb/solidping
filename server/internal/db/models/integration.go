@@ -20,7 +20,7 @@ const (
 	ConnectionTypeGoogleChat ConnectionType = "googlechat"
 	ConnectionTypeMattermost ConnectionType = "mattermost"
 	ConnectionTypeNtfy       ConnectionType = "ntfy"
-	ConnectionTypeOpsgenie   ConnectionType = "opsgenie"
+	ConnectionTypePagerduty  ConnectionType = "pagerduty"
 	ConnectionTypePushover   ConnectionType = "pushover"
 	ConnectionTypeFreebox    ConnectionType = "freebox"
 	ConnectionTypeWebPush    ConnectionType = "webpush"
@@ -32,6 +32,11 @@ const (
 	// ConnectionTypeMSTeams, which stays as the zero-infra, one-way Teams
 	// Workflow webhook: the two coexist and an org may use either or both.
 	ConnectionTypeMSTeamsBot ConnectionType = "msteams-bot"
+	// ConnectionTypeMatrix is the org-level Matrix (matrix.org) integration: a
+	// stateless HTTP sender to a Matrix room via the Client-Server API,
+	// alongside Slack/Discord/ntfy — not the instance-level direct-channel
+	// path used by Telegram.
+	ConnectionTypeMatrix ConnectionType = "matrix"
 )
 
 // Capabilities describes what roles an integration type can play. The two
@@ -57,7 +62,7 @@ type Capabilities struct {
 
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
-// mattermost, msteams, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
+// mattermost, msteams, ntfy, pagerduty, pushover) is CanNotify; freebox is a data source
 // (CanSource) and cannot receive notifications. Twilio additionally carries
 // the two phone capabilities — it is the only connection type that is a
 // bring-your-own SMS *and* voice account. The default branch intentionally

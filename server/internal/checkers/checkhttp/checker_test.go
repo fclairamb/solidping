@@ -1679,3 +1679,160 @@ func TestHTTPChecker_Execute_FollowRedirects(t *testing.T) {
 		r.False(*finalHit, "the redirect target must not have been reached")
 	})
 }
+
+// jsonPathStatusIsOK builds the assertion used across the read-gate tests:
+// `$.status == "ok"`. Returned fresh each time so no subtest can share (and
+// mutate) another's node.
+func jsonPathStatusIsOK() *AssertionNode {
+	return &AssertionNode{
+		Type:     NodeTypeAssertion,
+		Path:     "$.status",
+		Operator: "eq",
+		Value:    "ok",
+	}
+}
+
+// newJSONBodyServer serves body with a 200 and a JSON content type.
+func newJSONBodyServer(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentTypeJSON)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+// TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers pins the
+// response-body read gate for checks whose ONLY body-dependent configuration
+// is `json_path_assertions`.
+//
+// Until spec 2026-08-20-04, `bodyDrivesAssertions` (checker.go) listed the
+// four `body_*` keys and not JSONPathAssertions, so such a check never read
+// the body, `respBody` stayed "", and the assertion block — guarded by
+// `respBody != ""` — was skipped in silence: the check reported UP whatever
+// the endpoint returned.
+//
+// Two cases below are that scenario and expect DOWN since the fix (a violated
+// assertion, and a body that is not JSON at all). The others are controls the
+// fix must NOT move: an assertions-only check whose response satisfies them
+// stays UP, so a green verdict means the assertions ran and passed rather than
+// that they were skipped again; and the `body_*` combinations already opened
+// the read gate on their own.
+func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bodyDegraded = `{"status":"degraded","detail":"acme is unwell"}`
+		bodyOK       = `{"status":"ok"}`
+		bodyNotJSON  = `acme is unwell, and this is not JSON`
+	)
+
+	tests := []struct {
+		name string
+		body string
+		// mutate applies the assertion configuration under test.
+		mutate func(cfg *HTTPConfig)
+		// wantStatus is the verdict the checker reports.
+		wantStatus checkerdef.Status
+		// wantError, when set, must appear in the failure output.
+		wantError string
+		// wantAssertionDetail requires the failed assertion tree in the
+		// output, so an operator can see WHICH assertion failed.
+		wantAssertionDetail bool
+	}{
+		{
+			// The headline case: assertions are configured and the response
+			// violates them, with no `body_*` key anywhere in the config.
+			// This reported UP before the fix.
+			name:                "assertions alone, response violates them",
+			body:                bodyDegraded,
+			mutate:              func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
+			wantStatus:          checkerdef.StatusDown,
+			wantError:           errJSONAssertionFailed,
+			wantAssertionDetail: true,
+		},
+		{
+			// Positive control: the same shape of config against a response
+			// that SATISFIES the assertions must stay UP after the fix, so a
+			// green result proves the assertions passed and not merely that
+			// they were skipped.
+			name:       "assertions alone, response satisfies them",
+			body:       bodyOK,
+			mutate:     func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
+			// A JSON check pointed at a non-JSON endpoint is a real
+			// misconfiguration the assertions exist to surface.
+			name:       "assertions alone, response is not JSON",
+			body:       bodyNotJSON,
+			mutate:     func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
+			wantStatus: checkerdef.StatusDown,
+			wantError:  "response body is not valid JSON for assertion evaluation",
+		},
+		{
+			// Control: a `body_*` key already opens the read gate, so these
+			// two cases must behave identically before and after the fix.
+			name: "assertions with body_expect, response violates the assertions",
+			body: bodyDegraded,
+			mutate: func(cfg *HTTPConfig) {
+				cfg.BodyExpect = "status"
+				cfg.JSONPathAssertions = jsonPathStatusIsOK()
+			},
+			wantStatus:          checkerdef.StatusDown,
+			wantError:           errJSONAssertionFailed,
+			wantAssertionDetail: true,
+		},
+		{
+			name: "assertions with body_expect, response satisfies the assertions",
+			body: bodyOK,
+			mutate: func(cfg *HTTPConfig) {
+				cfg.BodyExpect = "status"
+				cfg.JSONPathAssertions = jsonPathStatusIsOK()
+			},
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
+			// KNOWN RESIDUAL, deliberately not fixed by spec 2026-08-20-04:
+			// the assertion block is also guarded by `respBody != ""`, so an
+			// empty body still skips the assertions in silence. Widening that
+			// guard would move the verdict for a second population the
+			// blast-radius decision never covered. Pinned so the next reader
+			// knows it is a deferral, not an oversight.
+			name:       "assertions alone, empty body (known residual)",
+			body:       "",
+			mutate:     func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
+			wantStatus: checkerdef.StatusUp,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			server := newJSONBodyServer(t, tt.body)
+
+			cfg := &HTTPConfig{URL: server.URL}
+			tt.mutate(cfg)
+
+			result := runCheck(t, cfg)
+			r.Equal(tt.wantStatus, result.Status)
+
+			if tt.wantError != "" {
+				r.Contains(result.Output[checkerdef.OutputKeyError], tt.wantError)
+			}
+
+			if tt.wantAssertionDetail {
+				r.Contains(result.Output, "json_path_assertions",
+					"a failed assertion must report which assertion failed")
+			} else {
+				r.NotContains(result.Output, "json_path_assertions")
+			}
+		})
+	}
+}

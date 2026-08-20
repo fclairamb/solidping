@@ -34,7 +34,7 @@ Based on competitive analysis, prioritize these features:
 12. ✅ Database monitoring (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis)
 13. ✅ Message-queue monitoring (Kafka, RabbitMQ, MQTT)
 14. ✅ Docker container, SNMP, A2S/Minecraft game server, custom JS check, browser (Rod) monitoring
-15. ✅ Multiple notification channels — 10 native: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover, Web Push
+15. ✅ Multiple notification channels — 10 native: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, PagerDuty, Pushover, Web Push
 16. ✅ Public status pages with sections, resources, availability metrics, locale-aware date formatting
 17. ✅ Multi-location checking (distributed workers + multi-region)
 18. ✅ Monitor grouping (check groups + group-incident correlation)
@@ -62,7 +62,7 @@ Based on competitive analysis, prioritize these features:
 40. ✅ Per-org check-execution rate limiting + cost/plan-weighted scheduler fairness — a token-bucket `maxChecksPerMinute` entitlement plus scheduler-level de-prioritization of slow checks under contention; addresses "one tenant can't DoS the shared workers" via a different mechanism than the original proportional-fair-period-scaling design
 
 **Tier 2 - High-Impact Gaps** (not yet implemented, multiple competitors offer these):
-1. ❌ Telegram, Microsoft Teams, PagerDuty notification channels — specs ready in `specs/ideas/2026-03-22-telegram-notifications.md` and `specs/ideas/2026-03-22-notification-channels.md`
+1. ❌ Telegram, Microsoft Teams notification channels — specs ready in `specs/ideas/2026-03-22-telegram-notifications.md` and `specs/ideas/2026-03-22-notification-channels.md`
 2. ❌ Screenshot capture on HTTP failure (BetterStack, Checkly) — research done, Rod chosen, spec ready in `specs/ideas/2026-01-05-screenshots.md`
 3. ❌ Importers from BetterStack / UptimeRobot / Uptime Kuma (spec stub in `specs/ideas/2025-12-28-importers.md` — lowers switching friction)
 4. ⚠️ Terraform provider (Gatus, Checkly, BetterStack) — lives in a separate `terraform-provider-solidping` repo per a "done" spec; this repo only has an API-completeness audit (`../../terraform-provider-api-audit.md`), so its actual shipped/published state isn't verifiable from here

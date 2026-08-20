@@ -80,6 +80,9 @@ function StatusPageEditPage() {
             showAvailability: data.showAvailability,
             showResponseTime: data.showResponseTime,
             historyPeriod: data.historyPeriod,
+            autoPublish: data.autoPublish,
+            autoPublishDelaySeconds: data.autoPublishDelaySeconds,
+            autoResolve: data.autoResolve,
             settings: data.settings,
           });
           toast.success(t("toast.updated"));

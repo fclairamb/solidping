@@ -13,6 +13,8 @@ Distributed workers that execute monitoring checks. Global, not org-scoped.
 | name | text | Human-readable name |
 | region | text | Region identifier (e.g., eu-west-1) |
 | last_active_at | timestamptz | Last heartbeat |
+| capabilities | text[] (SQLite: JSON text) | Self-reported capability set — `NULL` = never reported (unknown), `{}` = reported and has none, a populated set = reported this exact set. See [../features/deported-agents.md](../features/deported-agents.md#ipv6-egress) |
+| version | text, nullable | Self-reported build version (`internal/version.Get().Version`), refreshed alongside `capabilities`. `NULL` = never reported (unknown) — must never be rendered as "drifted". Two-state, not three: a real build version is never the empty string, so a `CHECK` constraint refuses one outright. See [../features/deported-agents.md](../features/deported-agents.md#build-version) |
 
 **Foreign Keys**: None
 

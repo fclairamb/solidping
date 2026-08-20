@@ -181,6 +181,47 @@ volumes:
   letsencrypt:
 ```
 
+## Browser checks (headless Chrome) {#browser-checks-headless-chrome}
+
+The SolidPing image is distroless and ships no browser. To run
+[browser checks](/features/check-types#browser), add a headless Chrome service
+and point SolidPing at it over the Chrome DevTools Protocol:
+
+```yaml
+services:
+  browser:
+    image: chromedp/headless-shell:151.0.7922.109
+    restart: unless-stopped
+    command:
+      - --remote-debugging-address=0.0.0.0
+      - --remote-debugging-port=9222
+      # Required from Chrome 111 on for a non-browser websocket client.
+      - --remote-allow-origins=*
+      - --disable-gpu
+      - --no-sandbox
+    # Chrome mounts /dev/shm; Docker's 64 MB default makes tabs crash.
+    shm_size: 1gb
+
+  solidping:
+    image: ghcr.io/fclairamb/solidping:latest
+    environment:
+      SP_CHECKERS_BROWSER_CDP_URL: ws://browser:9222
+    depends_on:
+      - browser
+```
+
+Notes:
+
+- **Pin the tag.** Every worker should run the same Chrome version, so a page
+  that renders in one region renders in all of them.
+- **Do not publish port 9222.** A reachable CDP endpoint is remote control of a
+  browser; keep it on the compose network only.
+- The repository's own `docker-compose.yml` carries this service behind a
+  profile — `docker compose --profile browser up -d`.
+- Without `SP_CHECKERS_BROWSER_CDP_URL`, SolidPing falls back to a locally
+  installed Chrome (`SP_CHECKERS_BROWSER_CHROME_PATH`, or the usual binary
+  names). It never downloads one.
+
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All configuration options

@@ -19,6 +19,7 @@ import {
   User2,
   Building,
   Server,
+  Target,
   MessageSquare,
   Workflow,
   Wrench,
@@ -105,6 +106,11 @@ const navItems = [
     titleKey: "maintenanceWindows",
     path: "/orgs/$org/maintenance-windows" as const,
     icon: Wrench,
+  },
+  {
+    titleKey: "slos",
+    path: "/orgs/$org/slos" as const,
+    icon: Target,
   },
   {
     titleKey: "badges",

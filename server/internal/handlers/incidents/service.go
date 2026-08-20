@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -17,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/maintenance"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -100,20 +100,25 @@ const (
 	keyEffectiveRecoveryThreshold = "effective_recovery_threshold"
 )
 
-// maintenanceWindowCacheTTL bounds how long a check's maintenance-window
-// definitions are cached in-process before re-fetching. Windows are mutated
-// infrequently and emit no event today, so a 60 s TTL trades a small staleness
-// window (≤60 s after a create/edit/delete) for eliminating a DB round-trip on
-// the per-result hot path. Active/inactive transitions stay exact because
-// models.IsActiveAt(now) is re-evaluated on every result against the cached
-// definitions.
-const maintenanceWindowCacheTTL = 60 * time.Second
-
-// mwCacheEntry is one check's cached maintenance-window definitions plus the
-// clock time they were fetched at.
-type mwCacheEntry struct {
-	windows   []*models.MaintenanceWindow
-	fetchedAt time.Time
+// PublicationHook is the status-page publication side of the incident
+// lifecycle (spec 2026-08-19-08). It is an interface, and deliberately a small
+// one, so this package never imports the publication service — the dependency
+// runs the other way, and the incident state machine must not be able to fail
+// because a status page could not be updated.
+//
+// Every method is best-effort and returns nothing: a missed announcement is a
+// papercut, a missed incident is an outage nobody is paged for.
+type PublicationHook interface {
+	// OnIncidentOpened resolves the auto-publish policy and schedules (or
+	// performs) publication.
+	OnIncidentOpened(ctx context.Context, incident *models.Incident)
+	// OnIncidentResolved applies the page's auto-resolve policy.
+	OnIncidentResolved(ctx context.Context, incident *models.Incident)
+	// OnIncidentReopened reopens the SAME publication on a relapse rather than
+	// minting a second public entry.
+	OnIncidentReopened(ctx context.Context, incident *models.Incident)
+	// OnGroupMemberJoined appends a rate-limited "also affecting X" note.
+	OnGroupMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check)
 }
 
 // Service provides incident management functionality.
@@ -122,63 +127,92 @@ type Service struct {
 	jobsSvc jobsvc.Service
 	clock   clock.Clock
 
+	// publications is the status-page publication hook. Nil-safe: every call
+	// site goes through the publish* helpers below, which no-op when unset
+	// (status pages disabled, tests).
+	publications PublicationHook
+
 	// rt publishes org-scoped live dashboard hints: `results` (coalesced) on
 	// every processed result, `checks` (immediate) on a visible status
 	// transition, `incidents`+`events` (immediate) alongside event writes.
 	// Nil-safe — a nil publisher no-ops (realtime disabled, tests).
 	rt *realtime.Publisher
 
-	// mwCache caches per-check maintenance-window definitions with a TTL.
-	// Strong-reference map (not internal/utils/cache, whose weak.Pointer
-	// values would be GC'd almost immediately here). Keyed by checkUID.
-	mwCache   map[string]mwCacheEntry
-	mwCacheMu sync.RWMutex
+	// maintenance resolves "is this check in an active maintenance window?".
+	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
+	// suppressed as maintenance and a result tagged as maintenance can never
+	// disagree — they read the same instance and therefore the same cache.
+	maintenance *maintenance.Resolver
 }
 
 // NewService creates a new incident service. rt may be nil (realtime
 // disabled): every publish through it is a nil-safe no-op.
 func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock, rt *realtime.Publisher) *Service {
 	return &Service{
-		db:      dbService,
-		jobsSvc: jobsSvc,
-		clock:   clk,
-		rt:      rt,
-		mwCache: make(map[string]mwCacheEntry),
+		db:          dbService,
+		jobsSvc:     jobsSvc,
+		clock:       clk,
+		rt:          rt,
+		maintenance: maintenance.NewResolver(dbService, clk),
 	}
 }
 
-// isCheckInActiveMaintenance reports whether the check is inside an active
-// maintenance window right now. Window definitions are cached per check for
-// maintenanceWindowCacheTTL; on a hit within TTL we evaluate models.IsActiveAt
-// against the cached slice (so the clock advancing can flip a window active
-// mid-TTL without a re-fetch), and on a miss we re-fetch, cache and evaluate.
-func (s *Service) isCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
-	now := s.clock.Now()
+// SetPublicationHook wires the status-page publication side. Optional.
+func (s *Service) SetPublicationHook(hook PublicationHook) {
+	s.publications = hook
+}
 
-	s.mwCacheMu.RLock()
-	entry, ok := s.mwCache[checkUID]
-	s.mwCacheMu.RUnlock()
-
-	if !ok || now.Sub(entry.fetchedAt) >= maintenanceWindowCacheTTL {
-		windows, err := s.db.ListMaintenanceWindowsForCheck(ctx, checkUID)
-		if err != nil {
-			return false, err
-		}
-
-		entry = mwCacheEntry{windows: windows, fetchedAt: now}
-
-		s.mwCacheMu.Lock()
-		s.mwCache[checkUID] = entry
-		s.mwCacheMu.Unlock()
+// publishOpened / publishResolved / publishReopened / publishMemberJoined are
+// the nil-safe wrappers every incident-lifecycle call site uses.
+func (s *Service) publishOpened(ctx context.Context, incident *models.Incident) {
+	if s.publications == nil {
+		return
 	}
 
-	for _, window := range entry.windows {
-		if models.IsActiveAt(window, now) {
-			return true, nil
-		}
+	s.publications.OnIncidentOpened(ctx, incident)
+}
+
+func (s *Service) publishResolved(ctx context.Context, incident *models.Incident) {
+	if s.publications == nil {
+		return
 	}
 
-	return false, nil
+	s.publications.OnIncidentResolved(ctx, incident)
+}
+
+func (s *Service) publishReopened(ctx context.Context, incident *models.Incident) {
+	if s.publications == nil {
+		return
+	}
+
+	s.publications.OnIncidentReopened(ctx, incident)
+}
+
+func (s *Service) publishMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check) {
+	if s.publications == nil {
+		return
+	}
+
+	s.publications.OnGroupMemberJoined(ctx, incident, check)
+}
+
+// IsCheckInActiveMaintenance reports whether the check is inside an active
+// maintenance window right now.
+//
+// Exported because the result-ingest paths call it BEFORE the insert, to tag
+// `results.maintenance` (spec 2026-08-20-01): rollup buckets cannot be sliced
+// after the fact, so the tag has to exist before aggregation runs. Both this
+// call and the one ProcessCheckResult makes go through the same cached
+// resolver, so a result tagged as maintenance and an incident suppressed as
+// maintenance always agree.
+func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
+	return s.maintenance.IsActive(ctx, checkUID)
+}
+
+// MaintenanceResolver exposes the shared resolver so a caller that already
+// holds this service does not have to build (and separately cache) its own.
+func (s *Service) MaintenanceResolver() *maintenance.Resolver {
+	return s.maintenance
 }
 
 // ProcessCheckResult processes a check result and manages incidents.
@@ -194,7 +228,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	// Skip incident processing if the check is in an active maintenance window
-	inMaintenance, mwErr := s.isCheckInActiveMaintenance(ctx, check.UID)
+	inMaintenance, mwErr := s.IsCheckInActiveMaintenance(ctx, check.UID)
 	if mwErr != nil {
 		slog.WarnContext(ctx, "Failed to check maintenance window status",
 			"checkUID", check.UID, "error", mwErr)
@@ -724,6 +758,8 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 		return fmt.Errorf("failed to emit incident created event: %w", err)
 	}
 
+	s.publishOpened(ctx, incident)
+
 	return nil
 }
 
@@ -757,6 +793,13 @@ func (s *Service) resolveIncident(
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident resolved event: %w", err)
 	}
+
+	// Keep the incident object in step with the row we just wrote, so the
+	// publication hook sees a resolved incident rather than a stale active one.
+	incident.State = resolvedState
+	incident.ResolvedAt = &resolvedAt
+
+	s.publishResolved(ctx, incident)
 
 	// Re-evaluate any rolled-up children: those still down need to page now.
 	if err := s.reEvaluateRollupChildren(ctx, incident); err != nil {
@@ -923,6 +966,11 @@ func (s *Service) reopenIncident(
 		return fmt.Errorf("failed to emit incident reopened event: %w", err)
 	}
 
+	incident.State = activeState
+	incident.ResolvedAt = nil
+
+	s.publishReopened(ctx, incident)
+
 	return nil
 }
 
@@ -996,6 +1044,10 @@ func (s *Service) updateGroupMemberOnFailure(
 		if err := s.db.UpsertIncidentMemberCheck(ctx, newMember); err != nil {
 			return fmt.Errorf("failed to insert new member: %w", err)
 		}
+
+		// A new component joined an outage customers may already be reading
+		// about — say so, once, rate-limited on the publication side.
+		s.publishMemberJoined(ctx, incident, check)
 	} else {
 		// Bump the member's failure count, mark currently_failing, advance the
 		// last_failure_at timestamp. Same path for "still failing" and "relapse".
@@ -1166,6 +1218,8 @@ func (s *Service) createGroupIncident(
 		return fmt.Errorf("failed to emit group incident created event: %w", err)
 	}
 
+	s.publishOpened(ctx, incident)
+
 	return nil
 }
 
@@ -1234,6 +1288,11 @@ func (s *Service) reopenGroupIncident(
 		}); err != nil {
 		return fmt.Errorf("failed to emit group reopened event: %w", err)
 	}
+
+	incident.State = activeState
+	incident.ResolvedAt = nil
+
+	s.publishReopened(ctx, incident)
 
 	return nil
 }
@@ -1329,6 +1388,11 @@ func (s *Service) resolveGroupIncident(
 		}); err != nil {
 		return fmt.Errorf("failed to emit group resolved event: %w", err)
 	}
+
+	incident.State = resolvedState
+	incident.ResolvedAt = &resolvedAt
+
+	s.publishResolved(ctx, incident)
 
 	return nil
 }
@@ -1426,6 +1490,13 @@ func (s *Service) emitEvent(
 		models.EventTypeIncidentEscalationFailed,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
+		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
+		// one: it reaches subscribers and webhooks from the publication
+		// service, and an on-call channel must not be paged twice for one
+		// outage. See incidentpublications.Service.dispatchWebhooks.
+		models.EventTypeStatusPageIncidentPublished,
+		models.EventTypeStatusPageIncidentUpdated,
+		models.EventTypeStatusPageIncidentResolved,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,
@@ -1656,6 +1727,7 @@ type ListIncidentsOptions struct {
 	Cursor         string
 	Size           int
 	WithCheck      bool // Include check details in response
+	WithMembers    bool // Include group-incident members and checkGroupSlug in response
 	HideSuppressed bool // Hide rolled-up (paging-suppressed) incidents
 	CausedByUID    string
 }
@@ -1829,26 +1901,128 @@ func checkToResponse(check *models.Check) *CheckResponse {
 	}
 }
 
-// buildCheckMap builds a map of check UIDs to check models for embedding in responses.
-func (s *Service) buildCheckMap(
-	ctx context.Context, orgUID string, incidents []*models.Incident, withCheck bool,
-) map[string]*models.Check {
-	checkMap := make(map[string]*models.Check)
-	if !withCheck || len(incidents) == 0 {
-		return checkMap
+// incidentEnrichment holds the batch-loaded data needed to fill in
+// IncidentResponse fields for a whole page of incidents: checks (with=check)
+// and members/checkGroupSlug (with=members). Built by buildIncidentEnrichment
+// with at most 3 DB queries total, regardless of page size.
+type incidentEnrichment struct {
+	checks            map[string]*models.Check
+	membersByIncident map[string][]*models.IncidentMemberCheck
+	groups            map[string]*models.CheckGroup
+}
+
+// buildIncidentEnrichment collects the check UIDs the page needs (the
+// incidents' own checks when withCheck, plus every group incident's member
+// check UIDs when withMembers) and issues one batched query per distinct
+// need: member rows, check groups, and — merging both the "own check" and
+// "member check" cases into a single shared call — checks. A page with no
+// group incidents and withMembers=false issues zero member/group queries.
+func (s *Service) buildIncidentEnrichment(
+	ctx context.Context, orgUID string, incidents []*models.Incident, withCheck, withMembers bool,
+) *incidentEnrichment {
+	enrichment := &incidentEnrichment{
+		checks:            make(map[string]*models.Check),
+		membersByIncident: make(map[string][]*models.IncidentMemberCheck),
+		groups:            make(map[string]*models.CheckGroup),
 	}
 
+	if len(incidents) == 0 {
+		return enrichment
+	}
+
+	checkUIDSet := make(map[string]struct{})
+	if withCheck {
+		for _, inc := range incidents {
+			checkUIDSet[inc.CheckUID] = struct{}{}
+		}
+	}
+
+	if withMembers {
+		s.loadGroupEnrichment(ctx, orgUID, incidents, enrichment, checkUIDSet)
+	}
+
+	if len(checkUIDSet) > 0 {
+		checkUIDs := make([]string, 0, len(checkUIDSet))
+		for uid := range checkUIDSet {
+			checkUIDs = append(checkUIDs, uid)
+		}
+
+		checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to get checks for response", "error", err)
+		} else {
+			enrichment.checks = checks
+		}
+	}
+
+	return enrichment
+}
+
+// loadGroupEnrichment issues the member-rows and check-groups batch queries
+// for a page's group incidents, and folds every member's check UID into
+// checkUIDSet so the caller's single checks query resolves them too.
+func (s *Service) loadGroupEnrichment(
+	ctx context.Context, orgUID string, incidents []*models.Incident,
+	enrichment *incidentEnrichment, checkUIDSet map[string]struct{},
+) {
+	var groupIncidentUIDs []string
+
+	groupUIDSet := make(map[string]struct{})
 	for _, inc := range incidents {
-		if _, exists := checkMap[inc.CheckUID]; exists {
-			continue
-		}
-		check, err := s.db.GetCheck(ctx, orgUID, inc.CheckUID)
-		if err == nil {
-			checkMap[inc.CheckUID] = check
+		if inc.CheckGroupUID != nil {
+			groupIncidentUIDs = append(groupIncidentUIDs, inc.UID)
+			groupUIDSet[*inc.CheckGroupUID] = struct{}{}
 		}
 	}
 
-	return checkMap
+	if len(groupIncidentUIDs) == 0 {
+		return
+	}
+
+	membersByIncident, err := s.db.ListIncidentMemberChecksByIncidentUIDs(ctx, groupIncidentUIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list incident members for response", "error", err)
+	} else {
+		enrichment.membersByIncident = membersByIncident
+		for _, members := range membersByIncident {
+			for _, member := range members {
+				checkUIDSet[member.CheckUID] = struct{}{}
+			}
+		}
+	}
+
+	groupUIDs := make([]string, 0, len(groupUIDSet))
+	for uid := range groupUIDSet {
+		groupUIDs = append(groupUIDs, uid)
+	}
+
+	groups, err := s.db.GetCheckGroupsByUIDs(ctx, orgUID, groupUIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to get check groups for response", "error", err)
+	} else {
+		enrichment.groups = groups
+	}
+}
+
+// applyIncidentMembers fills in the Members and CheckGroupSlug fields on a
+// list-page response row purely from pre-loaded enrichment data — no DB
+// calls happen here.
+func applyIncidentMembers(enrichment *incidentEnrichment, inc *models.Incident, resp *IncidentResponse) {
+	if inc.CheckGroupUID == nil {
+		return
+	}
+
+	members := enrichment.membersByIncident[inc.UID]
+	resp.Members = make([]IncidentMemberResponse, 0, len(members))
+
+	for _, member := range members {
+		check := enrichment.checks[member.CheckUID] // nil is fine; memberToResponse tolerates it
+		resp.Members = append(resp.Members, memberToResponse(member, check))
+	}
+
+	if group, ok := enrichment.groups[*inc.CheckGroupUID]; ok {
+		resp.CheckGroupSlug = &group.Slug
+	}
 }
 
 // stringToState converts a string to an incident state.
@@ -1946,8 +2120,10 @@ func (s *Service) ListIncidents(
 		incidents = incidents[:opts.Size]
 	}
 
-	// Build check map if WithCheck is requested
-	checkMap := s.buildCheckMap(ctx, org.UID, incidents, opts.WithCheck)
+	// Batch-load everything the page needs: checks (with=check) and, when
+	// with=members, member rows + their checks + check groups — at most 3
+	// queries total regardless of page size (spec 2026-08-18-01).
+	enrichment := s.buildIncidentEnrichment(ctx, org.UID, incidents, opts.WithCheck, opts.WithMembers)
 
 	// Build response
 	response := &ListIncidentsResponse{
@@ -1961,15 +2137,21 @@ func (s *Service) ListIncidents(
 	for _, inc := range incidents {
 		incResponse := incidentToResponse(inc)
 
-		// Add check details if requested
-		if check, exists := checkMap[inc.CheckUID]; exists {
-			incResponse.Check = checkToResponse(check)
-			incResponse.CheckSlug = check.Slug
-			incResponse.CheckName = check.Name
+		// Add check details if requested. Gated on opts.WithCheck (not just
+		// map presence) because enrichment.checks may also hold entries
+		// fetched purely to resolve member checks under with=members.
+		if opts.WithCheck {
+			if check, exists := enrichment.checks[inc.CheckUID]; exists {
+				incResponse.Check = checkToResponse(check)
+				incResponse.CheckSlug = check.Slug
+				incResponse.CheckName = check.Name
+			}
 		}
 
-		// Populate group members for group incidents.
-		s.loadIncidentMembers(ctx, org.UID, inc, &incResponse)
+		// Populate group members for group incidents, when requested.
+		if opts.WithMembers {
+			applyIncidentMembers(enrichment, inc, &incResponse)
+		}
 
 		response.Data = append(response.Data, incResponse)
 	}
@@ -2016,7 +2198,8 @@ func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, id
 
 // GetIncidentOptions contains options for getting a single incident.
 type GetIncidentOptions struct {
-	WithCheck bool // Include check details in response
+	WithCheck   bool // Include check details in response
+	WithMembers bool // Include group-incident members and checkGroupSlug in response
 }
 
 // GetIncident gets a single incident by UID.
@@ -2049,8 +2232,10 @@ func (s *Service) GetIncident(
 		}
 	}
 
-	// Populate group members for group incidents.
-	s.loadIncidentMembers(ctx, org.UID, incident, &response)
+	// Populate group members for group incidents, when requested.
+	if opts != nil && opts.WithMembers {
+		s.loadIncidentMembers(ctx, org.UID, incident, &response)
+	}
 
 	return &response, nil
 }

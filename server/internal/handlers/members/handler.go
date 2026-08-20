@@ -38,7 +38,7 @@ func (h *Handler) ListMembers(writer http.ResponseWriter, req *http.Request) err
 
 	members, err := h.svc.ListMembers(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, members)
@@ -52,7 +52,7 @@ func (h *Handler) ListCoverage(writer http.ResponseWriter, req *http.Request) er
 
 	coverage, err := h.svc.ListCoverage(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, coverage)
@@ -74,7 +74,7 @@ func (h *Handler) AddMemberContact(writer http.ResponseWriter, req *http.Request
 
 	contact, err := h.svc.AddMemberContact(req.Context(), orgSlug, memberUID, body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, contact)
@@ -88,7 +88,7 @@ func (h *Handler) SendPagingNudge(writer http.ResponseWriter, req *http.Request)
 	memberUID := httpx.Param(req, "uid")
 
 	if err := h.svc.SendPagingNudge(req.Context(), orgSlug, memberUID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -103,7 +103,7 @@ func (h *Handler) GetMember(writer http.ResponseWriter, req *http.Request) error
 
 	member, err := h.svc.GetMember(req.Context(), orgSlug, memberUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, member)
@@ -146,7 +146,7 @@ func (h *Handler) AddMember(writer http.ResponseWriter, req *http.Request) error
 
 	member, err := h.svc.AddMember(req.Context(), orgSlug, addReq, inviterUID, callerFrom(req))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, member)
@@ -166,7 +166,7 @@ func (h *Handler) UpdateMember(writer http.ResponseWriter, req *http.Request) er
 
 	member, err := h.svc.UpdateMember(req.Context(), orgSlug, memberUID, updateReq, callerFrom(req))
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, member)
@@ -178,7 +178,7 @@ func (h *Handler) RemoveMember(writer http.ResponseWriter, req *http.Request) er
 	memberUID := httpx.Param(req, "uid")
 
 	if err := h.svc.RemoveMember(req.Context(), orgSlug, memberUID, callerFrom(req)); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -200,12 +200,12 @@ func callerFrom(req *http.Request) Caller {
 }
 
 // handleError maps service errors to HTTP responses.
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if handled, writeErr := h.handleMembershipError(writer, err); handled {
 		return writeErr
 	}
 
-	return h.handleProvisioningError(writer, err)
+	return h.handleProvisioningError(writer, request, err)
 }
 
 // handleMembershipError maps the member-management errors. Returns handled=false
@@ -248,7 +248,7 @@ func (h *Handler) handleMembershipError(writer http.ResponseWriter, err error) (
 
 // handleProvisioningError maps the admin pre-provisioning errors, falling back
 // to a 500 for anything unrecognized.
-func (h *Handler) handleProvisioningError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleProvisioningError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrContactTypeNotProvisionable):
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
@@ -263,6 +263,6 @@ func (h *Handler) handleProvisioningError(writer http.ResponseWriter, err error)
 	case errors.Is(err, ErrEmailSenderNotConfigured):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

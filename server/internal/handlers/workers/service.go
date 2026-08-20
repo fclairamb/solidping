@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -63,12 +64,13 @@ func NewService(
 }
 
 // Heartbeat updates the worker's last_active_at and, when the executor
-// reported one, its capability set (specs 2026-08-15-11, 2026-08-16-02). A nil
-// set leaves the stored capabilities untouched.
+// reported one, its capability set (specs 2026-08-15-11, 2026-08-16-02) and
+// build version (spec 2026-08-19-07). A nil capability set, or an empty
+// version string, leaves the corresponding stored value untouched.
 func (s *Service) Heartbeat(
-	ctx context.Context, workerUID string, capabilities []string,
+	ctx context.Context, workerUID string, capabilities []string, version string,
 ) error {
-	return s.db.UpdateWorkerHeartbeat(ctx, workerUID, capabilities)
+	return s.db.UpdateWorkerHeartbeat(ctx, workerUID, capabilities, version)
 }
 
 // SubmitResultRequest is the input for SubmitResult.
@@ -79,6 +81,10 @@ type SubmitResultRequest struct {
 	Duration  float32        `json:"duration"`
 	Metrics   map[string]any `json:"metrics,omitempty"`
 	Output    map[string]any `json:"output,omitempty"`
+	// Diagnostics carries the opt-in failure capture reported by the executor
+	// (spec 2026-08-20-01). Never written to the result row — it is handed to
+	// the incident pipeline, which persists it only on an open/reopen.
+	Diagnostics *checkerdef.Diagnostics `json:"diagnostics,omitempty"`
 	// ExecStart is the executor's wall-clock probe start, used for the delay
 	// sample. nil contributes no delay sample (an agent predating the field).
 	ExecStart *time.Time `json:"execStart,omitempty"`
@@ -132,9 +138,20 @@ func (s *Service) SubmitResult(
 		Metrics:         models.JSONMap(req.Metrics),
 		Output:          models.JSONMap(req.Output),
 		CreatedAt:       time.Now(),
+		// Transient (`bun:"-"`) — for the incident pipeline only, never a column.
+		Diagnostics: req.Diagnostics,
 	}
 
-	// 3. Save with status tracking.
+	// 3. Tag the row as maintenance BEFORE the insert (spec 2026-08-20-01),
+	// then save with status tracking. Best-effort: a failed maintenance lookup
+	// records the probe as production traffic rather than dropping it.
+	if inMaintenance, mwErr := s.incidentSvc.IsCheckInActiveMaintenance(ctx, job.CheckUID); mwErr != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", mwErr, "check_uid", job.CheckUID)
+	} else {
+		result.Maintenance = inMaintenance
+	}
+
 	if saveErr := s.db.SaveResultWithStatusTracking(ctx, result); saveErr != nil {
 		return nil, fmt.Errorf("failed to save result: %w", saveErr)
 	}

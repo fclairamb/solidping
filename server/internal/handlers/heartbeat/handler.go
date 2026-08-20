@@ -139,7 +139,7 @@ func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request
 
 	message, durationMs, callerData, err := decodeHeartbeatBody(writer, req)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	// Caller metadata, captured for forensics/display purposes only (which
@@ -153,18 +153,19 @@ func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request
 		req.Context(), orgSlug, identifier, token, status, message, durationMs,
 		userAgent, remoteAddr, httpMethod, callerData,
 	); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		return h.WriteErrorErr(
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrCheckNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 	case errors.Is(err, ErrNotHeartbeatCheck):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Check is not a heartbeat type")
 	case errors.Is(err, ErrMissingToken):
@@ -177,6 +178,6 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrBodyTooLarge):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Heartbeat body too large")
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

@@ -4,6 +4,7 @@
   "newStatusUpdate": "New Status Update",
   "editStatusUpdate": "Edit status update",
   "noStatusUpdates": "No status updates yet",
+  "noStatusUpdatesHint": "Publish your first update to keep your users informed during incidents.",
   "noMatch": "No status updates match your filters",
   "searchPlaceholder": "Search by title…",
   "viewPublic": "View public update",

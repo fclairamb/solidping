@@ -55,6 +55,10 @@ type EntitlementLimits struct {
 	// operator brings their own WABA); SaaS defaults to 0 and billing raises
 	// it per plan.
 	MaxWhatsappPerMonth *int `json:"maxWhatsappPerMonth,omitempty"`
+	// MaxSlos caps the org's service-level objectives (spec 2026-08-20-01).
+	// nil = unlimited (self-hosted default); SaaS defaults to 2 and billing
+	// raises it per plan.
+	MaxSlos *int `json:"maxSlos,omitempty"`
 }
 
 // ErrConflictingUserLimitKeys is returned when a payload sends both the
@@ -81,6 +85,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 		MaxSmsPerMonth      *int `json:"maxSmsPerMonth"`
 		MaxCallsPerMonth    *int `json:"maxCallsPerMonth"`
 		MaxWhatsappPerMonth *int `json:"maxWhatsappPerMonth"`
+		MaxSlos             *int `json:"maxSlos"`
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -100,6 +105,8 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	l.MaxSmsPerMonth = wire.MaxSmsPerMonth
 	l.MaxCallsPerMonth = wire.MaxCallsPerMonth
 	l.MaxWhatsappPerMonth = wire.MaxWhatsappPerMonth
+	l.MaxSlos = wire.MaxSlos
+
 	if wire.MaxUsers != nil {
 		l.MaxUsers = wire.MaxUsers
 	} else {

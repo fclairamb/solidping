@@ -40,10 +40,25 @@ type Worker struct {
 	// the JSON array the SQLite schema expects. `nullzero` is what maps a nil
 	// slice to SQL NULL; a non-nil empty slice is NOT zero for bun (its zero
 	// checker for slices is "is nil"), so it still writes `{}` / `[]`.
-	Capabilities []string   `bun:"capabilities,type:text[],array,nullzero"`
-	CreatedAt    time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt    time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt    *time.Time `bun:"deleted_at"`
+	Capabilities []string `bun:"capabilities,type:text[],array,nullzero"`
+	// Version is the worker's self-reported build version (specs
+	// 2026-08-19-07), refreshed alongside Capabilities. UNLIKE Capabilities,
+	// this is a TWO-state field, not three: a real build version is never
+	// the empty string, so there is no meaningful "reported, and has none"
+	// answer for a scalar the way there is for a set.
+	//
+	//	nil       unknown — nothing was ever reported (a worker that predates
+	//	          the feature, or has not sent a claim frame yet)
+	//	&"x.y.z"  the version this worker last reported
+	//
+	// nil is the only unknown, and it must never be rendered as "drifted" —
+	// an old agent that predates version reporting must not look broken. The
+	// match/drifted/unknown comparison against the server's own version is
+	// computed at read time (handlers/agents), not stored here.
+	Version   *string    `bun:"version"`
+	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt *time.Time `bun:"deleted_at"`
 }
 
 // Capability names, as stored verbatim in workers.capabilities and re-exported
@@ -58,6 +73,11 @@ const (
 	CapabilityIPv4 = "ipv4"
 	// CapabilityIPv6 means the worker can originate IPv6 traffic.
 	CapabilityIPv6 = "ipv6"
+	// CapabilityBrowser means the worker can actually run a `browser` check:
+	// a reachable remote Chrome (CDP) endpoint, or a local Chrome/Chromium
+	// binary. Self-probed like the egress families, and advisory in the same
+	// way — it drives a creation-time warning, never scheduling.
+	CapabilityBrowser = "browser"
 )
 
 // CapabilityState is the THREE-state answer to "does this worker have X?".

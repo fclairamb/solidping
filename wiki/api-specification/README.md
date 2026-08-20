@@ -35,6 +35,7 @@ provider signature in the request).
 | [on-call.md](on-call.md) | Escalation policies, on-call schedules, overrides, iCal feeds |
 | [status-pages.md](status-pages.md) | Status pages, sections, resources, subscribers, status updates, public views and feeds |
 | [maintenance.md](maintenance.md) | Maintenance windows and their check associations |
+| [slos.md](slos.md) | Service-level objectives, error budgets, and scheduled uptime reports |
 | [integrations.md](integrations.md) | Integrations/channels, Slack app endpoints, Freebox pairing |
 | [agents.md](agents.md) | Deported agent WebSocket, private regions, enrollment tokens, agent inventory |
 | [discovery.md](discovery.md) | Network discovery scans and discovered checks |

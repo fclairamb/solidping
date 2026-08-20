@@ -4,6 +4,7 @@
   "newStatusUpdate": "Neue Statusaktualisierung",
   "editStatusUpdate": "Statusaktualisierung bearbeiten",
   "noStatusUpdates": "Noch keine Statusaktualisierungen",
+  "noStatusUpdatesHint": "Veröffentlichen Sie Ihr erstes Update, um Ihre Nutzer während Vorfällen auf dem Laufenden zu halten.",
   "noMatch": "Keine Statusaktualisierung entspricht Ihren Filtern",
   "searchPlaceholder": "Nach Titel suchen…",
   "viewPublic": "Öffentliche Aktualisierung ansehen",

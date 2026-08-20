@@ -41,7 +41,7 @@ func (h *Handler) ServeICalFeed(writer http.ResponseWriter, req *http.Request) e
 
 	roster, err := h.svc.ListUsers(req.Context(), schedule.UID)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	usersByUID := h.loadUsersByUID(req.Context(), roster)
@@ -54,7 +54,7 @@ func (h *Handler) ServeICalFeed(writer http.ResponseWriter, req *http.Request) e
 
 	slots, err := h.svc.Preview(req.Context(), schedule.UID, from, icalLookbackWindow+icalLookaheadWindow)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	cal := buildOnCallCalendar(schedule, slots, usersByUID)

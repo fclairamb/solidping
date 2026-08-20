@@ -41,15 +41,15 @@ func (h *Handler) GetAvailability(writer http.ResponseWriter, req *http.Request)
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		case errors.Is(err, ErrCheckNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
 		case errors.Is(err, ErrInvalidPeriod):
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid period parameter", err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid period parameter", err)
 		default:
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 	}
 

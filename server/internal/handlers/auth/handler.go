@@ -123,7 +123,7 @@ func (h *Handler) Login(writer http.ResponseWriter, req *http.Request) error {
 
 	resp, err := h.svc.Login(req.Context(), loginReq.Org, loginReq.Email, loginReq.Password, authContext)
 	if err != nil {
-		return h.handleAuthError(writer, err)
+		return h.handleAuthError(writer, req, err)
 	}
 
 	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
@@ -153,7 +153,7 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 	if logoutReq.DeleteAllTokens {
 		resp, logoutErr := h.svc.LogoutUser(req.Context(), claims.UserUID)
 		if logoutErr != nil {
-			return h.handleLogoutError(writer, logoutErr)
+			return h.handleLogoutError(writer, req, logoutErr)
 		}
 
 		// Clear cookie
@@ -173,7 +173,7 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 
 		resp, logoutErr := h.svc.LogoutOtherSessions(req.Context(), claims.UserUID, claims.RefreshUID)
 		if logoutErr != nil {
-			return h.handleLogoutError(writer, logoutErr)
+			return h.handleLogoutError(writer, req, logoutErr)
 		}
 
 		// The caller's own session (and cookie) survive — this is not a logout.
@@ -203,7 +203,7 @@ func (h *Handler) Refresh(writer http.ResponseWriter, req *http.Request) error {
 
 	resp, err := h.svc.Refresh(req.Context(), refreshReq.RefreshToken)
 	if err != nil {
-		return h.handleRefreshError(writer, err)
+		return h.handleRefreshError(writer, req, err)
 	}
 
 	// Re-set the access token cookie exactly like Login does — without this,
@@ -226,7 +226,7 @@ func (h *Handler) Me(writer http.ResponseWriter, req *http.Request) error {
 
 	resp, err := h.svc.GetUserInfo(req.Context(), claims)
 	if err != nil {
-		return h.handleUserInfoError(writer, err)
+		return h.handleUserInfoError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -248,7 +248,7 @@ func (h *Handler) UpdateMe(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.UpdateProfile(req.Context(), claims, updateReq)
 	if err != nil {
-		return h.handleUserInfoError(writer, err)
+		return h.handleUserInfoError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -266,7 +266,7 @@ func (h *Handler) GetAllUserTokens(writer http.ResponseWriter, req *http.Request
 
 	resp, err := h.svc.GetAllUserTokens(req.Context(), claims.UserUID, tokenType, claims.RefreshUID)
 	if err != nil {
-		return h.handleTokenError(writer, err, http.StatusNotFound)
+		return h.handleTokenError(writer, req, err, http.StatusNotFound)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -286,7 +286,7 @@ func (h *Handler) GetOrgTokens(writer http.ResponseWriter, req *http.Request) er
 
 	resp, err := h.svc.GetUserTokens(req.Context(), orgSlug, claims.UserUID, tokenType, claims.RefreshUID)
 	if err != nil {
-		return h.handleTokenError(writer, err, http.StatusNotFound)
+		return h.handleTokenError(writer, req, err, http.StatusNotFound)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -317,7 +317,7 @@ func (h *Handler) CreateToken(writer http.ResponseWriter, req *http.Request) err
 
 	resp, err := h.svc.CreatePAT(req.Context(), orgSlug, claims.UserUID, createReq)
 	if err != nil {
-		return h.handleTokenError(writer, err, http.StatusNotFound)
+		return h.handleTokenError(writer, req, err, http.StatusNotFound)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
@@ -339,7 +339,7 @@ func (h *Handler) RevokeToken(writer http.ResponseWriter, req *http.Request) err
 
 	err := h.svc.RevokeToken(req.Context(), claims.UserUID, tokenUID)
 	if err != nil {
-		return h.handleRevokeError(writer, err)
+		return h.handleRevokeError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -370,7 +370,7 @@ func (h *Handler) RevokeCurrentToken(writer http.ResponseWriter, req *http.Reque
 	// RevokeToken verifies the row belongs to the caller before deleting, so a
 	// forged RefreshUID pointing at someone else's row cannot revoke it.
 	if err := h.svc.RevokeToken(req.Context(), claims.UserUID, claims.RefreshUID); err != nil {
-		return h.handleRevokeError(writer, err)
+		return h.handleRevokeError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -405,7 +405,7 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req *http.Request) error
 
 	resp, err := h.svc.SwitchOrg(req.Context(), claims.UserUID, switchReq.Org, authContext)
 	if err != nil {
-		return h.handleAuthError(writer, err)
+		return h.handleAuthError(writer, req, err)
 	}
 
 	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
@@ -415,82 +415,82 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req *http.Request) error
 
 // handleAuthError handles errors from Login/SwitchOrg.
 // Anti-enumeration: both org-not-found and invalid-credentials return the same error code.
-func (h *Handler) handleAuthError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleAuthError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusUnauthorized, base.ErrorCodeInvalidCredentials, "Invalid credentials", err)
+			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCredentials, "Invalid credentials", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleLogoutError handles errors from LogoutUser.
-func (h *Handler) handleLogoutError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleLogoutError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrUserNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleRefreshError handles errors from Refresh.
-func (h *Handler) handleRefreshError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleRefreshError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalidToken), errors.Is(err, ErrTokenExpired):
 		return h.WriteErrorErr(
-			writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired refresh token", err)
+			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired refresh token", err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusUnauthorized, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusUnauthorized, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleUserInfoError handles errors from GetUserInfo.
-func (h *Handler) handleUserInfoError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleUserInfoError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrUserNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusUnauthorized, base.ErrorCodeUserNotFound, "User not found", err)
+			writer, request, http.StatusUnauthorized, base.ErrorCodeUserNotFound, "User not found", err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusUnauthorized, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusUnauthorized, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleTokenError handles common token-related errors.
-func (h *Handler) handleTokenError(writer http.ResponseWriter, err error, status int) error {
+func (h *Handler) handleTokenError(writer http.ResponseWriter, request *http.Request, err error, status int) error {
 	switch {
 	case errors.Is(err, ErrUserNotFound):
-		return h.WriteErrorErr(writer, status, base.ErrorCodeUserNotFound, "User not found", err)
+		return h.WriteErrorErr(writer, request, status, base.ErrorCodeUserNotFound, "User not found", err)
 	case errors.Is(err, ErrOrganizationNotFound):
-		return h.WriteErrorErr(writer, status, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		return h.WriteErrorErr(writer, request, status, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleRevokeError handles errors from RevokeToken.
-func (h *Handler) handleRevokeError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleRevokeError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrTokenNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeTokenNotFound, "Token not found", err)
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeTokenNotFound, "Token not found", err)
 	case errors.Is(err, ErrUserNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
-			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -534,7 +534,7 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.Register(req.Context(), regReq)
 	if err != nil {
-		return h.handleRegistrationError(writer, err)
+		return h.handleRegistrationError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -557,7 +557,7 @@ func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req *http.Requ
 
 	resp, err := h.svc.ConfirmRegistration(req.Context(), confirmReq.Token)
 	if err != nil {
-		return h.handleRegistrationError(writer, err)
+		return h.handleRegistrationError(writer, req, err)
 	}
 
 	if resp.AccessToken != "" {
@@ -589,7 +589,7 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req *http.Req
 				"Too many password reset requests, please try again later")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -618,22 +618,71 @@ func (h *Handler) ResetPassword(writer http.ResponseWriter, req *http.Request) e
 
 	resp, err := h.svc.ResetPassword(req.Context(), resetReq)
 	if err != nil {
-		return h.handlePasswordResetError(writer, err)
+		return h.handlePasswordResetError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
-func (h *Handler) handlePasswordResetError(writer http.ResponseWriter, err error) error {
+// ChangePassword rotates the authenticated caller's password (or sets an
+// initial one for an SSO-only account). Unlike ResetPassword it needs no
+// emailed token — the session is the proof of identity, plus the current
+// password when the account has one.
+func (h *Handler) ChangePassword(writer http.ResponseWriter, req *http.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	var changeReq ChangePasswordRequest
+	if err := json.NewDecoder(req.Body).Decode(&changeReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	if changeReq.NewPassword == "" {
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "newPassword", Message: msgPasswordRequired},
+		})
+	}
+
+	resp, err := h.svc.ChangePassword(req.Context(), claims.UserUID, claims.RefreshUID, changeReq)
+	if err != nil {
+		return h.handleChangePasswordError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+func (h *Handler) handleChangePasswordError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
-	case errors.Is(err, ErrPasswordResetExpired):
-		return h.WriteErrorErr(writer, http.StatusGone, base.ErrorCodePasswordResetExpired,
-			"Reset link has expired or is invalid", err)
+	case errors.Is(err, ErrInvalidCurrentPassword):
+		return h.WriteErrorErr(writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCurrentPassword,
+			"Current password is incorrect", err)
+	case errors.Is(err, ErrRateLimited):
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many password change attempts, please try again later", err)
+	case errors.Is(err, ErrUserNotFound):
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
 	case errors.Is(err, ErrInvalidCredentials):
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
+	}
+}
+
+func (h *Handler) handlePasswordResetError(writer http.ResponseWriter, request *http.Request, err error) error {
+	switch {
+	case errors.Is(err, ErrPasswordResetExpired):
+		return h.WriteErrorErr(writer, request, http.StatusGone, base.ErrorCodePasswordResetExpired,
+			"Reset link has expired or is invalid", err)
+	case errors.Is(err, ErrInvalidCredentials):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
+			err.Error(), err)
+	default:
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -672,13 +721,13 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidOrgSlug):
-			return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			return h.WriteErrorErr(writer, req, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
 				"Slug must be 3-20 characters, lowercase alphanumeric with hyphens", err)
 		case errors.Is(err, ErrOrgSlugTaken):
-			return h.WriteErrorErr(writer, http.StatusConflict, base.ErrorCodeConflict,
+			return h.WriteErrorErr(writer, req, http.StatusConflict, base.ErrorCodeConflict,
 				"Organization slug is already taken", err)
 		default:
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 	}
 
@@ -740,7 +789,7 @@ func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error
 			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
 				"Organization not found")
 		default:
-			return h.WriteInternalError(writer, err)
+			return h.WriteInternalError(writer, req, err)
 		}
 	}
 
@@ -787,7 +836,7 @@ func (h *Handler) UpdateOrgProfile(writer http.ResponseWriter, req *http.Request
 
 	resp, err := h.svc.UpdateOrgProfile(req.Context(), orgSlug, claims.UserUID, profileReq, authContext)
 	if err != nil {
-		return h.writeOrgProfileError(writer, err)
+		return h.writeOrgProfileError(writer, req, err)
 	}
 
 	if resp.AccessToken != "" {
@@ -800,25 +849,25 @@ func (h *Handler) UpdateOrgProfile(writer http.ResponseWriter, req *http.Request
 // writeOrgProfileError maps the profile-update domain errors onto the standard
 // error shape, reusing exactly the messages CreateOrg emits for the shared slug
 // errors so the dashboard can render one validation string per field.
-func (h *Handler) writeOrgProfileError(writer http.ResponseWriter, err error) error {
+func (h *Handler) writeOrgProfileError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalidOrgSlug):
-		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
 			"Slug must be 3-20 characters, lowercase alphanumeric with hyphens", err)
 	case errors.Is(err, ErrOrgSlugTaken):
-		return h.WriteErrorErr(writer, http.StatusConflict, base.ErrorCodeConflict,
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict,
 			"Organization slug is already taken", err)
 	case errors.Is(err, ErrInvalidOrgName):
-		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
 			"Name must be between 1 and 100 characters", err)
 	case errors.Is(err, ErrInvalidLogoURL):
-		return h.WriteErrorErr(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
 			"Logo URL must be an absolute http(s) URL", err)
 	case errors.Is(err, ErrOrganizationNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
 			"Organization not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -863,7 +912,7 @@ func (h *Handler) CreateInvitation(writer http.ResponseWriter, req *http.Request
 
 	resp, err := h.svc.CreateInvitation(req.Context(), orgSlug, claims.UserUID, inviteReq)
 	if err != nil {
-		return h.handleInvitationError(writer, err)
+		return h.handleInvitationError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
@@ -884,7 +933,7 @@ func (h *Handler) ListInvitations(writer http.ResponseWriter, req *http.Request)
 
 	resp, err := h.svc.ListInvitations(req.Context(), orgSlug)
 	if err != nil {
-		return h.handleInvitationError(writer, err)
+		return h.handleInvitationError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -906,7 +955,7 @@ func (h *Handler) RevokeInvitation(writer http.ResponseWriter, req *http.Request
 
 	err := h.svc.RevokeInvitation(req.Context(), orgSlug, invitationUID)
 	if err != nil {
-		return h.handleInvitationError(writer, err)
+		return h.handleInvitationError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -925,7 +974,7 @@ func (h *Handler) GetInviteInfo(writer http.ResponseWriter, req *http.Request) e
 
 	resp, err := h.svc.GetInviteInfo(req.Context(), token)
 	if err != nil {
-		return h.handleInvitationError(writer, err)
+		return h.handleInvitationError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -948,7 +997,7 @@ func (h *Handler) AcceptInvite(writer http.ResponseWriter, req *http.Request) er
 
 	resp, err := h.svc.AcceptInvite(req.Context(), acceptReq)
 	if err != nil {
-		return h.handleInvitationError(writer, err)
+		return h.handleInvitationError(writer, req, err)
 	}
 
 	if resp.AccessToken != "" {
@@ -973,7 +1022,7 @@ func (h *Handler) GetOrgSettings(writer http.ResponseWriter, req *http.Request) 
 
 	resp, err := h.svc.GetOrgSettings(req.Context(), orgSlug)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -1003,7 +1052,7 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 	if err != nil {
 		if errors.Is(err, ErrInvalidAutoJoinRegex) {
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest,
+				writer, req, http.StatusBadRequest,
 				base.ErrorCodeInvalidAutoJoinRegex,
 				err.Error(), err,
 			)
@@ -1011,7 +1060,7 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 
 		if errors.Is(err, ErrOrganizationNotFound) {
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound,
+				writer, req, http.StatusNotFound,
 				base.ErrorCodeOrganizationNotFound,
 				"Organization not found", err,
 			)
@@ -1019,61 +1068,61 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 
 		if errors.Is(err, ErrInvalidEscalationPolicy) {
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest,
+				writer, req, http.StatusBadRequest,
 				base.ErrorCodeValidationError,
 				"Escalation policy not found in this organization", err,
 			)
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
 // handleRegistrationError handles errors from registration endpoints.
-func (h *Handler) handleRegistrationError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrRegistrationDisabled):
-		return h.WriteErrorErr(writer, http.StatusForbidden, base.ErrorCodeRegistrationDisabled,
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeRegistrationDisabled,
 			"Registration is not enabled", err)
 	case errors.Is(err, ErrEmailNotAllowed):
-		return h.WriteErrorErr(writer, http.StatusForbidden, base.ErrorCodeEmailNotAllowed,
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeEmailNotAllowed,
 			"Email does not match the allowed pattern", err)
 	case errors.Is(err, ErrEmailAlreadyTaken):
-		return h.WriteErrorErr(writer, http.StatusConflict, base.ErrorCodeConflict,
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict,
 			"Email is already registered", err)
 	case errors.Is(err, ErrRegistrationExpired):
-		return h.WriteErrorErr(writer, http.StatusGone, base.ErrorCodeRegistrationExpired,
+		return h.WriteErrorErr(writer, request, http.StatusGone, base.ErrorCodeRegistrationExpired,
 			"Registration link has expired or is invalid", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
 // handleInvitationError handles errors from invitation endpoints.
-func (h *Handler) handleInvitationError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrInvitationNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeInvitationNotFound,
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeInvitationNotFound,
 			"Invitation not found", err)
 	case errors.Is(err, ErrInvitationExpired):
-		return h.WriteErrorErr(writer, http.StatusGone, base.ErrorCodeInvitationExpired,
+		return h.WriteErrorErr(writer, request, http.StatusGone, base.ErrorCodeInvitationExpired,
 			"Invitation has expired", err)
 	case errors.Is(err, ErrOrganizationNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
 			"Organization not found", err)
 	case errors.Is(err, ErrInvalidExpiresIn):
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
 	case errors.Is(err, ErrInvalidApp):
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
 	case errors.Is(err, entitlements.ErrEntitlementExceeded):
-		return h.WriteErrorErr(writer, http.StatusForbidden, base.ErrorCodeEntitlementExceeded,
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeEntitlementExceeded,
 			"This organization has reached its user limit", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -1086,7 +1135,7 @@ func (h *Handler) Setup2FA(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.Setup2FA(req.Context(), claims.UserUID)
 	if err != nil {
-		return h.handle2FAError(writer, err)
+		return h.handle2FAError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -1114,7 +1163,7 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req *http.Request) erro
 
 	resp, err := h.svc.Confirm2FA(req.Context(), claims.UserUID, confirmReq.Code)
 	if err != nil {
-		return h.handle2FAError(writer, err)
+		return h.handle2FAError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -1147,7 +1196,7 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req *http.Request) error
 
 	resp, err := h.svc.Verify2FA(req.Context(), tempToken, verifyReq.Code, authContext)
 	if err != nil {
-		return h.handle2FAError(writer, err)
+		return h.handle2FAError(writer, req, err)
 	}
 
 	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
@@ -1182,7 +1231,7 @@ func (h *Handler) Recovery2FA(writer http.ResponseWriter, req *http.Request) err
 
 	resp, err := h.svc.Recovery2FA(req.Context(), tempToken, recoveryReq.RecoveryCode, authContext)
 	if err != nil {
-		return h.handle2FAError(writer, err)
+		return h.handle2FAError(writer, req, err)
 	}
 
 	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
@@ -1211,32 +1260,33 @@ func (h *Handler) Disable2FA(writer http.ResponseWriter, req *http.Request) erro
 	}
 
 	if err := h.svc.Disable2FA(req.Context(), claims.UserUID, disableReq.Code); err != nil {
-		return h.handle2FAError(writer, err)
+		return h.handle2FAError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]string{"message": "2FA disabled successfully"})
 }
 
 // handle2FAError handles errors from 2FA endpoints.
-func (h *Handler) handle2FAError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handle2FAError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalid2FACode):
-		return h.WriteErrorErr(writer, http.StatusUnauthorized, base.ErrorCodeInvalid2FACode, "Invalid 2FA code", err)
+		return h.WriteErrorErr(
+			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalid2FACode, "Invalid 2FA code", err)
 	case errors.Is(err, ErrInvalidRecoveryCode):
 		return h.WriteErrorErr(
-			writer, http.StatusUnauthorized, base.ErrorCodeInvalidRecoveryCode, "Invalid recovery code", err)
+			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidRecoveryCode, "Invalid recovery code", err)
 	case errors.Is(err, ErrTwoFAAlreadyEnabled):
-		return h.WriteErrorErr(writer, http.StatusConflict, base.ErrorCodeConflict, "2FA is already enabled", err)
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict, "2FA is already enabled", err)
 	case errors.Is(err, ErrTwoFANotEnabled):
 		return h.WriteErrorErr(
-			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "2FA is not enabled", err)
+			writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, "2FA is not enabled", err)
 	case errors.Is(err, ErrInvalidToken), errors.Is(err, ErrTokenExpired):
 		return h.WriteErrorErr(
-			writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
+			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
 	case errors.Is(err, ErrUserNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 

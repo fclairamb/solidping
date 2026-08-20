@@ -4,6 +4,7 @@
   "degraded": "Dégradé",
   "warning": "Avertissement",
   "scheduledMaintenance": "Maintenance planifiée",
+  "abandoned": "Abandonné",
   "unknown": "Inconnu",
   "allSystemsOperational": "Tous les systèmes sont opérationnels",
   "someSystemsDegraded": "Certains systèmes sont dégradés",
@@ -28,6 +29,7 @@
   "switchToDarkMode": "Passer en mode sombre",
   "switchToLightMode": "Passer en mode clair",
   "status": {
+    "abandoned": "Abandonné",
     "up": "Disponible",
     "down": "Hors service",
     "timeout": "Délai dépassé",
@@ -46,5 +48,27 @@
     "error": "Une erreur s'est produite. Veuillez réessayer.",
     "feedLink": "S'abonner via RSS"
   },
-  "servicesOperational": "{{ok}} service(s) opérationnel(s) sur {{total}}"
+  "servicesOperational": "{{ok}} service(s) opérationnel(s) sur {{total}}",
+  "activeIncidents": "Incidents en cours",
+  "incidentHistory": "Historique des incidents",
+  "showIncidentHistory": "Afficher les incidents passés",
+  "hideIncidentHistory": "Masquer les incidents passés",
+  "noPastIncidents": "Aucun incident passé sur cette période.",
+  "incidentAffects": "Impacté : {{names}}",
+  "incidentStartedAt": "Début {{when}}",
+  "incidentResolvedAt": "Résolu {{when}}",
+  "incidentState": {
+    "investigating": "En cours d'investigation",
+    "identified": "Identifié",
+    "monitoring": "Sous surveillance",
+    "resolved": "Résolu",
+    "maintenance": "Maintenance",
+    "info": "Mise à jour"
+  },
+  "incidentSeverity": {
+    "minor": "Mineur",
+    "major": "Majeur",
+    "critical": "Critique"
+  },
+  "resourceAffected": "Impacté"
 }

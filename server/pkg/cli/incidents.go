@@ -151,8 +151,10 @@ func incidentsGetAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleAuthError(err)
 	}
 
-	// Call API
-	resp, err := apiClient.GetIncidentWithResponse(ctx, cliCtx.GetOrg(), incidentUID)
+	// Call API. nil preserves today's behavior: the handler always populates
+	// checkSlug/checkName regardless of "with", and this command doesn't print
+	// the opt-in check/members fields, so no params are needed.
+	resp, err := apiClient.GetIncidentWithResponse(ctx, cliCtx.GetOrg(), incidentUID, nil)
 	if err != nil {
 		return cliCtx.HandleError("Failed to get incident", err)
 	}

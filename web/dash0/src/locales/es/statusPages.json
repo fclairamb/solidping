@@ -3,6 +3,7 @@
   "subtitle": "Gestione sus páginas de estado públicas",
   "newStatusPage": "Nueva página de estado",
   "noStatusPages": "Aún no hay páginas de estado configuradas",
+  "noStatusPagesHint": "Cree su primera página de estado para compartir la disponibilidad con sus usuarios.",
   "noMatch": "Ninguna página de estado coincide con su búsqueda",
   "searchPlaceholder": "Buscar páginas de estado...",
   "viewDetails": "Ver detalles",

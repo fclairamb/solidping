@@ -20,7 +20,8 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Google Chat | Available | Webhook |
 | Mattermost | Available | Webhook |
 | ntfy | Available | HTTP push |
-| Opsgenie | Available | API integration |
+| Matrix | Available | Client-Server API |
+| PagerDuty | Available | Events API v2 |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
 | SMS / Voice | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
@@ -441,21 +442,73 @@ Add a ntfy connection in SolidPing with:
 ntfy subscribe solidping-alerts
 ```
 
-## Opsgenie
+## Matrix
 
-Opsgenie integration for incident management and on-call alerting.
+[Matrix](https://matrix.org) is an open, decentralized chat protocol — the standard for
+self-hosted chat (Element, Synapse, Conduit, beeper). SolidPing sends notifications as a
+dedicated bot user posting into a room, via the Matrix Client-Server API — no bridge or
+generic webhook needed.
 
 ### Configuration
 
-Add an Opsgenie connection in SolidPing with:
-- **API Key**: Your Opsgenie API integration key
+Add a Matrix connection in SolidPing with:
+- **Homeserver URL**: the base URL of the bot account's homeserver (e.g. `https://matrix.org`,
+  or your self-hosted Synapse/Conduit instance). A trailing slash is fine.
+- **Access token**: the bot/dedicated user's access token. Treated as a secret — stored
+  encrypted, never shown again after you save it.
+- **Room**: the room ID (`!abcdef:matrix.org`) or alias (`#alerts:matrix.org`) to post into.
+  The bot account must already be invited to and have joined the room — SolidPing does not
+  auto-join.
 
-### Setting Up Opsgenie
+### Creating a bot user and access token
 
-1. In Opsgenie, go to Settings → Integrations
-2. Add a new "API" integration
-3. Copy the API key
-4. Add it in SolidPing's integration settings
+1. Register a dedicated account for SolidPing on your homeserver (don't reuse a personal
+   account — the access token can post as that user indefinitely).
+2. Get an access token for that account, either:
+   - In [Element](https://element.io): sign in as the bot user, then go to
+     **Settings → Help & About → Advanced → Access Token**, or
+   - Via the API: `POST /_matrix/client/v3/login` with the bot's credentials, which returns
+     an `access_token` in the response.
+3. Find the room ID: in Element, open the room, go to **Room settings → Advanced**, and copy
+   the internal room ID (starts with `!`). A room alias (starts with `#`) also works —
+   SolidPing resolves it to the current room ID on every send.
+4. Invite the bot account to the room and accept the invite as the bot (join it) — SolidPing
+   only posts into rooms the bot is already a member of.
+
+### Limitations
+
+- End-to-end encrypted rooms are not supported (posting into one would require a full Matrix
+  crypto SDK). Use an unencrypted room for alerts.
+- SolidPing does not auto-join a room on invite — join it manually as the bot account first.
+
+## PagerDuty
+
+PagerDuty integration for incident management and on-call alerting, via the
+**Events API v2** only — no OAuth, no REST API v2, no schedule import.
+
+### Configuration
+
+Add a PagerDuty connection in SolidPing with:
+- **Integration key**: The routing key of a PagerDuty Events API v2 integration
+
+### Setting Up PagerDuty
+
+1. In PagerDuty, open the service that should receive SolidPing's alerts
+2. Go to **Integrations** → **Add integration**
+3. Choose **Events API v2**
+4. Copy the generated integration key
+5. Add it in SolidPing's integration settings
+
+### Behavior
+
+- An incident opening (or reopening) sends a `trigger` event; resolving it
+  sends a `resolve` event. Both carry the incident's UID as the `dedup_key`,
+  so they correlate to **one** PagerDuty incident across its whole lifecycle.
+- A comment or an escalation sends **nothing** to PagerDuty: the Events API
+  v2 has no note/annotation concept, and reusing the `dedup_key` on a
+  `trigger` would re-open an already-resolved incident.
+- Severity (`critical`/`error`/`warning`/`info`) is derived from the result
+  that triggered or is currently failing the incident.
 
 ## Pushover
 

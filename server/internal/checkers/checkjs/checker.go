@@ -39,6 +39,25 @@ type CheckerResolver func(checkType checkerdef.CheckType) (checkerdef.Checker, c
 // Must be set before executing JS checks that use solidping.check().
 var ResolveChecker CheckerResolver //nolint:gochecknoglobals // Required to break import cycle
 
+// TypeEnabledFunc reports whether a check type is enabled at the SERVER level
+// (`checkers.enabled` / `checkers.disabled` / `checkers.enabled_labels`).
+//
+// It deliberately takes no org: the JS runtime has no org identity (see the
+// gate in jsRuntime.check), so per-org overrides cannot be answered here and
+// the signature says so rather than pretending otherwise.
+type TypeEnabledFunc func(checkType checkerdef.CheckType) bool
+
+// TypeEnabled is the server-level activation gate consulted before a sub-check
+// runs. It mirrors the ResolveChecker indirection above — checkjs cannot import
+// registry or config-derived resolvers without an import cycle — and is wired
+// in checkworker.newCheckWorker, the one constructor both the embedded worker
+// and the standalone agent funnel through.
+//
+// nil means "no gate configured": every type is allowed. That keeps this
+// package usable standalone and in unit tests, and keeps the JS checker's
+// behavior unchanged for any caller that never installs a gate.
+var TypeEnabled TypeEnabledFunc //nolint:gochecknoglobals // Mirrors ResolveChecker: same import-cycle break
+
 const (
 	maxSubChecks     = 20
 	maxConsoleOutput = 16 * 1024   // 16KB
@@ -280,14 +299,42 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 		}
 	}
 
+	checkType := checkerdef.CheckType(typeStr)
+
+	// Server-level activation gate. Without it, solidping.check() would run any
+	// type the binary was compiled with, including ones the operator turned off
+	// in checkers.enabled/disabled/enabled_labels — the dashboard would say
+	// `browser` is disabled while a script still started a real Chrome.
+	//
+	// Two things this gate deliberately is NOT:
+	//
+	//   - It is not org-aware. The JS runtime has no org identity (Execute
+	//     carries neither server config nor an org), so this answers the
+	//     SERVER-level question only; a per-org `orgDisabled` entry is NOT
+	//     honored here. Threading the org through Execute is a follow-up.
+	//   - It is not folded into ResolveChecker's ok=false below, because that
+	//     path means "unknown check type" and reporting a disabled type as
+	//     nonexistent would be both false and unhelpful.
+	//
+	// Budget accounting: this runs AFTER the maxSubChecks counter above, so a
+	// refused sub-check still consumes one unit of the budget. That is
+	// deliberate — the existing guard ordering is left untouched and a script
+	// cannot spin the refusal path for free.
+	if TypeEnabled != nil && !TypeEnabled(checkType) {
+		return map[string]any{
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{
+				checkerdef.OutputKeyError: "check type \"" + typeStr + "\" is disabled on this server",
+			},
+		}
+	}
+
 	if ResolveChecker == nil {
 		return map[string]any{
 			jsKeyStatus: logLevelError,
 			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "checker resolver not initialized"},
 		}
 	}
-
-	checkType := checkerdef.CheckType(typeStr)
 
 	checker, cfg, ok := ResolveChecker(checkType)
 	if !ok {

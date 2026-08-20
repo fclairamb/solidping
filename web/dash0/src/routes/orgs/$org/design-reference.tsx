@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   Bot,
   Building,
   Check,
@@ -40,6 +41,7 @@ import {
 import { toast } from "sonner";
 
 import { EventTypeBadge, getEventTone } from "@/components/dashboard/event-display";
+import { CheckTypeBadge, CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
@@ -63,6 +65,14 @@ import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
+import {
+  formatBudgetSeconds,
+  sloBudgetBarClass,
+  sloStateBadgeClass,
+} from "@/lib/slo-format";
+import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
+import type { SloBurndown } from "@/api/hooks";
+import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -164,13 +174,14 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "conventions", label: "Conventions" },
   { id: "page-header", label: "Page header" },
+  { id: "button-placement", label: "Button placement" },
   { id: "docs-link", label: "Docs link" },
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
   { id: "brand", label: "Brand" },
   { id: "elevation", label: "Elevation & aurora" },
   { id: "buttons-badges", label: "Buttons & badges" },
-  { id: "protocol-badge", label: "Protocol badge" },
+  { id: "check-type-badge", label: "Check type identity" },
   { id: "event-tone", label: "Event tone badge" },
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
@@ -209,13 +220,14 @@ function DesignReferencePage() {
       <OverviewSection />
       <ConventionsSection />
       <PageHeaderSection />
+      <ButtonPlacementSection />
       <DocsLinkSection />
       <BreadcrumbsSection />
       <ColorTokensSection />
       <BrandSection />
       <ElevationSection />
       <ButtonsBadgesSection />
-      <ProtocolBadgeSection />
+      <CheckTypeIdentitySection />
       <EventToneSection />
       <LiveDotSection />
       <FormsSection />
@@ -378,6 +390,25 @@ function Section({
     </section>
   );
 }
+
+// Static burn-down fixture for the design reference. Fixed timestamps (not
+// Date.now()) so the rendered example is identical on every visit.
+const designReferenceBurndown: SloBurndown = {
+  window: {
+    start: "2026-08-01T00:00:00Z",
+    end: "2026-09-01T00:00:00Z",
+    label: "2026-08",
+  },
+  targetPct: 99.9,
+  budgetTotalSeconds: 2678,
+  data: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+    at: new Date(Date.UTC(2026, 7, day + 1)).toISOString(),
+    budgetRemainingSeconds: 2678 - day * 380,
+    idealRemainingSeconds: Math.round(2678 * (1 - (day + 1) / 31)),
+    attainmentPct: 99.94 - day * 0.01,
+    hasData: true,
+  })),
+};
 
 function CodeSnippet({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -770,6 +801,152 @@ import { PageHeader } from "@/components/shared/page-header";
   );
 }
 
+function ButtonPlacementSection() {
+  const buttonPlacementSnippet = `// A page WITH a search/filter toolbar: PageHeader actions carries only the
+// primary "New X" action. Refresh moves into the toolbar row, right of search.
+<PageHeader
+  icon={Globe}
+  title="Status pages"
+  actions={
+    <Button asChild>
+      <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+        <Plus className="mr-2 h-4 w-4" />
+        New page
+      </Link>
+    </Button>
+  }
+/>
+<div className="flex flex-wrap items-center gap-4">
+  <div className="relative flex-1 min-w-[200px] max-w-sm">
+    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <Input placeholder="Search…" className="pl-9" />
+  </div>
+  {/* Any filter selects go here, between search and Refresh. */}
+  <Button variant="outline" onClick={() => refetch()} disabled={isRefetching} aria-label={t("common:refresh")}>
+    <RefreshCw className={\`h-4 w-4 sm:mr-2 \${isRefetching ? "animate-spin" : ""}\`} />
+    <span className="hidden sm:inline">{t("common:refresh")}</span>
+  </Button>
+</div>
+
+// A page with NO search/filter toolbar (e.g. on-call) keeps Refresh in the
+// header, to the left of the primary action:
+<PageHeader
+  actions={
+    <>
+      <Button variant="outline" onClick={() => refetch()} aria-label={t("common:refresh")}>
+        <RefreshCw className="h-4 w-4 sm:mr-2" />
+        <span className="hidden sm:inline">{t("common:refresh")}</span>
+      </Button>
+      <Button asChild>
+        <Link to="/orgs/$org/on-call/new" params={{ org }}>Create schedule</Link>
+      </Button>
+    </>
+  }
+/>`;
+
+  return (
+    <Section
+      id="button-placement"
+      title="Button placement"
+      description="Where a button lives depends on what it does: PageHeader actions change what exists on the page (create, export); the toolbar row below the header changes what you're currently looking at (search, filter, refresh). Row-level Pencil/Trash2 icon buttons are a third, separate surface — documented in Conventions, cross-referenced below."
+    >
+      <h3 className="text-sm font-medium">
+        PageHeader actions: primary, page-level actions only
+      </h3>
+      <p className="text-sm text-muted-foreground">
+        The <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
+        slot on <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+        is reserved for the page's primary action — typically a single &quot;New
+        &lt;resource&gt;&quot; create button, plus at most one secondary
+        page-level action (export/import, a scope toggle). It is{" "}
+        <strong>not</strong> a catch-all toolbar: a page that has a
+        search/filter toolbar row below the header does not put Refresh in
+        the header — Refresh moves into that row (see below). The one
+        exception is a page with{" "}
+        <strong>no search toolbar at all</strong> — on-call has no search
+        field, so it keeps Refresh in the header, to the left of the primary
+        button.
+      </p>
+      <p className="text-sm text-muted-foreground">
+        A third case reads like a toolbar but isn't one:{" "}
+        <strong>filters scoped to a single table or card</strong>, rendered
+        inside that card's own header next to its title (e.g. a
+        source-type select next to a &quot;Scans&quot; card title, or a
+        per-tab status filter above one tab's table). That's card-level
+        chrome, not a page-level toolbar row — the row this section means
+        sits directly under <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>,
+        outside and above any card. A page whose only filtering controls are
+        card-nested like this has, from the page's point of view, no
+        toolbar at all — Refresh stays in the header, per the exception
+        above.
+      </p>
+
+      <h3 className="text-sm font-medium">
+        Toolbar row: search, filters, then Refresh
+      </h3>
+      <p className="text-sm text-muted-foreground">
+        Data/view controls — the search input, any filter selects, and the
+        Refresh button — live in their own{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          flex flex-wrap items-center gap-4
+        </code>{" "}
+        row below the header. Refresh sits to the{" "}
+        <strong>right of the search input</strong> (after any filter
+        selects, if the row has them) — mirror{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          integrations.index.tsx
+        </code>{" "}
+        (search-only toolbar) or{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          checks.index.tsx
+        </code>{" "}
+        (search + several filters, Refresh trailing).
+      </p>
+
+      <div className="space-y-3 rounded-md border bg-card p-4">
+        <PageHeader
+          icon={Globe}
+          title="Status pages"
+          actions={
+            <Button size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              New page
+            </Button>
+          }
+          className="flex-wrap"
+        />
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search…" className="pl-9" />
+          </div>
+          <Button variant="outline" size="sm" aria-label="Refresh">
+            <RefreshCw className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+        </div>
+      </div>
+      <CodeSnippet code={buttonPlacementSnippet} />
+
+      <p className="text-sm text-muted-foreground">
+        Row-level actions — the ghost{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">Pencil</code>/
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+        icon-button pair on each table row — are documented separately, see{" "}
+        <a href="#conventions" className="text-primary hover:underline">
+          Conventions → Row actions
+        </a>
+        . And the empty state that replaces the table when it has nothing to
+        show is documented in{" "}
+        <a href="#list-surface" className="text-primary hover:underline">
+          List surface → Empty state
+        </a>
+        .
+      </p>
+    </Section>
+  );
+}
+
 function DocsLinkSection() {
   const importLine = `import { DocsLink } from "@/components/shared/docs-link";
 
@@ -1126,6 +1303,90 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">SLO state chip &amp; error-budget meter</h3>
+        <p className="text-sm text-muted-foreground">
+          The four objective states (spec 2026-08-20-01) and the remaining-budget meter that
+          accompanies them.{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">unknown</code> is the
+          no-data state and is deliberately <strong>neutral grey, never green</strong>: an
+          objective over a window with no probes has null attainment, and rendering that as a
+          healthy 100% would turn "we were not watching" into "everything was fine". Attainment
+          itself follows the same rule — render{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code> as a dash via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">formatAttainment</code>.
+          The meter is clamped to [0, 1] by{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">budgetRemainingFraction</code>,
+          while the label keeps the sign so an overspent budget reads as{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">-12m 30s</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className={sloStateBadgeClass("healthy")}>Healthy</Badge>
+                <Badge className={sloStateBadgeClass("at_risk")}>At risk</Badge>
+                <Badge className={sloStateBadgeClass("breached")}>Breached</Badge>
+                <Badge className={sloStateBadgeClass("unknown")}>No data</Badge>
+              </div>
+              <div className="max-w-xs space-y-1">
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div className={`h-full rounded-full ${sloBudgetBarClass("at_risk")}`} style={{ width: "38%" }} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formatBudgetSeconds(990)} of {formatBudgetSeconds(2592)} remaining
+                </p>
+              </div>
+            </div>
+          }
+          importLine={`import {\n  budgetRemainingFraction,\n  formatAttainment,\n  formatBudgetSeconds,\n  sloBudgetBarClass,\n  sloStateBadgeClass,\n} from "@/lib/slo-format";\n\n<Badge className={sloStateBadgeClass(row.state)}>\n  {t(\`state.\${row.state}\`)}\n</Badge>`}
+        />
+
+        <h3 className="text-sm font-medium">Error-budget burn-down chart</h3>
+        <p className="text-sm text-muted-foreground">
+          The objective detail page's burn-down (spec 2026-08-20-01): remaining budget over the
+          current window against the straight "ideal" line that spends it exactly. Two
+          conventions are load-bearing. The actual series is{" "}
+          <strong>never clamped at zero</strong> — an overspent budget dips below the dashed
+          destructive reference line, and flattening it there would hide the magnitude of a
+          breach. And every DATA dot renders a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">&lt;title&gt;</code>, which
+          recharts' hover activeDot does not, so an E2E can count{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">circle:has(title)</code>{" "}
+          deterministically.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-lg">
+              <BudgetBurndownChart burndown={designReferenceBurndown} />
+            </div>
+          }
+          importLine={`import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";\n\n<BudgetBurndownChart\n  burndown={burndown}\n  isLoading={burndownLoading}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Agent version cell</h3>
+        <p className="text-sm text-muted-foreground">
+          Compares an agent's self-reported build version against this server's own (spec
+          2026-08-19-07). Unlike the IPv6 badge above, this is not a stored three-state value —
+          it is a comparison computed at read time from two inputs, each already two-state: the
+          agent's version (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code>{" "}
+          = never reported) and the server's own (from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useVersion()</code>).
+          Matching and unknown render as plain text; only a genuine mismatch gets the amber
+          "Drifted" badge — <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code>{" "}
+          must <strong>never</strong> render as drifted, or an agent that simply predates this
+          feature would look broken.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-col items-start gap-2">
+              <AgentVersionCell agentVersion="0.17.0" serverVersion="0.17.0" />
+              <AgentVersionCell agentVersion="0.16.2" serverVersion="0.17.0" />
+              <AgentVersionCell agentVersion={null} serverVersion="0.17.0" />
+            </div>
+          }
+          importLine={`import { AgentVersionCell } from "@/components/shared/agent-version";\n\n<AgentVersionCell\n  agentVersion={agent.version}\n  serverVersion={versionData?.version}\n/>`}
         />
 
         <h3 className="text-sm font-medium">Check group status header</h3>
@@ -1826,6 +2087,55 @@ function ClickableTable() {
   );
 }
 
+/** Narrow rows where one cell holds an unpredictably long, unbreakable value
+ * (a URL, a name with no natural wrap point). `max-w-0 w-full truncate` on the
+ * <TableCell> — not just the text inside it — is what makes an auto-layout
+ * <table> respect the column's fair share instead of growing to fit content;
+ * pair it with `title` (or the Tooltip primitive above) so the full value is
+ * still one hover/focus away. Columns that must never wrap (a badge, an
+ * icon-link) get `whitespace-nowrap` so the flexible column absorbs the
+ * leftover width — that's also the mechanism the blast-radius table on the
+ * incident detail page uses to survive a 375px viewport. */
+function TruncatedCellTable() {
+  const rows = [
+    { id: "1", name: "api.acme-staging.io document-storage version (http)", status: "up" as const },
+    { id: "2", name: "84698cfb-5b01-4fab-b898-13beda200722", status: "down" as const },
+  ];
+
+  return (
+    <div className="max-w-xs rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Check</TableHead>
+            <TableHead className="whitespace-nowrap">State</TableHead>
+            <TableHead className="whitespace-nowrap px-2" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
+              <TableCell className="max-w-0">
+                <a href="#" title={row.name} className="block truncate text-primary hover:underline">
+                  {row.name}
+                </a>
+              </TableCell>
+              <TableCell className="whitespace-nowrap">
+                <StatusBadge status={row.status} />
+              </TableCell>
+              <TableCell className="whitespace-nowrap px-2 text-right">
+                <a href="#" aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </a>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function DataDisplaySection() {
   return (
     <Section
@@ -1866,6 +2176,30 @@ function DataDisplaySection() {
       </div>
       <CodeSnippet
         code={`import { useNavigate } from "@tanstack/react-router";\n\nconst navigate = useNavigate();\nconst open = () =>\n  void navigate({ to: "/orgs/$org/widgets/$uid", params: { org, uid: row.uid } });\n\n<TableRow\n  className="cursor-pointer hover:bg-muted/50"\n  role="link"\n  tabIndex={0}\n  onClick={open}\n  onKeyDown={(e) => {\n    if (e.key === "Enter" || e.key === " ") {\n      e.preventDefault();\n      open();\n    }\n  }}\n>\n  {/* cells — no nested <Link>/<Button> */}\n</TableRow>`}
+      />
+
+      <div className="space-y-2 pt-2">
+        <h3 className="text-sm font-medium">Truncated cell</h3>
+        <p className="text-sm text-muted-foreground">
+          When a column's value has no natural break point (a UUID, a long
+          URL), let it truncate instead of wrapping to several lines or
+          forcing the table wider than its container. Give the{" "}
+          <code>TableCell</code> itself <code>max-w-0</code> — not just the
+          text node inside it — so the browser's table layout algorithm
+          shrinks that column to its fair share instead of growing to fit the
+          content; other columns that must stay one line (a badge, an
+          icon-link) get <code>whitespace-nowrap</code> so the flexible
+          column absorbs whatever width is left. Pair the truncated element
+          with a <code>title</code> attribute (or Tooltip, above) so the full
+          value is still reachable on hover/focus. Two link targets in one
+          row (here: the name → detail page, the trailing icon → a related
+          page) stay distinguishable by weight — underlined text vs. a muted
+          icon — rather than by color alone.
+        </p>
+        <TruncatedCellTable />
+      </div>
+      <CodeSnippet
+        code={`<TableHead>Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
       />
     </Section>
   );
@@ -2181,6 +2515,36 @@ function FeedbackSection() {
           importLine={`import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";`}
         />
 
+        <h3 className="text-sm font-medium">Tinted panel</h3>
+        <p className="text-sm text-muted-foreground">
+          A sub-surface that needs to read as visually distinct from the{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-card</code>{" "}
+          it sits on — never a bare border alone. Neutral content (e.g. the
+          incident timeline entries) uses{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-muted/30</code>;
+          content that IS the error (e.g. the incident detail failure
+          snapshot) uses the destructive tint plus{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>{" "}
+          on the error text itself, so it reads as &quot;this is the
+          error&quot; at a glance. Tokens only, no raw hex, so both stay
+          correct in dark mode.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex w-full max-w-md flex-col gap-2">
+              <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="text-xs text-muted-foreground">Neutral (timeline entries)</div>
+                <div>Use for grouped detail that isn&apos;t itself an error.</div>
+              </div>
+              <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                <div className="text-xs text-muted-foreground">Destructive (failure snapshot)</div>
+                <div className="font-mono text-destructive">connect ECONNREFUSED</div>
+              </div>
+            </div>
+          }
+          importLine={`// Neutral\n<div className="rounded-md border bg-muted/30 p-3">...</div>\n\n// Destructive (this IS the error)\n<div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">\n  <div className="font-mono text-destructive">{errorText}</div>\n</div>`}
+        />
+
         <h3 className="text-sm font-medium">Dialog</h3>
         <ExampleRow
           preview={
@@ -2441,43 +2805,147 @@ function BrandSection() {
   );
 }
 
-const PROTOCOL_BADGE_BASE =
-  "text-[10px] font-mono font-medium uppercase px-1.5 py-0.5";
+// CHECK_TYPE_FAMILY_TABLE documents the family → tone grouping for the
+// design-reference page. It is display-only prose (kept in sync with
+// CHECK_TYPE_IDENTITY by eye, same as the spec's own table) — the canonical,
+// enforced source is CHECK_TYPE_IDENTITY in check-type-identity.tsx, guarded
+// by check-type-identity.test.ts.
+const CHECK_TYPE_FAMILY_TABLE: { family: string; types: string; tone: string }[] = [
+  { family: "Web", types: "http/https, websocket, browser", tone: "blue (shipped)" },
+  { family: "Raw network", types: "tcp, udp, ntp, snmp", tone: "cyan (shipped)" },
+  { family: "Naming", types: "dns, domain, dnsbl", tone: "amber (shipped)" },
+  { family: "Reachability", types: "icmp/ping", tone: "purple (shipped)" },
+  { family: "Certificates", types: "ssl/tls", tone: "emerald (shipped)" },
+  { family: "Remote access", types: "ssh, sftp, ftp, rdp", tone: "teal" },
+  { family: "Mail", types: "smtp, pop3, imap, email", tone: "rose" },
+  {
+    family: "Databases",
+    types: "postgresql, mysql, mssql, oracle, clickhouse, redis, mongodb",
+    tone: "indigo",
+  },
+  { family: "Messaging/RPC", types: "grpc, kafka, mqtt, rabbitmq", tone: "fuchsia" },
+  { family: "Game", types: "a2s, minecraft", tone: "lime" },
+  {
+    family: "Infra",
+    types: "docker, prometheus, freebox_line, kubernetes",
+    tone: "sky",
+  },
+  { family: "Scripted/synthetic", types: "js, sleep, heartbeat, sip", tone: "slate" },
+];
 
-const PROTOCOL_BADGE_TONES: Record<string, string> = {
-  HTTP: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25",
-  TCP: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25",
-  DNS: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25",
-  ICMP: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25",
-  TLS: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25",
-};
+const CHECK_TYPE_BADGE_SAMPLES = [
+  "http",
+  "tcp",
+  "dns",
+  "icmp",
+  "ssl",
+  "ssh",
+  "smtp",
+  "postgresql",
+  "grpc",
+  "minecraft",
+  "docker",
+  "heartbeat",
+];
 
-function ProtocolBadgeSection() {
+function CheckTypeIdentitySection() {
   return (
     <Section
-      id="protocol-badge"
-      title="Protocol badge"
-      description="The check-type chip used in list rows. Uppercase mono at 10px so a column of them aligns like a fixed-width key, with one tinted family per protocol — the tint is decoration, never the only signal, so the label always spells the protocol out. An unrecognized type falls back to the plain outline badge rather than inventing a sixth color."
+      id="check-type-badge"
+      title="Check type identity"
+      description="The one canonical visual identity for a check type — label, tint, and icon — sourced from CHECK_TYPE_IDENTITY (check-type-identity.tsx) and used everywhere a check type is rendered: the checks list chip, the check detail page, and the new-check type picker. Keyed by the raw backend type string; a drift-guard test fails the build if a check type or docs-anchor entry ships without a registry entry."
     >
-      <ExampleRow
-        preview={
-          <div className="flex flex-wrap items-center gap-2">
-            {Object.entries(PROTOCOL_BADGE_TONES).map(([label, tone]) => (
-              <Badge
-                key={label}
-                variant="outline"
-                className={cn(PROTOCOL_BADGE_BASE, tone)}
-              >
-                {label}
-              </Badge>
-            ))}
-            <Badge variant="outline" className={PROTOCOL_BADGE_BASE}>
-              custom
-            </Badge>
-          </div>
-        }
-        importLine={`import { Badge } from "@/components/ui/badge";\n\n// One tinted family per protocol; the fallback keeps the plain outline.\n<Badge\n  variant="outline"\n  className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5\n             bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25"\n>\n  HTTP\n</Badge>\n\n// http/https → blue · tcp → cyan · dns → amber · icmp/ping → purple\n// tls/ssl → emerald · anything else → no tint classes at all`}
-      />
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">CheckTypeBadge — the 10px chip</h3>
+        <p className="text-xs text-muted-foreground">
+          Uppercase mono at 10px so a column of them aligns like a
+          fixed-width key, one tinted family per type. Text-first,
+          deliberately no icon inside the chip — at this size an abstract
+          glyph is noise and the acronym is the signal. An unrecognized type
+          falls back to the plain outline badge with its raw name, rather
+          than inventing a new color.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-2">
+              {CHECK_TYPE_BADGE_SAMPLES.map((type) => (
+                <CheckTypeBadge key={type} type={type} />
+              ))}
+              <CheckTypeBadge type="custom" />
+            </div>
+          }
+          importLine={`import { CheckTypeBadge } from "@/components/shared/check-type-identity";\n\n<CheckTypeBadge type={check.type} />\n\n// Tone comes from the registry; an unknown type renders the plain\n// outline badge with its raw name — never a guessed color.`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          CheckTypeIcon — leading glyph (type picker, check detail)
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          A leading icon tinted to the same tone, for surfaces with room for
+          one — the new-check type picker rows and the check detail header.
+          Never inside the 10px badge itself. Lucide today; the slot accepts
+          any component rendering <code>currentColor</code> on a square
+          viewBox, so an internally designed icon set can replace entries in
+          the registry later with no call-site changes.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-3">
+              {CHECK_TYPE_BADGE_SAMPLES.slice(0, 6).map((type) => (
+                <span key={type} className="inline-flex items-center gap-1.5">
+                  <CheckTypeIcon type={type} />
+                  <CheckTypeBadge type={type} />
+                </span>
+              ))}
+            </div>
+          }
+          importLine={`import { CheckTypeIcon, CheckTypeBadge } from "@/components/shared/check-type-identity";\n\n<span className="inline-flex items-center gap-1.5">\n  <CheckTypeIcon type={check.type} />\n  <CheckTypeBadge type={check.type} />\n</span>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Family → tone table</h3>
+        <p className="text-xs text-muted-foreground">
+          40 distinguishable hues don't exist, so tones are assigned per
+          family. The five marked "shipped" are the original protocol-badge
+          tints and must never change color — they're in users' muscle
+          memory. Every other family gets its own hue, none colliding with
+          the status colors (green=ok / red=down stay reserved).
+        </p>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-muted/30 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 font-medium">Family</th>
+                <th className="px-3 py-2 font-medium">Types</th>
+                <th className="px-3 py-2 font-medium">Tone</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {CHECK_TYPE_FAMILY_TABLE.map((row) => (
+                <tr key={row.family}>
+                  <td className="px-3 py-2 font-medium">{row.family}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{row.types}</td>
+                  <td className="px-3 py-2">{row.tone}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Accessibility</h3>
+        <p className="text-xs text-muted-foreground">
+          Same rule as every other tinted badge in this app: the tint and the
+          icon are decoration layered on the label, never the only signal.
+          The text label always spells the check type out — <code>CheckTypeBadge</code>{" "}
+          renders it even for a type with no registry entry, and the icon is
+          marked <code>aria-hidden</code>.
+        </p>
+      </div>
     </Section>
   );
 }
@@ -2666,8 +3134,8 @@ function ListSurfaceSection() {
                 </TableHeader>
                 <TableBody>
                   {[
-                    { name: "api.example.com", type: "HTTP" },
-                    { name: "db.internal", type: "TCP" },
+                    { name: "api.example.com", type: "http" },
+                    { name: "db.internal", type: "tcp" },
                   ].map((row) => (
                     <TableRow
                       key={row.name}
@@ -2679,15 +3147,7 @@ function ListSurfaceSection() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            PROTOCOL_BADGE_BASE,
-                            PROTOCOL_BADGE_TONES[row.type],
-                          )}
-                        >
-                          {row.type}
-                        </Badge>
+                        <CheckTypeBadge type={row.type} />
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs text-muted-foreground">
                         60s
@@ -2704,6 +3164,18 @@ function ListSurfaceSection() {
 
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Empty state</h3>
+        <p className="text-sm text-muted-foreground">
+          The page's toolbar (search input, filters, Refresh — see{" "}
+          <a href="#button-placement" className="text-primary hover:underline">
+            Button placement
+          </a>
+          ) stays rendered above the empty state; only the table area swaps
+          out, so the page doesn't jump. A truly empty list — zero rows, no
+          filter applied — gets an icon, a title, and a one-line hint —{" "}
+          <strong>no CTA button</strong>. The create action already lives
+          once, in the page header (top right); repeating it inside the card
+          would just duplicate it.
+        </p>
         <ExampleRow
           preview={
             <div className="w-full space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
@@ -2718,7 +3190,35 @@ function ListSurfaceSection() {
               </p>
             </div>
           }
-          importLine={`// Same card surface as the table it replaces, so the page doesn't jump.\n// Tint the icon circle when the emptiness is GOOD news (no open incidents):\n//   bg-emerald-500/10 text-emerald-600 dark:text-emerald-400\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Inbox className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks yet</p>\n  <p className="text-xs text-muted-foreground max-w-sm mx-auto">…</p>\n</div>`}
+          importLine={`// Same card surface as the table it replaces, so the page doesn't jump.\n// Tint the icon circle when the emptiness is GOOD news (no open incidents):\n//   bg-emerald-500/10 text-emerald-600 dark:text-emerald-400\n// No CTA here — the create action already lives once, in the page header.\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Inbox className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks yet</p>\n  <p className="text-xs text-muted-foreground max-w-sm mx-auto">…</p>\n</div>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Empty state: no search matches</h3>
+        <p className="text-sm text-muted-foreground">
+          Rows exist, but the current search/filter hides all of them. Same
+          card surface, a <code className="rounded bg-muted px-1 py-0.5 text-xs">Search</code>{" "}
+          icon instead of the resource icon, title only —{" "}
+          <strong>no CTA</strong> (the fix is to clear the filter, not to
+          create a duplicate). Mirrors{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            escalation-policies.index.tsx
+          </code>
+          .
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <Search className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                No checks match your search
+              </p>
+            </div>
+          }
+          importLine={`// Rows exist; the current filter just hides all of them — no CTA.\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Search className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks match your search</p>\n</div>`}
         />
       </div>
 

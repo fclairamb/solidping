@@ -63,7 +63,8 @@
       "title": "Algunas alertas por SMS no se enviaron",
       "runaway": "Se rechazaron {{count}} mensaje(s) porque se alcanzó el límite de SMS de esta instancia ({{limit}}/hora). Se están perdiendo alertas en toda la instancia — avisa a tu operador.",
       "country": "Se rechazaron {{count}} mensaje(s) porque el país de destino no está en la lista permitida de esta instancia ({{countries}})."
-    }
+    },
+    "slos": "Objetivos de nivel de servicio"
   },
   "ai": {
     "title": "Asistentes de IA",

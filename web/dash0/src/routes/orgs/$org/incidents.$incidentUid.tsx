@@ -38,6 +38,7 @@ import {
   type Event,
   type IncidentDetail,
   type IncidentResultSnapshot,
+  type IncidentFailureResponse,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
@@ -50,6 +51,7 @@ import {
 } from "@/components/dashboard/event-display";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
+import { IncidentPublicationsPanel } from "@/components/incidents/incident-publications-panel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -99,11 +101,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CollapsibleCode } from "@/components/shared/copyable-code";
 import { QueryErrorView } from "@/components/shared/error-views";
-import {
-  notificationStatusVariant,
-  sourceLabel,
-} from "@/lib/notifications";
+import { notificationStatusVariant, sourceLabel } from "@/lib/notifications";
 import { channelTypeLabel } from "@/lib/channel-labels";
 import { cn } from "@/lib/utils";
 import { statusUpdateKindTone } from "@/lib/status-update-kind";
@@ -145,10 +145,14 @@ function TotalDuration({
 
   if (resolvedAt) {
     return formatDuration(
-      new Date(resolvedAt).getTime() - new Date(startedAt).getTime()
+      new Date(resolvedAt).getTime() - new Date(startedAt).getTime(),
     );
   }
-  return formatDuration(now - new Date(startedAt).getTime()) + " " + t("detail.ongoing");
+  return (
+    formatDuration(now - new Date(startedAt).getTime()) +
+    " " +
+    t("detail.ongoing")
+  );
 }
 
 function TimelineItem({
@@ -167,7 +171,11 @@ function TimelineItem({
         <div className="font-medium">{label}</div>
         <div className="text-sm text-muted-foreground">
           {timestamp ? (
-            <TimeAgo date={timestamp} variant="inline" data-testid="incident-timeline-time" />
+            <TimeAgo
+              date={timestamp}
+              variant="inline"
+              data-testid="incident-timeline-time"
+            />
           ) : (
             "-"
           )}
@@ -218,7 +226,8 @@ function IncidentStatusUpdateDialog({
   const createMutation = useCreateStatusUpdate(org);
   const updateMutation = useUpdateStatusUpdate(org, editTarget?.uid ?? "");
 
-  const defaultPageUid = pages?.find((p) => p.isDefault)?.uid ?? pages?.[0]?.uid ?? "";
+  const defaultPageUid =
+    pages?.find((p) => p.isDefault)?.uid ?? pages?.[0]?.uid ?? "";
 
   const [form, setForm] = useState<{
     statusPageUid: string;
@@ -247,7 +256,9 @@ function IncidentStatusUpdateDialog({
           title: form.title,
           bodyMarkdown: form.bodyMarkdown,
           linkUrl: form.linkUrl || undefined,
-          publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : undefined,
+          publishedAt: form.publishedAt
+            ? new Date(form.publishedAt).toISOString()
+            : undefined,
         });
         toast.success("Status update saved");
       } else {
@@ -258,7 +269,9 @@ function IncidentStatusUpdateDialog({
           title: form.title,
           bodyMarkdown: form.bodyMarkdown,
           linkUrl: form.linkUrl || undefined,
-          publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : undefined,
+          publishedAt: form.publishedAt
+            ? new Date(form.publishedAt).toISOString()
+            : undefined,
         };
         await createMutation.mutateAsync(req);
         toast.success("Status update added");
@@ -275,7 +288,9 @@ function IncidentStatusUpdateDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editTarget ? "Edit status update" : "Add status update"}</DialogTitle>
+          <DialogTitle>
+            {editTarget ? "Edit status update" : "Add status update"}
+          </DialogTitle>
           <DialogDescription>
             This update will be linked to this incident on the status page.
           </DialogDescription>
@@ -286,14 +301,18 @@ function IncidentStatusUpdateDialog({
               <Label htmlFor="su-page">Status page</Label>
               <Select
                 value={form.statusPageUid}
-                onValueChange={(v) => setForm((f) => ({ ...f, statusPageUid: v }))}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, statusPageUid: v }))
+                }
               >
                 <SelectTrigger id="su-page">
                   <SelectValue placeholder="Select a status page" />
                 </SelectTrigger>
                 <SelectContent>
                   {(pages ?? []).map((p) => (
-                    <SelectItem key={p.uid} value={p.uid}>{p.name}</SelectItem>
+                    <SelectItem key={p.uid} value={p.uid}>
+                      {p.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -301,11 +320,18 @@ function IncidentStatusUpdateDialog({
           )}
           <div className="space-y-1">
             <Label htmlFor="su-kind">Kind</Label>
-            <Select value={form.kind} onValueChange={(v) => setForm((f) => ({ ...f, kind: v }))}>
-              <SelectTrigger id="su-kind"><SelectValue /></SelectTrigger>
+            <Select
+              value={form.kind}
+              onValueChange={(v) => setForm((f) => ({ ...f, kind: v }))}
+            >
+              <SelectTrigger id="su-kind">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {STATUS_UPDATE_KINDS.map((k) => (
-                  <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>
+                  <SelectItem key={k.value} value={k.value}>
+                    {k.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -315,7 +341,9 @@ function IncidentStatusUpdateDialog({
             <Input
               id="su-title"
               value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, title: e.target.value }))
+              }
               maxLength={200}
               required
             />
@@ -325,7 +353,9 @@ function IncidentStatusUpdateDialog({
             <Textarea
               id="su-body"
               value={form.bodyMarkdown}
-              onChange={(e) => setForm((f) => ({ ...f, bodyMarkdown: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, bodyMarkdown: e.target.value }))
+              }
               required
               rows={3}
             />
@@ -336,7 +366,9 @@ function IncidentStatusUpdateDialog({
               id="su-link"
               type="url"
               value={form.linkUrl}
-              onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, linkUrl: e.target.value }))
+              }
             />
           </div>
           <div className="space-y-1">
@@ -345,13 +377,21 @@ function IncidentStatusUpdateDialog({
               id="su-pub"
               type="datetime-local"
               value={form.publishedAt}
-              onChange={(e) => setForm((f) => ({ ...f, publishedAt: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, publishedAt: e.target.value }))
+              }
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Saving…" : editTarget ? "Save changes" : "Add update"}
+              {isLoading
+                ? "Saving…"
+                : editTarget
+                  ? "Save changes"
+                  : "Add update"}
             </Button>
           </DialogFooter>
         </form>
@@ -360,8 +400,17 @@ function IncidentStatusUpdateDialog({
   );
 }
 
-function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: string }) {
-  const { data: updates, isLoading } = useStatusUpdates(org, { incident: incidentUid, limit: 50 });
+function StatusUpdatesPanel({
+  org,
+  incidentUid,
+}: {
+  org: string;
+  incidentUid: string;
+}) {
+  const { data: updates, isLoading } = useStatusUpdates(org, {
+    incident: incidentUid,
+    limit: 50,
+  });
   const deleteMutation = useDeleteStatusUpdate(org);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<StatusUpdate | undefined>();
@@ -423,7 +472,9 @@ function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: st
                 <div className="flex items-start gap-2 min-w-0">
                   <KindBadgeInline kind={u.kind} />
                   <div className="min-w-0">
-                    <div className="font-medium text-sm truncate">{u.title}</div>
+                    <div className="font-medium text-sm truncate">
+                      {u.title}
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       <TimeAgo
                         date={u.publishedAt}
@@ -475,7 +526,10 @@ function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: st
         />
       )}
 
-      <AlertDialog open={!!deleteUid} onOpenChange={(o) => !o && setDeleteUid(null)}>
+      <AlertDialog
+        open={!!deleteUid}
+        onOpenChange={(o) => !o && setDeleteUid(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete status update?</AlertDialogTitle>
@@ -500,7 +554,13 @@ function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: st
 
 // --- Comments (discussion) panel ---
 
-function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }) {
+function CommentsCard({
+  org,
+  incidentUid,
+}: {
+  org: string;
+  incidentUid: string;
+}) {
   const { t } = useTranslation("incidents");
   const { data: members } = useMembers(org);
   const { data: comments, isLoading } = useEvents(org, {
@@ -538,7 +598,8 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
     .slice()
     .sort(
       (a, b) =>
-        new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime(),
+        new Date(a.createdAt ?? 0).getTime() -
+        new Date(b.createdAt ?? 0).getTime(),
     );
 
   return (
@@ -582,7 +643,11 @@ function CommentsCard({ org, incidentUid }: { org: string; incidentUid: string }
                   )}
                   <span className="text-xs text-muted-foreground">
                     {c.createdAt ? (
-                      <TimeAgo date={c.createdAt} variant="inline" data-testid="comment-time" />
+                      <TimeAgo
+                        date={c.createdAt}
+                        variant="inline"
+                        data-testid="comment-time"
+                      />
                     ) : (
                       ""
                     )}
@@ -677,9 +742,11 @@ function IncidentDetailPage() {
     }
   };
 
-  const handleSnooze = async (
-    payload: { duration?: string; until?: string; reason?: string },
-  ) => {
+  const handleSnooze = async (payload: {
+    duration?: string;
+    until?: string;
+    reason?: string;
+  }) => {
     try {
       await snoozeIncident.mutateAsync({ uid: incidentUid, body: payload });
       toast.success(t("actions.snoozed"));
@@ -739,7 +806,11 @@ function IncidentDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground mb-4">{t("incidentNotFound")}</p>
-        <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const, showSuppressed: undefined }}>
+        <Link
+          to="/orgs/$org/incidents"
+          params={{ org }}
+          search={{ state: "all" as const, showSuppressed: undefined }}
+        >
           <Button variant="outline">{t("backToIncidents")}</Button>
         </Link>
       </div>
@@ -748,7 +819,8 @@ function IncidentDetailPage() {
 
   const isActive = incident.state === "active";
   const isSnoozed =
-    !!incident.snoozedUntil && new Date(incident.snoozedUntil).getTime() > Date.now();
+    !!incident.snoozedUntil &&
+    new Date(incident.snoozedUntil).getTime() > Date.now();
   const relapseCount = incident.relapseCount ?? 0;
 
   return (
@@ -790,11 +862,16 @@ function IncidentDetailPage() {
               <Badge variant="outline">
                 {t("reopenedTimes", {
                   count: relapseCount,
-                  unit: relapseCount === 1 ? t("timeUnit.time") : t("timeUnit.times"),
+                  unit:
+                    relapseCount === 1
+                      ? t("timeUnit.time")
+                      : t("timeUnit.times"),
                 })}
               </Badge>
             )}
-            {incident.escalatedAt && <Badge variant="outline">{t("escalated")}</Badge>}
+            {incident.escalatedAt && (
+              <Badge variant="outline">{t("escalated")}</Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -803,7 +880,11 @@ function IncidentDetailPage() {
             size="icon"
             aria-label={t("actions.back")}
             onClick={() =>
-              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const, showSuppressed: undefined } })
+              navigate({
+                to: "/orgs/$org/incidents",
+                params: { org },
+                search: { state: "all" as const, showSuppressed: undefined },
+              })
             }
           >
             <ArrowLeft className="h-4 w-4" />
@@ -831,7 +912,9 @@ function IncidentDetailPage() {
               ) : (
                 <Eye className="h-4 w-4 sm:mr-2" />
               )}
-              <span className="hidden sm:inline">{t("actions.acknowledge")}</span>
+              <span className="hidden sm:inline">
+                {t("actions.acknowledge")}
+              </span>
             </Button>
           )}
           {isActive && incident.acknowledgedAt && !isSnoozed && (
@@ -846,7 +929,9 @@ function IncidentDetailPage() {
               ) : (
                 <EyeOff className="h-4 w-4 sm:mr-2" />
               )}
-              <span className="hidden sm:inline">{t("actions.unacknowledge")}</span>
+              <span className="hidden sm:inline">
+                {t("actions.unacknowledge")}
+              </span>
             </Button>
           )}
           {isActive && !isSnoozed && (
@@ -900,7 +985,9 @@ function IncidentDetailPage() {
         <Card>
           <CardHeader>
             <CardTitle>{t("detail.incidentDetails")}</CardTitle>
-            <CardDescription>{t("detail.incidentDetailsDescription")}</CardDescription>
+            <CardDescription>
+              {t("detail.incidentDetailsDescription")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {incident.description && (
@@ -918,12 +1005,14 @@ function IncidentDetailPage() {
               <Link
                 to="/orgs/$org/checks/$checkUid"
                 params={{ org, checkUid: incident.checkUid! }}
-                search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
+                search={{
+                  graphPeriod: undefined,
+                  graphFull: undefined,
+                  region: undefined,
+                }}
                 className="text-primary hover:underline inline-flex items-center gap-1"
               >
-                {incident.checkName ||
-                  incident.checkSlug ||
-                  incident.checkUid}
+                {incident.checkName || incident.checkSlug || incident.checkUid}
                 <ExternalLink className="h-3 w-3" />
               </Link>
             </div>
@@ -1004,7 +1093,11 @@ function IncidentDetailPage() {
 
       <FailureDetailsCard incident={incident} />
 
+      <ProbeResponseCard incident={incident} />
+
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
+
+      <IncidentPublicationsPanel org={org} incidentUid={incidentUid} />
 
       <CommentsCard org={org} incidentUid={incidentUid} />
 
@@ -1022,45 +1115,49 @@ function IncidentDetailPage() {
 
       <NotificationsCard org={org} incidentUid={incidentUid} />
 
-      {events?.data && events.data.some((e) => e.eventType !== "incident.comment") && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("eventLog.title")}</CardTitle>
-            <CardDescription>{t("eventLog.description")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("eventLog.time")}</TableHead>
-                  <TableHead>{t("eventLog.eventType")}</TableHead>
-                  <TableHead>{t("eventLog.actor")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* Comments render in their own card, not the raw event log. */}
-                {events.data
-                  .filter((e) => e.eventType !== "incident.comment")
-                  .map((event) => (
-                  <TableRow key={event.uid}>
-                    <TableCell className="text-sm">
-                      {event.createdAt
-                        ? new Date(event.createdAt).toLocaleString()
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <EventTypeBadge eventType={event.eventType} t={tEvents} />
-                    </TableCell>
-                    <TableCell className="text-sm capitalize">
-                      {event.actorType || "-"}
-                    </TableCell>
+      {events?.data &&
+        events.data.some((e) => e.eventType !== "incident.comment") && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("eventLog.title")}</CardTitle>
+              <CardDescription>{t("eventLog.description")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("eventLog.time")}</TableHead>
+                    <TableHead>{t("eventLog.eventType")}</TableHead>
+                    <TableHead>{t("eventLog.actor")}</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                </TableHeader>
+                <TableBody>
+                  {/* Comments render in their own card, not the raw event log. */}
+                  {events.data
+                    .filter((e) => e.eventType !== "incident.comment")
+                    .map((event) => (
+                      <TableRow key={event.uid}>
+                        <TableCell className="text-sm">
+                          {event.createdAt
+                            ? new Date(event.createdAt).toLocaleString()
+                            : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <EventTypeBadge
+                            eventType={event.eventType}
+                            t={tEvents}
+                          />
+                        </TableCell>
+                        <TableCell className="text-sm capitalize">
+                          {event.actorType || "-"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
       <SnoozeDialog
         open={snoozeOpen}
@@ -1147,14 +1244,18 @@ function FailureSnapshotBlock({
 }) {
   const { t } = useTranslation("incidents");
   const output = snapshot.output ?? {};
-  const outputEntries = Object.entries(output).filter(([key]) => key !== "error");
+  const outputEntries = Object.entries(output).filter(
+    ([key]) => key !== "error",
+  );
   const errorText = typeof output.error === "string" ? output.error : undefined;
 
   return (
-    <div className="space-y-3 rounded-lg border p-4">
+    <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
       <div className="text-sm font-medium text-muted-foreground">{title}</div>
       {errorText && (
-        <div className="break-words font-mono text-sm">{errorText}</div>
+        <div className="break-words font-mono text-sm text-destructive">
+          {errorText}
+        </div>
       )}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
         <div>
@@ -1220,7 +1321,9 @@ function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
     <Card data-testid="failure-details-card">
       <CardHeader>
         <CardTitle>{t("detail.failureDetails.title")}</CardTitle>
-        <CardDescription>{t("detail.failureDetails.description")}</CardDescription>
+        <CardDescription>
+          {t("detail.failureDetails.description")}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="text-base font-semibold">
@@ -1241,6 +1344,162 @@ function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
   );
 }
 
+// formatCaptureBytes renders a byte count compactly (the capture cap is 16 KB,
+// so KB is the largest unit that ever matters).
+function formatCaptureBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+// ProbeResponseCard renders "What the probe saw": the opt-in capture of the
+// response that opened (or reopened) this incident.
+//
+// Deliberately conservative in what it claims: this is what the probe received
+// at failure DETECTION, from one region, at one instant — never presented as
+// the target's current state. The capture timestamp and probing region sit
+// next to the content for exactly that reason.
+function ProbeResponseCard({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("incidents");
+  const capture: IncidentFailureResponse | undefined =
+    incident.details?.failureResponse;
+
+  if (!capture) return null;
+
+  const headerEntries = Object.entries(capture.headers ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+
+  return (
+    <Card data-testid="probe-response-card">
+      <CardHeader>
+        <CardTitle>{t("detail.probeResponse.title")}</CardTitle>
+        <CardDescription>
+          {t("detail.probeResponse.description")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="rounded-md bg-muted px-2 py-1 font-mono text-sm"
+            data-testid="probe-response-status-line"
+          >
+            {capture.statusLine || capture.statusCode || "-"}
+          </span>
+          {capture.url && (
+            <span className="break-all font-mono text-xs text-muted-foreground">
+              {capture.url}
+            </span>
+          )}
+        </div>
+
+        <div
+          className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4"
+          data-testid="probe-response-meta"
+        >
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.capturedAt")}
+            </div>
+            <div>
+              {capture.capturedAt
+                ? new Date(capture.capturedAt).toLocaleString()
+                : "-"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.region")}
+            </div>
+            <div>{capture.region || "-"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.remoteAddr")}
+            </div>
+            <div className="break-all font-mono text-xs">
+              {capture.remoteAddr || "-"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.contentType")}
+            </div>
+            <div className="break-all text-xs">
+              {capture.contentType || "-"}
+            </div>
+          </div>
+        </div>
+
+        {capture.truncated && (
+          <Alert data-testid="probe-response-truncated-notice">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {t("detail.probeResponse.truncated", {
+                shown: formatCaptureBytes(16 * 1024),
+                total:
+                  typeof capture.contentLength === "number" &&
+                  capture.contentLength > 0
+                    ? formatCaptureBytes(capture.contentLength)
+                    : t("detail.probeResponse.unknownSize"),
+              })}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {capture.binary && (
+          <Alert data-testid="probe-response-binary-notice">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {t("detail.probeResponse.binary", {
+                size:
+                  typeof capture.bodyBytes === "number"
+                    ? formatCaptureBytes(capture.bodyBytes)
+                    : t("detail.probeResponse.unknownSize"),
+                hash: capture.bodySha256 ?? "-",
+              })}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {capture.body !== undefined && capture.body !== "" && (
+          <CollapsibleCode
+            label={t("detail.probeResponse.bodyLabel")}
+            value={capture.body}
+          />
+        )}
+
+        {headerEntries.length > 0 && (
+          <div className="overflow-x-auto">
+            <Table data-testid="probe-response-headers-table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("detail.probeResponse.headerName")}</TableHead>
+                  <TableHead>{t("detail.probeResponse.headerValue")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {headerEntries.map(([name, value]) => (
+                  <TableRow key={name}>
+                    <TableCell className="whitespace-nowrap font-mono text-xs">
+                      {name}
+                    </TableCell>
+                    <TableCell className="break-all font-mono text-xs">
+                      {value}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className="pt-2 text-xs text-muted-foreground">
+              {t("detail.probeResponse.redactionNote")}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function BlastRadiusCard({
   org,
   incident,
@@ -1252,6 +1511,7 @@ function BlastRadiusCard({
   const { data: children } = useIncidents(org, {
     causedByIncidentUid: incident.uid,
     size: 50,
+    with: "check",
     refetchInterval: incident.state === "active" ? 30_000 : undefined,
   });
 
@@ -1259,7 +1519,7 @@ function BlastRadiusCard({
   if (items.length === 0) return null;
 
   return (
-    <Card>
+    <Card data-testid="blast-radius-card">
       <CardHeader>
         <CardTitle>
           {t("rollup.blastRadiusTitle", { count: items.length })}
@@ -1269,41 +1529,104 @@ function BlastRadiusCard({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("detail.checkLabel")}</TableHead>
-              <TableHead>{t("detail.state", { defaultValue: "State" })}</TableHead>
-              <TableHead>{t("rollup.rolledUpBadge")}</TableHead>
-              <TableHead />
+              <TableHead data-testid="blast-radius-header-check">
+                {t("detail.checkLabel")}
+              </TableHead>
+              <TableHead
+                className="whitespace-nowrap"
+                data-testid="blast-radius-header-state"
+              >
+                {t("detail.state")}
+              </TableHead>
+              <TableHead
+                className="whitespace-nowrap"
+                data-testid="blast-radius-header-paging"
+              >
+                {t("rollup.pagingColumn")}
+              </TableHead>
+              <TableHead className="whitespace-nowrap px-2">
+                <span className="sr-only">{t("rollup.checkLink")}</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((child) => (
-              <TableRow key={child.uid}>
-                <TableCell>
-                  {child.checkName || child.checkSlug || child.checkUid}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={child.state === "active" ? "destructive" : "secondary"}>
-                    {child.state === "active" ? t("active") : t("resolved")}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {child.pagingSuppressed && (
-                    <Badge variant="outline">{t("rollup.rolledUpBadge")}</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {child.uid && (
-                    <Link
-                      to="/orgs/$org/incidents/$incidentUid"
-                      params={{ org, incidentUid: child.uid }}
-                      className="text-primary hover:underline"
+            {items.map((child) => {
+              const displayName =
+                child.checkName || child.checkSlug || child.checkUid;
+              // checkUid alone is NOT "the check still exists" — it is an
+              // always-present historical FK on the incident row (backend
+              // IncidentResponse.CheckUID is a plain non-omitempty string,
+              // never cleared when the check is later hard-deleted). The
+              // only signal that hydration (`with=check`) actually found a
+              // live check is checkName/checkSlug being populated — the same
+              // signal displayName's fallback to the raw UID already relies
+              // on. Guarding the check-page link on checkUid alone would
+              // link to a check that 404s once it's gone. Bind the narrowed
+              // value (not just a boolean) so the Link below gets a `string`,
+              // not `string | undefined`.
+              const liveCheckUid =
+                child.checkUid && (child.checkName || child.checkSlug)
+                  ? child.checkUid
+                  : undefined;
+              return (
+                <TableRow key={child.uid} data-testid="blast-radius-row">
+                  <TableCell className="max-w-0">
+                    {child.uid ? (
+                      <Link
+                        to="/orgs/$org/incidents/$incidentUid"
+                        params={{ org, incidentUid: child.uid }}
+                        title={displayName}
+                        data-testid="blast-radius-check-link"
+                        className="block truncate font-medium text-primary hover:underline"
+                      >
+                        {displayName}
+                      </Link>
+                    ) : (
+                      <span
+                        title={displayName}
+                        className="block truncate font-medium"
+                      >
+                        {displayName}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <Badge
+                      variant={
+                        child.state === "active" ? "destructive" : "secondary"
+                      }
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+                      {child.state === "active" ? t("active") : t("resolved")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {child.pagingSuppressed && (
+                      <Badge variant="outline">
+                        {t("rollup.rolledUpBadge")}
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap px-2 text-right">
+                    {liveCheckUid && (
+                      <Link
+                        to="/orgs/$org/checks/$checkUid"
+                        params={{ org, checkUid: liveCheckUid }}
+                        search={{
+                          graphPeriod: undefined,
+                          graphFull: undefined,
+                          region: undefined,
+                        }}
+                        aria-label={t("rollup.checkLink")}
+                        data-testid="blast-radius-open-check"
+                        className="inline-flex text-muted-foreground hover:text-foreground"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
         <p className="mt-3 text-xs text-muted-foreground">
@@ -1348,7 +1671,9 @@ function NotificationsCard({
             </Badge>
           )}
         </CardTitle>
-        <CardDescription>Who was notified and the delivery status.</CardDescription>
+        <CardDescription>
+          Who was notified and the delivery status.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading && <Skeleton className="h-24 w-full" />}
@@ -1386,14 +1711,20 @@ function NotificationsCard({
                   }}
                   data-testid="notification-row"
                 >
-                  <TableCell className="text-sm whitespace-nowrap" title={row.createdAt}>
+                  <TableCell
+                    className="text-sm whitespace-nowrap"
+                    title={row.createdAt}
+                  >
                     {new Date(row.createdAt).toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <EventTypeBadge eventType={row.eventType} t={tEvents} />
                   </TableCell>
                   <TableCell>
-                    <Badge variant={notificationStatusVariant(row.status)} className="text-xs capitalize">
+                    <Badge
+                      variant={notificationStatusVariant(row.status)}
+                      className="text-xs capitalize"
+                    >
                       {row.status}
                     </Badge>
                   </TableCell>
@@ -1404,7 +1735,9 @@ function NotificationsCard({
                       </span>
                     ) : row.connection ? (
                       <span className="flex items-center gap-1">
-                        <span className="capitalize text-muted-foreground text-xs">{row.connection.type}</span>
+                        <span className="capitalize text-muted-foreground text-xs">
+                          {row.connection.type}
+                        </span>
                         {row.connection.name}
                       </span>
                     ) : (
@@ -1414,7 +1747,9 @@ function NotificationsCard({
                   <TableCell className="text-sm text-muted-foreground">
                     {sourceLabel(row.source, row.repeatIndex)}
                   </TableCell>
-                  <TableCell className="text-sm">{channelTypeLabel(t, row.channelType)}</TableCell>
+                  <TableCell className="text-sm">
+                    {channelTypeLabel(t, row.channelType)}
+                  </TableCell>
                   {hasErrors && (
                     <TableCell
                       className="text-sm text-destructive max-w-[200px] truncate"
@@ -1454,12 +1789,8 @@ function EscalationTimelineCard({ events }: EscalationTimelineCardProps) {
       <CardContent className="space-y-2">
         {events.map((event) => {
           const failed = event.eventType === "incident.escalation_failed";
-          const stepPos = event.payload?.step_position as
-            | number
-            | undefined;
-          const repeatIdx = event.payload?.repeat_index as
-            | number
-            | undefined;
+          const stepPos = event.payload?.step_position as number | undefined;
+          const repeatIdx = event.payload?.repeat_index as number | undefined;
           return (
             <div
               key={event.uid}
@@ -1481,16 +1812,12 @@ function EscalationTimelineCard({ events }: EscalationTimelineCardProps) {
                   ? new Date(event.createdAt).toLocaleString()
                   : "-"}
               </span>
-              {stepPos !== undefined && (
-                <span>· step {stepPos + 1}</span>
-              )}
+              {stepPos !== undefined && <span>· step {stepPos + 1}</span>}
               {repeatIdx !== undefined && repeatIdx > 0 && (
                 <span>· cycle {repeatIdx + 1}</span>
               )}
               {failed && typeof event.payload?.reason === "string" && (
-                <span className="text-red-500">
-                  · {event.payload.reason}
-                </span>
+                <span className="text-red-500">· {event.payload.reason}</span>
               )}
             </div>
           );

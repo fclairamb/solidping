@@ -243,7 +243,7 @@ func TestReapStuckJobsPostgres(t *testing.T) {
 	r := require.New(t)
 	ctx := t.Context()
 
-	dbSvc, err := postgres.NewEmbedded(ctx, "jobsvc-reapstuck", 5447, false, "", false)
+	dbSvc, err := postgres.NewEmbedded(ctx, "jobsvc-reapstuck", 5447, false, "", false, 0)
 	r.NoError(err, "failed to start embedded postgres")
 	require.NoError(t, dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })

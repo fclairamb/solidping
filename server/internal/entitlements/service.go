@@ -432,6 +432,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	if limits.MaxWhatsappPerMonth != nil {
 		out.Limits.MaxWhatsappPerMonth = limits.MaxWhatsappPerMonth
 	}
+	if limits.MaxSlos != nil {
+		out.Limits.MaxSlos = limits.MaxSlos
+	}
 
 	return out
 }

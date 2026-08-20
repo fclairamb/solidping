@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -62,6 +63,9 @@ func TestRecognizedEnvVars(t *testing.T) {
 	r.Contains(set, "SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES")
 	r.Contains(set, "SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH")
 	r.Contains(set, "SP_LOG_LEVEL")
+	r.Contains(set, "SP_DB_SLOW_QUERY_THRESHOLD")
+	r.Contains(set, "SP_DB_MIGRATION_GUARD_MODE")
+	r.Contains(set, "SP_SENTRY_TRACES_SAMPLE_RATE")
 
 	// Confirmed-broken bindings must NOT be recognized (see spec open question):
 	// SP_ENCRYPTION_MASTER_KEY transforms to encryption.master.key but the tag
@@ -84,6 +88,8 @@ func TestManualReaderEnvVarsBind(t *testing.T) {
 	t.Setenv("SP_REALTIME_MAX_CONNECTIONS", "1234")
 	t.Setenv("SP_ENTITLEMENTS_SMS_RUNAWAY_PER_HOUR", "42")
 	t.Setenv("SP_ENTITLEMENTS_CALL_RUNAWAY_PER_HOUR", "7")
+	t.Setenv("SP_DB_SLOW_QUERY_THRESHOLD", "250ms")
+	t.Setenv("SP_DB_MIGRATION_GUARD_MODE", "warn")
 
 	r := require.New(t)
 	cfg, err := Load()
@@ -94,6 +100,61 @@ func TestManualReaderEnvVarsBind(t *testing.T) {
 	r.Equal(1234, cfg.Realtime.MaxConnections)
 	r.Equal(42, cfg.Entitlements.SMSRunawayPerHour)
 	r.Equal(7, cfg.Entitlements.CallRunawayPerHour)
+	r.Equal(250*time.Millisecond, cfg.Database.SlowQueryThreshold)
+	r.Equal(MigrationGuardModeWarn, cfg.Database.MigrationGuardMode)
+}
+
+// TestDBSlowQueryThresholdDefaultsTo500ms pins the documented default and
+// proves it survives Load() with no env override — a successful query below
+// this must stay at DEBUG, at or above it must WARN.
+func TestDBSlowQueryThresholdDefaultsTo500ms(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(500*time.Millisecond, cfg.Database.SlowQueryThreshold)
+}
+
+// TestDBSlowQueryThresholdZeroDisables proves SP_DB_SLOW_QUERY_THRESHOLD=0
+// binds through to the documented "0 disables" sentinel rather than being
+// treated as "unset" and falling back to the default.
+func TestDBSlowQueryThresholdZeroDisables(t *testing.T) {
+	t.Setenv("SP_DB_SLOW_QUERY_THRESHOLD", "0s")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Zero(cfg.Database.SlowQueryThreshold)
+}
+
+// TestMigrationGuardModeDefaultsToStrict pins the documented default:
+// blocking stays the default, with no env override needed to get it.
+func TestMigrationGuardModeDefaultsToStrict(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(MigrationGuardModeStrict, cfg.Database.MigrationGuardMode)
+	r.NoError(cfg.Validate())
+}
+
+// TestMigrationGuardModeInvalidValueFailsValidation proves an unrecognized
+// SP_DB_MIGRATION_GUARD_MODE value is a config validation error rather than a
+// silent fallback to strict or warn.
+func TestMigrationGuardModeInvalidValueFailsValidation(t *testing.T) {
+	t.Setenv("SP_DB_MIGRATION_GUARD_MODE", "yolo")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal("yolo", cfg.Database.MigrationGuardMode, "the bad value must survive Load so Validate can reject it")
+	r.ErrorIs(cfg.Validate(), ErrInvalidMigrationGuardMode)
 }
 
 // TestExitWithParentEnvVarBinds proves SP_EXIT_WITH_PARENT both lands on its

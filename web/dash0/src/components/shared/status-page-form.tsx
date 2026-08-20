@@ -32,6 +32,10 @@ interface StatusPageFormData {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyPeriod: StatusPagePeriod;
+  // Incident auto-publication (spec 2026-08-19-08).
+  autoPublish: boolean;
+  autoPublishDelaySeconds: number;
+  autoResolve: "always" | "if_untouched" | "never";
   // Edit mode only (see StatusPageForm's mode==="edit" gate below). No deep
   // merge: null resets the section to the platform defaults (99.9/99.0),
   // an object replaces it wholly.
@@ -64,6 +68,21 @@ export function StatusPageForm({
   const [showResponseTime, setShowResponseTime] = useState(initialData?.showResponseTime ?? true);
   const [historyPeriod, setHistoryPeriod] = useState<StatusPagePeriod>(
     initialData?.historyPeriod ?? "90d"
+  );
+  // Auto-publish. A NEW page defaults to on; an existing page shows whatever
+  // the server says, which for pages created before this feature is off — the
+  // migration deliberately did not opt anyone in retroactively.
+  const [autoPublish, setAutoPublish] = useState(
+    initialData?.autoPublish ?? mode === "create"
+  );
+  const [autoPublishDelayInput, setAutoPublishDelayInput] = useState(
+    (initialData?.autoPublishDelaySeconds ?? 60).toString()
+  );
+  const [autoResolve, setAutoResolve] = useState<
+    "always" | "if_untouched" | "never"
+  >(
+    (initialData?.autoResolve as "always" | "if_untouched" | "never") ??
+      "if_untouched"
   );
   // Availability thresholds (edit mode only — defaults are right for a new
   // page). Kept as raw strings so an empty field can mean "use the default"
@@ -111,6 +130,14 @@ export function StatusPageForm({
       showAvailability,
       showResponseTime,
       historyPeriod,
+      autoPublish,
+      // An unparseable or blank delay falls back to the documented default
+      // rather than sending NaN, which the API would reject with a validation
+      // error the operator cannot act on.
+      autoPublishDelaySeconds: Number.isFinite(Number(autoPublishDelayInput))
+        ? Math.max(0, Math.trunc(Number(autoPublishDelayInput)))
+        : 60,
+      autoResolve,
       settings,
     });
   };
@@ -296,6 +323,82 @@ export function StatusPageForm({
                 <SelectItem value="90d">90 days</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="status-page-auto-publish-card">
+        <CardHeader>
+          <CardTitle>Incident publication</CardTitle>
+          <CardDescription>
+            Turn monitoring incidents into public incidents on this page,
+            automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="autoPublish">Auto-publish incidents</Label>
+              <p className="text-xs text-muted-foreground">
+                Publish an incident affecting this page's components as a public
+                incident, with a templated title and a first update.
+              </p>
+            </div>
+            <Switch
+              id="autoPublish"
+              checked={autoPublish}
+              onCheckedChange={setAutoPublish}
+              data-testid="status-page-auto-publish-switch"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="autoPublishDelaySeconds">
+              Publication delay (seconds)
+            </Label>
+            <Input
+              id="autoPublishDelaySeconds"
+              type="number"
+              min={0}
+              max={86400}
+              value={autoPublishDelayInput}
+              onChange={(e) => setAutoPublishDelayInput(e.target.value)}
+              disabled={!autoPublish}
+              data-testid="status-page-auto-publish-delay"
+            />
+            <p className="text-xs text-muted-foreground">
+              An incident that recovers within this window is never published —
+              a short blip stays private. 0 publishes immediately.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="autoResolve">When the incident resolves</Label>
+            <Select
+              value={autoResolve}
+              onValueChange={(v) =>
+                setAutoResolve(v as "always" | "if_untouched" | "never")
+              }
+              disabled={!autoPublish}
+            >
+              <SelectTrigger
+                id="autoResolve"
+                data-testid="status-page-auto-resolve"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="if_untouched">
+                  Resolve it, unless someone edited it
+                </SelectItem>
+                <SelectItem value="always">Always resolve it</SelectItem>
+                <SelectItem value="never">Leave it open</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Once you edit a published incident it is yours: the default posts
+              a "component recovered" note and leaves the final word to you.
+            </p>
           </div>
         </CardContent>
       </Card>

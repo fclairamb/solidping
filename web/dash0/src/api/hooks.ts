@@ -98,7 +98,7 @@ export interface Check {
   status?: "up" | "down" | "validating" | "created" | "degraded" | "unknown";
   lastResult?: {
     uid?: string;
-    status?: "up" | "down" | "error" | "timeout" | "created";
+    status?: "up" | "down" | "error" | "timeout" | "created" | "abandoned";
     timestamp?: string;
     durationMs?: number;
     metrics?: Record<string, unknown>;
@@ -230,6 +230,33 @@ export interface IncidentResultSnapshot {
   output?: Record<string, unknown>;
 }
 
+/** What the probe received from a failing HTTP target at this incident's
+ * current onset. Present only for checks with `capture_failure_response`
+ * enabled that failed AFTER a response existed (a timeout / DNS / TLS failure
+ * never produces one). Operator-facing evidence — it is never serialized onto
+ * a status page or a subscriber payload. */
+export interface IncidentFailureResponse {
+  url?: string;
+  statusLine?: string;
+  statusCode?: number;
+  /** Response headers; sensitive values are already `[redacted]` server-side.
+   * Request headers are never captured. */
+  headers?: Record<string, string>;
+  /** Absent when `binary` is true — a non-text body is reduced to metadata. */
+  body?: string;
+  /** True when `body` holds only the leading bytes; compare with contentLength. */
+  truncated?: boolean;
+  contentLength?: number;
+  contentType?: string;
+  bodyBytes?: number;
+  bodySha256?: string;
+  /** True when the body was not text-like or not valid UTF-8. */
+  binary?: boolean;
+  capturedAt?: string;
+  remoteAddr?: string;
+  region?: string;
+}
+
 export interface IncidentDetails {
   /** Human-readable cause, same key the Slack notifier reads. */
   failure_reason?: string;
@@ -237,6 +264,8 @@ export interface IncidentDetails {
   first_result?: IncidentResultSnapshot;
   /** The result from the most recent reopen, if the incident has relapsed. */
   last_failure?: IncidentResultSnapshot;
+  /** Opt-in capture of the failing response at the current onset. */
+  failureResponse?: IncidentFailureResponse;
 }
 
 export interface IncidentDetail {
@@ -942,14 +971,15 @@ export function useResults(
       if (options?.size) params.set("limit", options.size.toString());
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
+      // Results pagination is cursor-only — no `total` (the results table is
+      // the largest in the system; see wiki/api-specification/results-incidents.md).
       const response = await apiFetch<{
         data?: OrgResult[];
-        pagination?: CursorPagination;
+        pagination?: { cursor?: string; size?: number };
       }>(path);
       return {
         data: response.data || [],
         cursor: response.pagination?.cursor,
-        total: response.pagination?.total,
       };
     },
     enabled: !!org,
@@ -1710,6 +1740,17 @@ export interface StatusPage {
   showResponseTime: boolean;
   historyDays: number;
   historyPeriod: StatusPagePeriod;
+  /**
+   * Incident auto-publication settings (spec 2026-08-19-08).
+   *
+   * `autoPublish` is FALSE on every page that existed before this feature
+   * shipped — the migration deliberately did not opt anyone in retroactively —
+   * and TRUE on pages created since.
+   */
+  autoPublish: boolean;
+  /** 0 publishes immediately; an incident shorter than this never publishes. */
+  autoPublishDelaySeconds: number;
+  autoResolve: "always" | "if_untouched" | "never";
   // Operator-authored stylesheet applied to the PUBLIC status page (status0).
   // Never applied to dash0's own chrome — only inside the appearance preview
   // iframe, which loads the real status0 renderer.
@@ -1748,6 +1789,11 @@ export interface StatusPageResource {
   checkGroupUid?: string;
   publicName?: string;
   explanation?: string;
+  /**
+   * Per-resource auto-publish override (spec 2026-08-19-08). Three-state:
+   * absent means "inherit the page", which is NOT the same as false.
+   */
+  autoPublish?: boolean;
   position: number;
   check?: {
     name?: string;
@@ -1768,6 +1814,9 @@ export interface CreateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  autoPublish?: boolean;
+  autoPublishDelaySeconds?: number;
+  autoResolve?: "always" | "if_untouched" | "never";
   customCss?: string;
   customDomain?: string;
 }
@@ -1783,6 +1832,9 @@ export interface UpdateStatusPageRequest {
   showResponseTime?: boolean;
   historyDays?: number;
   historyPeriod?: StatusPagePeriod;
+  autoPublish?: boolean;
+  autoPublishDelaySeconds?: number;
+  autoResolve?: "always" | "if_untouched" | "never";
   // An empty string clears the custom stylesheet; omit to leave it unchanged.
   customCss?: string;
   // null clears the custom domain; a non-empty string sets it; omit to leave
@@ -1831,7 +1883,7 @@ export interface UpdateResourceRequest {
 }
 
 // Status Page hooks
-export function useStatusPages(org: string) {
+export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["statusPages", org],
     queryFn: async () => {
@@ -1840,7 +1892,7 @@ export function useStatusPages(org: string) {
       );
       return response.data || [];
     },
-    enabled: !!org,
+    enabled: (opts?.enabled ?? true) && !!org,
   });
 }
 
@@ -3522,7 +3574,7 @@ export interface UpdateEscalationPolicyRequest {
   steps?: EscalationPolicyStep[];
 }
 
-export function useEscalationPolicies(org: string) {
+export function useEscalationPolicies(org: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["escalationPolicies", org],
     queryFn: async () => {
@@ -3531,7 +3583,7 @@ export function useEscalationPolicies(org: string) {
       );
       return response.data || [];
     },
-    enabled: !!org,
+    enabled: (opts?.enabled ?? true) && !!org,
   });
 }
 
@@ -3610,7 +3662,8 @@ export type ConnectionType =
   | "msteams"
   | "msteams-bot"
   | "ntfy"
-  | "opsgenie"
+  | "matrix"
+  | "pagerduty"
   | "pushover"
   | "freebox"
   | "webpush"
@@ -3640,7 +3693,8 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   msteams: NOTIFY,
   "msteams-bot": NOTIFY,
   ntfy: NOTIFY,
-  opsgenie: NOTIFY,
+  matrix: NOTIFY,
+  pagerduty: NOTIFY,
   pushover: NOTIFY,
   freebox: SOURCE,
   webpush: NOTIFY,
@@ -4819,6 +4873,8 @@ export interface EntitlementsLimits {
   maxCustomDomains?: number | null;
   /** Cap on outbound WhatsApp template messages per UTC month. null = unlimited. */
   maxWhatsappPerMonth?: number | null;
+  /** Cap on service-level objectives. null = unlimited. */
+  maxSlos?: number | null;
 }
 
 /**
@@ -4854,6 +4910,8 @@ export interface EntitlementsUsage {
    * persistent counter, not a live count — sent messages cannot be un-sent.
    */
   whatsappThisMonth: number;
+  /** Count of live service-level objectives. */
+  slos: number;
   /**
    * Instance-spend guard state. A breach must never fail silently — what it
    * drops is an alert — so it surfaces here as well as in the server logs.
@@ -5320,6 +5378,11 @@ export interface AgentInfo {
   lastSeenAt?: string;
   enrolledAt: string;
   revokedAt?: string;
+  /** Self-reported build version (spec 2026-08-19-07), resolved from the
+   * agent's worker row. `null`/absent means "never reported" — an agent
+   * predating this feature, or one that has not sent a claim frame yet —
+   * and must be rendered as unknown, never as drifted. */
+  version?: string | null;
 }
 
 export interface EnrollmentToken {
@@ -5474,5 +5537,538 @@ export function useDeleteEnrollmentToken(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agent-enrollment-tokens", org] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Incident publications — the status-page publication overlay (spec
+// 2026-08-19-08).
+//
+// A publication is the CUSTOMER-FACING incident: it has a public title, a
+// public state and an append-only narrative. It is deliberately not the
+// internal `Incident`, which carries ack/snooze metadata, an auto-generated
+// title built from the check slug, and probe diagnostics that must never reach
+// a customer.
+// ---------------------------------------------------------------------------
+
+export type PublicationState =
+  | "investigating"
+  | "identified"
+  | "monitoring"
+  | "resolved";
+
+export type PublicationSeverity = "minor" | "major" | "critical";
+
+export interface PublicationUpdate {
+  uid: string;
+  kind: string;
+  title: string;
+  bodyMarkdown: string;
+  publishedAt: string;
+  /** Absent for updates generated by the auto-publish pipeline. */
+  authorUid?: string;
+}
+
+export interface IncidentPublication {
+  uid: string;
+  statusPageUid: string;
+  incidentUid?: string;
+  title: string;
+  state: PublicationState;
+  severity?: PublicationSeverity;
+  autoCreated: boolean;
+  /** True once a person edited the publication or posted an update on it. */
+  humanTouched: boolean;
+  publishedAt: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  updates?: PublicationUpdate[];
+  affectedResources?: string[];
+}
+
+export function useIncidentPublications(
+  org: string,
+  statusPageUid: string,
+  options?: { activeOnly?: boolean },
+) {
+  return useQuery({
+    queryKey: ["incidentPublications", org, statusPageUid, options?.activeOnly],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options?.activeOnly) params.set("active", "true");
+      const query = params.toString();
+      const response = await apiFetch<{ data?: IncidentPublication[] }>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/incidents${query ? `?${query}` : ""}`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!statusPageUid,
+  });
+}
+
+export function useIncidentPublication(
+  org: string,
+  statusPageUid: string,
+  uid: string,
+) {
+  return useQuery({
+    queryKey: ["incidentPublication", org, statusPageUid, uid],
+    queryFn: () =>
+      apiFetch<IncidentPublication>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/incidents/${uid}`,
+      ),
+    enabled: !!org && !!statusPageUid && !!uid,
+  });
+}
+
+export interface CreateIncidentPublicationRequest {
+  title: string;
+  state?: PublicationState;
+  severity?: PublicationSeverity;
+  incidentUid?: string;
+  bodyMarkdown?: string;
+}
+
+export function useCreateIncidentPublication(
+  org: string,
+  statusPageUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateIncidentPublicationRequest) =>
+      apiFetch<IncidentPublication>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/incidents`,
+        { method: "POST", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["incidentPublications", org, statusPageUid],
+      });
+    },
+  });
+}
+
+export interface UpdateIncidentPublicationRequest {
+  title?: string;
+  state?: PublicationState;
+  /** An empty string clears the severity badge. */
+  severity?: PublicationSeverity | "";
+}
+
+export function useUpdateIncidentPublication(
+  org: string,
+  statusPageUid: string,
+  uid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateIncidentPublicationRequest) =>
+      apiFetch<IncidentPublication>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/incidents/${uid}`,
+        { method: "PATCH", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["incidentPublications", org, statusPageUid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["incidentPublication", org, statusPageUid, uid],
+      });
+    },
+  });
+}
+
+export interface AppendPublicationUpdateRequest {
+  kind: string;
+  title?: string;
+  bodyMarkdown: string;
+}
+
+/**
+ * Appends one narrative entry. Updates are append-only by design — there is no
+ * edit or delete endpoint, because a posted update is a promise, not a draft.
+ */
+export function useAppendPublicationUpdate(
+  org: string,
+  statusPageUid: string,
+  uid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: AppendPublicationUpdateRequest) =>
+      apiFetch<PublicationUpdate>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/incidents/${uid}/updates`,
+        { method: "POST", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["incidentPublication", org, statusPageUid, uid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["incidentPublications", org, statusPageUid],
+      });
+    },
+  });
+}
+
+/** Publications of one internal incident, across every status page. */
+export function useIncidentPublicationsForIncident(
+  org: string,
+  incidentUid: string,
+) {
+  return useQuery({
+    queryKey: ["incidentPublicationsForIncident", org, incidentUid],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: IncidentPublication[] }>(
+        `/api/v1/orgs/${org}/incidents/${incidentUid}/publications`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!incidentUid,
+  });
+}
+
+export function usePublishIncident(org: string, incidentUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: {
+      statusPageUid: string;
+      title?: string;
+      severity?: PublicationSeverity;
+    }) =>
+      apiFetch<IncidentPublication>(
+        `/api/v1/orgs/${org}/incidents/${incidentUid}/publications`,
+        { method: "POST", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["incidentPublicationsForIncident", org, incidentUid],
+      });
+    },
+  });
+}
+
+export function useUnpublishIncident(org: string, incidentUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (publicationUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/incidents/${incidentUid}/publications/${publicationUid}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["incidentPublicationsForIncident", org, incidentUid],
+      });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SLOs (spec 2026-08-20-01)
+// ---------------------------------------------------------------------------
+
+export type SloState = "healthy" | "at_risk" | "breached" | "unknown";
+
+export interface Slo {
+  uid: string;
+  name: string;
+  slug: string;
+  /** Exactly one of checkUid / checkGroupUid is set. */
+  checkUid?: string;
+  checkGroupUid?: string;
+  checkName?: string;
+  checkGroupName?: string;
+  targetPct: number;
+  timezone: string;
+  excludeMaintenance: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SloWindow {
+  start: string;
+  end: string;
+  label: string;
+}
+
+export interface SloStatusRow {
+  window: SloWindow;
+  /**
+   * null when the window carries no countable probe. NEVER render null as
+   * 100% — no data is not "everything was fine", it is "we were not watching".
+   */
+  attainmentPct: number | null;
+  hasData: boolean;
+  targetPct: number;
+  totalChecks: number;
+  successfulChecks: number;
+  monitoredSeconds: number;
+  elapsedSeconds: number;
+  budgetTotalSeconds: number;
+  budgetConsumedSeconds: number;
+  budgetRemainingSeconds: number;
+  excludedMaintenanceSeconds: number;
+  burnRate: number | null;
+  projectedExhaustionAt: string | null;
+  state: SloState;
+  partial: boolean;
+}
+
+export interface SloIncidents {
+  count: number;
+  longestSeconds?: number;
+  averageSeconds?: number;
+  totalDowntimeSeconds?: number;
+}
+
+export interface SloStatus {
+  slo: Slo;
+  current: SloStatusRow;
+  incidents: SloIncidents;
+}
+
+export interface CreateSloRequest {
+  name: string;
+  slug?: string;
+  checkUid?: string | null;
+  checkGroupUid?: string | null;
+  targetPct?: number;
+  timezone?: string;
+  excludeMaintenance?: boolean;
+  enabled?: boolean;
+}
+
+export type UpdateSloRequest = Partial<CreateSloRequest>;
+
+export function useSlos(org: string, params?: { checkUid?: string; enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["slos", org, { checkUid: params?.checkUid }],
+    queryFn: async () => {
+      const search = new URLSearchParams();
+      if (params?.checkUid) search.set("checkUid", params.checkUid);
+      const query = search.toString();
+      const response = await apiFetch<{ data?: Slo[] }>(
+        `/api/v1/orgs/${org}/slos${query ? `?${query}` : ""}`,
+      );
+      return response.data ?? [];
+    },
+    enabled: (params?.enabled ?? true) && !!org,
+  });
+}
+
+export function useSlo(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["slo", org, uid],
+    queryFn: () => apiFetch<Slo>(`/api/v1/orgs/${org}/slos/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useSloStatus(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["sloStatus", org, uid],
+    queryFn: () => apiFetch<SloStatus>(`/api/v1/orgs/${org}/slos/${uid}/status`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useSloHistory(org: string, uid: string, months = 12) {
+  return useQuery({
+    queryKey: ["sloHistory", org, uid, months],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: SloStatusRow[] }>(
+        `/api/v1/orgs/${org}/slos/${uid}/history?months=${months}`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org && !!uid,
+  });
+}
+
+export interface SloBurndownPoint {
+  at: string;
+  /** Negative once the budget is overspent — never clamped. */
+  budgetRemainingSeconds: number;
+  /** The pace that spends the budget exactly over the window, no faster. */
+  idealRemainingSeconds: number;
+  attainmentPct: number | null;
+  hasData: boolean;
+}
+
+export interface SloBurndown {
+  window: SloWindow;
+  targetPct: number;
+  budgetTotalSeconds: number;
+  data: SloBurndownPoint[];
+}
+
+export function useSloBurndown(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["sloBurndown", org, uid],
+    queryFn: () => apiFetch<SloBurndown>(`/api/v1/orgs/${org}/slos/${uid}/burndown`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateSlo(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateSloRequest) =>
+      apiFetch<Slo>(`/api/v1/orgs/${org}/slos`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+    },
+  });
+}
+
+export function useUpdateSlo(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateSloRequest) =>
+      apiFetch<Slo>(`/api/v1/orgs/${org}/slos/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+      queryClient.invalidateQueries({ queryKey: ["slo", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["sloStatus", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["sloBurndown", org, uid] });
+    },
+  });
+}
+
+export function useDeleteSlo(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/slos/${uid}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Report schedules (spec 2026-08-20-01)
+// ---------------------------------------------------------------------------
+
+export type ReportFrequency = "weekly" | "monthly";
+
+export interface ReportSchedule {
+  uid: string;
+  name: string;
+  frequency: ReportFrequency;
+  timezone: string;
+  /** PII: only ever shown to the organization's own admins. */
+  recipients: string[];
+  checkUids: string[];
+  checkGroupUids: string[];
+  includeSlos: boolean;
+  enabled: boolean;
+  lastPeriodStart?: string;
+  lastRunAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateReportScheduleRequest {
+  name: string;
+  frequency: ReportFrequency;
+  timezone?: string;
+  recipients: string[];
+  checkUids?: string[];
+  checkGroupUids?: string[];
+  includeSlos?: boolean;
+  enabled?: boolean;
+}
+
+export type UpdateReportScheduleRequest = Partial<CreateReportScheduleRequest>;
+
+export function useReportSchedules(org: string) {
+  return useQuery({
+    queryKey: ["reportSchedules", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: ReportSchedule[] }>(
+        `/api/v1/orgs/${org}/report-schedules`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useReportSchedule(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["reportSchedule", org, uid],
+    queryFn: () => apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateReportSchedule(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateReportScheduleRequest) =>
+      apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
+    },
+  });
+}
+
+export function useUpdateReportSchedule(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateReportScheduleRequest) =>
+      apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
+      queryClient.invalidateQueries({ queryKey: ["reportSchedule", org, uid] });
+    },
+  });
+}
+
+export function useDeleteReportSchedule(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
+    },
+  });
+}
+
+export function useTestReportSchedule(org: string) {
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}/test`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
   });
 }

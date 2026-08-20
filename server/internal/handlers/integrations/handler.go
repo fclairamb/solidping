@@ -82,7 +82,7 @@ func (h *Handler) ListIntegrations(writer http.ResponseWriter, req *http.Request
 
 	connections, err := h.svc.ListIntegrations(req.Context(), orgSlug, typeFilter)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, connections)
@@ -95,7 +95,7 @@ func (h *Handler) GetIntegration(writer http.ResponseWriter, req *http.Request) 
 
 	connection, err := h.svc.GetIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, connection)
@@ -139,7 +139,7 @@ func (h *Handler) CreateIntegration(writer http.ResponseWriter, req *http.Reques
 
 	connection, err := h.svc.CreateIntegration(req.Context(), orgSlug, createReq)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	// Product analytics (spec 2026-08-02-08). No-op unless PostHog is
@@ -186,7 +186,7 @@ func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req *http.Reques
 	// with create/delete. Resolve the existing connection to key off its type.
 	existing, err := h.svc.GetIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	if blocked, gErr := h.requireAdminForSourceType(
@@ -196,7 +196,7 @@ func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req *http.Reques
 
 	connection, err := h.svc.UpdateIntegration(req.Context(), orgSlug, connectionUID, updateReq)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, connection)
@@ -211,7 +211,7 @@ func (h *Handler) DeleteIntegration(writer http.ResponseWriter, req *http.Reques
 	// existing connection so the guard keys off its stored type.
 	existing, err := h.svc.GetIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	if blocked, gErr := h.requireAdminForSourceType(
@@ -220,7 +220,7 @@ func (h *Handler) DeleteIntegration(writer http.ResponseWriter, req *http.Reques
 	}
 
 	if err := h.svc.DeleteIntegration(req.Context(), orgSlug, connectionUID); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -244,7 +244,7 @@ func (h *Handler) StartFreeboxPairing(writer http.ResponseWriter, req *http.Requ
 
 	resp, err := h.svc.StartFreeboxPairing(req.Context(), orgSlug, body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, resp)
@@ -259,7 +259,7 @@ func (h *Handler) GetFreeboxPairingStatus(writer http.ResponseWriter, req *http.
 
 	resp, err := h.svc.CheckFreeboxPairingStatus(req.Context(), orgSlug, connectionUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -274,7 +274,7 @@ func (h *Handler) RotateWebhookSecret(writer http.ResponseWriter, req *http.Requ
 
 	connection, err := h.svc.RotateWebhookSecret(req.Context(), orgSlug, connectionUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, connection)
@@ -289,14 +289,14 @@ func (h *Handler) TestIntegration(writer http.ResponseWriter, req *http.Request)
 
 	result, err := h.svc.TestIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, result)
 }
 
 // handleError maps service errors to HTTP responses.
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -332,6 +332,6 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrInvalidSettings):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

@@ -58,7 +58,7 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 	if err := req.ParseMultipartForm(MaxLogoSize); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			return h.WriteErrorErr(writer, http.StatusRequestEntityTooLarge, errCodeLogoTooLarge,
+			return h.WriteErrorErr(writer, req, http.StatusRequestEntityTooLarge, errCodeLogoTooLarge,
 				"Logo must be 1 MB or smaller", err)
 		}
 
@@ -78,7 +78,7 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 
 	opened, err := header.Open()
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	defer func() { _ = opened.Close() }()
@@ -90,7 +90,7 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 		Body:     opened,
 	}, uploaderUID(req))
 	if err != nil {
-		return h.writeError(writer, err)
+		return h.writeError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, newResponse(org))
@@ -100,7 +100,7 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
 	org, err := h.svc.Clear(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.writeError(writer, err)
+		return h.writeError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, newResponse(org))
@@ -119,7 +119,7 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error
 			return h.WriteError(writer, http.StatusNotFound, errCodeLogoNotFound, "Logo not found")
 		}
 
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	defer func() { _ = body.Close() }()
@@ -145,10 +145,10 @@ func uploaderUID(req *http.Request) *string {
 	return &user.UID
 }
 
-func (h *Handler) writeError(writer http.ResponseWriter, err error) error {
+func (h *Handler) writeError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
 			"Organization not found", err)
 	case errors.Is(err, ErrUnsupportedLogoType):
 		return h.WriteValidationError(writer, "Unsupported logo type", []base.ValidationErrorField{
@@ -159,9 +159,9 @@ func (h *Handler) writeError(writer http.ResponseWriter, err error) error {
 			{Name: logoFormField, Message: "The uploaded file is empty"},
 		})
 	case errors.Is(err, ErrLogoTooLarge):
-		return h.WriteErrorErr(writer, http.StatusRequestEntityTooLarge, errCodeLogoTooLarge,
+		return h.WriteErrorErr(writer, request, http.StatusRequestEntityTooLarge, errCodeLogoTooLarge,
 			"Logo must be 1 MB or smaller", err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

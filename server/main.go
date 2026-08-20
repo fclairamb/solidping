@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/envcheck"
@@ -54,6 +55,14 @@ func main() {
 				Name:   "migrate",
 				Usage:  "Run database migrations",
 				Action: migrate,
+				Commands: []*cli.Command{
+					{
+						Name: "repair",
+						Usage: "Re-record checksums for applied migrations after a deliberate edit " +
+							"(comment/whitespace changes, or after applying missing statements by hand)",
+						Action: migrateRepair,
+					},
+				},
 			},
 			{
 				Name:     "client",
@@ -377,6 +386,69 @@ func migrate(ctx context.Context, _ *cli.Command) error {
 	return runMigrations(ctx, cfg)
 }
 
+// migrateRepair re-records migration checksums after a deliberate edit
+// (cosmetic changes to an already-applied migration, or applying missing
+// statements by hand). It deliberately does NOT call Initialize/run
+// migrations — repair only touches migration_checksums, on whatever database
+// state already exists, via the same open path as encrypt-credentials.
+func migrateRepair(ctx context.Context, _ *cli.Command) error {
+	cfg, err := config.Load()
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load configuration", "error", err)
+		return err
+	}
+
+	setupLogger(cfg.LogLevel)
+
+	if validationErr := cfg.Validate(); validationErr != nil {
+		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
+		return cli.Exit(validationErr.Error(), 1)
+	}
+
+	dbSvc, err := openDB(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if closeErr := dbSvc.Close(); closeErr != nil {
+			slog.ErrorContext(ctx, "Failed to close database service", "error", closeErr)
+		}
+	}()
+
+	results, err := dbSvc.RepairMigrationChecksums(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate repair failed: %w", err)
+	}
+
+	if len(results) == 0 {
+		slog.InfoContext(ctx, "migrate repair: nothing to repair")
+		return nil
+	}
+
+	for i := range results {
+		res := &results[i]
+		slog.InfoContext(ctx, "migrate repair: re-recorded checksum",
+			"migration", res.Name, "comment", res.Comment,
+			"old", shortSum(res.Old), "new", shortSum(res.New))
+	}
+
+	slog.InfoContext(ctx, "migrate repair done", "count", len(results))
+
+	return nil
+}
+
+// shortSum truncates a checksum for log readability. "" (a backfill's Old)
+// prints as "" rather than a truncated empty string.
+func shortSum(sum string) string {
+	const shortLen = 12
+	if len(sum) <= shortLen {
+		return sum
+	}
+
+	return sum[:shortLen]
+}
+
 func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -446,18 +518,21 @@ func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 }
 
 func openDB(ctx context.Context, cfg *config.Config) (db.Service, error) {
+	guardMode := migrationguard.Mode(cfg.Database.MigrationGuardMode)
+
 	switch cfg.Database.Type {
 	case "postgres":
-		return postgres.New(ctx, &postgres.Config{DSN: cfg.Database.URL, Embedded: false})
+		return postgres.New(ctx, &postgres.Config{DSN: cfg.Database.URL, Embedded: false, GuardMode: guardMode})
 	case "postgres-embedded":
 		return postgres.New(ctx, &postgres.Config{
-			Embedded: true,
-			Port:     embeddedPostgresPort,
+			Embedded:  true,
+			Port:      embeddedPostgresPort,
+			GuardMode: guardMode,
 		})
 	case "sqlite":
-		return sqlite.New(ctx, sqlite.Config{DataDir: cfg.Database.Dir, InMemory: false})
+		return sqlite.New(ctx, sqlite.Config{DataDir: cfg.Database.Dir, InMemory: false, GuardMode: guardMode})
 	case "sqlite-memory":
-		return sqlite.New(ctx, sqlite.Config{InMemory: true})
+		return sqlite.New(ctx, sqlite.Config{InMemory: true, GuardMode: guardMode})
 	default:
 		return nil, cli.Exit("Unsupported database type: "+cfg.Database.Type, 1)
 	}
@@ -469,25 +544,31 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 		err error
 	)
 
+	guardMode := migrationguard.Mode(cfg.Database.MigrationGuardMode)
+
 	switch cfg.Database.Type {
 	case "postgres":
 		svc, err = postgres.New(ctx, &postgres.Config{
-			DSN:      cfg.Database.URL,
-			Embedded: false,
+			DSN:       cfg.Database.URL,
+			Embedded:  false,
+			GuardMode: guardMode,
 		})
 	case "postgres-embedded":
 		svc, err = postgres.New(ctx, &postgres.Config{
-			Embedded: true,
-			Port:     embeddedPostgresPort,
+			Embedded:  true,
+			Port:      embeddedPostgresPort,
+			GuardMode: guardMode,
 		})
 	case "sqlite":
 		svc, err = sqlite.New(ctx, sqlite.Config{
-			DataDir:  cfg.Database.Dir,
-			InMemory: false,
+			DataDir:   cfg.Database.Dir,
+			InMemory:  false,
+			GuardMode: guardMode,
 		})
 	case "sqlite-memory":
 		svc, err = sqlite.New(ctx, sqlite.Config{
-			InMemory: true,
+			InMemory:  true,
+			GuardMode: guardMode,
 		})
 	default:
 		return cli.Exit("Unsupported database type: "+cfg.Database.Type, 1)

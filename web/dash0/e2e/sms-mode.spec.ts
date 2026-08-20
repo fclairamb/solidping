@@ -79,6 +79,10 @@ test.describe("SMS mode panel", () => {
     await expect(page.getByTestId("sms-mode-badge")).toHaveText(
       /provided by this instance/i,
     );
+
+    // Expand the panel — the explanation and CTA are hidden while collapsed.
+    await page.getByTestId("sms-mode-panel-trigger").click();
+
     // The sender is shown; a credential never is.
     await expect(page.getByTestId("sms-mode-explanation")).toContainText(
       "SolidPing",
@@ -101,6 +105,8 @@ test.describe("SMS mode panel", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("sms-mode-badge")).toHaveText(/not available/i);
+
+    await page.getByTestId("sms-mode-panel-trigger").click();
     await expect(page.getByTestId("sms-mode-explanation")).toContainText(
       /cannot be sent/i,
     );
@@ -137,6 +143,8 @@ test.describe("SMS mode panel", () => {
 
     await expect(page.getByTestId("sms-mode-badge")).toHaveText(/your own account/i);
 
+    await page.getByTestId("sms-mode-panel-trigger").click();
+
     const explanation = page.getByTestId("sms-mode-explanation");
     await expect(explanation).toContainText(/overrides the instance provider/i);
 
@@ -153,5 +161,75 @@ test.describe("SMS mode panel", () => {
     await expect(page.getByTestId("sms-mode-badge")).toHaveText(
       /provided by this instance/i,
     );
+  });
+
+  test("renders collapsed by default with the badge visible, and sits after the integrations list", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    await deleteAllConnections(page, token);
+
+    await mockInstanceSMS(page, {
+      enabled: true,
+      sender: "SolidPing",
+      provider: "ovh",
+      voiceEnabled: true,
+    });
+
+    // Populated state: create one integration so the list/table renders.
+    await page.request.post(`${API_BASE}/api/v1/orgs/test/integrations`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        type: "webhook",
+        name: `E2E SMS Panel Webhook ${Date.now()}`,
+        settings: { url: "https://example.invalid/hook" },
+      },
+    });
+
+    await page.goto("orgs/test/integrations");
+    await page.waitForLoadState("networkidle");
+
+    const panel = page.getByTestId("sms-mode-panel");
+    await expect(panel).toBeVisible();
+    // Collapsed: title + badge visible, explanation body hidden.
+    await expect(page.getByTestId("sms-mode-panel-trigger")).toHaveAttribute(
+      "data-state",
+      "closed",
+    );
+    await expect(page.getByTestId("sms-mode-badge")).toBeVisible();
+    await expect(panel).toContainText(/SMS & voice/i);
+    await expect(page.getByTestId("sms-mode-explanation")).toBeHidden();
+
+    // Sits after the integrations table (populated state).
+    const table = page.getByRole("table");
+    await expect(table).toBeVisible();
+    const tableBox = await table.boundingBox();
+    const panelBox = await panel.boundingBox();
+    expect(tableBox).not.toBeNull();
+    expect(panelBox).not.toBeNull();
+    expect(panelBox!.y).toBeGreaterThan(tableBox!.y);
+
+    // Empty state: same collapsed-by-default + trailing-position behavior.
+    await deleteAllConnections(page, token);
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+
+    const emptyPanel = page.getByTestId("sms-mode-panel");
+    await expect(emptyPanel).toBeVisible();
+    await expect(page.getByTestId("sms-mode-panel-trigger")).toHaveAttribute(
+      "data-state",
+      "closed",
+    );
+    await expect(page.getByTestId("sms-mode-badge")).toBeVisible();
+    await expect(page.getByTestId("sms-mode-explanation")).toBeHidden();
+
+    const emptyHeading = page.getByText(/no integrations yet/i);
+    await expect(emptyHeading).toBeVisible();
+    const emptyBox = await emptyHeading.boundingBox();
+    const emptyPanelBox = await emptyPanel.boundingBox();
+    expect(emptyBox).not.toBeNull();
+    expect(emptyPanelBox).not.toBeNull();
+    expect(emptyPanelBox!.y).toBeGreaterThan(emptyBox!.y);
   });
 });

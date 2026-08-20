@@ -17,6 +17,17 @@ const (
 	failureReasonDetailsKey = "failure_reason"
 	firstResultDetailsKey   = "first_result"
 	lastFailureDetailsKey   = "last_failure"
+	// failureResponseDetailsKey holds the opt-in capture of what the probe
+	// actually received at the incident's ONSET (spec 2026-08-20-01). It sits
+	// at the top level of Details, not inside a result snapshot, because it is
+	// not subject to the snapshot's output cap and because it is keyed on the
+	// incident onset rather than on any one result.
+	//
+	// PRIVATE BY CONSTRUCTION: incidents.details is never serialized onto any
+	// public surface (status pages, their activeIncidents[] block, status
+	// updates, subscriber payloads). A response body can carry internal
+	// hostnames, stack traces or PII.
+	failureResponseDetailsKey = "failureResponse"
 )
 
 // Keys inside a first_result / last_failure snapshot object.
@@ -55,10 +66,33 @@ const (
 // read) plus a first_result snapshot of the triggering result, copied (not
 // referenced) because aggregation retention deletes raw results.
 func failureDetails(result *models.Result) models.JSONMap {
-	return models.JSONMap{
+	details := models.JSONMap{
 		failureReasonDetailsKey: failureReasonFromResult(result),
 		firstResultDetailsKey:   resultSnapshot(result),
 	}
+
+	if capture := failureResponseCapture(result); capture != nil {
+		details[failureResponseDetailsKey] = capture
+	}
+
+	return details
+}
+
+// failureResponseCapture returns the probe's failure capture for this result,
+// with the probing region stamped in server-side (the checker cannot know it,
+// and a deported agent must not be the authority on where it ran). Nil when
+// the check did not opt in, or when there was no response to capture.
+func failureResponseCapture(result *models.Result) *checkerdef.FailureResponse {
+	if result == nil || result.Diagnostics == nil || result.Diagnostics.FailureResponse == nil {
+		return nil
+	}
+
+	capture := *result.Diagnostics.FailureResponse
+	if result.Region != nil {
+		capture.Region = *result.Region
+	}
+
+	return &capture
 }
 
 // lastFailureDetails returns a copy of the incident's existing Details with a
@@ -71,6 +105,17 @@ func lastFailureDetails(existing models.JSONMap, result *models.Result) models.J
 		merged[k] = v
 	}
 	merged[lastFailureDetailsKey] = resultSnapshot(result)
+
+	// A reopen is a NEW onset, so the capture describes the relapse, not the
+	// original outage. When the relapse produced no capture (the check was
+	// opted out since, or this failure never got a response at all) the stale
+	// one is DROPPED rather than left in place: a 503 page shown next to an
+	// incident whose current onset is a DNS timeout is worse than no evidence.
+	if capture := failureResponseCapture(result); capture != nil {
+		merged[failureResponseDetailsKey] = capture
+	} else {
+		delete(merged, failureResponseDetailsKey)
+	}
 
 	return merged
 }
@@ -94,8 +139,14 @@ func failureReasonFromResult(result *models.Result) string {
 		return reasonTimeout
 	case models.ResultStatusError:
 		return reasonError
+	// ResultStatusAbandoned sits here rather than beside Error on purpose: a
+	// reaped attempt is not a failure the monitored service produced, and it
+	// can never reach this path anyway (the reaper writes the row directly and
+	// incident processing skips statuses that are neither success, failure nor
+	// warning). Listed explicitly so the exhaustive linter stays a real check.
 	case models.ResultStatusCreated, models.ResultStatusRunning, models.ResultStatusUp,
-		models.ResultStatusDown, models.ResultStatusDegraded, models.ResultStatusWarning:
+		models.ResultStatusDown, models.ResultStatusDegraded, models.ResultStatusWarning,
+		models.ResultStatusAbandoned:
 		return reasonDown
 	default:
 		return reasonDown

@@ -28,7 +28,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 func (h *Handler) ListSeverities(writer http.ResponseWriter, req *http.Request) error {
 	severities, err := h.svc.ListSeverities(req.Context(), httpx.Param(req, "org"))
 	if err != nil {
-		return h.handleErr(writer, err)
+		return h.handleErr(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": severities})
@@ -51,7 +51,7 @@ func (h *Handler) CreateSeverity(writer http.ResponseWriter, req *http.Request) 
 
 	severity, err := h.svc.CreateSeverity(req.Context(), httpx.Param(req, "org"), createReq)
 	if err != nil {
-		return h.handleErr(writer, err)
+		return h.handleErr(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, severity)
@@ -61,7 +61,7 @@ func (h *Handler) CreateSeverity(writer http.ResponseWriter, req *http.Request) 
 func (h *Handler) GetSeverity(writer http.ResponseWriter, req *http.Request) error {
 	severity, err := h.svc.GetSeverity(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"))
 	if err != nil {
-		return h.handleErr(writer, err)
+		return h.handleErr(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, severity)
@@ -78,7 +78,7 @@ func (h *Handler) UpdateSeverity(writer http.ResponseWriter, req *http.Request) 
 
 	severity, err := h.svc.UpdateSeverity(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), updateReq)
 	if err != nil {
-		return h.handleErr(writer, err)
+		return h.handleErr(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, severity)
@@ -87,19 +87,21 @@ func (h *Handler) UpdateSeverity(writer http.ResponseWriter, req *http.Request) 
 // DeleteSeverity handles DELETE /orgs/$org/severities/$identifier.
 func (h *Handler) DeleteSeverity(writer http.ResponseWriter, req *http.Request) error {
 	if err := h.svc.DeleteSeverity(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid")); err != nil {
-		return h.handleErr(writer, err)
+		return h.handleErr(writer, req, err)
 	}
 	writer.WriteHeader(http.StatusNoContent)
 
 	return nil
 }
 
-func (h *Handler) handleErr(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleErr(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		return h.WriteErrorErr(
+			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrSeverityNotFound):
-		return h.WriteErrorErr(writer, http.StatusNotFound, base.ErrorCodeSeverityNotFound, "Severity not found", err)
+		return h.WriteErrorErr(
+			writer, request, http.StatusNotFound, base.ErrorCodeSeverityNotFound, "Severity not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{Name: "slug", Message: "A severity with this slug already exists in this organization"},
@@ -113,8 +115,8 @@ func (h *Handler) handleErr(writer http.ResponseWriter, err error) error {
 			{Name: "channels", Message: err.Error()},
 		})
 	case errors.Is(err, ErrCannotDeleteDefault):
-		return h.WriteErrorErr(writer, http.StatusConflict, base.ErrorCodeSeverityInUse, err.Error(), err)
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeSeverityInUse, err.Error(), err)
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }

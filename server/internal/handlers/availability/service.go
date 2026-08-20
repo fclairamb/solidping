@@ -14,8 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -33,6 +37,10 @@ var (
 const (
 	// maxPeriods caps how many periods one request may ask for.
 	maxPeriods = 12
+	// maxConcurrentPeriods bounds the fan-out of per-window computations. periods
+	// is caller-controlled (up to maxPeriods), so this keeps one HTTP request from
+	// opening an unbounded number of simultaneous DB connections.
+	maxConcurrentPeriods = 6
 	// maxLookbackYears is a pure input-sanity bound, not a data horizon: the
 	// uptimebar union includes the month tier, which is terminal (never rolled
 	// further, never deleted), so any lookback is answerable regardless of the
@@ -48,12 +56,36 @@ const (
 
 // Service provides business logic for the availability endpoint.
 type Service struct {
-	db db.Service
+	db  db.Service
+	cfg *config.Config
 }
 
-// NewService creates a new availability service.
-func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+// NewService creates a new availability service. cfg may be nil (e.g. a test
+// exercising the service in isolation) — the uptime-bar queries then fall back
+// to the documented retention defaults instead of the org's configured values.
+func NewService(dbService db.Service, cfg *config.Config) *Service {
+	return &Service{db: dbService, cfg: cfg}
+}
+
+// uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
+// per request: the live raw/hour aggregation retention and the org's measured
+// probe rate.
+//
+// Retention is resolved with the same precedence as the aggregation job itself —
+// env > performance.* global parameter > legacy koanf field > documented default
+// (systemconfig.ResolveReadSideRetention). It must NOT read the koanf config
+// alone: the server "Aggregation" settings tab writes the performance.*
+// parameters, which never reach the koanf struct, so a stale hint would make
+// uptimebar clamp its raw-tier query shorter than the window the job actually
+// keeps raw for — silently dropping raw rows no rollup covers yet.
+func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
+
+	return uptimebar.Hints{
+		RetentionRawHours: rawHours,
+		RetentionHourDays: hourDays,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
+	}
 }
 
 // PeriodIncidents is the confirmed-outage (wall-clock) block for one window —
@@ -122,15 +154,37 @@ func (s *Service) GetAvailability(
 		return nil, ErrCheckNotFound
 	}
 
-	periods := make([]Period, 0, len(windows))
+	periods := make([]Period, len(windows))
+
+	// Resolved ONCE for the whole request: every window shares the same org, so
+	// re-resolving per window would multiply the parameter/probe-rate lookups by
+	// the number of requested periods (five on the check detail page) inside a
+	// spec whose whole point is removing per-request latency.
+	hints := s.uptimebarHints(ctx, org.UID)
+
+	// The windows are independent — each computePeriod only reads org.UID, check
+	// and its own window, and writes only its own slot. Fan them out concurrently
+	// so the request costs the slowest window instead of their sum, bounded so a
+	// caller-controlled period count can't open unbounded DB connections. Written
+	// by index (never appended) so the response stays in the requested order.
+	errg, errgCtx := errgroup.WithContext(ctx)
+	errg.SetLimit(maxConcurrentPeriods)
 
 	for i := range windows {
-		row, periodErr := s.computePeriod(ctx, org.UID, check, windows[i], now)
-		if periodErr != nil {
-			return nil, periodErr
-		}
+		errg.Go(func() error {
+			row, periodErr := s.computePeriod(errgCtx, org.UID, check, windows[i], now, hints)
+			if periodErr != nil {
+				return periodErr
+			}
 
-		periods = append(periods, row)
+			periods[i] = row
+
+			return nil
+		})
+	}
+
+	if err := errg.Wait(); err != nil {
+		return nil, err
 	}
 
 	return &ListAvailabilityResponse{Data: periods}, nil
@@ -146,11 +200,13 @@ type periodWindow struct {
 // computePeriod builds the DTO for one resolved window.
 func (s *Service) computePeriod(
 	ctx context.Context, orgUID string, check *models.Check, window periodWindow, now time.Time,
+	hints uptimebar.Hints,
 ) (Period, error) {
 	monitored := monitoredDuration(window, check.CreatedAt.UTC(), now)
 
 	stats, err := uptimebar.WindowAvailability(
-		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end)
+		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end,
+		hints)
 	if err != nil {
 		return Period{}, err
 	}
@@ -234,6 +290,16 @@ func (s *Service) fetchIncidents(
 	incidents, _, err := s.db.ListIncidents(ctx, filter)
 
 	return incidents, err
+}
+
+// IncidentBlock is the exported form of incidentBlock, for callers outside this
+// package that need the same wall-clock outage summary over an arbitrary window
+// — currently the SLO status endpoint, which shows it as context beside the
+// probe-ratio attainment (spec 2026-08-20-01). Keeping one implementation is
+// the point: an SLO page whose "3 incidents, longest 42 min" disagreed with the
+// availability API would be worse than showing nothing.
+func IncidentBlock(incidents []*models.Incident, start, end, now time.Time) PeriodIncidents {
+	return incidentBlock(incidents, periodWindow{start: start, end: end}, now)
 }
 
 // incidentBlock computes the wall-clock outage stats (definition B), clamping

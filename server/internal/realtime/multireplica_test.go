@@ -45,7 +45,7 @@ func TestMultiReplica_PostgresHintCrossesInstances(t *testing.T) { //nolint:para
 	ctx := t.Context()
 
 	const port = uint32(15438)
-	svc, err := postgres.NewEmbedded(ctx, "realtime-multireplica", port, false, "", false)
+	svc, err := postgres.NewEmbedded(ctx, "realtime-multireplica", port, false, "", false, 0)
 	r.NoError(err, "failed to start embedded postgres")
 	t.Cleanup(func() { _ = svc.Close() })
 	r.NoError(svc.Initialize(ctx))

@@ -125,7 +125,7 @@ func (h *Handler) ConvertAndApply(writer http.ResponseWriter, req *http.Request)
 
 	result, err := convert(req.Context(), converter, body)
 	if err != nil {
-		return h.writeConversionError(writer, err)
+		return h.writeConversionError(writer, req, err)
 	}
 
 	applyResult, err := h.svc.ApplyChecks(req.Context(), orgSlug, result.Document, checks.ApplyOptions{
@@ -135,10 +135,10 @@ func (h *Handler) ConvertAndApply(writer http.ResponseWriter, req *http.Request)
 		switch {
 		case errors.Is(err, checks.ErrOrganizationNotFound):
 			return h.WriteErrorErr(
-				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		default:
 			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		}
 	}
 
@@ -184,18 +184,18 @@ func buildConvertResult(
 // shape. Every branch is a VALIDATION_ERROR-family response: the payload (or
 // the credential it carries) is the caller's to fix, and the message never
 // echoes the credential back.
-func (h *Handler) writeConversionError(writer http.ResponseWriter, err error) error {
+func (h *Handler) writeConversionError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrBetterStackTokenRequired):
 		return h.WriteValidationError(writer, "A Better Stack API token is required",
 			[]base.ValidationErrorField{{Name: "token", Message: "must not be empty"}})
 	case errors.Is(err, ErrBetterStackUnauthorized):
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Better Stack rejected the API token", err)
 	case errors.Is(err, ErrBetterStackUnreachable), errors.Is(err, ErrBetterStackAPI):
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Could not read the Better Stack account: "+err.Error(), err)
 	default:
-		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	}
 }

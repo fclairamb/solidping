@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // Errors returned by WSBackend.
@@ -196,9 +197,9 @@ func (b *WSBackend) Register(ctx context.Context, _ *models.Worker) (*models.Wor
 }
 
 // Heartbeat is a no-op: the server refreshes last_seen_at on pings and frames,
-// and the agent's capability set rides the claim frame (see claim) for the
-// same reason.
-func (b *WSBackend) Heartbeat(_ context.Context, _ string, _ []string) error {
+// and the agent's capability set and build version ride the claim frame (see
+// claim) for the same reason.
+func (b *WSBackend) Heartbeat(_ context.Context, _ string, _ []string, _ string) error {
 	return nil
 }
 
@@ -246,7 +247,8 @@ func (b *WSBackend) claim(
 		Type:         agents.MsgTypeClaim,
 		MaxJobs:      maxJobs,
 		CheckUID:     checkUID,
-		Capabilities: egressreport.Current(),
+		Capabilities: egressreport.Current(ctx),
+		Version:      version.Get().Version,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -307,7 +309,7 @@ func (b *WSBackend) submitSealError(ctx context.Context, job *models.CheckJob) {
 		JobUID:   job.UID,
 		Status:   int(models.ResultStatusError),
 		Duration: 0,
-		Output:   map[string]any{"error": ErrSealedForOthers.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: ErrSealedForOthers.Error()},
 	})
 }
 
@@ -332,12 +334,13 @@ func (b *WSBackend) SubmitResult(
 	// Sched block is deliberately not sent — the server recomputes the whole
 	// scheduling state from the result it just persisted.
 	frame := &agents.ClientFrame{
-		Type:     agents.MsgTypeResult,
-		JobUID:   job.UID,
-		Status:   req.Status,
-		Duration: req.Duration,
-		Metrics:  req.Metrics,
-		Output:   req.Output,
+		Type:        agents.MsgTypeResult,
+		JobUID:      job.UID,
+		Status:      req.Status,
+		Duration:    req.Duration,
+		Metrics:     req.Metrics,
+		Output:      req.Output,
+		Diagnostics: req.Diagnostics,
 	}
 
 	if !req.ExecStart.IsZero() {
@@ -617,6 +620,7 @@ func (b *WSBackend) dialEnroll(ctx context.Context) error {
 		Name:             b.name,
 		Ed25519PublicKey: b.identity.Ed25519PublicKey,
 		X25519PublicKey:  b.identity.X25519Recipient,
+		Version:          version.Get().Version,
 	}); err != nil {
 		_ = conn.Close(websocket.StatusProtocolError, "enroll write failed")
 

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, type Page, mockSloCoverage } from "./fixtures";
 
 // The availability card reads the server-side per-period endpoint
 // (GET /checks/:uid/availability). These tests mock that endpoint so the table
@@ -61,6 +61,10 @@ async function mockAvailability(page: Page, periods: Period[]) {
       body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
     }),
   );
+  // The check-detail header's SLO coverage chip fires an unconditional
+  // GET /slos?checkUid=… on every load (spec 2026-08-20-01); left unmocked it
+  // is one more real request this spec's networkidle wait has to sit through.
+  await mockSloCoverage(page);
 }
 
 async function createCheckAndOpen(page: Page, name: string) {

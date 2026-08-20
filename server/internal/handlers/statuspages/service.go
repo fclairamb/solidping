@@ -19,9 +19,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -176,6 +178,12 @@ var (
 	// ErrInvalidHistoryPeriod is returned when historyPeriod is not one of the
 	// supported enum values (24h, 7d, 30d, 90d).
 	ErrInvalidHistoryPeriod = errors.New("invalid history period")
+	// ErrInvalidAutoResolve is returned when autoResolve is not one of
+	// always | if_untouched | never.
+	ErrInvalidAutoResolve = errors.New("invalid auto-resolve policy")
+	// ErrInvalidAutoPublishDelay is returned when autoPublishDelaySeconds is
+	// outside 0–86400. Zero is legal and means "publish immediately".
+	ErrInvalidAutoPublishDelay = errors.New("auto-publish delay must be between 0 and 86400 seconds")
 	// ErrReorderUIDsMismatch is returned when a reorder request's UID list
 	// does not exactly match the section's current resources (missing,
 	// extra, or duplicate UIDs).
@@ -314,6 +322,24 @@ func validateHistoryPeriod(period *string) error {
 	return nil
 }
 
+// maxAutoPublishDelaySeconds bounds the debounce at a day. A longer delay is
+// indistinguishable from "never publish", which autoPublish=false already says.
+const maxAutoPublishDelaySeconds = 86400
+
+// validateAutoPublishSettings rejects an unknown auto-resolve policy or an
+// out-of-range debounce. Nil pointers (fields omitted) are valid.
+func validateAutoPublishSettings(autoResolve *string, delaySeconds *int) error {
+	if autoResolve != nil && !models.AutoResolvePolicy(*autoResolve).IsValid() {
+		return ErrInvalidAutoResolve
+	}
+
+	if delaySeconds != nil && (*delaySeconds < 0 || *delaySeconds > maxAutoPublishDelaySeconds) {
+		return ErrInvalidAutoPublishDelay
+	}
+
+	return nil
+}
+
 // Service provides business logic for status page management.
 type Service struct {
 	db  db.Service
@@ -344,6 +370,16 @@ type Service struct {
 	// spec 2026-08-02-08's own convention, that is a bug to design out, not a
 	// flake to re-run past.
 	analytics analytics.Client
+	// publicIncidents supplies the activeIncidents[] block on the public view.
+	// nil = the feature is not wired (tests, or a build without status-page
+	// publications), in which case the field is simply omitted.
+	publicIncidents PublicIncidentProvider
+}
+
+// SetPublicIncidentProvider wires the incident-publication projection into the
+// public page view. Optional.
+func (s *Service) SetPublicIncidentProvider(p PublicIncidentProvider) {
+	s.publicIncidents = p
 }
 
 // CertStatusProvider reports the TLS certificate state of a custom domain so
@@ -406,16 +442,25 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 	}
 }
 
-// retentionHints returns the org's configured raw/hour retention (hours of
-// raw kept / days of hourly rollups kept), or (0, 0) when cfg is nil — which
-// uptimebar.BucketAvailability treats as "use the documented defaults" when
-// sizing its safety cap.
-func (s *Service) retentionHints() (int, int) {
-	if s.cfg == nil {
-		return 0, 0
-	}
+// uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
+// per request: the live raw/hour aggregation retention and the org's measured
+// probe rate.
+//
+// Retention is resolved with the same precedence as the aggregation job itself —
+// env > performance.* global parameter > legacy koanf field > documented default
+// (systemconfig.ResolveReadSideRetention). It must NOT read the koanf config
+// alone: the server "Aggregation" settings tab writes the performance.*
+// parameters, which never reach the koanf struct, so a stale hint would make
+// uptimebar clamp its raw-tier query shorter than the window the job actually
+// keeps raw for — silently dropping raw rows no rollup covers yet.
+func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
 
-	return s.cfg.Aggregation.RetentionRaw, s.cfg.Aggregation.RetentionHour
+	return uptimebar.Hints{
+		RetentionRawHours: rawHours,
+		RetentionHourDays: hourDays,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
+	}
 }
 
 // --- Response types ---
@@ -433,6 +478,39 @@ type StatusUpdatePublicResponse struct {
 	PublishedAt  time.Time `json:"publishedAt"`
 }
 
+// PublicIncidentProvider supplies the active incident publications rendered on
+// a public status page (spec 2026-08-19-08). It is a small interface set by
+// server.go rather than a direct dependency, which keeps the import edge
+// one-way: incidentpublications resolves pages through db.Service, and this
+// package never has to import it.
+type PublicIncidentProvider interface {
+	ListPublicIncidents(ctx context.Context, page *models.StatusPage, activeOnly bool) ([]PublicIncident, error)
+}
+
+// PublicIncident is the wire shape of one publicly visible incident. It mirrors
+// incidentpublications.PublicIncident field for field; it is redeclared here so
+// the provider interface can be satisfied without an import cycle, and so this
+// package's response type stays self-describing.
+type PublicIncident struct {
+	UID               string                 `json:"uid"`
+	Title             string                 `json:"title"`
+	State             string                 `json:"state"`
+	Severity          *string                `json:"severity,omitempty"`
+	StartedAt         time.Time              `json:"startedAt"`
+	ResolvedAt        *time.Time             `json:"resolvedAt,omitempty"`
+	AffectedResources []string               `json:"affectedResources,omitempty"`
+	Updates           []PublicIncidentUpdate `json:"updates,omitempty"`
+}
+
+// PublicIncidentUpdate is one narrative entry on a public incident.
+type PublicIncidentUpdate struct {
+	UID          string    `json:"uid"`
+	Kind         string    `json:"kind"`
+	Title        string    `json:"title"`
+	BodyMarkdown string    `json:"bodyMarkdown"`
+	PublishedAt  time.Time `json:"publishedAt"`
+}
+
 // StatusPageResponse represents a status page in API responses.
 type StatusPageResponse struct {
 	UID              string  `json:"uid"`
@@ -447,6 +525,14 @@ type StatusPageResponse struct {
 	HistoryDays      int     `json:"historyDays"`
 	HistoryPeriod    string  `json:"historyPeriod"`
 	Language         *string `json:"language,omitempty"`
+	// AutoPublish / AutoPublishDelaySeconds / AutoResolve are the incident
+	// auto-publication settings (spec 2026-08-19-08). They are OPERATOR
+	// settings and are echoed on both admin and public payloads, like the other
+	// display settings — none of them reveals anything the page does not
+	// already show.
+	AutoPublish             bool   `json:"autoPublish"`
+	AutoPublishDelaySeconds int    `json:"autoPublishDelaySeconds"`
+	AutoResolve             string `json:"autoResolve"`
 	// CustomCSS is the operator-authored stylesheet the public page injects as
 	// a <style> text node. Unlike the custom-domain fields below it is set on
 	// the PUBLIC responses too — status0 is its only consumer.
@@ -483,6 +569,12 @@ type StatusPageResponse struct {
 	// StatusCounts tallies resources per OverallStatus category. Same
 	// population rule as OverallStatus.
 	StatusCounts *StatusCountsResponse `json:"statusCounts,omitempty"`
+	// ActiveIncidents are the currently-open incident publications for this
+	// page (spec 2026-08-19-08) — what the banner and the active-incidents
+	// section render. Same population rule as OverallStatus: public view paths
+	// only. Every field on them is operator-authored or templated from the
+	// page's own public resource names; no probe diagnostics can reach here.
+	ActiveIncidents []PublicIncident `json:"activeIncidents,omitempty"`
 }
 
 // StatusCountsResponse mirrors models.PageStatusCounts on the wire (spec
@@ -548,13 +640,17 @@ type StatusPageResourceResponse struct {
 	// one aggregated component. It is an opaque UUID and reveals no topology,
 	// so it is carried on the public payload too — unlike the group's members,
 	// which are never exposed.
-	CheckGroupUID *string                   `json:"checkGroupUid,omitempty"`
-	PublicName    *string                   `json:"publicName,omitempty"`
-	Explanation   *string                   `json:"explanation,omitempty"`
-	Position      int                       `json:"position"`
-	Check         *ResourceCheckInfo        `json:"check,omitempty"`
-	Availability  *ResourceAvailabilityData `json:"availability,omitempty"`
-	CreatedAt     *time.Time                `json:"createdAt,omitempty"`
+	CheckGroupUID *string `json:"checkGroupUid,omitempty"`
+	PublicName    *string `json:"publicName,omitempty"`
+	Explanation   *string `json:"explanation,omitempty"`
+	// AutoPublish is the per-resource auto-publication override (spec
+	// 2026-08-19-08). Three-state: absent/null means "inherit the page", which
+	// is NOT the same as an explicit false.
+	AutoPublish  *bool                     `json:"autoPublish,omitempty"`
+	Position     int                       `json:"position"`
+	Check        *ResourceCheckInfo        `json:"check,omitempty"`
+	Availability *ResourceAvailabilityData `json:"availability,omitempty"`
+	CreatedAt    *time.Time                `json:"createdAt,omitempty"`
 }
 
 // ResourceCheckInfo contains live data for a resource. For a group resource it
@@ -656,6 +752,13 @@ type CreateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// AutoPublish / AutoPublishDelaySeconds / AutoResolve configure the
+	// incident auto-publication pipeline (spec 2026-08-19-08). Omitting
+	// autoPublish on a NEW page leaves it at the create-path default, which is
+	// ON — existing pages stay off, new ones opt in.
+	AutoPublish             *bool   `json:"autoPublish,omitempty"`
+	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
+	AutoResolve             *string `json:"autoResolve,omitempty"`
 	// CustomCSS optionally sets the page's custom stylesheet at create time.
 	// Max 64 KB, no @import (see validateCustomCSS).
 	CustomCSS *string `json:"customCss,omitempty"`
@@ -683,6 +786,11 @@ type UpdateStatusPageRequest struct {
 	HistoryDays      *int    `json:"historyDays,omitempty"`
 	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	// AutoPublish / AutoPublishDelaySeconds / AutoResolve configure the
+	// incident auto-publication pipeline (spec 2026-08-19-08).
+	AutoPublish             *bool   `json:"autoPublish,omitempty"`
+	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
+	AutoResolve             *string `json:"autoResolve,omitempty"`
 	// CustomCSS sets, replaces or clears the page's custom stylesheet: an empty
 	// string clears the column, an omitted field leaves it untouched. Max
 	// 64 KB, no @import (see validateCustomCSS).
@@ -730,7 +838,10 @@ type CreateResourceRequest struct {
 	CheckGroupUID string  `json:"checkGroupUid"`
 	PublicName    *string `json:"publicName,omitempty"`
 	Explanation   *string `json:"explanation,omitempty"`
-	Position      *int    `json:"position,omitempty"`
+	// AutoPublish overrides the page's auto-publish setting for this resource.
+	// Omitted = inherit.
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+	Position    *int  `json:"position,omitempty"`
 }
 
 // UpdateResourceRequest represents a request to update a resource. Supplying
@@ -741,7 +852,12 @@ type UpdateResourceRequest struct {
 	CheckGroupUID *string `json:"checkGroupUid,omitempty"`
 	PublicName    *string `json:"publicName,omitempty"`
 	Explanation   *string `json:"explanation,omitempty"`
-	Position      *int    `json:"position,omitempty"`
+	// AutoPublish sets or clears the per-resource override. AutoPublishSet is
+	// populated by the handler from the raw body so an omitted key ("leave
+	// alone") stays distinguishable from an explicit null ("reset to inherit").
+	AutoPublish    *bool `json:"autoPublish,omitempty"`
+	AutoPublishSet bool  `json:"-"`
+	Position       *int  `json:"position,omitempty"`
 }
 
 // --- Options ---
@@ -807,6 +923,18 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 		page.Language = req.Language
 	}
 
+	if req.AutoPublish != nil {
+		page.AutoPublish = *req.AutoPublish
+	}
+
+	if req.AutoPublishDelaySeconds != nil {
+		page.AutoPublishDelaySeconds = *req.AutoPublishDelaySeconds
+	}
+
+	if req.AutoResolve != nil {
+		page.AutoResolve = *req.AutoResolve
+	}
+
 	// An empty stylesheet is "no stylesheet": leave the column NULL rather than
 	// storing '', matching the update path's clear semantics.
 	if req.CustomCSS != nil && *req.CustomCSS != "" {
@@ -865,6 +993,10 @@ func (s *Service) CreateStatusPage(
 
 	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
 		return StatusPageResponse{}, errPeriod
+	}
+
+	if errAuto := validateAutoPublishSettings(req.AutoResolve, req.AutoPublishDelaySeconds); errAuto != nil {
+		return StatusPageResponse{}, errAuto
 	}
 
 	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
@@ -993,6 +1125,10 @@ func (s *Service) validateStatusPageUpdate(
 		return nil, err
 	}
 
+	if err := validateAutoPublishSettings(req.AutoResolve, req.AutoPublishDelaySeconds); err != nil {
+		return nil, err
+	}
+
 	if err := validateCustomCSS(req.CustomCSS); err != nil {
 		return nil, err
 	}
@@ -1040,6 +1176,10 @@ func (s *Service) UpdateStatusPage(
 		Language:         req.Language,
 		CustomCSS:        req.CustomCSS,
 		Settings:         newSettings,
+
+		AutoPublish:             req.AutoPublish,
+		AutoPublishDelaySeconds: req.AutoPublishDelaySeconds,
+		AutoResolve:             req.AutoResolve,
 	}
 
 	// The period enum is the source of truth; keep history_days in sync for
@@ -1385,6 +1525,7 @@ func (s *Service) CreateResource(
 
 	resource.PublicName = req.PublicName
 	resource.Explanation = req.Explanation
+	resource.AutoPublish = req.AutoPublish
 
 	if err := s.db.CreateStatusPageResource(ctx, resource); err != nil {
 		return StatusPageResourceResponse{}, fmt.Errorf("failed to create resource: %w", err)
@@ -1416,9 +1557,11 @@ func (s *Service) UpdateResource(
 	}
 
 	update := models.StatusPageResourceUpdate{
-		PublicName:  req.PublicName,
-		Explanation: req.Explanation,
-		Position:    req.Position,
+		PublicName:     req.PublicName,
+		SetAutoPublish: req.AutoPublishSet,
+		AutoPublish:    req.AutoPublish,
+		Explanation:    req.Explanation,
+		Position:       req.Position,
 	}
 
 	if req.CheckUID != nil || req.CheckGroupUID != nil {
@@ -1544,6 +1687,8 @@ func (s *Service) DeleteResource(
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
+//
+//nolint:cyclop // a flat sequence of optional enrichment blocks, each independently degradable.
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageResponse, error) {
@@ -1586,6 +1731,19 @@ func (s *Service) ViewStatusPage(
 	}
 
 	response.Sections = sections
+
+	// Active incident publications drive the banner and the active-incidents
+	// section. Failing to load them must never blank the page — a status page
+	// that cannot render its incidents is still far more useful than a 500.
+	if s.publicIncidents != nil {
+		active, incErr := s.publicIncidents.ListPublicIncidents(ctx, page, true)
+		if incErr != nil {
+			slog.ErrorContext(ctx, "Failed to load active incident publications for status page",
+				"error", incErr, "statusPageUID", page.UID, "orgUID", org.UID)
+		} else {
+			response.ActiveIncidents = active
+		}
+	}
 
 	// Populate recent status updates (graceful — empty when table doesn't exist yet)
 	if page.HistoryDays > 0 {
@@ -1871,10 +2029,7 @@ func mergeBuckets(
 		for bucket := range byBucket {
 			stats := byBucket[bucket]
 			acc := merged[bucket]
-			acc.Up += stats.Up
-			acc.Total += stats.Total
-			acc.DurCnt += stats.DurCnt
-			acc.DurSum += stats.DurSum
+			acc.Add(stats)
 			merged[bucket] = acc
 		}
 	}
@@ -1908,11 +2063,11 @@ func (s *Service) enrichWithAvailability(
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	historyStart := todayStart.AddDate(0, 0, -(page.HistoryDays - 1))
 
-	retentionRawHours, retentionHourDays := s.retentionHints()
+	hints := s.uptimebarHints(ctx, orgUID)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, 24*time.Hour, historyStart, page.HistoryDays,
-		retentionRawHours, retentionHourDays,
+		hints,
 	)
 	if err != nil {
 		return
@@ -1994,7 +2149,7 @@ func (s *Service) fetchRecentResults(
 		SkipBlobs: true,
 	}
 
-	recentResp, err := s.db.ListResults(ctx, recentFilter)
+	recentResp, err := s.db.ListResults(sloghook.WithCallsite(ctx, "statuspages.recent_results"), recentFilter)
 	if err != nil || recentResp == nil {
 		return recentByCheck
 	}
@@ -2035,11 +2190,11 @@ func (s *Service) enrichHourly(
 	// 23 hours earlier. -(n-1) keeps the current hour inside the window.
 	bucketStart := now.Truncate(time.Hour).Add(-time.Duration(hourlyBucketCount-1) * time.Hour)
 
-	retentionRawHours, retentionHourDays := s.retentionHints()
+	hints := s.uptimebarHints(ctx, orgUID)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, time.Hour, bucketStart, hourlyBucketCount,
-		retentionRawHours, retentionHourDays,
+		hints,
 	)
 	if err != nil {
 		return
@@ -2604,21 +2759,24 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 	thresholdUp, thresholdDegraded := page.Settings.EffectiveThresholds()
 
 	return StatusPageResponse{
-		UID:              page.UID,
-		Name:             page.Name,
-		Slug:             page.Slug,
-		Description:      page.Description,
-		Visibility:       page.Visibility,
-		IsDefault:        page.IsDefault,
-		Enabled:          page.Enabled,
-		ShowAvailability: page.ShowAvailability,
-		ShowResponseTime: page.ShowResponseTime,
-		HistoryDays:      page.HistoryDays,
-		HistoryPeriod:    string(pagePeriod(page)),
-		Language:         page.Language,
-		CustomCSS:        page.CustomCSS,
-		CreatedAt:        &page.CreatedAt,
-		Settings:         convertSettingsToResponse(page.Settings),
+		UID:                     page.UID,
+		Name:                    page.Name,
+		Slug:                    page.Slug,
+		Description:             page.Description,
+		Visibility:              page.Visibility,
+		IsDefault:               page.IsDefault,
+		Enabled:                 page.Enabled,
+		ShowAvailability:        page.ShowAvailability,
+		ShowResponseTime:        page.ShowResponseTime,
+		HistoryDays:             page.HistoryDays,
+		HistoryPeriod:           string(pagePeriod(page)),
+		Language:                page.Language,
+		AutoPublish:             page.AutoPublish,
+		AutoPublishDelaySeconds: page.AutoPublishDelaySeconds,
+		AutoResolve:             page.AutoResolve,
+		CustomCSS:               page.CustomCSS,
+		CreatedAt:               &page.CreatedAt,
+		Settings:                convertSettingsToResponse(page.Settings),
 		AvailabilityThresholds: AvailabilityThresholdsResponse{
 			ThresholdUp:       thresholdUp,
 			ThresholdDegraded: thresholdDegraded,
@@ -2659,6 +2817,7 @@ func convertResourceToResponse(resource *models.StatusPageResource) StatusPageRe
 		CheckGroupUID: resource.CheckGroupUID,
 		PublicName:    resource.PublicName,
 		Explanation:   resource.Explanation,
+		AutoPublish:   resource.AutoPublish,
 		Position:      resource.Position,
 		CreatedAt:     &resource.CreatedAt,
 	}

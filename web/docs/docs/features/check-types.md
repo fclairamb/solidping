@@ -374,6 +374,90 @@ smtps://hostname:465  # With SSL
 | Auth | Test authentication | `user:password` |
 | Timeout | Connection timeout | `10s` |
 
+#### Send mode: a real probe email {#smtp-send-mode}
+
+By default the SMTP check stops at the handshake (EHLO/STARTTLS/AUTH) — it
+proves the server is reachable and, optionally, that credentials work, but not
+that mail submitted to it actually gets **delivered**. **Send mode** closes
+that gap: on every check execution, after the normal handshake, SolidPing
+submits a real, system-generated email through the monitored server and
+addresses it to a paired [Email Reception check](#email-reception-passive-inbox)'s
+tokenized address.
+
+| Option | Description |
+|--------|-------------|
+| Send a probe email | Enables send mode |
+| Mail From | Envelope sender for the probe email — the monitored server's outbound policy (SPF/DKIM alignment, relay ACLs) usually dictates it |
+| Delivery check | Pick a paired [Email Reception check](#email-reception-passive-inbox); the dashboard fills in the recipient address from it |
+
+The message itself is entirely system-generated — there is no subject or body
+field to fill in, by design: this keeps the feature from ever becoming a way
+to send arbitrary mail through a monitored server. It carries two headers the
+Email Reception check reads to attribute and time the delivery:
+
+```
+X-SolidPing-Check: <the sending SMTP check's UID>
+X-SolidPing-Sent-At: <RFC3339 send time>
+```
+
+If an intermediate mail server strips these headers, the Email Reception
+check still ticks up as normal — only the attribution and latency are lost.
+
+**The two checks split responsibility cleanly:**
+- The **SMTP check**'s own result reflects **submission only** — a `250`
+  after `DATA` is up (with `submission_ms` recorded), any rejection is down
+  with the server's reply.
+- The paired **Email Reception check** reflects **end-to-end delivery** —
+  it goes down (via its normal passive-overdue logic) if probes stop
+  arriving within its period.
+
+Submission failures and delivery failures are different problems with
+different fixes, so keeping them as two checks gives each its own incident
+lifecycle.
+
+**Sizing the paired check's period.** The Email Reception check's period *is*
+the delivery deadline. Size it generously:
+
+```
+email check period ≥ SMTP check interval + worst acceptable delivery time
+```
+
+Greylisting in particular can legitimately delay a first-time sender by
+several minutes — a paired check sized too tightly will flap on nothing but
+normal greylisting behavior.
+
+**A 60-second floor applies to send-mode SMTP checks** — every execution
+sends a real email, so an unbounded fast interval could flood the paired
+inbox.
+
+Several SMTP checks *may* target the same Email Reception check — the
+headers keep each arrival attributable to its sender — but pairing one SMTP
+check to one dedicated Email Reception check is the recommended setup; a
+shared target's up/down state otherwise conflates multiple senders. Create
+the Email Reception check first, then select it from the SMTP check's
+delivery picker — SolidPing does not offer to create one on your behalf, to
+keep the two checks' lifecycles independent (delete/rename either one
+without surprising the other).
+
+:::note Requires a configured inbox
+Send mode requires the instance to have an email inbox configured (the same
+one Email Reception checks use to receive mail) — see [Email Reception](#email-reception-passive-inbox).
+The recipient address must also be at that inbox's domain; SolidPing rejects
+anything else.
+:::
+
+**Under the hood, the recipient address is stored on the check, not
+resolved at send time.** Picking a delivery check in the dashboard just
+fills in the address for you — the same probe works identically from any
+worker, including a [private location / deported
+agent](./private-locations.md), with no extra setup. One consequence worth
+knowing: SolidPing does not verify that the delivery check you name belongs
+to your organization once it's just an address — anyone who already knows
+another check's tokenized address could in principle aim a probe at it too.
+The receiving inbox domain restriction still holds absolutely (a recipient
+outside the instance's own inbox is never possible), and the tokenized
+address itself is exactly as unguessable as it always was.
+
 ### IMAP {#imap}
 
 Monitor IMAP server availability and authentication.
@@ -435,7 +519,7 @@ Verify end-to-end email **delivery** rather than just server connectivity. Solid
 The receiving domain is configured by your administrator. Point a periodic test email (or your application's "send a heartbeat" job) at the generated address, and SolidPing reports an incident if expected mail stops arriving.
 
 :::note Passive check
-Email-reception checks are receive-only — SolidPing waits for mail instead of actively probing a server. Combine it with an [SMTP check](#smtp) to also monitor outbound connectivity.
+Email-reception checks are receive-only — SolidPing waits for mail instead of actively probing a server. Combine it with an [SMTP check](#smtp) to also monitor outbound connectivity, or use SMTP [send mode](#smtp-send-mode) to have SolidPing generate and submit that probe email for you automatically.
 :::
 
 ## Remote Access
@@ -993,6 +1077,62 @@ seconds, so faster periods would occupy a monitoring slot continuously. See
 - Login flow verification
 - Visual regression detection
 - JavaScript-rendered content checks
+
+#### Where Chrome comes from
+
+The SolidPing image is distroless and deliberately ships **no browser** — a
+browser check drives a Chrome that lives outside the SolidPing process. There
+are two ways to give it one, and nothing is ever downloaded at runtime.
+
+**1. Remote Chrome over CDP (recommended, and the only option in containers).**
+Point the worker at a long-lived headless Chrome speaking the Chrome DevTools
+Protocol:
+
+| Setting | Environment variable | Meaning |
+|---|---|---|
+| `checkers.browser.cdp_url` | `SP_CHECKERS_BROWSER_CDP_URL` | Websocket/HTTP address of the CDP endpoint, e.g. `ws://browser:9222` |
+| `checkers.browser.chrome_path` | `SP_CHECKERS_BROWSER_CHROME_PATH` | Local Chrome binary for the fallback below |
+
+Each execution opens a fresh **isolated (incognito) browser context and tab**,
+torn down afterwards, so consecutive checks never share cookies, storage or a
+service worker. Because the browser process is already running, the measured
+duration no longer includes Chrome's ~1s cold start.
+
+The expected deployment shape is a **sidecar next to each checks worker** —
+`chromedp/headless-shell`, pinned to a tag so every region runs the same Chrome
+version, reached over localhost. In Docker Compose that is an extra service; see
+[Docker Compose installation](../installation/docker-compose.md#browser-checks-headless-chrome).
+In Kubernetes it is a second container in the worker Pod with
+`SP_CHECKERS_BROWSER_CDP_URL=ws://127.0.0.1:9222`.
+
+If the endpoint is unreachable, the check reports an **error** — never "down".
+Your monitored site is not implicated by your browser sidecar being down, and
+SolidPing will not raise a false incident for it. The `browser` capability
+(below) also drops on the next worker heartbeat.
+
+**2. Local Chrome binary (fallback).** With no `cdp_url` configured, SolidPing
+executes a locally installed Chrome/Chromium: `chrome_path` if set, otherwise
+the usual binary names (`google-chrome`, `chromium`, `chromium-browser`, …).
+This is the zero-config path on a developer laptop and an opt-in for agents
+installed on a host that already has Chrome. SolidPing never downloads a
+browser.
+
+#### Concurrency
+
+At most **4 browser checks run at a time per worker** — a browser execution
+costs orders of magnitude more than a network probe, and an unbounded pool of
+tabs would starve the sidecar. A fifth execution waits for a slot inside its own
+timeout budget and reports a timeout if none frees up. Space browser checks out,
+or add workers, rather than lowering their period.
+
+#### Region capability
+
+Workers self-report a `browser` capability (a reachable CDP endpoint, or a local
+binary), aggregated per region alongside `ipv4`/`ipv6`. Creating or editing a
+browser check in a region whose live workers report no browser produces a
+**warning** naming a region that does have one — the check is still saved and
+still runs. A region with no live worker, or served by an agent predating the
+probe, reports `unknown` and never warns.
 
 ## Common Options
 

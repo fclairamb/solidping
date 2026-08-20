@@ -83,7 +83,7 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 		req.Context(), body.ClientName, body.RedirectURIs, grantTypes, scopes, isPublic,
 	)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	authMethod := AuthMethodNone

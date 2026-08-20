@@ -37,6 +37,127 @@ Bun's migration discovery regex (`[0-9a-z_\-]` only) does **not** allow dots. Us
 
 Migrations already shipped in a released version (`vX.Y.Z` git tag) are **frozen and never rewritten**. Only add new files for new releases.
 
+## Gaps in the `NNN` sequence — never renumber a RELEASED one, always consolidate an UNRELEASED series
+
+Two rules that look contradictory live here. They are not: they are about
+different halves of the sequence, split at the last released migration.
+
+### Released or withdrawn numbers: leave the hole
+
+Once a number has escaped into any database that is not yours — a released
+tag, or a withdrawn draft some colleague's dev database still records — the
+hole it leaves is permanent. **Leave it.** Bun discovers migrations by numeric
+prefix and applies whichever are unapplied, in order; a gap costs nothing.
+
+Renumbering a later migration down into such a hole is actively dangerous,
+because the hole is only empty *in the source tree*. Databases that ran the
+withdrawn migration still carry its number in `bun_migrations`. Slide the next
+migration into that number and bun sees it as already applied and **silently
+skips it** — the exact failure mode the integrity guard below exists to catch,
+reintroduced by hand. On those databases the guard then refuses to boot on the
+checksum mismatch, which is correct but means a hand repair before anything
+runs again.
+
+### The unreleased series: consolidate it, renumber included
+
+Everything numbered above the last released migration is still a draft. The
+"one migration per release" rule at the top of this section is the goal state,
+and the [development workflow](#development-workflow) below is how you get
+there: at release time the cycle's scratch migrations collapse into a single
+`NNN_vX_Y_Z` file per engine holding the **net final DDL**. That consolidation
+is a renumbering, and it is correct — the numbers being reused never shipped.
+
+Consolidate as soon as the churn is visible, not only on release day: a series
+where one migration adds a column and the next drops it makes every future
+install create the column only to destroy it, and on SQLite that is a full
+rebuild of the largest table in the system for no net gain. (v0.17.0 did
+exactly this across `015` + `016`; both were replaced by a single `014` — `013`
+being the last released migration, `014` is simply the next number.)
+
+The price is paid entirely by development databases, and it is paid by
+**RESET**, never by repair:
+
+- Reset the database — `SP_DB_RESET=true` in test/demo run mode, or delete the
+  SQLite file.
+- **Do not run `solidping migrate repair`.** Repair rewrites the recorded
+  checksum without applying any schema. A database that ran the old series
+  would come out claiming the consolidated migration is applied while actually
+  carrying whatever the old files left behind — a database that looks correct
+  and is not.
+
+Say so explicitly in the consolidated migration's header and in the release
+notes, so nobody reaches for repair out of habit.
+
+## Integrity guard: an applied migration is frozen too
+
+The freeze rule above is about *released* migrations. The trap is the pending
+one: bun keys an applied migration on its **numeric prefix alone**, so editing
+`013_v0_16_0.up.sql` after a dev loop has already run an earlier draft of it
+does **not** re-run it. The new statements never execute, `bun_migrations` keeps
+claiming 013 is applied, and the database silently lacks whatever the rewrite
+added. That has bitten this repository twice — most recently as a missing
+`workers.capabilities` column that 404'd region resolution and stopped check
+scheduling for two days (spec 2026-08-18-02).
+
+`internal/db/migrationguard` makes that loud. On every boot, before migrating,
+it compares a SHA-256 of each applied migration's `.up.sql` against the
+checksum recorded in the `migration_checksums` side table:
+
+- **No record** (a database that predates the guard) → the checksum is
+  backfilled and the boot proceeds. Existing healthy databases never trip it.
+- **Record matches** → normal boot.
+- **Record differs** → what happens depends on the guard mode (below).
+
+Only the `.up.sql` half is hashed: a `.down.sql` never runs during a forward
+boot, so editing one cannot desync an applied schema. A Go migration would
+have no file to hash; `migrationguard.New` accepts declared checksums for
+that case (no current occupant).
+
+### Guard mode: `strict` (default) or `warn`
+
+`db.migration_guard_mode` / `SP_DB_MIGRATION_GUARD_MODE` (**multi-word koanf
+key — read by the manual `applyMigrationGuardModeEnv` reader, not the
+automatic env loader**, same quirk as `db.slow_query_threshold`) picks the
+behavior on a checksum mismatch:
+
+- **`strict`** (the default, and the only mode production should run) —
+  startup **fails** with an error naming the migration, both checksums, and
+  the repair options. Nothing is written to `migration_checksums` while any
+  mismatch exists, not even for an unrelated migration awaiting its first
+  checksum — a database that is already diverged must not have its record
+  quietly updated.
+- **`warn`** — the mismatch is logged (`slog.WarnContext`, once per boot) and
+  the boot continues. `make dev` / `make dev-test` / `make dev-saas` always run
+  this way (set in the root `Makefile`), because editing a comment in an
+  already-applied migration during local development is common and must not
+  brick the dev database. Warn mode still backfills any migration with no
+  recorded checksum at all, even while another migration mismatches — only the
+  mismatched row's own checksum is protected from being overwritten, in both
+  modes, which is what makes the warning recur every boot until someone
+  repairs deliberately.
+
+### Repairing a database the guard rejects
+
+1. **Cosmetic edit** (comment/whitespace only in an already-applied
+   migration) — run `solidping migrate repair`. It re-records checksums for
+   every applied migration this binary ships (inserting a missing row or
+   updating a drifted one to the current file's checksum) **without running
+   any migration** — it only ever touches `migration_checksums`.
+2. **Development** — reset the database (`SP_DB_RESET=true` in test/demo run
+   mode, or delete the SQLite file), or run with
+   `SP_DB_MIGRATION_GUARD_MODE=warn` to boot anyway.
+3. **Otherwise** — apply the missing statements by hand, then run
+   `solidping migrate repair`.
+
+The correct *prevention* is never to edit an applied migration: add a new
+numbered one instead, written to be idempotent so it is a no-op on databases
+that already got the DDL. (A self-healing migration numbered `014` once did
+this for a rewritten 013; it was withdrawn before release in favor of repairing
+the few affected dev databases by hand — pre-release, hand repair beats
+shipping a permanent migration. `014_v0_17_0` today is the consolidated
+v0.17.0 migration, unrelated to that draft; see the consolidation rule above
+for why reusing the number is safe here and what it costs dev databases.)
+
 ## Development workflow
 
 During a release cycle developers add scratch migrations as needed (e.g., `002_add_foo.up.sql`). At release time:

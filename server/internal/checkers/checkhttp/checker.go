@@ -64,6 +64,12 @@ const (
 	maxRedirects  = 10                          // Maximum number of HTTP redirects to follow
 	maxBodySizeMB = 10                          // Maximum response body size in MB
 	maxBodySize   = maxBodySizeMB * 1024 * 1024 // Maximum response body size in bytes
+
+	// errJSONAssertionFailed is the output message for a violated
+	// `json_path_assertions` tree; the tree itself rides along under the
+	// "json_path_assertions" output key. Named so tests assert the same
+	// string the checker emits.
+	errJSONAssertionFailed = "JSON assertion failed"
 )
 
 // HTTPChecker implements the Checker interface for HTTP checks.
@@ -213,6 +219,12 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		result.Output[checkerdef.OutputKeyIPVersion] = version.String()
 	}
 
+	// The resolved peer address is only observable from the trace, so it is
+	// stamped onto the capture here rather than inside executeRequest.
+	if result.Diagnostics != nil && result.Diagnostics.FailureResponse != nil {
+		result.Diagnostics.FailureResponse.RemoteAddr = tracker.remoteAddr()
+	}
+
 	return result, nil
 }
 
@@ -347,20 +359,95 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		_ = resp.Body.Close()
 	}()
 
-	// Compile regex patterns if not already compiled
-	if cfg.BodyPattern != "" && cfg.bodyPatternRegex == nil {
-		regex, err := regexp.Compile(cfg.BodyPattern)
-		if err != nil {
+	// bodyDrivesAssertions is the read gate: it must list EVERY config key
+	// whose evaluation needs the response body, because respBody below is
+	// populated only when it is true, and every body-reading assertion keys
+	// off respBody.
+	//
+	// JSONPathAssertions belongs here and was missing until spec
+	// 2026-08-20-04: a check configured with only `json_path_assertions` and
+	// no `body_*` key never read the body, so `respBody` stayed empty and the
+	// JSONPath block below — guarded by `respBody != ""` — was skipped without
+	// an error or a log, reporting UP whatever the endpoint returned. It is a
+	// pointer, so the term is a nil check and not a len().
+	//
+	// Anything added to HTTPConfig that reads the body goes in this list too;
+	// forgetting it fails open, silently, exactly as that bug did.
+	bodyDrivesAssertions := cfg.BodyExpect != "" || cfg.BodyReject != "" ||
+		cfg.BodyPattern != "" || cfg.BodyPatternReject != "" ||
+		cfg.JSONPathAssertions != nil
+
+	// The capture needs the same bytes, so they are read once and shared — the
+	// whole point of this feature is that the failing response is ALREADY in
+	// memory at failure time, so a capture costs no second request and no
+	// extra I/O.
+	//
+	// The read runs before the regex-compile blocks below so that a check whose
+	// pattern fails to compile still captures what the probe saw — a
+	// misconfigured regex is exactly when you want the evidence.
+	var bodyBytes []byte
+
+	if bodyDrivesAssertions || cfg.CaptureFailureResponse {
+		// Limit body size to prevent memory issues
+		limitedReader := io.LimitReader(resp.Body, maxBodySize)
+
+		var readErr error
+
+		bodyBytes, readErr = io.ReadAll(limitedReader)
+		if readErr != nil {
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Output: map[string]any{
-					checkerdef.OutputKeyError:      fmt.Sprintf("invalid body_pattern regex: %v", err),
+					checkerdef.OutputKeyError:      fmt.Sprintf("failed to read response body: %v", readErr),
 					checkerdef.OutputKeyURL:        cfg.URL,
 					checkerdef.OutputKeyStatusCode: resp.StatusCode,
 					checkerdef.OutputKeyMethod:     method,
 				},
+				// A body we could not read is a body we cannot show: the
+				// capture degrades to the partial bytes we did get, which is
+				// still the most useful evidence available here.
+				Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
 			}, nil
+		}
+	}
+
+	// THE CAPTURE MUST BE OBSERVATIONALLY INERT ON THE VERDICT. respBody is the
+	// single value every assertion block keys off (`body_expect`, the regexes,
+	// and — via its `respBody != ""` guard — `json_path_assertions`), so it is
+	// populated ONLY when bodyDrivesAssertions says so, never merely because
+	// the capture asked for the same bytes. The capture reads
+	// bodyBytes directly and never touches respBody: enabling
+	// `capture_failure_response` therefore cannot make an assertion start (or
+	// stop) running, and cannot move a check between UP and DOWN.
+	var respBody string
+
+	if bodyDrivesAssertions {
+		respBody = string(bodyBytes)
+	}
+
+	// failed builds a post-response failure result, attaching the capture when
+	// the check opted in. Every failure return below this point goes through
+	// it, so no future branch can silently forget the capture.
+	failed := func(output map[string]any) *checkerdef.Result {
+		return &checkerdef.Result{
+			Status:      checkerdef.StatusDown,
+			Duration:    duration,
+			Output:      output,
+			Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
+		}
+	}
+
+	// Compile regex patterns if not already compiled
+	if cfg.BodyPattern != "" && cfg.bodyPatternRegex == nil {
+		regex, err := regexp.Compile(cfg.BodyPattern)
+		if err != nil {
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      fmt.Sprintf("invalid body_pattern regex: %v", err),
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+			}), nil
 		}
 		cfg.bodyPatternRegex = regex
 	}
@@ -368,16 +455,12 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	if cfg.BodyPatternReject != "" && cfg.bodyPatternRejectRegex == nil {
 		regex, err := regexp.Compile(cfg.BodyPatternReject)
 		if err != nil {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      fmt.Sprintf("invalid body_pattern_reject regex: %v", err),
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-				},
-			}, nil
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      fmt.Sprintf("invalid body_pattern_reject regex: %v", err),
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+			}), nil
 		}
 		cfg.bodyPatternRejectRegex = regex
 	}
@@ -387,100 +470,59 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		for headerName, pattern := range cfg.HeadersPattern {
 			regex, err := regexp.Compile(pattern)
 			if err != nil {
-				return &checkerdef.Result{
-					Status:   checkerdef.StatusDown,
-					Duration: duration,
-					Output: map[string]any{
-						checkerdef.OutputKeyError:      fmt.Sprintf("invalid headers_pattern regex for header %q: %v", headerName, err),
-						checkerdef.OutputKeyURL:        cfg.URL,
-						checkerdef.OutputKeyStatusCode: resp.StatusCode,
-						checkerdef.OutputKeyMethod:     method,
-					},
-				}, nil
+				return failed(map[string]any{
+					checkerdef.OutputKeyError:      fmt.Sprintf("invalid headers_pattern regex for header %q: %v", headerName, err),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
+				}), nil
 			}
 			cfg.headersPatternRegex[headerName] = regex
 		}
 	}
 
-	// Read response body if pattern matching is needed
-	var respBody string
-	if cfg.BodyExpect != "" || cfg.BodyReject != "" || cfg.BodyPattern != "" || cfg.BodyPatternReject != "" {
-		// Limit body size to prevent memory issues
-		limitedReader := io.LimitReader(resp.Body, maxBodySize)
-		bodyBytes, err := io.ReadAll(limitedReader)
-		if err != nil {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      fmt.Sprintf("failed to read response body: %v", err),
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-				},
-			}, nil
-		}
-		respBody = string(bodyBytes)
-	}
-
 	// Apply body pattern matching
 	if cfg.BodyExpect != "" {
 		if !strings.Contains(respBody, cfg.BodyExpect) {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      fmt.Sprintf("Expected string %q not found in response body", cfg.BodyExpect),
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-				},
-			}, nil
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      fmt.Sprintf("Expected string %q not found in response body", cfg.BodyExpect),
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+			}), nil
 		}
 	}
 
 	if cfg.BodyReject != "" {
 		if strings.Contains(respBody, cfg.BodyReject) {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      fmt.Sprintf("Rejected string %q found in response body", cfg.BodyReject),
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-				},
-			}, nil
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      fmt.Sprintf("Rejected string %q found in response body", cfg.BodyReject),
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+			}), nil
 		}
 	}
 
 	if cfg.bodyPatternRegex != nil {
 		if !cfg.bodyPatternRegex.MatchString(respBody) {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      fmt.Sprintf("Expected pattern %q not found in response body", cfg.BodyPattern),
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-				},
-			}, nil
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      fmt.Sprintf("Expected pattern %q not found in response body", cfg.BodyPattern),
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+			}), nil
 		}
 	}
 
 	if cfg.bodyPatternRejectRegex != nil {
 		if cfg.bodyPatternRejectRegex.MatchString(respBody) {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      fmt.Sprintf("Rejected pattern %q found in response body", cfg.BodyPatternReject),
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-				},
-			}, nil
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      fmt.Sprintf("Rejected pattern %q found in response body", cfg.BodyPatternReject),
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+			}), nil
 		}
 	}
 
@@ -489,32 +531,24 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		for headerName, headerRegex := range cfg.headersPatternRegex {
 			headerValue := resp.Header.Get(headerName)
 			if headerValue == "" {
-				return &checkerdef.Result{
-					Status:   checkerdef.StatusDown,
-					Duration: duration,
-					Output: map[string]any{
-						checkerdef.OutputKeyError:      fmt.Sprintf("Required header %q not found in response", headerName),
-						checkerdef.OutputKeyURL:        cfg.URL,
-						checkerdef.OutputKeyStatusCode: resp.StatusCode,
-						checkerdef.OutputKeyMethod:     method,
-					},
-				}, nil
+				return failed(map[string]any{
+					checkerdef.OutputKeyError:      fmt.Sprintf("Required header %q not found in response", headerName),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
+				}), nil
 			}
 			if !headerRegex.MatchString(headerValue) {
 				errMsg := fmt.Sprintf(
 					"Header %q value does not match pattern %q",
 					headerName, cfg.HeadersPattern[headerName],
 				)
-				return &checkerdef.Result{
-					Status:   checkerdef.StatusDown,
-					Duration: duration,
-					Output: map[string]any{
-						checkerdef.OutputKeyError:      errMsg,
-						checkerdef.OutputKeyURL:        cfg.URL,
-						checkerdef.OutputKeyStatusCode: resp.StatusCode,
-						checkerdef.OutputKeyMethod:     method,
-					},
-				}, nil
+				return failed(map[string]any{
+					checkerdef.OutputKeyError:      errMsg,
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
+				}), nil
 			}
 		}
 	}
@@ -523,31 +557,23 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	if cfg.JSONPathAssertions != nil && respBody != "" {
 		var jsonData any
 		if unmarshalErr := json.Unmarshal([]byte(respBody), &jsonData); unmarshalErr != nil {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      "response body is not valid JSON for assertion evaluation",
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-				},
-			}, nil
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      "response body is not valid JSON for assertion evaluation",
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+			}), nil
 		}
 
 		assertionResult := cfg.JSONPathAssertions.Evaluate(jsonData)
 		if !assertionResult.Pass {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusDown,
-				Duration: duration,
-				Output: map[string]any{
-					checkerdef.OutputKeyError:      "JSON assertion failed",
-					checkerdef.OutputKeyURL:        cfg.URL,
-					checkerdef.OutputKeyStatusCode: resp.StatusCode,
-					checkerdef.OutputKeyMethod:     method,
-					"json_path_assertions":         assertionResult,
-				},
-			}, nil
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      errJSONAssertionFailed,
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+				"json_path_assertions":         assertionResult,
+			}), nil
 		}
 	}
 
@@ -565,7 +591,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		}
 	}
 
-	return &checkerdef.Result{
+	finalResult := &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
 		Output: withTLSVerifySkipped(map[string]any{
@@ -573,7 +599,16 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,
 			checkerdef.OutputKeyMethod:     method,
 		}, skipTLSVerify),
-	}, nil
+	}
+
+	// The unexpected-status case is the single most common HTTP failure, and
+	// the only one that reaches here. A successful check never carries a
+	// capture: the whole feature exists to explain failures.
+	if status != checkerdef.StatusUp {
+		finalResult.Diagnostics = buildFailureCapture(cfg, resp, bodyBytes)
+	}
+
+	return finalResult, nil
 }
 
 // withTLSVerifySkipped adds the tls_verify_skipped marker to a result output
@@ -608,6 +643,10 @@ func familyDialContext(version checkerdef.IPVersion) func(context.Context, strin
 type connFamilyTracker struct {
 	mu     sync.Mutex
 	family checkerdef.IPVersion
+	// addr is the peer address the request actually reached, used only to
+	// annotate a failure capture ("which of the CDN's edges served me this
+	// challenge page?"). Empty when no connection was established.
+	addr string
 }
 
 // clientTrace returns the httptrace hooks to attach to the request context.
@@ -618,7 +657,9 @@ func (t *connFamilyTracker) clientTrace() *httptrace.ClientTrace {
 				return
 			}
 
-			addr, ok := info.Conn.RemoteAddr().(*net.TCPAddr)
+			remote := info.Conn.RemoteAddr()
+
+			addr, ok := remote.(*net.TCPAddr)
 			if !ok || addr.IP == nil {
 				return
 			}
@@ -627,6 +668,7 @@ func (t *connFamilyTracker) clientTrace() *httptrace.ClientTrace {
 			defer t.mu.Unlock()
 
 			t.family = checkerdef.IPVersionOf(addr.IP)
+			t.addr = remote.String()
 		},
 	}
 }
@@ -643,4 +685,13 @@ func (t *connFamilyTracker) version() checkerdef.IPVersion {
 	}
 
 	return t.family
+}
+
+// remoteAddr reports the peer address of the last established connection, or
+// "" when none was established.
+func (t *connFamilyTracker) remoteAddr() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.addr
 }

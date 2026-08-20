@@ -69,7 +69,7 @@ func (h *PasskeyHandler) RegisterBegin(writer http.ResponseWriter, req *http.Req
 
 	resp, err := h.svc.BeginRegistration(req.Context(), claims.UserUID)
 	if err != nil {
-		return h.translatePasskeyError(writer, err)
+		return h.translatePasskeyError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -96,7 +96,7 @@ func (h *PasskeyHandler) RegisterFinish(writer http.ResponseWriter, req *http.Re
 
 	info, err := h.svc.FinishRegistration(req.Context(), body.Session, body.Credential, body.Name)
 	if err != nil {
-		return h.translatePasskeyError(writer, err)
+		return h.translatePasskeyError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, passkeyRegisterFinishResponse{Passkey: *info})
@@ -113,7 +113,7 @@ func (h *PasskeyHandler) LoginBegin(writer http.ResponseWriter, req *http.Reques
 
 	resp, err := h.svc.BeginLogin(req.Context(), body.Email)
 	if err != nil {
-		return h.translatePasskeyError(writer, err)
+		return h.translatePasskeyError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -141,7 +141,7 @@ func (h *PasskeyHandler) LoginFinish(writer http.ResponseWriter, req *http.Reque
 
 	resp, err := h.svc.FinishLogin(req.Context(), body.Session, body.Credential, body.Org, authContext)
 	if err != nil {
-		return h.translatePasskeyError(writer, err)
+		return h.translatePasskeyError(writer, req, err)
 	}
 
 	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
@@ -158,7 +158,7 @@ func (h *PasskeyHandler) List(writer http.ResponseWriter, req *http.Request) err
 
 	infos, err := h.svc.ListPasskeys(req.Context(), claims.UserUID)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, passkeyListResponse{Data: infos})
@@ -184,7 +184,7 @@ func (h *PasskeyHandler) Rename(writer http.ResponseWriter, req *http.Request) e
 	}
 
 	if err := h.svc.RenamePasskey(req.Context(), claims.UserUID, uid, body.Name); err != nil {
-		return h.translatePasskeyError(writer, err)
+		return h.translatePasskeyError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
@@ -203,7 +203,7 @@ func (h *PasskeyHandler) Delete(writer http.ResponseWriter, req *http.Request) e
 	}
 
 	if err := h.svc.DeletePasskey(req.Context(), claims.UserUID, uid); err != nil {
-		return h.translatePasskeyError(writer, err)
+		return h.translatePasskeyError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "deleted"})
@@ -211,7 +211,7 @@ func (h *PasskeyHandler) Delete(writer http.ResponseWriter, req *http.Request) e
 
 // translatePasskeyError maps service errors onto HTTP responses with
 // the contractual error codes from base/base.go.
-func (h *PasskeyHandler) translatePasskeyError(writer http.ResponseWriter, err error) error {
+func (h *PasskeyHandler) translatePasskeyError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrWebAuthnNotConfigured):
 		return h.WriteError(writer, http.StatusServiceUnavailable,
@@ -230,7 +230,7 @@ func (h *PasskeyHandler) translatePasskeyError(writer http.ResponseWriter, err e
 			base.ErrorCodePasskeyLastAuthMethod,
 			"Add another passkey or set a password before removing this one")
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 

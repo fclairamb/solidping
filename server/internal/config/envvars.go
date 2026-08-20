@@ -112,6 +112,10 @@ func manualReaderServerEnvVars() []string {
 		"SP_LOG_LEVEL",
 		"SP_APP_GITHUB_ISSUES_TOKEN",
 		"SP_APP_GITHUB_REPO",
+		// applyCheckersEnv — both keys have a snake_case segment, so koanf's
+		// env loader cannot reach them (see BrowserCheckerConfig).
+		"SP_CHECKERS_BROWSER_CDP_URL",
+		"SP_CHECKERS_BROWSER_CHROME_PATH",
 		// applyRateLimitingEnv
 		"SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE",
 		"SP_SERVER_RATE_LIMITING_BURST",
@@ -192,6 +196,10 @@ func manualReaderPlatformEnvVars() []string {
 		"SP_DB_MAX_IDLE_CONNS",
 		"SP_DB_CONN_MAX_LIFETIME",
 		"SP_DB_CONN_MAX_IDLE_TIME",
+		// applyDBSlowQueryEnv
+		"SP_DB_SLOW_QUERY_THRESHOLD",
+		// applyMigrationGuardModeEnv
+		"SP_DB_MIGRATION_GUARD_MODE",
 		// applyRuntimeEnv
 		"SP_RUNTIME_MEMORY_LIMIT",
 		"SP_RUNTIME_AUTO_MEMORY_LIMIT",
@@ -214,6 +222,10 @@ func manualReaderPlatformEnvVars() []string {
 		// and come from the reflection set; these two have snake_case segments.
 		"SP_POSTHOG_PROJECT_API_KEY",
 		"SP_POSTHOG_PERSONAL_API_KEY",
+		// applySentryEnv — sentry.dsn / sentry.environment / sentry.debug are
+		// koanf-reachable (single-word segments) and come from the reflection
+		// set; only traces_sample_rate has a snake_case segment.
+		"SP_SENTRY_TRACES_SAMPLE_RATE",
 	}
 
 	// applyWhatsAppEnv — whatsapp.enabled is koanf-reachable and comes from the

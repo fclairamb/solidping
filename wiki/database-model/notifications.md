@@ -13,7 +13,7 @@ Renamed from `integration_connections` in migration 035 (pre-consolidation).
 |--------|------|-------------|
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations |
-| type | varchar | Integration type: slack, discord, webhook, email, googlechat, mattermost, ntfy, opsgenie, pushover, freebox |
+| type | varchar | Integration type: slack, discord, webhook, email, googlechat, mattermost, ntfy, pagerduty, pushover, freebox |
 | name | varchar | Human-readable name |
 | enabled | boolean | Whether active |
 | is_default | boolean | Auto-attach to new checks |

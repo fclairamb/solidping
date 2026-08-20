@@ -169,7 +169,10 @@ func (s *Service) ListActivationFunnel(ctx context.Context) (*ActivationFunnelRe
 				models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 				models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
 				models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
-				models.EventTypeStatusUpdateDeleted:
+				models.EventTypeStatusUpdateDeleted,
+				models.EventTypeStatusPageIncidentPublished,
+				models.EventTypeStatusPageIncidentUpdated,
+				models.EventTypeStatusPageIncidentResolved:
 				// Filter only requested activation events; these branches
 				// are unreachable but exhaustive lint requires them.
 			}

@@ -1,5 +1,15 @@
 # Sentry Integration
 
+**Correction (2026-08-18):** this spec's plan text says `TracesSampleRate` defaults
+to `0.1` (see "Sampling" below and the `traces_sample_rate: 0.1` / `SP_SENTRY_TRACES_SAMPLE_RATE=0.1`
+examples). What actually shipped defaults to `0.0` — the code never set a Sentry
+default at all, so it fell through to the Go zero value, and `SP_SENTRY_TRACES_SAMPLE_RATE`
+was silently unreachable via env until [2026-08-17-07](../../../todos/2026-08-17-07-sentry-traces-sample-rate-env-ignored.md)
+fixed the env binding and made `0.0` an explicit, deliberate default: SolidPing
+already ships OpenTelemetry tracing behind `SP_OTEL_ENABLED`, and errors/panics —
+what Sentry is actually good at — are captured at 100% regardless of this
+setting. This note corrects the record rather than rewriting the plan below.
+
 ## Overview
 
 SolidPing needs centralized error tracking and performance monitoring beyond what structured logging and OpenTelemetry provide. Sentry excels at error grouping, stack trace enrichment, release tracking, and alerting — things that are painful to build on raw OTel alone.

@@ -1,5 +1,11 @@
 # Split "Outage" (operational alert) from "Incident" (customer comms)
 
+> **Superseded** (2026-08-19) by
+> [`2026-08-19-08-auto-publish-incidents-to-status-pages.md`](../../../todos/2026-08-19-08-auto-publish-incidents-to-status-pages.md),
+> which delivers the customer-facing incident + auto-publish via a
+> publication overlay on the existing `incidents` table instead of the
+> four-phase rename. The rename remains possible later as pure hygiene.
+
 ## Context
 
 Today every failure goes through one table — `incidents` — that mixes

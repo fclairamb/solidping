@@ -158,7 +158,12 @@ test.describe("Checks", () => {
     // Wait for form to be ready
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
-    // Generate a unique check name and URL to avoid slug conflicts
+    // A unique name and URL path, so this test's check is identifiable in a
+    // shared org. Note this does NOT make the auto-generated slug unique: it is
+    // derived from the target HOST only (checkhttp sets `http-<hostname>`), so
+    // every run of this test still resolves the same base slug and the server
+    // is what disambiguates it — see spec 2026-08-20-03 and
+    // checks.insertResolvingSlugRace.
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substring(7);
     const checkName = `E2E Create ${timestamp}`;

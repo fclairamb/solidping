@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Dashboard**: React + TanStack Router (see `web/dash0/CLAUDE.md` for details) — do not use `web/dash` for current development
 - **Infrastructure**: Docker Compose with PostgreSQL for monitoring data storage
 - **Monitoring**: Multi-protocol ping/health checking with distributed worker system
-- **Docs site**: Docusaurus in `web/docs/` (baseUrl `/docs/`), embedded in the Go binary and served at the **`/docs`** path on every host (like `/dash0`, `/status0`) — so `solidping.io/docs` works with no extra infra. `docs.solidping.io` redirects its root into `/docs` (config `server.docs_host` / `SP_DOCS_HOST`). The API reference is generated at build from `server/internal/app/openapi/openapi.yaml`; the interactive OpenAPI (Swagger) explorer is at `/openapi`. `docusaurus-plugin-llms` generates `llms.txt` / `llms-full.txt` from the docs content; they're served both at `/docs/llms.txt` / `/docs/llms-full.txt` and, for crawler convenience, at the conventional root path `/llms.txt` / `/llms-full.txt` (same embedded file, no duplication). The marketing site (`www.solidping.io`) is the separate `solidping-website` repo; internal engineering notes live in `wiki/`.
+- **Docs site**: Docusaurus in `web/docs/` (baseUrl `/docs/`), embedded in the Go binary and served at the **`/docs`** path on every host (like `/dash0`, `/status0`) — so `solidping.io/docs` works with no extra infra. `docs.solidping.io` redirects its root into `/docs` (config `server.docs_host` / `SP_DOCS_HOST`). The API reference is generated at build from `server/internal/app/openapi/openapi.yaml`; the interactive OpenAPI (Swagger) explorer is at `/openapi`. `docusaurus-plugin-llms` generates `llms.txt` / `llms-full.txt` from the docs content; they're served both at `/docs/llms.txt` / `/docs/llms-full.txt` and, for crawler convenience, at the conventional root path `/llms.txt` / `/llms-full.txt` (same embedded file, no duplication). The marketing site (`www.solidping.io`) is the separate `solidping-website` repo; internal engineering notes live in `wiki/`. **Competitor comparisons never go in the published docs site** — all competitor/comparison content belongs in `wiki/competitors/` (one `{name}.md` per competitor, indexed in `wiki/README.md`). The only competitor-facing pages `web/docs/` carries are the `migrate-from-*.md` import guides.
 
 ## Development workflow
 If the server is running on port 4000, apply code changes directly — `make dev` / `make dev-test` hot-reloads both backend and frontend.
@@ -45,7 +45,7 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 `SP_DEPLOYMENT_MODE=saas` switches per-org defaults to the SaaS tier and lets a
 separate billing service (`../solidping-billing`) drive plan upgrades. Per-org
 limits live in `org_entitlements` (`maxChecks`, `maxUsers` — `maxSsoUsers` is a
-deprecated decode-only alias, `maxChecksPerMinute`) plus display-only plan identity (`displayName`,
+deprecated decode-only alias, `maxChecksPerMinute`, `maxSlos`) plus display-only plan identity (`displayName`,
 `displayEmoji`, e.g. "🚀 Team") — both shown on the org **Usage** page
 (`/orgs/$org/organization/usage`).
 

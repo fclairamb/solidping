@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -62,11 +63,11 @@ func (b *DirectBackend) Register(
 }
 
 // Heartbeat updates the worker's last_active_at timestamp and the reported
-// capability set.
+// capability set and build version.
 func (b *DirectBackend) Heartbeat(
-	ctx context.Context, workerUID string, capabilities []string,
+	ctx context.Context, workerUID string, capabilities []string, version string,
 ) error {
-	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID, capabilities)
+	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID, capabilities, version)
 }
 
 // ClaimJobs claims up to fastLimit jobs for the given worker with the slow
@@ -163,7 +164,7 @@ func (b *DirectBackend) submitSecretsError(
 		Status:          int(models.ResultStatusError),
 		Duration:        0,
 		Metrics:         map[string]any{},
-		Output:          map[string]any{"error": reason.Error()},
+		Output:          map[string]any{checkerdef.OutputKeyError: reason.Error()},
 		Region:          job.Region,
 		NextScheduledAt: nextScheduledAt(job),
 	}); err != nil {
@@ -220,6 +221,22 @@ func (b *DirectBackend) SubmitResult(
 		Metrics:         models.JSONMap(req.Metrics),
 		Output:          models.JSONMap(req.Output),
 		CreatedAt:       time.Now(),
+		// Transient: models.Result.Diagnostics is `bun:"-"`, so this never
+		// reaches the results table. It exists purely so the incident pipeline
+		// below can decide whether this failure is worth keeping the capture for.
+		Diagnostics: req.Diagnostics,
+	}
+
+	// Tag the row as maintenance BEFORE the insert (spec 2026-08-20-01).
+	// Rollup buckets cannot be sliced after the fact, so a planned-work tag
+	// that arrives after aggregation is worthless. Best-effort: a maintenance
+	// lookup failure must never cost us the result itself, so the row is
+	// simply recorded as production traffic and the error logged.
+	if inMaintenance, mwErr := b.incidentSvc.IsCheckInActiveMaintenance(ctx, job.CheckUID); mwErr != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", mwErr, "check_uid", job.CheckUID)
+	} else {
+		result.Maintenance = inMaintenance
 	}
 
 	saveStart := time.Now()

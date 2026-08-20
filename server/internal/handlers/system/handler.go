@@ -34,7 +34,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 func (h *Handler) ListActivationFunnel(writer http.ResponseWriter, req *http.Request) error {
 	resp, err := h.svc.ListActivationFunnel(req.Context())
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -44,7 +44,7 @@ func (h *Handler) ListActivationFunnel(writer http.ResponseWriter, req *http.Req
 func (h *Handler) ListParameters(writer http.ResponseWriter, req *http.Request) error {
 	params, err := h.svc.ListParameters(req.Context())
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, params)
@@ -56,7 +56,7 @@ func (h *Handler) GetParameter(writer http.ResponseWriter, req *http.Request) er
 
 	param, err := h.svc.GetParameter(req.Context(), key)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, param)
@@ -81,7 +81,7 @@ func (h *Handler) SetParameter(writer http.ResponseWriter, req *http.Request) er
 
 	param, err := h.svc.SetParameter(req.Context(), key, setReq.Value, secret)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, param)
@@ -92,7 +92,7 @@ func (h *Handler) DeleteParameter(writer http.ResponseWriter, req *http.Request)
 	key := httpx.Param(req, "key")
 
 	if err := h.svc.DeleteParameter(req.Context(), key); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -117,14 +117,14 @@ func (h *Handler) TestEmail(writer http.ResponseWriter, req *http.Request) error
 
 	result, err := h.svc.TestEmail(req.Context(), body.Recipient)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, result)
 }
 
 // handleError translates service errors to HTTP responses.
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrParameterNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Parameter not found")
@@ -133,7 +133,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			{Name: paramValueField, Message: err.Error()},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -179,7 +179,7 @@ type EmailInboxTestRequest struct {
 func (h *Handler) EmailInboxPublic(writer http.ResponseWriter, req *http.Request) error {
 	domain, err := h.svc.EmailInboxPublicAddressDomain(req.Context())
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]string{"addressDomain": domain})
@@ -293,7 +293,7 @@ func (h *Handler) handleEmailInboxError(writer http.ResponseWriter, err error) e
 func (h *Handler) LaneLoad(writer http.ResponseWriter, req *http.Request) error {
 	report, err := h.svc.LaneLoad(req.Context())
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": report})

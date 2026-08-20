@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, X } from "lucide-react";
 
-import { useChecks, type Check as CheckType } from "@/api/hooks";
+import { useCheck, useChecks, type Check as CheckType } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -40,6 +40,12 @@ export function CheckPicker({
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Self-resolved label for `value`, independent of the caller's optional
+  // `selectedLabel` override. Set synchronously on select() so the trigger
+  // never flashes the raw uid between picking an entity and the next render.
+  const [pickedUid, setPickedUid] = useState<string | undefined>();
+  const [pickedLabel, setPickedLabel] = useState<string | undefined>();
+
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
@@ -59,10 +65,43 @@ export function CheckPicker({
     setActiveIndex(0);
   }, [debouncedQuery, filtered.length]);
 
-  const triggerLabel =
-    selectedLabel ?? (value ? value : placeholder ?? t("dependencies:pickCheck"));
+  // A `value` set by anything other than this component's own select() (an
+  // initial value on an edit form, restored state, …) needs its label
+  // resolved: first from the already-fetched search results, and only if
+  // that misses, by fetching the single check. `useCheck` shares its cache
+  // key (["check", org, uid]) with every other consumer, so this is a no-op
+  // request whenever the check was already fetched elsewhere.
+  const needsResolve = !selectedLabel && !!value && value !== pickedUid;
+  const fromList = needsResolve ? matches.find((c) => c.uid === value) : undefined;
+  const {
+    data: fetchedCheck,
+    isError: fetchFailed,
+  } = useCheck(org, needsResolve && !fromList ? value! : "", {});
+
+  let triggerLabel: string;
+  let isResolving = false;
+  if (selectedLabel) {
+    triggerLabel = selectedLabel;
+  } else if (!value) {
+    triggerLabel = placeholder ?? t("dependencies:pickCheck");
+  } else if (value === pickedUid && pickedLabel) {
+    triggerLabel = pickedLabel;
+  } else if (fromList) {
+    triggerLabel = fromList.name || fromList.slug || value;
+  } else if (fetchedCheck) {
+    triggerLabel = fetchedCheck.name || fetchedCheck.slug || value;
+  } else if (fetchFailed) {
+    // Genuinely deleted (or otherwise inaccessible) check: fall back to the
+    // uid so the field stays visible and clearable instead of crashing.
+    triggerLabel = value;
+  } else {
+    triggerLabel = "…";
+    isResolving = true;
+  }
 
   const select = (uid: string, c?: CheckType) => {
+    setPickedUid(uid);
+    setPickedLabel(c?.name || c?.slug || uid);
     onChange(uid, c);
     setOpen(false);
     setQuery("");
@@ -83,7 +122,7 @@ export function CheckPicker({
           data-testid={triggerTestId}
           className={cn(
             "h-9 w-full justify-between text-left font-normal",
-            !value && "text-muted-foreground",
+            (!value || isResolving) && "text-muted-foreground",
           )}
         >
           <span className="truncate">{triggerLabel}</span>

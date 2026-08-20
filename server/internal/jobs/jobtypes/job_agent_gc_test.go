@@ -223,6 +223,107 @@ func TestAgentGCNoDBServiceIsNoop(t *testing.T) {
 	r.NoError(run.Run(t.Context(), &jobdef.JobContext{Logger: slog.Default()}))
 }
 
+// TestAgentGCPurgesOldRevokedAgentsOfAnyKind is the job-level test for spec
+// 2026-08-16-03: a revoked agent older than the purge window disappears from
+// ListAgents after one sweep, its worker row goes with it, a revoked agent
+// still inside the window survives, and the clock is revoked_at — not
+// last_seen_at, which would otherwise keep a still-fresh-looking revoked
+// agent alive forever.
+func TestAgentGCPurgesOldRevokedAgentsOfAnyKind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	jctx, dbSvc, orgUID := newAgentGCTestContext(t)
+	ctx := t.Context()
+
+	threeDaysAgo := time.Now().Add(-3 * 24 * time.Hour)
+	oneDayAgo := time.Now().Add(-24 * time.Hour)
+	oneMinuteAgo := time.Now().Add(-time.Minute)
+
+	// Revoked 3 days ago (past the 2-day default) — org kind.
+	oldRevokedOrg := models.NewAgent(orgUID, "@acme/dc1", "old-revoked-org", "ed-1", "x-1", "fp-1")
+	oldRevokedOrg.Status = models.AgentStatusRevoked
+	oldRevokedOrg.RevokedAt = &threeDaysAgo
+	seedAgent(t, dbSvc, oldRevokedOrg, nil, time.Hour)
+
+	// The workers row the WS handler would have registered for it.
+	slug := agentcrypto.WorkerSlug(oldRevokedOrg.UID)
+	region := "@acme/dc1"
+	worker, err := dbSvc.RegisterOrUpdateWorker(ctx, &models.Worker{
+		UID: oldRevokedOrg.UID, Slug: slug, Name: "agent:" + oldRevokedOrg.Name, Region: &region,
+	})
+	r.NoError(err)
+
+	// Revoked 3 days ago too, but seen a minute ago — the positive control:
+	// the clock is revoked_at, not last_seen_at.
+	oldRevokedFreshlySeen := models.NewSystemAgent("eu-west-1", "old-revoked-fresh-seen", "ed-2", "x-2", "fp-2")
+	oldRevokedFreshlySeen.Status = models.AgentStatusRevoked
+	oldRevokedFreshlySeen.RevokedAt = &threeDaysAgo
+	seedAgent(t, dbSvc, oldRevokedFreshlySeen, &oneMinuteAgo, 4*24*time.Hour)
+
+	// Revoked only 1 day ago — inside the 2-day window, must survive.
+	recentlyRevoked := models.NewAgent(orgUID, "@acme/dc1", "recently-revoked", "ed-3", "x-3", "fp-3")
+	recentlyRevoked.Status = models.AgentStatusRevoked
+	recentlyRevoked.RevokedAt = &oneDayAgo
+	seedAgent(t, dbSvc, recentlyRevoked, nil, 2*24*time.Hour)
+
+	// Still active, however old — never purged.
+	stillActive := models.NewAgent(orgUID, "@acme/dc1", "still-active", "ed-4", "x-4", "fp-4")
+	seedAgent(t, dbSvc, stillActive, nil, 30*24*time.Hour)
+
+	run := &jobtypes.AgentGCJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	_, live := liveAgent(t, dbSvc, oldRevokedOrg.UID)
+	r.False(live, "a revoked agent past the purge window must be purged")
+
+	_, live = liveAgent(t, dbSvc, oldRevokedFreshlySeen.UID)
+	r.False(live, "revoked_at is the clock: a fresh last_seen_at must not save it")
+
+	_, live = liveAgent(t, dbSvc, recentlyRevoked.UID)
+	r.True(live, "a revoked agent inside the purge window must survive")
+
+	_, live = liveAgent(t, dbSvc, stillActive.UID)
+	r.True(live, "an active agent must never be purged")
+
+	var workerRow models.Worker
+	r.NoError(dbSvc.DB().NewSelect().Model(&workerRow).Where("uid = ?", worker.UID).Scan(ctx))
+	r.NotNil(workerRow.DeletedAt, "the purged agent's worker row must be soft-deleted")
+}
+
+// TestAgentGCRevokedPurgeAfterIsConfigurable verifies the job config overrides
+// the 2-day default revoked-agent retention window.
+func TestAgentGCRevokedPurgeAfterIsConfigurable(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	jctx, dbSvc, orgUID := newAgentGCTestContext(t)
+	ctx := t.Context()
+
+	tenMinutesAgo := time.Now().Add(-10 * time.Minute)
+	agent := models.NewAgent(orgUID, "@acme/dc1", "revoked-agent", "ed-1", "x-1", "fp-1")
+	agent.Status = models.AgentStatusRevoked
+	agent.RevokedAt = &tenMinutesAgo
+	seedAgent(t, dbSvc, agent, nil, time.Hour)
+
+	// Default window (2 days): untouched.
+	def := &jobtypes.AgentGCJobDefinition{}
+	runner, err := def.CreateJobRun(nil)
+	r.NoError(err)
+	r.NoError(runner.Run(ctx, jctx))
+
+	_, live := liveAgent(t, dbSvc, agent.UID)
+	r.True(live, "10 minutes since revocation is well inside the default window")
+
+	// A 60-second window purges it.
+	runner, err = def.CreateJobRun([]byte(`{"revokedPurgeAfterSeconds": 60}`))
+	r.NoError(err)
+	r.NoError(runner.Run(ctx, jctx))
+
+	_, live = liveAgent(t, dbSvc, agent.UID)
+	r.False(live, "the configured window must be honored")
+}
+
 func countPendingAgentGCJobs(ctx context.Context, dbSvc db.Service) (int, error) {
 	return dbSvc.DB().NewSelect().
 		Model((*models.Job)(nil)).

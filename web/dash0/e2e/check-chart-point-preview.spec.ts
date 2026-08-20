@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, mockSloCoverage } from "./fixtures";
 
 /**
  * Tests for the chart dot preview (PinnedResultBox) behaviour:
@@ -11,6 +11,11 @@ test.describe("Chart point preview", () => {
   // Helper: navigate to a check detail page with mocked results data so the
   // chart renders at least one dot we can interact with.
   async function gotoCheckDetailWithResults(page: Parameters<Parameters<typeof test.extend>[0]["authenticatedPage"]>[0]) {
+    // The check-detail header's SLO coverage chip fires an unconditional
+    // GET /slos?checkUid=… (spec 2026-08-20-01). Stub it so the networkidle
+    // wait below has nothing real left to settle.
+    await mockSloCoverage(page);
+
     const now = Date.now();
     const resultUid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 

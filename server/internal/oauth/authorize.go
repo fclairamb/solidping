@@ -183,7 +183,7 @@ func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req *http.Request
 
 	org, err := h.svc.db.GetOrganizationBySlug(req.Context(), claims.OrgSlug)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	code, err := h.svc.IssueAuthCode(req.Context(), &AuthCodeGrant{
@@ -198,7 +198,7 @@ func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req *http.Request
 		CodeChallengeMethod: authReq.CodeChallengeMethod,
 	})
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	dest := appendQuery(authReq.RedirectURI, map[string]string{"code": code, "state": authReq.State})

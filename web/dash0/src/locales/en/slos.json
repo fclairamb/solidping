@@ -1,0 +1,157 @@
+{
+  "layout": {
+    "title": "Service level objectives",
+    "subtitle": "Track availability targets and error budgets"
+  },
+  "list": {
+    "empty": "No objectives yet",
+    "emptyHint": "An objective turns \"is it up?\" into \"is it up enough?\" — set a target and watch the error budget.",
+    "new": "New objective",
+    "searchPlaceholder": "Search objectives...",
+    "columns": {
+      "name": "Objective",
+      "scope": "Scope",
+      "target": "Target",
+      "attainment": "This month",
+      "budget": "Budget remaining",
+      "state": "Status",
+      "actions": ""
+    },
+    "quotaReached": "Objective limit reached for this plan."
+  },
+  "state": {
+    "healthy": "Healthy",
+    "at_risk": "At risk",
+    "breached": "Breached",
+    "unknown": "No data"
+  },
+  "scope": {
+    "check": "Check",
+    "group": "Group",
+    "missing": "Scope removed"
+  },
+  "detail": {
+    "currentWindow": "Current window",
+    "attainment": "Attainment",
+    "target": "Target",
+    "budgetTotal": "Budget",
+    "budgetConsumed": "Consumed",
+    "budgetRemaining": "Remaining",
+    "burnRate": "Burn rate",
+    "projectedExhaustion": "Projected exhaustion",
+    "excludedMaintenance": "Excluded maintenance",
+    "monitored": "Monitored",
+    "incidents": "Incidents",
+    "longestIncident": "Longest",
+    "totalDowntime": "Total downtime",
+    "history": "Monthly history",
+    "historyEmpty": "No history yet",
+    "noData": "No data",
+    "never": "Not projected",
+    "partial": "Partial window",
+    "edit": "Edit objective",
+    "budgetLabel": "{{remaining}} of {{total}} remaining",
+    "burndown": "Error-budget burn-down",
+    "burndownHelp": "Remaining budget over the current window, against the pace that would spend it exactly.",
+    "burndownEmpty": "The window has only just started — no points yet.",
+    "burndownIdeal": "Ideal pace"
+  },
+  "form": {
+    "newTitle": "New objective",
+    "editTitle": "Edit objective",
+    "name": "Name",
+    "namePlaceholder": "API availability",
+    "slug": "Slug",
+    "slugHelp": "URL-safe identifier, generated from the name when left empty",
+    "scope": "Scope",
+    "scopeHelp": "Exactly one check or one check group",
+    "scopeCheck": "Check",
+    "scopeGroup": "Check group",
+    "selectCheck": "Select a check",
+    "selectGroup": "Select a check group",
+    "target": "Target (%)",
+    "targetHelp": "Between 0 and 100, e.g. 99.9",
+    "timezone": "Timezone",
+    "timezoneHelp": "Calendar months are resolved in this IANA zone",
+    "excludeMaintenance": "Exclude planned maintenance",
+    "excludeMaintenanceHelp": "Probes recorded during an active maintenance window do not consume error budget. Only applies from the day tagging started — earlier months are unaffected.",
+    "enabled": "Enabled",
+    "save": "Save",
+    "create": "Create objective",
+    "cancel": "Cancel",
+    "created": "Objective created",
+    "updated": "Objective updated",
+    "saveFailed": "Failed to save the objective"
+  },
+  "delete": {
+    "action": "Delete",
+    "title": "Delete this objective?",
+    "description": "The objective <strong>{{name}}</strong> will be removed. Historical results are untouched — only the objective goes away.",
+    "confirm": "Delete",
+    "cancel": "Cancel",
+    "deleted": "Objective deleted",
+    "failed": "Failed to delete the objective"
+  },
+  "chip": {
+    "covered": "Covered by {{count}} objective",
+    "covered_other": "Covered by {{count}} objectives"
+  },
+  "reports": {
+    "title": "Uptime reports",
+    "subtitle": "Email a recurring availability digest",
+    "new": "New report",
+    "empty": "No scheduled reports",
+    "emptyHint": "A monthly digest reaches the people who never open the dashboard.",
+    "columns": {
+      "name": "Report",
+      "frequency": "Frequency",
+      "recipients": "Recipients",
+      "scope": "Scope",
+      "lastRun": "Last sent",
+      "actions": ""
+    },
+    "frequency": {
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    },
+    "scopeOrgWide": "All checks",
+    "scopeCounts": "{{checks}} checks, {{groups}} groups",
+    "never": "Never",
+    "recipientCount": "{{count}} recipient",
+    "recipientCount_other": "{{count}} recipients",
+    "test": "Send me a test",
+    "testSent": "Test report queued to your address",
+    "testFailed": "Failed to send the test report",
+    "form": {
+      "newTitle": "New uptime report",
+      "editTitle": "Edit uptime report",
+      "name": "Name",
+      "namePlaceholder": "Monthly uptime digest",
+      "frequency": "Frequency",
+      "timezone": "Timezone",
+      "timezoneHelp": "The period closes at midnight in this IANA zone",
+      "recipients": "Recipients",
+      "recipientsHelp": "Email addresses that receive the digest. Anyone who unsubscribes is removed from this list automatically.",
+      "checks": "Checks",
+      "groups": "Check groups",
+      "scopeHelp": "Leave both empty to report on every check in the organization",
+      "includeSlos": "Include objectives",
+      "includeSlosHelp": "Add an error-budget summary for every objective in scope",
+      "enabled": "Enabled",
+      "save": "Save",
+      "create": "Create report",
+      "cancel": "Cancel",
+      "created": "Report schedule created",
+      "updated": "Report schedule updated",
+      "saveFailed": "Failed to save the report schedule"
+    },
+    "delete": {
+      "title": "Delete this report?",
+      "description": "The schedule <strong>{{name}}</strong> will stop sending. Recipients are not notified.",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "deleted": "Report schedule deleted",
+      "failed": "Failed to delete the report schedule"
+    }
+  }
+}

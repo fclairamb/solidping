@@ -67,7 +67,7 @@ func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error
 
 	result, err := h.svc.Subscribe(req.Context(), orgSlug, statusPageUID, &body)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	h.sendConfirmMail(req.Context(), result)
@@ -162,7 +162,7 @@ func (h *Handler) ListSubscribers(writer http.ResponseWriter, req *http.Request)
 
 	subs, err := h.svc.ListSubscribers(req.Context(), orgSlug, statusPageUID)
 	if err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{
@@ -178,7 +178,7 @@ func (h *Handler) RemoveSubscriber(writer http.ResponseWriter, req *http.Request
 	uid := httpx.Param(req, "uid")
 
 	if err := h.svc.RemoveSubscriber(req.Context(), orgSlug, statusPageUID, uid); err != nil {
-		return h.handleError(writer, err)
+		return h.handleError(writer, req, err)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
@@ -187,7 +187,7 @@ func (h *Handler) RemoveSubscriber(writer http.ResponseWriter, req *http.Request
 }
 
 // handleError maps domain errors to HTTP responses (JSON).
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -210,7 +210,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 			{Name: "incidentUid", Message: "incidentUid is required when scope is incident"},
 		})
 	default:
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, request, err)
 	}
 }
 
@@ -315,7 +315,7 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 
 	updates, err := h.dbService.ListPublicStatusUpdates(ctx, page.UID, historyDays)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	feed := h.buildFeed(orgSlug, slug, page.Name, updates)

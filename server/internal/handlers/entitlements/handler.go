@@ -177,7 +177,7 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 
 	resolved, err := h.svc.Resolve(req.Context(), org.UID)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	// The upgrade URL is only meaningful to an org admin: it carries a signed
@@ -196,7 +196,7 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 	if strings.Contains(req.URL.Query().Get("with"), "usage") {
 		usage, usageErr := h.svc.Usage(req.Context(), org.UID)
 		if usageErr != nil {
-			return h.WriteInternalError(writer, usageErr)
+			return h.WriteInternalError(writer, req, usageErr)
 		}
 		usagePtr = &usage
 	}
@@ -258,12 +258,12 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 	reason := req.Header.Get("X-Entitlements-Reason")
 
 	if setErr := h.svc.Set(req.Context(), org.UID, input, prin.actor, reason); setErr != nil {
-		return h.WriteInternalError(writer, setErr)
+		return h.WriteInternalError(writer, req, setErr)
 	}
 
 	resolved, err := h.svc.Resolve(req.Context(), org.UID)
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resolved)
@@ -299,7 +299,7 @@ func (h *Handler) ListAudits(writer http.ResponseWriter, req *http.Request) erro
 		Limit:           limit,
 	})
 	if err != nil {
-		return h.WriteInternalError(writer, err)
+		return h.WriteInternalError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, struct {

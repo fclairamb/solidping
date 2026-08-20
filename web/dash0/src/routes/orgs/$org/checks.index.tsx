@@ -98,6 +98,7 @@ import {
 import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { checkLabel, tunnelCheckUidOf } from "@/components/checks/tunnel";
+import { CheckTypeBadge } from "@/components/shared/check-type-identity";
 import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
@@ -205,6 +206,35 @@ const MEMBER_SUMMARY_ORDER = [
   "created",
   "up",
 ] as const;
+
+// Builds the search object for `/orgs/$org/checks/new` that preselects a
+// group (every other new-check search key explicit-`undefined`, matching the
+// route's validateSearch). Shared by the group empty-state link and the
+// group-header "add a check" button so the ~20-key literal isn't duplicated.
+function newCheckSearchForGroup(slug: string) {
+  return {
+    checkType: undefined,
+    checkPeriod: undefined,
+    checkName: undefined,
+    checkSlug: undefined,
+    httpUrl: undefined,
+    httpMethod: undefined,
+    host: undefined,
+    port: undefined,
+    url: undefined,
+    domain: undefined,
+    username: undefined,
+    database: undefined,
+    expectedStatus: undefined,
+    timeout: undefined,
+    label: undefined,
+    region: undefined,
+    group: slug,
+    confirmationPeriod: undefined,
+    recoveryPeriod: undefined,
+    section: undefined,
+  };
+}
 
 // Renders memberStatusCounts as a compact, localized summary: "3/3 up" when
 // every counted member is up (exactly the collapse-eligible case), otherwise
@@ -375,50 +405,6 @@ function HostSection({
   );
 }
 
-function ProtocolBadge({ type }: { type?: string }) {
-  const t = (type || "http").toLowerCase();
-  if (t === "http" || t === "https") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25">
-        HTTP
-      </Badge>
-    );
-  }
-  if (t === "tcp") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25">
-        TCP
-      </Badge>
-    );
-  }
-  if (t === "dns") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25">
-        DNS
-      </Badge>
-    );
-  }
-  if (t === "icmp" || t === "ping") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/25">
-        ICMP
-      </Badge>
-    );
-  }
-  if (t === "tls" || t === "ssl") {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25">
-        TLS
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline" className="text-[10px] font-mono font-medium uppercase px-1.5 py-0.5">
-      {type}
-    </Badge>
-  );
-}
-
 function CheckRow({
   check,
   org,
@@ -505,7 +491,7 @@ function CheckRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
-          <ProtocolBadge type={check.type} />
+          <CheckTypeBadge type={check.type} />
           {check.internal && (
             <Badge variant="secondary" className="text-xs">
               {t("internal")}
@@ -806,6 +792,27 @@ function CheckGroupSection({
           className="flex items-center gap-1"
           onClick={(e) => e.stopPropagation()}
         >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={t("addCheckToGroup")}
+                data-testid="group-add-check-button"
+                asChild
+              >
+                <Link
+                  to="/orgs/$org/checks/new"
+                  params={{ org }}
+                  search={newCheckSearchForGroup(group.slug)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("addCheckToGroup")}</TooltipContent>
+          </Tooltip>
           <Button
             variant="ghost"
             size="icon"
@@ -890,7 +897,7 @@ function CheckGroupSection({
                 <Link
                   to="/orgs/$org/checks/new"
                   params={{ org }}
-                  search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: group.slug, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}
+                  search={newCheckSearchForGroup(group.slug)}
                   className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
                   data-testid="group-empty-new-check-link"
                 >

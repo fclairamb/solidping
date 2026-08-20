@@ -41,6 +41,8 @@ tags:
     description: System-wide configuration (super admin only)
   - name: MaintenanceWindows
     description: Scheduled maintenance windows and their check coverage
+  - name: SLOs
+    description: Service-level objectives, error budgets, and scheduled uptime reports
   - name: CheckGroups
     description: Check group management
   - name: Severities
@@ -687,6 +689,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/change-password:
+    post:
+      tags: [Authentication]
+      summary: Change (or set) the authenticated user's password
+      description: >
+        Rotates the caller's password without an emailed reset token.
+        `currentPassword` is required when the account already has a password;
+        for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is
+        ignored and this call sets the initial password. All of the caller's
+        *other* sessions are revoked; the calling session and any personal access
+        tokens keep working. A confirmation email is sent.
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: >
+            Not authenticated, or the supplied `currentPassword` is wrong
+            (error code `INVALID_CURRENT_PASSWORD`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /api/v1/auth/invite/{token}:
     get:
@@ -1679,6 +1723,47 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/status-pages/{org}/{slug}/incidents:
+    get:
+      tags: [StatusPages]
+      summary: Public incident history for a status page
+      description: >-
+        The customer-facing incidents published on this page (spec
+        2026-08-19-08). Without `active`, returns the page's history window;
+        with `active=true`, only the incidents that are still open — the same
+        set the full page view embeds as `activeIncidents[]`.
+
+        Same visibility gate as the full page view: a disabled or non-public
+        page returns 404, identical to a page that doesn't exist. No
+        authentication required.
+
+        Every field is operator-authored or templated from the page's own
+        public resource names. Probe output, error strings and internal
+        hostnames are structurally unable to reach this payload.
+      operationId: viewPublicStatusPageIncidents
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+        - name: active
+          in: query
+          description: When "true", returns only incidents that are not resolved.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The page's public incidents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicIncidentListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/status-pages/{org}/{slug}/feed.xml:
     get:
       tags: [StatusPages]
@@ -1927,7 +2012,10 @@ paths:
             maximum: 100
         - name: with
           in: query
-          description: Comma-separated optional fields to include (e.g., "check")
+          description: >-
+            Comma-separated optional fields to include: "check", "members"
+            (members also adds checkGroupSlug). Both are opt-in — the default
+            response includes neither and costs no extra query for them.
           schema:
             type: string
           example: "check"
@@ -1953,6 +2041,15 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OrgPath"
         - $ref: "#/components/parameters/IncidentUidPath"
+        - name: with
+          in: query
+          description: >-
+            Comma-separated optional fields to include: "check", "members"
+            (members also adds checkGroupSlug). Both are opt-in — the default
+            response includes neither and costs no extra query for them.
+          schema:
+            type: string
+          example: "check"
       responses:
         "200":
           description: Incident details
@@ -4404,6 +4501,226 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Incident publication APIs (spec 2026-08-19-08)
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents:
+    get:
+      tags: [StatusPages]
+      summary: List the incident publications on a status page
+      operationId: listStatusPageIncidents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [investigating, identified, monitoring, resolved]
+        - name: active
+          in: query
+          description: When "true", returns only publications that are not resolved.
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: List of publications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublicationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [StatusPages]
+      summary: Publish a hand-written incident on a status page
+      operationId: createStatusPageIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIncidentPublicationRequest"
+      responses:
+        "201":
+          description: Publication created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}:
+    get:
+      tags: [StatusPages]
+      summary: Get one incident publication with its narrative
+      operationId: getStatusPageIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      responses:
+        "200":
+          description: The publication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StatusPages]
+      summary: Edit a publication's title, severity or state
+      operationId: updateStatusPageIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIncidentPublicationRequest"
+      responses:
+        "200":
+          description: The updated publication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates:
+    post:
+      tags: [StatusPages]
+      summary: Append a narrative update to a published incident
+      operationId: createStatusPageIncidentUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppendPublicationUpdateRequest"
+      responses:
+        "201":
+          description: The appended update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationUpdate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{incidentUid}/publications:
+    get:
+      tags: [Incidents]
+      summary: List every status page this incident is published on
+      operationId: listIncidentPublications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidNamedPath"
+      responses:
+        "200":
+          description: List of publications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublicationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Incidents]
+      summary: Publish this incident on a status page
+      operationId: publishIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidNamedPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishIncidentRequest"
+      responses:
+        "201":
+          description: Publication created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentPublication"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/incidents/{incidentUid}/publications/{uid}:
+    delete:
+      tags: [Incidents]
+      summary: Unpublish this incident from a status page
+      operationId: unpublishIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidNamedPath"
+        - $ref: "#/components/parameters/PublicationUidPath"
+      responses:
+        "204":
+          description: Publication removed from the page
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Status update APIs
   /api/v1/orgs/{org}/status-updates:
     get:
@@ -4546,6 +4863,359 @@ paths:
       responses:
         "204":
           description: Status update deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos:
+    get:
+      tags: [SLOs]
+      summary: List service-level objectives
+      operationId: listSlos
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: checkUid
+          in: query
+          description: Restrict to objectives scoped directly to this check
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results (1-200)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of objectives
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [SLOs]
+      summary: Create a service-level objective
+      operationId: createSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSLORequest"
+      responses:
+        "201":
+          description: Objective created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLO"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: The organization's maxSlos entitlement is exhausted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Slug already in use
+
+  /api/v1/orgs/{org}/slos/{uid}:
+    get:
+      tags: [SLOs]
+      summary: Get a service-level objective
+      operationId: getSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Objective
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLO"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [SLOs]
+      summary: Update a service-level objective
+      operationId: updateSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSLORequest"
+      responses:
+        "200":
+          description: Objective updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLO"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [SLOs]
+      summary: Delete a service-level objective
+      operationId: deleteSlo
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "204":
+          description: Objective deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos/{uid}/status:
+    get:
+      tags: [SLOs]
+      summary: Evaluate an objective over the current calendar window
+      operationId: getSloStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Current window status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos/{uid}/history:
+    get:
+      tags: [SLOs]
+      summary: Past monthly windows for an objective
+      operationId: getSloHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+        - name: months
+          in: query
+          description: How many calendar months to return (default 12, max 60)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Monthly history, most recent first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOHistoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos/{uid}/burndown:
+    get:
+      tags: [SLOs]
+      summary: Error-budget burn-down for the current window
+      description: >-
+        Cumulative series. Consumption is accrued per step and summed forward,
+        so `budgetRemainingSeconds` is monotonically non-increasing by
+        construction — it cannot climb back up when probe density changes. It is
+        not clamped at zero: an overspent budget reports a negative remainder.
+        A step with no countable probe spends nothing (no data is not downtime).
+      operationId: getSloBurndown
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Burn-down series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOBurndownResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/report-schedules:
+    get:
+      tags: [SLOs]
+      summary: List scheduled uptime reports
+      operationId: listReportSchedules
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of report schedules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportScheduleListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [SLOs]
+      summary: Create a scheduled uptime report
+      operationId: createReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportScheduleRequest"
+      responses:
+        "201":
+          description: Report schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/report-schedules/{uid}:
+    get:
+      tags: [SLOs]
+      summary: Get a scheduled uptime report
+      operationId: getReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      responses:
+        "200":
+          description: Report schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [SLOs]
+      summary: Update a scheduled uptime report
+      operationId: updateReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportScheduleRequest"
+      responses:
+        "200":
+          description: Report schedule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [SLOs]
+      summary: Delete a scheduled uptime report
+      operationId: deleteReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      responses:
+        "204":
+          description: Report schedule deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/report-schedules/{uid}/test:
+    post:
+      tags: [SLOs]
+      summary: Send the report immediately to the caller
+      description: >-
+        Renders the report for the period that most recently closed and mails it
+        to the authenticated caller (or to `recipient`). It never fans out to the
+        schedule's recipient list.
+      operationId: testReportSchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ReportScheduleUidPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recipient:
+                  type: string
+                  format: email
+      responses:
+        "202":
+          description: Report queued
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -6402,6 +7072,27 @@ components:
         format: uuid
       description: Resource UID
 
+    PublicationUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Incident publication UID
+
+    IncidentUidNamedPath:
+      name: incidentUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: >-
+        Incident UID. Distinct from IncidentUidPath, which is named `uid` — the
+        publication sub-routes need both an incident UID and a publication UID
+        in the same path, so the incident half is named explicitly.
+
     SubscriberUidPath:
       name: uid
       in: path
@@ -6419,6 +7110,23 @@ components:
         type: string
         format: uuid
       description: Status update UID
+
+    SLOUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: SLO UID or slug
+
+    ReportScheduleUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Report schedule UID
 
     MaintenanceWindowUidPath:
       name: uid
@@ -7240,6 +7948,20 @@ components:
           type: string
           minLength: 8
 
+    ChangePasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        currentPassword:
+          type: string
+          description: >
+            The password currently on the account. Required unless the account
+            has no password yet (SSO-only sign-up), in which case it is ignored.
+        newPassword:
+          type: string
+          minLength: 8
+          description: Must differ from the current password.
+
     AcceptInviteRequest:
       type: object
       required: [token]
@@ -7387,10 +8109,15 @@ components:
           description: >-
             Check-specific configuration; the fields accepted depend on
             `type`. HTTP checks additionally accept `verifySsl` (boolean,
-            default true — set false to skip TLS certificate verification)
-            and `followRedirects` (boolean, default true — set false to stop
-            at the first response instead of following redirects). See
-            wiki/conventions/checker-config.md for the full per-type field
+            default true — set false to skip TLS certificate verification),
+            `followRedirects` (boolean, default true — set false to stop
+            at the first response instead of following redirects) and
+            `capture_failure_response` (boolean, default false — when true a
+            FAILING execution keeps what the probe received: status line,
+            redacted response headers and a 16 KiB-capped body, stored on the
+            incident it opens as `details.failureResponse`. Opt-in because a
+            response body can contain PII; never exposed on a status page).
+            See wiki/conventions/checker-config.md for the full per-type field
             reference.
         targetHost:
           type: string
@@ -7547,8 +8274,19 @@ components:
           format: uuid
         status:
           type: string
-          enum: [up, down, timeout, error]
-          description: Result status
+          enum: [up, warning, degraded, down, timeout, error, created, abandoned, unknown]
+          description: >-
+            Result status, mirroring every value `resultStatusString` can
+            return: `up` and `warning` both count as available (`warning` is
+            "up, but something to report"), `degraded` only appears on
+            aggregated rollup rows, `down`/`timeout`/`error` are genuine
+            failures, `created` is an attempt that has not been executed yet,
+            and `unknown` covers a missing or unrecognised raw status.
+            `abandoned` is server-minted by the abandoned-result
+            reaper when nothing was ever reported for an attempt (a worker
+            crashed, restarted, or lost its lease). It is terminal but is
+            excluded from every availability calculation, so it must be
+            rendered as a neutral "not counted" state, never as a failure.
         timestamp:
           type: string
           format: date-time
@@ -7575,8 +8313,19 @@ components:
           format: uuid
         status:
           type: string
-          enum: [up, down, timeout, error]
-          description: Result status
+          enum: [up, warning, degraded, down, timeout, error, created, abandoned, unknown]
+          description: >-
+            Result status, mirroring every value `resultStatusString` can
+            return: `up` and `warning` both count as available (`warning` is
+            "up, but something to report"), `degraded` only appears on
+            aggregated rollup rows, `down`/`timeout`/`error` are genuine
+            failures, `created` is an attempt that has not been executed yet,
+            and `unknown` covers a missing or unrecognised raw status.
+            `abandoned` is server-minted by the abandoned-result
+            reaper when nothing was ever reported for an attempt (a worker
+            crashed, restarted, or lost its lease). It is terminal but is
+            excluded from every availability calculation, so it must be
+            rendered as a neutral "not counted" state, never as a failure.
         timestamp:
           type: string
           format: date-time
@@ -7675,7 +8424,8 @@ components:
           description: >-
             Check-specific configuration (e.g., url, port, timeout). HTTP
             checks additionally accept `verifySsl` and `followRedirects`
-            (both booleans, default true) — see the Check schema above for
+            (both booleans, default true) and `capture_failure_response`
+            (boolean, default false) — see the Check schema above for
             details.
         enabled:
           type: boolean
@@ -7815,7 +8565,8 @@ components:
           description: >-
             Check-specific configuration. HTTP checks additionally accept
             `verifySsl` and `followRedirects` (both booleans, default true)
-            — see the Check schema above for details.
+            and `capture_failure_response` (boolean, default false) — see the
+            Check schema above for details.
         enabled:
           type: boolean
           default: true
@@ -8034,7 +8785,7 @@ components:
           items:
             $ref: "#/components/schemas/OrgResult"
         pagination:
-          $ref: "#/components/schemas/CursorPagination"
+          $ref: "#/components/schemas/ResultsCursorPagination"
 
     CheckAvailabilityResponse:
       type: object
@@ -8135,7 +8886,19 @@ components:
           format: date-time
         status:
           type: string
-          enum: [up, down, unknown]
+          enum: [up, warning, degraded, down, created, running, abandoned, unknown]
+          description: >-
+            Result status, mirroring every value `statusIntToString` can
+            return: `up` and `warning` both count as available, `degraded` only
+            appears on aggregated rollup rows, `down` covers every genuine
+            failure (the raw `timeout` and `error` statuses are both reported
+            as `down` here), `created` and `running` are attempts that have not
+            been finalized, and `unknown` covers a missing or unrecognised raw
+            status. `abandoned` marks an attempt nothing was ever
+            reported for (see LastResult.status): terminal, excluded from
+            availability, and never rendered as a failure. It is filterable on
+            its own via `?status=abandoned`, and is deliberately NOT part of
+            `?status=down`.
         durationMs:
           type: number
           description: Duration in milliseconds (with=durationMs)
@@ -8231,6 +8994,21 @@ components:
         size:
           type: integer
 
+    ResultsCursorPagination:
+      type: object
+      description: >-
+        Cursor pagination for the results endpoint only — deliberately no
+        `total`. `results` is the largest table in the system, and an
+        unbounded COUNT(*) on every page load is too expensive to compute
+        (see the Results section of the API wiki). Page forward with
+        `cursor` until it comes back empty.
+      properties:
+        cursor:
+          type: string
+          description: Cursor for next page (empty if no more results)
+        size:
+          type: integer
+
     # Incident schemas
     IncidentListResponse:
       type: object
@@ -8292,6 +9070,20 @@ components:
             `failure_reason` (string), `first_result` (object —
             resultUid/status/region/duration/periodStart/output), and, after a
             relapse, `last_failure` (same shape as `first_result`).
+
+
+            `failureResponse` (object) is present only for HTTP checks with
+            `capture_failure_response` enabled that failed AFTER receiving a
+            response: what the probe saw at the incident's current onset —
+            `url`, `statusLine`, `statusCode`, `headers` (sensitive values
+            replaced with `[redacted]`; request headers are never captured),
+            `body` (16 KiB cap, with `truncated` and the original
+            `contentLength`), `contentType`, `bodyBytes`, `bodySha256`,
+            `binary` (true when only metadata was kept), `capturedAt`,
+            `remoteAddr` and `region`. It is overwritten on reopen, and
+            dropped when the new onset has no capture. **This block is
+            operator-only — it is never serialized onto a status page or a
+            subscriber payload.**
 
     IncidentCheck:
       type: object
@@ -8945,6 +9737,29 @@ components:
           description: History window (24h, 7d, 30d, 90d)
         language:
           type: string
+        autoPublish:
+          type: boolean
+          description: >-
+            Whether incidents affecting this page's resources are published
+            automatically as public incidents. FALSE on every page that existed
+            before this feature shipped (the migration deliberately did not opt
+            anyone in retroactively); TRUE by default on pages created since.
+        autoPublishDelaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          description: >-
+            Debounce before an incident becomes public. 0 publishes
+            immediately; an incident that resolves inside this window is never
+            published at all.
+        autoResolve:
+          type: string
+          enum: [always, if_untouched, never]
+          description: >-
+            What an auto-created publication does when its incident resolves.
+            "if_untouched" (the default) resolves it only while nobody has
+            edited it; once a human owns the narrative the automation posts a
+            "component recovered" note and leaves the final resolve to them.
         customCss:
           type: string
           nullable: true
@@ -9024,6 +9839,254 @@ components:
         statusCounts:
           $ref: "#/components/schemas/StatusCounts"
           description: Same population rule as overallStatus.
+        activeIncidents:
+          type: array
+          description: >-
+            Currently-open incident publications for this page. Same population
+            rule as overallStatus (public view paths only). Every field on them
+            is operator-authored or templated from the page's own public
+            resource names — probe output, error strings and results.output
+            never reach this payload.
+          items:
+            $ref: "#/components/schemas/PublicIncident"
+
+    PublicIncident:
+      type: object
+      description: >-
+        One customer-facing incident on a status page — the PUBLICATION, not
+        the internal incident. The operational `incidents` row carries
+        ack/snooze metadata, an auto-generated title built from the check slug,
+        and probe diagnostics; none of that has a field here.
+      required: [uid, title, state, startedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          enum: [minor, major, critical]
+          description: Display-only public badge. Absent when the operator set none.
+        startedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        affectedResources:
+          type: array
+          description: >-
+            Public display names of the page resources this incident covers.
+            Resolved by walking the PAGE's own resources, so it can only ever
+            contain names the page already renders.
+          items:
+            type: string
+        updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicIncidentUpdate"
+
+    PublicIncidentUpdate:
+      type: object
+      required: [uid, kind, title, bodyMarkdown, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [investigating, identified, monitoring, resolved, maintenance, info]
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    IncidentPublication:
+      type: object
+      description: >-
+        The operator-facing view of a publication.
+      required: [uid, statusPageUid, title, state, autoCreated, humanTouched, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        statusPageUid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+          description: >-
+            The internal incident this publication tracks. Absent for a
+            hand-authored publication, which tracks nothing.
+        title:
+          type: string
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          enum: [minor, major, critical]
+        autoCreated:
+          type: boolean
+          description: >-
+            True when the auto-publish pipeline minted it. Only auto-created
+            publications are candidates for auto-resolve and relapse reopen.
+        humanTouched:
+          type: boolean
+          description: >-
+            True once a person edited the publication or posted an update on
+            it. This flag is the whole basis of the `if_untouched` auto-resolve
+            policy.
+        publishedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        affectedResources:
+          type: array
+          items:
+            type: string
+        updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicationUpdate"
+
+    PublicationUpdate:
+      type: object
+      required: [uid, kind, title, bodyMarkdown, publishedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [investigating, identified, monitoring, resolved, maintenance, info]
+        title:
+          type: string
+        bodyMarkdown:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        authorUid:
+          type: string
+          format: uuid
+          description: >-
+            Absent for updates generated by the auto-publish pipeline — a
+            machine post has no author, and attributing it to a human would be
+            a lie the UI then renders.
+
+    IncidentPublicationListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentPublication"
+
+    PublicIncidentListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicIncident"
+
+    CreateIncidentPublicationRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Customer-facing title. Never paste probe output into it.
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          enum: [minor, major, critical]
+        incidentUid:
+          type: string
+          format: uuid
+        bodyMarkdown:
+          type: string
+          maxLength: 16384
+          description: Optional first narrative entry.
+
+    UpdateIncidentPublicationRequest:
+      type: object
+      description: >-
+        PATCH semantics. ANY field present stamps human_touched_at, which stops
+        the auto-resolve pipeline from closing the incident behind the
+        operator's back.
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        state:
+          type: string
+          enum: [investigating, identified, monitoring, resolved]
+        severity:
+          type: string
+          description: >-
+            One of minor | major | critical, or an empty string to clear the
+            badge.
+
+    AppendPublicationUpdateRequest:
+      type: object
+      required: [kind, bodyMarkdown]
+      description: >-
+        Updates are APPEND-ONLY: there is deliberately no edit and no delete
+        endpoint for them.
+      properties:
+        kind:
+          type: string
+          enum: [investigating, identified, monitoring, resolved, maintenance, info]
+          description: >-
+            The first four also advance the publication's state, so the header
+            and the timeline can never disagree.
+        title:
+          type: string
+          maxLength: 200
+        bodyMarkdown:
+          type: string
+          maxLength: 16384
+
+    PublishIncidentRequest:
+      type: object
+      required: [statusPageUid]
+      properties:
+        statusPageUid:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 200
+          description: >-
+            Templated from the page's public resource name when omitted. The
+            incident's internal title is never used — it is built from the
+            check slug.
+        severity:
+          type: string
+          enum: [minor, major, critical]
 
     StatusCounts:
       type: object
@@ -9165,6 +10228,33 @@ components:
           type: string
         language:
           type: string
+        autoPublish:
+          type: boolean
+          description: >-
+            Publish incidents affecting this page's resources automatically as
+            public incidents. OMITTING the field opts the new page IN (true) —
+            only pages that predate the feature default to false, and they do
+            so because the migration deliberately did not opt anyone in
+            retroactively.
+        autoPublishDelaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          default: 60
+          description: >-
+            Debounce before an incident becomes public. 0 is legal and
+            publishes immediately; an incident that resolves inside this window
+            is never published at all. Outside 0–86400 is a VALIDATION_ERROR.
+        autoResolve:
+          type: string
+          enum: [always, if_untouched, never]
+          default: if_untouched
+          description: >-
+            What an auto-created publication does when its incident resolves.
+            "if_untouched" (the default) resolves it only while nobody has
+            edited it; once a human owns the narrative the automation posts a
+            "component recovered" note and leaves the final resolve to them.
+            Any other value is a VALIDATION_ERROR.
         customCss:
           type: string
           description: >-
@@ -9210,6 +10300,26 @@ components:
           type: string
         language:
           type: string
+        autoPublish:
+          type: boolean
+          description: >-
+            Turn automatic incident publication on or off for this page. Omit
+            the field to leave it unchanged.
+        autoPublishDelaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          description: >-
+            Debounce before an incident becomes public. 0 is legal and
+            publishes immediately. Omit the field to leave it unchanged;
+            outside 0–86400 is a VALIDATION_ERROR.
+        autoResolve:
+          type: string
+          enum: [always, if_untouched, never]
+          description: >-
+            What an auto-created publication does when its incident resolves.
+            Omit the field to leave it unchanged; any other value is a
+            VALIDATION_ERROR.
         customCss:
           type: string
           description: >-
@@ -9317,6 +10427,14 @@ components:
           type: string
         explanation:
           type: string
+        autoPublish:
+          type: boolean
+          nullable: true
+          description: >-
+            Per-resource auto-publish override. ABSENT/null means "inherit the
+            page setting", which is NOT the same as an explicit false — a page
+            can therefore be flipped on or off without rewriting every
+            resource's intent.
         position:
           type: integer
         createdAt:
@@ -9351,6 +10469,14 @@ components:
           type: string
         explanation:
           type: string
+        autoPublish:
+          type: boolean
+          nullable: true
+          description: >-
+            Per-resource auto-publish override. ABSENT/null means "inherit the
+            page setting", which is NOT the same as an explicit false — so a
+            component can be excluded from (or included in) automatic
+            publication independently of how the page itself is configured.
         position:
           type: integer
 
@@ -9371,6 +10497,16 @@ components:
           type: string
         explanation:
           type: string
+        autoPublish:
+          type: boolean
+          nullable: true
+          description: >-
+            Per-resource auto-publish override, which is three-state. OMITTING
+            the key leaves the override exactly as it is; sending an explicit
+            `null` RESETS it to "inherit the page setting"; sending true or
+            false pins it. Those are three distinct outcomes, so the server
+            detects key presence on the raw body rather than relying on the
+            decoded value.
         position:
           type: integer
 
@@ -10177,6 +11313,315 @@ components:
           type: string
           format: date-time
 
+    SLO:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        checkUid:
+          type: string
+          description: Set when the objective is scoped to one check
+        checkGroupUid:
+          type: string
+          description: Set when the objective is scoped to one check group
+        checkName:
+          type: string
+        checkGroupName:
+          type: string
+        targetPct:
+          type: number
+          format: double
+        timezone:
+          type: string
+          description: IANA zone the calendar month is resolved in
+        excludeMaintenance:
+          type: boolean
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SLOListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLO"
+
+    CreateSLORequest:
+      type: object
+      required: [name]
+      description: >-
+        Exactly one of checkUid / checkGroupUid must be set; sending both or
+        neither is a validation error (the database carries the same rule as a
+        CHECK constraint).
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          description: URL-safe identifier; derived from the name when omitted
+        checkUid:
+          type: string
+          nullable: true
+        checkGroupUid:
+          type: string
+          nullable: true
+        targetPct:
+          type: number
+          format: double
+          description: 0 < value <= 100 (default 99.9)
+        timezone:
+          type: string
+        excludeMaintenance:
+          type: boolean
+        enabled:
+          type: boolean
+
+    UpdateSLORequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateSLORequest"
+      description: Partial update; every field is optional.
+
+    SLOWindow:
+      type: object
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        label:
+          type: string
+
+    SLOStatusRow:
+      type: object
+      properties:
+        window:
+          $ref: "#/components/schemas/SLOWindow"
+        attainmentPct:
+          type: number
+          format: double
+          nullable: true
+          description: >-
+            null when the window carries no countable probe. No data is NOT
+            100% — the same rule the availability API follows.
+        hasData:
+          type: boolean
+        targetPct:
+          type: number
+          format: double
+        totalChecks:
+          type: integer
+        successfulChecks:
+          type: integer
+        monitoredSeconds:
+          type: integer
+          format: int64
+          description: The whole window's monitorable duration; the budget basis.
+        elapsedSeconds:
+          type: integer
+          format: int64
+          description: The part of monitoredSeconds already elapsed; the consumption basis.
+        budgetTotalSeconds:
+          type: integer
+          format: int64
+        budgetConsumedSeconds:
+          type: integer
+          format: int64
+        budgetRemainingSeconds:
+          type: integer
+          format: int64
+          description: Negative when the budget is overspent.
+        excludedMaintenanceSeconds:
+          type: integer
+          format: int64
+        burnRate:
+          type: number
+          format: double
+          nullable: true
+          description: Observed error rate divided by allowed error rate.
+        projectedExhaustionAt:
+          type: string
+          format: date-time
+          nullable: true
+        state:
+          type: string
+          enum: [healthy, at_risk, breached, unknown]
+        partial:
+          type: boolean
+
+    SLOStatusResponse:
+      type: object
+      properties:
+        slo:
+          $ref: "#/components/schemas/SLO"
+        current:
+          $ref: "#/components/schemas/SLOStatusRow"
+        incidents:
+          type: object
+          properties:
+            count:
+              type: integer
+            longestSeconds:
+              type: integer
+              format: int64
+            averageSeconds:
+              type: integer
+              format: int64
+            totalDowntimeSeconds:
+              type: integer
+              format: int64
+
+    SLOHistoryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLOStatusRow"
+
+    SLOBurndownPoint:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: End of the step, exclusive, in UTC.
+        budgetRemainingSeconds:
+          type: integer
+          format: int64
+          description: Negative once the budget is overspent.
+        idealRemainingSeconds:
+          type: integer
+          format: int64
+          description: >-
+            The pace that spends the budget exactly over the window, drawn
+            against the response-level `budgetTotalSeconds` so the two series
+            stay comparable.
+        attainmentPct:
+          type: number
+          format: double
+          nullable: true
+        hasData:
+          type: boolean
+
+    SLOBurndownResponse:
+      type: object
+      properties:
+        window:
+          $ref: "#/components/schemas/SLOWindow"
+        targetPct:
+          type: number
+          format: double
+        budgetTotalSeconds:
+          type: integer
+          format: int64
+          description: >-
+            The window's whole allowance, evaluated once. Every point's
+            `budgetRemainingSeconds` is this value minus the consumption accrued
+            up to it, and every point's `idealRemainingSeconds` is this value
+            decayed linearly.
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLOBurndownPoint"
+
+    ReportSchedule:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [weekly, monthly]
+        timezone:
+          type: string
+        recipients:
+          type: array
+          description: PII — returned only to the organization's own admins.
+          items:
+            type: string
+        checkUids:
+          type: array
+          items:
+            type: string
+        checkGroupUids:
+          type: array
+          items:
+            type: string
+        includeSlos:
+          type: boolean
+        enabled:
+          type: boolean
+        lastPeriodStart:
+          type: string
+          format: date-time
+        lastRunAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReportScheduleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportSchedule"
+
+    CreateReportScheduleRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [weekly, monthly]
+        timezone:
+          type: string
+        recipients:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: email
+        checkUids:
+          type: array
+          items:
+            type: string
+        checkGroupUids:
+          type: array
+          items:
+            type: string
+        includeSlos:
+          type: boolean
+        enabled:
+          type: boolean
+
+    UpdateReportScheduleRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateReportScheduleRequest"
+      description: Partial update; every field is optional.
+
     MaintenanceWindowListResponse:
       type: object
       properties:
@@ -10469,6 +11914,17 @@ components:
             `unknown` is a real state and MUST NOT be rendered as `no`.
             The value is a hint with a heartbeat of lag: it never gates
             execution, and the run-time egress pre-flight is the authority.
+        browser:
+          type: string
+          enum: ["yes", "no", "unknown"]
+          description: >
+            Whether `browser` checks can actually run in this region, i.e.
+            whether its live workers have a Chrome to drive — a reachable
+            remote CDP endpoint, or a local Chrome/Chromium binary. Same three
+            states and the same any-not-all rule as the families above;
+            `unknown` (no live worker, or agents predating the probe) is a real
+            state and MUST NOT be rendered as `no`. Advisory only: it drives a
+            creation-time warning and never gates scheduling.
 
     Region:
       type: object
@@ -11295,6 +12751,10 @@ components:
           description: >-
             Outbound WhatsApp template messages per UTC month
             (null = unlimited)
+        maxSlos:
+          type: integer
+          nullable: true
+          description: Maximum service-level objectives (null = unlimited)
 
     EntitlementsUsage:
       type: object

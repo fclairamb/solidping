@@ -1,0 +1,157 @@
+{
+  "layout": {
+    "title": "Service-Level-Ziele",
+    "subtitle": "Verfügbarkeitsziele und Fehlerbudgets verfolgen"
+  },
+  "list": {
+    "empty": "Noch keine Ziele",
+    "emptyHint": "Ein Ziel macht aus „läuft es?“ ein „läuft es gut genug?“ — Zielwert setzen und das Fehlerbudget beobachten.",
+    "new": "Neues Ziel",
+    "searchPlaceholder": "Ziele suchen...",
+    "columns": {
+      "name": "Ziel",
+      "scope": "Geltungsbereich",
+      "target": "Zielwert",
+      "attainment": "Diesen Monat",
+      "budget": "Verbleibendes Budget",
+      "state": "Status",
+      "actions": ""
+    },
+    "quotaReached": "Zielelimit für diesen Tarif erreicht."
+  },
+  "state": {
+    "healthy": "Gesund",
+    "at_risk": "Gefährdet",
+    "breached": "Überschritten",
+    "unknown": "Keine Daten"
+  },
+  "scope": {
+    "check": "Prüfung",
+    "group": "Gruppe",
+    "missing": "Geltungsbereich entfernt"
+  },
+  "detail": {
+    "currentWindow": "Aktueller Zeitraum",
+    "attainment": "Erreichung",
+    "target": "Zielwert",
+    "budgetTotal": "Budget",
+    "budgetConsumed": "Verbraucht",
+    "budgetRemaining": "Verbleibend",
+    "burnRate": "Verbrauchsrate",
+    "projectedExhaustion": "Voraussichtliche Erschöpfung",
+    "excludedMaintenance": "Ausgeschlossene Wartung",
+    "monitored": "Überwacht",
+    "incidents": "Vorfälle",
+    "longestIncident": "Längster",
+    "totalDowntime": "Gesamtausfallzeit",
+    "history": "Monatsverlauf",
+    "historyEmpty": "Noch kein Verlauf",
+    "noData": "Keine Daten",
+    "never": "Nicht prognostiziert",
+    "partial": "Teilzeitraum",
+    "edit": "Ziel bearbeiten",
+    "budgetLabel": "{{remaining}} von {{total}} verbleibend",
+    "burndown": "Fehlerbudget-Verlauf",
+    "burndownHelp": "Verbleibendes Budget im aktuellen Zeitraum, verglichen mit dem Tempo, das es genau aufbrauchen würde.",
+    "burndownEmpty": "Der Zeitraum hat gerade erst begonnen — noch keine Punkte.",
+    "burndownIdeal": "Ideales Tempo"
+  },
+  "form": {
+    "newTitle": "Neues Ziel",
+    "editTitle": "Ziel bearbeiten",
+    "name": "Name",
+    "namePlaceholder": "API-Verfügbarkeit",
+    "slug": "Kennung",
+    "slugHelp": "URL-sichere Kennung, wird aus dem Namen erzeugt, wenn leer",
+    "scope": "Geltungsbereich",
+    "scopeHelp": "Genau eine Prüfung oder eine Prüfgruppe",
+    "scopeCheck": "Prüfung",
+    "scopeGroup": "Prüfgruppe",
+    "selectCheck": "Prüfung auswählen",
+    "selectGroup": "Prüfgruppe auswählen",
+    "target": "Zielwert (%)",
+    "targetHelp": "Zwischen 0 und 100, z. B. 99,9",
+    "timezone": "Zeitzone",
+    "timezoneHelp": "Kalendermonate werden in dieser IANA-Zone berechnet",
+    "excludeMaintenance": "Geplante Wartung ausschließen",
+    "excludeMaintenanceHelp": "Messungen während eines aktiven Wartungsfensters verbrauchen kein Fehlerbudget. Gilt erst ab Einführung der Markierung — frühere Monate bleiben unverändert.",
+    "enabled": "Aktiviert",
+    "save": "Speichern",
+    "create": "Ziel erstellen",
+    "cancel": "Abbrechen",
+    "created": "Ziel erstellt",
+    "updated": "Ziel aktualisiert",
+    "saveFailed": "Ziel konnte nicht gespeichert werden"
+  },
+  "delete": {
+    "action": "Löschen",
+    "title": "Dieses Ziel löschen?",
+    "description": "Das Ziel <strong>{{name}}</strong> wird entfernt. Historische Ergebnisse bleiben unberührt — nur das Ziel verschwindet.",
+    "confirm": "Löschen",
+    "cancel": "Abbrechen",
+    "deleted": "Ziel gelöscht",
+    "failed": "Ziel konnte nicht gelöscht werden"
+  },
+  "chip": {
+    "covered": "Von {{count}} Ziel abgedeckt",
+    "covered_other": "Von {{count}} Zielen abgedeckt"
+  },
+  "reports": {
+    "title": "Verfügbarkeitsberichte",
+    "subtitle": "Eine wiederkehrende Verfügbarkeitsübersicht per E-Mail senden",
+    "new": "Neuer Bericht",
+    "empty": "Keine geplanten Berichte",
+    "emptyHint": "Eine monatliche Übersicht erreicht die Menschen, die das Dashboard nie öffnen.",
+    "columns": {
+      "name": "Bericht",
+      "frequency": "Häufigkeit",
+      "recipients": "Empfänger",
+      "scope": "Geltungsbereich",
+      "lastRun": "Zuletzt gesendet",
+      "actions": ""
+    },
+    "frequency": {
+      "weekly": "Wöchentlich",
+      "monthly": "Monatlich"
+    },
+    "scopeOrgWide": "Alle Prüfungen",
+    "scopeCounts": "{{checks}} Prüfungen, {{groups}} Gruppen",
+    "never": "Nie",
+    "recipientCount": "{{count}} Empfänger",
+    "recipientCount_other": "{{count}} Empfänger",
+    "test": "Test an mich senden",
+    "testSent": "Testbericht an Ihre Adresse eingereiht",
+    "testFailed": "Testbericht konnte nicht gesendet werden",
+    "form": {
+      "newTitle": "Neuer Verfügbarkeitsbericht",
+      "editTitle": "Verfügbarkeitsbericht bearbeiten",
+      "name": "Name",
+      "namePlaceholder": "Monatliche Verfügbarkeitsübersicht",
+      "frequency": "Häufigkeit",
+      "timezone": "Zeitzone",
+      "timezoneHelp": "Der Zeitraum endet um Mitternacht in dieser IANA-Zone",
+      "recipients": "Empfänger",
+      "recipientsHelp": "E-Mail-Adressen, die die Übersicht erhalten. Wer sich abmeldet, wird automatisch aus dieser Liste entfernt.",
+      "checks": "Prüfungen",
+      "groups": "Prüfgruppen",
+      "scopeHelp": "Beide leer lassen, um alle Prüfungen der Organisation abzudecken",
+      "includeSlos": "Ziele einbeziehen",
+      "includeSlosHelp": "Eine Fehlerbudget-Übersicht für jedes betroffene Ziel hinzufügen",
+      "enabled": "Aktiviert",
+      "save": "Speichern",
+      "create": "Bericht erstellen",
+      "cancel": "Abbrechen",
+      "created": "Berichtsplan erstellt",
+      "updated": "Berichtsplan aktualisiert",
+      "saveFailed": "Berichtsplan konnte nicht gespeichert werden"
+    },
+    "delete": {
+      "title": "Diesen Bericht löschen?",
+      "description": "Der Plan <strong>{{name}}</strong> versendet nicht mehr. Empfänger werden nicht benachrichtigt.",
+      "confirm": "Löschen",
+      "cancel": "Abbrechen",
+      "deleted": "Berichtsplan gelöscht",
+      "failed": "Berichtsplan konnte nicht gelöscht werden"
+    }
+  }
+}

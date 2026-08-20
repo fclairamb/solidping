@@ -72,12 +72,20 @@
     "googlechat": "Google Chat",
     "mattermost": "Mattermost",
     "ntfy": "ntfy",
-    "opsgenie": "Opsgenie",
+    "matrix": "Matrix",
+    "pagerduty": "PagerDuty",
     "pushover": "Pushover",
     "slack": "Slack",
     "discord": "Discord",
     "webhook": "Webhook",
     "telegram": "Telegram"
+  },
+  "myNotifications": {
+    "empty": {
+      "title": "Noch keine Benachrichtigungen",
+      "hint": "Sie wurden noch für keinen Vorfall alarmiert.",
+      "cta": "Benachrichtigungseinstellungen"
+    }
   },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "WhatsApp-Nachrichtenvorlage nicht verfügbar — bitten Sie einen Administrator, den Freigabestatus zu prüfen",

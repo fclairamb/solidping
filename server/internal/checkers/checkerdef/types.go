@@ -93,6 +93,13 @@ type Result struct {
 	Duration time.Duration  // Time taken to execute the check
 	Metrics  map[string]any // Numerical metrics that can be aggregated (e.g., ttfb, dns_time)
 	Output   map[string]any // Diagnostic output (error messages, status text, etc.)
+
+	// Diagnostics carries opt-in, incident-only evidence (today: the captured
+	// failing HTTP response). It is deliberately NOT part of Output: Output is
+	// persisted per raw result row as JSONB, and this payload is kilobytes.
+	// See the Diagnostics doc comment for the full rationale. Nil on every
+	// path that did not opt in — which is all of them by default.
+	Diagnostics *Diagnostics
 }
 
 // CheckType represents the type of a check.

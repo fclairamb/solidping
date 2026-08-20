@@ -88,6 +88,13 @@ const (
 	// ships no WhatsApp alerts. Self-hosted stays unlimited (nil) — the
 	// operator pays Meta directly for their own WABA.
 	defaultMaxWhatsappPerMonthSaaS = 0
+	// defaultMaxSlosSaaS mirrors the Free SKU's SLO allowance (spec
+	// 2026-08-20-01). Self-hosted stays unlimited (nil) — an operator running
+	// their own instance has no reason to be metered on objectives.
+	//
+	// Keep in sync with solidping-billing's Free SKU before release, the same
+	// rule as every other SaaS default in this block.
+	defaultMaxSlosSaaS = 2
 )
 
 // Display identity shown on the usage page when a row has none of its
@@ -125,6 +132,7 @@ func DefaultsFor(mode string) Entitlements {
 				MaxSmsPerMonth:      Int(defaultMaxSmsPerMonthSaaS),
 				MaxCallsPerMonth:    Int(defaultMaxCallsPerMonthSaaS),
 				MaxWhatsappPerMonth: Int(defaultMaxWhatsappPerMonthSaaS),
+				MaxSlos:             Int(defaultMaxSlosSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),

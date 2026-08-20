@@ -84,6 +84,7 @@
     "relapseCount": "Relapse count",
     "descriptionLabel": "Description",
     "checkLabel": "Check",
+    "state": "State",
     "checkTypeLabel": "Check Type",
     "totalDuration": "Total Duration",
     "ongoing": "(ongoing)",
@@ -97,6 +98,21 @@
       "region": "Region",
       "duration": "Duration",
       "time": "Time"
+    },
+    "probeResponse": {
+      "title": "What the probe saw",
+      "description": "The response this check received when the incident opened — one probe, one region, one instant. It is evidence of the failure, not the target's current state.",
+      "capturedAt": "Captured at",
+      "region": "Probed from",
+      "remoteAddr": "Peer address",
+      "contentType": "Content type",
+      "bodyLabel": "Response body",
+      "headerName": "Header",
+      "headerValue": "Value",
+      "redactionNote": "Response headers only. Sensitive values (cookies, authorization, tokens, keys, secrets) are redacted, and the check's own request headers are never captured.",
+      "truncated": "Body truncated to {{shown}} of {{total}}.",
+      "binary": "Body not stored: it is binary or not valid UTF-8. Metadata only — {{size}}, SHA-256 {{hash}}.",
+      "unknownSize": "an unknown size"
     }
   },
   "timeline": {
@@ -141,6 +157,8 @@
     "blastRadiusFooter": "Paging will fire on any child still down when this incident resolves.",
     "blastRadiusEmpty": "No child incidents currently rolled up under this one.",
     "rolledUpBadge": "rolled up",
+    "pagingColumn": "Paging",
+    "checkLink": "Open check",
     "showRolledUp": "Show rolled-up incidents",
     "pagingSuppressed": "paging suppressed",
     "rolledUpInactive": "rolled up"

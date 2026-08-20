@@ -83,6 +83,21 @@
     "failedSignOutOthers": "Échec de la déconnexion des autres sessions"
   },
   "security": {
+    "password": {
+      "title": "Changer le mot de passe",
+      "setTitle": "Définir un mot de passe",
+      "subtitle": "Renouvelez le mot de passe utilisé pour vous connecter. Vos autres sessions seront déconnectées.",
+      "setSubtitle": "Ce compte se connecte actuellement via un fournisseur d'identité. Définissez un mot de passe pour vous connecter aussi directement.",
+      "current": "Mot de passe actuel",
+      "new": "Nouveau mot de passe",
+      "confirm": "Confirmer le nouveau mot de passe",
+      "submit": "Changer le mot de passe",
+      "setSubmit": "Définir le mot de passe",
+      "changed": "Mot de passe mis à jour.",
+      "mismatch": "Les deux nouveaux mots de passe ne correspondent pas.",
+      "tooShort": "Le mot de passe doit contenir au moins {{min}} caractères.",
+      "invalidCurrent": "Ce n'est pas votre mot de passe actuel."
+    },
     "passkeys": {
       "title": "Passkeys",
       "subtitle": "Sign in without a password using your device or a hardware key.",
@@ -116,7 +131,8 @@
       "savedCheck": "I have saved these codes in a safe place.",
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
-      "disableSubtitle": "Enter a current 6-digit code to confirm."
+      "disableSubtitle": "Enter a current 6-digit code to confirm.",
+      "setupFailed": "Unable to set up two-factor authentication. Try again."
     }
   },
   "organizations": {

@@ -138,8 +138,8 @@ func TestCapabilitySurvivesHeartbeatCycle(t *testing.T) {
 	incapable := liveWorker(t, dbSvc, "wrk-us", "us-east-1", yes(false))
 
 	for range 3 {
-		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, capable.UID, capsForV6(yes(true))))
-		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, incapable.UID, capsForV6(yes(false))))
+		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, capable.UID, capsForV6(yes(true)), ""))
+		r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, incapable.UID, capsForV6(yes(false)), ""))
 
 		resp, err := svc.ListOrgRegions(ctx, org.Slug)
 		r.NoError(err)
@@ -166,7 +166,7 @@ func TestHeartbeatWithoutCapabilityKeepsStoredValue(t *testing.T) {
 
 	worker := liveWorker(t, dbSvc, "wrk-eu", "eu-west-1", yes(true))
 
-	r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, worker.UID, nil))
+	r.NoError(dbSvc.UpdateWorkerHeartbeat(ctx, worker.UID, nil, ""))
 
 	resp, err := svc.ListOrgRegions(ctx, org.Slug)
 	r.NoError(err)
@@ -236,14 +236,15 @@ func capsLiveWorker(t *testing.T, dbSvc *sqlite.Service, slug, region string, ca
 	r.NoError(err)
 }
 
-// TestRegionListResponseGainsOnlyTheIPv4Key is the API-shape guard for the
-// spec's resolved open question: the regions response is unchanged versus the
-// boolean implementation EXCEPT for the addition of an `ipv4` key.
+// TestRegionListResponseCapabilityShape is the API-shape guard: the regions
+// response carries exactly the published capability registry and nothing else.
 //
-// `ipv6` must be bit-for-bit what the booleans produced for the same fixture —
-// a v6 worker in eu, a v4-only worker in us — and no other key, name or value
-// may move. Adding `ipv4` did not license restructuring anything else.
-func TestRegionListResponseGainsOnlyTheIPv4Key(t *testing.T) {
+// `ipv6` must still be bit-for-bit what the original boolean implementation
+// produced for the same fixture — a v6 worker in eu, a v4-only worker in us —
+// and no other key, name or value may move. The set has grown twice by
+// deliberate addition (`ipv4`, spec 2026-08-16-02; `browser`, spec
+// 2026-08-19-03); nothing else was licensed to change.
+func TestRegionListResponseCapabilityShape(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -273,9 +274,11 @@ func TestRegionListResponseGainsOnlyTheIPv4Key(t *testing.T) {
 		byslug[region.Slug] = region.Capabilities
 	}
 
-	// The pre-2026-08-16 payload for this fixture, plus exactly one new key.
-	r.Equal(map[string]string{"ipv6": "yes", "ipv4": "yes"}, byslug["eu"])
-	r.Equal(map[string]string{"ipv6": "no", "ipv4": "yes"}, byslug["us"])
+	// The pre-2026-08-16 payload for this fixture, plus the two deliberately
+	// added keys. Neither worker reports `browser`, and a reported-without is a
+	// real "no" — the same closed-set rule `ipv6` obeys.
+	r.Equal(map[string]string{"ipv6": "yes", "ipv4": "yes", "browser": "no"}, byslug["eu"])
+	r.Equal(map[string]string{"ipv6": "no", "ipv4": "yes", "browser": "no"}, byslug["us"])
 }
 
 // TestRegionListIPv4CarriesAllThreeStates: the new key is a first-class

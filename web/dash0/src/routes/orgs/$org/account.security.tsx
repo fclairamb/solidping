@@ -11,7 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, KeyRound, Loader2, Trash2, ShieldCheck } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
+import { AlertCircle, KeyRound, Loader2, Lock, Trash2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
   startRegistration,
@@ -28,7 +30,10 @@ import {
 import { disable2FA } from "@/api/twofa";
 import { TOTPSetupDialog } from "@/components/security/TOTPSetupDialog";
 import { TOTPDisableDialog } from "@/components/security/TOTPDisableDialog";
+import { changePassword } from "@/api/password";
 import { ApiError, apiFetch } from "@/api/client";
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export const Route = createFileRoute("/orgs/$org/account/security")({
   component: SecurityPage,
@@ -38,6 +43,155 @@ interface MeSecurity {
   totpEnabled: boolean;
   passkeyCount: number;
   hasPassword: boolean;
+}
+
+/**
+ * Password card — "Change password" for an account that already has one,
+ * "Set a password" for an SSO-only account (`hasPassword === false`), which is
+ * the only way such a user ever escapes their identity provider.
+ */
+function PasswordCard({
+  hasPassword,
+  onChanged,
+}: {
+  hasPassword: boolean;
+  onChanged: () => void;
+}) {
+  const { t } = useTranslation(["account", "common"]);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [currentError, setCurrentError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCurrentError(null);
+    setFormError(null);
+
+    if (next.length < MIN_PASSWORD_LENGTH) {
+      setFormError(t("account:security.password.tooShort", { min: MIN_PASSWORD_LENGTH }));
+      return;
+    }
+    if (next !== confirm) {
+      setFormError(t("account:security.password.mismatch"));
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await changePassword(next, hasPassword ? current : undefined);
+      toast.success(t("account:security.password.changed"));
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      onChanged();
+    } catch (err) {
+      // A wrong current password belongs on its field, not in a page-level
+      // Alert — the user needs to know *which* box to retype.
+      if (err instanceof ApiError && err.code === "INVALID_CURRENT_PASSWORD") {
+        setCurrentError(t("account:security.password.invalidCurrent"));
+      } else {
+        setFormError(err instanceof Error ? err.message : "failed");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Lock className="h-5 w-5" />{" "}
+          {hasPassword
+            ? t("account:security.password.title")
+            : t("account:security.password.setTitle")}
+        </CardTitle>
+        <CardDescription>
+          {hasPassword
+            ? t("account:security.password.subtitle")
+            : t("account:security.password.setSubtitle")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmit} className="max-w-sm space-y-4">
+          {formError && (
+            <Alert variant="destructive" data-testid="password-form-error">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          )}
+          {hasPassword && (
+            <div className="space-y-2">
+              <Label htmlFor="password-current">
+                {t("account:security.password.current")}
+              </Label>
+              <PasswordInput
+                id="password-current"
+                data-testid="password-current-input"
+                autoComplete="current-password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                disabled={saving}
+                aria-invalid={currentError ? true : undefined}
+              />
+              {currentError && (
+                <p
+                  className="text-sm text-destructive"
+                  data-testid="password-current-error"
+                >
+                  {currentError}
+                </p>
+              )}
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="password-new">{t("account:security.password.new")}</Label>
+            <PasswordInput
+              id="password-new"
+              data-testid="password-new-input"
+              autoComplete="new-password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password-confirm">
+              {t("account:security.password.confirm")}
+            </Label>
+            <PasswordInput
+              id="password-confirm"
+              data-testid="password-confirm-input"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <Button
+            type="submit"
+            data-testid="password-submit-button"
+            disabled={saving}
+            className="w-full sm:w-auto"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t("common:saving")}
+              </>
+            ) : hasPassword ? (
+              t("account:security.password.submit")
+            ) : (
+              t("account:security.password.setSubmit")
+            )}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
 }
 
 function SecurityPage() {
@@ -149,6 +303,8 @@ function SecurityPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      <PasswordCard hasPassword={me.hasPassword} onChanged={refreshAll} />
 
       <Card>
         <CardHeader>

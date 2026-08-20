@@ -129,9 +129,14 @@
     "groupAccount": "Compte",
     "groupOrganization": "Organisation",
     "groupChecks": "Contrôles",
+    "groupStatusPages": "Pages de statut",
+    "groupEscalationPolicies": "Politiques d'escalade",
+    "groupSlos": "SLO",
     "newCheck": "Nouveau contrôle",
     "newCheckDescription": "Créer un nouveau contrôle de monitoring",
     "aiDescription": "Connecter des assistants IA via MCP"
   },
-  "security": "Sécurité"
+  "security": "Sécurité",
+  "slos": "SLO",
+  "reportSchedules": "Rapports de dispo."
 }

@@ -198,6 +198,25 @@ func TestMapStatusStringsToInts(t *testing.T) {
 				int(models.ResultStatusRunning), int(models.ResultStatusCreated),
 			},
 		},
+		{
+			name:         "abandoned status is filterable on its own",
+			statusStrs:   []string{"abandoned"},
+			expectedInts: []int{int(models.ResultStatusAbandoned)},
+		},
+		{
+			// The load-bearing negative control for spec 2026-08-18-10: an
+			// abandoned attempt is precisely NOT downtime, so `?status=down`
+			// must keep excluding it exactly as availability does. The
+			// positive half sits right above: down still expands to the three
+			// genuine failure statuses.
+			name:       "down never expands to abandoned",
+			statusStrs: []string{"down"},
+			expectedInts: []int{
+				int(models.ResultStatusDown),
+				int(models.ResultStatusTimeout),
+				int(models.ResultStatusError),
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -249,6 +268,11 @@ func TestStatusIntToString(t *testing.T) {
 		{"status 4 (down)", intPtr(int(models.ResultStatusDown)), "down"},
 		{"status 5 (timeout)", intPtr(int(models.ResultStatusTimeout)), "down"},
 		{"status 6 (error)", intPtr(int(models.ResultStatusError)), "down"},
+		{"status 8 (warning)", intPtr(int(models.ResultStatusWarning)), "warning"},
+		// Abandoned renders as its own neutral state, NOT as "down": it is
+		// excluded from availability, so calling it downtime on the timeline
+		// would contradict the percentage next to it (spec 2026-08-18-10).
+		{"status 9 (abandoned)", intPtr(int(models.ResultStatusAbandoned)), "abandoned"},
 		{"invalid status -1", intPtr(-1), "unknown"},
 		{"invalid status 99", intPtr(99), "unknown"},
 	}
@@ -571,4 +595,52 @@ func TestNeedsCheckInfo(t *testing.T) {
 			r.Equal(tc.expected, result)
 		})
 	}
+}
+
+// TestConvertResultToResponse_CheckSlugCheckName pins the mapping half of the
+// with=checkSlug,checkName fix (spec 2026-08-18-07): once models.Result
+// carries the joined CheckSlug/CheckName (populated by the DB layer only when
+// ListResultsFilter.IncludeCheckInfo joined checks), convertResultToResponse
+// must copy them onto the response when requested, and never otherwise — the
+// negative cases are the positive control that the assertions above aren't
+// vacuous.
+func TestConvertResultToResponse_CheckSlugCheckName(t *testing.T) {
+	t.Parallel()
+
+	s := &Service{}
+	r := require.New(t)
+
+	slug := "acme-http"
+	name := "acme HTTP"
+	withCheckInfo := &models.Result{
+		UID:         "result-1",
+		CheckUID:    "check-1",
+		PeriodType:  "raw",
+		PeriodStart: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		CheckSlug:   &slug,
+		CheckName:   &name,
+	}
+
+	// Positive: requested and present on the model → populated on the response.
+	resp := s.convertResultToResponse(withCheckInfo, []string{"checkSlug", "checkName"})
+	r.Equal(&slug, resp.CheckSlug)
+	r.Equal(&name, resp.CheckName)
+
+	// Negative control 1: same model, but not requested via `with` → omitted.
+	respNotRequested := s.convertResultToResponse(withCheckInfo, []string{"region"})
+	r.Nil(respNotRequested.CheckSlug)
+	r.Nil(respNotRequested.CheckName)
+
+	// Negative control 2: requested, but the model never carries the joined
+	// columns (e.g. GetResult's direct-by-UID lookup, or an orphaned
+	// check_uid behind the LEFT JOIN) → still nil, never a stale/zero value.
+	withoutCheckInfo := &models.Result{
+		UID:         "result-2",
+		CheckUID:    "check-2",
+		PeriodType:  "raw",
+		PeriodStart: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	respOrphan := s.convertResultToResponse(withoutCheckInfo, []string{"checkSlug", "checkName"})
+	r.Nil(respOrphan.CheckSlug)
+	r.Nil(respOrphan.CheckName)
 }

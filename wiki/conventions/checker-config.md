@@ -54,6 +54,33 @@ keeps its own IPv4-preference loop.
 | `json_path_assertions` | object | O | | AST-based JSONPath assertions (see below) |
 | `verifySsl` | bool | O | true | Verify the TLS certificate. `false` skips verification (`InsecureSkipVerify`) and marks the result with `tls_verify_skipped: true`. Read fallback: `verify_ssl` |
 | `followRedirects` | bool | O | true | Follow HTTP redirects (up to 10). `false` stops at the first response, so status/body/header assertions run against the redirect itself (e.g. `expectedStatus: 301` + `headersPattern.Location`). Read fallback: `follow_redirects` |
+| `capture_failure_response` | bool | O | false | Keep what the probe received when the check FAILS, as incident diagnostics (spec 2026-08-20-01). See below. Read fallback: `captureFailureResponse` |
+
+**Failure-response capture** (`capture_failure_response`):
+
+Opt-in, default off. On a **failed** execution that actually received a
+response, the checker keeps the status line, the response headers and a
+16 KiB-capped body, and the incident pipeline persists it on the incident this
+failure opens (or reopens) as `details.failureResponse`. Nothing is captured on
+a success, nor when the request failed before any response existed (timeout,
+DNS, TLS) — the existing error output already covers those.
+
+- **Privacy — this is why it is opt-in.** A response body can contain PII,
+  session material, internal hostnames or stack traces. The capture is
+  operator-only: it lives on the incident, is visible to the org, and is
+  **never** serialized onto a status page, its `activeIncidents[]` block, or a
+  subscriber payload. Enable it per check, deliberately.
+- Sensitive **response** header values (`Set-Cookie`, `Authorization`,
+  `Proxy-Authenticate`, `WWW-Authenticate`, and any header name containing
+  `token`/`key`/`secret`) are replaced with `[redacted]`. **Request** headers are
+  never captured at all — they carry the check's own credentials.
+- A body that is not text-like by content type, or not valid UTF-8, is reduced
+  to metadata (content type, size, SHA-256); raw bytes are never stored.
+- The capture rides a dedicated `diagnostics` field, not the result `output`
+  map, so it never lands in the `results` table.
+- It is **observationally inert on the verdict**: it reuses bytes the probe
+  already read and never feeds the assertion path, so toggling it can never move
+  a check between up and down.
 
 **JSONPath assertion node** (`json_path_assertions`):
 
@@ -64,6 +91,13 @@ keeps its own IPv4-preference loop.
 | `operator` | string | Comparison operator (for `assertion` type) |
 | `value` | string | Expected value (for `assertion` type) |
 | `children` | node[] | Child assertion nodes (for `and`/`or` types) |
+
+The assertions open the response-body read on their own — no `body_*` key is
+needed alongside them. (Before spec 2026-08-20-04 they did not: a check
+configured with only `json_path_assertions` never read the body and therefore
+never evaluated them, reporting up regardless of the payload.) They are still
+skipped when the response body is **empty**; a non-JSON body fails the check
+with `response body is not valid JSON for assertion evaluation`.
 
 ---
 

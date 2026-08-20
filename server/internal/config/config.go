@@ -55,6 +55,17 @@ const (
 	DatabaseTypeSQLiteMemory     = "sqlite-memory"
 )
 
+// Migration guard mode constants (db.migration_guard_mode /
+// SP_DB_MIGRATION_GUARD_MODE). Strict is the default and the only mode
+// production should run: a checksum mismatch fails the boot. Warn logs the
+// mismatch and lets the boot continue — intended for local development only,
+// where editing an already-applied migration's comment is common. See
+// internal/db/migrationguard.
+const (
+	MigrationGuardModeStrict = "strict"
+	MigrationGuardModeWarn   = "warn"
+)
+
 // Deployment mode constants. Drives the per-org entitlement defaults:
 // self-hosted caps SSO membership, SaaS caps aggregate check rate.
 const (
@@ -79,6 +90,11 @@ var (
 	ErrDatabaseURLRequired = errors.New("database URL is required for postgres")
 	// ErrDatabaseDirRequired is returned when sqlite is selected but directory is missing.
 	ErrDatabaseDirRequired = errors.New("database directory is required for sqlite")
+	// ErrInvalidMigrationGuardMode is returned when the migration guard mode
+	// is neither "strict" nor "warn".
+	ErrInvalidMigrationGuardMode = errors.New(
+		"database migration guard mode must be 'strict' or 'warn'",
+	)
 	// ErrInvalidNodeRole is returned when the node role is invalid.
 	ErrInvalidNodeRole = errors.New(
 		"node role must be 'all', 'api', 'jobs', 'checks' or 'agent', " +
@@ -274,13 +290,35 @@ type CheckersConfig struct {
 	Enabled       []string `koanf:"enabled"`        // Explicit allowlist (empty = all)
 	Disabled      []string `koanf:"disabled"`       // Blocklist (applied after labels)
 	EnabledLabels []string `koanf:"enabled_labels"` // Enable types matching any of these labels
+	// Browser configures the Chrome backend the `browser` check type runs on.
+	Browser BrowserCheckerConfig `koanf:"browser"`
+}
+
+// BrowserCheckerConfig selects where the `browser` check type finds Chrome.
+//
+// BOTH KEYS ARE SNAKE_CASE AND THEREFORE UNREACHABLE BY koanf's ENV LOADER —
+// SP_CHECKERS_BROWSER_CDP_URL would land on checkers.browser.cdp.url, not
+// cdp_url. They are bound by hand in applyCheckersEnv, the same quirk as
+// rate_limiting / shutdown_timeout, and listed in manualReaderEnvVars so the
+// startup env check does not flag them as typos.
+type BrowserCheckerConfig struct {
+	// CDPURL is the websocket (or http) address of a long-lived headless Chrome
+	// speaking the Chrome DevTools Protocol — e.g. `ws://browser:9222` or
+	// `http://127.0.0.1:9222`, typically a `chromedp/headless-shell` sidecar.
+	// When set it is the primary path: no local binary is needed and no Chrome
+	// process is cold-started per execution.
+	CDPURL string `koanf:"cdp_url"`
+	// ChromePath is the local Chrome/Chromium binary used by the exec fallback
+	// when CDPURL is empty. Empty means "probe the usual names", which is
+	// today's zero-config dev-laptop behavior. Nothing is ever downloaded.
+	ChromePath string `koanf:"chrome_path"`
 }
 
 // SentryConfig contains Sentry error tracking configuration.
 type SentryConfig struct {
 	DSN              string  `koanf:"dsn"`                // Sentry DSN (empty = disabled)
 	Environment      string  `koanf:"environment"`        // development, staging, production
-	TracesSampleRate float64 `koanf:"traces_sample_rate"` // 0.0 to 1.0 (default 0.1)
+	TracesSampleRate float64 `koanf:"traces_sample_rate"` // 0.0 to 1.0 (default 0.0 — see defaults block)
 	Debug            bool    `koanf:"debug"`              // Enable Sentry debug logging
 }
 
@@ -1208,6 +1246,12 @@ type DatabaseConfig struct {
 	LogSQL bool   `koanf:"logsql"` // Enable SQL query logging using slog
 	Reset  bool   `koanf:"reset"`  // Reset database on startup (only for test/demo run modes)
 
+	// MigrationGuardMode is "strict" (default, fail boot on checksum mismatch)
+	// or "warn" (log and continue). Multi-word koanf key → read via
+	// applyMigrationGuardModeEnv (SP_DB_MIGRATION_GUARD_MODE), not the auto env
+	// loader. See project_koanf_env_quirk.
+	MigrationGuardMode string `koanf:"migration_guard_mode"`
+
 	// PostgreSQL connection-pool bounds. Without these, database/sql leaves the
 	// pool unbounded (default MaxOpenConns = 0 = unlimited), so a burst can open
 	// arbitrarily many connections — each with its own buffers client- and
@@ -1216,6 +1260,13 @@ type DatabaseConfig struct {
 	MaxIdleConns    int           `koanf:"max_idle_conns"`     // 0 = driver default (2)
 	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"`  // 0 = no expiry
 	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time"` // 0 = no reap; idle conns held forever
+
+	// SlowQueryThreshold logs a successful query at WARN once it takes at
+	// least this long (internal/db/sloghook). 0 disables slow-query logging.
+	// Multi-word koanf key → read via applyDBSlowQueryEnv
+	// (SP_DB_SLOW_QUERY_THRESHOLD), not the auto env loader. See
+	// project_koanf_env_quirk.
+	SlowQueryThreshold time.Duration `koanf:"slow_query_threshold"`
 }
 
 // Load reads configuration from defaults, config file, and environment variables.
@@ -1295,12 +1346,17 @@ func Load() (*Config, error) {
 			FallbackUpstreamProxyProtocol: true,
 		},
 		Database: DatabaseConfig{
-			Type:            DatabaseTypeSQLite,
-			Dir:             ".",
-			MaxOpenConns:    dbPoolMaxOpenConnsDefault,
-			MaxIdleConns:    dbPoolMaxIdleConnsDefault,
-			ConnMaxLifetime: time.Hour,
-			ConnMaxIdleTime: 5 * time.Minute,
+			Type:               DatabaseTypeSQLite,
+			Dir:                ".",
+			MigrationGuardMode: MigrationGuardModeStrict,
+			MaxOpenConns:       dbPoolMaxOpenConnsDefault,
+			MaxIdleConns:       dbPoolMaxIdleConnsDefault,
+			ConnMaxLifetime:    time.Hour,
+			ConnMaxIdleTime:    5 * time.Minute,
+			// Comfortably above healthy queries here (the post-fix uptime-bar
+			// tiers measure ~10ms and ~97ms) and below anything a user would
+			// call slow (spec 2026-08-17-04).
+			SlowQueryThreshold: 500 * time.Millisecond,
 		},
 		Auth: AuthConfig{
 			JWTSecret:          "change-me-in-production",
@@ -1376,6 +1432,14 @@ func Load() (*Config, error) {
 		// so the dashboard captures through the first-party PostHogProxyPath; see
 		// BrowserAPIHost.
 		PostHog: PostHogConfig{Enabled: true},
+		// TracesSampleRate defaults to 0.0, explicitly (not a leftover Go zero
+		// value). SolidPing already ships OpenTelemetry tracing behind
+		// SP_OTEL_ENABLED; paying Sentry's transaction quota for a second,
+		// thinner trace stream is duplicate spend for a self-hostable product
+		// where the operator may have no Sentry plan at all. Errors and
+		// panics — what Sentry is actually good at — are captured at 100%
+		// regardless of this setting.
+		Sentry:  SentryConfig{TracesSampleRate: 0.0},
 		Discord: DiscordOAuthConfig{Enabled: false},
 		OIDC:    OIDCOAuthConfig{Enabled: false},
 		SAML:    SAMLConfig{Enabled: false},
@@ -1512,12 +1576,14 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyCheckersEnv(&cfg.Checkers)
 	applyAgentEnv(&cfg.Agent)
 	applyAuthEnv(&cfg.Auth)
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
 	applyPostHogEnv(&cfg.PostHog)
+	applySentryEnv(&cfg.Sentry)
 	applyWhatsAppEnv(&cfg.WhatsApp)
 	applyTelegramEnv(&cfg.Telegram)
 	applySMSEnv(&cfg.SMS)
@@ -1535,6 +1601,8 @@ func Load() (*Config, error) {
 		cfg.Database.Type = DatabaseTypeSQLiteMemory
 	}
 
+	applySentryEnvironmentDefault(&cfg)
+
 	// Manually read SP_DB_RESET for database reset on startup
 	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == envTrue || dbReset == "1" {
 		cfg.Database.Reset = true
@@ -1546,6 +1614,8 @@ func Load() (*Config, error) {
 	applyNodeRolePoolDefaults(&cfg.Database, cfg.Node.Role)
 
 	applyDatabasePoolEnv(&cfg.Database)
+	applyDBSlowQueryEnv(&cfg.Database)
+	applyMigrationGuardModeEnv(&cfg.Database)
 
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
@@ -1599,6 +1669,24 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	intEnv("SP_SERVER_RATE_LIMITING_RATE_QUEUE", &cfg.RateQueue)
 	intEnv("SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE", &cfg.ConcurrencyQueue)
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
+}
+
+// applyCheckersEnv reads SP_CHECKERS_BROWSER_* into cfg. koanf's env loader
+// collapses every underscore in SP_*-prefixed names to a dot, so it would map
+// these onto checkers.browser.cdp.url / checkers.browser.chrome.path and miss
+// the snake_case koanf tags (cdp_url, chrome_path) entirely — the variable
+// would parse and then silently do nothing. Same quirk as rate_limiting.
+//
+// checkers.enabled / disabled are single words and stay koanf-reachable;
+// enabled_labels is a slice and keeps its existing YAML-only binding.
+func applyCheckersEnv(cfg *CheckersConfig) {
+	if v := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL"); v != "" {
+		cfg.Browser.CDPURL = v
+	}
+
+	if v := os.Getenv("SP_CHECKERS_BROWSER_CHROME_PATH"); v != "" {
+		cfg.Browser.ChromePath = v
+	}
 }
 
 // applyPasswordHashingEnv reads SP_AUTH_PASSWORD_* into cfg. koanf's env loader
@@ -1979,6 +2067,30 @@ func applyDatabasePoolEnv(cfg *DatabaseConfig) {
 	}
 }
 
+// applyDBSlowQueryEnv reads the multi-word SP_DB_SLOW_QUERY_THRESHOLD knob
+// koanf's env loader cannot bind (it would collapse the underscores to dots
+// and miss the snake_case koanf tag "slow_query_threshold"). See
+// project_koanf_env_quirk, mirroring applyDatabasePoolEnv.
+func applyDBSlowQueryEnv(cfg *DatabaseConfig) {
+	if v := os.Getenv("SP_DB_SLOW_QUERY_THRESHOLD"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.SlowQueryThreshold = d
+		}
+	}
+}
+
+// applyMigrationGuardModeEnv reads the multi-word SP_DB_MIGRATION_GUARD_MODE
+// knob koanf's env loader cannot bind (it would collapse the underscores to
+// dots and miss the snake_case koanf tag "migration_guard_mode"). Validation
+// of the value happens in validateDatabaseConfig, not here — an invalid value
+// is left in place so Validate reports it rather than being silently dropped.
+// See project_koanf_env_quirk.
+func applyMigrationGuardModeEnv(cfg *DatabaseConfig) {
+	if v := os.Getenv("SP_DB_MIGRATION_GUARD_MODE"); v != "" {
+		cfg.MigrationGuardMode = v
+	}
+}
+
 // applyRuntimeEnv reads the multi-word SP_RUNTIME_* knobs koanf's env loader
 // cannot bind (it would collapse the underscores to dots and miss the snake_case
 // koanf tags "memory_limit" / "auto_memory_limit" / "memory_limit_ratio" /
@@ -2074,6 +2186,71 @@ func applyPostHogEnv(cfg *PostHogConfig) {
 	if v := os.Getenv("SP_POSTHOG_PERSONAL_API_KEY"); v != "" {
 		cfg.PersonalAPIKey = strings.TrimSpace(v)
 	}
+}
+
+// Sentry environment defaults. An operator who sets only SP_SENTRY_DSN used to
+// get events with an empty `environment`, which makes the Sentry UI unable to
+// separate a developer's laptop from production — the one split that matters
+// there. Deriving it from the run mode means no event is ever
+// environment-less.
+const (
+	runModeTest = "test"
+
+	// SentryEnvironmentTest is the default Sentry environment under
+	// SP_RUN_MODE=test.
+	SentryEnvironmentTest = "test"
+	// SentryEnvironmentProduction is the default Sentry environment otherwise.
+	SentryEnvironmentProduction = "production"
+)
+
+// applySentryEnvironmentDefault fills sentry.environment when the operator left
+// it unset. Explicit configuration always wins: this runs after config.yml and
+// the SP_SENTRY_ENVIRONMENT env binding have both been folded in, and only
+// assigns to an empty value.
+func applySentryEnvironmentDefault(cfg *Config) {
+	if cfg.Sentry.Environment != "" {
+		return
+	}
+
+	if cfg.RunMode == runModeTest {
+		cfg.Sentry.Environment = SentryEnvironmentTest
+
+		return
+	}
+
+	cfg.Sentry.Environment = SentryEnvironmentProduction
+}
+
+// applySentryEnv reads SP_SENTRY_* into cfg. sentry.dsn / sentry.environment /
+// sentry.debug are koanf-reachable (single-word segments) and already bound by
+// the env provider, but sentry.traces_sample_rate has a snake_case segment
+// that koanf's underscore→dot collapsing can never reach, so it is read by
+// hand here. Keep in sync with manualReaderPlatformEnvVars.
+//
+// Do NOT read SP_SENTRY_DSN / SP_SENTRY_ENVIRONMENT / SP_SENTRY_DEBUG here —
+// re-reading them by hand would change their precedence against config.yml.
+func applySentryEnv(cfg *SentryConfig) {
+	v := os.Getenv("SP_SENTRY_TRACES_SAMPLE_RATE")
+	if v == "" {
+		return
+	}
+
+	rate, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		// Malformed input: leave the existing value, matching the fail-open
+		// convention of the other manual numeric readers (e.g.
+		// applyDatabasePoolEnv, applyJobsEnv).
+		return
+	}
+
+	if rate < 0.0 || rate > 1.0 {
+		// Out of range is an operator error, not something to clamp
+		// silently — Sentry itself treats >1 as 1 without complaint, which
+		// would hide the mistake. Reject and keep the existing value.
+		return
+	}
+
+	cfg.TracesSampleRate = rate
 }
 
 // SP_WHATSAPP_* environment variable names. Declared once and referenced from
@@ -2485,6 +2662,10 @@ func validateDatabaseConfig(cfg *DatabaseConfig) error {
 	// On-disk SQLite requires a directory (memory mode does not).
 	if cfg.Type == DatabaseTypeSQLite && cfg.Dir == "" {
 		return ErrDatabaseDirRequired
+	}
+
+	if cfg.MigrationGuardMode != MigrationGuardModeStrict && cfg.MigrationGuardMode != MigrationGuardModeWarn {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidMigrationGuardMode, cfg.MigrationGuardMode)
 	}
 
 	return nil

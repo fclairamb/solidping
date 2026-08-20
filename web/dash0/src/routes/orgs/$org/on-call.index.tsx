@@ -90,28 +90,27 @@ function OnCallListPage() {
         description={t("oncall:list.subtitle")}
         docsHref="/docs/features/on-call"
         actions={
-          <Button asChild aria-label={t("oncall:list.create")}>
-            <Link to="/orgs/$org/on-call/new" params={{ org }}>
-              <Plus />
-              <span className="hidden sm:inline">{t("oncall:list.create")}</span>
-            </Link>
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+              data-testid="oncall-refresh"
+              aria-label={t("common:refresh")}
+            >
+              <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{t("common:refresh")}</span>
+            </Button>
+            <Button asChild aria-label={t("oncall:list.create")}>
+              <Link to="/orgs/$org/on-call/new" params={{ org }}>
+                <Plus />
+                <span className="hidden sm:inline">{t("oncall:list.create")}</span>
+              </Link>
+            </Button>
+          </>
         }
         className="flex-wrap"
       />
-
-      <div className="flex flex-wrap items-center justify-end gap-4">
-        <Button
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          data-testid="oncall-refresh"
-          aria-label={t("common:refresh")}
-        >
-          <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
-          <span className="hidden sm:inline">{t("common:refresh")}</span>
-        </Button>
-      </div>
 
       <div className="rounded-xl border bg-card shadow-card overflow-hidden">
         {isLoading ? (
@@ -128,15 +127,9 @@ function OnCallListPage() {
             <div className="space-y-1">
               <h3 className="font-semibold text-sm">{t("oncall:list.empty")}</h3>
               <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                Create a rotation to route alerts to active responders during scheduled shifts.
+                {t("oncall:list.emptyHint")}
               </p>
             </div>
-            <Button asChild size="sm">
-              <Link to="/orgs/$org/on-call/new" params={{ org }}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                {t("oncall:list.create")}
-              </Link>
-            </Button>
           </div>
         ) : (
           <Table>

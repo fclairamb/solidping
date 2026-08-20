@@ -122,4 +122,29 @@ export async function freshLogin(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle");
 }
 
+/**
+ * Stubs the SLO coverage chip's request on the check detail page.
+ *
+ * `checks.$checkUid.index.tsx` renders `<SloCoverageChip>` unconditionally, and
+ * that chip fires `GET /api/v1/orgs/:org/slos?checkUid=…` on every load (spec
+ * 2026-08-20-01). A spec that mocks the rest of the check-detail traffic to be
+ * hermetic and then waits on `waitForLoadState("networkidle")` would otherwise
+ * still take this one real request — one more in-flight XHR that has to settle
+ * on the shared single-connection sqlite path, which is enough to make those
+ * suites flaky under parallel workers.
+ *
+ * Call it wherever the other check-detail routes are mocked. Deliberately a
+ * helper rather than a global fixture route: a spec that WANTS the real
+ * endpoint (slos.spec.ts) must keep getting it.
+ */
+export async function mockSloCoverage(page: Page): Promise<void> {
+  await page.route("**/api/v1/orgs/*/slos*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [] }),
+    }),
+  );
+}
+
 export { expect, type Page };

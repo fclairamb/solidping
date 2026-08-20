@@ -19,7 +19,7 @@ retention) is in
 | period_end | timestamptz | Period end |
 | region | text | Execution region |
 | worker_uid | uuid | FK to workers (raw only) |
-| status | smallint | Lifecycle order: 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error, 7=degraded, 8=warning |
+| status | smallint | Lifecycle order: 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error, 7=degraded (aggregated rows only), 8=warning, 9=abandoned. `9` is minted only by the abandoned-result reaper for an attempt nothing was ever reported for, and — like the created/running lifecycle markers — is excluded from every availability calculation (`models.ResultStatus.ExcludedFromAvailability`, spec 2026-08-18-10; an `abandoned` boolean column was drafted during the cycle and consolidated away before release, so no shipped schema ever carries it) |
 | duration | real | Execution duration in milliseconds |
 | metrics | jsonb | Numerical metrics (NULL for HTTP raw rows — response time lives in `duration`) |
 | output | jsonb | Diagnostic output (raw rows only; rollups leave it NULL) |

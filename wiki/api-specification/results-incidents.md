@@ -20,6 +20,14 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 100, max 1000). Also accepts `?size=` as a deprecated alias.
 
+`pagination` on this endpoint carries only `cursor` and `size` — **no `total`**.
+`results` is the largest table in the system; an unbounded `COUNT(*)` scoped to
+an organization on every page load can scan tens of millions of rows, so this
+endpoint is cursor-only. Page forward by passing the previous response's
+`pagination.cursor` back as the `cursor` query parameter; an empty (or absent)
+`cursor` means there is no next page. Contrast with incidents below, which
+returns a real `pagination.total` from a bounded query.
+
 A single result is fetched through the check-scoped route
 `GET /api/v1/orgs/:org/checks/:check/results/:uid` — see [checks.md](checks.md).
 
@@ -33,7 +41,9 @@ Query parameters:
 - `state` - comma-separated states (e.g., `open`, `resolved`)
 - `since` - RFC3339 timestamp
 - `until` - RFC3339 timestamp
-- `with` - comma-separated: `check`
+- `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`;
+  both are opt-in — omitted by default, and the default response costs zero extra
+  member/group queries)
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
@@ -45,7 +55,7 @@ ignoring `limit`/`cursor` — not the org-wide incident count.
 Get a single incident. Auth: required
 
 Query parameters:
-- `with` - comma-separated: `check`
+- `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`)
 
 ### GET /api/v1/orgs/:org/incidents/:uid/events
 List events for a specific incident. Auth: required
