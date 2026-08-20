@@ -313,3 +313,31 @@ Negatives need proving, with positive controls:
    under concurrency, storm cap, private-page invisibility, and the
    migration default (existing pages `false`, new pages `true`) on both
    dialects. Plus a status0 Playwright spec for banner + timeline.
+
+### Not applicable: config-as-code fields for the new page settings
+
+The plan's step 6 listed "config-as-code fields for the new page settings",
+following the Proposal's follow-on list. **That item has no surface to land
+on and was not implemented.**
+
+SolidPing's config-as-code is **checks-only**. The whole of it is
+`server/internal/handlers/checks/apply.go` plus three routes —
+`GET /api/v1/orgs/:org/checks/export`, `POST /checks/import`,
+`POST /checks/apply` — and the manifest/import/apply logic in
+`server/internal/handlers/checks/service.go` (see the manifest-name comment at
+`apply.go:19`). There is **no** status-page export, import or apply path
+anywhere in the repository: `grep -rn "config-as-code" server/ --include='*.go'`
+returns only that checks file, `internal/app/server.go`,
+`internal/envcheck/envcheck.go` and one org-rename test.
+
+So there is no manifest schema to add `autoPublish` /
+`autoPublishDelaySeconds` / `autoResolve` to. Building a status-page
+config-as-code surface — manifest shape, export, diffing, apply semantics,
+section/resource identity across applies — is a feature in its own right and
+is far larger than this spec. It should be its own spec if it is wanted.
+
+The settings ARE reachable declaratively today through the two surfaces that do
+exist for status pages: the REST API (`POST`/`PATCH
+/api/v1/orgs/:org/status-pages`, documented in `openapi.yaml`) and the MCP tools
+`create_status_page` / `update_status_page`, both of which carry all three
+fields.
