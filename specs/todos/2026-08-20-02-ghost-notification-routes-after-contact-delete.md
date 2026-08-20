@@ -145,3 +145,75 @@ crashes on it, and clean up existing rows. Apply every DB change to **both**
 - E2E (`web/dash0/e2e/`): add a method, delete it, assert the row count drops
   and no empty-labelled row renders (there is currently no E2E coverage of
   contact deletion at all).
+
+## Implementation Plan
+
+Root cause re-verified against the vendored dependency before writing any code:
+`bun@v1.2.18/relation_join.go:appendHasOneJoin` puts the relation's soft-delete
+predicate in the **JOIN ON** clause (`isSoftDelete` → `" AND " + alias +
+".deleted_at IS NULL"`), exactly as the Problem section describes. The
+tautology is real, and `WhereAllWithDeleted()` exists on `*SelectQuery`
+(`query_select.go:196`) for step 3.
+
+### Step 1 — DB layer, both dialects (`db/postgres/user_contact.go` + `db/sqlite/user_contact.go`)
+
+1a. **`DeleteUserContact`** — run both writes in one `RunInTx` (the pattern
+already used in `db/*/escalation.go`, `on_call.go`): hard-`DELETE` the
+`user_notification_routes` row for the contact, then soft-delete the contact.
+Deleting the route first means a mid-transaction failure can never leave a
+live contact with no route (the state `CreateContact` would silently repair);
+the transaction makes the pair atomic either way. `user_notification_routes`
+has no `deleted_at` — hard delete is the design.
+
+1b. **`ListUserContactsWithRoutes`** — replace `Where("contact.deleted_at IS
+NULL")` with `Where("contact.uid IS NOT NULL")`, carrying a comment that names
+`appendHasOneJoin` so the tautology cannot be reintroduced by someone
+"fixing" what looks like a missing soft-delete guard. This turns the LEFT JOIN
+into an effective inner join and covers historical dangling rows.
+
+1c. **`EnsureDefaultEmailRoute`** — after the conflict-ignoring INSERT, load
+the canonical row with `WhereAllWithDeleted()` so a soft-deleted row is
+visible instead of raising `sql.ErrNoRows`. If `existing.DeletedAt != nil`,
+return nil **without** seeding: the deletion was a deliberate user choice, and
+re-seeding on the next page load would make the email method undeletable. Only
+a live contact gets its route ensured.
+
+### Step 2 — API boundary (`handlers/usernotifications/service.go`)
+
+2a. `toRouteResponses` skips routes with a nil contact (defense in depth: the
+endpoint can never emit an all-empty `ContactResponse` again, whatever future
+path dangles a route). `toRouteResponse` keeps its nil guard for its direct
+callers.
+
+2b. Fix the wrong doc comment on `Service.DeleteContact` — the FK's `on delete
+cascade` only fires on hard deletes, so nothing cascaded; the route is now
+deleted explicitly by the DB layer.
+
+### Step 3 — Migration (both dialects, appended to the unreleased `014_v0_17_0`)
+
+Append a `-- SECTION: dangling-notification-routes` block to
+`db/postgres/migrations/014_v0_17_0.up.sql` and its SQLite mirror, deleting
+routes whose contact is missing or soft-deleted. It is idempotent and
+re-runnable, so the section-slicing migration tests can replay it. The
+`.down.sql` counterpart is a documented no-op (rows deleted as garbage are not
+resurrectable, and would not be wanted back) added at the *top* of the down
+file's section list, since the down file unwinds sections in reverse order.
+
+### Step 4 — Tests
+
+- `handlers/usernotifications/service_test.go` (in-memory SQLite):
+  1. delete a second contact → `ListRoutes` no longer returns its route (the
+     exact repro that fails today — proves the negative);
+  2. delete the seeded default email → `ListRoutes` still succeeds, returns no
+     email route, and a **second** call does not resurrect it;
+  3. re-adding the same email via `CreateContact` revives contact + route;
+  4. delete + re-add of the same contact value leaves exactly **one** route
+     (positive control — the revive path is unbroken).
+- `db/sqlite/…_migration_test.go` + `db/postgres/…_migration_postgres_test.go`:
+  seed a live route, a route whose contact is soft-deleted, and a route whose
+  contact row is gone entirely; run the sliced section; assert the two dangling
+  routes are gone and the live one survives; re-run for idempotence.
+- `web/dash0/e2e/account-notifications-delete.spec.ts`: add a phone method,
+  delete it, assert the row count drops back and that **no** row renders with an
+  empty contact uid (`[data-testid="delete-contact-"]` has count 0 — a ghost row
+  is exactly a row whose `route.contact.uid` is `""`).
