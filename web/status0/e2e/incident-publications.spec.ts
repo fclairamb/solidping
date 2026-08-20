@@ -182,6 +182,15 @@ test.describe("Incident publications on the public status page", () => {
 
     // A dedicated page, so the assertions cannot be disturbed by whatever
     // other specs left on the default one.
+    //
+    // Auto-publish MUST be off here, and that is the whole point of this test.
+    // Both heartbeat checks below go down within milliseconds, so a page with
+    // autoPublish + a zero delay publishes BOTH incidents on its own — which
+    // makes the sibling wear a badge legitimately and contradicts the negative
+    // assertion this test exists to make. It also races the manual POST below,
+    // which then fails with 409 "already published on this status page". The
+    // publication under test is created explicitly, so the page needs no
+    // auto-publish at all.
     const statusPage = await api<{ uid: string; slug: string }>(
       token,
       "POST",
@@ -189,8 +198,7 @@ test.describe("Incident publications on the public status page", () => {
       {
         name: `Affected badge ${stamp}`,
         slug: `affected-badge-${stamp}`,
-        autoPublish: true,
-        autoPublishDelaySeconds: 0,
+        autoPublish: false,
       },
     );
 
