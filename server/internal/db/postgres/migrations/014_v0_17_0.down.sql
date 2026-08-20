@@ -7,6 +7,25 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: dangling-notification-routes
+-- Was scratch migration 019_dangling_notification_routes (spec 2026-08-20-02). Teardown half.
+-- ==========================================================================
+
+-- Deliberately a no-op, and the FIRST section here because the down file
+-- unwinds in reverse order.
+--
+-- The up half is a pure data cleanup: it deletes notification-route rows whose
+-- contact no longer exists. There is nothing to restore — the rows carried no
+-- information beyond "this dead contact once had a route", they were never
+-- reachable through the API, and re-creating them would put the ghost rows
+-- back on every affected user's notifications page. Down migrations undo
+-- SCHEMA, not garbage collection.
+
+select 1;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: slo-reporting
 -- Was scratch migration 018_slo_reporting (spec 2026-08-20-01). Teardown half.
 -- ==========================================================================

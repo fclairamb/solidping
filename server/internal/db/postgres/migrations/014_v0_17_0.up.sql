@@ -13,6 +13,7 @@
 --   SECTION: worker-version             workers.version self-report column
 --   SECTION: incident-publications      public incident overlay + auto-publish
 --   SECTION: slo-reporting              SLOs, report schedules, maintenance tags
+--   SECTION: dangling-notification-routes  delete routes whose contact is gone
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones (on SQLite in particular, results-status-domain REBUILDS
@@ -540,3 +541,39 @@ comment on column report_schedules.recipients is
 
 comment on column report_schedules.last_period_start is
   'UTC start of the last reported period. Duplicate-run suppression key for JobTypeUptimeReport.';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: dangling-notification-routes
+-- Was scratch migration 019_dangling_notification_routes (spec 2026-08-20-02).
+-- ==========================================================================
+
+-- Clean up notification routes whose contact is gone (spec 2026-08-20-02).
+--
+-- `user_notification_routes.contact_uid` carries an `on delete cascade` FK, but
+-- a cascade only fires on a HARD delete. Every contact deletion in this system
+-- is a SOFT delete (the dashboard's "remove method", the webpush prune on a
+-- 404/410 Gone, the Telegram /stop webhook), so each one left its route row
+-- behind. The list query then returned that route with all-NULL contact columns
+-- and the dashboard rendered an undeletable ghost row: no title, no value, and
+-- a delete request keyed on an empty contact uid that can never match.
+--
+-- The code no longer creates these (DeleteUserContact deletes the route in the
+-- same transaction, and the list query requires a joined contact). This clears
+-- the ones already in the wild.
+--
+-- Hard delete, no tombstone: `user_notification_routes` has no deleted_at
+-- column by design — a route is a pure join row, and one whose contact is gone
+-- carries no information worth keeping.
+--
+-- `not exists` rather than a `left join ... is null`: it reads as the sentence
+-- the fix actually is ("no live contact backs this route") and is idempotent,
+-- so re-running the section on an already-clean database is a no-op. The
+-- migration tests replay just this block for exactly that reason.
+delete from user_notification_routes r
+where not exists (
+  select 1 from user_contacts c
+  where c.uid = r.contact_uid
+    and c.deleted_at is null
+);
