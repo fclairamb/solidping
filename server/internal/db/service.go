@@ -881,6 +881,35 @@ type Service interface {
 	// the status page group component (spec 2026-08-01-03).
 	ListMaintenanceWindowsForCheckGroup(ctx context.Context, groupUID string) ([]*models.MaintenanceWindow, error)
 
+	// SLO operations (spec 2026-08-20-01)
+	CreateSLO(ctx context.Context, slo *models.SLO) error
+	GetSLO(ctx context.Context, orgUID, uid string) (*models.SLO, error)
+	GetSLOBySlug(ctx context.Context, orgUID, slug string) (*models.SLO, error)
+	ListSLOs(ctx context.Context, orgUID string, filter models.ListSLOsFilter) ([]*models.SLO, error)
+	UpdateSLO(ctx context.Context, uid string, update models.SLOUpdate) error
+	DeleteSLO(ctx context.Context, orgUID, uid string) error
+	// CountSLOs counts an org's live SLOs. Feeds the maxSlos entitlement.
+	CountSLOs(ctx context.Context, orgUID string) (int, error)
+	// ListSLOsForChecks returns the live SLOs scoped directly to any of the
+	// given checks. Powers the "covered by an SLO" chip on check detail.
+	ListSLOsForChecks(ctx context.Context, orgUID string, checkUIDs []string) ([]*models.SLO, error)
+
+	// ReportSchedule operations (spec 2026-08-20-01)
+	CreateReportSchedule(ctx context.Context, schedule *models.ReportSchedule) error
+	GetReportSchedule(ctx context.Context, orgUID, uid string) (*models.ReportSchedule, error)
+	ListReportSchedules(ctx context.Context, orgUID string) ([]*models.ReportSchedule, error)
+	// ListEnabledReportSchedules returns every enabled, non-deleted schedule
+	// across all orgs — the report job's work list.
+	ListEnabledReportSchedules(ctx context.Context) ([]*models.ReportSchedule, error)
+	UpdateReportSchedule(ctx context.Context, uid string, update models.ReportScheduleUpdate) error
+	DeleteReportSchedule(ctx context.Context, orgUID, uid string) error
+	// MarkReportScheduleRun records the period a schedule was last reported
+	// for. It is conditional on the stored last_period_start being NULL or
+	// strictly older than periodStart, so two replicas racing on the same
+	// closed period produce exactly one report: the loser updates 0 rows and
+	// skips. Returns whether this caller won.
+	MarkReportScheduleRun(ctx context.Context, uid string, periodStart, runAt time.Time) (bool, error)
+
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error
 	GetFile(ctx context.Context, orgUID, uid string) (*models.File, error)

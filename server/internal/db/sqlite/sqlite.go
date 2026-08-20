@@ -5849,3 +5849,327 @@ func (s *Service) ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.
 }
 
 // ListPublicStatusUpdates is implemented in status_update.go.
+
+// --- SLOs (spec 2026-08-20-01) ---------------------------------------------
+
+// CreateSLO inserts a new service-level objective.
+func (s *Service) CreateSLO(ctx context.Context, slo *models.SLO) error {
+	_, err := s.db.NewInsert().Model(slo).Exec(ctx)
+
+	return err
+}
+
+// GetSLO retrieves an SLO by UID within an organization.
+func (s *Service) GetSLO(ctx context.Context, orgUID, uid string) (*models.SLO, error) {
+	slo := new(models.SLO)
+
+	err := s.db.NewSelect().
+		Model(slo).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return slo, nil
+}
+
+// GetSLOBySlug retrieves an SLO by its per-org slug.
+func (s *Service) GetSLOBySlug(ctx context.Context, orgUID, slug string) (*models.SLO, error) {
+	slo := new(models.SLO)
+
+	err := s.db.NewSelect().
+		Model(slo).
+		Where("slug = ?", slug).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return slo, nil
+}
+
+// ListSLOs lists an organization's SLOs.
+func (s *Service) ListSLOs(
+	ctx context.Context, orgUID string, filter models.ListSLOsFilter,
+) ([]*models.SLO, error) {
+	var slos []*models.SLO
+
+	query := s.db.NewSelect().
+		Model(&slos).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("name ASC")
+
+	if filter.CheckUID != "" {
+		query = query.Where("check_uid = ?", filter.CheckUID)
+	}
+
+	if filter.EnabledOnly {
+		query = query.Where("enabled = ?", true)
+	}
+
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+
+	err := query.Scan(ctx)
+
+	return slos, err
+}
+
+// CountSLOs counts an organization's live SLOs.
+func (s *Service) CountSLOs(ctx context.Context, orgUID string) (int, error) {
+	return s.db.NewSelect().
+		Model((*models.SLO)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+}
+
+// ListSLOsForChecks returns the live SLOs scoped directly to any of the checks.
+func (s *Service) ListSLOsForChecks(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) ([]*models.SLO, error) {
+	if len(checkUIDs) == 0 {
+		return nil, nil
+	}
+
+	var slos []*models.SLO
+
+	err := s.db.NewSelect().
+		Model(&slos).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("check_uid IN (?)", bun.In(checkUIDs)).
+		Scan(ctx)
+
+	return slos, err
+}
+
+// UpdateSLO applies a partial update to an SLO.
+func (s *Service) UpdateSLO(ctx context.Context, uid string, update models.SLOUpdate) error {
+	query := s.db.NewUpdate().
+		Model((*models.SLO)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	if update.Name != nil {
+		query = query.Set("name = ?", *update.Name)
+	}
+
+	if update.Slug != nil {
+		query = query.Set("slug = ?", *update.Slug)
+	}
+
+	// Scope is an XOR at the schema level, so a scope change always writes
+	// BOTH columns — setting one without clearing the other would violate the
+	// constraint rather than silently producing a two-scoped SLO.
+	if update.CheckUID != nil {
+		query = query.Set("check_uid = ?", *update.CheckUID).Set("check_group_uid = ?", nil)
+	} else if update.CheckGroupUID != nil {
+		query = query.Set("check_group_uid = ?", *update.CheckGroupUID).Set("check_uid = ?", nil)
+	}
+
+	if update.TargetPct != nil {
+		query = query.Set("target_pct = ?", *update.TargetPct)
+	}
+
+	if update.Timezone != nil {
+		query = query.Set("timezone = ?", *update.Timezone)
+	}
+
+	if update.ExcludeMaintenance != nil {
+		query = query.Set("exclude_maintenance = ?", *update.ExcludeMaintenance)
+	}
+
+	if update.Enabled != nil {
+		query = query.Set("enabled = ?", *update.Enabled)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// DeleteSLO soft-deletes an SLO.
+func (s *Service) DeleteSLO(ctx context.Context, orgUID, uid string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.SLO)(nil)).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// --- Report schedules (spec 2026-08-20-01) ---------------------------------
+
+// CreateReportSchedule inserts a new report schedule.
+func (s *Service) CreateReportSchedule(ctx context.Context, schedule *models.ReportSchedule) error {
+	_, err := s.db.NewInsert().Model(schedule).Exec(ctx)
+
+	return err
+}
+
+// GetReportSchedule retrieves a report schedule by UID within an organization.
+func (s *Service) GetReportSchedule(ctx context.Context, orgUID, uid string) (*models.ReportSchedule, error) {
+	schedule := new(models.ReportSchedule)
+
+	err := s.db.NewSelect().
+		Model(schedule).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return schedule, nil
+}
+
+// ListReportSchedules lists an organization's report schedules.
+func (s *Service) ListReportSchedules(ctx context.Context, orgUID string) ([]*models.ReportSchedule, error) {
+	var schedules []*models.ReportSchedule
+
+	err := s.db.NewSelect().
+		Model(&schedules).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("name ASC").
+		Scan(ctx)
+
+	return schedules, err
+}
+
+// ListEnabledReportSchedules returns every enabled schedule across all orgs.
+func (s *Service) ListEnabledReportSchedules(ctx context.Context) ([]*models.ReportSchedule, error) {
+	var schedules []*models.ReportSchedule
+
+	err := s.db.NewSelect().
+		Model(&schedules).
+		Where("enabled = ?", true).
+		Where("deleted_at IS NULL").
+		Order("uid ASC").
+		Scan(ctx)
+
+	return schedules, err
+}
+
+// UpdateReportSchedule applies a partial update to a report schedule.
+func (s *Service) UpdateReportSchedule(
+	ctx context.Context, uid string, update models.ReportScheduleUpdate,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	if update.Name != nil {
+		query = query.Set("name = ?", *update.Name)
+	}
+
+	if update.Frequency != nil {
+		query = query.Set("frequency = ?", *update.Frequency)
+	}
+
+	if update.Timezone != nil {
+		query = query.Set("timezone = ?", *update.Timezone)
+	}
+
+	if update.Recipients != nil {
+		query = query.Set("recipients = ?", jsonArray(*update.Recipients))
+	}
+
+	if update.CheckUIDs != nil {
+		query = query.Set("check_uids = ?", jsonArray(*update.CheckUIDs))
+	}
+
+	if update.CheckGroupUIDs != nil {
+		query = query.Set("check_group_uids = ?", jsonArray(*update.CheckGroupUIDs))
+	}
+
+	if update.IncludeSLOs != nil {
+		query = query.Set("include_slos = ?", *update.IncludeSLOs)
+	}
+
+	if update.Enabled != nil {
+		query = query.Set("enabled = ?", *update.Enabled)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// DeleteReportSchedule soft-deletes a report schedule.
+func (s *Service) DeleteReportSchedule(ctx context.Context, orgUID, uid string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
+// MarkReportScheduleRun claims a closed period for a schedule.
+//
+// The WHERE clause is the whole point: it only matches when the stored
+// last_period_start is NULL or strictly older than the period being claimed,
+// so two replicas that both notice the same closed period race into the same
+// UPDATE and exactly one of them sees a row affected. That is what makes the
+// report job safe under multi-replica claiming without leader election — the
+// same reasoning as SELECT ... FOR UPDATE SKIP LOCKED elsewhere, expressed as
+// an idempotency key instead of a lock.
+func (s *Service) MarkReportScheduleRun(
+	ctx context.Context, uid string, periodStart, runAt time.Time,
+) (bool, error) {
+	res, err := s.db.NewUpdate().
+		Model((*models.ReportSchedule)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Where("last_period_start IS NULL OR last_period_start < ?", periodStart).
+		Set("last_period_start = ?", periodStart).
+		Set("last_run_at = ?", runAt).
+		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return affected > 0, nil
+}
+
+// jsonArray renders a possibly-nil slice as a JSON array literal for a partial
+// UPDATE. It must be a marshaled string, not the Go slice: bun would otherwise
+// render []string as a SQL array, which is not a JSON value on either dialect.
+// A nil slice becomes `[]` rather than `null`, so an empty scope can never read
+// back as "no scope" on one path and "org-wide" on another.
+func jsonArray(values []string) string {
+	if values == nil {
+		return "[]"
+	}
+
+	data, err := json.Marshal(values)
+	if err != nil {
+		return "[]"
+	}
+
+	return string(data)
+}

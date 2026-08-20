@@ -217,3 +217,44 @@ func TestEntitlementLimits_WhatsAppWire(t *testing.T) {
 	r.NoError(err)
 	r.Contains(string(data), `"maxWhatsappPerMonth":42`)
 }
+
+// TestEntitlementLimits_SloWire proves maxSlos survives the strict decoder
+// (which rejects unknown keys — a struct-only addition would make the API
+// REJECT the key rather than ignore it) and the encoder round-trip.
+func TestEntitlementLimits_SloWire(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var l EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxSlos":2}`), &l))
+	r.NotNil(l.MaxSlos)
+	r.Equal(2, *l.MaxSlos)
+
+	// Absent stays nil (unlimited), not zero (no objectives at all).
+	var empty EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{}`), &empty))
+	r.Nil(empty.MaxSlos)
+
+	// An explicit zero is a real cap, distinct from absent.
+	var zero EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxSlos":0}`), &zero))
+	r.NotNil(zero.MaxSlos)
+	r.Equal(0, *zero.MaxSlos)
+
+	limit := 7
+	data, err := json.Marshal(EntitlementLimits{MaxSlos: &limit})
+	r.NoError(err)
+	r.Contains(string(data), `"maxSlos":7`)
+
+	// Negative control: an unknown key must still be rejected, so the strict
+	// contract is not quietly relaxed by the new field. (Case is NOT part of
+	// that contract — encoding/json matches field names case-insensitively, so
+	// `maxSLOs` is accepted as the same key.)
+	var typo EntitlementLimits
+	r.Error(json.Unmarshal([]byte(`{"maxSloCount":3}`), &typo))
+
+	var casing EntitlementLimits
+	r.NoError(json.Unmarshal([]byte(`{"maxSLOs":3}`), &casing))
+	r.NotNil(casing.MaxSlos)
+}

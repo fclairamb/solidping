@@ -12070,6 +12070,10 @@ components:
           description: >-
             Outbound WhatsApp template messages per UTC month
             (null = unlimited)
+        maxSlos:
+          type: integer
+          nullable: true
+          description: Maximum service-level objectives (null = unlimited)
 
     EntitlementsUsage:
       type: object
