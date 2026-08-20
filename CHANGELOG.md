@@ -1,52 +1,59 @@
 # Changelog
 
-## [Unreleased]
+## [0.17.0](https://github.com/fclairamb/solidping/compare/v0.16.2...v0.17.0) (2026-08-20)
+
 
 ### ⚠ BREAKING CHANGES
 
-* **notifications:** Opsgenie is removed and replaced by PagerDuty. Migration 015 hard-deletes existing Opsgenie integrations on upgrade — recreate them as PagerDuty integrations using the Events API v2 routing key.
-* **api:** the results list endpoint no longer returns `pagination.total`, `nextCursor` or `hasMore`. They were never populated with real values; clients paginate with `limit` plus the returned page size.
+* **notifications:** Opsgenie is removed and replaced by PagerDuty. Migration 015 hard-deletes existing Opsgenie integrations on upgrade — recreate them as PagerDuty integrations using an Events API v2 routing key ([#240](https://github.com/fclairamb/solidping/issues/240)) ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
+* **api:** the results list endpoint no longer returns `pagination.total`, `nextCursor` or `hasMore`. They were never populated with real values; clients paginate with `limit` plus the returned page size ([#240](https://github.com/fclairamb/solidping/issues/240))
+
 
 ### Features
 
-* **slo:** service level objectives, end to end. Define an SLO over a check or group with a rolling or calendar window, and get its status, error budget and burn-down over time. The budget math is DST-safe across calendar windows, maintenance windows are tagged at ingest so planned downtime never eats the budget, and the burn-down chart accrues consumption per step so a series can only ever fall. Includes SLO list/detail/edit pages in the dashboard, an SLO coverage chip on checks, and a `maxSlos` entitlement.
-* **slo:** scheduled uptime reports. Attach a recurring email digest to an SLO — schedule CRUD, a test-send button, the delivery job and an email template with per-recipient unsubscribe links and `List-Unsubscribe` headers.
-* **status-pages:** incident publications. An incident on a status page is now a first-class, editable overlay on top of the underlying check incident: publish or unpublish by hand, or let a page auto-publish after a debounce, with a per-resource override. Resolve and relapse stay in sync with the real incident, subscribers are fanned out to and webhook events fire. status0 renders active publications with a severity banner, affected-component badges and a collapsible incident history; dash0 gets the page settings, the publish/unpublish block and a dedicated publication editor route. Also exposed as MCP tools.
-* **incidents:** "What the probe saw". Checks can opt in to capturing the failing HTTP response, which is persisted on incident open and reopen and shown as a diagnostics card on the incident. The capture travels on a dedicated Diagnostics channel, separate from `Output`, and is deliberately kept out of the assertion body so enabling it can never move a verdict.
-* **notifications:** PagerDuty Events API v2 sender, replacing Opsgenie across the backend, dashboard and docs.
-* **notifications:** Matrix as an org-level notification integration.
-* **checkers:** browser checks can run against a remote CDP Chrome (`checkers.browser.cdp_url`, `chrome_path`), with a concurrency cap and a per-region browser capability reported by workers. Creating a browser check in a region whose workers report no headless Chrome now warns at creation time, and the dashboard surfaces the warning under the region picker.
-* **smtp:** send-mode SMTP checks submit a real probe email and pair it with delivery, with matching form fields and delivery-pairing UI in the dashboard.
-* **auth:** change your password from the dashboard — an authenticated `POST /api/v1/auth/change-password` endpoint and a Password card on the account security page, sparing the current session and rate limited.
-* **dash0:** the TOTP QR code is rendered client-side instead of relying on a dead field.
-* **agents:** each agent reports its build version over the wire; it is stored, surfaced in `AgentResponse` and shown in the dashboard, flagged when it drifts from the server. Long-revoked agents are now purged by the `agent_gc` sweep, and a second `DELETE` purges an already-revoked agent immediately.
-* **db:** a startup migration-integrity guard catches migrations whose content changed after they were recorded as applied — the failure mode that silently skipped migration 013 and left `workers.capabilities` missing. It has a `warn` mode (`db.migration_guard_mode`), a self-healing migration 014, and a `solidping migrate repair` CLI command.
-* **results:** abandoned probes are reaped into a dedicated `abandoned` result status rather than lingering as `created`/`running`. They are excluded from availability, declared in the OpenAPI enums and rendered as a neutral state in both frontends.
-* **observability:** slow SQL queries now WARN with a callsite label, and a results row-count gauge refreshes on the aggregation job's cadence. Threshold is configurable via `db.slow_query_threshold` / `SP_DB_SLOW_QUERY_THRESHOLD` (default 500ms).
-* **sentry:** every 5xx from the handler error funnel is reported, check and job panics are reported with their identifying tags, and the recovery middleware the panic path was re-panicking into now exists — mounted inside the request timeout. The environment defaults to the run mode, and `SP_SENTRY_TRACES_SAMPLE_RATE` is bound with an explicit default.
-* **analytics:** PostHog capture is served first-party through `/ingest`.
-* **dash0:** entity search in the command palette plus the sidebar pages that were missing from it, a persistent add-check button on the group header, unified Refresh placement and empty states across list pages, and the SMS mode panel moved to the bottom of integrations, collapsed by default.
-* **dash0:** check-type badges and icons are driven from a single canonical check-type identity registry at every call site, including the discovery page.
-* **checkjs:** JS sub-checks refuse check types the server has disabled.
+* **slo:** service level objectives, end to end. Define an SLO over a check or a group with a rolling or calendar window, and get its status, its error budget, and how that budget burns down over time. The budget math is DST-safe across calendar windows, maintenance is tagged at ingest so planned downtime never eats the budget, and the burn-down series accrues consumption per step so it can only ever fall. Ships with SLO list, detail and edit pages in the dashboard, an SLO coverage chip on checks, and a `maxSlos` entitlement ([#240](https://github.com/fclairamb/solidping/issues/240)) ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
+* **slo:** scheduled uptime reports — attach a recurring email digest to an SLO. Schedule CRUD, a test-send button, the delivery job, and an email template carrying `List-Unsubscribe` headers and a per-recipient unsubscribe link ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **status-pages:** incident publications. An incident on a status page is now a first-class, editable overlay on top of the underlying check incident: publish or unpublish by hand, or let the page auto-publish after a debounce, with a per-resource override. Resolve and relapse stay in sync with the real incident, subscribers are fanned out to, and webhook events fire. status0 renders active publications with a severity banner, affected-component badges and a collapsible incident history; dash0 gets the page settings, the publish/unpublish block and a dedicated publication editor route. Also exposed as MCP tools ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **incidents:** "What the probe saw" — a check can opt in to capturing the failing HTTP response, which is persisted when the incident opens or reopens and shown as a diagnostics card. The capture rides a dedicated Diagnostics channel, separate from `Output`, and is deliberately kept out of the assertion body, so turning it on can never move a verdict ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **notifications:** PagerDuty (Events API v2) as a notification sender, replacing Opsgenie across the backend, the dashboard and the docs ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **notifications:** Matrix as an org-level notification integration ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **checkers:** browser checks can run against a remote CDP Chrome (`checkers.browser.cdp_url`, `checkers.browser.chrome_path`), with a concurrency cap and a per-region browser capability reported by the workers themselves. Creating a browser check in a region whose workers report no headless Chrome now warns at creation time, and the dashboard surfaces that warning under the region picker ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **smtp:** send-mode SMTP checks submit a real probe email and pair it with delivery, with the matching form fields and delivery-pairing UI in the dashboard ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **auth:** change your password from the dashboard — an authenticated `POST /api/v1/auth/change-password` endpoint and a Password card on the account security page, rate limited and sparing the current session ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **agents:** every agent now reports its build version over the wire. It is stored, exposed in `AgentResponse`, and shown in the dashboard flagged when it drifts from the server's. Long-revoked agents are purged by the `agent_gc` sweep, and a second `DELETE` purges an already-revoked agent immediately ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **db:** a startup migration-integrity guard catches migrations whose content changed after they were recorded as applied — the exact failure that silently skipped migration 013 and left `workers.capabilities` missing on a running instance. It has a `warn` mode (`db.migration_guard_mode`), a self-healing migration 014, and a `solidping migrate repair` CLI command ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **results:** abandoned probes are reaped into a dedicated `abandoned` status instead of lingering as `created` or `running`. They are excluded from availability, declared in the OpenAPI enums, and rendered as a neutral state in both frontends ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **observability:** slow SQL queries now WARN with a callsite label, and a results row-count gauge refreshes on the aggregation job's cadence. The threshold is configurable through `db.slow_query_threshold` / `SP_DB_SLOW_QUERY_THRESHOLD`, defaulting to 500ms ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **sentry:** every 5xx from the handler error funnel is reported, check and job panics carry their identifying tags, and the recovery middleware that the panic path was re-panicking into now exists — mounted inside the request timeout rather than above it. The environment defaults to the run mode, and `SP_SENTRY_TRACES_SAMPLE_RATE` is bound with an explicit default ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** the TOTP QR code is rendered client-side instead of relying on a field that was never populated ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** entity search in the command palette, plus the sidebar pages that were missing from it; a persistent add-check button on the group header; unified Refresh placement and empty states across the list pages; and the SMS mode panel moved to the bottom of integrations, collapsed by default ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** check-type badges and icons are driven from a single canonical check-type identity registry at every call site, the discovery page included ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **checkjs:** JS sub-checks refuse check types the server has disabled ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **analytics:** serve PostHog capture first-party through /ingest ([#235](https://github.com/fclairamb/solidping/issues/235)) ([b9f6858](https://github.com/fclairamb/solidping/commit/b9f6858eb60131cd1cbb333d0c4c8f2ac5a5896e))
+
 
 ### Performance
 
-* **availability:** the per-check availability endpoint computed its five periods serially, costing the sum of ten DB round trips (~8s measured). It now fans out with a bounded `errgroup`, preserving the requested order, with a period-count cap.
-* **incidents:** the incidents list did N+1 enrichment queries — a `limit=50` page cost ~900ms. Member enrichment is opt-in via `with=members`, and what remains is batched into at most three queries per page regardless of size.
-* **uptime-bar:** availability is split into tier-aligned raw and rollup queries, with the raw retention resolved from the live performance parameters and the raw row cap sized from the org's measured probe rate.
+* **availability:** the per-check availability endpoint walked its five periods in a plain loop, so the call cost the *sum* of ten DB round trips (~8s measured). It now fans out through a bounded `errgroup` that writes by index, so the response keeps the requested order, with a period-count cap ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **incidents:** the incidents list did N+1 enrichment queries — a `limit=50` page cost ~900ms. Member enrichment is now opt-in via `with=members`, and what remains is batched into at most three queries per page regardless of page size ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **uptime-bar:** availability is split into tier-aligned raw and rollup queries, with the raw retention resolved from the live performance parameters and the raw row cap sized from the org's measured probe rate ([#240](https://github.com/fclairamb/solidping/issues/240))
+
 
 ### Bug Fixes
 
-* **smtp:** `mail_from` is validated as a real address, closing an SMTP/header injection hole.
-* **checks:** auto-slug races on create and clone are resolved instead of surfacing a raw `23505`.
-* **checkhttp:** JSONPath assertions are evaluated on checks with no body matcher.
-* **notifications:** deleting a notification route deletes its contact, and dangling routes are cleaned up in the v0.17.0 migration.
-* **sqlite:** the post-006 unique index survives the 016 table rebuild.
-* **api:** the results list joins checks so `with=checkSlug,checkName` is populated, and every result status the server actually emits is declared in the schema.
-* **status0:** the availability-bar tooltip no longer goes stale on adjacent segments, and incident failure snapshot blocks get a destructive tint.
-* **dash0:** the 2FA temp token is sent as a Bearer header during login verify, duplicate empty-state CTA buttons are gone from six list pages, picker labels resolve and SLO slugs auto-generate.
-* **blast-radius:** the table rendered raw check UUIDs and overflowed on mobile — names are hydrated and truncated, with links to both the child incident and the check, and the missing locale keys filled in.
-
+* **smtp:** `mail_from` is validated as a real address, closing an SMTP/header injection hole ([#240](https://github.com/fclairamb/solidping/issues/240)) ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
+* **checks:** auto-slug races on create and clone are resolved instead of surfacing a raw `23505` ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **checkhttp:** JSONPath assertions are evaluated on checks that have no body matcher ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **notifications:** deleting a notification route deletes its contact with it, and dangling routes are cleaned up in the v0.17.0 migration ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **sqlite:** the post-006 unique index survives the 016 table rebuild ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **api:** the results list joins checks so `with=checkSlug,checkName` is actually populated, and every result status the server emits is declared in the schema ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **status0:** the availability-bar tooltip no longer goes stale when moving onto an adjacent segment, and incident failure snapshot blocks get a destructive tint ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** the 2FA temp token is sent as a Bearer header during login verify, duplicate empty-state CTA buttons are gone from six list pages, picker labels resolve, and SLO slugs auto-generate ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **blast-radius:** the table rendered raw 36-char check UUIDs and overflowed a 375px viewport. Names are hydrated and truncated, rows link to both the child incident and the check, and the missing locale keys are filled in across all four languages ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **deps:** update go dependencies (non-major) ([#243](https://github.com/fclairamb/solidping/issues/243)) ([29a25af](https://github.com/fclairamb/solidping/commit/29a25aff339e0918eb71957689f514d98695965d))
+* **deps:** update module github.com/arran4/golang-ical to v0.3.6 ([#242](https://github.com/fclairamb/solidping/issues/242)) ([5d53ff8](https://github.com/fclairamb/solidping/commit/5d53ff8bb35f80b11e826622ed94207d364568b2))
+* **deps:** update module github.com/rabbitmq/amqp091-go to v1.14.0 ([#241](https://github.com/fclairamb/solidping/issues/241)) ([7fd51a3](https://github.com/fclairamb/solidping/commit/7fd51a36dd0284a50c81e826b49308ad43d24d09))
+* **deps:** update module github.com/stretchr/testify to v1.12.0 ([#236](https://github.com/fclairamb/solidping/issues/236)) ([763543f](https://github.com/fclairamb/solidping/commit/763543f070701d8b75972cd022245ef7264192c6))
 
 ## [0.16.2](https://github.com/fclairamb/solidping/compare/v0.16.1...v0.16.2) (2026-08-16)
 
