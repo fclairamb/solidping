@@ -202,7 +202,7 @@ export function getCheckTypeIdentity(type: string | undefined): CheckTypeIdentit
 export function iconToneClassName(tone: string): string {
   return tone
     .split(" ")
-    .filter((cls) => cls.startsWith("text-"))
+    .filter((cls) => cls.includes("text-"))
     .join(" ");
 }
 
