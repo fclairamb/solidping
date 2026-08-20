@@ -55,6 +55,25 @@ async function deleteGroupViaApi(page: Page, token: string, uid: string) {
   });
 }
 
+async function createCheckViaApi(
+  page: Page,
+  token: string,
+  name: string,
+): Promise<{ uid: string }> {
+  const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { name, type: "http", config: { url: "https://example.com" }, enabled: false },
+  });
+  expect(resp.status()).toBe(201);
+  return resp.json();
+}
+
+async function deleteCheckViaApi(page: Page, token: string, uid: string) {
+  await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 test.describe("SLOs", () => {
   test("lists the seeded objective with a real attainment and budget", async ({
     authenticatedPage,
@@ -150,6 +169,53 @@ test.describe("SLOs", () => {
     await page.getByRole("button", { name: /cancel/i }).click();
     await page.waitForURL(new RegExp(`/slos/${FIXTURE_UID}$`), { timeout: 10000 });
     await expect(page.getByTestId("slo-form")).toHaveCount(0);
+  });
+
+  test("edit route: a soft-deleted scope check falls back to its uid instead of spinning forever or crashing", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const stamp = Date.now();
+
+    // Checks are only ever soft-deleted (deleted_at set, row kept — see
+    // DeleteCheck in server/internal/db/postgres/postgres.go). GetSLO and
+    // ListSLOs only filter on the SLO's own deleted_at, never the referenced
+    // check's, so the SLO survives with a checkUid that now 404s on GetCheck.
+    // That is exactly CheckPicker's genuinely-deleted-entity path.
+    const check = await createCheckViaApi(page, token, `E2E Orphan Check ${stamp}`);
+    const created = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/slos`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name: `E2E Orphaned Scope ${stamp}`, checkUid: check.uid, targetPct: 99 },
+      },
+    );
+    expect(created.status()).toBe(201);
+    const slo = await created.json();
+
+    await deleteCheckViaApi(page, token, check.uid);
+
+    try {
+      // The detail page never touches CheckPicker — it must still render.
+      await page.goto(`orgs/test/slos/${slo.uid}`);
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByTestId("slo-detail-edit-button")).toBeVisible();
+
+      await page.getByTestId("slo-detail-edit-button").click();
+      await page.waitForURL(new RegExp(`/slos/${slo.uid}/edit$`), {
+        timeout: 10000,
+      });
+      await expect(page.getByTestId("slo-form")).toBeVisible();
+
+      // The picker resolves to the deleted check's raw uid — never stuck on
+      // the muted "…" resolving state, never a blank trigger, never a crash.
+      const scopeTrigger = page.getByTestId("slo-check-select");
+      await expect(scopeTrigger).toHaveText(check.uid, { timeout: 10000 });
+      await expect(scopeTrigger).not.toHaveText("…");
+    } finally {
+      await deleteSloViaApi(page, token, slo.uid);
+    }
   });
 
   test("editing an objective saves and returns to the detail page with the change visible", async ({
