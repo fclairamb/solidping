@@ -1400,9 +1400,14 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.EscalationPolicyUID = req.EscalationPolicyUID
 	}
 
-	// Create check in DB
-	if err := s.db.CreateCheck(ctx, check); err != nil { //nolint:govet
-		return CheckResponse{}, err
+	// Create check in DB. The slug resolved above is an optimistic guess: a
+	// concurrent create in this org can claim it in the gap before the insert,
+	// so the insert re-resolves and retries rather than surfacing the raw
+	// unique-index violation.
+	if errCreate := s.insertCheckResolvingSlugRace(
+		ctx, org.UID, spec.Slug, userProvidedSlug, check,
+	); errCreate != nil {
+		return CheckResponse{}, errCreate
 	}
 
 	// Handle labels if provided
@@ -1747,8 +1752,16 @@ func (s *Service) UpdateCheck(
 		}
 	}
 
-	// Update check in DB
+	// Update check in DB. A rename carries the same optimistic-slug gap as
+	// creation — validateAndCheckSlugConflict above only proves the slug was
+	// free when it looked — but a rename slug is always user-provided, so the
+	// loser reports the conflict it would have reported synchronously instead
+	// of being silently renamed to something else.
 	if errUpdate := s.db.UpdateCheck(ctx, check.UID, &update); errUpdate != nil {
+		if update.Slug != nil && db.IsCheckSlugCollision(errUpdate) {
+			return CheckResponse{}, ErrSlugConflict
+		}
+
 		return CheckResponse{}, errUpdate
 	}
 
@@ -2316,6 +2329,63 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 	}
 
 	return slug, nil
+}
+
+// checkSlugRaceAttempts bounds how many times an insert may be retried after
+// losing the slug race. Each retry re-reads what is taken, so it starts from a
+// strictly fuller picture than the one before; a handful of rounds covers any
+// realistic burst in one organization, and the ceiling exists only so a
+// pathological stampede terminates instead of spinning.
+const checkSlugRaceAttempts = 8
+
+// insertCheckResolvingSlugRace inserts a check, re-resolving an auto-generated
+// slug and retrying whenever a concurrent creation committed the same one first.
+//
+// ensureUniqueSlug is a SELECT-then-INSERT with a gap in the middle: between the
+// two, another request in the same organization can take the slug it just found
+// free. checks_slug_idx — not the SELECT — is what actually guarantees
+// uniqueness, so the read is only an optimistic guess and losing the race costs
+// one retry rather than a duplicate.
+//
+// This is not a rare interleaving. An auto-generated slug derives from the
+// check's target, not from its name, so two checks pointed at the same URL get
+// the same base slug by construction — two dashboard tabs, a scripted import,
+// or two parallel E2E workers creating checks for one host collide on the first
+// try. Before this loop the loser surfaced as a bare 23505 from the driver,
+// which the handler could only render as a 500 "Internal server error".
+//
+// A user-provided slug is never re-resolved: silently storing something other
+// than what was asked for would be a surprise. Its collision becomes
+// ErrSlugConflict — the same 400 the pre-check returns when it sees the row —
+// so the outcome no longer depends on which side of the gap the conflict landed.
+//
+// The whole insert (check + check_jobs + initial result) runs in one
+// transaction, so a losing attempt leaves nothing behind to clean up before the
+// next one.
+func (s *Service) insertCheckResolvingSlugRace(
+	ctx context.Context, orgUID, baseSlug string, userProvidedSlug bool, check *models.Check,
+) error {
+	for attempt := 0; ; attempt++ {
+		err := s.db.CreateCheck(ctx, check)
+		if err == nil || !db.IsCheckSlugCollision(err) {
+			return err
+		}
+
+		if userProvidedSlug {
+			return ErrSlugConflict
+		}
+
+		if attempt >= checkSlugRaceAttempts {
+			return err
+		}
+
+		nextSlug, resolveErr := s.ensureUniqueSlug(ctx, orgUID, baseSlug, false)
+		if resolveErr != nil {
+			return resolveErr
+		}
+
+		check.Slug = &nextSlug
+	}
 }
 
 // ReconcileStaleJobSchedules re-reconciles every enabled check that has at
@@ -3467,7 +3537,7 @@ func (s *Service) CloneCheck(
 		return CheckResponse{}, ErrCheckNotFound
 	}
 
-	finalSlug, err := s.cloneResolveSlug(ctx, org.UID, source, req)
+	finalSlug, baseSlug, userProvidedSlug, err := s.cloneResolveSlug(ctx, org.UID, source, req)
 	if err != nil {
 		return CheckResponse{}, err
 	}
@@ -3483,7 +3553,13 @@ func (s *Service) CloneCheck(
 		}
 	}
 
-	if createErr := s.db.CreateCheck(ctx, clone); createErr != nil {
+	// Same optimistic-slug race as CreateCheck: two clones of one check, or a
+	// clone racing a create for the same target, resolve to the same slug.
+	if createErr := s.insertCheckResolvingSlugRace(
+		ctx, org.UID, baseSlug, userProvidedSlug, clone,
+	); createErr != nil {
+		// %w keeps errors.Is(err, ErrSlugConflict) true, so the handler still
+		// maps a lost user-named-slug race to the same 400 as the pre-check.
 		return CheckResponse{}, fmt.Errorf("create clone: %w", createErr)
 	}
 
@@ -3513,25 +3589,29 @@ func (s *Service) CloneCheck(
 	return response, nil
 }
 
+// cloneResolveSlug picks the clone's slug. It returns the resolved slug, the
+// base it was derived from and whether the caller asked for it by name — the
+// last two so the insert can re-resolve after losing the slug race (see
+// insertCheckResolvingSlugRace).
 func (s *Service) cloneResolveSlug(
 	ctx context.Context, orgUID string, source *models.Check, req *CloneCheckRequest,
-) (string, error) {
+) (string, string, bool, error) {
 	sourceSlug := ""
 	if source.Slug != nil {
 		sourceSlug = *source.Slug
 	}
 
 	var (
-		targetSlug       string
+		baseSlug         string
 		userProvidedSlug bool
 	)
 
 	if req != nil && req.Slug != nil && *req.Slug != "" {
 		if err := validateSlug(*req.Slug); err != nil {
-			return "", err
+			return "", "", false, err
 		}
 
-		targetSlug = *req.Slug
+		baseSlug = *req.Slug
 		userProvidedSlug = true
 	} else {
 		base := sourceSlug
@@ -3539,10 +3619,15 @@ func (s *Service) cloneResolveSlug(
 			base = source.Type
 		}
 
-		targetSlug = base + "-copy"
+		baseSlug = base + "-copy"
 	}
 
-	return s.ensureUniqueSlug(ctx, orgUID, targetSlug, userProvidedSlug)
+	finalSlug, err := s.ensureUniqueSlug(ctx, orgUID, baseSlug, userProvidedSlug)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	return finalSlug, baseSlug, userProvidedSlug, nil
 }
 
 func (s *Service) cloneBuildCheck(
