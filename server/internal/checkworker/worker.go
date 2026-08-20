@@ -34,6 +34,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
@@ -1231,7 +1232,17 @@ func (r *CheckWorker) runCheckerGuarded(
 	go func() {
 		defer func() {
 			if p := recover(); p != nil {
-				outcomeCh <- execOutcome{err: fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())}
+				panicErr := fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())
+
+				// A checker that crashes is our bug; a checker that reports its
+				// target down is the product working. Only this path reports.
+				errorreport.CaptureWithTags(ctx, panicErr, map[string]string{
+					"check.type":   checkJob.Type,
+					"check.uid":    checkJob.CheckUID,
+					"organization": checkJob.OrganizationUID,
+				})
+
+				outcomeCh <- execOutcome{err: panicErr}
 			}
 
 			if abandoned.Load() {
