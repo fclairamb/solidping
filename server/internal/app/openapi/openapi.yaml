@@ -9835,6 +9835,33 @@ components:
           type: string
         language:
           type: string
+        autoPublish:
+          type: boolean
+          description: >-
+            Publish incidents affecting this page's resources automatically as
+            public incidents. OMITTING the field opts the new page IN (true) —
+            only pages that predate the feature default to false, and they do
+            so because the migration deliberately did not opt anyone in
+            retroactively.
+        autoPublishDelaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          default: 60
+          description: >-
+            Debounce before an incident becomes public. 0 is legal and
+            publishes immediately; an incident that resolves inside this window
+            is never published at all. Outside 0–86400 is a VALIDATION_ERROR.
+        autoResolve:
+          type: string
+          enum: [always, if_untouched, never]
+          default: if_untouched
+          description: >-
+            What an auto-created publication does when its incident resolves.
+            "if_untouched" (the default) resolves it only while nobody has
+            edited it; once a human owns the narrative the automation posts a
+            "component recovered" note and leaves the final resolve to them.
+            Any other value is a VALIDATION_ERROR.
         customCss:
           type: string
           description: >-
@@ -9880,6 +9907,26 @@ components:
           type: string
         language:
           type: string
+        autoPublish:
+          type: boolean
+          description: >-
+            Turn automatic incident publication on or off for this page. Omit
+            the field to leave it unchanged.
+        autoPublishDelaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          description: >-
+            Debounce before an incident becomes public. 0 is legal and
+            publishes immediately. Omit the field to leave it unchanged;
+            outside 0–86400 is a VALIDATION_ERROR.
+        autoResolve:
+          type: string
+          enum: [always, if_untouched, never]
+          description: >-
+            What an auto-created publication does when its incident resolves.
+            Omit the field to leave it unchanged; any other value is a
+            VALIDATION_ERROR.
         customCss:
           type: string
           description: >-
@@ -10029,6 +10076,14 @@ components:
           type: string
         explanation:
           type: string
+        autoPublish:
+          type: boolean
+          nullable: true
+          description: >-
+            Per-resource auto-publish override. ABSENT/null means "inherit the
+            page setting", which is NOT the same as an explicit false — so a
+            component can be excluded from (or included in) automatic
+            publication independently of how the page itself is configured.
         position:
           type: integer
 
@@ -10049,6 +10104,16 @@ components:
           type: string
         explanation:
           type: string
+        autoPublish:
+          type: boolean
+          nullable: true
+          description: >-
+            Per-resource auto-publish override, which is three-state. OMITTING
+            the key leaves the override exactly as it is; sending an explicit
+            `null` RESETS it to "inherit the page setting"; sending true or
+            false pins it. Those are three distinct outcomes, so the server
+            detects key presence on the raw body rather than relying on the
+            decoded value.
         position:
           type: integer
 

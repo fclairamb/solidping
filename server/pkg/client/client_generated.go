@@ -480,6 +480,27 @@ func (e CreateInvitationRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for CreateStatusPageRequestAutoResolve.
+const (
+	CreateStatusPageRequestAutoResolveAlways      CreateStatusPageRequestAutoResolve = "always"
+	CreateStatusPageRequestAutoResolveIfUntouched CreateStatusPageRequestAutoResolve = "if_untouched"
+	CreateStatusPageRequestAutoResolveNever       CreateStatusPageRequestAutoResolve = "never"
+)
+
+// Valid indicates whether the value is a known member of the CreateStatusPageRequestAutoResolve enum.
+func (e CreateStatusPageRequestAutoResolve) Valid() bool {
+	switch e {
+	case CreateStatusPageRequestAutoResolveAlways:
+		return true
+	case CreateStatusPageRequestAutoResolveIfUntouched:
+		return true
+	case CreateStatusPageRequestAutoResolveNever:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DependencyKind.
 const (
 	DependencyKindHard DependencyKind = "hard"
@@ -1578,6 +1599,27 @@ func (e UpdateMemberRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for UpdateStatusPageRequestAutoResolve.
+const (
+	UpdateStatusPageRequestAutoResolveAlways      UpdateStatusPageRequestAutoResolve = "always"
+	UpdateStatusPageRequestAutoResolveIfUntouched UpdateStatusPageRequestAutoResolve = "if_untouched"
+	UpdateStatusPageRequestAutoResolveNever       UpdateStatusPageRequestAutoResolve = "never"
+)
+
+// Valid indicates whether the value is a known member of the UpdateStatusPageRequestAutoResolve enum.
+func (e UpdateStatusPageRequestAutoResolve) Valid() bool {
+	switch e {
+	case UpdateStatusPageRequestAutoResolveAlways:
+		return true
+	case UpdateStatusPageRequestAutoResolveIfUntouched:
+		return true
+	case UpdateStatusPageRequestAutoResolveNever:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpsertCheckRequestType.
 const (
 	UpsertCheckRequestTypeDns    UpsertCheckRequestType = "dns"
@@ -2605,6 +2647,15 @@ type CreateSeverityRequest struct {
 
 // CreateStatusPageRequest defines model for CreateStatusPageRequest.
 type CreateStatusPageRequest struct {
+	// AutoPublish Publish incidents affecting this page's resources automatically as public incidents. OMITTING the field opts the new page IN (true) — only pages that predate the feature default to false, and they do so because the migration deliberately did not opt anyone in retroactively.
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
+	// AutoPublishDelaySeconds Debounce before an incident becomes public. 0 is legal and publishes immediately; an incident that resolves inside this window is never published at all. Outside 0–86400 is a VALIDATION_ERROR.
+	AutoPublishDelaySeconds *int `json:"autoPublishDelaySeconds,omitempty"`
+
+	// AutoResolve What an auto-created publication does when its incident resolves. "if_untouched" (the default) resolves it only while nobody has edited it; once a human owns the narrative the automation posts a "component recovered" note and leaves the final resolve to them. Any other value is a VALIDATION_ERROR.
+	AutoResolve *CreateStatusPageRequestAutoResolve `json:"autoResolve,omitempty"`
+
 	// CustomCss Optional custom stylesheet for the public page. Max 64 KB; @import is rejected (VALIDATION_ERROR). External url() references are allowed.
 	CustomCss *string `json:"customCss,omitempty"`
 
@@ -2627,8 +2678,14 @@ type CreateStatusPageRequest struct {
 	Visibility *string `json:"visibility,omitempty"`
 }
 
+// CreateStatusPageRequestAutoResolve What an auto-created publication does when its incident resolves. "if_untouched" (the default) resolves it only while nobody has edited it; once a human owns the narrative the automation posts a "component recovered" note and leaves the final resolve to them. Any other value is a VALIDATION_ERROR.
+type CreateStatusPageRequestAutoResolve string
+
 // CreateStatusPageResourceRequest Exactly one of checkUid or checkGroupUid must be set; zero or both is a VALIDATION_ERROR naming both fields.
 type CreateStatusPageResourceRequest struct {
+	// AutoPublish Per-resource auto-publish override. ABSENT/null means "inherit the page setting", which is NOT the same as an explicit false — so a component can be excluded from (or included in) automatic publication independently of how the page itself is configured.
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
 	// CheckGroupUid Check group UID or slug to attach as one aggregated resource. Mutually exclusive with checkUid.
 	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
 
@@ -4864,6 +4921,15 @@ type UpdateSeverityRequest struct {
 
 // UpdateStatusPageRequest defines model for UpdateStatusPageRequest.
 type UpdateStatusPageRequest struct {
+	// AutoPublish Turn automatic incident publication on or off for this page. Omit the field to leave it unchanged.
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
+	// AutoPublishDelaySeconds Debounce before an incident becomes public. 0 is legal and publishes immediately. Omit the field to leave it unchanged; outside 0–86400 is a VALIDATION_ERROR.
+	AutoPublishDelaySeconds *int `json:"autoPublishDelaySeconds,omitempty"`
+
+	// AutoResolve What an auto-created publication does when its incident resolves. Omit the field to leave it unchanged; any other value is a VALIDATION_ERROR.
+	AutoResolve *UpdateStatusPageRequestAutoResolve `json:"autoResolve,omitempty"`
+
 	// CustomCss Set/replace the custom stylesheet, or clear it with an empty string. Omit the field to leave it unchanged. Max 64 KB; @import is rejected (VALIDATION_ERROR).
 	CustomCss *string `json:"customCss,omitempty"`
 
@@ -4885,8 +4951,14 @@ type UpdateStatusPageRequest struct {
 	Visibility       *string             `json:"visibility,omitempty"`
 }
 
+// UpdateStatusPageRequestAutoResolve What an auto-created publication does when its incident resolves. Omit the field to leave it unchanged; any other value is a VALIDATION_ERROR.
+type UpdateStatusPageRequestAutoResolve string
+
 // UpdateStatusPageResourceRequest Supplying checkUid or checkGroupUid switches the resource's target kind; supplying both is a VALIDATION_ERROR naming both fields, and supplying neither leaves the target untouched.
 type UpdateStatusPageResourceRequest struct {
+	// AutoPublish Per-resource auto-publish override, which is three-state. OMITTING the key leaves the override exactly as it is; sending an explicit `null` RESETS it to "inherit the page setting"; sending true or false pins it. Those are three distinct outcomes, so the server detects key presence on the raw body rather than relying on the decoded value.
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
 	// CheckGroupUid Switch the resource to target this check group (UID or slug).
 	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
 
