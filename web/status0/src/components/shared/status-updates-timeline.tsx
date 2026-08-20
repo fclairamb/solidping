@@ -1,5 +1,8 @@
 import type { StatusUpdatePublicResponse } from "@/api/hooks";
-import { StatusUpdateCard } from "./status-update-card";
+import {
+  StatusUpdateCard,
+  type StatusUpdateCardVariant,
+} from "./status-update-card";
 
 interface IncidentThread {
   incidentUid: string;
@@ -75,14 +78,16 @@ function buildTimeline(updates: StatusUpdatePublicResponse[]): TimelineEntry[] {
  */
 export function StatusUpdateThreadList({
   updates,
+  variant = "card",
 }: {
   updates: StatusUpdatePublicResponse[];
+  variant?: StatusUpdateCardVariant;
 }) {
   return (
     <div className="divide-y divide-border">
       {updates.map((update) => (
         <div key={update.uid} className="p-4">
-          <StatusUpdateCard update={update} />
+          <StatusUpdateCard update={update} variant={variant} />
         </div>
       ))}
     </div>
@@ -118,7 +123,7 @@ export function StatusUpdatesTimeline({ updates }: StatusUpdatesTimelineProps) {
                   Incident thread
                 </span>
               </div>
-              <StatusUpdateThreadList updates={threadUpdates} />
+              <StatusUpdateThreadList updates={threadUpdates} variant="plain" />
             </section>
           );
         }

@@ -126,7 +126,10 @@ export function IncidentCard({ incident }: { incident: PublicIncident }) {
 
       {updates.length > 0 && (
         <div className="border-t border-border/60 bg-card/60">
-          <StatusUpdateThreadList updates={updates.map(toTimelineUpdate)} />
+          <StatusUpdateThreadList
+            updates={updates.map(toTimelineUpdate)}
+            variant="plain"
+          />
         </div>
       )}
     </article>
@@ -152,7 +155,7 @@ export function ActiveIncidents({
   return (
     <section
       aria-label={t("activeIncidents")}
-      className="mt-6 space-y-3"
+      className="mt-6 mb-6 space-y-3"
       data-testid="active-incidents"
     >
       <h2 className="text-lg font-semibold">
