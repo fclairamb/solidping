@@ -7737,10 +7737,15 @@ components:
           description: >-
             Check-specific configuration; the fields accepted depend on
             `type`. HTTP checks additionally accept `verifySsl` (boolean,
-            default true — set false to skip TLS certificate verification)
-            and `followRedirects` (boolean, default true — set false to stop
-            at the first response instead of following redirects). See
-            wiki/conventions/checker-config.md for the full per-type field
+            default true — set false to skip TLS certificate verification),
+            `followRedirects` (boolean, default true — set false to stop
+            at the first response instead of following redirects) and
+            `capture_failure_response` (boolean, default false — when true a
+            FAILING execution keeps what the probe received: status line,
+            redacted response headers and a 16 KiB-capped body, stored on the
+            incident it opens as `details.failureResponse`. Opt-in because a
+            response body can contain PII; never exposed on a status page).
+            See wiki/conventions/checker-config.md for the full per-type field
             reference.
         targetHost:
           type: string
@@ -8047,7 +8052,8 @@ components:
           description: >-
             Check-specific configuration (e.g., url, port, timeout). HTTP
             checks additionally accept `verifySsl` and `followRedirects`
-            (both booleans, default true) — see the Check schema above for
+            (both booleans, default true) and `capture_failure_response`
+            (boolean, default false) — see the Check schema above for
             details.
         enabled:
           type: boolean
@@ -8187,7 +8193,8 @@ components:
           description: >-
             Check-specific configuration. HTTP checks additionally accept
             `verifySsl` and `followRedirects` (both booleans, default true)
-            — see the Check schema above for details.
+            and `capture_failure_response` (boolean, default false) — see the
+            Check schema above for details.
         enabled:
           type: boolean
           default: true
@@ -8691,6 +8698,20 @@ components:
             `failure_reason` (string), `first_result` (object —
             resultUid/status/region/duration/periodStart/output), and, after a
             relapse, `last_failure` (same shape as `first_result`).
+
+
+            `failureResponse` (object) is present only for HTTP checks with
+            `capture_failure_response` enabled that failed AFTER receiving a
+            response: what the probe saw at the incident's current onset —
+            `url`, `statusLine`, `statusCode`, `headers` (sensitive values
+            replaced with `[redacted]`; request headers are never captured),
+            `body` (16 KiB cap, with `truncated` and the original
+            `contentLength`), `contentType`, `bodyBytes`, `bodySha256`,
+            `binary` (true when only metadata was kept), `capturedAt`,
+            `remoteAddr` and `region`. It is overwritten on reopen, and
+            dropped when the new onset has no capture. **This block is
+            operator-only — it is never serialized onto a status page or a
+            subscriber payload.**
 
     IncidentCheck:
       type: object
