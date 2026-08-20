@@ -92,6 +92,13 @@ DNS, TLS) — the existing error output already covers those.
 | `value` | string | Expected value (for `assertion` type) |
 | `children` | node[] | Child assertion nodes (for `and`/`or` types) |
 
+The assertions open the response-body read on their own — no `body_*` key is
+needed alongside them. (Before spec 2026-08-20-04 they did not: a check
+configured with only `json_path_assertions` never read the body and therefore
+never evaluated them, reporting up regardless of the payload.) They are still
+skipped when the response body is **empty**; a non-JSON body fails the check
+with `response body is not valid JSON for assertion evaluation`.
+
 ---
 
 ### `tcp` -- TCP port connectivity

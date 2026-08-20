@@ -542,13 +542,14 @@ func TestCaptureFailureResponseConfigRoundTrip(t *testing.T) {
 // property of the whole feature: turning the capture ON must never change what
 // a check REPORTS. It only changes what is kept about a failure.
 //
-// The scenario is the one that could break it. `json_path_assertions` is
-// guarded by `respBody != ""`, and — pre-existing, deliberately preserved —
-// the body-read gate does NOT include JSONPathAssertions. So a check with ONLY
-// assertions and no `body_*` key never evaluates them and reports UP on a 200.
-// If the capture populated respBody, those assertions would suddenly start
-// running and this check would flip to DOWN purely because an operator turned
-// on a diagnostic. It must not.
+// The scenario is the one that could break it: a check whose only body-driven
+// configuration is `json_path_assertions`, which the capture reads the body
+// for as well. Since spec 2026-08-20-04 those assertions open the read gate
+// themselves and are evaluated (this check is DOWN on the payload below); the
+// property under test is unchanged and is about the EQUALITY of the two
+// verdicts — the capture must never be what decides whether an assertion runs,
+// in either direction. That holds because respBody is still populated only
+// from bodyDrivesAssertions, while the capture reads bodyBytes.
 func TestCaptureIsVerdictInertForJSONPathOnlyChecks(t *testing.T) {
 	t.Parallel()
 
@@ -594,42 +595,26 @@ func TestCaptureIsVerdictInertForJSONPathOnlyChecks(t *testing.T) {
 		CaptureFailureResponse: true,
 	})
 
-	// The verdict is identical with the capture off and on. (It is UP here
-	// only because of the pre-existing gate; this test pins EQUALITY, not the
-	// value — if that pre-existing bug is ever fixed on purpose, both sides
-	// move together and this test still holds.)
+	// The verdict is identical with the capture off and on. The equality is
+	// the property; the pinned value below just records which side of it the
+	// assertions land on today (DOWN, since spec 2026-08-20-04 made them
+	// evaluate). If that value ever moves again, both sides move together and
+	// the equality still holds.
 	r.Equal(off.Status, on.Status,
 		"enabling capture_failure_response must never change a check's verdict")
-	r.Equal(checkerdef.StatusUp, on.Status,
-		"pre-existing behavior preserved: an assertions-only check does not evaluate them")
+	r.Equal(checkerdef.StatusDown, on.Status,
+		"an assertions-only check evaluates its assertions and fails this payload")
 
-	// Positive control on the negative: prove the capture machinery is really
-	// engaged in the "on" case, so the equality above is not passing merely
-	// because nothing happened. A successful check carries no capture, so make
-	// the very same config fail on its status code and check that the capture
-	// appears — with the body populated, from the same bytes the assertions
-	// were denied.
-	failServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", contentTypeJSON)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(failServer.Close)
-
-	failed := runCheck(t, &HTTPConfig{
-		URL:                    failServer.URL,
-		JSONPathAssertions:     assertions(),
-		CaptureFailureResponse: true,
-	})
-	r.Equal(checkerdef.StatusDown, failed.Status)
-	r.NotNil(failed.Diagnostics, "the capture path must genuinely be active in this configuration")
-	r.NotNil(failed.Diagnostics.FailureResponse)
+	// Only the opted-in run keeps evidence: the capture is what changes, the
+	// verdict is not.
+	r.Nil(off.Diagnostics, "capture disabled must never produce diagnostics")
+	r.NotNil(on.Diagnostics, "the capture path must genuinely be active in this configuration")
+	r.NotNil(on.Diagnostics.FailureResponse)
 	// Byte-exact, not merely JSON-equivalent: the capture is evidence, so it
 	// must be what the wire carried. JSONEq proves the content, BodyBytes
 	// proves nothing was dropped or re-encoded on the way.
-	r.JSONEq(body, failed.Diagnostics.FailureResponse.Body,
-		"the capture still gets the full body even though the assertions never saw it")
-	r.Equal(len(body), failed.Diagnostics.FailureResponse.BodyBytes)
+	r.JSONEq(body, on.Diagnostics.FailureResponse.Body)
+	r.Equal(len(body), on.Diagnostics.FailureResponse.BodyBytes)
 }
 
 // TestCaptureIsVerdictInertAcrossConfigurations sweeps the other assertion

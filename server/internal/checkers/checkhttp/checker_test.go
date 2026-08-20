@@ -1710,17 +1710,12 @@ func newJSONBodyServer(t *testing.T, body string) *httptest.Server {
 // response-body read gate for checks whose ONLY body-dependent configuration
 // is `json_path_assertions`.
 //
-// !!! THIS COMMIT PINS THE BUG, NOT THE DESIRED BEHAVIOR !!!
-//
-// `bodyDrivesAssertions` (checker.go) lists the four `body_*` keys and not
-// JSONPathAssertions, so such a check never reads the body, `respBody` stays
-// "", and the assertion block — guarded by `respBody != ""` — is skipped in
-// silence. The check reports UP whatever the endpoint returns.
-//
-// Every expectation below marked `BUG (spec 2026-08-20-04)` therefore records
-// what the checker does TODAY, so that the fix commit shows the behavior
-// moving. The unmarked cases are the controls: they already read the body and
-// must be untouched by the fix.
+// Until spec 2026-08-20-04, `bodyDrivesAssertions` (checker.go) listed the
+// four `body_*` keys and not JSONPathAssertions, so such a check never read
+// the body, `respBody` stayed "", and the assertion block — guarded by
+// `respBody != ""` — was skipped in silence: the check reported UP whatever
+// the endpoint returned. The first two cases below are exactly that scenario
+// and now expect DOWN; the rest are controls that the fix must not move.
 func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T) {
 	t.Parallel()
 
@@ -1744,14 +1739,15 @@ func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T)
 		wantAssertionDetail bool
 	}{
 		{
-			// The headline bug: assertions are configured, the response
-			// violates them, and the check reports UP anyway.
-			name:   "assertions alone, response violates them",
-			body:   bodyDegraded,
-			mutate: func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
-			// BUG (spec 2026-08-20-04): should be StatusDown. The body is
-			// never read, so the assertion never runs.
-			wantStatus: checkerdef.StatusUp,
+			// The headline case: assertions are configured and the response
+			// violates them, with no `body_*` key anywhere in the config.
+			// This reported UP before the fix.
+			name:                "assertions alone, response violates them",
+			body:                bodyDegraded,
+			mutate:              func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
+			wantStatus:          checkerdef.StatusDown,
+			wantError:           "JSON assertion failed",
+			wantAssertionDetail: true,
 		},
 		{
 			// Positive control: the same shape of config against a response
@@ -1766,12 +1762,11 @@ func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T)
 		{
 			// A JSON check pointed at a non-JSON endpoint is a real
 			// misconfiguration the assertions exist to surface.
-			name:   "assertions alone, response is not JSON",
-			body:   bodyNotJSON,
-			mutate: func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
-			// BUG (spec 2026-08-20-04): should be StatusDown with
-			// "response body is not valid JSON for assertion evaluation".
-			wantStatus: checkerdef.StatusUp,
+			name:       "assertions alone, response is not JSON",
+			body:       bodyNotJSON,
+			mutate:     func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
+			wantStatus: checkerdef.StatusDown,
+			wantError:  "response body is not valid JSON for assertion evaluation",
 		},
 		{
 			// Control: a `body_*` key already opens the read gate, so these

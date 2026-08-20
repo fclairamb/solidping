@@ -353,17 +353,23 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		_ = resp.Body.Close()
 	}()
 
-	// bodyDrivesAssertions is the ORIGINAL, UNCHANGED read gate: exactly the
-	// four body-matching keys, and deliberately NOT JSONPathAssertions.
+	// bodyDrivesAssertions is the read gate: it must list EVERY config key
+	// whose evaluation needs the response body, because respBody below is
+	// populated only when it is true, and every body-reading assertion keys
+	// off respBody.
 	//
-	// That omission is a real pre-existing bug (a check configured with only
-	// `json_path_assertions` never evaluates them, because the JSONPath block
-	// below is guarded by `respBody != ""`). It is NOT this spec's to fix:
-	// adding the missing term would silently start evaluating assertions on
-	// existing production checks and flip some of them to DOWN. So the gate is
-	// reproduced here byte-for-byte, and the capture is kept strictly out of it.
+	// JSONPathAssertions belongs here and was missing until spec
+	// 2026-08-20-04: a check configured with only `json_path_assertions` and
+	// no `body_*` key never read the body, so `respBody` stayed empty and the
+	// JSONPath block below — guarded by `respBody != ""` — was skipped without
+	// an error or a log, reporting UP whatever the endpoint returned. It is a
+	// pointer, so the term is a nil check and not a len().
+	//
+	// Anything added to HTTPConfig that reads the body goes in this list too;
+	// forgetting it fails open, silently, exactly as that bug did.
 	bodyDrivesAssertions := cfg.BodyExpect != "" || cfg.BodyReject != "" ||
-		cfg.BodyPattern != "" || cfg.BodyPatternReject != ""
+		cfg.BodyPattern != "" || cfg.BodyPatternReject != "" ||
+		cfg.JSONPathAssertions != nil
 
 	// The capture needs the same bytes, so they are read once and shared — the
 	// whole point of this feature is that the failing response is ALREADY in
@@ -403,7 +409,8 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	// THE CAPTURE MUST BE OBSERVATIONALLY INERT ON THE VERDICT. respBody is the
 	// single value every assertion block keys off (`body_expect`, the regexes,
 	// and — via its `respBody != ""` guard — `json_path_assertions`), so it is
-	// populated ONLY when the original gate says so. The capture reads
+	// populated ONLY when bodyDrivesAssertions says so, never merely because
+	// the capture asked for the same bytes. The capture reads
 	// bodyBytes directly and never touches respBody: enabling
 	// `capture_failure_response` therefore cannot make an assertion start (or
 	// stop) running, and cannot move a check between UP and DOWN.
