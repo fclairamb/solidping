@@ -64,6 +64,11 @@ import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
+import {
+  formatBudgetSeconds,
+  sloBudgetBarClass,
+  sloStateBadgeClass,
+} from "@/lib/slo-format";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1128,6 +1133,44 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">SLO state chip &amp; error-budget meter</h3>
+        <p className="text-sm text-muted-foreground">
+          The four objective states (spec 2026-08-20-01) and the remaining-budget meter that
+          accompanies them.{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">unknown</code> is the
+          no-data state and is deliberately <strong>neutral grey, never green</strong>: an
+          objective over a window with no probes has null attainment, and rendering that as a
+          healthy 100% would turn "we were not watching" into "everything was fine". Attainment
+          itself follows the same rule — render{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code> as a dash via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">formatAttainment</code>.
+          The meter is clamped to [0, 1] by{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">budgetRemainingFraction</code>,
+          while the label keeps the sign so an overspent budget reads as{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">-12m 30s</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className={sloStateBadgeClass("healthy")}>Healthy</Badge>
+                <Badge className={sloStateBadgeClass("at_risk")}>At risk</Badge>
+                <Badge className={sloStateBadgeClass("breached")}>Breached</Badge>
+                <Badge className={sloStateBadgeClass("unknown")}>No data</Badge>
+              </div>
+              <div className="max-w-xs space-y-1">
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div className={`h-full rounded-full ${sloBudgetBarClass("at_risk")}`} style={{ width: "38%" }} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formatBudgetSeconds(990)} of {formatBudgetSeconds(2592)} remaining
+                </p>
+              </div>
+            </div>
+          }
+          importLine={`import {\n  budgetRemainingFraction,\n  formatAttainment,\n  formatBudgetSeconds,\n  sloBudgetBarClass,\n  sloStateBadgeClass,\n} from "@/lib/slo-format";\n\n<Badge className={sloStateBadgeClass(row.state)}>\n  {t(\`state.\${row.state}\`)}\n</Badge>`}
         />
 
         <h3 className="text-sm font-medium">Agent version cell</h3>

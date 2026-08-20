@@ -4873,6 +4873,8 @@ export interface EntitlementsLimits {
   maxCustomDomains?: number | null;
   /** Cap on outbound WhatsApp template messages per UTC month. null = unlimited. */
   maxWhatsappPerMonth?: number | null;
+  /** Cap on service-level objectives. null = unlimited. */
+  maxSlos?: number | null;
 }
 
 /**
@@ -4908,6 +4910,8 @@ export interface EntitlementsUsage {
    * persistent counter, not a live count — sent messages cannot be un-sent.
    */
   whatsappThisMonth: number;
+  /** Count of live service-level objectives. */
+  slos: number;
   /**
    * Instance-spend guard state. A breach must never fail silently — what it
    * drops is an alert — so it surfaces here as well as in the server logs.
@@ -5763,5 +5767,282 @@ export function useUnpublishIncident(org: string, incidentUid: string) {
         queryKey: ["incidentPublicationsForIncident", org, incidentUid],
       });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SLOs (spec 2026-08-20-01)
+// ---------------------------------------------------------------------------
+
+export type SloState = "healthy" | "at_risk" | "breached" | "unknown";
+
+export interface Slo {
+  uid: string;
+  name: string;
+  slug: string;
+  /** Exactly one of checkUid / checkGroupUid is set. */
+  checkUid?: string;
+  checkGroupUid?: string;
+  checkName?: string;
+  checkGroupName?: string;
+  targetPct: number;
+  timezone: string;
+  excludeMaintenance: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SloWindow {
+  start: string;
+  end: string;
+  label: string;
+}
+
+export interface SloStatusRow {
+  window: SloWindow;
+  /**
+   * null when the window carries no countable probe. NEVER render null as
+   * 100% — no data is not "everything was fine", it is "we were not watching".
+   */
+  attainmentPct: number | null;
+  hasData: boolean;
+  targetPct: number;
+  totalChecks: number;
+  successfulChecks: number;
+  monitoredSeconds: number;
+  elapsedSeconds: number;
+  budgetTotalSeconds: number;
+  budgetConsumedSeconds: number;
+  budgetRemainingSeconds: number;
+  excludedMaintenanceSeconds: number;
+  burnRate: number | null;
+  projectedExhaustionAt: string | null;
+  state: SloState;
+  partial: boolean;
+}
+
+export interface SloIncidents {
+  count: number;
+  longestSeconds?: number;
+  averageSeconds?: number;
+  totalDowntimeSeconds?: number;
+}
+
+export interface SloStatus {
+  slo: Slo;
+  current: SloStatusRow;
+  incidents: SloIncidents;
+}
+
+export interface CreateSloRequest {
+  name: string;
+  slug?: string;
+  checkUid?: string | null;
+  checkGroupUid?: string | null;
+  targetPct?: number;
+  timezone?: string;
+  excludeMaintenance?: boolean;
+  enabled?: boolean;
+}
+
+export type UpdateSloRequest = Partial<CreateSloRequest>;
+
+export function useSlos(org: string, params?: { checkUid?: string }) {
+  return useQuery({
+    queryKey: ["slos", org, params ?? {}],
+    queryFn: async () => {
+      const search = new URLSearchParams();
+      if (params?.checkUid) search.set("checkUid", params.checkUid);
+      const query = search.toString();
+      const response = await apiFetch<{ data?: Slo[] }>(
+        `/api/v1/orgs/${org}/slos${query ? `?${query}` : ""}`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useSlo(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["slo", org, uid],
+    queryFn: () => apiFetch<Slo>(`/api/v1/orgs/${org}/slos/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useSloStatus(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["sloStatus", org, uid],
+    queryFn: () => apiFetch<SloStatus>(`/api/v1/orgs/${org}/slos/${uid}/status`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useSloHistory(org: string, uid: string, months = 12) {
+  return useQuery({
+    queryKey: ["sloHistory", org, uid, months],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: SloStatusRow[] }>(
+        `/api/v1/orgs/${org}/slos/${uid}/history?months=${months}`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateSlo(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateSloRequest) =>
+      apiFetch<Slo>(`/api/v1/orgs/${org}/slos`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+    },
+  });
+}
+
+export function useUpdateSlo(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateSloRequest) =>
+      apiFetch<Slo>(`/api/v1/orgs/${org}/slos/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+      queryClient.invalidateQueries({ queryKey: ["slo", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["sloStatus", org, uid] });
+    },
+  });
+}
+
+export function useDeleteSlo(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/slos/${uid}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Report schedules (spec 2026-08-20-01)
+// ---------------------------------------------------------------------------
+
+export type ReportFrequency = "weekly" | "monthly";
+
+export interface ReportSchedule {
+  uid: string;
+  name: string;
+  frequency: ReportFrequency;
+  timezone: string;
+  /** PII: only ever shown to the organization's own admins. */
+  recipients: string[];
+  checkUids: string[];
+  checkGroupUids: string[];
+  includeSlos: boolean;
+  enabled: boolean;
+  lastPeriodStart?: string;
+  lastRunAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateReportScheduleRequest {
+  name: string;
+  frequency: ReportFrequency;
+  timezone?: string;
+  recipients: string[];
+  checkUids?: string[];
+  checkGroupUids?: string[];
+  includeSlos?: boolean;
+  enabled?: boolean;
+}
+
+export type UpdateReportScheduleRequest = Partial<CreateReportScheduleRequest>;
+
+export function useReportSchedules(org: string) {
+  return useQuery({
+    queryKey: ["reportSchedules", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: ReportSchedule[] }>(
+        `/api/v1/orgs/${org}/report-schedules`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useReportSchedule(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["reportSchedule", org, uid],
+    queryFn: () => apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateReportSchedule(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateReportScheduleRequest) =>
+      apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
+    },
+  });
+}
+
+export function useUpdateReportSchedule(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateReportScheduleRequest) =>
+      apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
+      queryClient.invalidateQueries({ queryKey: ["reportSchedule", org, uid] });
+    },
+  });
+}
+
+export function useDeleteReportSchedule(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
+    },
+  });
+}
+
+export function useTestReportSchedule(org: string) {
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}/test`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
   });
 }

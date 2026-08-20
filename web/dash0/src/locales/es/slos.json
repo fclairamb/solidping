@@ -1,0 +1,153 @@
+{
+  "layout": {
+    "title": "Objetivos de nivel de servicio",
+    "subtitle": "Sigue los objetivos de disponibilidad y los presupuestos de error"
+  },
+  "list": {
+    "empty": "Todavía no hay objetivos",
+    "emptyHint": "Un objetivo convierte «¿está en línea?» en «¿está lo bastante en línea?»: fija una meta y vigila el presupuesto de error.",
+    "new": "Nuevo objetivo",
+    "searchPlaceholder": "Buscar objetivos...",
+    "columns": {
+      "name": "Objetivo",
+      "scope": "Alcance",
+      "target": "Meta",
+      "attainment": "Este mes",
+      "budget": "Presupuesto restante",
+      "state": "Estado",
+      "actions": ""
+    },
+    "quotaReached": "Límite de objetivos alcanzado para este plan."
+  },
+  "state": {
+    "healthy": "Saludable",
+    "at_risk": "En riesgo",
+    "breached": "Incumplido",
+    "unknown": "Sin datos"
+  },
+  "scope": {
+    "check": "Comprobación",
+    "group": "Grupo",
+    "missing": "Alcance eliminado"
+  },
+  "detail": {
+    "currentWindow": "Ventana actual",
+    "attainment": "Cumplimiento",
+    "target": "Meta",
+    "budgetTotal": "Presupuesto",
+    "budgetConsumed": "Consumido",
+    "budgetRemaining": "Restante",
+    "burnRate": "Tasa de consumo",
+    "projectedExhaustion": "Agotamiento previsto",
+    "excludedMaintenance": "Mantenimiento excluido",
+    "monitored": "Monitorizado",
+    "incidents": "Incidencias",
+    "longestIncident": "La más larga",
+    "totalDowntime": "Tiempo de caída total",
+    "history": "Historial mensual",
+    "historyEmpty": "Todavía no hay historial",
+    "noData": "Sin datos",
+    "never": "Sin previsión",
+    "partial": "Ventana parcial",
+    "edit": "Editar objetivo",
+    "budgetLabel": "{{remaining}} de {{total}} restante"
+  },
+  "form": {
+    "newTitle": "Nuevo objetivo",
+    "editTitle": "Editar objetivo",
+    "name": "Nombre",
+    "namePlaceholder": "Disponibilidad de la API",
+    "slug": "Identificador",
+    "slugHelp": "Identificador apto para URL, generado a partir del nombre si se deja vacío",
+    "scope": "Alcance",
+    "scopeHelp": "Exactamente una comprobación o un grupo de comprobaciones",
+    "scopeCheck": "Comprobación",
+    "scopeGroup": "Grupo de comprobaciones",
+    "selectCheck": "Selecciona una comprobación",
+    "selectGroup": "Selecciona un grupo de comprobaciones",
+    "target": "Meta (%)",
+    "targetHelp": "Entre 0 y 100, p. ej. 99,9",
+    "timezone": "Zona horaria",
+    "timezoneHelp": "Los meses naturales se calculan en esta zona IANA",
+    "excludeMaintenance": "Excluir el mantenimiento planificado",
+    "excludeMaintenanceHelp": "Las mediciones registradas durante una ventana de mantenimiento activa no consumen presupuesto de error. Solo se aplica desde que empezó el etiquetado: los meses anteriores no cambian.",
+    "enabled": "Activado",
+    "save": "Guardar",
+    "create": "Crear objetivo",
+    "cancel": "Cancelar",
+    "created": "Objetivo creado",
+    "updated": "Objetivo actualizado",
+    "saveFailed": "No se pudo guardar el objetivo"
+  },
+  "delete": {
+    "action": "Eliminar",
+    "title": "¿Eliminar este objetivo?",
+    "description": "Se eliminará el objetivo <strong>{{name}}</strong>. Los resultados históricos no se tocan: solo desaparece el objetivo.",
+    "confirm": "Eliminar",
+    "cancel": "Cancelar",
+    "deleted": "Objetivo eliminado",
+    "failed": "No se pudo eliminar el objetivo"
+  },
+  "chip": {
+    "covered": "Cubierto por {{count}} objetivo",
+    "covered_other": "Cubierto por {{count}} objetivos"
+  },
+  "reports": {
+    "title": "Informes de disponibilidad",
+    "subtitle": "Envía un resumen de disponibilidad periódico por correo",
+    "new": "Nuevo informe",
+    "empty": "No hay informes programados",
+    "emptyHint": "Un resumen mensual llega a quienes nunca abren el panel.",
+    "columns": {
+      "name": "Informe",
+      "frequency": "Frecuencia",
+      "recipients": "Destinatarios",
+      "scope": "Alcance",
+      "lastRun": "Último envío",
+      "actions": ""
+    },
+    "frequency": {
+      "weekly": "Semanal",
+      "monthly": "Mensual"
+    },
+    "scopeOrgWide": "Todas las comprobaciones",
+    "scopeCounts": "{{checks}} comprobaciones, {{groups}} grupos",
+    "never": "Nunca",
+    "recipientCount": "{{count}} destinatario",
+    "recipientCount_other": "{{count}} destinatarios",
+    "test": "Enviarme una prueba",
+    "testSent": "Informe de prueba en cola hacia tu dirección",
+    "testFailed": "No se pudo enviar el informe de prueba",
+    "form": {
+      "newTitle": "Nuevo informe de disponibilidad",
+      "editTitle": "Editar informe de disponibilidad",
+      "name": "Nombre",
+      "namePlaceholder": "Resumen mensual de disponibilidad",
+      "frequency": "Frecuencia",
+      "timezone": "Zona horaria",
+      "timezoneHelp": "El periodo se cierra a medianoche en esta zona IANA",
+      "recipients": "Destinatarios",
+      "recipientsHelp": "Direcciones de correo que reciben el resumen. Quien se da de baja se elimina automáticamente de esta lista.",
+      "checks": "Comprobaciones",
+      "groups": "Grupos de comprobaciones",
+      "scopeHelp": "Deja ambos vacíos para cubrir todas las comprobaciones de la organización",
+      "includeSlos": "Incluir objetivos",
+      "includeSlosHelp": "Añade un resumen del presupuesto de error para cada objetivo incluido",
+      "enabled": "Activado",
+      "save": "Guardar",
+      "create": "Crear informe",
+      "cancel": "Cancelar",
+      "created": "Informe programado creado",
+      "updated": "Informe programado actualizado",
+      "saveFailed": "No se pudo guardar el informe programado"
+    },
+    "delete": {
+      "title": "¿Eliminar este informe?",
+      "description": "La programación <strong>{{name}}</strong> dejará de enviar. No se notifica a los destinatarios.",
+      "confirm": "Eliminar",
+      "cancel": "Cancelar",
+      "deleted": "Informe programado eliminado",
+      "failed": "No se pudo eliminar el informe programado"
+    }
+  }
+}

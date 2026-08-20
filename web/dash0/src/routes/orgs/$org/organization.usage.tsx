@@ -122,6 +122,12 @@ function UsagePage() {
                 unlimitedLabel={t("usage.unlimited")}
               />
               <UsageRow
+                label={t("usage.slos")}
+                current={data.usage?.slos ?? 0}
+                limit={data.limits.maxSlos}
+                unlimitedLabel={t("usage.unlimited")}
+              />
+              <UsageRow
                 label={t("usage.customDomains")}
                 current={data.usage?.customDomains ?? 0}
                 limit={data.limits.maxCustomDomains}

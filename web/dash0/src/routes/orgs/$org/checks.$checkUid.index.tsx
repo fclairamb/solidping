@@ -73,6 +73,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
 import { DeliverySources, DeliveryVia } from "@/components/checks/smtp-delivery-detail";
 import { StatusDot } from "@/components/shared/status-dot";
+import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
@@ -812,6 +813,7 @@ function CheckDetailPage() {
               <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
                 {check.type}
               </Badge>
+              {check.uid && <SloCoverageChip org={org} checkUid={check.uid} />}
               {isPendingFirstRun && (
                 <Badge
                   variant="outline"

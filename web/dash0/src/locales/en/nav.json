@@ -133,5 +133,7 @@
     "newCheck": "New Check",
     "newCheckDescription": "Create a new monitoring check",
     "aiDescription": "Connect AI assistants via MCP"
-  }
+  },
+  "slos": "SLOs",
+  "reportSchedules": "Uptime reports"
 }

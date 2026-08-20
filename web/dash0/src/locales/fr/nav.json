@@ -133,5 +133,7 @@
     "newCheckDescription": "Créer un nouveau contrôle de monitoring",
     "aiDescription": "Connecter des assistants IA via MCP"
   },
-  "security": "Sécurité"
+  "security": "Sécurité",
+  "slos": "SLO",
+  "reportSchedules": "Rapports de dispo."
 }
