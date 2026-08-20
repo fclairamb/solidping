@@ -337,7 +337,19 @@ section/resource identity across applies — is a feature in its own right and
 is far larger than this spec. It should be its own spec if it is wanted.
 
 The settings ARE reachable declaratively today through the two surfaces that do
-exist for status pages: the REST API (`POST`/`PATCH
-/api/v1/orgs/:org/status-pages`, documented in `openapi.yaml`) and the MCP tools
-`create_status_page` / `update_status_page`, both of which carry all three
-fields.
+exist for status pages, and this justification only holds because both of them
+carry the fields — which is worth stating precisely, because the OpenAPI half
+of it was briefly untrue:
+
+- **REST.** `POST` / `PATCH /api/v1/orgs/:org/status-pages` accept
+  `autoPublish`, `autoPublishDelaySeconds` and `autoResolve`, and the section
+  resource endpoints accept the per-resource `autoPublish` override. All four
+  are now on the REQUEST schemas in `openapi.yaml`
+  (`CreateStatusPageRequest`, `UpdateStatusPageRequest`,
+  `CreateStatusPageResourceRequest`, `UpdateStatusPageResourceRequest`), not
+  just the response ones — an omission that had left the generated Go client
+  and the `pkg/cli` built on it unable to configure the feature at all. They
+  appear in `server/pkg/client/client_generated.go` after `go generate
+  ./pkg/client/...`.
+- **MCP.** `create_status_page` / `update_status_page` carry all three page
+  settings.
