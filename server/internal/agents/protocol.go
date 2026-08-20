@@ -3,6 +3,7 @@ package agents
 import (
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -78,6 +79,17 @@ type ClientFrame struct {
 	Duration float32        `json:"duration,omitempty"`
 	Metrics  map[string]any `json:"metrics,omitempty"`
 	Output   map[string]any `json:"output,omitempty"`
+	// Diagnostics carries the opt-in failure capture (spec 2026-08-20-01) —
+	// what the probe actually received from a failing target. It rides NEXT TO
+	// Output rather than inside it precisely because Output is persisted on
+	// every raw result row and this payload is kilobytes; the server persists
+	// it only when the result opens or reopens an incident.
+	//
+	// OPTIONAL AND `omitempty` ON BOTH SIDES. An older agent omits the field
+	// entirely and the server simply stores no capture; a newer agent talking
+	// to an older server loses nothing but the capture. That is what makes the
+	// rollout order irrelevant.
+	Diagnostics *checkerdef.Diagnostics `json:"diagnostics,omitempty"`
 	// ExecStart is the agent's wall-clock instant the outbound probe began. It
 	// is the ONE scheduling input the server cannot derive from the result, and
 	// it feeds the server-side delay EWMA (spec 2026-07-27-01 Decisions).

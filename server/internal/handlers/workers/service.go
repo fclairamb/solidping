@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -80,6 +81,10 @@ type SubmitResultRequest struct {
 	Duration  float32        `json:"duration"`
 	Metrics   map[string]any `json:"metrics,omitempty"`
 	Output    map[string]any `json:"output,omitempty"`
+	// Diagnostics carries the opt-in failure capture reported by the executor
+	// (spec 2026-08-20-01). Never written to the result row — it is handed to
+	// the incident pipeline, which persists it only on an open/reopen.
+	Diagnostics *checkerdef.Diagnostics `json:"diagnostics,omitempty"`
 	// ExecStart is the executor's wall-clock probe start, used for the delay
 	// sample. nil contributes no delay sample (an agent predating the field).
 	ExecStart *time.Time `json:"execStart,omitempty"`
@@ -133,6 +138,8 @@ func (s *Service) SubmitResult(
 		Metrics:         models.JSONMap(req.Metrics),
 		Output:          models.JSONMap(req.Output),
 		CreatedAt:       time.Now(),
+		// Transient (`bun:"-"`) — for the incident pipeline only, never a column.
+		Diagnostics: req.Diagnostics,
 	}
 
 	// 3. Save with status tracking.

@@ -334,12 +334,13 @@ func (b *WSBackend) SubmitResult(
 	// Sched block is deliberately not sent — the server recomputes the whole
 	// scheduling state from the result it just persisted.
 	frame := &agents.ClientFrame{
-		Type:     agents.MsgTypeResult,
-		JobUID:   job.UID,
-		Status:   req.Status,
-		Duration: req.Duration,
-		Metrics:  req.Metrics,
-		Output:   req.Output,
+		Type:        agents.MsgTypeResult,
+		JobUID:      job.UID,
+		Status:      req.Status,
+		Duration:    req.Duration,
+		Metrics:     req.Metrics,
+		Output:      req.Output,
+		Diagnostics: req.Diagnostics,
 	}
 
 	if !req.ExecStart.IsZero() {

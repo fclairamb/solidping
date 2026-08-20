@@ -1319,6 +1319,7 @@ func (r *CheckWorker) buildSubmitRequest(
 		Duration:        float32(result.Duration.Seconds() * 1000),
 		Metrics:         result.Metrics,
 		Output:          result.Output,
+		Diagnostics:     result.Diagnostics,
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: nextScheduledAt,
 		ExecStart:       execStart,

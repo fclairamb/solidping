@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // ResultStatus represents the status of a check result.
@@ -134,6 +136,16 @@ type Result struct {
 	Duration  *float32 `bun:"duration"`
 	Metrics   JSONMap  `bun:"metrics,type:jsonb,nullzero"`
 	Output    JSONMap  `bun:"output,type:jsonb,nullzero"`
+
+	// Diagnostics is the opt-in capture of what the probe saw (spec
+	// 2026-08-20-01). It is TRANSIENT by construction: `bun:"-"` keeps it out
+	// of every INSERT/UPDATE/SELECT so it can never reach the `output` JSONB
+	// column or any other column, and `json:"-"` keeps it off every API
+	// response built from this struct. It exists on the model only so the
+	// result-submission path can hand it to the incident pipeline, which is
+	// the ONLY thing allowed to persist it (onto incidents.details, and only
+	// on an incident open/reopen).
+	Diagnostics *checkerdef.Diagnostics `bun:"-" json:"-"`
 
 	// Aggregated fields (period_type = 'hour', 'day', 'month', 'year').
 	// availability_pct is intentionally absent: it is derived at read time from

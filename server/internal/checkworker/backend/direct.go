@@ -221,6 +221,10 @@ func (b *DirectBackend) SubmitResult(
 		Metrics:         models.JSONMap(req.Metrics),
 		Output:          models.JSONMap(req.Output),
 		CreatedAt:       time.Now(),
+		// Transient: models.Result.Diagnostics is `bun:"-"`, so this never
+		// reaches the results table. It exists purely so the incident pipeline
+		// below can decide whether this failure is worth keeping the capture for.
+		Diagnostics: req.Diagnostics,
 	}
 
 	saveStart := time.Now()

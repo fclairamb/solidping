@@ -1054,6 +1054,9 @@ func (h *Handler) handleResult(
 		Duration:  frame.Duration,
 		Metrics:   frame.Metrics,
 		Output:    frame.Output,
+		// The opt-in failure capture (spec 2026-08-20-01). Absent on agents
+		// predating the field, which simply contribute no capture.
+		Diagnostics: frame.Diagnostics,
 		// A result frame is by definition a probe outcome, so the server-side
 		// accounting folds its cost/delay samples into the job's EWMAs and lane
 		// (spec 2026-07-27-01 item 4). ExecStart is the agent's wall-clock probe

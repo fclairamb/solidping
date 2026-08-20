@@ -10,6 +10,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -32,6 +33,10 @@ type SubmitResultRequest struct {
 	Duration float32        `json:"duration"` // milliseconds
 	Metrics  map[string]any `json:"metrics,omitempty"`
 	Output   map[string]any `json:"output,omitempty"`
+	// Diagnostics carries the opt-in failure capture (spec 2026-08-20-01).
+	// Deliberately separate from Output: Output is persisted on the raw result
+	// row, this is persisted only if the result opens/reopens an incident.
+	Diagnostics *checkerdef.Diagnostics `json:"diagnostics,omitempty"`
 	// Region is the resolved region for the result row (job region, falling
 	// back to the worker's own region).
 	Region *string `json:"region,omitempty"`
