@@ -3074,9 +3074,10 @@ function ListSurfaceSection() {
           </a>
           ) stays rendered above the empty state; only the table area swaps
           out, so the page doesn't jump. A truly empty list — zero rows, no
-          filter applied — gets a primary CTA button linking to the page's
-          create route whenever the page has one (omit it only when there is
-          no create flow, e.g. a personal activity feed).
+          filter applied — gets an icon, a title, and a one-line hint —{" "}
+          <strong>no CTA button</strong>. The create action already lives
+          once, in the page header (top right); repeating it inside the card
+          would just duplicate it.
         </p>
         <ExampleRow
           preview={
@@ -3090,13 +3091,9 @@ function ListSurfaceSection() {
               <p className="mx-auto max-w-sm text-xs text-muted-foreground">
                 Create your first check to start monitoring.
               </p>
-              <Button size="sm">
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Create your first check
-              </Button>
             </div>
           }
-          importLine={`// Same card surface as the table it replaces, so the page doesn't jump.\n// Tint the icon circle when the emptiness is GOOD news (no open incidents):\n//   bg-emerald-500/10 text-emerald-600 dark:text-emerald-400\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Inbox className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks yet</p>\n  <p className="text-xs text-muted-foreground max-w-sm mx-auto">…</p>\n  {/* Primary CTA — omit only when the page has no create flow. */}\n  <Button asChild size="sm">\n    <Link to="/orgs/$org/checks/new" params={{ org }}>\n      <Plus className="mr-1.5 h-3.5 w-3.5" />\n      Create your first check\n    </Link>\n  </Button>\n</div>`}
+          importLine={`// Same card surface as the table it replaces, so the page doesn't jump.\n// Tint the icon circle when the emptiness is GOOD news (no open incidents):\n//   bg-emerald-500/10 text-emerald-600 dark:text-emerald-400\n// No CTA here — the create action already lives once, in the page header.\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Inbox className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks yet</p>\n  <p className="text-xs text-muted-foreground max-w-sm mx-auto">…</p>\n</div>`}
         />
       </div>
 
