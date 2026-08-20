@@ -99,13 +99,27 @@ Error-budget burn-down for the current window. Auth: required.
 Response: `{ window, targetPct, budgetTotalSeconds, data: [ { at,
 budgetRemainingSeconds, idealRemainingSeconds, attainmentPct, hasData } ] }`.
 
-The series is **cumulative**: every point re-evaluates the whole window from its
-start up to that instant, so `budgetRemainingSeconds` is monotonically
-non-increasing. It is deliberately not clamped at zero — an overspent budget
-reports a negative remainder, because the magnitude of a breach is the thing the
-chart exists to show. `idealRemainingSeconds` is the straight line from the full
-budget at the window start to zero at its end: the pace that spends the budget
-exactly, no faster.
+The series is **cumulative**, and consumption is accrued **per step and summed
+forward** — not derived from the window-to-date failure ratio times the
+window-to-date wall clock. That distinction is load-bearing: the ratio moves when
+probe *density* changes (a group member created mid-window, a check paused after
+an outage), so the ratio form can compute less consumption at a later point and
+the burn-down climbs back up. Per-step accrual can only ever add, so
+`budgetRemainingSeconds` is monotonically non-increasing by construction.
+
+A step with **no countable probe spends nothing** — no data is "we were not
+watching", not downtime — so a coverage gap flattens the line rather than
+dropping it.
+
+The value is deliberately **not clamped at zero**: an overspent budget reports a
+negative remainder, because the magnitude of a breach is the thing the chart
+exists to show.
+
+`budgetTotalSeconds` is the window's whole allowance, evaluated once.
+`idealRemainingSeconds` is that same number decayed linearly to zero at the
+window end — the pace that spends the budget exactly, no faster. Both series are
+drawn against the one budget, so they stay comparable even as excluded
+maintenance shrinks the monitored denominator.
 
 Steps are fixed 24h slices from the window start rather than local calendar
 days; the window itself stays calendar-exact, only the sampling grid is uniform.

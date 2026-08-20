@@ -636,15 +636,8 @@ func (s *Service) evaluate(
 	var merged uptimebar.BucketStats
 
 	if len(scoped.checkUIDs) > 0 {
-		rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
-		hints := uptimebar.Hints{
-			RetentionRawHours: rawHours,
-			RetentionHourDays: hourDays,
-			RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
-		}
-
 		byCheck, err := uptimebar.WindowAvailability(
-			ctx, s.db, orgUID, scoped.checkUIDs, window.Start, window.End, hints,
+			ctx, s.db, orgUID, scoped.checkUIDs, window.Start, window.End, s.uptimebarHints(ctx, orgUID),
 		)
 		if err != nil {
 			return StatusRow{}, fmt.Errorf("window availability: %w", err)
@@ -741,6 +734,13 @@ type BurndownPoint struct {
 	// IdealRemainingSeconds is the straight line from the full budget at the
 	// window start to zero at the window end: the pace that spends the budget
 	// exactly, no faster.
+	//
+	// It is drawn against BurndownResponse.BudgetTotalSeconds — the ONE
+	// window-level budget the whole series shares. Recomputing a per-point
+	// budget would let the reference line drift under the actual line as
+	// maintenance accrues (excluded maintenance shrinks the monitored
+	// denominator), so the two series would no longer be comparable, which is
+	// the only reason the ideal line exists.
 	IdealRemainingSeconds int64 `json:"idealRemainingSeconds"`
 	// AttainmentPct is the window-to-date attainment, nil when nothing
 	// countable has been recorded yet. Never rendered as 100%.
@@ -750,8 +750,13 @@ type BurndownPoint struct {
 
 // BurndownResponse is the /burndown payload.
 type BurndownResponse struct {
-	Window             WindowResponse  `json:"window"`
-	TargetPct          float64         `json:"targetPct"`
+	Window    WindowResponse `json:"window"`
+	TargetPct float64        `json:"targetPct"`
+	// BudgetTotalSeconds is the window's whole allowance, evaluated once. Every
+	// point's BudgetRemainingSeconds is this value minus the consumption
+	// accrued up to it, and every point's IdealRemainingSeconds is this value
+	// decayed linearly — so the two series and this number are always the same
+	// arithmetic.
 	BudgetTotalSeconds int64           `json:"budgetTotalSeconds"`
 	Data               []BurndownPoint `json:"data"`
 }
@@ -766,9 +771,9 @@ const maxBurndownPoints = 40
 
 // GetBurndown returns the error-budget burn-down for the SLO's current window.
 //
-// It is deliberately CUMULATIVE: each point re-evaluates the whole window from
-// its start up to that instant, which is what "budget remaining" means. A chart
-// of per-day consumption would look similar and mean something else entirely.
+// Consumption is accrued INCREMENTALLY, one step at a time, and summed forward.
+// That is what makes the series monotonic non-increasing — a burn-down that
+// climbs back up is a wrong chart, not a cosmetic quirk.
 //
 // Steps are fixed 24h slices from the window start rather than local calendar
 // days: the underlying bucketing engine works in fixed durations, and a DST day
@@ -809,7 +814,7 @@ func (s *Service) GetBurndown(
 		BudgetTotalSeconds: full.BudgetTotalSeconds,
 	}
 
-	points, err := s.burndownPoints(ctx, org.UID, row, scoped, window, now)
+	points, err := s.burndownPoints(ctx, org.UID, row, scoped, window, now, full.BudgetTotalSeconds)
 	if err != nil {
 		return nil, err
 	}
@@ -820,9 +825,23 @@ func (s *Service) GetBurndown(
 }
 
 // burndownPoints walks the elapsed part of the window one step at a time,
-// accumulating buckets and re-running the budget math on each prefix.
+// accruing consumed budget per step and summing it forward.
+//
+// The increment is the whole point, and it is NOT equivalent to re-running the
+// window-to-date budget math on each prefix. That form derives consumption as
+// (window-to-date failure ratio) x (window-to-date wall clock), and the ratio
+// moves when probe DENSITY changes — a group member created mid-window, a check
+// paused after an outage, a period shortened. A day of sparse failures followed
+// by a day of dense successes makes the ratio collapse faster than the wall
+// clock grows, so the later point computes LESS consumption than the earlier
+// one and the burn-down climbs back up.
+//
+// Summing per-step down-time forward can only ever add, so the series is
+// monotonic non-increasing by construction rather than by hoping the density
+// holds still.
 func (s *Service) burndownPoints(
-	ctx context.Context, orgUID string, row *models.SLO, scoped scope, window slo.Window, now time.Time,
+	ctx context.Context, orgUID string, row *models.SLO, scoped scope,
+	window slo.Window, now time.Time, budgetTotalSeconds int64,
 ) ([]BurndownPoint, error) {
 	elapsedEnd := window.End
 	if now.Before(elapsedEnd) {
@@ -833,65 +852,148 @@ func (s *Service) burndownPoints(
 		return []BurndownPoint{}, nil
 	}
 
-	steps := int(elapsedEnd.Sub(window.Start)/burndownStep) + 1
-	if steps > maxBurndownPoints {
-		steps = maxBurndownPoints
+	// A scope that did not exist for the start of the window owes nothing for
+	// the time before it existed.
+	coverageStart := window.Start
+	if !scoped.coverageStart.IsZero() && scoped.coverageStart.After(coverageStart) {
+		coverageStart = scoped.coverageStart
 	}
 
-	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
-	hints := uptimebar.Hints{
-		RetentionRawHours: rawHours,
-		RetentionHourDays: hourDays,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
-	}
+	steps := burndownStepCount(window.Start, elapsedEnd)
 
 	byCheck, err := uptimebar.BucketAvailability(
-		ctx, s.db, orgUID, scoped.checkUIDs, burndownStep, window.Start, steps, hints,
+		ctx, s.db, orgUID, scoped.checkUIDs, burndownStep, window.Start, steps, s.uptimebarHints(ctx, orgUID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("bucket availability: %w", err)
 	}
 
-	windowSeconds := window.Seconds()
 	points := make([]BurndownPoint, 0, steps)
 
-	var cumulative uptimebar.BucketStats
+	var (
+		consumed   float64
+		cumulative uptimebar.BucketStats
+	)
 
 	for i := range steps {
 		bucketStart := window.Start.UTC().Add(time.Duration(i) * burndownStep)
 
+		var bucket uptimebar.BucketStats
 		for _, uid := range scoped.checkUIDs {
-			cumulative.Add(byCheck[uid][bucketStart])
+			bucket.Add(byCheck[uid][bucketStart])
 		}
+
+		cumulative.Add(bucket)
 
 		stepEnd := bucketStart.Add(burndownStep)
 		if stepEnd.After(elapsedEnd) {
 			stepEnd = elapsedEnd
 		}
 
-		computed := slo.Compute(&slo.Input{
-			TargetPct:          row.TargetPct,
-			Stats:              cumulative,
-			Window:             window,
-			Now:                stepEnd,
-			CoverageStart:      scoped.coverageStart,
-			ExcludeMaintenance: row.ExcludeMaintenance,
-		})
-
-		ideal := float64(0)
-		if windowSeconds > 0 {
-			progress := stepEnd.Sub(window.Start).Seconds() / windowSeconds
-			ideal = float64(computed.BudgetTotalSeconds) * (1 - progress)
+		sliceStart := bucketStart
+		if coverageStart.After(sliceStart) {
+			sliceStart = coverageStart
 		}
 
-		points = append(points, BurndownPoint{
+		consumed += stepConsumption(bucket, sliceStart, stepEnd, row.ExcludeMaintenance)
+
+		point := BurndownPoint{
 			At:                     stepEnd.UTC(),
-			BudgetRemainingSeconds: computed.BudgetRemainingSeconds,
-			IdealRemainingSeconds:  int64(math.Round(ideal)),
-			AttainmentPct:          computed.AttainmentPct,
-			HasData:                computed.HasData,
-		})
+			BudgetRemainingSeconds: budgetTotalSeconds - int64(math.Round(consumed)),
+			IdealRemainingSeconds:  idealRemaining(budgetTotalSeconds, window, stepEnd),
+		}
+
+		windowToDate := cumulative
+		if row.ExcludeMaintenance {
+			windowToDate = cumulative.ExcludingMaintenance()
+		}
+
+		if pct, ok := windowToDate.AvailabilityPct(); ok {
+			point.HasData = true
+			point.AttainmentPct = &pct
+		}
+
+		points = append(points, point)
 	}
 
 	return points, nil
+}
+
+// stepConsumption is the error budget one step spends: the step's own failure
+// share applied to the step's own wall clock.
+//
+// A step with no countable probe spends NOTHING. That is the same rule the
+// attainment number follows — no data is "we were not watching", not downtime —
+// and it is why a gap in coverage flattens the burn-down instead of dropping it.
+func stepConsumption(
+	bucket uptimebar.BucketStats, sliceStart, sliceEnd time.Time, excludeMaintenance bool,
+) float64 {
+	seconds := math.Max(0, sliceEnd.Sub(sliceStart).Seconds())
+	if seconds == 0 {
+		return 0
+	}
+
+	effective := bucket
+
+	if excludeMaintenance {
+		// Probes are evenly spaced within a step, so the share of them tagged
+		// maintenance is the share of the step's wall clock under maintenance.
+		if bucket.Total > 0 && bucket.MaintTotal > 0 {
+			share := math.Min(1, float64(bucket.MaintTotal)/float64(bucket.Total))
+			seconds *= 1 - share
+		}
+
+		effective = bucket.ExcludingMaintenance()
+	}
+
+	pct, ok := effective.AvailabilityPct()
+	if !ok {
+		return 0
+	}
+
+	return math.Max(0, 1-pct/100) * seconds
+}
+
+// burndownStepCount is how many sampling slices the elapsed span needs.
+//
+// Ceil, not +1: an elapsed span that lands exactly on a step boundary must not
+// emit a trailing zero-length step whose timestamp duplicates the one before it.
+func burndownStepCount(start, elapsedEnd time.Time) int {
+	steps := int(math.Ceil(elapsedEnd.Sub(start).Seconds() / burndownStep.Seconds()))
+	if steps < 1 {
+		return 1
+	}
+
+	if steps > maxBurndownPoints {
+		return maxBurndownPoints
+	}
+
+	return steps
+}
+
+// uptimebarHints resolves the read-side retention hints the bucketing engine
+// needs. Mirrors availability.Service.uptimebarHints: it must read the
+// performance.* parameters, not the koanf struct alone, or the raw tier gets
+// clamped shorter than the job actually keeps raw for.
+func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
+
+	return uptimebar.Hints{
+		RetentionRawHours: rawHours,
+		RetentionHourDays: hourDays,
+		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
+	}
+}
+
+// idealRemaining is the straight line from the full budget at the window start
+// to zero at its end, evaluated at `at`.
+func idealRemaining(budgetTotalSeconds int64, window slo.Window, instant time.Time) int64 {
+	seconds := window.Seconds()
+	if seconds <= 0 {
+		return 0
+	}
+
+	progress := math.Min(1, math.Max(0, instant.Sub(window.Start).Seconds()/seconds))
+
+	return int64(math.Round(float64(budgetTotalSeconds) * (1 - progress)))
 }

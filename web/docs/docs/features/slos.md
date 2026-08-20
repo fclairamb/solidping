@@ -67,7 +67,10 @@ would spend it exactly by the end of the window. Above the line you are fine;
 below it you are on the burn rate that reaches zero early.
 
 The actual line is not clamped at zero — once the budget is overspent it keeps
-going, because how far past the line you are is the thing worth seeing.
+going, because how far past the line you are is the thing worth seeing. It also
+never goes back up: budget spent is spent, and a quiet stretch flattens the line
+rather than refunding it. A day with no results at all spends nothing, for the
+same reason a window with no results has no attainment.
 
 ## Scope
 

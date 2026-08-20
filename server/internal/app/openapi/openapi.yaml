@@ -5050,10 +5050,11 @@ paths:
       tags: [SLOs]
       summary: Error-budget burn-down for the current window
       description: >-
-        Cumulative series: each point re-evaluates the whole window from its
-        start up to that instant, so `budgetRemainingSeconds` is monotonically
-        non-increasing. It is not clamped at zero — an overspent budget reports
-        a negative remainder.
+        Cumulative series. Consumption is accrued per step and summed forward,
+        so `budgetRemainingSeconds` is monotonically non-increasing by
+        construction — it cannot climb back up when probe density changes. It is
+        not clamped at zero: an overspent budget reports a negative remainder.
+        A step with no countable probe spends nothing (no data is not downtime).
       operationId: getSloBurndown
       security:
         - bearerAuth: []
@@ -11504,7 +11505,10 @@ components:
         idealRemainingSeconds:
           type: integer
           format: int64
-          description: The pace that spends the budget exactly over the window.
+          description: >-
+            The pace that spends the budget exactly over the window, drawn
+            against the response-level `budgetTotalSeconds` so the two series
+            stay comparable.
         attainmentPct:
           type: number
           format: double
@@ -11523,6 +11527,11 @@ components:
         budgetTotalSeconds:
           type: integer
           format: int64
+          description: >-
+            The window's whole allowance, evaluated once. Every point's
+            `budgetRemainingSeconds` is this value minus the consumption accrued
+            up to it, and every point's `idealRemainingSeconds` is this value
+            decayed linearly.
         data:
           type: array
           items:
