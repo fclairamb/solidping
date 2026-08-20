@@ -300,12 +300,6 @@ function StatusPagesIndexPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("statusPages:noStatusPagesHint")}
           </p>
-          <Button asChild size="sm">
-            <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              {t("statusPages:newStatusPage")}
-            </Link>
-          </Button>
         </div>
       )}
 
