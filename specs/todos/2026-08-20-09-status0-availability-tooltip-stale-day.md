@@ -75,3 +75,68 @@ Open question: if the root cause turns out to be something else entirely (e.g. a
 SVG-trigger pointer-event quirk in Radix), document what was found in the commit and
 pick the fix accordingly — the single-tooltip-per-bar structure remains the fallback
 that sidesteps any per-segment-root misbehavior.
+
+## Implementation Plan
+
+1. **Confirm the mechanism by reading source, not just guessing.** Read
+   `node_modules/@radix-ui/react-tooltip/dist/index.mjs` directly (installed
+   version `^1.2.10`). Root cause is worse than "grace polygon stays satisfied":
+   `TooltipContentHoverable` calls `providerContext.onPointerInTransitChange(true)`
+   on `pointerleave` of the trigger, which sets a ref
+   (`isPointerInTransitRef`) that lives on the **shared `TooltipProvider`
+   context**, not on the individual `Tooltip` root. `TooltipTrigger`'s
+   `onPointerMove` handler is a complete no-op whenever that shared ref is
+   `true`:
+   ```js
+   onPointerMove: ... (event) => {
+     if (!hasPointerMoveOpenedRef.current && !providerContext.isPointerInTransitRef.current) {
+       context.onTriggerEnter();
+       ...
+     }
+   }
+   ```
+   So while segment *i*'s grace polygon is active, segment *i+3*'s trigger
+   never even calls `onTriggerEnter()` — it isn't that the new tooltip loses a
+   race, it's that it's never asked to open. This matches "often" (depends on
+   whether the pointer path stays inside the polygon long enough) and explains
+   why the *old* content is what's stuck.
+2. **Regression test first.** Extend
+   `web/status0/e2e/availability-bar.spec.ts` with a new test: hover segment 2,
+   assert tooltip text for that day; `mouse.move` in several intermediate
+   steps along the top of the bar to segment 5; assert the tooltip now shows
+   segment 5's text (and no longer segment 2's). Run it against the unfixed
+   code and confirm it fails.
+3. **Fix — scoped `disableHoverableContent` on the availability bar's
+   `Tooltip` roots**, not the app-level `TooltipProvider`. Passing
+   `disableHoverableContent` directly to each `<Tooltip>` in
+   `availability-bar.tsx` makes `Tooltip.tsx`'s own
+   `disableHoverableContent = disableHoverableContentProp ?? providerContext.disableHoverableContent`
+   resolve to `true` for just those roots, so `TooltipContent` renders via
+   plain `TooltipContentImpl` (no grace area, no `onPointerInTransitChange`
+   call ever fires) while leaving `status-page-view.tsx`'s single status-dot
+   tooltip and the app-level provider untouched. This is the smaller blast
+   radius than flipping the provider default, and status0's own reasoning
+   ("nothing needs the pointer to enter tooltip content") still applies to
+   every Radix tooltip in status0, so either fix would be behaviorally safe —
+   scoping it to the bar is just tighter.
+4. **Secondary suspects**, checked on the record:
+   - `hover:scale-y-[1.18]` — CSS-only, vertical transform in `fill-box`,
+     doesn't touch pointer-event geometry or Radix state. Not implicated;
+     confirmed by reading the class and by the fix working without touching
+     it.
+   - Provider skip-delay (`skipDelayDuration`) — orthogonal: it only affects
+     whether the *next* open is instant or goes through `delayDuration`
+     again. It does not gate whether `onTriggerEnter()` fires at all. Not the
+     cause, though it does mean the fix still opens the new tooltip
+     instantly once hoverable content stops suppressing it.
+   - No SVG/pointer-events quirk found — `<rect>` triggers wrapped via
+     `asChild` receive pointer events normally; the repro test confirms the
+     mechanism is exactly the grace-area/transit-ref one above.
+5. Run existing `availability-bar.spec.ts` cases (segment spacing tests) plus
+   the new regression test, both daily (`bucketUnit` unset) and hourly
+   (`bucketUnit="hour"`) — same component/props path, so one code change
+   covers both.
+6. QA gate: `make build-status0`, `bun run lint` in `web/status0`, full
+   Playwright run for `availability-bar.spec.ts` against the already-running
+   dev server on `:4000` (per repo `CLAUDE.md`: apply directly and hot-reload
+   rather than standing up a side-car, since it's already up).
