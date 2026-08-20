@@ -91,6 +91,16 @@ const (
 	// user-managed and never touched. Global, self-rescheduling every 6h
 	// (spec 2026-07-27-01).
 	JobTypeAgentGC JobType = "agent_gc"
+	// JobTypeUptimeReport emits the scheduled uptime-report digests
+	// (spec 2026-08-20-01). Global and self-rescheduling hourly; each run
+	// looks for schedules whose weekly/monthly period has just closed in
+	// their own timezone. Multi-replica safety comes from the conditional
+	// last_period_start claim in MarkReportScheduleRun, not from a leader.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes: it sends mail to
+	// arbitrary stored addresses, so a public creation endpoint for it would
+	// be a spam primitive with extra steps.
+	JobTypeUptimeReport JobType = "uptime_report"
 )
 
 // publiclyCreatableJobTypes is the allowlist of job types that may be enqueued

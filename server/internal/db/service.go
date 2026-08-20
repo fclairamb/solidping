@@ -909,6 +909,12 @@ type Service interface {
 	// closed period produce exactly one report: the loser updates 0 rows and
 	// skips. Returns whether this caller won.
 	MarkReportScheduleRun(ctx context.Context, uid string, periodStart, runAt time.Time) (bool, error)
+	// RemoveRecipientFromReportSchedules drops an address from every one of the
+	// org's report schedules. It is what makes an unsubscribe stick: leaving
+	// the address on the schedule would keep re-suppressing the same send
+	// forever, and the operator editing the schedule would silently re-enable
+	// mail to someone who asked to stop. Returns how many schedules changed.
+	RemoveRecipientFromReportSchedules(ctx context.Context, orgUID, email string) (int, error)
 
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error

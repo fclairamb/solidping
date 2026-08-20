@@ -1,0 +1,59 @@
+{{define "subject"}}{{.OrgName}} uptime report — {{.PeriodLabel}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>Uptime report</h1>
+    <p class="meta">{{.ScopeLabel}} &middot; {{.PeriodLabel}}{{if .Timezone}} ({{.Timezone}}){{end}}</p>
+
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        <tr><th>Overall availability</th><td>{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</td></tr>
+        <tr><th>Checks monitored</th><td>{{.CheckCount}}</td></tr>
+        <tr><th>Incidents</th><td>{{.IncidentCount}}{{if .LongestIncident}} &middot; longest {{.LongestIncident}}{{end}}</td></tr>
+        {{if .TotalDowntime}}<tr><th>Total downtime</th><td>{{.TotalDowntime}}</td></tr>{{end}}
+    </table>
+
+    {{if .Checks}}
+    <h2 style="font-size:16px;margin:24px 0 8px;">Per check</h2>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        {{range .Checks}}
+        <tr><th>{{.Name}}</th><td>{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</td></tr>
+        {{end}}
+    </table>
+    {{end}}
+
+    {{if .SLOs}}
+    <h2 style="font-size:16px;margin:24px 0 8px;">Objectives</h2>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        {{range .SLOs}}
+        <tr>
+            <th>{{.Name}}</th>
+            <td>
+                {{if .HasData}}{{.AttainmentPct}}%{{else}}No data{{end}}
+                / target {{.TargetPct}}% &middot; {{.StateLabel}}
+                {{if .HasData}}<br><span class="meta">Budget remaining: {{.BudgetRemaining}}</span>{{end}}
+            </td>
+        </tr>
+        {{end}}
+    </table>
+    {{end}}
+
+    {{if .DashboardURL}}
+    <p class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open dashboard" "Variant" "primary"}}</p>
+    {{end}}
+{{end}}
+{{define "text"}}{{.OrgName}} uptime report — {{.PeriodLabel}}{{if .Timezone}} ({{.Timezone}}){{end}}
+{{.ScopeLabel}}
+
+Overall availability: {{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}
+Checks monitored: {{.CheckCount}}
+Incidents: {{.IncidentCount}}{{if .LongestIncident}} (longest {{.LongestIncident}}){{end}}
+{{if .TotalDowntime}}Total downtime: {{.TotalDowntime}}
+{{end}}{{if .Checks}}
+Per check:
+{{range .Checks}}  - {{.Name}}: {{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}
+{{end}}{{end}}{{if .SLOs}}
+Objectives:
+{{range .SLOs}}  - {{.Name}}: {{if .HasData}}{{.AttainmentPct}}%{{else}}No data{{end}} / target {{.TargetPct}}% ({{.StateLabel}}){{if .HasData}}, budget remaining {{.BudgetRemaining}}{{end}}
+{{end}}{{end}}
+{{if .DashboardURL}}Dashboard: {{.DashboardURL}}
+{{end}}{{if .UnsubscribeURL}}Unsubscribe: {{.UnsubscribeURL}}
+{{end}}{{end}}

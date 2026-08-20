@@ -37,6 +37,9 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeAbandonedResultReaper: func() jobdef.JobDefinition {
 		return &AbandonedResultReaperJobDefinition{}
 	},
+	jobdef.JobTypeUptimeReport: func() jobdef.JobDefinition {
+		return &UptimeReportJobDefinition{}
+	},
 }
 
 // GetJobDefinition retrieves a job definition by type.

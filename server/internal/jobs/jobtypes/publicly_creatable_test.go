@@ -45,6 +45,9 @@ func TestOnlyAllowlistedTypesArePubliclyCreatable(t *testing.T) {
 	// The dangerous ones, named explicitly: arbitrary mail and SSRF.
 	r.False(jobdef.IsPubliclyCreatable(jobdef.JobTypeEmail))
 	r.False(jobdef.IsPubliclyCreatable(jobdef.JobTypeWebhook))
+	// The uptime report fans out mail to stored addresses, so it is arbitrary
+	// mail with extra steps (spec 2026-08-20-01).
+	r.False(jobdef.IsPubliclyCreatable(jobdef.JobTypeUptimeReport))
 
 	// A type that does not exist at all is closed too (deny by default).
 	r.False(jobdef.IsPubliclyCreatable(jobdef.JobType("nonexistent")))

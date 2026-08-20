@@ -85,6 +85,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
+	"github.com/fclairamb/solidping/server/internal/handlers/reportschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
@@ -121,6 +122,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
+	"github.com/fclairamb/solidping/server/internal/uptimereport"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -1525,6 +1527,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSLOs.DELETE("/:uid", sloHandler.Delete)
 	orgSLOs.GET("/:uid/status", sloHandler.Status)
 	orgSLOs.GET("/:uid/history", sloHandler.History)
+
+	// Scheduled uptime reports (spec 2026-08-20-01, authentication required)
+	reportBuilder := uptimereport.NewBuilder(s.dbService, s.config, sloService)
+	reportSchedulesService := reportschedules.NewService(
+		s.dbService, s.config, reportBuilder, &uptimeReportMailer{services: s.services},
+	)
+	reportSchedulesHandler := reportschedules.NewHandler(reportSchedulesService, s.config)
+	orgReports := orgGroup("/orgs/:org/report-schedules")
+	orgReports.GET("", reportSchedulesHandler.List)
+	orgReports.POST("", reportSchedulesHandler.Create)
+	orgReports.GET("/:uid", reportSchedulesHandler.Get)
+	orgReports.PATCH("/:uid", reportSchedulesHandler.Update)
+	orgReports.DELETE("/:uid", reportSchedulesHandler.Delete)
+	orgReports.POST("/:uid/test", reportSchedulesHandler.TestSend)
 
 	// Public status page endpoints (no authentication)
 	publicOrgAPI.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)

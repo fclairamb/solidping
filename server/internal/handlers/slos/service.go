@@ -574,6 +574,30 @@ func (s *Service) GetHistory(
 	return &HistoryResponse{Data: rows}, nil
 }
 
+// EvaluateWindow evaluates an SLO over an arbitrary window. It exists for the
+// uptime report, which reports on a period that just closed rather than on the
+// current one, and must use exactly the same math the dashboard shows.
+func (s *Service) EvaluateWindow(
+	ctx context.Context, orgUID string, row *models.SLO, window slo.Window, now time.Time,
+) (StatusRow, error) {
+	sc, err := s.resolveScope(ctx, orgUID, row)
+	if err != nil {
+		return StatusRow{}, err
+	}
+
+	return s.evaluate(ctx, orgUID, row, sc, window, now)
+}
+
+// ScopeCheckUIDs expands an SLO to the check UIDs it evaluates over.
+func (s *Service) ScopeCheckUIDs(ctx context.Context, orgUID string, row *models.SLO) ([]string, error) {
+	sc, err := s.resolveScope(ctx, orgUID, row)
+	if err != nil {
+		return nil, err
+	}
+
+	return sc.checkUIDs, nil
+}
+
 // evaluate computes one window's objective state.
 func (s *Service) evaluate(
 	ctx context.Context, orgUID string, row *models.SLO, sc scope, window slo.Window, now time.Time,

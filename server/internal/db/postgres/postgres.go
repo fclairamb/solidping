@@ -6215,3 +6215,49 @@ func jsonArray(values []string) string {
 
 	return string(data)
 }
+
+// RemoveRecipientFromReportSchedules drops an address from every one of the
+// org's report schedules (spec 2026-08-20-01). Done in Go rather than in SQL
+// because the recipients column is a JSON array on Postgres and a JSON string
+// on SQLite, and one loop is easier to keep honest than two dialect-specific
+// JSON mutations.
+func (s *Service) RemoveRecipientFromReportSchedules(ctx context.Context, orgUID, email string) (int, error) {
+	schedules, err := s.ListReportSchedules(ctx, orgUID)
+	if err != nil {
+		return 0, err
+	}
+
+	changed := 0
+
+	for _, schedule := range schedules {
+		kept := make([]string, 0, len(schedule.Recipients))
+		removed := false
+
+		for _, recipient := range schedule.Recipients {
+			if strings.EqualFold(strings.TrimSpace(recipient), email) {
+				removed = true
+
+				continue
+			}
+
+			kept = append(kept, recipient)
+		}
+
+		if !removed {
+			continue
+		}
+
+		if _, updateErr := s.db.NewUpdate().
+			Model((*models.ReportSchedule)(nil)).
+			Where("uid = ?", schedule.UID).
+			Set("recipients = ?", jsonArray(kept)).
+			Set("updated_at = ?", time.Now()).
+			Exec(ctx); updateErr != nil {
+			return changed, updateErr
+		}
+
+		changed++
+	}
+
+	return changed, nil
+}

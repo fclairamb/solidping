@@ -97,7 +97,39 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	// it at startup gives an immediate first sweep after a deploy — exactly
 	// when a check that's been quietly stuck on its creation marker for weeks
 	// (spec 2026-08-18-03) would otherwise wait a full interval to be noticed.
-	return r.ensureAbandonedResultReaperJob(ctx, jctx)
+	if err := r.ensureAbandonedResultReaperJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure the uptime-report sweep exists (global, not per-org — one sweep
+	// serves every org's schedules). It self-reschedules hourly; this seeds the
+	// first run (spec 2026-08-20-01).
+	return r.ensureUptimeReportJob(ctx, jctx)
+}
+
+// ensureUptimeReportJob provisions the global uptime-report sweep. The job
+// reschedules itself hourly; this just ensures the very first one exists.
+// CreateJob dedupes on type+config+org+pending, so a restart won't stack a
+// duplicate.
+func (r *StartupJobRun) ensureUptimeReportJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping uptime report provisioning (services not available)")
+
+		return nil
+	}
+
+	log.InfoContext(ctx, "Ensuring uptime report job exists")
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeUptimeReport), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create uptime report job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured uptime report job exists")
+	}
+
+	return nil
 }
 
 // ensureDefaultOrganization creates a default organization if none exists.

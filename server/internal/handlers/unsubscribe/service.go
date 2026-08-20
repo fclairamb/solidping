@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -142,10 +143,41 @@ func (s *Service) Unsubscribe(ctx context.Context, token string, scope Scope, so
 			return nil, createErr //nolint:wrapcheck // createErr is already descriptive; findErr would obscure it
 		}
 
+		s.dropFromReportSchedules(ctx, org.UID, email, checkUID)
+
 		return s.toResult(ctx, org.Slug, existing), nil
 	}
 
+	s.dropFromReportSchedules(ctx, org.UID, email, checkUID)
+
 	return s.toResult(ctx, org.Slug, sup), nil
+}
+
+// dropFromReportSchedules removes an org-wide unsubscriber from every uptime
+// report schedule in the org (spec 2026-08-20-01).
+//
+// The suppression list alone would already stop the mail, but leaving the
+// address on the schedule means the operator sees it in the recipient list and
+// can "fix" it by re-saving — silently mailing someone who asked to stop. The
+// unsubscribe is only really honored when the address is gone from the source
+// of truth too.
+//
+// Scoped to org-wide unsubscribes on purpose: a check-scoped unsubscribe says
+// "stop paging me about THIS check", which is not a statement about a monthly
+// digest covering forty others.
+//
+// Best-effort: the suppression row is already committed and is what actually
+// blocks delivery, so a failure here must not turn a successful unsubscribe
+// into an error page.
+func (s *Service) dropFromReportSchedules(ctx context.Context, orgUID, email, checkUID string) {
+	if checkUID != "" {
+		return
+	}
+
+	if _, err := s.dbService.RemoveRecipientFromReportSchedules(ctx, orgUID, email); err != nil {
+		slog.WarnContext(ctx, "Failed to remove unsubscriber from report schedules",
+			"org_uid", orgUID, "error", err)
+	}
 }
 
 // findExisting looks for a suppression matching the exact (org, email,
