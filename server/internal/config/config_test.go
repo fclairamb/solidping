@@ -1534,3 +1534,32 @@ func TestLoad_SentryTracesSampleRateApplied(t *testing.T) {
 	r.NoError(err)
 	r.InDelta(0.25, cfg.Sentry.TracesSampleRate, 0.0001)
 }
+
+// TestLoad_SentryEnvironmentDefault pins spec 2026-08-20-10 part E: an operator
+// who sets only SP_SENTRY_DSN must never get environment-less events, and an
+// explicit value must still win.
+func TestLoad_SentryEnvironmentDefault(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_SENTRY_ENVIRONMENT", "")
+	t.Setenv("SP_RUN_MODE", "")
+	t.Setenv("SP_RUNMODE", "")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(SentryEnvironmentProduction, cfg.Sentry.Environment,
+		"no run mode and no explicit environment means production")
+
+	t.Setenv("SP_RUN_MODE", "test")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Equal(SentryEnvironmentTest, cfg.Sentry.Environment,
+		"test mode must not report as production")
+
+	t.Setenv("SP_SENTRY_ENVIRONMENT", "staging")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Equal("staging", cfg.Sentry.Environment, "explicit configuration always wins")
+}
