@@ -1883,7 +1883,7 @@ export interface UpdateResourceRequest {
 }
 
 // Status Page hooks
-export function useStatusPages(org: string) {
+export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["statusPages", org],
     queryFn: async () => {
@@ -1892,7 +1892,7 @@ export function useStatusPages(org: string) {
       );
       return response.data || [];
     },
-    enabled: !!org,
+    enabled: (opts?.enabled ?? true) && !!org,
   });
 }
 
@@ -3574,7 +3574,7 @@ export interface UpdateEscalationPolicyRequest {
   steps?: EscalationPolicyStep[];
 }
 
-export function useEscalationPolicies(org: string) {
+export function useEscalationPolicies(org: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["escalationPolicies", org],
     queryFn: async () => {
@@ -3583,7 +3583,7 @@ export function useEscalationPolicies(org: string) {
       );
       return response.data || [];
     },
-    enabled: !!org,
+    enabled: (opts?.enabled ?? true) && !!org,
   });
 }
 
@@ -5848,9 +5848,9 @@ export interface CreateSloRequest {
 
 export type UpdateSloRequest = Partial<CreateSloRequest>;
 
-export function useSlos(org: string, params?: { checkUid?: string }) {
+export function useSlos(org: string, params?: { checkUid?: string; enabled?: boolean }) {
   return useQuery({
-    queryKey: ["slos", org, params ?? {}],
+    queryKey: ["slos", org, { checkUid: params?.checkUid }],
     queryFn: async () => {
       const search = new URLSearchParams();
       if (params?.checkUid) search.set("checkUid", params.checkUid);
@@ -5860,7 +5860,7 @@ export function useSlos(org: string, params?: { checkUid?: string }) {
       );
       return response.data ?? [];
     },
-    enabled: !!org,
+    enabled: (params?.enabled ?? true) && !!org,
   });
 }
 

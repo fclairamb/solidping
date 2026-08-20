@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Bell,
+  BellRing,
   Bot,
   Calendar,
   CalendarClock,
@@ -17,6 +18,7 @@ import {
   User2,
   KeyRound,
   Mail,
+  MessageSquare,
   Settings,
   BadgeCheck,
   Users,
@@ -24,8 +26,10 @@ import {
   PlusCircle,
   Building2,
   CircleUser,
+  Target,
+  Wrench,
 } from "lucide-react";
-import { useChecks } from "@/api/hooks";
+import { useChecks, useStatusPages, useEscalationPolicies, useSlos } from "@/api/hooks";
 
 type GroupKey = "actions" | "pages" | "account" | "organization";
 
@@ -56,7 +60,11 @@ const pages: PageEntry[] = [
   { titleKey: "events", path: "/orgs/$org/events", icon: Calendar, group: "pages" },
   { titleKey: "integrations", path: "/orgs/$org/integrations", icon: Bell, group: "pages" },
   { titleKey: "statusPages", path: "/orgs/$org/status-pages", icon: Globe, group: "pages" },
+  { titleKey: "statusUpdates", path: "/orgs/$org/status-updates", icon: MessageSquare, group: "pages" },
+  { titleKey: "maintenanceWindows", path: "/orgs/$org/maintenance-windows", icon: Wrench, group: "pages" },
+  { titleKey: "slos", path: "/orgs/$org/slos", icon: Target, group: "pages" },
   { titleKey: "badges", path: "/orgs/$org/badges", icon: BadgeCheck, group: "pages" },
+  { titleKey: "myPages", path: "/orgs/$org/me/notifications", icon: BellRing, group: "pages" },
   {
     titleKey: "account",
     path: "/orgs/$org/account",
@@ -95,6 +103,20 @@ const groupLabelKey: Record<GroupKey, string> = {
   organization: "command.groupOrganization",
 };
 
+// Shared styling for the result groups rendered outside the static `pages`
+// list (Checks, Status pages, Escalation policies, SLOs) — kept as constants
+// since each entity group repeats the same group-heading and item markup.
+const groupHeadingClassName =
+  "[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground";
+const commandItemClassName =
+  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground";
+
+/** Case-insensitive substring match against any of the given fields. */
+function matchesSearch(term: string, ...fields: (string | undefined)[]): boolean {
+  const needle = term.toLowerCase();
+  return fields.some((f) => !!f && f.toLowerCase().includes(needle));
+}
+
 export interface CommandMenuProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -125,6 +147,16 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     q: debouncedSearch || undefined,
     limit: 10,
   });
+
+  // Status pages, escalation policies and SLOs have no server-side `q`
+  // support, so we fetch the (small, per-org-capped) full list and filter
+  // client-side. Gate these queries on the palette being open AND the
+  // search text being non-empty so opening ⌘K alone never fans out three
+  // extra requests.
+  const entitySearchEnabled = open && debouncedSearch.length > 0;
+  const { data: statusPages } = useStatusPages(org, { enabled: entitySearchEnabled });
+  const { data: escalationPolicies } = useEscalationPolicies(org, { enabled: entitySearchEnabled });
+  const { data: slos } = useSlos(org, { enabled: entitySearchEnabled });
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -174,6 +206,23 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
   const orderedGroupedPages = groupOrder
     .filter((g) => groupedPages[g] && groupedPages[g].length > 0)
     .map((g) => [g, groupedPages[g]] as const);
+
+  const ENTITY_GROUP_LIMIT = 5;
+  const filteredStatusPages = debouncedSearch
+    ? (statusPages ?? [])
+        .filter((p) => matchesSearch(debouncedSearch, p.name, p.slug))
+        .slice(0, ENTITY_GROUP_LIMIT)
+    : [];
+  const filteredEscalationPolicies = debouncedSearch
+    ? (escalationPolicies ?? [])
+        .filter((p) => matchesSearch(debouncedSearch, p.name))
+        .slice(0, ENTITY_GROUP_LIMIT)
+    : [];
+  const filteredSlos = debouncedSearch
+    ? (slos ?? [])
+        .filter((s) => matchesSearch(debouncedSearch, s.name, s.slug))
+        .slice(0, ENTITY_GROUP_LIMIT)
+    : [];
 
   // Only mount the dialog when open. Keeps a single source of truth for
   // visibility and prevents stale instances from accumulating across HMR
@@ -226,7 +275,7 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
           <Command.Group
             key={group}
             heading={t(groupLabelKey[group])}
-            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
+            className={groupHeadingClassName}
           >
             {items.map((page) => (
               <Command.Item
@@ -234,7 +283,7 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
                 value={`${page.title} ${page.description ?? ""} ${group}`}
                 onSelect={() => goTo(page.path)}
                 data-testid={page.testId}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                className={commandItemClassName}
               >
                 <page.icon className="h-4 w-4 text-muted-foreground" />
                 <span>{page.title}</span>
@@ -249,16 +298,13 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
         ))}
 
         {checks && checks.length > 0 && (
-          <Command.Group
-            heading={t("command.groupChecks")}
-            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
-          >
+          <Command.Group heading={t("command.groupChecks")} className={groupHeadingClassName}>
             {checks.map((check) => (
               <Command.Item
                 key={check.uid}
                 value={`${check.name || ""} ${check.slug || ""}`}
                 onSelect={() => goTo(`/orgs/$org/checks/${check.uid}`)}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+                className={commandItemClassName}
               >
                 <Activity className="h-4 w-4 text-muted-foreground" />
                 <span>{check.name || check.slug || check.uid}</span>
@@ -266,6 +312,63 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
                   <span className="text-xs text-muted-foreground">
                     {check.slug}
                   </span>
+                )}
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
+
+        {filteredStatusPages.length > 0 && (
+          <Command.Group heading={t("command.groupStatusPages")} className={groupHeadingClassName}>
+            {filteredStatusPages.map((page) => (
+              <Command.Item
+                key={page.uid}
+                value={`${page.name} ${page.slug} statusPage`}
+                onSelect={() => goTo(`/orgs/$org/status-pages/${page.uid}`)}
+                className={commandItemClassName}
+              >
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <span>{page.name || page.slug}</span>
+                {page.name && page.slug && (
+                  <span className="text-xs text-muted-foreground">{page.slug}</span>
+                )}
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
+
+        {filteredEscalationPolicies.length > 0 && (
+          <Command.Group
+            heading={t("command.groupEscalationPolicies")}
+            className={groupHeadingClassName}
+          >
+            {filteredEscalationPolicies.map((policy) => (
+              <Command.Item
+                key={policy.uid}
+                value={`${policy.name} escalationPolicy`}
+                onSelect={() => goTo(`/orgs/$org/escalation-policies/${policy.uid}`)}
+                className={commandItemClassName}
+              >
+                <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
+                <span>{policy.name}</span>
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
+
+        {filteredSlos.length > 0 && (
+          <Command.Group heading={t("command.groupSlos")} className={groupHeadingClassName}>
+            {filteredSlos.map((slo) => (
+              <Command.Item
+                key={slo.uid}
+                value={`${slo.name} ${slo.slug} slo`}
+                onSelect={() => goTo(`/orgs/$org/slos/${slo.uid}`)}
+                className={commandItemClassName}
+              >
+                <Target className="h-4 w-4 text-muted-foreground" />
+                <span>{slo.name || slo.slug}</span>
+                {slo.name && slo.slug && (
+                  <span className="text-xs text-muted-foreground">{slo.slug}</span>
                 )}
               </Command.Item>
             ))}

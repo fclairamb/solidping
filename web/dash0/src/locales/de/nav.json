@@ -127,6 +127,9 @@
     "groupAccount": "Konto",
     "groupOrganization": "Organisation",
     "groupChecks": "Prüfungen",
+    "groupStatusPages": "Statusseiten",
+    "groupEscalationPolicies": "Eskalationsrichtlinien",
+    "groupSlos": "SLOs",
     "newCheck": "Neue Prüfung",
     "newCheckDescription": "Eine neue Monitoring-Prüfung erstellen",
     "aiDescription": "KI-Assistenten über MCP verbinden"
