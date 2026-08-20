@@ -29,8 +29,9 @@ import (
 var errHandlerExploded = errors.New("handler exploded")
 
 const (
-	sentryTestOrg  = "acmetech"
-	sentryTestUser = "alice@acme.com"
+	sentryTestOrg    = "acmetech"
+	sentryTestUser   = "alice@acme.com"
+	sentryTestIssuer = "https://solidping.test"
 )
 
 // hubInjector stands in for "something upstream already put a hub on the
@@ -50,10 +51,11 @@ func hubInjector(hub *sentry.Hub) httpx.Middleware {
 // sentryAuthFixture is a real auth stack over in-memory SQLite: real service,
 // real JWT, real user row, so RequireAuth runs its actual code path.
 type sentryAuthFixture struct {
-	mw    *middleware.AuthMiddleware
-	token string
-	user  *models.User
-	db    db.Service
+	mw      *middleware.AuthMiddleware
+	authSvc *auth.Service
+	token   string
+	user    *models.User
+	db      db.Service
 }
 
 func newSentryAuthFixture(t *testing.T) *sentryAuthFixture {
@@ -72,7 +74,7 @@ func newSentryAuthFixture(t *testing.T) *sentryAuthFixture {
 		AccessTokenExpiry:  time.Hour,
 		RefreshTokenExpiry: 7 * 24 * time.Hour,
 	}
-	fullCfg := &config.Config{Auth: authCfg}
+	fullCfg := &config.Config{Auth: authCfg, Server: config.ServerConfig{BaseURL: sentryTestIssuer}}
 	authService := auth.NewService(dbSvc, authCfg, fullCfg, nil, nil)
 
 	org := models.NewOrganization(sentryTestOrg, "Acme Tech")
@@ -89,11 +91,25 @@ func newSentryAuthFixture(t *testing.T) *sentryAuthFixture {
 	r.NoError(err)
 
 	return &sentryAuthFixture{
-		mw:    middleware.NewAuthMiddleware(authService, dbSvc, fullCfg),
-		token: loginResp.AccessToken,
-		user:  user,
-		db:    dbSvc,
+		mw:      middleware.NewAuthMiddleware(authService, dbSvc, fullCfg),
+		authSvc: authService,
+		token:   loginResp.AccessToken,
+		user:    user,
+		db:      dbSvc,
 	}
+}
+
+// mcpToken mints an audience-bound MCP access token for the fixture's user, the
+// only kind RequireMCPAuth accepts.
+func (f *sentryAuthFixture) mcpToken(t *testing.T) string {
+	t.Helper()
+
+	token, err := f.authSvc.GenerateMCPAccessToken(
+		f.user.UID, sentryTestOrg, []string{"mcp"}, sentryTestIssuer+"/api/v1/mcp", time.Hour, "",
+	)
+	require.NoError(t, err)
+
+	return token
 }
 
 // failingHandler writes a 500 the way every handler in the codebase does.
@@ -370,14 +386,19 @@ func TestRecoverer_ErrAbortHandlerIsNotReported(t *testing.T) {
 	r.Equal(0, transport.Len())
 }
 
-// TestRecoverer_CatchesPanicsUnderTheRequestTimeout pins the last ordering
-// constraint, and the sharpest one: RequestTimeout runs the handler on its own
-// goroutine, and recover() only catches panics on the goroutine it runs on. A
-// recoverer mounted ABOVE the timeout therefore catches nothing and every
-// handler panic takes the whole process down.
+// TestRecoverer_CatchesPanicsUnderTheRequestTimeout covers the sharpest
+// property of the recoverer itself: RequestTimeout runs the handler on its own
+// goroutine, and recover() only catches panics on the goroutine it runs on, so
+// a recoverer must be able to work from *inside* the timeout. Mounted the other
+// way round it catches nothing and the panic takes the whole process down —
+// which is why the wrong order here does not fail politely, it crashes the test
+// binary.
 //
-// If the production chain ever puts Recoverer outside timeoutMW, this test does
-// not fail politely — it crashes the test binary. That is the point.
+// What this does NOT guard: the chain this test builds is written by hand, so
+// it keeps passing no matter how internal/app registers its middleware. The
+// production order is pinned separately, by
+// app.TestBuildMainGroup_PanickingRouteIs500ReportedOnceAndCounted, which drives
+// a panic through the real buildMainGroup.
 func TestRecoverer_CatchesPanicsUnderTheRequestTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -398,4 +419,35 @@ func TestRecoverer_CatchesPanicsUnderTheRequestTimeout(t *testing.T) {
 
 	r.Equal(http.StatusInternalServerError, resp.status)
 	r.Len(transport.Events(), 1)
+}
+
+// RequireMCPAuth attaches the identity through the same helper as RequireAuth,
+// on a path RequireAuth never runs. Without this, deleting that one line from
+// the MCP gate would break nothing in the suite while quietly making every MCP
+// event anonymous again.
+func TestRequireMCPAuth_AuthenticatedRequestCarriesUserAndOrg(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fixture := newSentryAuthFixture(t)
+
+	hub, transport, err := errorreporttest.NewHub()
+	r.NoError(err)
+
+	resp := serve(t, "/api/v1/mcp-boom",
+		[]httpx.Middleware{
+			hubInjector(hub),
+			middleware.SentryMiddleware(),
+			middleware.Recoverer,
+			fixture.mw.RequireMCPAuth,
+		},
+		failingHandler, fixture.mcpToken(t))
+
+	r.Equal(http.StatusInternalServerError, resp.status)
+
+	events := transport.Events()
+	r.Len(events, 1)
+	r.Equal(fixture.user.UID, events[0].User.ID)
+	r.Equal(sentryTestOrg, events[0].Tags["organization"])
 }

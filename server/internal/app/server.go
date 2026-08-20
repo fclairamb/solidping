@@ -504,6 +504,44 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 	}
 }
 
+// buildMainGroup installs the process-wide middleware chain and returns the
+// root group every route below hangs off.
+//
+// It is a function of its own so the order is testable: this is the SINGLE
+// place the global chain is defined, and internal/app's Sentry chain test
+// drives a panicking route through this very call rather than through a
+// hand-copied imitation of it. Reorder anything here and that test moves.
+//
+// Order is load-bearing (spec 2026-08-20-10). Recoverer sits:
+//   - inside SentryMiddleware, so the panic reports on the request hub carrying
+//     the user/org RequireAuth attached, and is reported exactly once;
+//   - inside logging + HTTPMetrics, so a panicking handler is logged and
+//     counted as an ordinary 500 instead of dropping the connection;
+//   - inside timeoutMW, which runs the handler on its OWN goroutine —
+//     recover() only catches panics on the goroutine it runs on, so a recoverer
+//     above the timeout would let every handler panic take the whole process
+//     down.
+func (s *Server) buildMainGroup(ctx context.Context, router *httpx.Router) *httpx.Group {
+	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
+	s.rateLimiter = rateLimiter
+
+	// ctx for RequestTimeout is taken from each request's context inside the
+	// middleware closure, not threaded through here; the contextcheck linter
+	// can't see that.
+	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration)
+
+	return router.Use(
+		s.corsMiddleware,
+		middleware.SentryMiddleware(),
+		s.loggingMiddleware,
+		middleware.HTTPMetrics,
+		timeoutMW,
+		middleware.Recoverer,
+		rateLimiter.RateLimit,
+		rateLimiter.ConcurrencyLimit,
+	)
+}
+
 // SetupRoutes builds the HTTP router and registers every handler. It must
 // be called after InitializeSystemConfig so handlers see the post-overlay
 // config (e.g. PasskeyService deriving its RP ID from cfg.Server.BaseURL,
@@ -531,27 +569,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	resolveTelegramSettings(ctx, s.dbService, s.config)
 
 	router := httpx.New()
-	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
-	s.rateLimiter = rateLimiter
-	// ctx for RequestTimeout is taken from each request's context inside the
-	// middleware closure, not threaded through here; the contextcheck linter
-	// can't see that.
-	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration)
-	// Order is load-bearing (spec 2026-08-20-10). Recoverer sits:
-	//   - inside SentryMiddleware, so the panic reports on the request hub
-	//     carrying the user/org RequireAuth attached, and is reported once;
-	//   - inside logging + HTTPMetrics, so a panicking handler is logged and
-	//     counted as an ordinary 500 instead of dropping the connection;
-	//   - inside timeoutMW, which runs the handler on its OWN goroutine —
-	//     recover() only catches panics on the goroutine it runs on, so a
-	//     recoverer above the timeout would let every handler panic take the
-	//     whole process down.
-	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
-		Use(middleware.HTTPMetrics).
-		Use(timeoutMW).
-		Use(middleware.Recoverer).
-		Use(rateLimiter.RateLimit).
-		Use(rateLimiter.ConcurrencyLimit)
+	mainGroup := s.buildMainGroup(ctx, router)
 
 	// API routes
 	api := mainGroup.NewGroup("/api/v1")
