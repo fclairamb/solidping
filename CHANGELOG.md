@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.0](https://github.com/fclairamb/solidping/compare/v0.16.2...v0.17.0) (2026-08-20)
+
+
+### Features
+
+* **analytics:** serve PostHog capture first-party through /ingest ([#235](https://github.com/fclairamb/solidping/issues/235)) ([b9f6858](https://github.com/fclairamb/solidping/commit/b9f6858eb60131cd1cbb333d0c4c8f2ac5a5896e))
+* SLOs & uptime reports, status-page incident publications, PagerDuty (replaces Opsgenie), remote-CDP browser checks, SMTP send-mode ([#240](https://github.com/fclairamb/solidping/issues/240)) ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#243](https://github.com/fclairamb/solidping/issues/243)) ([29a25af](https://github.com/fclairamb/solidping/commit/29a25aff339e0918eb71957689f514d98695965d))
+* **deps:** update module github.com/arran4/golang-ical to v0.3.6 ([#242](https://github.com/fclairamb/solidping/issues/242)) ([5d53ff8](https://github.com/fclairamb/solidping/commit/5d53ff8bb35f80b11e826622ed94207d364568b2))
+* **deps:** update module github.com/rabbitmq/amqp091-go to v1.14.0 ([#241](https://github.com/fclairamb/solidping/issues/241)) ([7fd51a3](https://github.com/fclairamb/solidping/commit/7fd51a36dd0284a50c81e826b49308ad43d24d09))
+* **deps:** update module github.com/stretchr/testify to v1.12.0 ([#236](https://github.com/fclairamb/solidping/issues/236)) ([763543f](https://github.com/fclairamb/solidping/commit/763543f070701d8b75972cd022245ef7264192c6))
+
 ## [Unreleased]
 
 ### ⚠ BREAKING CHANGES
