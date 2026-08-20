@@ -107,7 +107,16 @@ func (s *Service) EnsureDefaultEmailRoute(
 	return nil
 }
 
-// UpsertUserContact creates or restores a contact.
+// UpsertUserContact creates or restores a contact, and writes the CANONICAL
+// uid back into c.
+//
+// The write-back matters on the restore path: a revive conflicts on
+// (user_uid, organization_uid, type, value) and DO UPDATE clears deleted_at on
+// the row that is already there, keeping ITS uid. The freshly-generated uid the
+// caller handed us was never inserted, so anything that then used c.UID to
+// reference the contact (creating its notification route, say) would point at a
+// row that does not exist and fail the foreign key. RETURNING makes c.UID the
+// uid that is actually in the table, insert or restore.
 func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) error {
 	_, err := s.db.NewInsert().
 		Model(c).
@@ -115,6 +124,7 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 		Set("label = EXCLUDED.label").
 		Set("deleted_at = NULL").
 		Set("updated_at = ?", time.Now()).
+		Returning("uid").
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("upsert user contact: %w", err)
