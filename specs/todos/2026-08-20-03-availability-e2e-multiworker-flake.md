@@ -149,3 +149,76 @@ built from `7fb8d5e4e~1` in a throwaway worktree as the negative control.
 
 Grep `web/dash0/e2e/` for the other check-creating helpers and record whether they were
 exposed to the same race.
+
+## Verification results
+
+### Reproduction loop (the spec's own commands)
+
+Side-car server on port 4021, `SP_RUNMODE=test`, a **freshly created Postgres database
+per run**, `--workers=2 --retries=0`, dash0 rebuilt and re-embedded.
+
+| Binary | Runs | Failed | `checks_slug_idx` violations in the server log |
+|---|---|---|---|
+| pre-fix (`7fb8d5e4e~1`, same dash0 build) | 4 | **3** | runs 2/3/4: 1 each — run 1 (the only pass): **0** |
+| HEAD | 6 | **0** | 1 in every run |
+
+The correlation is the proof, not the pass count: on the pre-fix binary the runs that
+failed are exactly the runs that logged a `checks_slug_idx` violation, and the one that
+passed logged none. On HEAD the collision still fires on **every** run — so the
+reproduction keeps its teeth — and is absorbed, with the create returning 201 and the SPA
+navigating.
+
+Failure line on the pre-fix binary:
+
+```
+level=WARN msg="SQL query failed" operation=INSERT
+  error="ERROR: duplicate key value violates unique constraint \"checks_slug_idx\" (SQLSTATE=23505)"
+```
+
+### A second bug the tests exposed
+
+The committed fix's retry ceiling was a flat 8 **attempts**. Covering it with a 24-way
+concurrent create on embedded Postgres failed **3 runs out of 3** with a bare
+`checks_slug_idx` violation: the unlucky goroutine spends one attempt per competing
+commit, so N racers need up to N-1, and N belongs to the caller. The budget now counts
+only *consecutive non-progress* inserts (`checkSlugStallAttempts`); after the change the
+same test is green 3/3. This is the same distinction `db.IncidentNumberAttempts` already
+documents.
+
+### Nothing papered over
+
+No retry, no lengthened timeout, no sleep, and no change to `availability.spec.ts` — the
+spec file is untouched. The only client-side edit anywhere is a corrected comment (below).
+
+## Follow-up audit — other check-creating E2E specs
+
+28 specs create checks through the new-check form (or the API). The relevant fact is that
+an auto-slug is derived from the target **hostname only**, so:
+
+- **18 specs all resolve the same base slug `http-example-com`** in org `test` —
+  availability, check-chart-point-preview, check-chart-zoom, check-dependencies,
+  check-detail, check-edit-period-persistence, check-form-progressive-disclosure,
+  check-groups, check-http-basic-auth, check-http-expected-status-codes,
+  check-http-verify-ssl-follow-redirects, check-region-spread,
+  check-result-detail-navigation, checks, command-menu, duty-cycle-warning,
+  escalation-assignment (API), integrations (API). Two more share `http-httpbin-org`
+  (check-labels, checks), and `checks.spec.ts`'s three heartbeat checks share the
+  constant slug `heartbeat`. Every one of them was exposed to the same race and every one
+  is fixed server-side by this change — **no client-side edit is needed**.
+- `dns-check.spec.ts` is the only spec that pins an explicit `check-slug-input`, stamped
+  with `Date.now()`. It was never exposed.
+- The rest use file-local hostnames (`acme.com`, `example-domain-*.test`,
+  `app.example.test`, `ssh.internal.example`, …) so they only ever raced themselves.
+
+**One genuinely misleading helper was corrected** (comment only): `checks.spec.ts` built
+`https://httpbin.org/anything/${timestamp}-${random}` under the comment *"Generate a
+unique check name and URL to avoid slug conflicts"*. The path is discarded when the slug
+is derived, so that comment taught the opposite of the truth; the same false assumption
+is repeated in check-dependencies, check-groups, check-labels and integrations. Nothing
+else in those files needs to change — an auto-slug colliding is now the server's problem,
+which is the whole point of fixing it at the source.
+
+Noted but deliberately **out of scope**: `checks.spec.ts`'s URL-empty validation test
+asserts after a fixed `page.waitForTimeout(500)` rather than on a condition. It is a
+latent flake of the same family but a different bug, and touching it here would mix
+concerns.
