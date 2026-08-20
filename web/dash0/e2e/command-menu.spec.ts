@@ -458,7 +458,11 @@ test.describe("Command Menu (Cmd+K)", () => {
       const item = page.locator('[cmdk-item]').filter({ hasText: name });
       await expect(item).toBeVisible();
 
-      await page.keyboard.press("Enter");
+      // Click rather than Enter: the item only just mounted after the
+      // debounce + fetch round trip, and cmdk's own selection bookkeeping
+      // (which item carries aria-selected) can lag one render behind it
+      // becoming visible — a keyboard Enter can race that and no-op.
+      await item.click();
       await page.waitForURL(new RegExp(`/status-pages/${statusPage.uid}`), {
         timeout: 5000,
       });
@@ -493,7 +497,7 @@ test.describe("Command Menu (Cmd+K)", () => {
       const item = page.locator('[cmdk-item]').filter({ hasText: name });
       await expect(item).toBeVisible();
 
-      await page.keyboard.press("Enter");
+      await item.click();
       await page.waitForURL(new RegExp(`/escalation-policies/${policy.uid}`), {
         timeout: 5000,
       });
@@ -532,7 +536,7 @@ test.describe("Command Menu (Cmd+K)", () => {
       const item = page.locator('[cmdk-item]').filter({ hasText: name });
       await expect(item).toBeVisible();
 
-      await page.keyboard.press("Enter");
+      await item.click();
       await page.waitForURL(new RegExp(`/slos/${slo.uid}`), { timeout: 5000 });
       expect(page.url()).toContain(`/slos/${slo.uid}`);
       await expect(input).not.toBeVisible();
