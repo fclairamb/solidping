@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/uptrace/bun"
+
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -20,8 +22,21 @@ func (s *Service) ListUserContactsWithRoutes(
 		Relation("Contact").
 		Where("user_notification_route.user_uid = ?", userUID).
 		Where("user_notification_route.org_uid = ?", orgUID).
-		// Exclude routes whose contact has been soft-deleted.
-		Where("contact.deleted_at IS NULL").
+		// Exclude routes whose contact is soft-deleted or missing.
+		//
+		// This must NOT be `contact.deleted_at IS NULL` — that reads like the
+		// obvious soft-delete guard and is in fact a tautology. `Contact` is a
+		// belongs-to relation on a soft-delete model, so bun puts the
+		// soft-delete predicate in the LEFT JOIN's ON clause
+		// (bun@v1.2.18/relation_join.go, appendHasOneJoin: `... ON (contact.uid
+		// = ...) AND contact.deleted_at IS NULL`). A soft-deleted contact
+		// therefore fails the join and every contact.* column comes back NULL,
+		// so `contact.deleted_at IS NULL` evaluates TRUE and lets the orphaned
+		// route through with a nil Contact — the ghost row this guard was meant
+		// to hide. Requiring the joined row instead turns the LEFT JOIN into an
+		// effective inner join, which also covers routes whose contact row is
+		// gone outright.
+		Where("contact.uid IS NOT NULL").
 		OrderExpr("user_notification_route.position ASC, user_notification_route.created_at ASC").
 		Scan(ctx)
 	if err != nil {
@@ -50,10 +65,18 @@ func (s *Service) EnsureDefaultEmailRoute(
 	}
 
 	// Fetch the canonical UID (either just-inserted or the pre-existing one).
+	//
+	// WhereAllWithDeleted is load-bearing: the ON CONFLICT above matches on a
+	// NON-partial unique index, so a SOFT-DELETED row still conflicts and
+	// nothing is inserted. Without this the follow-up SELECT would be
+	// auto-filtered to `deleted_at IS NULL` by the soft_delete tag, return
+	// sql.ErrNoRows, and turn the whole notifications page into a permanent
+	// "Failed to load notification settings" for that user+org.
 	var existing models.UserContact
 
 	err = s.db.NewSelect().
 		Model(&existing).
+		WhereAllWithDeleted().
 		Where("user_uid = ?", userUID).
 		Where("organization_uid = ?", orgUID).
 		Where("type = ?", models.UserContactTypeEmail).
@@ -62,6 +85,13 @@ func (s *Service) EnsureDefaultEmailRoute(
 		Scan(ctx)
 	if err != nil {
 		return fmt.Errorf("load default email contact: %w", err)
+	}
+
+	// The user deleted the seeded email on purpose. Re-seeding it here — on
+	// every page load — would make the email method undeletable, so respect the
+	// deletion and leave both the contact and the route alone.
+	if existing.DeletedAt != nil {
+		return nil
 	}
 
 	// Insert the route; ignore conflict (unique on contact_uid).
@@ -93,15 +123,42 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 	return nil
 }
 
-// DeleteUserContact soft-deletes a contact by UID.
+// DeleteUserContact soft-deletes a contact by UID and hard-deletes the
+// notification route that pointed at it.
+//
+// The route MUST go explicitly. `user_notification_routes.contact_uid` carries
+// an `on delete cascade` FK, but a cascade only fires on a HARD delete, so a
+// soft-deleted contact used to leave its route behind forever: an undeletable
+// ghost row in the dashboard, and per-dispatch warning noise in the escalation
+// job. `user_notification_routes` has no `deleted_at` — hard delete is the
+// design for that table.
+//
+// Both writes run in one transaction, route first: if it fails midway the
+// contact is still live and simply keeps its route, which is a consistent
+// state. Revive is unaffected — UpsertUserContact clears deleted_at and every
+// caller re-creates the route (CreateContact, EnsureUserNotificationRoute).
 func (s *Service) DeleteUserContact(ctx context.Context, uid string) error {
 	now := time.Now()
-	_, err := s.db.NewUpdate().
-		Model((*models.UserContact)(nil)).
-		Where("uid::text = ?", uid).
-		Set("deleted_at = ?", now).
-		Set("updated_at = ?", now).
-		Exec(ctx)
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewDelete().
+			Model((*models.UserNotificationRoute)(nil)).
+			Where("contact_uid::text = ?", uid).
+			Exec(ctx); err != nil {
+			return fmt.Errorf("delete notification route: %w", err)
+		}
+
+		if _, err := tx.NewUpdate().
+			Model((*models.UserContact)(nil)).
+			Where("uid::text = ?", uid).
+			Set("deleted_at = ?", now).
+			Set("updated_at = ?", now).
+			Exec(ctx); err != nil {
+			return fmt.Errorf("soft-delete contact: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("delete user contact: %w", err)
 	}

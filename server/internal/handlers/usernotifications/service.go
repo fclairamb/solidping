@@ -392,7 +392,12 @@ func (s *Service) PatchRoute(
 	return nil, ErrRouteNotFound
 }
 
-// DeleteContact soft-deletes a contact (the route cascades via the DB constraint).
+// DeleteContact soft-deletes a contact and, with it, its notification route.
+//
+// The route does NOT cascade: `user_notification_routes.contact_uid` has an
+// `on delete cascade` FK, but that only fires on a hard delete, and this is a
+// soft delete. db.DeleteUserContact removes the route explicitly, in the same
+// transaction — see its doc comment.
 func (s *Service) DeleteContact(
 	ctx context.Context, orgSlug string, user *models.User, contactUID string,
 ) error {
@@ -446,10 +451,24 @@ func toRouteResponse(route *models.UserNotificationRoute) *RouteResponse {
 	}
 }
 
+// toRouteResponses converts DB models to API responses, dropping any route
+// whose contact failed to load.
+//
+// Defense in depth, not the primary fix: a nil contact would serialize as a
+// zero-value ContactResponse, which the dashboard renders as an undeletable
+// ghost row (no title, no value, and a delete call keyed on an empty contact
+// uid that can never match). The query is what stops dangling routes being
+// returned at all — this guarantees the endpoint cannot emit an all-empty
+// contact whatever a future path dangles.
 func toRouteResponses(routes []*models.UserNotificationRoute) []*RouteResponse {
-	out := make([]*RouteResponse, len(routes))
-	for i, route := range routes {
-		out[i] = toRouteResponse(route)
+	out := make([]*RouteResponse, 0, len(routes))
+
+	for _, route := range routes {
+		if route.Contact == nil {
+			continue
+		}
+
+		out = append(out, toRouteResponse(route))
 	}
 
 	return out
