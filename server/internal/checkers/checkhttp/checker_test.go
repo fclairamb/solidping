@@ -1714,8 +1714,14 @@ func newJSONBodyServer(t *testing.T, body string) *httptest.Server {
 // four `body_*` keys and not JSONPathAssertions, so such a check never read
 // the body, `respBody` stayed "", and the assertion block — guarded by
 // `respBody != ""` — was skipped in silence: the check reported UP whatever
-// the endpoint returned. The first two cases below are exactly that scenario
-// and now expect DOWN; the rest are controls that the fix must not move.
+// the endpoint returned.
+//
+// Two cases below are that scenario and expect DOWN since the fix (a violated
+// assertion, and a body that is not JSON at all). The others are controls the
+// fix must NOT move: an assertions-only check whose response satisfies them
+// stays UP, so a green verdict means the assertions ran and passed rather than
+// that they were skipped again; and the `body_*` combinations already opened
+// the read gate on their own.
 func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T) {
 	t.Parallel()
 
