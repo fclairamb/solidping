@@ -537,3 +537,202 @@ func TestCaptureFailureResponseConfigRoundTrip(t *testing.T) {
 		r.True(reparsed.CaptureFailureResponse)
 	})
 }
+
+// TestCaptureIsVerdictInertForJSONPathOnlyChecks is the load-bearing safety
+// property of the whole feature: turning the capture ON must never change what
+// a check REPORTS. It only changes what is kept about a failure.
+//
+// The scenario is the one that could break it. `json_path_assertions` is
+// guarded by `respBody != ""`, and — pre-existing, deliberately preserved —
+// the body-read gate does NOT include JSONPathAssertions. So a check with ONLY
+// assertions and no `body_*` key never evaluates them and reports UP on a 200.
+// If the capture populated respBody, those assertions would suddenly start
+// running and this check would flip to DOWN purely because an operator turned
+// on a diagnostic. It must not.
+func TestCaptureIsVerdictInertForJSONPathOnlyChecks(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// A 200 whose JSON body would FAIL the assertion below if it were ever
+	// evaluated ("status" is "degraded", the assertion demands "ok").
+	const body = `{"status":"degraded","detail":"acme is unwell"}`
+
+	newServer := func(t *testing.T) *httptest.Server {
+		t.Helper()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", contentTypeJSON)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(body))
+		}))
+		t.Cleanup(server.Close)
+
+		return server
+	}
+
+	// An assertion that CANNOT pass against the payload above.
+	assertions := func() *AssertionNode {
+		return &AssertionNode{
+			Type:     NodeTypeAssertion,
+			Path:     "$.status",
+			Operator: "eq",
+			Value:    "ok",
+		}
+	}
+
+	offServer := newServer(t)
+	off := runCheck(t, &HTTPConfig{
+		URL:                offServer.URL,
+		JSONPathAssertions: assertions(),
+	})
+
+	onServer := newServer(t)
+	on := runCheck(t, &HTTPConfig{
+		URL:                    onServer.URL,
+		JSONPathAssertions:     assertions(),
+		CaptureFailureResponse: true,
+	})
+
+	// The verdict is identical with the capture off and on. (It is UP here
+	// only because of the pre-existing gate; this test pins EQUALITY, not the
+	// value — if that pre-existing bug is ever fixed on purpose, both sides
+	// move together and this test still holds.)
+	r.Equal(off.Status, on.Status,
+		"enabling capture_failure_response must never change a check's verdict")
+	r.Equal(checkerdef.StatusUp, on.Status,
+		"pre-existing behavior preserved: an assertions-only check does not evaluate them")
+
+	// Positive control on the negative: prove the capture machinery is really
+	// engaged in the "on" case, so the equality above is not passing merely
+	// because nothing happened. A successful check carries no capture, so make
+	// the very same config fail on its status code and check that the capture
+	// appears — with the body populated, from the same bytes the assertions
+	// were denied.
+	failServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentTypeJSON)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(failServer.Close)
+
+	failed := runCheck(t, &HTTPConfig{
+		URL:                    failServer.URL,
+		JSONPathAssertions:     assertions(),
+		CaptureFailureResponse: true,
+	})
+	r.Equal(checkerdef.StatusDown, failed.Status)
+	r.NotNil(failed.Diagnostics, "the capture path must genuinely be active in this configuration")
+	r.NotNil(failed.Diagnostics.FailureResponse)
+	r.Equal(body, failed.Diagnostics.FailureResponse.Body,
+		"the capture still gets the full body even though the assertions never saw it")
+}
+
+// TestCaptureIsVerdictInertAcrossConfigurations sweeps the other assertion
+// families: for each one, the status reported with the capture off and on must
+// be identical, and the capture must be present exactly when the check failed.
+func TestCaptureIsVerdictInertAcrossConfigurations(t *testing.T) {
+	t.Parallel()
+
+	const body = `{"status":"degraded"}`
+
+	tests := []struct {
+		name       string
+		status     int
+		mutate     func(cfg *HTTPConfig)
+		wantStatus checkerdef.Status
+	}{
+		{
+			name:       "no assertions, healthy",
+			status:     http.StatusOK,
+			mutate:     func(*HTTPConfig) {},
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
+			name:       "body_expect satisfied",
+			status:     http.StatusOK,
+			mutate:     func(cfg *HTTPConfig) { cfg.BodyExpect = "degraded" },
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
+			name:       "body_expect violated",
+			status:     http.StatusOK,
+			mutate:     func(cfg *HTTPConfig) { cfg.BodyExpect = "healthy" },
+			wantStatus: checkerdef.StatusDown,
+		},
+		{
+			name:       "body_reject violated",
+			status:     http.StatusOK,
+			mutate:     func(cfg *HTTPConfig) { cfg.BodyReject = "degraded" },
+			wantStatus: checkerdef.StatusDown,
+		},
+		{
+			name:       "body_pattern violated",
+			status:     http.StatusOK,
+			mutate:     func(cfg *HTTPConfig) { cfg.BodyPattern = `"status":"ok"` },
+			wantStatus: checkerdef.StatusDown,
+		},
+		{
+			name:   "json_path_assertions alongside body_expect actually evaluate",
+			status: http.StatusOK,
+			mutate: func(cfg *HTTPConfig) {
+				cfg.BodyExpect = "status"
+				cfg.JSONPathAssertions = &AssertionNode{
+					Type:     NodeTypeAssertion,
+					Path:     "$.status",
+					Operator: "eq",
+					Value:    "ok",
+				}
+			},
+			wantStatus: checkerdef.StatusDown,
+		},
+		{
+			name:       "unexpected status code",
+			status:     http.StatusBadGateway,
+			mutate:     func(*HTTPConfig) {},
+			wantStatus: checkerdef.StatusDown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			run := func(capture bool) *checkerdef.Result {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", contentTypeJSON)
+					w.WriteHeader(tt.status)
+					_, _ = w.Write([]byte(body))
+				}))
+				t.Cleanup(server.Close)
+
+				cfg := &HTTPConfig{URL: server.URL, CaptureFailureResponse: capture}
+				tt.mutate(cfg)
+
+				return runCheck(t, cfg)
+			}
+
+			off := run(false)
+			on := run(true)
+
+			r.Equal(tt.wantStatus, off.Status)
+			r.Equal(off.Status, on.Status,
+				"the capture must not move the verdict for %q", tt.name)
+			r.Nil(off.Diagnostics, "capture disabled must never produce diagnostics")
+
+			if tt.wantStatus == checkerdef.StatusUp {
+				r.Nil(on.Diagnostics, "a successful check carries no capture")
+
+				return
+			}
+
+			// Positive control: on every failing configuration the capture is
+			// really produced, and carries the real body.
+			r.NotNil(on.Diagnostics)
+			r.NotNil(on.Diagnostics.FailureResponse)
+			r.Equal(body, on.Diagnostics.FailureResponse.Body)
+		})
+	}
+}

@@ -353,18 +353,29 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		_ = resp.Body.Close()
 	}()
 
-	// Read the response body when anything downstream needs it. The capture
-	// option joins the pattern-matching keys here rather than doing its own
-	// read: the whole point is that the failing response is ALREADY in memory
-	// at failure time, so a capture costs no extra request and no extra I/O.
+	// bodyDrivesAssertions is the ORIGINAL, UNCHANGED read gate: exactly the
+	// four body-matching keys, and deliberately NOT JSONPathAssertions.
 	//
-	// This runs before the regex-compile blocks below so that a check whose
+	// That omission is a real pre-existing bug (a check configured with only
+	// `json_path_assertions` never evaluates them, because the JSONPath block
+	// below is guarded by `respBody != ""`). It is NOT this spec's to fix:
+	// adding the missing term would silently start evaluating assertions on
+	// existing production checks and flip some of them to DOWN. So the gate is
+	// reproduced here byte-for-byte, and the capture is kept strictly out of it.
+	bodyDrivesAssertions := cfg.BodyExpect != "" || cfg.BodyReject != "" ||
+		cfg.BodyPattern != "" || cfg.BodyPatternReject != ""
+
+	// The capture needs the same bytes, so they are read once and shared — the
+	// whole point of this feature is that the failing response is ALREADY in
+	// memory at failure time, so a capture costs no second request and no
+	// extra I/O.
+	//
+	// The read runs before the regex-compile blocks below so that a check whose
 	// pattern fails to compile still captures what the probe saw — a
 	// misconfigured regex is exactly when you want the evidence.
 	var bodyBytes []byte
 
-	if cfg.BodyExpect != "" || cfg.BodyReject != "" || cfg.BodyPattern != "" ||
-		cfg.BodyPatternReject != "" || cfg.CaptureFailureResponse {
+	if bodyDrivesAssertions || cfg.CaptureFailureResponse {
 		// Limit body size to prevent memory issues
 		limitedReader := io.LimitReader(resp.Body, maxBodySize)
 
@@ -389,7 +400,18 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		}
 	}
 
-	respBody := string(bodyBytes)
+	// THE CAPTURE MUST BE OBSERVATIONALLY INERT ON THE VERDICT. respBody is the
+	// single value every assertion block keys off (`body_expect`, the regexes,
+	// and — via its `respBody != ""` guard — `json_path_assertions`), so it is
+	// populated ONLY when the original gate says so. The capture reads
+	// bodyBytes directly and never touches respBody: enabling
+	// `capture_failure_response` therefore cannot make an assertion start (or
+	// stop) running, and cannot move a check between UP and DOWN.
+	var respBody string
+
+	if bodyDrivesAssertions {
+		respBody = string(bodyBytes)
+	}
 
 	// failed builds a post-response failure result, attaching the capture when
 	// the check opted in. Every failure return below this point goes through
