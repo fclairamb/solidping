@@ -28,6 +28,7 @@ import {
   Network,
   Palette,
   Server,
+  Target,
   User2,
   Workflow,
   Wrench,
@@ -54,6 +55,7 @@ import {
   useOnCallSchedule,
   useOrgNotification,
   useResult,
+  useSlo,
   useStatusPage,
   useStatusUpdate,
 } from "@/api/hooks";
@@ -152,6 +154,10 @@ function Breadcrumbs({ org }: { org: string }) {
   const isMwEdit = routeIds.has(
     "/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit",
   );
+  const isSlos = matches.some((m) => m.routeId.startsWith("/orgs/$org/slos"));
+  const isSlosNew = routeIds.has("/orgs/$org/slos/new");
+  const isSlosDetail = routeIds.has("/orgs/$org/slos/$uid/");
+  const isSlosEdit = routeIds.has("/orgs/$org/slos/$uid/edit");
   const isNotifications = routeIds.has("/orgs/$org/me/notifications");
   const isNotificationDetail = routeIds.has("/orgs/$org/notifications/$notificationUid");
 
@@ -215,6 +221,13 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: mw } = useMaintenanceWindow(
     org,
     isMwDetail || isMwEdit ? (params.maintenanceWindowUid ?? "") : "",
+  );
+  // SLOs section — the route param is `uid`, shared with on-call and
+  // escalation-policies, so gate on the section flag like those do; fetch
+  // the leaf label only on detail/edit.
+  const { data: slo } = useSlo(
+    org,
+    isSlosDetail || isSlosEdit ? (params.uid ?? "") : "",
   );
 
   // Notification detail breadcrumb — subscribe to the same query the page uses
@@ -804,6 +817,54 @@ function Breadcrumbs({ org }: { org: string }) {
           </>
         )}
         {isMwEdit && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("edit")}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isSlos) {
+    const isDetailOrEdit = isSlosDetail || isSlosEdit;
+    const title = slo?.name || params.uid?.slice(0, 8);
+    return (
+      <>
+        {isSlosNew || isDetailOrEdit ? (
+          <Link to="/orgs/$org/slos" params={{ org }} className={linkClass}>
+            <Target className={iconClass} />
+            {t("slos")}
+          </Link>
+        ) : (
+          <span className={activeClass}>
+            <Target className={iconClass} />
+            {t("slos")}
+          </span>
+        )}
+        {isSlosNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {isDetailOrEdit && (
+          <>
+            <BreadcrumbSeparator />
+            {isSlosEdit ? (
+              <Link
+                to="/orgs/$org/slos/$uid"
+                params={{ org, uid: params.uid! }}
+                className={linkClass}
+              >
+                {title}
+              </Link>
+            ) : (
+              <span className={activeClass}>{title}</span>
+            )}
+          </>
+        )}
+        {isSlosEdit && (
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{t("edit")}</span>

@@ -113,7 +113,7 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("detail.edit")}>
-            <Link to="/orgs/$org/slos/$uid" params={{ org, uid: slo.uid }}>
+            <Link to="/orgs/$org/slos/$uid/edit" params={{ org, uid: slo.uid }}>
               <Pencil className="h-4 w-4" />
             </Link>
           </Button>
