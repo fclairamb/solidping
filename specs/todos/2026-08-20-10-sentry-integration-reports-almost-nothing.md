@@ -186,3 +186,75 @@ control** — a case that proves the assertion can fail:
 - worker tests — a panicking checker and a panicking job each produce one event
   with the expected tags; **control:** a check that merely reports its target
   down produces none.
+
+## Implementation Plan
+
+### A. `WriteInternalError` reports unconditionally
+- `internal/errorreport/`: one tiny package owning the "which hub?" rule, so
+  handlers, middleware and workers can never drift.
+  - `CaptureOnRequest(r, err)` — request-scoped hub only, **no-op when absent**
+    (HTTP paths always have one via `SentryMiddleware`; tests and non-HTTP
+    callers stay silent).
+  - `CaptureWithTags(ctx, err, tags)` — ctx hub, falling back to
+    `sentry.CurrentHub()` (workers have no middleware).
+- `base.HandlerBase`:
+  - `WriteInternalError(w, r, err)` — captures, then writes the 500 body.
+  - `WriteErrorErr(w, r, status, code, message, err)` — captures **only** when
+    `status >= 500`; 4xx never emits.
+  - `WriteInternalErrorR` deleted; its one caller
+    (`discovery/handler.go:317`) moves to `WriteInternalError`.
+- Call sites are rewritten by an AST tool (locate `Args[0].End()`, insert the
+  enclosing function's `*http.Request` parameter name), never by `sed`: the
+  request variable is `w`/`writer` + `r`/`req`/`request` depending on the file.
+  The compiler is the acceptance test — 142 `WriteInternalError` +
+  175 `WriteErrorErr` sites.
+
+### B. Identity attaches where the claims exist
+- Delete the provably-dead claims block from `SentryMiddleware`; it keeps only
+  clone-hub / set-request / put-on-context.
+- `RequireAuth` and `RequireMCPAuth` call a shared `setSentryIdentity(ctx, claims)`
+  right after the claims land on the context, applying `SetUser{ID: UserUID}` +
+  `SetTag("organization", OrgSlug)` to the hub already on that context.
+
+### C. Recovery middleware
+- New `internal/middleware/recover.go` — `Recoverer`:
+  - wraps the writer in the existing `statusRecorder` so it only writes the
+    standard 500 JSON body when the handler wrote nothing yet;
+  - reports **once** through the ctx hub (`RecoverWithContext`);
+  - re-panics `http.ErrAbortHandler` untouched and unreported (stdlib contract);
+  - logs the panic + stack, and returns an `ErrPanic`-wrapped error so the
+    logging middleware records it as a normal failed request.
+- `SentryMiddleware` stops recovering/re-panicking entirely (single reporter),
+  and the stale comment goes with it.
+- Chain order (`server.go:540`): `cors → Sentry → logging → HTTPMetrics →
+  Recoverer → timeout → rateLimit → concurrency`. Inside Sentry (hub on ctx),
+  inside logging + metrics (observed as an ordinary 500).
+
+### D. Worker panics carry context
+- `checkworker.runCheckerGuarded` — tags `check.type`, `check.uid`,
+  `organization` (the org UID; a worker never holds the slug) from the
+  `*models.CheckJob` before the panic becomes `ErrCheckerPanic`.
+- `jobworker.executeWithRecovery` — tags `job.type`, `job.uid`, plus
+  `organization` when the job has one, before it becomes `ErrJobPanic`.
+- A checker that merely returns "target down" is untouched — no capture on any
+  non-panic path.
+
+### E. Environment default
+- `config.Load` defaults `Sentry.Environment` to `test` under
+  `RunMode == "test"`, otherwise `production`, only when unset — explicit
+  config/env keeps winning (both are applied before the default runs).
+- `web/docs/docs/features/observability.md` table documents the default.
+
+### F. Tests (real `sentry.Init`/client + capturing `Transport`)
+Per-test hubs seeded on the request/worker context, so no global Sentry state is
+mutated and `t.Parallel()` stays honest.
+- `internal/middleware/sentry_test.go` — authed request through the real
+  `SentryMiddleware → RequireAuth` chain carries `user.id` + `organization`;
+  **control:** unauthenticated request carries neither. Panicking handler →
+  500 + standard JSON shape + **exactly one** event; **control:** a
+  non-panicking handler emits none.
+- `internal/handlers/base/base_test.go` — `WriteInternalError` emits one event;
+  **controls:** `WriteError` at 4xx, `WriteErrorErr` at 4xx emit none, and
+  `WriteErrorErr` at 5xx emits one.
+- worker tests — panicking checker / panicking job each emit one event with the
+  expected tags; **control:** a checker reporting its target down emits none.
