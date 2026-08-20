@@ -49,7 +49,9 @@ const maxRecipients = 50
 // package does not depend on the jobs package (and so tests can assert the
 // exact payload without a queue).
 type Mailer interface {
-	SendReport(ctx context.Context, orgUID, recipient string, data *uptimereport.Data) error
+	SendReport(
+		ctx context.Context, orgUID, recipient string, data *uptimereport.Data, unsubscribeURL string,
+	) error
 }
 
 // Service provides business logic for report-schedule management.
@@ -303,7 +305,12 @@ func (s *Service) TestSend(ctx context.Context, orgSlug, uid, recipient string, 
 		return err
 	}
 
-	return s.mailer.SendReport(ctx, org.UID, recipient, data)
+	// Even a test send carries the unsubscribe link: the whole point is to see
+	// what the real digest looks like, and a preview missing the footer would
+	// hide exactly the part an operator most needs to check.
+	unsubscribeURL := uptimereport.UnsubscribeURL(s.cfg, org.Slug, recipient, now)
+
+	return s.mailer.SendReport(ctx, org.UID, recipient, data, unsubscribeURL)
 }
 
 func (s *Service) resolve(

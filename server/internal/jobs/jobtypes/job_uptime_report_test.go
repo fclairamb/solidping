@@ -90,10 +90,14 @@ func newReportEnv(
 	registry.Jobs = jobs
 	registry.Clock = clock.NewFake(now)
 
+	appConfig := &config.Config{}
+	appConfig.Auth.JWTSecret = "test-secret"
+	appConfig.Server.BaseURL = "https://acme.example"
+
 	jctx := &jobdef.JobContext{
 		DBService: dbSvc,
 		Services:  registry,
-		AppConfig: &config.Config{},
+		AppConfig: appConfig,
 		Logger:    slog.Default(),
 		Job:       &models.Job{UID: uuid.New().String()},
 	}
@@ -268,4 +272,50 @@ func TestUptimeReportReschedulesItself(t *testing.T) {
 	}
 
 	r.True(found, "the sweep must reschedule itself")
+}
+
+// A digest is bulk mail: RFC 2369 / RFC 8058 unsubscribe headers are mandatory.
+// The in-body link alone leaves a recipient whose client only exposes the
+// header-level control with no way to stop the mail.
+func TestUptimeReportCarriesUnsubscribeHeaders(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"alice@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	run := &UptimeReportJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	var cfg EmailJobConfig
+
+	found := false
+
+	for _, job := range jobs.created {
+		if job.jobType != string(jobdef.JobTypeEmail) {
+			continue
+		}
+
+		r.NoError(json.Unmarshal(job.config, &cfg))
+
+		found = true
+	}
+
+	// Positive control: an email job really was enqueued, so the assertions
+	// below are about its contents rather than about an empty loop.
+	r.True(found)
+	r.NotEmpty(cfg.ListUnsubscribeURL)
+	r.Contains(cfg.ListUnsubscribeURL, "https://acme.example/unsubscribe?token=")
+
+	// The same URL must reach the template footer, so the in-body link and the
+	// header can never point at different scopes.
+	data, ok := cfg.TemplateData.(map[string]any)
+	r.True(ok)
+	r.Equal(cfg.ListUnsubscribeURL, data["unsubscribeUrl"])
 }

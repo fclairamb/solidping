@@ -39,6 +39,14 @@ type EmailJobConfig struct {
 	// Template-based content (alternative to raw HTML/Text)
 	Template     string `json:"template,omitempty"`     // Template name (e.g., "incident-created.html")
 	TemplateData any    `json:"templateData,omitempty"` // Data to pass to template
+
+	// ListUnsubscribeURL, when set, adds the RFC 2369 / RFC 8058 unsubscribe
+	// headers. Bulk mail (the uptime report digests) must carry them;
+	// transactional mail (password reset, invitation) must NOT — an unsubscribe
+	// link on a password reset is both nonsense and a way to suppress security
+	// mail. Empty is therefore the correct default and the sender skips both
+	// headers for it.
+	ListUnsubscribeURL string `json:"listUnsubscribeUrl,omitempty"`
 }
 
 // EmailJobDefinition is the factory for email jobs.
@@ -167,6 +175,9 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 			ReplyTo: r.config.ReplyTo,
 		},
 		Subject: r.config.Subject,
+		// One-click POST is only meaningful when there is a URL to post to.
+		ListUnsubscribeURL:          r.config.ListUnsubscribeURL,
+		ListUnsubscribePostOneClick: r.config.ListUnsubscribeURL != "",
 	}
 
 	// Use template if specified

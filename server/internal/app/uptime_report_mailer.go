@@ -17,7 +17,9 @@ type uptimeReportMailer struct {
 
 // SendReport enqueues one rendered report email.
 func (m *uptimeReportMailer) SendReport(
-	ctx context.Context, orgUID, recipient string, data *uptimereport.Data,
+	ctx context.Context, orgUID, recipient string, data *uptimereport.Data, unsubscribeURL string,
 ) error {
-	return jobtypes.EnqueueUptimeReportEmail(ctx, m.services, orgUID, recipient, data)
+	return jobtypes.EnqueueUptimeReportEmail(
+		ctx, m.services, orgUID, recipient, data, unsubscribeURL,
+	)
 }

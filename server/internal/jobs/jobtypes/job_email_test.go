@@ -608,3 +608,41 @@ func TestEmailBuildMessageRawContentIsInternalOnly(t *testing.T) {
 	r.False(jobdef.IsPubliclyCreatable(jobdef.JobTypeEmail),
 		"email must never be publicly creatable while buildMessage honors raw content")
 }
+
+// TestEmailBuildMessageUnsubscribeHeadersAreOptIn pins that unsubscribe headers
+// are added ONLY when the caller supplies a URL.
+//
+// The negative half is the load-bearing one: transactional mail (password
+// reset, invitation, 2FA) must never carry them. An unsubscribe control on a
+// password reset is both nonsense and a way for an attacker to suppress the
+// security mail that would have warned the account owner.
+func TestEmailBuildMessageUnsubscribeHeadersAreOptIn(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	transactional := &EmailJobRun{config: EmailJobConfig{
+		To:      []string{"user@example.com"},
+		Subject: "Reset your password",
+		Text:    "link",
+	}}
+
+	msg, err := transactional.buildMessage(&jobdef.JobContext{})
+	r.NoError(err)
+	// Positive control first: the message really was built.
+	r.Equal("Reset your password", msg.Subject)
+	r.Empty(msg.ListUnsubscribeURL)
+	r.False(msg.ListUnsubscribePostOneClick)
+
+	bulk := &EmailJobRun{config: EmailJobConfig{
+		To:                 []string{"user@example.com"},
+		Subject:            "Uptime report",
+		Text:               "report",
+		ListUnsubscribeURL: "https://acme.example/unsubscribe?token=abc",
+	}}
+
+	msg, err = bulk.buildMessage(&jobdef.JobContext{})
+	r.NoError(err)
+	r.Equal("https://acme.example/unsubscribe?token=abc", msg.ListUnsubscribeURL)
+	r.True(msg.ListUnsubscribePostOneClick)
+}

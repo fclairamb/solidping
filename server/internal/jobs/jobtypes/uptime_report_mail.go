@@ -25,20 +25,26 @@ var errJobsUnavailable = errors.New("jobs service unavailable")
 // recipients are PII, and a shared To: header would disclose the whole
 // distribution list to each of them.
 func EnqueueUptimeReportEmail(
-	ctx context.Context, registry *services.Registry, orgUID, recipient string, data *uptimereport.Data,
+	ctx context.Context, registry *services.Registry, orgUID, recipient string,
+	data *uptimereport.Data, unsubscribeURL string,
 ) error {
 	if registry == nil || registry.Jobs == nil {
 		return errJobsUnavailable
 	}
 
-	// Copy so the per-recipient unsubscribe URL of one address can never end up
-	// in another's email.
+	// Copy so one address's unsubscribe URL can never end up in another's
+	// email — the view model is shared across the whole fan-out.
 	payload := *data
+	payload.UnsubscribeURL = unsubscribeURL
 
 	cfg := EmailJobConfig{
 		To:           []string{recipient},
 		Template:     uptimereport.TemplateName,
 		TemplateData: payload,
+		// A digest is bulk mail: RFC 2369 / RFC 8058 headers are mandatory,
+		// not decorative. The in-body link alone leaves a recipient whose
+		// client only offers the header-level control with no way out.
+		ListUnsubscribeURL: unsubscribeURL,
 	}
 
 	raw, err := json.Marshal(cfg)

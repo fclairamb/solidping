@@ -160,7 +160,12 @@ func (r *UptimeReportJobRun) runSchedule(
 			continue
 		}
 
-		if enqueueErr := EnqueueUptimeReportEmail(ctx, jctx.Services, org.UID, recipient, data); enqueueErr != nil {
+		unsubscribeURL := uptimereport.UnsubscribeURL(jctx.AppConfig, org.Slug, recipient, now)
+
+		enqueueErr := EnqueueUptimeReportEmail(
+			ctx, jctx.Services, org.UID, recipient, data, unsubscribeURL,
+		)
+		if enqueueErr != nil {
 			return sent, enqueueErr
 		}
 
