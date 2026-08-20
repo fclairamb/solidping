@@ -192,29 +192,45 @@ spec file is untouched. The only client-side edit anywhere is a corrected commen
 
 ## Follow-up audit — other check-creating E2E specs
 
-28 specs create checks through the new-check form (or the API). The relevant fact is that
-an auto-slug is derived from the target **hostname only**, so:
+38 specs create checks — through the new-check form (`check-submit-button`) **or** through
+`page.request.post(…/checks)`. Censusing only the form submitters is how a first pass
+undercounted this; the API creators are the ones easiest to miss, and several of them are
+the busiest. The relevant fact is that an auto-slug is derived from the target
+**hostname only** (path, query and check name are all discarded), so:
 
-- **18 specs all resolve the same base slug `http-example-com`** in org `test` —
+- **23 specs resolve the same base slug `http-example-com`** in org `test` —
   availability, check-chart-point-preview, check-chart-zoom, check-dependencies,
   check-detail, check-edit-period-persistence, check-form-progressive-disclosure,
-  check-groups, check-http-basic-auth, check-http-expected-status-codes,
-  check-http-verify-ssl-follow-redirects, check-region-spread,
-  check-result-detail-navigation, checks, command-menu, duty-cycle-warning,
-  escalation-assignment (API), integrations (API). Two more share `http-httpbin-org`
-  (check-labels, checks), and `checks.spec.ts`'s three heartbeat checks share the
-  constant slug `heartbeat`. Every one of them was exposed to the same race and every one
-  is fixed server-side by this change — **no client-side edit is needed**.
-- `dns-check.spec.ts` is the only spec that pins an explicit `check-slug-input`, stamped
-  with `Date.now()`. It was never exposed.
+  check-group-escalation, check-groups, check-http-basic-auth,
+  check-http-expected-status-codes, check-http-verify-ssl-follow-redirects,
+  check-region-spread, check-result-detail-navigation, checks-request-fanout,
+  checks-search-url-param, checks, command-menu, dashboard, duty-cycle-warning,
+  escalation-assignment, incident-notifications, integrations. Three more share
+  `http-httpbin-org` (badges, check-labels, checks) and three share the constant slug
+  `heartbeat` (checks, live-updates, live-updates-handshake). Every one of them was
+  exposed to the same race and every one is fixed server-side by this change — **no
+  client-side edit is needed**.
+- Three specs pin an explicit `check-slug-input` / `slug` on every create they complete,
+  each stamped with `Date.now()`, so none was ever exposed: `dns-check`,
+  `check-incidents-slug`, `check-live-subscription-slug`. Two more are mixed —
+  `check-ssh-tunnel` and `check-smtp-send-mode` pin a slug on their API creates but not on
+  their one form create. `check-form-progressive-disclosure` also fills
+  `check-slug-input`, but only with `"ab"` in a validation test that is blocked before it
+  ever creates anything; its *other* test creates with no slug, which is why it is in the
+  `http-example-com` list above.
 - The rest use file-local hostnames (`acme.com`, `example-domain-*.test`,
-  `app.example.test`, `ssh.internal.example`, …) so they only ever raced themselves.
+  `app.example.test`, `ssh.internal.example`, `mail.e2e-test.invalid`, …) so they only
+  ever raced themselves.
+- Two candidates create no check at all and are excluded from the census:
+  `account-organizations-create` (creates organizations; only GETs `/checks`) and
+  `entitlements-usage` (its single POST is asserted to return 402 `QUOTA_EXCEEDED`).
 
 **One genuinely misleading helper was corrected** (comment only): `checks.spec.ts` built
 `https://httpbin.org/anything/${timestamp}-${random}` under the comment *"Generate a
 unique check name and URL to avoid slug conflicts"*. The path is discarded when the slug
 is derived, so that comment taught the opposite of the truth; the same false assumption
-is repeated in check-dependencies, check-groups, check-labels and integrations. Nothing
+is repeated in check-dependencies, check-groups, check-labels, check-group-escalation,
+checks-request-fanout, checks-search-url-param and integrations. Nothing
 else in those files needs to change — an auto-slug colliding is now the server's problem,
 which is the whole point of fixing it at the source.
 
