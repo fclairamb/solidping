@@ -69,5 +69,6 @@
     "minor": "Mineur",
     "major": "Majeur",
     "critical": "Critique"
-  }
+  },
+  "resourceAffected": "Impacté"
 }

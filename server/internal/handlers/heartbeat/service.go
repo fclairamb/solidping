@@ -107,11 +107,27 @@ type Service struct {
 
 // NewService creates a new heartbeat service. rt may be nil (realtime
 // disabled) — hint publishing is a nil-safe no-op then.
-func NewService(dbService db.Service, jobSvc jobsvc.Service, rt *realtime.Publisher) *Service {
+//
+// publicationHook is the status-page publication side (spec 2026-08-19-08) and
+// may be nil. It is a REQUIRED PARAMETER rather than a setter on purpose: a
+// heartbeat ping opens and resolves incidents exactly like a probe result
+// does, so an instance without the hook silently never auto-publishes anything
+// — a gap that is invisible until someone notices their heartbeat outage never
+// reached the status page. Making it part of the signature means a new call
+// site has to make a deliberate choice instead of inheriting the bug.
+func NewService(
+	dbService db.Service, jobSvc jobsvc.Service, realtimePublisher *realtime.Publisher,
+	publicationHook incidents.PublicationHook,
+) *Service {
+	incidentSvc := incidents.NewService(dbService, jobSvc, clock.Real{}, realtimePublisher)
+	if publicationHook != nil {
+		incidentSvc.SetPublicationHook(publicationHook)
+	}
+
 	return &Service{
 		db:          dbService,
-		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}, rt),
-		rt:          rt,
+		incidentSvc: incidentSvc,
+		rt:          realtimePublisher,
 	}
 }
 

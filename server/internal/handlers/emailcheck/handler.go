@@ -79,14 +79,25 @@ type Handler struct {
 
 // NewHandler builds a handler wired to the db service and incident pipeline.
 // rt may be nil (realtime disabled) — hint publishing is a nil-safe no-op then.
-func NewHandler(dbService db.Service, jobSvc jobsvc.Service, rtPub *realtime.Publisher, logger *slog.Logger) *Handler {
+//
+// publicationHook may be nil; see heartbeat.NewService for why it is a
+// parameter rather than a setter.
+func NewHandler(
+	dbService db.Service, jobSvc jobsvc.Service, rtPub *realtime.Publisher,
+	publicationHook incidents.PublicationHook, logger *slog.Logger,
+) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
+	incidentSvc := incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub)
+	if publicationHook != nil {
+		incidentSvc.SetPublicationHook(publicationHook)
+	}
+
 	return &Handler{
 		db:          dbService,
-		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
+		incidentSvc: incidentSvc,
 		logger:      logger,
 	}
 }

@@ -42,7 +42,7 @@ func newHeartbeatHandlerSetup(t *testing.T) *heartbeatHandlerSetup {
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
-	svc := heartbeat.NewService(dbSvc, jobs, nil)
+	svc := heartbeat.NewService(dbSvc, jobs, nil, nil)
 	handler := heartbeat.NewHandler(svc, &config.Config{})
 
 	org := models.NewOrganization("hb-handler-test", "Heartbeat Handler Test")

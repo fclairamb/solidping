@@ -69,5 +69,6 @@
     "minor": "Gering",
     "major": "Erheblich",
     "critical": "Kritisch"
-  }
+  },
+  "resourceAffected": "Betroffen"
 }

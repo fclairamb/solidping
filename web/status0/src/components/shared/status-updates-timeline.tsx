@@ -64,6 +64,31 @@ function buildTimeline(updates: StatusUpdatePublicResponse[]): TimelineEntry[] {
   return entries;
 }
 
+/**
+ * The vertical list of update cards that makes up one incident's narrative.
+ *
+ * Extracted so the incident-publication cards render their updates through the
+ * SAME component (and therefore the same hardened Markdown renderer inside
+ * StatusUpdateCard) as the standalone timeline. A second copy of that renderer
+ * would drift, and the markdown hardening in particular — skipHtml plus the
+ * link-scheme allowlist — must exist in exactly one place.
+ */
+export function StatusUpdateThreadList({
+  updates,
+}: {
+  updates: StatusUpdatePublicResponse[];
+}) {
+  return (
+    <div className="divide-y divide-border">
+      {updates.map((update) => (
+        <div key={update.uid} className="p-4">
+          <StatusUpdateCard update={update} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface StatusUpdatesTimelineProps {
   updates: StatusUpdatePublicResponse[];
 }
@@ -93,13 +118,7 @@ export function StatusUpdatesTimeline({ updates }: StatusUpdatesTimelineProps) {
                   Incident thread
                 </span>
               </div>
-              <div className="divide-y divide-border">
-                {threadUpdates.map((u) => (
-                  <div key={u.uid} className="p-4">
-                    <StatusUpdateCard update={u} />
-                  </div>
-                ))}
-              </div>
+              <StatusUpdateThreadList updates={threadUpdates} />
             </section>
           );
         }

@@ -184,6 +184,14 @@ func (s *Service) CountIncidentPublicationsForIncident(ctx context.Context, inci
 
 // ListStatusPageTargetsForCheck returns every live status-page resource that
 // displays the check — directly, or through the check's group.
+//
+// Written as raw SQL rather than through the query builder: this is a
+// three-table join with no bun model behind it — the result set is a
+// projection, not a row of any one table — so the Model-less
+// TableExpr/ColumnExpr/Join form buys nothing but indirection over the join
+// this actually is. `ListPublicStatusUpdates` is written the same way for the
+// same reason. Placeholders are bun's `?`, never Postgres `$1`: bun formats
+// the query itself and only substitutes `?`.
 func (s *Service) ListStatusPageTargetsForCheck(
 	ctx context.Context, checkUID string, checkGroupUID *string,
 ) ([]*db.StatusPageTarget, error) {
@@ -196,28 +204,32 @@ func (s *Service) ListStatusPageTargetsForCheck(
 		GroupUID    *string `bun:"check_group_uid"`
 	}
 
+	const baseQuery = `SELECT sec.status_page_uid AS page_uid,
+		        r.section_uid   AS section_uid,
+		        r.uid           AS resource_uid,
+		        r.auto_publish  AS auto_publish,
+		        r.public_name   AS public_name,
+		        r.check_group_uid AS check_group_uid
+		 FROM status_page_resources r
+		 JOIN status_page_sections sec ON sec.uid = r.section_uid
+		 JOIN status_pages p ON p.uid = sec.status_page_uid
+		 WHERE sec.deleted_at IS NULL
+		   AND p.deleted_at IS NULL
+		   AND `
+
 	var rows []row
 
-	query := s.db.NewSelect().
-		TableExpr("status_page_resources AS r").
-		ColumnExpr("sec.status_page_uid AS page_uid").
-		ColumnExpr("r.section_uid AS section_uid").
-		ColumnExpr("r.uid AS resource_uid").
-		ColumnExpr("r.auto_publish AS auto_publish").
-		ColumnExpr("r.public_name AS public_name").
-		ColumnExpr("r.check_group_uid AS check_group_uid").
-		Join("JOIN status_page_sections AS sec ON sec.uid = r.section_uid").
-		Join("JOIN status_pages AS p ON p.uid = sec.status_page_uid").
-		Where("sec.deleted_at IS NULL").
-		Where("p.deleted_at IS NULL")
+	var err error
 
 	if checkGroupUID != nil && *checkGroupUID != "" {
-		query = query.Where("r.check_uid = ? OR r.check_group_uid = ?", checkUID, *checkGroupUID)
+		err = s.db.NewRaw(
+			baseQuery+"(r.check_uid = ? OR r.check_group_uid = ?)", checkUID, *checkGroupUID,
+		).Scan(ctx, &rows)
 	} else {
-		query = query.Where("r.check_uid = ?", checkUID)
+		err = s.db.NewRaw(baseQuery+"r.check_uid = ?", checkUID).Scan(ctx, &rows)
 	}
 
-	if err := query.Scan(ctx, &rows); err != nil {
+	if err != nil {
 		return nil, err
 	}
 

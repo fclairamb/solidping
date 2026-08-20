@@ -1170,3 +1170,48 @@ func TestGroupMemberNoteNeverNamesAnUndisplayedCheck(t *testing.T) {
 	r.Len(s.updateKinds(pubs[0]), baseline,
 		"a member that is not a public component on the page is never named")
 }
+
+// TestZeroPublishDelaySurvivesTheWrite is a regression pin for a bug that made
+// the documented "publish immediately" setting unreachable through the API.
+//
+// bun omits a ZERO-valued field from an INSERT when its struct tag declares a
+// `default:`. With `default:60` on auto_publish_delay_seconds, an operator
+// asking for 0 had their choice dropped before it reached the database and the
+// column landed on 60 — a silent one-minute delay on a page configured for
+// none. The tag carries no default now; this test fails if it comes back.
+func TestZeroPublishDelaySurvivesTheWrite(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("acme", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	page := models.NewStatusPage(org.UID, "Acme status", "public")
+	page.AutoPublishDelaySeconds = 0
+	r.NoError(dbSvc.CreateStatusPage(ctx, page))
+
+	stored, err := dbSvc.GetStatusPage(ctx, org.UID, page.UID)
+	r.NoError(err)
+	r.Zero(stored.AutoPublishDelaySeconds,
+		"a deliberate zero delay must reach the database, not fall back to the column default")
+
+	// And it round-trips through an UPDATE too.
+	sixty := 60
+	r.NoError(dbSvc.UpdateStatusPage(ctx, page.UID,
+		&models.StatusPageUpdate{AutoPublishDelaySeconds: &sixty}))
+
+	zero := 0
+	r.NoError(dbSvc.UpdateStatusPage(ctx, page.UID,
+		&models.StatusPageUpdate{AutoPublishDelaySeconds: &zero}))
+
+	stored, err = dbSvc.GetStatusPage(ctx, org.UID, page.UID)
+	r.NoError(err)
+	r.Zero(stored.AutoPublishDelaySeconds)
+}

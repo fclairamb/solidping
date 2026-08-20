@@ -35,6 +35,17 @@ func (s *Service) OnIncidentOpened(ctx context.Context, incident *models.Inciden
 	pages := s.eligiblePages(ctx, incident)
 	now := s.clock.Now()
 
+	if len(pages) == 0 {
+		// Worth a line: "my outage never reached the status page" is the single
+		// most likely support question this feature will generate, and the
+		// answer is almost always one of the policy skips.
+		s.logger.DebugContext(ctx, "auto-publish: no eligible status pages for incident",
+			"incidentUid", incident.UID, "checkUid", incident.CheckUID,
+			"pagingSuppressed", incident.PagingSuppressed)
+
+		return
+	}
+
 	for _, target := range pages {
 		delay := time.Duration(target.page.AutoPublishDelaySeconds) * time.Second
 

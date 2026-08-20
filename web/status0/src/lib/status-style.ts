@@ -63,9 +63,11 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: NEUTRAL_CHART,
         badgeVariant: "success",
         labelKey: "operational",
-        bannerSurface: "border-status-ok/25 bg-gradient-to-r from-status-ok/[0.10] via-status-ok/[0.04] to-transparent",
+        bannerSurface:
+          "border-status-ok/25 bg-gradient-to-r from-status-ok/[0.10] via-status-ok/[0.04] to-transparent",
         bannerTitle: "text-status-ok-foreground",
-        bannerPill: "border-status-ok/25 bg-status-ok/10 text-status-ok-foreground",
+        bannerPill:
+          "border-status-ok/25 bg-status-ok/10 text-status-ok-foreground",
         isDown: false,
       };
     case "warning":
@@ -75,9 +77,11 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "warning",
-        bannerSurface: "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
+        bannerSurface:
+          "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
         bannerTitle: "text-status-warning-foreground",
-        bannerPill: "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
+        bannerPill:
+          "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
         isDown: false,
       };
     case "degraded":
@@ -87,9 +91,11 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "degraded",
-        bannerSurface: "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
+        bannerSurface:
+          "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
         bannerTitle: "text-status-warning-foreground",
-        bannerPill: "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
+        bannerPill:
+          "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
         isDown: false,
       };
     case "abandoned":
@@ -116,9 +122,11 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: DOWN_CHART,
         badgeVariant: "destructive",
         labelKey: "outage",
-        bannerSurface: "border-status-error/30 bg-gradient-to-r from-status-error/[0.12] via-status-error/[0.05] to-transparent",
+        bannerSurface:
+          "border-status-error/30 bg-gradient-to-r from-status-error/[0.12] via-status-error/[0.05] to-transparent",
         bannerTitle: "text-status-error-foreground",
-        bannerPill: "border-status-error/30 bg-status-error/15 text-status-error-foreground",
+        bannerPill:
+          "border-status-error/30 bg-status-error/15 text-status-error-foreground",
         isDown: true,
       };
     // Page-level rollup only (spec 2026-08-08-05) — no individual check ever
@@ -133,7 +141,8 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: NEUTRAL_CHART,
         badgeVariant: "info",
         labelKey: "underMaintenance",
-        bannerSurface: "border-primary/25 bg-gradient-to-r from-primary/[0.10] via-primary/[0.04] to-transparent",
+        bannerSurface:
+          "border-primary/25 bg-gradient-to-r from-primary/[0.10] via-primary/[0.04] to-transparent",
         bannerTitle: "text-primary",
         bannerPill: "border-primary/25 bg-primary/10 text-primary",
         isDown: false,
@@ -150,10 +159,115 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: NEUTRAL_CHART,
         badgeVariant: "secondary",
         labelKey: "unknown",
-        bannerSurface: "border-border bg-gradient-to-r from-muted/60 via-muted/25 to-transparent",
+        bannerSurface:
+          "border-border bg-gradient-to-r from-muted/60 via-muted/25 to-transparent",
         bannerTitle: "text-foreground",
         bannerPill: "border-border bg-muted text-muted-foreground",
         isDown: false,
       };
   }
+}
+
+// --- Incident publication severity (spec 2026-08-19-08) ----------------------
+
+/**
+ * Visual treatment for an incident publication's severity badge.
+ *
+ * This is the SINGLE source of truth for severity colour, for the same reason
+ * statusStyle() is for status colour: the top banner, the incident cards and
+ * the per-resource "affected" badge must agree, and three ad-hoc palettes on
+ * one page defeat a reader's ability to judge severity from colour alone.
+ *
+ * It deliberately reuses the existing status-* design tokens rather than
+ * introducing a fourth colour ramp — minor reads like a warning, major and
+ * critical like a failure, with critical carrying the heavier fill.
+ */
+export interface SeverityStyle {
+  /** Card surface for one incident entry. */
+  cardSurface: string;
+  /** Banner classes, matching StatusStyle's three banner fields. */
+  bannerSurface: string;
+  bannerTitle: string;
+  bannerPill: string;
+  badgeVariant: BadgeVariant;
+  /** i18n key under `incidentSeverity`. */
+  labelKey: string;
+}
+
+const SEVERITY_STYLES: Record<string, SeverityStyle> = {
+  minor: {
+    cardSurface: "border-status-warning/30 bg-status-warning/[0.07]",
+    bannerSurface:
+      "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
+    bannerTitle: "text-status-warning-foreground",
+    bannerPill:
+      "border-status-warning/30 bg-status-warning/15 text-status-warning-foreground",
+    badgeVariant: "warning",
+    labelKey: "incidentSeverity.minor",
+  },
+  major: {
+    cardSurface: "border-status-error/25 bg-status-error/[0.06]",
+    bannerSurface:
+      "border-status-error/25 bg-gradient-to-r from-status-error/[0.10] via-status-error/[0.04] to-transparent",
+    bannerTitle: "text-status-error-foreground",
+    bannerPill:
+      "border-status-error/25 bg-status-error/10 text-status-error-foreground",
+    badgeVariant: "destructive",
+    labelKey: "incidentSeverity.major",
+  },
+  critical: {
+    cardSurface: "border-status-error/45 bg-status-error/[0.12]",
+    bannerSurface:
+      "border-status-error/45 bg-gradient-to-r from-status-error/[0.18] via-status-error/[0.08] to-transparent",
+    bannerTitle: "text-status-error-foreground",
+    bannerPill:
+      "border-status-error/45 bg-status-error/20 text-status-error-foreground",
+    badgeVariant: "destructive",
+    labelKey: "incidentSeverity.critical",
+  },
+};
+
+/**
+ * Returns the treatment for a severity, or null when the operator graded the
+ * incident with none. Null is meaningful and must not be defaulted: guessing a
+ * severity would put words in the operator's mouth, so an ungraded incident
+ * renders neutral and leaves the banner on its rollup colour.
+ */
+export function severityStyle(
+  severity: string | undefined | null,
+): SeverityStyle | null {
+  if (!severity) return null;
+
+  return SEVERITY_STYLES[severity] ?? null;
+}
+
+// SEVERITY_RANK orders severities so a page with several open incidents can
+// colour its banner by the WORST one. Anything ungraded ranks below every
+// graded severity.
+const SEVERITY_RANK: Record<string, number> = {
+  minor: 1,
+  major: 2,
+  critical: 3,
+};
+
+/**
+ * Returns the highest-ranked severity among the given incidents, or null when
+ * none of them carries one.
+ */
+export function highestSeverity(
+  severities: (string | undefined)[],
+): string | null {
+  let best: string | null = null;
+  let bestRank = 0;
+
+  for (const severity of severities) {
+    if (!severity) continue;
+    const rank = SEVERITY_RANK[severity] ?? 0;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = severity;
+    }
+  }
+
+  return best;
 }

@@ -70,9 +70,16 @@ type StatusPage struct {
 	// opt in through NewStatusPage instead (spec 2026-08-19-08).
 	AutoPublish bool `bun:"auto_publish,notnull,default:false"`
 	// AutoPublishDelaySeconds debounces publication: an incident must still be
-	// open this long after it opened before customers hear about it. 0 is
-	// legal and means "publish immediately".
-	AutoPublishDelaySeconds int `bun:"auto_publish_delay_seconds,notnull,default:60"`
+	// open this long after it opened before customers hear about it.
+	//
+	// 0 is legal and means "publish immediately", which is why the bun tag
+	// carries NO `default:` clause even though the column has one. bun omits a
+	// zero-valued field from an INSERT when the tag declares a default, so
+	// `default:60` here would silently turn an operator's deliberate "publish
+	// immediately" into a one-minute delay — the value would never reach the
+	// database at all. The DDL default still applies to rows inserted outside
+	// the application (an upgraded installation's existing pages).
+	AutoPublishDelaySeconds int `bun:"auto_publish_delay_seconds,notnull"`
 	// AutoResolve decides what an auto-created publication does when its
 	// incident resolves: always | if_untouched | never.
 	AutoResolve string `bun:"auto_resolve,notnull,default:'if_untouched'"`

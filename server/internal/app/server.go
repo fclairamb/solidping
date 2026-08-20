@@ -986,8 +986,26 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	badgesHandler := badges.NewHandler(badgesService, s.config)
 	publicOrgAPI.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
+	// The status-page publication overlay (spec 2026-08-19-08) is built HERE,
+	// ahead of every incidents.Service, because there are several of them —
+	// the main one, the agent-workers one, heartbeat and email checks — and
+	// each is a path real results arrive on. An instance without the hook
+	// silently never auto-publishes, which is invisible until someone notices
+	// their outage never reached the status page. One instance, wired into all
+	// of them, is the only arrangement where that cannot happen by omission.
+	statusSubscriberNotifier := statussubscribers.NewNotifier(
+		s.dbService, s.services.EmailSender, s.services.EmailFormatter,
+		s.config.Server.BaseURL, slog.Default())
+
+	incidentPublicationsService := incidentpublications.NewService(
+		s.dbService, s.services.Clock, s.services.Realtime)
+	incidentPublicationsService.SetSubscriberNotifier(statusSubscriberNotifier)
+	incidentPublicationsService.SetJobsService(s.services.Jobs)
+	incidentPublicationsService.SetScheduler(jobtypes.NewIncidentPublishScheduler(s.services.Jobs))
+
 	// Heartbeat ingestion routes (public, token-based auth)
-	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc, s.services.Realtime)
+	heartbeatService := heartbeat.NewService(
+		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
 	publicOrgAPI.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	publicOrgAPI.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
@@ -1024,10 +1042,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// signed headers on every reconnect. The claim/submit service logic is the
 	// same code the historical HTTP worker API used; incidents always process
 	// server-side.
+	// Deported agents submit their results through this service, so its
+	// incident pipeline needs the publication hook just as much as the
+	// in-process one does.
+	agentWorkerIncidents := incidents.NewService(
+		s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
+	agentWorkerIncidents.SetPublicationHook(incidentPublicationsService)
+
 	agentWorkersSvc := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
+		agentWorkerIncidents,
 		scheduling.ParamsFromConfig(s.config.Server.Scheduling),
 	)
 	agentWSHandler := agentws.NewHandler(
@@ -1060,6 +1085,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
+	incidentsService.SetPublicationHook(incidentPublicationsService)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := orgGroup("/orgs/:org/incidents")
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -1275,7 +1301,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// The supervisor is started from Server.Start() once we have a real
 	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
-	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, s.services.Realtime, slog.Default()))
+	s.jmapManager.RegisterHandler(emailcheck.NewHandler(
+		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService, slog.Default()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	systemHandler := system.NewHandler(systemService, s.config)
@@ -1407,9 +1434,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
 	// Fan published status updates out to confirmed status-page subscribers by
-	// email. The notifier runs detached (fire-and-forget) inside the service.
-	statusSubscriberNotifier := statussubscribers.NewNotifier(
-		s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config.Server.BaseURL, slog.Default())
+	// email. The notifier runs detached (fire-and-forget) inside the service;
+	// it is the same instance the publication overlay uses, built above.
 	statusUpdatesService.SetSubscriberNotifier(statusSubscriberNotifier)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
 	orgStatusUpdates := orgGroup("/orgs/:org/status-updates")
@@ -1419,16 +1445,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusUpdates.PATCH("/:uid", statusUpdatesHandler.UpdateStatusUpdate)
 	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
-	// Incident publications — the status-page publication overlay (spec
-	// 2026-08-19-08). Built before the status-page service so it can be wired
-	// into the public view, and before the incident service picks up its hook.
-	incidentPublicationsService := incidentpublications.NewService(
-		s.dbService, s.services.Clock, s.services.Realtime)
-	incidentPublicationsService.SetSubscriberNotifier(statusSubscriberNotifier)
-	incidentPublicationsService.SetJobsService(s.services.Jobs)
-	incidentPublicationsService.SetScheduler(jobtypes.NewIncidentPublishScheduler(s.services.Jobs))
+	// The publication service itself was built far earlier (see the comment
+	// there): every incidents.Service in this file shares that one instance.
 	incidentPublicationsHandler := incidentpublications.NewHandler(incidentPublicationsService, s.config)
-	incidentsService.SetPublicationHook(incidentPublicationsService)
 
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
