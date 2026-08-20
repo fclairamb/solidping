@@ -208,3 +208,95 @@ Sibling of the WS route (`api.GET("/agent/ws", ...)`,
 - Never-public audit extended to attachments.
 - E2E (dash0): incident with a seeded screenshot attachment renders the image
   with timestamp + region caption.
+
+## Implementation Plan
+
+Ordered so every step lands on a green tree. Steps 1–2 are the generic rail;
+3–5 are the screenshot consumer; 6–7 are the agent + GC halves; 8 is the UI.
+
+### Step 1 — Schema + model + db layer (`files.topic`, `files.details`)
+
+- New `SECTION: generic-attachments` appended to `014_v0_17_0.up.sql` in BOTH
+  dialects, with the mirrored teardown prepended (reverse order) to both
+  `.down.sql` files. `topic` TEXT NULL, `details` jsonb/TEXT NULL, partial
+  index `files_org_topic_idx (organization_uid, topic)
+  WHERE deleted_at IS NULL AND topic IS NOT NULL`.
+- `models.File`: `Topic *string`, `Details JSONMap` (`type:jsonb,nullzero`),
+  `ListFilesFilter.Topic` / `.TopicPrefix`.
+- `db.Service`: `ListFilesByTopic(ctx, orgUID, topic)`,
+  `DeleteFilesByTopicPrefix(ctx, orgUID, prefix) (int, error)`, and
+  `ListOrphanIncidentAttachments(ctx, olderThan, limit)` for the GC sweep —
+  implemented in both `postgres.go` and `sqlite.go`.
+
+### Step 2 — `files.Service` attachment API
+
+- `CreateFile` grows a variadic `...CreateFileOption` tail (`WithTopic`,
+  `WithDetails`) so the two existing callers (feedback, org logos) are
+  untouched.
+- `ListAttachments(ctx, orgUID, topic)` (newest first),
+  `DeleteAttachments(ctx, orgUID, topicPrefix) (int, error)`.
+- `FileResponse` gains `topic` / `details` (camelCase, `omitempty`).
+
+### Step 3 — `Diagnostics.Screenshot` + browser capture
+
+- `checkerdef.Screenshot{PNG []byte `json:"-"`, CapturedAt, Width, Height}`
+  hung on `Diagnostics.Screenshot`. The BYTES field is `json:"-"` so the agent
+  WS result frame can never carry them; `FailureResponse` stays serialized as
+  the positive control.
+- `BrowserConfig.Screenshot bool` (`screenshot`, default false), round-tripped
+  through `FromMap`/`GetConfig`.
+- `checkbrowser`: on a FAILING outcome with the flag set, `chromedp.FullScreenshot`
+  into a buffer before the browser context is disposed, time-boxed
+  (`screenshotTimeout`), capped at `MaxScreenshotBytes` (4 MiB) — over-cap or
+  errored capture is logged and dropped, never changes the status.
+
+### Step 4 — Incident persistence on transitions only
+
+- `incidents.AttachmentStore` (small interface, mirrors `PublicationHook`) with
+  `CreateAttachment` / `DeleteAttachments`; wired in `server.go` from the files
+  service via an adapter. Nil-safe.
+- `createIncident`: after the row is created, persist the screenshot under
+  topic `incidents/<uid>/screenshot`.
+- `reopenIncident`: soft-delete `incidents/<uid>/` first, then persist the new
+  onset's capture (mirrors the `failureResponse` overwrite rule). No capture on
+  the relapse ⇒ the stale one is still dropped.
+- Every non-transition failing run drops its capture on the floor.
+
+### Step 5 — Incident API + never-public audit
+
+- `IncidentResponse.Attachments []IncidentAttachment` (uid, kind, name,
+  mimeType, size, capturedAt, region, downloadUrl — signed via `signedurl`).
+  Populated by `GetIncident` only (not the list endpoint).
+- `openapi.yaml` + `make generate`.
+- `details_never_public_test.go`: forbid `attachments`, `downloadurl`,
+  `screenshot` as public field names, and add a value-level control.
+
+### Step 6 — `POST /api/v1/agent/attachments`
+
+- Sibling of `api.GET("/agent/ws", …)`, same Ed25519 signed-header auth
+  (`agentcrypto.VerifySignature`, ±5 min skew, DB-backed nonce replay guard).
+- Raw body, `image/png` only (magic-byte sniff), `topic` + `kind` from query,
+  per-file cap, per-agent rate limit.
+- `attachtopics` — a topic-prefix → authorizer registry. The
+  `incidents/<uid>/` authorizer resolves the incident, requires it to belong to
+  the agent's org, and requires the incident's check to be served by a region
+  this agent serves. Org NEVER comes from the request.
+- Response `{"fileUid": "..."}`.
+- **Escape hatch (spec §6):** the WS upload-request frame + agent-side LRU are
+  DEFERRED to a follow-up spec; the endpoint + authorizer land here with direct
+  tests, and a follow-up spec file is created in `specs/todos/`.
+
+### Step 7 — GC
+
+- `DeleteAttachments` is the reaper primitive.
+- The periodic state-cleanup job gains an attachment sweep: attachment rows
+  whose `incidents/<uid>/…` topic points at an incident that no longer exists
+  (and which are older than a grace window) are soft-deleted.
+
+### Step 8 — dash0 + E2E
+
+- `IncidentAttachment` type in `api/hooks.ts`; `IncidentScreenshotCard`
+  rendered next to `ProbeResponseCard`, caption = captured-at + region,
+  labelled "shortly after failure detection". Responsive, i18n in all four
+  locales.
+- Playwright spec in `web/dash0/e2e/` asserting the image + caption render.
