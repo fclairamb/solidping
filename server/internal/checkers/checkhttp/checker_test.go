@@ -1746,7 +1746,7 @@ func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T)
 			body:                bodyDegraded,
 			mutate:              func(cfg *HTTPConfig) { cfg.JSONPathAssertions = jsonPathStatusIsOK() },
 			wantStatus:          checkerdef.StatusDown,
-			wantError:           "JSON assertion failed",
+			wantError:           errJSONAssertionFailed,
 			wantAssertionDetail: true,
 		},
 		{
@@ -1778,7 +1778,7 @@ func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T)
 				cfg.JSONPathAssertions = jsonPathStatusIsOK()
 			},
 			wantStatus:          checkerdef.StatusDown,
-			wantError:           "JSON assertion failed",
+			wantError:           errJSONAssertionFailed,
 			wantAssertionDetail: true,
 		},
 		{

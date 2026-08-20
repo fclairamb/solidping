@@ -64,6 +64,12 @@ const (
 	maxRedirects  = 10                          // Maximum number of HTTP redirects to follow
 	maxBodySizeMB = 10                          // Maximum response body size in MB
 	maxBodySize   = maxBodySizeMB * 1024 * 1024 // Maximum response body size in bytes
+
+	// errJSONAssertionFailed is the output message for a violated
+	// `json_path_assertions` tree; the tree itself rides along under the
+	// "json_path_assertions" output key. Named so tests assert the same
+	// string the checker emits.
+	errJSONAssertionFailed = "JSON assertion failed"
 )
 
 // HTTPChecker implements the Checker interface for HTTP checks.
@@ -562,7 +568,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		assertionResult := cfg.JSONPathAssertions.Evaluate(jsonData)
 		if !assertionResult.Pass {
 			return failed(map[string]any{
-				checkerdef.OutputKeyError:      "JSON assertion failed",
+				checkerdef.OutputKeyError:      errJSONAssertionFailed,
 				checkerdef.OutputKeyURL:        cfg.URL,
 				checkerdef.OutputKeyStatusCode: resp.StatusCode,
 				checkerdef.OutputKeyMethod:     method,
