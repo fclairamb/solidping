@@ -1601,6 +1601,8 @@ func Load() (*Config, error) {
 		cfg.Database.Type = DatabaseTypeSQLiteMemory
 	}
 
+	applySentryEnvironmentDefault(&cfg)
+
 	// Manually read SP_DB_RESET for database reset on startup
 	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == envTrue || dbReset == "1" {
 		cfg.Database.Reset = true
@@ -2184,6 +2186,39 @@ func applyPostHogEnv(cfg *PostHogConfig) {
 	if v := os.Getenv("SP_POSTHOG_PERSONAL_API_KEY"); v != "" {
 		cfg.PersonalAPIKey = strings.TrimSpace(v)
 	}
+}
+
+// Sentry environment defaults. An operator who sets only SP_SENTRY_DSN used to
+// get events with an empty `environment`, which makes the Sentry UI unable to
+// separate a developer's laptop from production — the one split that matters
+// there. Deriving it from the run mode means no event is ever
+// environment-less.
+const (
+	runModeTest = "test"
+
+	// SentryEnvironmentTest is the default Sentry environment under
+	// SP_RUN_MODE=test.
+	SentryEnvironmentTest = "test"
+	// SentryEnvironmentProduction is the default Sentry environment otherwise.
+	SentryEnvironmentProduction = "production"
+)
+
+// applySentryEnvironmentDefault fills sentry.environment when the operator left
+// it unset. Explicit configuration always wins: this runs after config.yml and
+// the SP_SENTRY_ENVIRONMENT env binding have both been folded in, and only
+// assigns to an empty value.
+func applySentryEnvironmentDefault(cfg *Config) {
+	if cfg.Sentry.Environment != "" {
+		return
+	}
+
+	if cfg.RunMode == runModeTest {
+		cfg.Sentry.Environment = SentryEnvironmentTest
+
+		return
+	}
+
+	cfg.Sentry.Environment = SentryEnvironmentProduction
 }
 
 // applySentryEnv reads SP_SENTRY_* into cfg. sentry.dsn / sentry.environment /

@@ -64,7 +64,9 @@ SolidPing supports Sentry for error tracking and performance monitoring. Set a D
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_SENTRY_DSN` | - | Sentry DSN (empty = disabled) |
-| `SP_SENTRY_ENVIRONMENT` | - | Environment name (`development`, `staging`, `production`) |
+| `SP_SENTRY_ENVIRONMENT` | `production` (`test` under `SP_RUN_MODE=test`) | Environment name (`development`, `staging`, `production`) |
+
+Leaving `SP_SENTRY_ENVIRONMENT` unset never produces environment-less events: it defaults to `production`, or to `test` when the server runs with `SP_RUN_MODE=test`. Set it explicitly to distinguish staging from production.
 
 ```bash
 SP_SENTRY_DSN=https://your-key@sentry.io/your-project
