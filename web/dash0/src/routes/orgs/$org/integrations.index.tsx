@@ -168,12 +168,6 @@ function IntegrationsListPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Where this org's SMS actually comes from. Rendered above the list in
-          BOTH states: on an empty list it is the only thing that can tell an
-          admin "SMS already works, the server provides it" apart from "SMS is
-          not configured at all". */}
-      <SMSModePanel org={org} integrations={integrations} isLoading={isLoading} />
-
       {showEmptyState ? (
         <EmptyState org={org} />
       ) : (
@@ -236,6 +230,13 @@ function IntegrationsListPage() {
           </div>
         </>
       )}
+
+      {/* Where this org's SMS actually comes from. Rendered last in BOTH
+          states, collapsed by default: it's a contextual explainer an admin
+          reads once, not primary page content — the collapsed header still
+          carries the mode badge, so "SMS already works, the server provides
+          it" stays visible apart from "SMS is not configured at all". */}
+      <SMSModePanel org={org} integrations={integrations} isLoading={isLoading} />
     </div>
   );
 }
