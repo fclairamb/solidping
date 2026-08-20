@@ -117,3 +117,40 @@ true after this fix).
 - **Notice/migration mechanism:** moot — the outright path was chosen.
 - **Production blast-radius numbers:** confirmed not obtainable from this environment;
   deliver the SQL plus the dev-DB result (0 rows) and note the gap in the final report.
+
+## Implementation Plan
+
+1. **Prove the bug test-first.** New `TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers`
+   in `server/internal/checkers/checkhttp/checker_test.go`, committed *first* asserting the
+   CURRENT (buggy) behavior — an HTTP check with only `json_path_assertions` against a 200
+   whose JSON violates them reports **UP** — so the history shows the bug reproduced before
+   the fix. Companion cases in the same test, unchanged by the fix: response that satisfies
+   the assertions stays UP (positive control), and `json_path_assertions` + `body_expect`
+   already reports DOWN both before and after.
+2. **The fix.** Add `cfg.JSONPathAssertions != nil` to `bodyDrivesAssertions`
+   (`checker.go:365-366`) — a nil check, `JSONPathAssertions` is a `*AssertionNode`. Rewrite
+   the stale deferral comment at `checker.go:357-361` to say what the gate now covers and why
+   `respBody` stays the single verdict-bearing value. Flip the test expectations to DOWN in
+   the same commit, and flip the one pre-existing assertion that pinned the bug on purpose:
+   `TestCaptureIsVerdictInertForJSONPathOnlyChecks` (`capture_test.go:597`) asserted
+   `StatusUp` "pre-existing behavior preserved" — its load-bearing property is the *equality*
+   between capture-off and capture-on, which survives; only the pinned value moves.
+   Commit body carries the behavior-change callout for the release notes.
+3. **Capture inertness stays true.** No change to the capture path: `buildFailureCapture`
+   keeps reading `bodyBytes`, never `respBody`. The read gate is `bodyDrivesAssertions ||
+   cfg.CaptureFailureResponse`, and `respBody` is still populated *only* when
+   `bodyDrivesAssertions` — so toggling `capture_failure_response` still cannot start or stop
+   an assertion. `TestCaptureIsVerdictInertForJSONPathOnlyChecks` /
+   `TestCaptureIsVerdictInertAcrossConfigurations` remain the proof.
+4. **Blast radius.** Run the count + per-org listing SQL against the local dev DB and put
+   both the SQL and the result in the final report for the operator to re-run against
+   solidping.k8xp.com and production.
+5. **Docs.** Note in `wiki/conventions/checker-config.md` that `json_path_assertions` now
+   drives the body read on its own (the page already documents the capture's inertness).
+
+### Known residual (out of scope, deliberately)
+
+The JSONPath block is also guarded by `respBody != ""`, so a response with an *empty* body
+still skips the assertions silently. That guard is untouched here — widening it would change
+the verdict for a second population that the blast-radius decision never covered. Pinned by a
+test with an explicit comment so the next reader knows it is deliberate, not overlooked.
