@@ -2331,12 +2331,25 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 	return slug, nil
 }
 
-// checkSlugRaceAttempts bounds how many times an insert may be retried after
-// losing the slug race. Each retry re-reads what is taken, so it starts from a
-// strictly fuller picture than the one before; a handful of rounds covers any
-// realistic burst in one organization, and the ceiling exists only so a
-// pathological stampede terminates instead of spinning.
-const checkSlugRaceAttempts = 8
+// checkSlugStallAttempts bounds how many CONSECUTIVE inserts the slug loop may
+// make WITHOUT MAKING PROGRESS before it gives up and surfaces the violation.
+//
+// It counts stalls, not retries, and the distinction is the whole point. Losing
+// the slug race is not a failure: it means a competing creation committed, so
+// the re-read that follows returns a DIFFERENT slug and the next insert aims
+// somewhere new. N simultaneous creations for one target make the unluckiest
+// one lose up to N-1 times, and N is set by the caller — a scripted import, a
+// burst of dashboard tabs, parallel E2E workers — not by this loop. Charging
+// those legitimate losses to a small constant is what made a 24-way burst fail
+// outright while a 2-way one looked perfectly healthy; the same lesson is
+// written up on IncidentNumberAttempts in internal/db/incidentnumber.go.
+//
+// A stall is the genuinely pathological case: the re-read handed back the very
+// slug that just failed, so retrying it can only fail identically. Termination
+// does not rest on this constant alone — ensureUniqueSlug itself gives up after
+// the "-99" suffix — but a bounded stall keeps a spinning loop from holding a
+// request open while it re-reads the same answer forever.
+const checkSlugStallAttempts = 8
 
 // insertCheckResolvingSlugRace inserts a check, re-resolving an auto-generated
 // slug and retrying whenever a concurrent creation committed the same one first.
@@ -2365,8 +2378,36 @@ const checkSlugRaceAttempts = 8
 func (s *Service) insertCheckResolvingSlugRace(
 	ctx context.Context, orgUID, baseSlug string, userProvidedSlug bool, check *models.Check,
 ) error {
-	for attempt := 0; ; attempt++ {
-		err := s.db.CreateCheck(ctx, check)
+	return insertResolvingSlugRace(ctx, check, userProvidedSlug,
+		func(ctx context.Context) error {
+			return s.db.CreateCheck(ctx, check)
+		},
+		func(ctx context.Context) (string, error) {
+			return s.ensureUniqueSlug(ctx, orgUID, baseSlug, false)
+		},
+	)
+}
+
+// insertResolvingSlugRace is the loop itself, with the database reached only
+// through the two closures its caller supplies: insert writes the check as it
+// currently stands, resolve re-reads a free slug for it.
+//
+// Split out this way for the same reason db.CreateIncidentWithNumber is — the
+// interesting behavior is entirely in the interleaving, and whether two
+// goroutines actually collide is up to the scheduler. With the I/O injected,
+// every branch (retry, stall, give up, refuse to retry) is pinned by a
+// deterministic test instead of by a lucky run.
+func insertResolvingSlugRace(
+	ctx context.Context,
+	check *models.Check,
+	userProvidedSlug bool,
+	insert func(context.Context) error,
+	resolve func(context.Context) (string, error),
+) error {
+	stalls := 0
+
+	for {
+		err := insert(ctx)
 		if err == nil || !db.IsCheckSlugCollision(err) {
 			return err
 		}
@@ -2375,13 +2416,29 @@ func (s *Service) insertCheckResolvingSlugRace(
 			return ErrSlugConflict
 		}
 
-		if attempt >= checkSlugRaceAttempts {
-			return err
+		lost := ""
+		if check.Slug != nil {
+			lost = *check.Slug
 		}
 
-		nextSlug, resolveErr := s.ensureUniqueSlug(ctx, orgUID, baseSlug, false)
+		nextSlug, resolveErr := resolve(ctx)
 		if resolveErr != nil {
 			return resolveErr
+		}
+
+		if nextSlug == lost {
+			// No progress: the re-read handed back the slug that just failed,
+			// so the next insert can only fail the same way. Bounded, then
+			// surfaced as the violation it is.
+			stalls++
+			if stalls >= checkSlugStallAttempts {
+				return err
+			}
+		} else {
+			// A competing creation committed and we aimed elsewhere. That is
+			// contention to ride out, not a livelock — it must not be charged
+			// to the stall budget.
+			stalls = 0
 		}
 
 		check.Slug = &nextSlug
