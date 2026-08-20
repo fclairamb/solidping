@@ -141,3 +141,54 @@ since response bodies may contain internal hostnames, stack traces, or PII.
 - **Other probe-style checks** (gRPC status + message, SMTP banner, TCP
   first-bytes) could adopt the same `diagnostics` field later; the transport
   and persistence are deliberately checker-agnostic, but only HTTP is in scope.
+
+## Implementation Plan
+
+1. **`checkerdef` transport type** — new `diagnostics.go` declaring `Diagnostics`
+   (`failureResponse`) and `FailureResponse` (status line/code, redacted headers,
+   body, truncation marker + original `Content-Length`, binary metadata
+   `contentType`/`bodyBytes`/`bodySha256`, `capturedAt`, `region`, `remoteAddr`),
+   plus `Result.Diagnostics *Diagnostics` next to `Output`. `omitempty` throughout.
+2. **HTTP check option** — `HTTPConfig.CaptureFailureResponse` keyed
+   `capture_failure_response` (camelCase alias accepted on read, snake emitted by
+   `GetConfig`, omitted at its `false` default). Config-as-code needs no change:
+   export/import ship `check.Config` verbatim.
+3. **Capture builder** — `checkhttp/capture.go`: header redaction
+   (`Set-Cookie`, `Authorization`, `Proxy-Authenticate`, any name containing
+   `token`/`key`/`secret` → `[redacted]`), 16 KiB truncation on a rune boundary
+   with `truncated` + original `Content-Length`, text-like content-type + valid
+   UTF-8 gate, binary/non-UTF-8 fallback to metadata only. Request headers are
+   never read.
+4. **Checker wiring** — read the body when capture is on (not only for
+   `body_expect`/`body_pattern`), attach the capture to every *failing* result
+   produced after a response existed, never to a success, never on the
+   pre-response error paths (timeout/DNS/TLS return before the capture point).
+   `connFamilyTracker` also records the connection's remote address.
+5. **Transport** — `agents.ClientFrame.Diagnostics`, `backend.SubmitResultRequest.Diagnostics`,
+   the worker's `buildSubmitRequest`, `WSBackend.SubmitResult` and the agent WS
+   result handler; all `omitempty`, so an old agent (absent) and a new agent
+   talking to an old server both degrade to "no capture".
+6. **Result row stays clean** — `models.Result.Diagnostics` is `bun:"-" json:"-"`:
+   structurally impossible to write to the `output` JSONB or to serialize on the
+   results API. `DirectBackend.SubmitResult` copies it onto the in-memory result
+   purely so incident processing can see it.
+7. **Incident persistence** — `failureDetails` / `lastFailureDetails` write
+   `details.failureResponse` (region filled server-side from `result.Region`).
+   Open sets it; reopen overwrites it, and *clears* it when the new onset has no
+   capture, so it always describes the current onset. Non-transition failures and
+   successes never touch it.
+8. **Public surface** — audit + regression test that the public status-page
+   payload (including the new `activeIncidents[]`) and the public status-update /
+   subscriber shapes never serialize `incidents.details`.
+9. **dash0** — `captureFailureResponse` switch in the HTTP check form's Advanced
+   section (+ summary line), and a "What the probe saw" card on the incident
+   detail page: status line, redacted headers table, collapsed `<pre>` body,
+   capture timestamp and region beside the content, explicit truncated/binary
+   notices.
+10. **OpenAPI** — document the option in the check-config prose and add
+    `failureResponse` to the incident `details` description.
+11. **Tests** — checker (option gating, truncation, redaction, binary/UTF-8 guard,
+    no capture pre-response), config round-trip, protocol round-trip
+    absent/present, incident service (open/reopen/dropped/success), persisted
+    result row free of the capture, public-surface negatives with positive
+    controls.
