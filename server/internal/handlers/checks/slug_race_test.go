@@ -161,7 +161,7 @@ func createHTTPCheck(
 }
 
 // testParallelAutoSlugCreations is the race proof, and the direct backend
-// analogue of two Playwright workers submitting the new-check form at once: N
+// analog of two Playwright workers submitting the new-check form at once: N
 // goroutines creating checks for the SAME target in the SAME organization must
 // ALL succeed, each with its own slug.
 //

@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -20,8 +21,15 @@ import (
 // postgres_headroom_postgres_test.go).
 const portCheckSlugPG = 15485
 
-// errNotAViolation is an ordinary failure, for the hermetic edges below.
-var errNotAViolation = errors.New("connection reset by peer")
+// Static errors for the hermetic edges below: an ordinary failure, and a
+// check-slug violation as the clone path wraps it on its way up
+// (`fmt.Errorf("create clone: %w", err)`).
+var (
+	errNotAViolation   = errors.New("connection reset by peer")
+	errPGSlugViolation = errors.New(
+		`ERROR: duplicate key value violates unique constraint "checks_slug_idx" (SQLSTATE=23505)`)
+	errWrappedSlugViolation = fmt.Errorf("create clone: %w", errPGSlugViolation)
+)
 
 // TestCheckSlugCollisionClassification_SQLite pins the classifier against
 // SQLite's real wording.
@@ -195,11 +203,10 @@ func TestIsCheckSlugCollision_Edges(t *testing.T) {
 		{name: "ordinary failure", err: errNotAViolation, want: false},
 		{
 			// A check-slug violation the caller wrapped on its way up — the
-			// clone path does exactly this (`fmt.Errorf("create clone: %w",
-			// err)`), so the classifier must survive wrapping.
+			// clone path does exactly this, so the classifier must survive
+			// wrapping (it reads Error(), which carries the whole chain).
 			name: "wrapped postgres slug violation",
-			err: errors.New(`create clone: ERROR: duplicate key value violates ` +
-				`unique constraint "checks_slug_idx" (SQLSTATE=23505)`),
+			err:  errWrappedSlugViolation,
 			want: true,
 		},
 	}
