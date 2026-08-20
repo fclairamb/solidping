@@ -537,8 +537,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// middleware closure, not threaded through here; the contextcheck linter
 	// can't see that.
 	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration)
+	// Order is load-bearing (spec 2026-08-20-10): Recoverer sits inside
+	// SentryMiddleware so the panic reports on the request hub with its
+	// user/org, and inside logging + HTTPMetrics so a panicking handler is
+	// logged and counted as an ordinary 500 instead of dropping the connection.
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
 		Use(middleware.HTTPMetrics).
+		Use(middleware.Recoverer).
 		Use(timeoutMW).
 		Use(rateLimiter.RateLimit).
 		Use(rateLimiter.ConcurrencyLimit)
