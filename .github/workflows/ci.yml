@@ -29,7 +29,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           cache-dependency-path: server/go.sum
 
       - name: Create embed placeholders for lint/test
@@ -76,7 +76,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9.3.0
         with:
           # https://github.com/golangci/golangci-lint/releases
-          version: v2.12.2
+          version: v2.13.1
           install-mode: goinstall
           working-directory: server
           # only-new-issues: true
@@ -237,7 +237,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           cache-dependency-path: server/go.sum
 
       - name: Download dash dist
