@@ -599,6 +599,97 @@ func TestCheckCreateAllowedInternalExempt(t *testing.T) {
 	r.NoError(svc.CheckCreateAllowed(ctx, org.UID))
 }
 
+// seedSLO inserts one live objective scoped to a freshly created check, so the
+// maxSlos counter has something real to count.
+func seedSLO(t *testing.T, dbSvc *sqlite.Service, orgUID, slug string) {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	check := models.NewCheck(orgUID, slug+"-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	objective := models.NewSLO(orgUID, slug, slug, 99.9)
+	objective.CheckUID = &check.UID
+	r.NoError(dbSvc.CreateSLO(ctx, objective))
+}
+
+func TestSloCreateAllowedUnlimitedWhenNil(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	// Self-hosted defaults: MaxSlos is nil → unlimited.
+	seedSLO(t, dbSvc, org.UID, "one")
+	seedSLO(t, dbSvc, org.UID, "two")
+	seedSLO(t, dbSvc, org.UID, "three")
+	r.NoError(svc.SloCreateAllowed(ctx, org.UID))
+}
+
+func TestSloCreateAllowedUnderCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxSlos: entitlements.Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	seedSLO(t, dbSvc, org.UID, "one")
+	r.NoError(svc.SloCreateAllowed(ctx, org.UID))
+}
+
+func TestSloCreateAllowedBlocksAtCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxSlos: entitlements.Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	seedSLO(t, dbSvc, org.UID, "one")
+	seedSLO(t, dbSvc, org.UID, "two")
+
+	err := svc.SloCreateAllowed(ctx, org.UID)
+	r.Error(err)
+	r.ErrorIs(err, entitlements.ErrEntitlementExceeded)
+
+	var quotaErr *entitlements.QuotaError
+	r.ErrorAs(err, &quotaErr)
+	r.Equal("MaxSlos", quotaErr.LimitName)
+	r.Equal(2, quotaErr.Limit)
+	r.Equal(2, quotaErr.CurrentUsage)
+}
+
+// A soft cap must free a slot the moment an objective is deleted — the
+// standard "delete one to add one" recovery path.
+func TestSloCreateAllowedDeletedSloFreesASlot(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxSlos: entitlements.Int(1)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	seedSLO(t, dbSvc, org.UID, "one")
+	r.Error(svc.SloCreateAllowed(ctx, org.UID))
+
+	objective, err := dbSvc.GetSLOBySlug(ctx, org.UID, "one")
+	r.NoError(err)
+	r.NoError(dbSvc.DeleteSLO(ctx, org.UID, objective.UID))
+
+	r.NoError(svc.SloCreateAllowed(ctx, org.UID))
+}
+
 func TestAgentCreateAllowedUnlimitedWhenNil(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

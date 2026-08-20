@@ -61,24 +61,6 @@ func defaultOutputMessage(status string) string {
 // JSON body. Nesting removes that forgery vector entirely. The "data" key is
 // omitted altogether (not stored as an empty object) when callerData is
 // empty.
-// tagMaintenance sets results.maintenance before the insert (spec
-// 2026-08-20-01): rollup buckets cannot be sliced after the fact, so the tag
-// has to exist before aggregation runs.
-//
-// Best-effort — a failed maintenance lookup records the beat as production
-// traffic rather than losing it.
-func (s *Service) tagMaintenance(ctx context.Context, checkUID string, result *models.Result) {
-	inMaintenance, err := s.incidentSvc.IsCheckInActiveMaintenance(ctx, checkUID)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
-			"error", err, "check_uid", checkUID)
-
-		return
-	}
-
-	result.Maintenance = inMaintenance
-}
-
 func buildHeartbeatOutput(message, userAgent, remoteAddr, httpMethod string, callerData map[string]any) models.JSONMap {
 	output := models.JSONMap{"message": message}
 
@@ -99,6 +81,24 @@ func buildHeartbeatOutput(message, userAgent, remoteAddr, httpMethod string, cal
 	}
 
 	return output
+}
+
+// tagMaintenance sets results.maintenance before the insert (spec
+// 2026-08-20-01): rollup buckets cannot be sliced after the fact, so the tag
+// has to exist before aggregation runs.
+//
+// Best-effort — a failed maintenance lookup records the beat as production
+// traffic rather than losing it.
+func (s *Service) tagMaintenance(ctx context.Context, checkUID string, result *models.Result) {
+	inMaintenance, err := s.incidentSvc.IsCheckInActiveMaintenance(ctx, checkUID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", err, "check_uid", checkUID)
+
+		return
+	}
+
+	result.Maintenance = inMaintenance
 }
 
 // parseHeartbeatStatus maps a status string to a checkerdef.Status.

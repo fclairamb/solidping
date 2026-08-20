@@ -33,21 +33,35 @@ const incidentFetchLimit = 1000
 // does not produce an unsendable email.
 const maxCheckRows = 50
 
+// The JSON tags below are deliberately PascalCase, matching the Go field names
+// and the `{{.OrgName}}` / `{{.HasData}}` references in uptime-report.html.
+//
+// This is NOT cosmetic. A report never reaches the template as this struct: it
+// is stored in the email job's config, marshalled to JSON, persisted, and
+// unmarshalled back into an `any` — so html/template sees a map[string]any and
+// looks fields up BY THE JSON KEY. camelCase tags therefore make every
+// `{{.OrgName}}` render as `<no value>` and every `{{if .HasData}}` evaluate
+// false, which silently produces a blank "No data" digest rather than an error.
+//
+// PascalCase view-model keys are the house convention for every other template
+// in the repo (auth, status subscribers, the notifier). TestUptimeReportRenders
+// pins the round trip.
+
 // CheckRow is one check's line in the report.
 type CheckRow struct {
-	Name            string `json:"name"`
-	HasData         bool   `json:"hasData"`
-	AvailabilityPct string `json:"availabilityPct"`
+	Name            string `json:"Name"`
+	HasData         bool   `json:"HasData"`
+	AvailabilityPct string `json:"AvailabilityPct"`
 }
 
 // SLORow is one objective's line in the report.
 type SLORow struct {
-	Name            string `json:"name"`
-	HasData         bool   `json:"hasData"`
-	AttainmentPct   string `json:"attainmentPct"`
-	TargetPct       string `json:"targetPct"`
-	StateLabel      string `json:"stateLabel"`
-	BudgetRemaining string `json:"budgetRemaining"`
+	Name            string `json:"Name"`
+	HasData         bool   `json:"HasData"`
+	AttainmentPct   string `json:"AttainmentPct"`
+	TargetPct       string `json:"TargetPct"`
+	StateLabel      string `json:"StateLabel"`
+	BudgetRemaining string `json:"BudgetRemaining"`
 }
 
 // Data is the template view model. Field names match uptime-report.html.
@@ -56,25 +70,25 @@ type SLORow struct {
 // caller fills per recipient — recipients are PII and must never leak into
 // another recipient's copy.
 type Data struct {
-	OrgName     string `json:"orgName"`
-	PeriodLabel string `json:"periodLabel"`
-	ScopeLabel  string `json:"scopeLabel"`
-	Timezone    string `json:"timezone"`
+	OrgName     string `json:"OrgName"`
+	PeriodLabel string `json:"PeriodLabel"`
+	ScopeLabel  string `json:"ScopeLabel"`
+	Timezone    string `json:"Timezone"`
 
-	HasData         bool   `json:"hasData"`
-	AvailabilityPct string `json:"availabilityPct"`
-	CheckCount      int    `json:"checkCount"`
+	HasData         bool   `json:"HasData"`
+	AvailabilityPct string `json:"AvailabilityPct"`
+	CheckCount      int    `json:"CheckCount"`
 
-	IncidentCount   int    `json:"incidentCount"`
-	LongestIncident string `json:"longestIncident,omitempty"`
-	TotalDowntime   string `json:"totalDowntime,omitempty"`
+	IncidentCount   int    `json:"IncidentCount"`
+	LongestIncident string `json:"LongestIncident,omitempty"`
+	TotalDowntime   string `json:"TotalDowntime,omitempty"`
 
-	Checks []CheckRow `json:"checks,omitempty"`
-	SLOs   []SLORow   `json:"slos,omitempty"`
+	Checks []CheckRow `json:"Checks,omitempty"`
+	SLOs   []SLORow   `json:"SLOs,omitempty"`
 
-	DashboardURL   string `json:"dashboardUrl,omitempty"`
-	DocsURL        string `json:"docsUrl,omitempty"`
-	UnsubscribeURL string `json:"unsubscribeUrl,omitempty"`
+	DashboardURL   string `json:"DashboardURL,omitempty"`
+	DocsURL        string `json:"DocsURL,omitempty"`
+	UnsubscribeURL string `json:"UnsubscribeURL,omitempty"`
 }
 
 // Builder renders reports.

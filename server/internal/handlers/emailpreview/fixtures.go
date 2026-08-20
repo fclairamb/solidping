@@ -42,6 +42,7 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"password-changed.html":            passwordChangedFixture,
 	"membership_request_new.html":      membershipRequestNewFixture,
 	"membership_request_decision.html": membershipRequestDecisionFixture,
+	"uptime-report.html":               uptimeReportFixture,
 }
 
 // fixtureFor returns the preview fixture data for a shipped template, and
@@ -207,5 +208,44 @@ func membershipRequestDecisionFixture() map[string]any {
 		"Decision":      "approved",
 		"Role":          "viewer",
 		keyDashboardURL: fixtureDashboardURL + "/orgs/acme",
+	}
+}
+
+// uptimeReportFixture is the fixture for the scheduled uptime-report digest
+// (spec 2026-08-20-01). The keys are PascalCase because that is what the
+// template reads and what uptimereport.Data marshals to — see the tag comment
+// on that struct for why the two must agree.
+//
+// It deliberately carries a per-check row, a per-objective row and an
+// unsubscribe link, so TestPreview_AllShippedTemplatesRender exercises the
+// range blocks and the bulk-mail footer rather than only the header.
+func uptimeReportFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:        fixtureOrgName,
+		"PeriodLabel":     "July 2026",
+		"ScopeLabel":      "All checks (2)",
+		"Timezone":        "Europe/Paris",
+		"HasData":         true,
+		"AvailabilityPct": "99.950",
+		"CheckCount":      2,
+		"IncidentCount":   3,
+		"LongestIncident": "42m 0s",
+		"TotalDowntime":   "1h 5m",
+		"Checks": []map[string]any{
+			{"Name": fixtureCheckName, "HasData": true, "AvailabilityPct": "99.980"},
+			{"Name": "Marketing site", "HasData": false, "AvailabilityPct": ""},
+		},
+		"SLOs": []map[string]any{
+			{
+				"Name":            "API availability",
+				"HasData":         true,
+				"AttainmentPct":   "99.950",
+				"TargetPct":       "99.900",
+				"StateLabel":      "Healthy",
+				"BudgetRemaining": "21m 30s",
+			},
+		},
+		keyDashboardURL:  fixtureDashboardURL,
+		"UnsubscribeURL": "https://solidping.example/unsubscribe?token=preview-unsub-token",
 	}
 }

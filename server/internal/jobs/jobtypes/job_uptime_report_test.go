@@ -317,5 +317,5 @@ func TestUptimeReportCarriesUnsubscribeHeaders(t *testing.T) {
 	// header can never point at different scopes.
 	data, ok := cfg.TemplateData.(map[string]any)
 	r.True(ok)
-	r.Equal(cfg.ListUnsubscribeURL, data["unsubscribeUrl"])
+	r.Equal(cfg.ListUnsubscribeURL, data["UnsubscribeURL"])
 }
