@@ -189,3 +189,82 @@ windows, per-region SLOs, public SLA pages on status pages
   surface beats configurability.
 - SaaS default for `maxSlos` (2 proposed) needs syncing with
   `solidping-billing`'s Free SKU before release.
+
+## Implementation Plan
+
+### Step 1 — Schema (migration 018, both dialects)
+- `results.maintenance boolean not null default false`.
+- Aggregated counters on `results`: `maintenance_checks`, `maintenance_successful_checks`
+  (nullable ints, subset of `total_checks` / `successful_checks`).
+- `slos` table: `uid`, `organization_uid`, `name`, `slug` (unique per org),
+  `check_uid` / `check_group_uid` with a CHECK XOR constraint, `target_pct`,
+  `timezone`, `exclude_maintenance`, `enabled`, `created_at`/`updated_at`/`deleted_at`.
+- `report_schedules` table: `uid`, `organization_uid`, `name`, `frequency`,
+  `timezone`, `recipients` (JSON array), `check_uids` / `check_group_uids` (JSON),
+  `include_slos`, `enabled`, `last_run_period_start`, timestamps + soft delete.
+- Bun models in `server/internal/db/models/` (`slo.go`, `report_schedule.go`),
+  `Result` gains the three new fields.
+
+### Step 2 — Shared maintenance-window resolution
+- Lift `isInMaintenanceWindow` + its 60s cache out of `incidents/service.go` into
+  `server/internal/maintenancecal` (a small service registered once), and make the
+  incidents service consume it so there is exactly one implementation.
+- Tag `results.maintenance` at ingest for every raw-insert path.
+
+### Step 3 — Aggregation carries the counters
+- `job_aggregation.go` rolls `maintenance_checks` / `maintenance_successful_checks`
+  raw→hour→day→month next to the existing counters; raw rows contribute
+  `maintenance ? 1 : 0` and `maintenance && successful ? 1 : 0`.
+- Tiers stay disjoint, so no double counting.
+
+### Step 4 — uptimebar exposes the excluded counts
+- `BucketStats` gains `MaintenanceTotal` / `MaintenanceSuccessful`; `accumulateRaw`
+  and the aggregated accumulation fill them. Existing consumers untouched.
+
+### Step 5 — SLO budget math (`server/internal/slo`)
+- Calendar-month window resolution in an IANA timezone (DST-safe).
+- `Compute(target, stats, windowStart, windowEnd, now, excludeMaintenance)` →
+  attainment (nullable), `monitoredSeconds`, budget total/consumed/remaining,
+  `excludedMaintenanceSeconds`, `burnRate`, `projectedExhaustionAt`.
+- Zero data ⇒ null attainment, untouched budget (never 100%).
+- Group SLOs merge member buckets following the `mergeGroupBuckets` precedent.
+
+### Step 6 — SLO CRUD + status/history API
+- `server/internal/handlers/slos/` service + handler, routes on
+  `/api/v1/orgs/:org/slos`, `/:uid`, `/:uid/status`, `/:uid/history?months=N`.
+- Status reuses `PeriodIncidents` from the availability service for context.
+
+### Step 7 — Entitlements `maxSlos`
+- Payload field + strict `UnmarshalJSON` shadow, merge branch, per-mode defaults
+  (SaaS 2, self-hosted nil), `SloCreateAllowed` → `QuotaError`/402, usage counter,
+  usage page + wiki table.
+
+### Step 8 — Report schedules CRUD + test send
+- `server/internal/handlers/reportschedules/` service + handler,
+  `/api/v1/orgs/:org/report-schedules` + `/:uid` + `POST /:uid/test`.
+- Recipients treated as PII (never echoed into events/logs).
+
+### Step 9 — `JobTypeUptimeReport`
+- `JobType` const, runner in `jobtypes/`, factory registration, per-org seeding,
+  NOT in `publiclyCreatableJobTypes`.
+- Period-close detection in each schedule's timezone; `last_run_period_start`
+  suppresses duplicate runs; one `JobTypeEmail` per recipient, suppression list
+  respected; unsubscribe removes the recipient from the schedule.
+
+### Step 10 — `uptime-report.html` email template
+- New template rendered by `TemplateFormatter` on the existing `base.html` layout,
+  with `List-Unsubscribe` wiring reused from the existing subscriber mail path.
+
+### Step 11 — dash0
+- `/orgs/$org/slos` (list), `/slos/new`, `/slos/$uid` (detail: burn-down + history).
+- Report schedules under `/orgs/$org/organization/report-schedules`.
+- SLO chip on the check detail page.
+- New `slos` i18n namespace in all four locales; sidebar entry.
+
+### Step 12 — Docs + tests
+- OpenAPI paths/schemas, `wiki/api-specification/slos.md`, entitlements wiki table,
+  roadmap tick.
+- Go: budget-math table tests (incl. the zero-results negative control), timezone/DST
+  window tests, aggregation counter tests, report-job tests.
+- Playwright: SLO list/detail happy path with deterministic fixtures in
+  `server/test/testdata/testdata.go`.
