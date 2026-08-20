@@ -292,6 +292,16 @@ func (s *Service) fetchIncidents(
 	return incidents, err
 }
 
+// IncidentBlock is the exported form of incidentBlock, for callers outside this
+// package that need the same wall-clock outage summary over an arbitrary window
+// — currently the SLO status endpoint, which shows it as context beside the
+// probe-ratio attainment (spec 2026-08-20-01). Keeping one implementation is
+// the point: an SLO page whose "3 incidents, longest 42 min" disagreed with the
+// availability API would be worse than showing nothing.
+func IncidentBlock(incidents []*models.Incident, start, end, now time.Time) PeriodIncidents {
+	return incidentBlock(incidents, periodWindow{start: start, end: end}, now)
+}
+
 // incidentBlock computes the wall-clock outage stats (definition B), clamping
 // each incident to the window (an unresolved incident runs to now). Incidents
 // that didn't actually start inside the window are ignored (defensive against a

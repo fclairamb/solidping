@@ -53,6 +53,8 @@ const (
 	ErrorCodeInvitationNotFound        ErrorCode = "INVITATION_NOT_FOUND"
 	ErrorCodePasswordResetExpired      ErrorCode = "PASSWORD_RESET_EXPIRED"
 	ErrorCodeMaintenanceWindowNotFound ErrorCode = "MAINTENANCE_WINDOW_NOT_FOUND"
+	ErrorCodeSLONotFound               ErrorCode = "SLO_NOT_FOUND"
+	ErrorCodeReportScheduleNotFound    ErrorCode = "REPORT_SCHEDULE_NOT_FOUND"
 	ErrorCodeInvalid2FACode            ErrorCode = "INVALID_2FA_CODE"
 	ErrorCodeInvalidRecoveryCode       ErrorCode = "INVALID_RECOVERY_CODE"
 	ErrorCode2FARequired               ErrorCode = "2FA_REQUIRED"

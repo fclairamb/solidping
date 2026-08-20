@@ -87,6 +87,7 @@ import (
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
+	"github.com/fclairamb/solidping/server/internal/handlers/slos"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
@@ -1512,6 +1513,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgMW.DELETE("/:uid", mwHandler.Delete)
 	orgMW.GET("/:uid/checks", mwHandler.ListChecks)
 	orgMW.PUT("/:uid/checks", mwHandler.SetChecks)
+
+	// SLO routes (spec 2026-08-20-01, authentication required)
+	sloService := slos.NewService(s.dbService, s.config, s.services.Entitlements)
+	sloHandler := slos.NewHandler(sloService, s.config)
+	orgSLOs := orgGroup("/orgs/:org/slos")
+	orgSLOs.GET("", sloHandler.List)
+	orgSLOs.POST("", sloHandler.Create)
+	orgSLOs.GET("/:uid", sloHandler.Get)
+	orgSLOs.PATCH("/:uid", sloHandler.Update)
+	orgSLOs.DELETE("/:uid", sloHandler.Delete)
+	orgSLOs.GET("/:uid/status", sloHandler.Status)
+	orgSLOs.GET("/:uid/history", sloHandler.History)
 
 	// Public status page endpoints (no authentication)
 	publicOrgAPI.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
