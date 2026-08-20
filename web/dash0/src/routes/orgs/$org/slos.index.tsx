@@ -169,11 +169,23 @@ function SlosIndexPage() {
         </div>
       ) : !slos || slos.length === 0 ? (
         <div
-          className="rounded-lg border border-dashed p-8 text-center"
+          className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card"
           data-testid="slo-empty"
         >
-          <p className="font-medium">{t("list.empty")}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t("list.emptyHint")}</p>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Target className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">{t("list.empty")}</p>
+          <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+            {t("list.emptyHint")}
+          </p>
+          <Button
+            size="sm"
+            onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            {t("list.new")}
+          </Button>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border">

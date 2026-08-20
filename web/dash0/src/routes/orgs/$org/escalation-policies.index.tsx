@@ -189,6 +189,12 @@ function EscalationPoliciesListPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("escalation:list.empty")}
           </p>
+          <Button asChild size="sm">
+            <Link to="/orgs/$org/escalation-policies/new" params={{ org }}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              {t("escalation:list.create")}
+            </Link>
+          </Button>
         </div>
       ) : hasSearchButNoMatches ? (
         <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">

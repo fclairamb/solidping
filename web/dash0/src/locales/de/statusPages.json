@@ -3,6 +3,7 @@
   "subtitle": "Verwalten Sie Ihre öffentlichen Statusseiten",
   "newStatusPage": "Neue Statusseite",
   "noStatusPages": "Noch keine Statusseiten konfiguriert",
+  "noStatusPagesHint": "Erstellen Sie Ihre erste Statusseite, um die Verfügbarkeit mit Ihren Nutzern zu teilen.",
   "noMatch": "Keine Statusseite entspricht Ihrer Suche",
   "searchPlaceholder": "Statusseiten durchsuchen...",
   "viewDetails": "Details anzeigen",

@@ -217,35 +217,35 @@ function StatusPagesIndexPage() {
         description={t("statusPages:subtitle")}
         docsHref="/docs/features/status-pages"
         actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={() => refetch()}
-              disabled={isRefetching}
-              aria-label={t("common:refresh")}
-            >
-              <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">{t("common:refresh")}</span>
+          <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              {t("statusPages:newStatusPage")}
             </Button>
-            <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                {t("statusPages:newStatusPage")}
-              </Button>
-            </Link>
-          </>
+          </Link>
         }
         className="flex-wrap"
       />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder={t("statusPages:searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t("statusPages:searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          aria-label={t("common:refresh")}
+        >
+          <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">{t("common:refresh")}</span>
+        </Button>
       </div>
 
       {error ? (
@@ -281,13 +281,31 @@ function StatusPagesIndexPage() {
           </Table>
         </div>
       ) : pages && pages.length > 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>{t("statusPages:noMatch")}</p>
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Search className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("statusPages:noMatch")}
+          </p>
         </div>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
-          <p>{t("statusPages:noStatusPages")}</p>
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Globe className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("statusPages:noStatusPages")}
+          </p>
+          <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+            {t("statusPages:noStatusPagesHint")}
+          </p>
+          <Button asChild size="sm">
+            <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              {t("statusPages:newStatusPage")}
+            </Link>
+          </Button>
         </div>
       )}
 

@@ -279,23 +279,12 @@ function StatusUpdatesIndexPage() {
         description={t("statusUpdates:subtitle")}
         docsHref="/docs/features/status-pages"
         actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={() => refetch()}
-              disabled={isRefetching}
-              aria-label={t("common:refresh")}
-            >
-              <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">{t("common:refresh")}</span>
+          <Link to="/orgs/$org/status-updates/new" params={{ org }}>
+            <Button data-testid="status-updates-new">
+              <Plus className="mr-2 h-4 w-4" />
+              {t("statusUpdates:newStatusUpdate")}
             </Button>
-            <Link to="/orgs/$org/status-updates/new" params={{ org }}>
-              <Button data-testid="status-updates-new">
-                <Plus className="mr-2 h-4 w-4" />
-                {t("statusUpdates:newStatusUpdate")}
-              </Button>
-            </Link>
-          </>
+          </Link>
         }
         className="flex-wrap"
       />
@@ -382,6 +371,16 @@ function StatusUpdatesIndexPage() {
             ))}
           </SelectContent>
         </Select>
+
+        <Button
+          variant="outline"
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          aria-label={t("common:refresh")}
+        >
+          <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">{t("common:refresh")}</span>
+        </Button>
       </div>
 
       {error ? (
@@ -417,14 +416,31 @@ function StatusUpdatesIndexPage() {
           </Table>
         </div>
       ) : updates && updates.length > 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>{t("statusUpdates:noMatch")}</p>
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Search className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("statusUpdates:noMatch")}
+          </p>
         </div>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
-          <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>{t("statusUpdates:noStatusUpdates")}</p>
+        <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Megaphone className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {t("statusUpdates:noStatusUpdates")}
+          </p>
+          <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+            {t("statusUpdates:noStatusUpdatesHint")}
+          </p>
+          <Button asChild size="sm">
+            <Link to="/orgs/$org/status-updates/new" params={{ org }}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              {t("statusUpdates:newStatusUpdate")}
+            </Link>
+          </Button>
         </div>
       )}
 

@@ -3,6 +3,7 @@
     "title": "Bereitschaftspläne",
     "subtitle": "Eine Rotation, eine Zeitzone, eine Übergabezeit. Verwenden Sie Eskalationsrichtlinien, um Pläne mit Benachrichtigungen zu verbinden.",
     "empty": "Noch keine Bereitschaftspläne.",
+    "emptyHint": "Erstellen Sie eine Rotation, um Warnmeldungen während geplanter Schichten an aktive Ansprechpartner weiterzuleiten.",
     "create": "Plan erstellen",
     "currentlyOnCall": "Aktuell in Bereitschaft",
     "noOneOnCall": "Niemand in Bereitschaft",

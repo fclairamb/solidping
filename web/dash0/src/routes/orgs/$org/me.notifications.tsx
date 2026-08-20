@@ -77,18 +77,23 @@ function MyNotificationsPage() {
           {isLoading && <Skeleton className="h-32 w-full" />}
 
           {!isLoading && (!rows || rows.length === 0) && (
-            <p className="text-sm text-muted-foreground py-6 text-center">
-              You have not been paged for any incidents yet. Configure how you
-              get paged in your{" "}
-              <Link
-                to="/orgs/$org/account/notifications"
-                params={{ org }}
-                className="text-primary hover:underline"
-              >
-                notification settings
-              </Link>
-              .
-            </p>
+            <div className="space-y-3 py-6 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <BellRing className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                {t("common:myNotifications.empty.title")}
+              </p>
+              <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+                {t("common:myNotifications.empty.hint")}
+              </p>
+              <Button asChild size="sm" variant="outline">
+                <Link to="/orgs/$org/account/notifications" params={{ org }}>
+                  <Settings className="mr-1.5 h-3.5 w-3.5" />
+                  {t("common:myNotifications.empty.cta")}
+                </Link>
+              </Button>
+            </div>
           )}
 
           {!isLoading && rows && rows.length > 0 && (

@@ -80,6 +80,13 @@
     "webhook": "Webhook",
     "telegram": "Telegram"
   },
+  "myNotifications": {
+    "empty": {
+      "title": "Aucune notification pour le moment",
+      "hint": "Vous n'avez encore été alerté pour aucun incident.",
+      "cta": "Paramètres de notification"
+    }
+  },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "Modèle de message WhatsApp indisponible — demandez à un administrateur de vérifier son statut d’approbation",
     "whatsapp_recipient_not_on_whatsapp": "Le destinataire n’est pas sur WhatsApp",

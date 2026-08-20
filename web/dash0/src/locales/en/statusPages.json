@@ -3,6 +3,7 @@
   "subtitle": "Manage your public status pages",
   "newStatusPage": "New Status Page",
   "noStatusPages": "No status pages configured yet",
+  "noStatusPagesHint": "Create your first status page to start sharing uptime with your users.",
   "noMatch": "No status pages match your search",
   "searchPlaceholder": "Search status pages...",
   "viewDetails": "View Details",

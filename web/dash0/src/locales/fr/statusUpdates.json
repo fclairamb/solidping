@@ -4,6 +4,7 @@
   "newStatusUpdate": "Nouvelle mise à jour",
   "editStatusUpdate": "Modifier la mise à jour",
   "noStatusUpdates": "Aucune mise à jour de statut pour l'instant",
+  "noStatusUpdatesHint": "Publiez votre première mise à jour pour tenir vos utilisateurs informés pendant les incidents.",
   "noMatch": "Aucune mise à jour ne correspond à vos filtres",
   "searchPlaceholder": "Rechercher par titre…",
   "viewPublic": "Voir la mise à jour publique",

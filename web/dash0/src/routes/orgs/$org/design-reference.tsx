@@ -173,6 +173,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "conventions", label: "Conventions" },
   { id: "page-header", label: "Page header" },
+  { id: "button-placement", label: "Button placement" },
   { id: "docs-link", label: "Docs link" },
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
@@ -218,6 +219,7 @@ function DesignReferencePage() {
       <OverviewSection />
       <ConventionsSection />
       <PageHeaderSection />
+      <ButtonPlacementSection />
       <DocsLinkSection />
       <BreadcrumbsSection />
       <ColorTokensSection />
@@ -794,6 +796,139 @@ import { PageHeader } from "@/components/shared/page-header";
           so the app stays consistent.
         </p>
       </div>
+    </Section>
+  );
+}
+
+function ButtonPlacementSection() {
+  const buttonPlacementSnippet = `// A page WITH a search/filter toolbar: PageHeader actions carries only the
+// primary "New X" action. Refresh moves into the toolbar row, right of search.
+<PageHeader
+  icon={Globe}
+  title="Status pages"
+  actions={
+    <Button asChild>
+      <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+        <Plus className="mr-2 h-4 w-4" />
+        New page
+      </Link>
+    </Button>
+  }
+/>
+<div className="flex flex-wrap items-center gap-4">
+  <div className="relative flex-1 min-w-[200px] max-w-sm">
+    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <Input placeholder="Search…" className="pl-9" />
+  </div>
+  {/* Any filter selects go here, between search and Refresh. */}
+  <Button variant="outline" onClick={() => refetch()} disabled={isRefetching} aria-label={t("common:refresh")}>
+    <RefreshCw className={\`h-4 w-4 sm:mr-2 \${isRefetching ? "animate-spin" : ""}\`} />
+    <span className="hidden sm:inline">{t("common:refresh")}</span>
+  </Button>
+</div>
+
+// A page with NO search/filter toolbar (e.g. on-call) keeps Refresh in the
+// header, to the left of the primary action:
+<PageHeader
+  actions={
+    <>
+      <Button variant="outline" onClick={() => refetch()} aria-label={t("common:refresh")}>
+        <RefreshCw className="h-4 w-4 sm:mr-2" />
+        <span className="hidden sm:inline">{t("common:refresh")}</span>
+      </Button>
+      <Button asChild>
+        <Link to="/orgs/$org/on-call/new" params={{ org }}>Create schedule</Link>
+      </Button>
+    </>
+  }
+/>`;
+
+  return (
+    <Section
+      id="button-placement"
+      title="Button placement"
+      description="Where a button lives depends on what it does: PageHeader actions change what exists on the page (create, export); the toolbar row below the header changes what you're currently looking at (search, filter, refresh). Row-level Pencil/Trash2 icon buttons are a third, separate surface — documented in Conventions, cross-referenced below."
+    >
+      <h3 className="text-sm font-medium">
+        PageHeader actions: primary, page-level actions only
+      </h3>
+      <p className="text-sm text-muted-foreground">
+        The <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
+        slot on <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+        is reserved for the page's primary action — typically a single &quot;New
+        &lt;resource&gt;&quot; create button, plus at most one secondary
+        page-level action (export/import, a scope toggle). It is{" "}
+        <strong>not</strong> a catch-all toolbar: a page that has a
+        search/filter toolbar row below the header does not put Refresh in
+        the header — Refresh moves into that row (see below). The one
+        exception is a page with{" "}
+        <strong>no search toolbar at all</strong> — on-call has no search
+        field, so it keeps Refresh in the header, to the left of the primary
+        button.
+      </p>
+
+      <h3 className="text-sm font-medium">
+        Toolbar row: search, filters, then Refresh
+      </h3>
+      <p className="text-sm text-muted-foreground">
+        Data/view controls — the search input, any filter selects, and the
+        Refresh button — live in their own{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          flex flex-wrap items-center gap-4
+        </code>{" "}
+        row below the header. Refresh sits to the{" "}
+        <strong>right of the search input</strong> (after any filter
+        selects, if the row has them) — mirror{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          integrations.index.tsx
+        </code>{" "}
+        (search-only toolbar) or{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          checks.index.tsx
+        </code>{" "}
+        (search + several filters, Refresh trailing).
+      </p>
+
+      <div className="space-y-3 rounded-md border bg-card p-4">
+        <PageHeader
+          icon={Globe}
+          title="Status pages"
+          actions={
+            <Button size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              New page
+            </Button>
+          }
+          className="flex-wrap"
+        />
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search…" className="pl-9" />
+          </div>
+          <Button variant="outline" size="sm" aria-label="Refresh">
+            <RefreshCw className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+        </div>
+      </div>
+      <CodeSnippet code={buttonPlacementSnippet} />
+
+      <p className="text-sm text-muted-foreground">
+        Row-level actions — the ghost{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">Pencil</code>/
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+        icon-button pair on each table row — are documented separately, see{" "}
+        <a href="#conventions" className="text-primary hover:underline">
+          Conventions → Row actions
+        </a>
+        . And the empty state that replaces the table when it has nothing to
+        show is documented in{" "}
+        <a href="#list-surface" className="text-primary hover:underline">
+          List surface → Empty state
+        </a>
+        .
+      </p>
     </Section>
   );
 }
@@ -2919,6 +3054,17 @@ function ListSurfaceSection() {
 
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Empty state</h3>
+        <p className="text-sm text-muted-foreground">
+          The page's toolbar (search input, filters, Refresh — see{" "}
+          <a href="#button-placement" className="text-primary hover:underline">
+            Button placement
+          </a>
+          ) stays rendered above the empty state; only the table area swaps
+          out, so the page doesn't jump. A truly empty list — zero rows, no
+          filter applied — gets a primary CTA button linking to the page's
+          create route whenever the page has one (omit it only when there is
+          no create flow, e.g. a personal activity feed).
+        </p>
         <ExampleRow
           preview={
             <div className="w-full space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
@@ -2931,9 +3077,41 @@ function ListSurfaceSection() {
               <p className="mx-auto max-w-sm text-xs text-muted-foreground">
                 Create your first check to start monitoring.
               </p>
+              <Button size="sm">
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Create your first check
+              </Button>
             </div>
           }
-          importLine={`// Same card surface as the table it replaces, so the page doesn't jump.\n// Tint the icon circle when the emptiness is GOOD news (no open incidents):\n//   bg-emerald-500/10 text-emerald-600 dark:text-emerald-400\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Inbox className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks yet</p>\n  <p className="text-xs text-muted-foreground max-w-sm mx-auto">…</p>\n</div>`}
+          importLine={`// Same card surface as the table it replaces, so the page doesn't jump.\n// Tint the icon circle when the emptiness is GOOD news (no open incidents):\n//   bg-emerald-500/10 text-emerald-600 dark:text-emerald-400\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Inbox className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks yet</p>\n  <p className="text-xs text-muted-foreground max-w-sm mx-auto">…</p>\n  {/* Primary CTA — omit only when the page has no create flow. */}\n  <Button asChild size="sm">\n    <Link to="/orgs/$org/checks/new" params={{ org }}>\n      <Plus className="mr-1.5 h-3.5 w-3.5" />\n      Create your first check\n    </Link>\n  </Button>\n</div>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Empty state: no search matches</h3>
+        <p className="text-sm text-muted-foreground">
+          Rows exist, but the current search/filter hides all of them. Same
+          card surface, a <code className="rounded bg-muted px-1 py-0.5 text-xs">Search</code>{" "}
+          icon instead of the resource icon, title only —{" "}
+          <strong>no CTA</strong> (the fix is to clear the filter, not to
+          create a duplicate). Mirrors{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            escalation-policies.index.tsx
+          </code>
+          .
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <Search className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                No checks match your search
+              </p>
+            </div>
+          }
+          importLine={`// Rows exist; the current filter just hides all of them — no CTA.\n<div className="rounded-xl border bg-card p-12 text-center shadow-card space-y-3">\n  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">\n    <Search className="h-6 w-6 text-muted-foreground" />\n  </div>\n  <p className="font-medium text-sm text-foreground">No checks match your search</p>\n</div>`}
         />
       </div>
 

@@ -3,6 +3,7 @@
     "title": "On-call schedules",
     "subtitle": "One rotation, one timezone, one handoff time. Use escalation policies to wire schedules into paging.",
     "empty": "No on-call schedules yet.",
+    "emptyHint": "Create a rotation to route alerts to active responders during scheduled shifts.",
     "create": "Create schedule",
     "currentlyOnCall": "Currently on call",
     "noOneOnCall": "No one on call",

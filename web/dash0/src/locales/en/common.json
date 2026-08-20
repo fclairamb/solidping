@@ -80,6 +80,13 @@
     "webhook": "Webhook",
     "telegram": "Telegram"
   },
+  "myNotifications": {
+    "empty": {
+      "title": "No notifications yet",
+      "hint": "You have not been paged for any incidents yet.",
+      "cta": "Notification settings"
+    }
+  },
   "notificationFailureReasons": {
     "whatsapp_template_unavailable": "WhatsApp message template unavailable — ask an admin to check the template's approval status",
     "whatsapp_recipient_not_on_whatsapp": "Recipient is not on WhatsApp",
