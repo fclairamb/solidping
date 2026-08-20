@@ -77,3 +77,75 @@ each time, `--retries=0`).
 If the root cause turns out to live in the shared create flow (form or route) rather
 than in this spec's helper, audit the other check-creating E2E specs — they likely
 benefit from the same fix.
+
+## Implementation Plan
+
+### 1. Root cause (verified, not assumed)
+
+The failure is server-side, not a lost click and not a lost navigation.
+
+- `createCheckAndOpen` (`web/dash0/e2e/availability.spec.ts:70-86`) fills a **fixed
+  target** — `https://example.com/avail-test` — for every check it creates, varying only
+  the *name*.
+- An auto-generated check slug is derived from the **target**, not the name:
+  `server/internal/checkers/checkhttp/checker.go:112` sets
+  `spec.Slug = "http-" + strings.ReplaceAll(hostname, ".", "-")` → every worker resolves
+  the same base slug `http-example-com`.
+- `ensureUniqueSlug` (`server/internal/handlers/checks/service.go:2269`) is a
+  SELECT-then-INSERT: it asks `GetCheckByUidOrSlug` whether the slug is free, then the
+  insert happens later. Two workers both see it free and both insert.
+- The loser violated `checks_slug_idx` (`create unique index checks_slug_idx on checks
+  (organization_uid, slug) where deleted_at is null and slug is not null`). That raw
+  23505 / `UNIQUE constraint failed` reached the handler's `default:` arm →
+  **HTTP 500**.
+- In the SPA, `onSubmit` (`web/dash0/src/routes/orgs/$org/checks.new.tsx:167`) awaits
+  `createCheck.mutateAsync` and only calls `navigate` afterwards
+  (`checks.new.tsx:199`). A rejected mutation therefore never navigates — which is
+  exactly `page.waitForURL: Timeout 10000ms exceeded`, with the server logging a fast
+  (~18 ms) request, as the spec observed.
+
+This is `--workers=1`-clean by construction: with one worker the two creates are
+sequential, so `ensureUniqueSlug` sees the first check and picks `http-example-com-2`.
+
+### 2. Fix
+
+`7fb8d5e4e` already landed the source fix (`insertCheckResolvingSlugRace` +
+`db.IsCheckSlugCollision`) with **no tests**. This spec pins it and closes the gap the
+tests expose:
+
+- Extract the retry loop into a free function taking `insert` / `resolve` closures, the
+  way `db.CreateIncidentWithNumber` is written, so the retry can be pinned
+  deterministically instead of being left to the scheduler.
+- Charge the retry budget only to **non-progress** attempts. A lost race means a
+  competing create committed, so the re-resolved slug is a *different* one — that is
+  contention to ride out, not a livelock. A fixed budget of 8 breaks under a burst of
+  N simultaneous creates for one target (the unlucky one loses up to N-1 times), which
+  is the same lesson `incidentnumber.go` already learned. Termination still holds:
+  `ensureUniqueSlug` itself gives up after `-99`.
+
+### 3. Tests (the bulk of the new code)
+
+- `server/internal/handlers/checks/slug_race_internal_test.go` (package `checks`) —
+  deterministic: retries a slug collision and uses the re-resolved slug; does **not**
+  retry a different unique violation or an ordinary error; a user-provided slug maps to
+  `ErrSlugConflict` without retrying; rides out more lost races than the stall budget;
+  still terminates when the slug never moves.
+- `server/internal/handlers/checks/slug_race_test.go` (package `checks_test`) — N
+  concurrent `CreateCheck` calls for the same target on in-memory SQLite and on embedded
+  Postgres: all succeed, all slugs distinct. Plus the rename path: a lost `UpdateCheck`
+  race maps to `ErrSlugConflict` (400), never a 500.
+- `server/internal/db/check_slug_collision_test.go` (package `db_test`) — feeds
+  `IsCheckSlugCollision` violations produced by a **real** database on each engine, per
+  its own doc comment: the `checks_slug_idx` violation matches; a violation of a
+  different unique index does not.
+
+### 4. Proof
+
+Rebuild dash0 + embed, run the spec's own loop (`--workers=2 --retries=0`, fresh
+Postgres database per run) against the HEAD binary, and against a **pre-fix** binary
+built from `7fb8d5e4e~1` in a throwaway worktree as the negative control.
+
+### 5. Follow-up audit
+
+Grep `web/dash0/e2e/` for the other check-creating helpers and record whether they were
+exposed to the same race.
