@@ -924,6 +924,18 @@ type Service interface {
 		ctx context.Context, orgUID string, filter models.ListFilesFilter,
 	) ([]*models.File, int64, error)
 	DeleteFile(ctx context.Context, orgUID, uid string) error
+	// DeleteFilesByTopicPrefix soft-deletes every live attachment of an org
+	// whose topic starts with prefix, and reports how many rows changed. This
+	// is the entity-deletion reaper and the replace-on-reopen primitive
+	// (spec 2026-08-21-01) — a no-match is NOT an error, unlike DeleteFile.
+	DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix string) (int, error)
+	// ListAttachmentsByTopicPrefix returns live attachment rows across ALL
+	// organizations whose topic starts with prefix and which were created
+	// before `before`, capped at limit. Cross-org by design: its only caller
+	// is the GC sweep, which has no org to scope to.
+	ListAttachmentsByTopicPrefix(
+		ctx context.Context, prefix string, before time.Time, limit int,
+	) ([]*models.File, error)
 
 	// CheckDependency operations
 	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error

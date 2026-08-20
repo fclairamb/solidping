@@ -5537,6 +5537,8 @@ func (s *Service) ListFiles(
 		query = query.Where("name LIKE ?", "%"+filter.Q+"%")
 	}
 
+	query = applyFileTopicFilter(query, filter)
+
 	total, err := query.Count(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -6218,4 +6220,91 @@ func (s *Service) RemoveRecipientFromReportSchedules(ctx context.Context, orgUID
 	}
 
 	return changed, nil
+}
+
+// applyFileTopicFilter narrows a files query to attachments. An exact Topic and
+// a TopicPrefix are both honoured when both are set; neither set leaves the
+// query untouched, which is what keeps the historical "list every file"
+// behaviour intact for the dashboard's file browser.
+//
+// LIKE with an escaped prefix, not a raw concatenation: a topic is
+// server-generated today, but the agent upload endpoint accepts one from the
+// wire, and a `%` smuggled into a prefix would silently widen a REAP from one
+// entity to a whole table.
+func applyFileTopicFilter(query *bun.SelectQuery, filter models.ListFilesFilter) *bun.SelectQuery {
+	if filter.Topic != "" {
+		query = query.Where("topic = ?", filter.Topic)
+	}
+
+	if filter.TopicPrefix != "" {
+		query = query.Where("topic LIKE ? ESCAPE '\\'", escapeLikePrefix(filter.TopicPrefix)+"%")
+	}
+
+	return query
+}
+
+// escapeLikePrefix neutralizes the LIKE wildcards in a literal prefix.
+func escapeLikePrefix(prefix string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+
+	return replacer.Replace(prefix)
+}
+
+// DeleteFilesByTopicPrefix soft-deletes every live attachment of an org under a
+// topic prefix and returns how many rows changed. A zero count is a normal
+// answer (nothing was attached), never an error — the reaper runs on entities
+// that may well have no attachments at all.
+func (s *Service) DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix string) (int, error) {
+	if prefix == "" {
+		// Defensive: an empty prefix would match every attachment in the org.
+		return 0, nil
+	}
+
+	res, err := s.db.NewUpdate().
+		Model((*models.File)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("topic LIKE ? ESCAPE '\\'", escapeLikePrefix(prefix)+"%").
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(rows), nil
+}
+
+// ListAttachmentsByTopicPrefix returns live attachment rows across all orgs
+// under a topic prefix, older than `before`, capped at limit. Cross-org because
+// its only caller is the GC sweep.
+func (s *Service) ListAttachmentsByTopicPrefix(
+	ctx context.Context, prefix string, before time.Time, limit int,
+) ([]*models.File, error) {
+	if prefix == "" {
+		return nil, nil
+	}
+
+	var files []*models.File
+
+	query := s.db.NewSelect().
+		Model(&files).
+		Where("topic LIKE ? ESCAPE '\\'", escapeLikePrefix(prefix)+"%").
+		Where("deleted_at IS NULL").
+		Where("created_at < ?", before).
+		Order("created_at ASC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return files, nil
 }

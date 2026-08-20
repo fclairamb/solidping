@@ -7,6 +7,30 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: generic-attachments
+-- Was scratch migration 020_generic_attachments (spec 2026-08-21-01). Teardown half.
+-- ==========================================================================
+
+-- Teardown/parity only — never run in production. SQLite mirror of the
+-- generic-attachments section of postgres/migrations/014_v0_17_0.down.sql, and
+-- the FIRST section here because the down file unwinds in reverse order.
+--
+-- LOSSY the same way the Postgres half is: dropping the columns destroys every
+-- attachment link while leaving the blobs and their `files` rows behind.
+
+drop index if exists files_org_topic_idx;
+
+--bun:split
+
+alter table files drop column details;
+
+--bun:split
+
+alter table files drop column topic;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: dangling-notification-routes
 -- Was scratch migration 019_dangling_notification_routes (spec 2026-08-20-02). Teardown half.
 -- ==========================================================================

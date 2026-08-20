@@ -52,6 +52,11 @@ type FileResponse struct {
 	Size            int64     `json:"size"`
 	CreatedBy       *string   `json:"createdBy,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
+	// Topic is the attachment key (spec 2026-08-21-01). Omitted entirely for
+	// the ordinary, unattached file so existing clients see no change.
+	Topic *string `json:"topic,omitempty"`
+	// Details is the attachment kind's metadata bag. Operator-facing only.
+	Details models.JSONMap `json:"details,omitempty"`
 }
 
 // ListResponse is the paginated wrapper returned by the list endpoint.
@@ -70,6 +75,8 @@ func toResponse(file *models.File) FileResponse {
 		Size:            file.Size,
 		CreatedBy:       file.CreatedBy,
 		CreatedAt:       file.CreatedAt,
+		Topic:           file.Topic,
+		Details:         file.Details,
 	}
 }
 
@@ -201,9 +208,15 @@ func (s *Service) DeleteFile(ctx context.Context, orgSlug, fileUID string) error
 func (s *Service) CreateFile(
 	ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType,
 	name, mimeType string, createdBy *string, body io.Reader, size int64,
+	opts ...CreateFileOption,
 ) (*models.File, error) {
 	if size > MaxFileSize {
 		return nil, ErrFileTooLarge
+	}
+
+	settings := createFileSettings{}
+	for _, opt := range opts {
+		opt(&settings)
 	}
 
 	storage, err := filestorage.NewFileStorage(s.storageConfig())
@@ -223,11 +236,85 @@ func (s *Service) CreateFile(
 	}
 
 	file := models.NewFile(orgUID.String(), name, mimeType, uri, size, createdBy)
+	file.Topic = settings.topic
+	file.Details = settings.details
+
 	if err := s.db.CreateFile(ctx, file); err != nil {
 		return nil, fmt.Errorf("create file row: %w", err)
 	}
 
 	return file, nil
+}
+
+// createFileSettings collects the optional attachment metadata a caller may
+// hang on a new file.
+type createFileSettings struct {
+	topic   *string
+	details models.JSONMap
+}
+
+// CreateFileOption is the functional-option shape CreateFile takes. Options
+// rather than two more positional arguments: the two historical callers
+// (feedback screenshots, org logos) attach nothing at all, and adding
+// parameters they must pass nil for is how a signature rots.
+type CreateFileOption func(*createFileSettings)
+
+// WithTopic attaches the file to an entity under a path-like attachment key,
+// `<entity>/<uid>/<kind>`. An empty topic is ignored — an attachment key that
+// is the empty string would be matched by every prefix reap.
+func WithTopic(topic string) CreateFileOption {
+	return func(settings *createFileSettings) {
+		if topic == "" {
+			return
+		}
+
+		settings.topic = &topic
+	}
+}
+
+// WithDetails hangs the attachment kind's metadata bag on the file.
+func WithDetails(details models.JSONMap) CreateFileOption {
+	return func(settings *createFileSettings) {
+		if len(details) == 0 {
+			return
+		}
+
+		settings.details = details
+	}
+}
+
+// ListAttachments returns the live attachments of an org under an EXACT topic,
+// newest first. Empty (never an error) when nothing is attached.
+func (s *Service) ListAttachments(ctx context.Context, orgUID, topic string) ([]*models.File, error) {
+	if topic == "" {
+		return nil, nil
+	}
+
+	files, _, err := s.db.ListFiles(ctx, orgUID, models.ListFilesFilter{Topic: topic})
+	if err != nil {
+		return nil, fmt.Errorf("list attachments: %w", err)
+	}
+
+	return files, nil
+}
+
+// DeleteAttachments soft-deletes every live attachment of an org under a topic
+// PREFIX and returns how many rows changed. Two callers: entity-deletion
+// reaping (`incidents/<uid>/`) and replace-on-reopen.
+//
+// The blobs are deliberately left in storage — same posture as DeleteFile —
+// and swept later by the GC pass.
+func (s *Service) DeleteAttachments(ctx context.Context, orgUID, topicPrefix string) (int, error) {
+	if topicPrefix == "" {
+		return 0, nil
+	}
+
+	count, err := s.db.DeleteFilesByTopicPrefix(ctx, orgUID, topicPrefix)
+	if err != nil {
+		return 0, fmt.Errorf("delete attachments: %w", err)
+	}
+
+	return count, nil
 }
 
 func (s *Service) lookup(ctx context.Context, orgSlug, fileUID string) (*models.File, error) {
