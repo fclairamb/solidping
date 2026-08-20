@@ -98,6 +98,21 @@
       "region": "Région",
       "duration": "Durée",
       "time": "Heure"
+    },
+    "probeResponse": {
+      "title": "Ce que la sonde a vu",
+      "description": "La réponse reçue par ce check à l'ouverture de l'incident — une sonde, une région, un instant. C'est une preuve de la panne, pas l'état actuel de la cible.",
+      "capturedAt": "Capturé le",
+      "region": "Sondé depuis",
+      "remoteAddr": "Adresse du pair",
+      "contentType": "Type de contenu",
+      "bodyLabel": "Corps de la réponse",
+      "headerName": "En-tête",
+      "headerValue": "Valeur",
+      "redactionNote": "En-têtes de réponse uniquement. Les valeurs sensibles (cookies, authorization, tokens, clés, secrets) sont masquées, et les en-têtes de requête du check ne sont jamais capturés.",
+      "truncated": "Corps tronqué à {{shown}} sur {{total}}.",
+      "binary": "Corps non conservé : binaire ou UTF-8 invalide. Métadonnées seulement — {{size}}, SHA-256 {{hash}}.",
+      "unknownSize": "une taille inconnue"
     }
   },
   "timeline": {

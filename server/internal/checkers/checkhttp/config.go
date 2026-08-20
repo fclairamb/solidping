@@ -471,9 +471,16 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		}
 	}
 
-	// VerifySsl / FollowRedirects are only emitted at their non-default
-	// (false) value, matching the omit-empty style of the other fields — an
-	// unset/true config round-trips without ever writing the key.
+	c.addToggleConfig(cfg)
+
+	return cfg
+}
+
+// addToggleConfig writes the three boolean toggles, each omitted at its own
+// default so an untouched config round-trips without ever gaining a key:
+// VerifySsl / FollowRedirects default to ON and are written only at false;
+// CaptureFailureResponse defaults to OFF and is written only at true.
+func (c *HTTPConfig) addToggleConfig(cfg map[string]any) {
 	if c.VerifySsl != nil && !*c.VerifySsl {
 		cfg["verifySsl"] = false
 	}
@@ -482,13 +489,9 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		cfg["followRedirects"] = false
 	}
 
-	// Same omit-at-default style: only the opted-in (true) value is written,
-	// under the canonical snake_case key.
 	if c.CaptureFailureResponse {
 		cfg["capture_failure_response"] = true
 	}
-
-	return cfg
 }
 
 // SkipTLSVerify reports whether TLS certificate verification should be

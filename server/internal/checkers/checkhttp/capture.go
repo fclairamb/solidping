@@ -28,46 +28,51 @@ const (
 	truncationMarker = "\n…[truncated]"
 )
 
-// redactedHeaderNames are response headers whose value is ALWAYS replaced,
-// matched case-insensitively on the whole name.
-var redactedHeaderNames = map[string]struct{}{
-	"set-cookie":          {},
-	"authorization":       {},
-	"proxy-authenticate":  {},
-	"proxy-authorization": {},
-	"www-authenticate":    {},
-}
+// contentTypeJSON is the canonical JSON media type, spelled once.
+const contentTypeJSON = "application/json"
 
 // redactedHeaderSubstrings are matched anywhere in a lowercased header name,
 // which is what catches the long tail of vendor headers (`X-Api-Key`,
 // `X-Amz-Security-Token`, `X-Client-Secret`, …).
-var redactedHeaderSubstrings = []string{"token", "key", "secret"}
-
-// textLikeContentTypes / textLikeContentTypeSuffixes gate whether a body may
-// be stored as text at all. Anything else is treated as binary and reduced to
-// metadata.
-var textLikeContentTypes = map[string]struct{}{
-	"application/json":                  {},
-	"application/xml":                   {},
-	"application/xhtml+xml":             {},
-	"application/javascript":            {},
-	"application/ecmascript":            {},
-	"application/x-www-form-urlencoded": {},
-	"application/problem+json":          {},
+func redactedHeaderSubstrings() [3]string {
+	return [3]string{"token", "key", "secret"}
 }
 
-var textLikeContentTypeSuffixes = []string{"+json", "+xml"}
+// isAlwaysRedactedHeader lists response headers whose value is ALWAYS
+// replaced, matched case-insensitively on the whole (lowercased) name.
+func isAlwaysRedactedHeader(lower string) bool {
+	switch lower {
+	case "set-cookie", "authorization", "proxy-authenticate",
+		"proxy-authorization", "www-authenticate":
+		return true
+	default:
+		return false
+	}
+}
+
+// isTextLikeMediaType gates whether a body may be stored as text at all.
+// Anything else is treated as binary and reduced to metadata.
+func isTextLikeMediaType(mediaType string) bool {
+	switch mediaType {
+	case contentTypeJSON, "application/xml", "application/xhtml+xml",
+		"application/javascript", "application/ecmascript",
+		"application/x-www-form-urlencoded", "application/problem+json":
+		return true
+	default:
+		return strings.HasSuffix(mediaType, "+json") || strings.HasSuffix(mediaType, "+xml")
+	}
+}
 
 // shouldRedactHeader reports whether this response header's value must be
 // replaced with redactedMarker.
 func shouldRedactHeader(name string) bool {
 	lower := strings.ToLower(name)
 
-	if _, ok := redactedHeaderNames[lower]; ok {
+	if isAlwaysRedactedHeader(lower) {
 		return true
 	}
 
-	for _, needle := range redactedHeaderSubstrings {
+	for _, needle := range redactedHeaderSubstrings() {
 		if strings.Contains(lower, needle) {
 			return true
 		}
@@ -117,17 +122,7 @@ func isTextLikeContentType(contentType string) bool {
 		return true
 	}
 
-	if _, ok := textLikeContentTypes[mediaType]; ok {
-		return true
-	}
-
-	for _, suffix := range textLikeContentTypeSuffixes {
-		if strings.HasSuffix(mediaType, suffix) {
-			return true
-		}
-	}
-
-	return false
+	return isTextLikeMediaType(mediaType)
 }
 
 // truncateUTF8 cuts b at no more than maxCaptureBodyBytes, backing off to the

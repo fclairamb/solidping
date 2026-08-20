@@ -14,6 +14,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     secretHeaders: [],
     verifySsl: true,
     followRedirects: true,
+    captureFailureResponse: false,
     authDirty: false,
     headersDirty: false,
     ...overrides,
@@ -160,5 +161,49 @@ describe("httpModule — verifySsl / followRedirects round-trip", () => {
     );
     expect(config.verifySsl).toBe(false);
     expect(config.followRedirects).toBe(false);
+  });
+});
+
+describe("httpModule — captureFailureResponse round-trip", () => {
+  it("fromConfig defaults to false when absent", () => {
+    const state = httpModule.fromConfig({ url: "https://acme.com" });
+    expect(state.captureFailureResponse).toBe(false);
+  });
+
+  it("fromConfig reads the canonical snake_case key", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      capture_failure_response: true,
+    });
+    expect(state.captureFailureResponse).toBe(true);
+  });
+
+  it("fromConfig accepts the camelCase alias the server also tolerates", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      captureFailureResponse: true,
+    });
+    expect(state.captureFailureResponse).toBe(true);
+  });
+
+  it("toConfig omits the key at the default (false)", () => {
+    const { config } = httpModule.toConfig(baseState());
+    expect(config).not.toHaveProperty("capture_failure_response");
+    expect(config).not.toHaveProperty("captureFailureResponse");
+  });
+
+  it("toConfig writes only the canonical snake_case key when enabled", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ captureFailureResponse: true }),
+    );
+    expect(config.capture_failure_response).toBe(true);
+    expect(config).not.toHaveProperty("captureFailureResponse");
+  });
+
+  it("round-trips through toConfig -> fromConfig", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ captureFailureResponse: true }),
+    );
+    expect(httpModule.fromConfig(config).captureFailureResponse).toBe(true);
   });
 });

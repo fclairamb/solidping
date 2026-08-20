@@ -98,6 +98,21 @@
       "region": "Región",
       "duration": "Duración",
       "time": "Hora"
+    },
+    "probeResponse": {
+      "title": "Lo que vio la sonda",
+      "description": "La respuesta que recibió este check al abrirse el incidente — una sonda, una región, un instante. Es evidencia del fallo, no el estado actual del objetivo.",
+      "capturedAt": "Capturado el",
+      "region": "Sondeado desde",
+      "remoteAddr": "Dirección del par",
+      "contentType": "Tipo de contenido",
+      "bodyLabel": "Cuerpo de la respuesta",
+      "headerName": "Cabecera",
+      "headerValue": "Valor",
+      "redactionNote": "Solo cabeceras de respuesta. Los valores sensibles (cookies, authorization, tokens, claves, secretos) se ocultan, y las cabeceras de petición del check nunca se capturan.",
+      "truncated": "Cuerpo truncado a {{shown}} de {{total}}.",
+      "binary": "Cuerpo no almacenado: es binario o UTF-8 no válido. Solo metadatos — {{size}}, SHA-256 {{hash}}.",
+      "unknownSize": "un tamaño desconocido"
     }
   },
   "timeline": {

@@ -235,7 +235,7 @@ func TestTruncateUTF8KeepsRuneBoundary(t *testing.T) {
 	trimmed := strings.TrimSuffix(out, truncationMarker)
 	// Positive control: the backoff actually had to move — a cut that landed
 	// on a boundary would prove nothing.
-	r.Equal(maxCaptureBodyBytes-1, len(trimmed))
+	r.Len(trimmed, maxCaptureBodyBytes-1)
 	r.True(utf8.ValidString(trimmed))
 	r.True(json.Valid(mustJSON(t, trimmed)), "truncated body must survive JSON encoding")
 }
@@ -392,7 +392,7 @@ func TestCaptureTextLikeContentTypes(t *testing.T) {
 		{contentType: "", textLike: true},
 		{contentType: "text/plain", textLike: true},
 		{contentType: "text/html; charset=utf-8", textLike: true},
-		{contentType: "application/json", textLike: true},
+		{contentType: contentTypeJSON, textLike: true},
 		{contentType: "application/problem+json", textLike: true},
 		{contentType: "application/vnd.acme.v1+json", textLike: true},
 		{contentType: "application/xml", textLike: true},

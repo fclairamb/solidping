@@ -11,19 +11,19 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 )
 
-// forbiddenPublicKeys are JSON keys that must never appear on a public
+// isForbiddenPublicKey reports JSON keys that must never appear on a public
 // publication payload or a subscriber webhook. incidents.details can carry the
 // probe's captured failure response (spec 2026-08-20-01): response bodies with
 // internal hostnames, stack traces or PII. It is operator-facing evidence, not
 // status-page content.
-var forbiddenPublicKeys = map[string]struct{}{
-	"details":         {},
-	"failureresponse": {},
-	"first_result":    {},
-	"last_failure":    {},
-	"failure_reason":  {},
-	"output":          {},
-	"diagnostics":     {},
+func isForbiddenPublicKey(name string) bool {
+	switch name {
+	case "details", "failureresponse", "first_result", "last_failure",
+		"failure_reason", "output", "diagnostics":
+		return true
+	default:
+		return false
+	}
 }
 
 // TestPublicPublicationShapesCarryNoIncidentDetails walks the public
@@ -47,7 +47,7 @@ func TestPublicPublicationShapesCarryNoIncidentDetails(t *testing.T) {
 	var walk func(typ reflect.Type, path string)
 
 	walk = func(typ reflect.Type, path string) {
-		for typ.Kind() == reflect.Ptr || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
 			typ = typ.Elem()
 		}
 
@@ -66,8 +66,8 @@ func TestPublicPublicationShapesCarryNoIncidentDetails(t *testing.T) {
 				name = strings.ToLower(field.Name)
 			}
 
-			_, forbidden := forbiddenPublicKeys[name]
-			r.False(forbidden, "%s.%s (json %q) would publish incident details", path, field.Name, name)
+			r.False(isForbiddenPublicKey(name),
+				"%s.%s (json %q) would publish incident details", path, field.Name, name)
 
 			r.NotEqual(reflect.TypeOf(models.JSONMap{}), field.Type,
 				"%s.%s is an untyped map that could carry incident details", path, field.Name)

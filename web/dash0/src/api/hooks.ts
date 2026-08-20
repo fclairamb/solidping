@@ -230,6 +230,33 @@ export interface IncidentResultSnapshot {
   output?: Record<string, unknown>;
 }
 
+/** What the probe received from a failing HTTP target at this incident's
+ * current onset. Present only for checks with `capture_failure_response`
+ * enabled that failed AFTER a response existed (a timeout / DNS / TLS failure
+ * never produces one). Operator-facing evidence — it is never serialized onto
+ * a status page or a subscriber payload. */
+export interface IncidentFailureResponse {
+  url?: string;
+  statusLine?: string;
+  statusCode?: number;
+  /** Response headers; sensitive values are already `[redacted]` server-side.
+   * Request headers are never captured. */
+  headers?: Record<string, string>;
+  /** Absent when `binary` is true — a non-text body is reduced to metadata. */
+  body?: string;
+  /** True when `body` holds only the leading bytes; compare with contentLength. */
+  truncated?: boolean;
+  contentLength?: number;
+  contentType?: string;
+  bodyBytes?: number;
+  bodySha256?: string;
+  /** True when the body was not text-like or not valid UTF-8. */
+  binary?: boolean;
+  capturedAt?: string;
+  remoteAddr?: string;
+  region?: string;
+}
+
 export interface IncidentDetails {
   /** Human-readable cause, same key the Slack notifier reads. */
   failure_reason?: string;
@@ -237,6 +264,8 @@ export interface IncidentDetails {
   first_result?: IncidentResultSnapshot;
   /** The result from the most recent reopen, if the incident has relapsed. */
   last_failure?: IncidentResultSnapshot;
+  /** Opt-in capture of the failing response at the current onset. */
+  failureResponse?: IncidentFailureResponse;
 }
 
 export interface IncidentDetail {

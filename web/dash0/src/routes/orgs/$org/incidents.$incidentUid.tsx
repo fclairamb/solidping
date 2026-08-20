@@ -38,6 +38,7 @@ import {
   type Event,
   type IncidentDetail,
   type IncidentResultSnapshot,
+  type IncidentFailureResponse,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
@@ -100,6 +101,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CollapsibleCode } from "@/components/shared/copyable-code";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { notificationStatusVariant, sourceLabel } from "@/lib/notifications";
 import { channelTypeLabel } from "@/lib/channel-labels";
@@ -1091,6 +1093,8 @@ function IncidentDetailPage() {
 
       <FailureDetailsCard incident={incident} />
 
+      <ProbeResponseCard incident={incident} />
+
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
 
       <IncidentPublicationsPanel org={org} incidentUid={incidentUid} />
@@ -1334,6 +1338,162 @@ function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
             title={t("detail.failureDetails.latestRelapse")}
             snapshot={details.last_failure}
           />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// formatCaptureBytes renders a byte count compactly (the capture cap is 16 KB,
+// so KB is the largest unit that ever matters).
+function formatCaptureBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+// ProbeResponseCard renders "What the probe saw": the opt-in capture of the
+// response that opened (or reopened) this incident.
+//
+// Deliberately conservative in what it claims: this is what the probe received
+// at failure DETECTION, from one region, at one instant — never presented as
+// the target's current state. The capture timestamp and probing region sit
+// next to the content for exactly that reason.
+function ProbeResponseCard({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("incidents");
+  const capture: IncidentFailureResponse | undefined =
+    incident.details?.failureResponse;
+
+  if (!capture) return null;
+
+  const headerEntries = Object.entries(capture.headers ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+
+  return (
+    <Card data-testid="probe-response-card">
+      <CardHeader>
+        <CardTitle>{t("detail.probeResponse.title")}</CardTitle>
+        <CardDescription>
+          {t("detail.probeResponse.description")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="rounded-md bg-muted px-2 py-1 font-mono text-sm"
+            data-testid="probe-response-status-line"
+          >
+            {capture.statusLine || capture.statusCode || "-"}
+          </span>
+          {capture.url && (
+            <span className="break-all font-mono text-xs text-muted-foreground">
+              {capture.url}
+            </span>
+          )}
+        </div>
+
+        <div
+          className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4"
+          data-testid="probe-response-meta"
+        >
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.capturedAt")}
+            </div>
+            <div>
+              {capture.capturedAt
+                ? new Date(capture.capturedAt).toLocaleString()
+                : "-"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.region")}
+            </div>
+            <div>{capture.region || "-"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.remoteAddr")}
+            </div>
+            <div className="break-all font-mono text-xs">
+              {capture.remoteAddr || "-"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">
+              {t("detail.probeResponse.contentType")}
+            </div>
+            <div className="break-all text-xs">
+              {capture.contentType || "-"}
+            </div>
+          </div>
+        </div>
+
+        {capture.truncated && (
+          <Alert data-testid="probe-response-truncated-notice">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {t("detail.probeResponse.truncated", {
+                shown: formatCaptureBytes(16 * 1024),
+                total:
+                  typeof capture.contentLength === "number" &&
+                  capture.contentLength > 0
+                    ? formatCaptureBytes(capture.contentLength)
+                    : t("detail.probeResponse.unknownSize"),
+              })}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {capture.binary && (
+          <Alert data-testid="probe-response-binary-notice">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {t("detail.probeResponse.binary", {
+                size:
+                  typeof capture.bodyBytes === "number"
+                    ? formatCaptureBytes(capture.bodyBytes)
+                    : t("detail.probeResponse.unknownSize"),
+                hash: capture.bodySha256 ?? "-",
+              })}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {capture.body !== undefined && capture.body !== "" && (
+          <CollapsibleCode
+            label={t("detail.probeResponse.bodyLabel")}
+            value={capture.body}
+          />
+        )}
+
+        {headerEntries.length > 0 && (
+          <div className="overflow-x-auto">
+            <Table data-testid="probe-response-headers-table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("detail.probeResponse.headerName")}</TableHead>
+                  <TableHead>{t("detail.probeResponse.headerValue")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {headerEntries.map(([name, value]) => (
+                  <TableRow key={name}>
+                    <TableCell className="whitespace-nowrap font-mono text-xs">
+                      {name}
+                    </TableCell>
+                    <TableCell className="break-all font-mono text-xs">
+                      {value}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className="pt-2 text-xs text-muted-foreground">
+              {t("detail.probeResponse.redactionNote")}
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

@@ -12,19 +12,18 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// forbiddenPublicFieldNames are JSON keys that must never appear anywhere in a
+// isForbiddenPublicFieldName reports JSON keys that must never appear anywhere in a
 // PUBLIC status-page payload. `details` is the incidents.details JSONB column,
 // which since spec 2026-08-20-01 can carry the probe's failure capture —
 // response bodies with internal hostnames, stack traces or PII.
-var forbiddenPublicFieldNames = map[string]struct{}{
-	"details":         {},
-	"failureresponse": {},
-	"firstresult":     {},
-	"first_result":    {},
-	"lastfailure":     {},
-	"last_failure":    {},
-	"output":          {},
-	"diagnostics":     {},
+func isForbiddenPublicFieldName(name string) bool {
+	switch name {
+	case "details", "failureresponse", "firstresult", "first_result",
+		"lastfailure", "last_failure", "output", "diagnostics":
+		return true
+	default:
+		return false
+	}
 }
 
 // forbiddenPublicFieldTypes are Go types that carry arbitrary operator/probe
@@ -61,7 +60,7 @@ func TestPublicStatusPagePayloadCarriesNoIncidentDetails(t *testing.T) {
 	var walk func(typ reflect.Type, path string)
 
 	walk = func(typ reflect.Type, path string) {
-		for typ.Kind() == reflect.Ptr || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
 			typ = typ.Elem()
 		}
 
@@ -80,8 +79,7 @@ func TestPublicStatusPagePayloadCarriesNoIncidentDetails(t *testing.T) {
 				name = strings.ToLower(field.Name)
 			}
 
-			_, forbidden := forbiddenPublicFieldNames[name]
-			r.False(forbidden,
+			r.False(isForbiddenPublicFieldName(name),
 				"%s.%s (json %q) would expose incident details on a public status page", path, field.Name, name)
 			r.False(isForbiddenPublicType(field.Type),
 				"%s.%s carries an untyped/operator payload that could leak incident details", path, field.Name)

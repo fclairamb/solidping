@@ -98,6 +98,21 @@
       "region": "Region",
       "duration": "Dauer",
       "time": "Zeit"
+    },
+    "probeResponse": {
+      "title": "Was die Sonde sah",
+      "description": "Die Antwort, die dieser Check beim Öffnen des Vorfalls erhielt — eine Sonde, eine Region, ein Zeitpunkt. Ein Beleg für den Ausfall, nicht der aktuelle Zustand des Ziels.",
+      "capturedAt": "Erfasst am",
+      "region": "Geprüft aus",
+      "remoteAddr": "Gegenstellen-Adresse",
+      "contentType": "Inhaltstyp",
+      "bodyLabel": "Antwort-Body",
+      "headerName": "Header",
+      "headerValue": "Wert",
+      "redactionNote": "Nur Antwort-Header. Sensible Werte (Cookies, Authorization, Tokens, Keys, Secrets) werden geschwärzt; die Request-Header des Checks werden nie erfasst.",
+      "truncated": "Body auf {{shown}} von {{total}} gekürzt.",
+      "binary": "Body nicht gespeichert: binär oder kein gültiges UTF-8. Nur Metadaten — {{size}}, SHA-256 {{hash}}.",
+      "unknownSize": "unbekannte Größe"
     }
   },
   "timeline": {
