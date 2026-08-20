@@ -91,6 +91,13 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 		return err
 	}
 
+	// Seed incidents carrying an opt-in failure-response capture so the
+	// "What the probe saw" E2E has deterministic data for the text,
+	// truncated and binary renderings (spec 2026-08-20-01).
+	if err := createTestFailureResponseCaptures(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
 	slog.InfoContext(ctx, "Test data creation completed successfully")
 
 	return nil
@@ -379,6 +386,160 @@ func createTestIncidentNotification(ctx context.Context, dbService db.Service, o
 
 	slog.InfoContext(ctx, "Created test incident notification",
 		"checkUID", checkUID, "incidentUID", incidentUID, "notifUID", notifUID)
+
+	return nil
+}
+
+// Fixture UIDs for the failure-response capture incidents (spec 2026-08-20-01).
+// Each incident gets its own check so the three renderings stay independent and
+// one test's navigation can never land on another's data.
+const (
+	captureTextCheckUID     = "00000000-0000-0000-0000-000000000016"
+	captureTextIncidentUID  = "00000000-0000-0000-0000-000000000017"
+	captureTruncCheckUID    = "00000000-0000-0000-0000-000000000018"
+	captureTruncIncidentUID = "00000000-0000-0000-0000-000000000019"
+	captureBinCheckUID      = "00000000-0000-0000-0000-000000000020"
+	captureBinIncidentUID   = "00000000-0000-0000-0000-000000000021"
+)
+
+// createTestFailureResponseCaptures seeds three down checks, each with an active
+// incident whose Details carry a `failureResponse` block — the exact shape
+// incidents.failureDetails() writes when an HTTP check with
+// `capture_failure_response` fails (spec 2026-08-20-01).
+//
+// Three, because the card has three visually distinct states the E2E must pin
+// independently: an ordinary text capture (status line + headers table +
+// collapsed body), a truncated one (explicit notice), and a binary one
+// (metadata only, no body). The capture-free incident seeded by
+// createTestIncidentNotification is the negative case — its detail page must
+// NOT render the card at all.
+//
+// Seeded by hand rather than through the real write path: this is deterministic
+// fixture data, and the write path has its own Go tests.
+func createTestFailureResponseCaptures(
+	ctx context.Context, dbService db.Service, orgUID string, now time.Time,
+) error {
+	// Headers deliberately include an already-redacted Set-Cookie: the
+	// redaction happens in the checker, so what reaches the UI is the redacted
+	// value, and the E2E asserts the UI renders it rather than a real cookie.
+	sharedHeaders := models.JSONMap{
+		"Content-Type": "text/html; charset=utf-8",
+		"Server":       "acme-lb",
+		"Set-Cookie":   "[redacted]",
+		"X-Request-Id": "req-4711",
+	}
+
+	captures := []struct {
+		checkUID    string
+		incidentUID string
+		slug        string
+		name        string
+		capture     models.JSONMap
+	}{
+		{
+			checkUID:    captureTextCheckUID,
+			incidentUID: captureTextIncidentUID,
+			slug:        "captured-check",
+			name:        "Captured Check",
+			capture: models.JSONMap{
+				"url":           "https://acme.com/health",
+				"statusLine":    "HTTP/1.1 503 Service Unavailable",
+				"statusCode":    float64(503),
+				"headers":       sharedHeaders,
+				"body":          "<html><body>acme origin unreachable</body></html>",
+				"contentType":   "text/html; charset=utf-8",
+				"contentLength": float64(48),
+				"bodyBytes":     float64(48),
+				"bodySha256":    "1e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7",
+				"capturedAt":    now,
+				"remoteAddr":    "203.0.113.10:443",
+				"region":        "eu",
+			},
+		},
+		{
+			checkUID:    captureTruncCheckUID,
+			incidentUID: captureTruncIncidentUID,
+			slug:        "captured-truncated-check",
+			name:        "Captured Truncated Check",
+			capture: models.JSONMap{
+				"url":           "https://acme.com/big",
+				"statusLine":    "HTTP/1.1 500 Internal Server Error",
+				"statusCode":    float64(500),
+				"headers":       sharedHeaders,
+				"body":          "aaaaaaaaaaaaaaaaaaaa\n…[truncated]",
+				"truncated":     true,
+				"contentType":   "text/plain",
+				"contentLength": float64(49152),
+				"bodyBytes":     float64(49152),
+				"bodySha256":    "2e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7",
+				"capturedAt":    now,
+				"remoteAddr":    "203.0.113.11:443",
+				"region":        "eu",
+			},
+		},
+		{
+			checkUID:    captureBinCheckUID,
+			incidentUID: captureBinIncidentUID,
+			slug:        "captured-binary-check",
+			name:        "Captured Binary Check",
+			capture: models.JSONMap{
+				"url":         "https://acme.com/image",
+				"statusLine":  "HTTP/1.1 502 Bad Gateway",
+				"statusCode":  float64(502),
+				"headers":     models.JSONMap{"Content-Type": "image/png", "Server": "acme-lb"},
+				"binary":      true,
+				"contentType": "image/png",
+				"bodyBytes":   float64(2048),
+				"bodySha256":  "3e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7",
+				"capturedAt":  now,
+				"remoteAddr":  "203.0.113.12:443",
+				"region":      "us",
+			},
+		},
+	}
+
+	for _, entry := range captures {
+		check := models.NewCheck(orgUID, entry.slug, "http")
+		check.UID = entry.checkUID
+		name := entry.name
+		check.Name = &name
+		check.Config = models.JSONMap{
+			"url":                      "https://acme.com/health",
+			"capture_failure_response": true,
+		}
+		check.Status = models.CheckStatusDown
+		check.StatusChangedAt = &now
+		check.CreatedAt = now
+		check.UpdatedAt = now
+
+		if err := dbService.CreateCheck(ctx, check); err != nil {
+			return fmt.Errorf("failed to create capture test check %s: %w", entry.slug, err)
+		}
+
+		incident := models.NewIncident(orgUID, entry.checkUID, now, entry.name+" is down")
+		incident.UID = entry.incidentUID
+		incident.CreatedAt = now
+		incident.UpdatedAt = now
+		incident.Details = models.JSONMap{
+			"failure_reason": "unexpected status code",
+			"first_result": models.JSONMap{
+				"resultUid":   entry.incidentUID,
+				"status":      "DOWN",
+				"region":      "eu",
+				"duration":    float32(0.75),
+				"periodStart": now,
+				"output":      models.JSONMap{"error": "unexpected status code"},
+			},
+			"failureResponse": entry.capture,
+		}
+
+		if err := dbService.CreateIncident(ctx, incident); err != nil {
+			return fmt.Errorf("failed to create capture test incident %s: %w", entry.slug, err)
+		}
+	}
+
+	slog.InfoContext(ctx, "Created test failure-response capture incidents",
+		"count", len(captures))
 
 	return nil
 }
