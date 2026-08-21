@@ -154,9 +154,19 @@ numbered one instead, written to be idempotent so it is a no-op on databases
 that already got the DDL. (A self-healing migration numbered `014` once did
 this for a rewritten 013; it was withdrawn before release in favor of repairing
 the few affected dev databases by hand — pre-release, hand repair beats
-shipping a permanent migration. `014_v0_17_0` today is the consolidated
-v0.17.0 migration, unrelated to that draft; see the consolidation rule above
-for why reusing the number is safe here and what it costs dev databases.)
+shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
+migration, unrelated to that draft; see the consolidation rule above for why
+reusing the number is safe here and what it costs dev databases.)
+
+**The current unreleased target is `015_v0_18_0`.** v0.17.0 shipped, so `014`
+is frozen: everything this cycle produces is appended to `015_v0_18_0.up.sql` /
+`.down.sql` (both dialects) instead. That number is unreleased, so it costs dev
+databases nothing — a database that already ran `014` simply picks `015` up as
+the next unapplied migration, with no reset, no hand-apply and no
+`solidping migrate repair`. Check the latest `vX.Y.Z` tag before appending to a
+migration, not the previous cycle's habit: `015` acquired its first section
+only after a change had already been written into `014` on the stale belief
+that v0.17.0 was still pending.
 
 ## Development workflow
 

@@ -214,6 +214,20 @@ Sibling of the WS route (`api.GET("/agent/ws", ...)`,
 Ordered so every step lands on a green tree. Steps 1–2 are the generic rail;
 3–5 are the screenshot consumer; 6–7 are the agent + GC halves; 8 is the UI.
 
+> **2026-08-21 — post-hoc correction: the migration moved to `015_v0_18_0`.**
+> The Proposal's §1 and Step 1 below say the schema change belongs in
+> `014_v0_17_0`, on the premise that v0.17.0 was unreleased. That premise was
+> stale — v0.17.0 had already shipped (`fc001df29 chore(release): v0.17.0`), and
+> a released migration is never modified, because a database that already ran it
+> never re-runs it: the appended statements would have silently never reached it.
+> The `SECTION: generic-attachments` block was therefore relocated verbatim
+> (both dialects, both directions) into a new `015_v0_18_0.up.sql` /
+> `.down.sql`, restoring `014` to its released bytes. Nothing about the SQL
+> changed. **The operator caveat in §1 no longer applies**: `015` is a new
+> migration that applies cleanly on any database that already ran `014` — no
+> hand-apply, no dev-DB reset, no `solidping migrate repair`. The text below is
+> left as the historical record.
+
 ### Step 1 — Schema + model + db layer (`files.topic`, `files.details`)
 
 - New `SECTION: generic-attachments` appended to `014_v0_17_0.up.sql` in BOTH
