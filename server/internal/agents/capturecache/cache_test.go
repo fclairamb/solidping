@@ -104,9 +104,9 @@ func TestBoundedByEntryCount(t *testing.T) {
 	}
 }
 
-// TestBoundedByBytes is the byte half, and it is a REAL negative: the entry
-// count bound is never reached here (4 entries allowed, 3 stored), so only the
-// byte budget can be what evicts.
+// TestBoundedByBytes is the byte half, and it is a REAL negative: with 10
+// entries allowed and only 2 ever stored, the count bound cannot possibly be
+// what fires — the 300-byte budget is the only thing that can evict.
 func TestBoundedByBytes(t *testing.T) {
 	t.Parallel()
 

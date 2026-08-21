@@ -2,10 +2,13 @@ package agentws_test
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/stretchr/testify/require"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
@@ -39,6 +42,10 @@ type captureEnv struct {
 	server      *httptest.Server
 	org         *models.Organization
 	attachments *attachments.Service
+	// workersSvc is the exact service the WS frame handler submits results
+	// through. Reachable here so a test can drive a result whose agent no
+	// longer has a socket to send it over.
+	workersSvc *workers.Service
 }
 
 func newCaptureEnv(t *testing.T) *captureEnv {
@@ -90,7 +97,10 @@ func newCaptureEnv(t *testing.T) *captureEnv {
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	return &captureEnv{t: t, dbSvc: dbSvc, server: server, org: org, attachments: attachmentsSvc}
+	return &captureEnv{
+		t: t, dbSvc: dbSvc, server: server, org: org,
+		attachments: attachmentsSvc, workersSvc: workersSvc,
+	}
 }
 
 // mintToken creates a live enrollment token bound to (org, testRegion).
@@ -234,15 +244,76 @@ func TestAgentCaptureReachesTheIncident(t *testing.T) {
 	r.Equal(attachments.IncidentScreenshotTopic(incident.UID), *stored.Topic)
 }
 
-// TestIncidentOpensWhenTheAgentIsGone is the spec's "agent disconnected between
-// the result and the request" case.
+// TestIncidentOpensAfterTheAgentDisconnects is the spec's "agent disconnected
+// between the result and the request" case, with a REAL disconnection and an
+// observable negative.
 //
-// The result is submitted over a connection that is then CLOSED before the
-// server can ask for the upload — driven directly through the requester with a
-// worker uid that has no live connection, which is exactly the state a
-// disconnected agent leaves behind. The incident must open regardless, and
-// nothing may be retried: no upload ever lands.
-func TestIncidentOpensWhenTheAgentIsGone(t *testing.T) {
+// Sequencing note, because it decides the shape of this test: on the master the
+// incident pipeline runs SYNCHRONOUSLY inside the result submission, so there is
+// no instant between "the frame arrived" and "the ask is emitted" at which the
+// agent could close its own socket. The production race is therefore reproduced
+// from the server's side, which is where it actually happens: the agent's socket
+// is torn down, and the result it produced is fed to `workers.SubmitResult` —
+// the exact call the WS frame handler makes — because there is no longer a
+// socket to carry it.
+//
+// The disconnected phase alone could only assert absences (no attachment), which
+// a socket nobody is listening on would satisfy trivially. So the agent then
+// RECONNECTS and a second, known-good ask is provoked: the first upload request
+// it receives must be the NEW one. If anything had queued, buffered or retried
+// the lost capture, the stale ask would arrive here instead — which is what
+// makes "nothing is retried forever" observable rather than assumed, and doubles
+// as the control proving the ask machinery works for this very worker.
+func TestIncidentOpensAfterTheAgentDisconnects(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	env := newCaptureEnv(t)
+
+	// Both checks exist before the agent connects, so the only frames these
+	// connections ever see are the ones the test provokes.
+	lost := env.browserCheck("blog")
+	later := env.browserCheck("shop")
+
+	conn, keys, workerUID := rawEnroll(t, env)
+	jobs := rawClaim(t, conn, lost, later)
+
+	// THE DISCONNECTION, before the result that opens the incident is processed.
+	r.NoError(conn.Close(websocket.StatusNormalClosure, "agent going away"))
+
+	r.NoError(env.submitMarkerResult(ctx, jobs[lost.UID], workerUID, "cap-lost"))
+
+	incident, err := env.dbSvc.FindActiveIncidentByCheckUID(ctx, lost.UID)
+	r.NoError(err)
+	r.NotNil(incident, "a lost capture must never cost us the incident")
+
+	// The agent comes back. Nothing about the lost capture may follow it here.
+	revived := env.reconnect(t, keys)
+
+	r.NoError(env.submitMarkerResult(ctx, jobs[later.UID], workerUID, "cap-later"))
+
+	ask := readUploadRequest(t, revived)
+	r.Equal("cap-later", ask.CaptureID,
+		"a reconnected agent must receive the NEW ask, never a replay of the lost one")
+
+	laterIncident, err := env.dbSvc.FindActiveIncidentByCheckUID(ctx, later.UID)
+	r.NoError(err)
+	r.Equal(attachments.IncidentScreenshotTopic(laterIncident.UID), ask.Topic)
+
+	// And the incident whose capture was lost never gained one.
+	list, err := env.attachments.ListIncidentAttachments(ctx, env.org.UID, incident.UID)
+	r.NoError(err)
+	r.Empty(list)
+}
+
+// TestIncidentOpensWhenTheCaptureIsGone is the neighboring failure the agent
+// itself can hit: its connection is perfectly healthy and the upload request IS
+// delivered, but the capture named by the marker is no longer in its cache
+// (evicted, expired, or the agent restarted). The miss is silent — the incident
+// still opens and nothing is uploaded or retried.
+func TestIncidentOpensWhenTheCaptureIsGone(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -252,8 +323,7 @@ func TestIncidentOpensWhenTheAgentIsGone(t *testing.T) {
 	check := env.browserCheck("shop")
 	wsBackend, job, worker := claimJob(t, env, check)
 
-	// The agent advertises a capture it will never be asked for, because its
-	// socket is gone by the time the request would be sent.
+	// A marker naming a capture this agent never held.
 	req := downWithCapture("lost")
 	req.Diagnostics.Screenshot.PNG = nil
 	req.Diagnostics.Screenshot.Available = true
@@ -265,8 +335,6 @@ func TestIncidentOpensWhenTheAgentIsGone(t *testing.T) {
 	r.NoError(err)
 	r.NotNil(incident, "a lost capture must never cost us the incident")
 
-	// Nothing was uploaded, and nothing is pending: there is no retry loop, no
-	// queue, and no record that could resurrect this later.
 	time.Sleep(300 * time.Millisecond)
 
 	list, err := env.attachments.ListIncidentAttachments(ctx, env.org.UID, incident.UID)
@@ -303,5 +371,174 @@ func TestRequestToAnUnknownWorkerIsANoOp(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("RequestScreenshotUpload must never block")
+	}
+}
+
+// rawEnroll performs the enrollment handshake with a bare WebSocket client
+// (rather than a WSBackend), so the test owns the socket and can close it at an
+// exact point. Returns the connection and the server-assigned worker uid — the
+// identity the upload registry is keyed by.
+func rawEnroll(t *testing.T, env *captureEnv) (*websocket.Conn, *agentcrypto.AgentKeys, string) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	keys, err := agentcrypto.GenerateAgentKeys()
+	r.NoError(err)
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+env.mintToken())
+
+	conn, resp, err := websocket.Dial(ctx, env.server.URL+"/api/v1/agent/ws",
+		&websocket.DialOptions{HTTPHeader: headers})
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+
+	r.NoError(err)
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+
+	r.NoError(wsjson.Write(ctx, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeEnroll, ID: "enroll-1", Name: "dc1-agent",
+		Ed25519PublicKey: keys.Ed25519PublicKey, X25519PublicKey: keys.X25519Recipient,
+	}))
+
+	var enrolled agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &enrolled))
+	r.Equal(agentcrypto.MsgTypeEnrolled, enrolled.Type)
+	r.NotEmpty(enrolled.WorkerUID)
+
+	// The identity hello that follows enrollment.
+	var identityHello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &identityHello))
+	r.Equal(agentcrypto.MsgTypeHello, identityHello.Type)
+
+	return conn, keys, enrolled.WorkerUID
+}
+
+// reconnect re-dials as the SAME agent with signed headers, the way an agent
+// that dropped comes back. The returned connection is the one the registry must
+// now be pointing at.
+func (e *captureEnv) reconnect(t *testing.T, keys *agentcrypto.AgentKeys) *websocket.Conn {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	agent := e.onlyAgent(t)
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	nonce := "reconnect-nonce-1"
+
+	signature, err := keys.Sign(http.MethodGet, "/api/v1/agent/ws", timestamp, nonce)
+	r.NoError(err)
+
+	headers := http.Header{}
+	headers.Set("X-Sp-Agent-Uid", agent.UID)
+	headers.Set("X-Sp-Timestamp", timestamp)
+	headers.Set("X-Sp-Nonce", nonce)
+	headers.Set("X-Sp-Signature", signature)
+
+	conn, resp, err := websocket.Dial(ctx, e.server.URL+"/api/v1/agent/ws",
+		&websocket.DialOptions{HTTPHeader: headers})
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+
+	r.NoError(err)
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	var hello agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &hello))
+	r.Equal(agentcrypto.MsgTypeHello, hello.Type)
+
+	return conn
+}
+
+// onlyAgent returns the single agent enrolled in this environment.
+func (e *captureEnv) onlyAgent(t *testing.T) *models.Agent {
+	t.Helper()
+
+	agents, err := e.dbSvc.ListAgents(t.Context(), e.org.UID)
+	require.NoError(t, err)
+	require.Len(t, agents, 1)
+
+	return agents[0]
+}
+
+// rawClaim claims over a bare connection and returns the wanted checks' jobs,
+// keyed by check uid.
+func rawClaim(t *testing.T, conn *websocket.Conn, checks ...*models.Check) map[string]string {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	r.NoError(wsjson.Write(ctx, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "claim-1", MaxJobs: 10,
+	}))
+
+	var frame agentcrypto.ServerFrame
+	r.NoError(wsjson.Read(ctx, conn, &frame))
+	r.Equal(agentcrypto.MsgTypeJobs, frame.Type)
+
+	out := map[string]string{}
+
+	for _, job := range frame.Jobs {
+		out[job.CheckUID] = job.UID
+	}
+
+	for _, check := range checks {
+		r.Contains(out, check.UID, "the agent must have claimed every check's job")
+	}
+
+	return out
+}
+
+// submitMarkerResult feeds a failing, capture-advertising result through the
+// EXACT service call the WS frame handler makes. Using it directly is what lets
+// a test submit a result whose agent no longer has a socket.
+func (e *captureEnv) submitMarkerResult(
+	ctx context.Context, jobUID, workerUID, captureID string,
+) error {
+	_, err := e.workersSvc.SubmitResult(ctx, &workers.SubmitResultRequest{
+		JobUID:    jobUID,
+		WorkerUID: workerUID,
+		Status:    int(models.ResultStatusDown),
+		Duration:  42,
+		Output:    map[string]any{checkerdef.OutputKeyError: "keyword not found"},
+		Diagnostics: &checkerdef.Diagnostics{
+			Screenshot: &checkerdef.Screenshot{
+				Available: true, CaptureID: captureID, CapturedAt: time.Now().UTC(),
+			},
+		},
+		FromProbe: true,
+	})
+
+	return err
+}
+
+// readUploadRequest reads frames off a bare connection until an upload request
+// arrives, skipping the unrelated hints the server may interleave.
+func readUploadRequest(t *testing.T, conn *websocket.Conn) agentcrypto.ServerFrame {
+	t.Helper()
+
+	r := require.New(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	for {
+		var frame agentcrypto.ServerFrame
+
+		r.NoError(wsjson.Read(ctx, conn, &frame), "expected an upload-request frame")
+
+		if frame.Type == agentcrypto.MsgTypeUploadRequest {
+			return frame
+		}
 	}
 }

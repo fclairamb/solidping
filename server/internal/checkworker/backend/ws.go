@@ -158,15 +158,6 @@ func WithCaptureCache(cache *capturecache.Cache) Option {
 	}
 }
 
-// WithHTTPClient overrides the client used for out-of-band capture uploads.
-func WithHTTPClient(client *http.Client) Option {
-	return func(b *WSBackend) {
-		if client != nil {
-			b.httpClient = client
-		}
-	}
-}
-
 // NewWSBackend creates a WSBackend. identity must carry the agent's keypairs;
 // AgentUID/Region may be empty (enrollment fills them, then onIdentityChange
 // fires so the caller can persist).
