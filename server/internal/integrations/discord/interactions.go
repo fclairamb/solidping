@@ -191,9 +191,22 @@ func dispatchComponent(
 	case ActionAcknowledge:
 		return acknowledgeFromInteraction(ctx, svc, interaction, subject)
 	case ActionUnavailable:
-		return ephemeralResponse("Noted — you are marked unavailable for this incident."), nil
+		// Informational, exactly like the Slack button: the incident stays
+		// unacknowledged so escalation keeps running and somebody else picks
+		// it up. The press is logged so the audit trail shows who declined.
+		slog.InfoContext(ctx, "User marked unavailable for incident via Discord",
+			"incident_uid", subject, "discord_user_id", interaction.InvokerID())
+
+		return ephemeralResponse(
+			"Noted. This incident remains unacknowledged — another team member should take it."), nil
 	case ActionEscalate:
-		return ephemeralResponse("Escalation requested."), nil
+		// Manual escalation has no trigger yet on any transport (the Slack
+		// button carries the same TODO); the press is recorded so the intent
+		// is at least visible in the logs.
+		slog.InfoContext(ctx, "Manual escalation requested via Discord",
+			"incident_uid", subject, "discord_user_id", interaction.InvokerID())
+
+		return ephemeralResponse("Escalation noted. Escalation continues on its policy schedule."), nil
 	default:
 		slog.DebugContext(ctx, "Unhandled Discord component action",
 			"custom_id", interaction.Data.CustomID)
