@@ -299,6 +299,7 @@ export function StatusUpdateForm({
               value={form.linkUrl}
               onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
               placeholder="https://status.example.com/incident/123"
+              data-testid="status-update-form-link-url"
             />
           </div>
 
