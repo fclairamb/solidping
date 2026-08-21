@@ -261,7 +261,7 @@ notification jobs.
 | `incident.unacknowledged` | manual ack clear | no | does not restart |
 | `incident.snoozed` | `SnoozeIncident` | no | canceled until snooze expires |
 | `incident.unsnoozed` | snooze cleared, or `SweepUnsnooze` (`service.go:2151`) when window closes | no | does not restart |
-| `incident.comment` | `addCommentByOrgUID` (dashboard, API, Slack `/comment`, Telegram `/comment`, Slack thread reply in `all` mode) | yes — see below | — |
+| `incident.comment` | `addCommentByOrgUID` (dashboard, API, Slack `/comment`, Telegram `/comment`, Discord `comment`, Slack/Discord thread reply in `all` mode) | yes — see below | — |
 | `incident.escalation_failed` | a step couldn't deliver (no on-call user, empty schedule) | no | — |
 | `check.created/updated/deleted` | check CRUD endpoints | no | — |
 | `org.activation.*` (5 milestones) | activation funnel (`internal/activation/`) | no | — |
@@ -293,17 +293,18 @@ filters apply on top:
    from the table, including email, gets the default (all on). Call sites never
    name an integration type, which is what keeps the opt-out in one place.
 2. **Echo suppression** — `isCommentEchoOrigin`. A comment carries
-   `EchoOriginTeamID`, set ONLY by the Slack thread-reply ingest path, and every
-   Slack connection in that workspace is skipped. Matching is at workspace
-   level, not per connection row, because the incident's Slack thread is stored
-   once per incident: any connection in that workspace would post into the very
-   thread the author is reading. `/comment` deliberately leaves
-   `EchoOriginTeamID` empty — a slash command posts nothing visible, so the
-   channel that typed it must still receive the fan-out.
+   `EchoOriginTeamID` (Slack) or `EchoOriginGuildID` (Discord), set ONLY by the
+   thread-reply ingest path, and every connection in that workspace/guild is
+   skipped. Matching is at workspace/guild level, not per connection row,
+   because the incident's thread is stored once per incident: any connection in
+   that workspace would post into the very thread the author is reading. The
+   `/comment` slash command and Discord's `comment` command deliberately leave
+   the echo origin empty — a command posts nothing visible, so the channel that
+   typed it must still receive the fan-out.
 
-   This is distinct from the `bot_id` ingest guard
-   (`slack/events.go`), which stops our own posts being re-ingested. Both are
-   needed: one prevents an echo, the other prevents a loop.
+   This is distinct from the bot-author ingest guard (`bot_id` on Slack,
+   `author.bot` / `webhook_id` on Discord), which stops our own posts being
+   re-ingested. Both are needed: one prevents an echo, the other prevents a loop.
 
 The comment body travels in `NotificationJobConfig.Comment`
 (`notifications.CommentInfo{Text, AuthorName, Source}`) rather than being
@@ -433,8 +434,13 @@ The split is a known papercut tracked in spec
 
 A channel:
 
-- has a `type` (one of nine: slack, discord, email, webhook, googlechat,
-  mattermost, ntfy, pagerduty, pushover) that picks the dispatcher;
+- has a `type` (slack, discord, email, webhook, googlechat, mattermost,
+  msteams, msteams-bot, matrix, ntfy, pagerduty, pushover, webpush, twilio,
+  kubernetes, freebox) that picks the dispatcher. Note that a type does not
+  always imply one delivery mechanism: a `discord` integration is in **bot
+  mode** or **legacy webhook mode** depending on whether its settings carry a
+  guild and a channel, and the sender branches on the data rather than on a
+  second connection type — see [../discord/README.md](../discord/README.md);
 - carries type-specific config in a JSONB column with secret fields split
   into a `settings_private` envelope (see the encryption-at-rest section
   of `CLAUDE.md`);
@@ -533,6 +539,9 @@ are not gated by incident state.
   subsystems (passive checks live under `server/internal/handlers/emailcheck`
   and use JMAP). They share nothing except the word "email".
 - Slack OAuth install flow: `server/internal/handlers/slackoauth/`.
+- Discord bot operator setup (application creation, bot permissions, the
+  privileged `MESSAGE_CONTENT` intent, the two inbound transports):
+  [../discord/README.md](../discord/README.md).
 
 ## Known issues / planned changes
 

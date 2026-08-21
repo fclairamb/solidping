@@ -14,7 +14,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Slack | Available | OAuth integration |
 | Microsoft Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
 | Microsoft Teams (webhook) | Available | Teams Workflow webhook (one-way) |
-| Discord | Available | Webhook |
+| Discord | Available | Bot (OAuth install, two-way) or webhook (one-way) |
 | Email | Available | SMTP |
 | Webhooks | Available | HTTP POST |
 | Google Chat | Available | Webhook |
@@ -386,9 +386,89 @@ SolidPing post there.
 
 ## Discord
 
-Discord notifications use webhooks.
+Discord comes in two flavours, and an organization may use either.
 
-### Setting Up Discord Webhooks
+| | Bot | Webhook |
+|---|---|---|
+| Setup | Install the SolidPing bot into your server | Paste a webhook URL |
+| Alerts | Rich embed | Rich embed |
+| One thread per incident | Yes | No — every event is a new post |
+| Resolve edits the original message | Yes | No |
+| Acknowledge button | Yes | No |
+| On-call @-mentions | Yes | No |
+| Slash + mention commands | Yes | No |
+| Thread replies → incident comments | Yes (needs the Gateway) | No |
+| Needs instance-level configuration | Yes | No |
+
+The bot is the recommended mode. The webhook mode is unchanged and still fully
+supported: an integration created before the bot existed keeps working exactly
+as it did, with no migration, and on an instance where no Discord bot is
+configured at all.
+
+### Setting up the bot (organization admins)
+
+1. Open the Discord integration in SolidPing and press **Install Discord bot**.
+2. Approve the install for your server in Discord.
+3. Back in SolidPing, pick the channel alerts should go to.
+4. Optionally turn on **Mention the on-call person** and **Capture every thread
+   reply as a comment**.
+
+SolidPing requests only the permissions it uses: View Channel, Send Messages,
+Embed Links, Read Message History, Create Public Threads, Send Messages in
+Threads and Manage Threads. Manage Threads is what lets SolidPing re-open a
+thread Discord auto-archived, so a long incident's "resolved" notice still lands
+in the incident's own thread instead of vanishing.
+
+### Instance-level configuration (operators)
+
+The bot is a single Discord application per SolidPing instance. Configure it
+under **Server → Discord**:
+
+| Setting | Env var | Purpose |
+|---|---|---|
+| Client ID | `SP_DISCORD_CLIENT_ID` | Identifies the application during install |
+| Client secret | `SP_DISCORD_CLIENT_SECRET` | Completes the install token exchange |
+| Bot token | `SP_DISCORD_BOT_TOKEN` | Authenticates every outbound call |
+| Public key | `SP_DISCORD_PUBLIC_KEY` | Verifies Discord's signed interaction requests |
+| Gateway enabled | `SP_DISCORD_GATEWAY_ENABLED` | Turns on the inbound WebSocket |
+
+Two things are worth understanding before you turn the bot on:
+
+- **The public key is not optional.** Discord probes the interactions endpoint
+  with deliberately invalid signatures and **deactivates** it if those probes
+  are not rejected. With no public key configured, SolidPing rejects every
+  interaction rather than trusting it — so buttons and slash commands do nothing
+  until the key is set.
+- **The Gateway needs the privileged `MESSAGE_CONTENT` intent.** Buttons and
+  slash commands arrive over HTTPS, but Discord has no HTTP event subscription
+  for ordinary messages — everything a human *types* (a thread reply that should
+  become an incident comment, an `@SolidPing checks list`) only arrives over the
+  Gateway. Enable the intent under **Bot → Privileged Gateway Intents** in the
+  Discord Developer Portal. Discord grants it freely while your application is
+  in fewer than 100 servers and requires a review above that, so request it
+  early if you expect to grow. Without the intent the bot connects and looks
+  healthy, but every message arrives with empty content and it silently ignores
+  everything.
+
+Full operator setup notes live in `wiki/discord/README.md` in the SolidPing
+repository.
+
+### Commands
+
+Available as slash commands (`/solidping …`) and as bot mentions
+(`@SolidPing …`):
+
+| Command | What it does |
+|---|---|
+| `checks list` | List monitored checks |
+| `checks add <url>` | Start monitoring a URL |
+| `checks rm <slug>` | Stop monitoring a check |
+| `incidents list [check]` | Recent incidents |
+| `comment [#N] <text>` | Add a note to an incident — inside an incident thread the number is optional |
+| `config default-channel #channel` | Change where alerts go |
+| `help` | Command reference |
+
+### Setting up a webhook instead
 
 1. In your Discord server, go to Server Settings → Integrations
 2. Click "Webhooks" → "New Webhook"
@@ -396,7 +476,7 @@ Discord notifications use webhooks.
 4. Copy the Webhook URL
 5. Add the webhook URL in SolidPing's integration settings
 
-### Webhook URL Format
+Webhook URL format:
 
 ```
 https://discord.com/api/webhooks/{webhook.id}/{webhook.token}

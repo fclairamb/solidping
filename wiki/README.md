@@ -92,6 +92,7 @@ Operational procedures for diagnosing the running system.
 - [slack/README.md](slack/README.md) — Slack app manifests overview; the `/check` and `/comment` slash commands, the `comment_ingestion` (explicit-by-default) setting, inbound thread-reply → incident-comment scopes and the re-authorization requirement
 - [slack/manifest-dev.json](slack/manifest-dev.json) — Slack app manifest for development
 - [slack/manifest-prod.json](slack/manifest-prod.json) — Slack app manifest for production
+- [discord/README.md](discord/README.md) — Discord bot operator setup: application/bot creation, the exact permissions requested and why Manage Threads is needed, the privileged `MESSAGE_CONTENT` intent and its 100-guild review threshold, the two inbound transports (HTTPS interactions + Gateway), Ed25519 verification, guild→org mapping and comment ingestion
 
 ## Research
 
