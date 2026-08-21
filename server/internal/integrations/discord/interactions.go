@@ -89,11 +89,50 @@ type InteractionResponse struct {
 }
 
 // InteractionResponseData is the message body of an interaction response.
+//
+// The `omitempty` choices here are load-bearing, because an UPDATE_MESSAGE
+// (callback type 7) leaves every OMITTED field unchanged and replaces every
+// present one:
+//
+//   - Components carries NO omitempty on purpose. Clearing the Acknowledge row
+//     off a handled incident means sending `"components": []`, and a
+//     zero-length slice under omitempty is dropped by encoding/json — so the
+//     buttons would survive the acknowledgement and a second responder could
+//     press Acknowledge on an already-handled incident. This mirrors
+//     Message.Components on the REST edit path.
+//   - Embeds KEEPS omitempty for the opposite reason: an ack update carries no
+//     embeds, and omitting the key preserves the incident card the channel is
+//     reading. Sending `[]` here would erase it.
+//   - Content and Flags keep omitempty: nothing ever needs to blank a message's
+//     text or clear its flags, and on a fresh reply the zero values are the
+//     defaults anyway.
+//
+//nolint:tagliatelle // Discord API uses snake_case
 type InteractionResponseData struct {
-	Content    string      `json:"content,omitempty"`
-	Embeds     []Embed     `json:"embeds,omitempty"`
-	Components []Component `json:"components,omitempty"`
-	Flags      int         `json:"flags,omitempty"`
+	Content         string           `json:"content,omitempty"`
+	Embeds          []Embed          `json:"embeds,omitempty"`
+	Components      []Component      `json:"components"`
+	Flags           int              `json:"flags,omitempty"`
+	AllowedMentions *AllowedMentions `json:"allowed_mentions,omitempty"`
+}
+
+// noPings is the allow-list every interaction reply carries: an empty `parse`
+// disables @everyone / @here / role pings outright.
+//
+// Command replies interpolate user-controlled text — a check slug, a URL, an
+// incident title — so a check named `<@&123>` would otherwise ping that role
+// from a reply SolidPing authored. @everyone is separately impossible because
+// MENTION_EVERYONE is not in botPermissions; this closes the role-ping half and
+// makes the interaction path match the alert path, which has carried an
+// allow-list since it shipped.
+func noPings() *AllowedMentions {
+	return &AllowedMentions{Parse: []string{}}
+}
+
+// pingOnly allows exactly the named users through, and nothing else. Used by
+// the acknowledgement update, whose content legitimately mentions the acker.
+func pingOnly(userIDs ...string) *AllowedMentions {
+	return &AllowedMentions{Parse: []string{}, Users: userIDs}
 }
 
 // InvokerID returns the Discord user id behind the interaction.
@@ -157,7 +196,12 @@ func (h *Handler) HandleInteractions(writer http.ResponseWriter, req *http.Reque
 func ephemeralResponse(text string) InteractionResponse {
 	return InteractionResponse{
 		Type: InteractionCallbackChannelMessage,
-		Data: &InteractionResponseData{Content: text, Flags: MessageFlagEphemeral},
+		Data: &InteractionResponseData{
+			Content:         text,
+			Components:      []Component{},
+			Flags:           MessageFlagEphemeral,
+			AllowedMentions: noPings(),
+		},
 	}
 }
 
@@ -255,8 +299,13 @@ func acknowledgeFromInteraction(
 			Content: fmt.Sprintf("✅ %s acknowledged by <@%s>", IncidentLabel(incident), userID),
 			Embeds:  acknowledgedEmbeds(interaction),
 			// Clearing the components is the point: an acknowledged incident
-			// must not keep offering an Acknowledge button.
+			// must not keep offering an Acknowledge button. This only reaches
+			// the wire because Components carries no `omitempty` — see the
+			// struct comment.
 			Components: []Component{},
+			// The content mentions the acker by id, and nothing else may ping.
+			// An incident title is operator-controlled text.
+			AllowedMentions: pingOnly(userID),
 		},
 	}, nil
 }
@@ -317,7 +366,12 @@ func dispatchApplicationCommand(
 		return InteractionResponse{}, err
 	}
 
-	data := &InteractionResponseData{Content: response.Text}
+	data := &InteractionResponseData{
+		Content:    response.Text,
+		Components: []Component{},
+		// A command reply echoes check names, slugs and URLs the caller chose.
+		AllowedMentions: noPings(),
+	}
 	if response.Ephemeral {
 		data.Flags = MessageFlagEphemeral
 	}

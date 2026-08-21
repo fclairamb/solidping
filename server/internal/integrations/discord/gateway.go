@@ -50,10 +50,10 @@ const DefaultGatewayURL = "wss://gateway.discord.gg/?v=10&encoding=json"
 // clientIdentity is what we tell Discord we are, in IDENTIFY's properties.
 const clientIdentity = "solidping"
 
-// gatewayReconnectBackoff is how long the supervisor waits before re-dialing.
-//
-//nolint:gochecknoglobals // overridden by tests to keep the reconnect loop fast.
-var gatewayReconnectBackoff = 5 * time.Second
+// defaultReconnectDelay is how long the supervisor waits before re-dialing
+// after a cycle ends. Held per supervisor (see reconnectDelay) rather than in
+// a package var so a test can shorten it without racing another parallel test.
+const defaultReconnectDelay = 5 * time.Second
 
 // Sentinel errors, kept addressable for errors.Is and status reporting.
 var (
@@ -132,6 +132,9 @@ type GatewaySupervisor struct {
 	// WebSocket server.
 	dial func(ctx context.Context, url string) (gatewayConn, error)
 
+	// reconnectDelay is the wait between cycles.
+	reconnectDelay time.Duration
+
 	mu         sync.RWMutex
 	connected  bool
 	lastError  string
@@ -153,9 +156,10 @@ func NewGatewaySupervisor(svc *Service, cfg *config.Config, log *slog.Logger) *G
 	}
 
 	sup := &GatewaySupervisor{
-		svc: svc,
-		cfg: cfg,
-		log: log.With("component", "discord.GatewaySupervisor"),
+		svc:            svc,
+		cfg:            cfg,
+		log:            log.With("component", "discord.GatewaySupervisor"),
+		reconnectDelay: defaultReconnectDelay,
 	}
 	sup.dial = defaultGatewayDial
 
@@ -218,7 +222,7 @@ func (g *GatewaySupervisor) Run(ctx context.Context) error {
 			g.recordError(errGatewayTokenMissing)
 			g.log.WarnContext(ctx, "Discord Gateway disabled: bot token is empty")
 
-			if !sleepOrDone(ctx, gatewayReconnectBackoff) {
+			if !sleepOrDone(ctx, g.reconnectDelay) {
 				return ctx.Err()
 			}
 
@@ -232,7 +236,7 @@ func (g *GatewaySupervisor) Run(ctx context.Context) error {
 
 		g.setConnected(false)
 
-		if !sleepOrDone(ctx, gatewayReconnectBackoff) {
+		if !sleepOrDone(ctx, g.reconnectDelay) {
 			return ctx.Err()
 		}
 	}

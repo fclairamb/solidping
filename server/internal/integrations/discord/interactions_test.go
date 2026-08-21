@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
 
 // fakeIncidents records what the interaction path asked the incident service
@@ -23,6 +24,9 @@ type fakeIncidents struct {
 	ackUserID   string
 	ackUserName string
 	ackErr      error
+	// ackTitle overrides the acknowledged incident's title, so a test can put
+	// operator-controlled text into the reply the ack update renders.
+	ackTitle string
 
 	commentIncident string
 	commentText     string
@@ -41,7 +45,12 @@ func (f *fakeIncidents) AcknowledgeIncidentFromDiscord(
 		return nil, f.ackErr
 	}
 
-	return &models.Incident{UID: incidentUID, Number: 42}, nil
+	title := f.ackTitle
+	if title == "" {
+		title = "acme api is down"
+	}
+
+	return &models.Incident{UID: incidentUID, Number: 42, Title: &title}, nil
 }
 
 func (f *fakeIncidents) GetIncidentByUID(
@@ -83,6 +92,9 @@ func installedService(t *testing.T) (context.Context, *Service, *fakeIncidents, 
 
 	incidents := &fakeIncidents{}
 	svc.incidentsService = incidents
+	// A real checks service over the same in-memory database, so command
+	// replies that echo check names go through the production code path.
+	svc.checksService = checks.NewService(svc.db, nil, nil, nil)
 
 	org := models.NewOrganization("acme-int", "acme")
 	require.NoError(t, svc.db.CreateOrganization(ctx, org))
@@ -154,7 +166,32 @@ func TestDispatchInteraction_AcknowledgeButton(t *testing.T) {
 	r.Equal(InteractionCallbackUpdateMessage, resp.Type)
 	r.NotNil(resp.Data)
 	r.Contains(resp.Data.Content, "<@U-ALICE>")
-	r.Empty(resp.Data.Components, "an acknowledged incident must not keep an Acknowledge button")
+
+	// Assert on the SERIALIZED response, not the Go struct.
+	//
+	// `r.Empty(resp.Data.Components)` would pass no matter what: the code just
+	// assigned an empty slice, so the struct field is trivially empty. What
+	// matters is whether `"components": []` reaches Discord — an UPDATE_MESSAGE
+	// leaves every OMITTED field unchanged, so with `omitempty` on that field
+	// the Acknowledge row would survive the acknowledgement and a second
+	// responder could press it on an already-handled incident.
+	encoded, err := json.Marshal(resp)
+	r.NoError(err)
+
+	var wire struct {
+		Data struct {
+			Components *[]map[string]any `json:"components"`
+		} `json:"data"`
+	}
+
+	r.NoError(json.Unmarshal(encoded, &wire))
+	r.NotNil(wire.Data.Components,
+		"the acknowledgement must SEND an empty components array; an omitted key leaves Discord's buttons in place")
+	r.Empty(*wire.Data.Components, "an acknowledged incident must not keep an Acknowledge button")
+
+	// The embeds key, by contrast, must stay ABSENT: omitting it preserves the
+	// incident card, while sending `[]` would erase it.
+	r.NotContains(string(encoded), `"embeds"`)
 }
 
 // TestDispatchInteraction_AcknowledgeFromUnknownGuildIsRefused proves the
@@ -446,4 +483,105 @@ func TestMentionsBot(t *testing.T) {
 	r.False(MentionsBot("hello there", "999"))
 	r.False(MentionsBot("<@111> help", "999"))
 	r.False(MentionsBot("<@999> help", ""))
+}
+
+// TestDispatchApplicationCommand_ReplyCannotPingARole is the defense-in-depth
+// half of the mention allow-list.
+//
+// A command reply interpolates text the caller controls — a check slug, a URL,
+// an incident title. A check named `<@&123>` would otherwise turn a SolidPing
+// reply into a role ping. `@everyone` is separately impossible because
+// MENTION_EVERYONE is not in botPermissions, but role pings are not covered by
+// that, and the alert path has carried an allow-list since it shipped.
+//
+// Asserted on the SERIALIZED response for the same reason as the components
+// test above: what protects the guild is the JSON that reaches Discord.
+func TestDispatchApplicationCommand_ReplyCannotPingARole(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _, orgUID := installedService(t)
+
+	// A check whose identifier is a role mention. `checks list` echoes the
+	// slug, so this is the string that actually reaches the reply.
+	const roleMention = "<@&123456789012345678>"
+
+	hostile := models.NewCheck(orgUID, roleMention, "http")
+	r.NoError(svc.db.CreateCheck(ctx, hostile))
+
+	resp, err := DispatchInteraction(ctx, svc, &Interaction{
+		Type:      InteractionTypeApplicationCommand,
+		GuildID:   "G-ACME",
+		ChannelID: "C-ALERTS",
+		Member:    &InteractionMember{User: &User{ID: "U-ALICE", Username: "alice"}},
+		Data: &InteractionData{
+			Name: "solidping",
+			Options: []InteractionOption{{
+				Name: "checks", Type: optionTypeSubCommandGroup,
+				Options: []InteractionOption{{Name: "list", Type: optionTypeSubCommand}},
+			}},
+		},
+	})
+	r.NoError(err)
+
+	// The dangerous text really is in the reply — otherwise this test would
+	// pass for the wrong reason (nothing to neutralize).
+	r.Contains(resp.Data.Content, roleMention)
+
+	encoded, err := json.Marshal(resp)
+	r.NoError(err)
+
+	// Decoding the wire shape Discord receives; the snake_case keys are its
+	// API's, not ours.
+	//
+	//nolint:tagliatelle // Discord API uses snake_case
+	var wire struct {
+		Data struct {
+			AllowedMentions *struct {
+				Parse []string `json:"parse"`
+				Users []string `json:"users"`
+			} `json:"allowed_mentions"`
+		} `json:"data"`
+	}
+
+	r.NoError(json.Unmarshal(encoded, &wire))
+	r.NotNil(wire.Data.AllowedMentions,
+		"a command reply that echoes user-controlled text must carry an allow-list")
+	r.Empty(wire.Data.AllowedMentions.Parse,
+		"an empty parse list is what disables @everyone/@here/role pings")
+	r.Empty(wire.Data.AllowedMentions.Users,
+		"a checks listing mentions nobody, so no user id may be allowed through")
+}
+
+// TestAcknowledgeReply_AllowsOnlyTheAcker: the ack update legitimately mentions
+// the person who pressed the button, and nobody else — an incident title is
+// operator-controlled text and must not be able to ping a role.
+func TestAcknowledgeReply_AllowsOnlyTheAcker(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, incidents, _ := installedService(t)
+
+	// An incident title is free operator text, and it lands in the ack reply
+	// through IncidentLabel.
+	const roleMention = "<@&987654321098765432>"
+
+	incidents.ackTitle = "outage " + roleMention
+
+	resp, err := DispatchInteraction(ctx, svc, &Interaction{
+		Type:    InteractionTypeMessageComponent,
+		GuildID: "G-ACME",
+		Member:  &InteractionMember{User: &User{ID: "U-ALICE", Username: "alice"}},
+		Message: &InteractionMessage{ID: "M-1", ChannelID: "C-ALERTS"},
+		Data:    &InteractionData{CustomID: BuildCustomID(ActionAcknowledge, "inc-1")},
+	})
+	r.NoError(err)
+
+	r.Contains(resp.Data.Content, roleMention, "the reply really does carry the role mention")
+
+	r.NotNil(resp.Data.AllowedMentions)
+	r.Empty(resp.Data.AllowedMentions.Parse,
+		"an empty parse list is what stops the title's role mention from pinging")
+	r.Equal([]string{"U-ALICE"}, resp.Data.AllowedMentions.Users,
+		"only the acker, who the content mentions by id, may be pinged")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -102,6 +103,47 @@ type gatewayHarness struct {
 	stop  context.CancelFunc
 	guild string
 	fake  *fakeDiscord
+
+	mu sync.Mutex
+	// conns holds every connection handed to the supervisor, oldest first, and
+	// dialURLs the URL it asked for each time — which is how the reconnect test
+	// sees that the second dial targets the RESUME url Discord handed us.
+	conns    []*fakeGatewayConn
+	dialURLs []string
+}
+
+// dialed returns the nth connection handed to the supervisor, waiting for it.
+func (h *gatewayHarness) dialed(t *testing.T, index int) *fakeGatewayConn {
+	t.Helper()
+
+	var conn *fakeGatewayConn
+
+	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+
+		if len(h.conns) <= index {
+			return false
+		}
+
+		conn = h.conns[index]
+
+		return true
+	}, 3*time.Second, 10*time.Millisecond, "supervisor never dialed connection #%d", index)
+
+	return conn
+}
+
+// dialedURL returns the nth URL the supervisor dialed.
+func (h *gatewayHarness) dialedURL(index int) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if len(h.dialURLs) <= index {
+		return ""
+	}
+
+	return h.dialURLs[index]
 }
 
 func newGatewayHarness(t *testing.T, ingestion string) *gatewayHarness {
@@ -133,8 +175,6 @@ func newGatewayHarness(t *testing.T, ingestion string) *gatewayHarness {
 	require.NoError(t, svc.db.UpdateChannel(ctx, result.ConnectionUID,
 		&models.IntegrationUpdate{Settings: &settingsMap}))
 
-	gwConn := newFakeGatewayConn()
-
 	cfg := &config.Config{
 		Discord: config.DiscordOAuthConfig{
 			Enabled: true, GatewayEnabled: true, BotToken: discordTestBotTokenGW,
@@ -142,14 +182,30 @@ func newGatewayHarness(t *testing.T, ingestion string) *gatewayHarness {
 	}
 
 	sup := NewGatewaySupervisor(svc, cfg, nil)
-	sup.dial = func(context.Context, string) (gatewayConn, error) { return gwConn, nil }
+	// Per-supervisor, so shortening it cannot race another parallel test.
+	sup.reconnectDelay = 20 * time.Millisecond
 
 	runCtx, stop := context.WithCancel(ctx)
 
-	return &gatewayHarness{
-		sup: sup, conn: gwConn, svc: svc, inc: incidents, org: org,
+	harness := &gatewayHarness{
+		sup: sup, svc: svc, inc: incidents, org: org,
 		ctx: runCtx, stop: stop, guild: fake.guild.ID, fake: fake,
 	}
+
+	// A FRESH connection per dial, mirroring reality: a reconnect gets a new
+	// socket, which is the only way the RESUME handshake can be observed.
+	sup.dial = func(_ context.Context, url string) (gatewayConn, error) {
+		conn := newFakeGatewayConn()
+
+		harness.mu.Lock()
+		harness.conns = append(harness.conns, conn)
+		harness.dialURLs = append(harness.dialURLs, url)
+		harness.mu.Unlock()
+
+		return conn, nil
+	}
+
+	return harness
 }
 
 // discordTestBotTokenGW is an obviously fake token for the Gateway tests.
@@ -170,17 +226,17 @@ func (h *gatewayHarness) start(t *testing.T) {
 
 	t.Cleanup(func() {
 		h.stop()
-		_ = h.conn.Close()
+
+		h.mu.Lock()
+		defer h.mu.Unlock()
+
+		for _, conn := range h.conns {
+			_ = conn.Close()
+		}
 	})
 
-	// Hello, with a heartbeat interval long enough that no beat interferes.
-	raw, err := json.Marshal(helloData{HeartbeatInterval: 60_000})
-	require.NoError(t, err)
-
-	frame, err := json.Marshal(gatewayPayload{Op: opHello, D: raw})
-	require.NoError(t, err)
-
-	h.conn.inbound <- frame
+	h.conn = h.dialed(t, 0)
+	h.sendHello(t, h.conn)
 
 	// The supervisor must IDENTIFY, with the privileged MESSAGE_CONTENT intent.
 	identify := h.conn.nextSent(t)
@@ -193,15 +249,36 @@ func (h *gatewayHarness) start(t *testing.T) {
 		"without MESSAGE_CONTENT every inbound message arrives with empty content")
 	require.NotZero(t, payload.Intents&intentGuildMessages)
 
-	h.conn.push(t, "READY", 1, readyData{
+	h.sendReady(t, h.conn, 1)
+
+	require.Eventually(t, func() bool { return h.sup.GetStatus().Connected },
+		2*time.Second, 10*time.Millisecond)
+}
+
+// sendHello delivers the mandatory op-10 frame with a heartbeat interval long
+// enough that no beat interferes with the assertions.
+func (h *gatewayHarness) sendHello(t *testing.T, conn *fakeGatewayConn) {
+	t.Helper()
+
+	raw, err := json.Marshal(helloData{HeartbeatInterval: 60_000})
+	require.NoError(t, err)
+
+	frame, err := json.Marshal(gatewayPayload{Op: opHello, D: raw})
+	require.NoError(t, err)
+
+	conn.inbound <- frame
+}
+
+// sendReady delivers the READY that establishes the resumable session.
+func (h *gatewayHarness) sendReady(t *testing.T, conn *fakeGatewayConn, seq int) {
+	t.Helper()
+
+	conn.push(t, "READY", seq, readyData{
 		SessionID:        "sess-1",
 		ResumeGatewayURL: "wss://resume.example",
 		User:             &User{ID: botUserIDGW, Username: "solidping", Bot: true},
 		Guilds:           []Guild{{ID: h.guild, Name: "acme"}},
 	})
-
-	require.Eventually(t, func() bool { return h.sup.GetStatus().Connected },
-		2*time.Second, 10*time.Millisecond)
 }
 
 // trackThread writes the reverse mapping the sender would write, and returns
@@ -475,4 +552,87 @@ func TestGateway_InvalidSessionClearsResumeState(t *testing.T) {
 
 		return h.sup.sessionID == ""
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// TestGateway_ReconnectResumesTheSession is what the supervisor exists for:
+// when the socket drops, the next cycle must RESUME the existing session
+// against the resume URL Discord handed us — not IDENTIFY afresh.
+//
+// The difference is not cosmetic. A RESUME replays the events missed while the
+// socket was down, so a thread reply typed during a blip still becomes an
+// incident comment; a fresh IDENTIFY silently drops them and starts a new
+// session. An agent that "reconnects" but never resumes loses exactly the
+// continuity this component is for, and does it invisibly.
+func TestGateway_ReconnectResumesTheSession(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newGatewayHarness(t, models.DiscordCommentIngestionAll)
+	h.start(t)
+
+	// Advance the sequence so the RESUME has something non-zero to replay from.
+	h.conn.push(t, "MESSAGE_CREATE", 7, GatewayMessage{
+		ID: "M-SEQ", ChannelID: "C-UNTRACKED", GuildID: h.guild,
+		Content: "chatter", Author: &User{ID: "U-ALICE"}, Type: messageTypeDefault,
+	})
+
+	r.Eventually(func() bool {
+		h.sup.mu.RLock()
+		defer h.sup.mu.RUnlock()
+
+		return h.sup.lastSequence != nil && *h.sup.lastSequence == 7
+	}, 2*time.Second, 10*time.Millisecond, "the supervisor must track the dispatch sequence")
+
+	// Drop the socket the way a network blip does.
+	r.NoError(h.conn.Close())
+
+	// The next cycle dials the RESUME url Discord gave us in READY, not the
+	// default gateway entry point.
+	second := h.dialed(t, 1)
+	r.Contains(h.dialedURL(1), "wss://resume.example",
+		"a resumable session must re-dial the resume_gateway_url from READY")
+
+	h.sendHello(t, second)
+
+	frame := second.nextSent(t)
+	r.Equal(opResume, frame.Op, "a live session must RESUME, never re-IDENTIFY")
+
+	var payload resumePayload
+	r.NoError(json.Unmarshal(frame.D, &payload))
+	r.Equal(discordTestBotTokenGW, payload.Token)
+	r.Equal("sess-1", payload.SessionID)
+	r.Equal(7, payload.Seq, "resuming from the wrong sequence silently loses events")
+
+	// And the session comes back up on RESUMED, without a second READY.
+	resumedFrame, err := json.Marshal(gatewayPayload{Op: opDispatch, T: "RESUMED"})
+	r.NoError(err)
+	second.inbound <- resumedFrame
+
+	r.Eventually(func() bool { return h.sup.GetStatus().Connected },
+		2*time.Second, 10*time.Millisecond)
+}
+
+// TestGateway_InvalidSessionReIdentifies is the other half of the reconnect
+// contract: a session Discord refuses to resume must be dropped, and the NEXT
+// cycle must send a fresh IDENTIFY. Without the drop the supervisor would loop
+// forever re-sending a RESUME that is rejected every time.
+func TestGateway_InvalidSessionReIdentifies(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newGatewayHarness(t, models.DiscordCommentIngestionAll)
+	h.start(t)
+
+	frame, err := json.Marshal(gatewayPayload{Op: opInvalidSession})
+	r.NoError(err)
+	h.conn.inbound <- frame
+
+	second := h.dialed(t, 1)
+	r.Equal(DefaultGatewayURL, h.dialedURL(1),
+		"a dropped session must fall back to the default gateway entry point")
+
+	h.sendHello(t, second)
+
+	next := second.nextSent(t)
+	r.Equal(opIdentify, next.Op, "an invalidated session must re-IDENTIFY, not RESUME again")
 }
