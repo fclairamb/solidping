@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -170,6 +171,52 @@ func TestHandlerGetAndPatch(t *testing.T) {
 	var resp map[string]interface{}
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.Equal("Resolved now", resp["title"])
+}
+
+// TestHandlerPatchNullVsAbsentSectionUID proves the handler distinguishes an
+// explicit `{"sectionUid": null}` (clear) from an omitted key `{}` (leave
+// untouched) — the presence-map probe this bug fix depends on.
+func TestHandlerPatchNullVsAbsentSectionUID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHandlerSetup(t)
+	ctx := t.Context()
+
+	section := models.NewStatusPageSection(h.pageID, "Core", "core", 0)
+	r.NoError(h.dbSvc.CreateStatusPageSection(ctx, section))
+
+	created, err := h.svc.CreateStatusUpdate(ctx, h.org.Slug, h.user.UID,
+		makeCreate(h.pageID, "investigating", "Investigating", "We are looking"))
+	r.NoError(err)
+
+	// Seed sectionUid via a set-a-value PATCH first (positive control: the
+	// field really is non-null before the "absent" and "null" cases run).
+	setBody := map[string]interface{}{"sectionUid": section.UID}
+	rec := h.do(t, http.MethodPatch, "/api/v1/orgs/"+h.org.Slug+"/status-updates/"+created.UID, setBody)
+	r.Equal(http.StatusOK, rec.Code)
+
+	var seeded map[string]interface{}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &seeded))
+	r.Equal(section.UID, seeded["sectionUid"])
+
+	// `{}` (key absent) must leave sectionUid untouched.
+	rec = h.do(t, http.MethodPatch, "/api/v1/orgs/"+h.org.Slug+"/status-updates/"+created.UID,
+		map[string]interface{}{})
+	r.Equal(http.StatusOK, rec.Code)
+
+	var untouched map[string]interface{}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &untouched))
+	r.Equal(section.UID, untouched["sectionUid"], "omitted key must leave sectionUid untouched")
+
+	// `{"sectionUid": null}` (key present, value null) must clear it.
+	rec = h.do(t, http.MethodPatch, "/api/v1/orgs/"+h.org.Slug+"/status-updates/"+created.UID,
+		map[string]interface{}{"sectionUid": nil})
+	r.Equal(http.StatusOK, rec.Code)
+
+	var cleared map[string]interface{}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &cleared))
+	r.NotContains(cleared, "sectionUid", "explicit null must clear sectionUid (omitempty drops it from the response)")
 }
 
 // TestHandlerDelete checks that delete returns 204.
