@@ -107,6 +107,11 @@ type Handler struct {
 	// cache is not sound once the API tier or the agent fleet scales out.
 	nonces agentcrypto.NonceGuard
 	reseal ResealFunc
+	// conns tracks live agent connections by worker uid so the incident
+	// pipeline can push an unsolicited upload request down the socket a result
+	// arrived on (spec 2026-08-21-05). In-process and best-effort — see
+	// uploads.go.
+	conns  *connRegistry
 	logger *slog.Logger
 }
 
@@ -132,6 +137,7 @@ func NewHandler(
 		regions:      regions.NewService(dbService),
 		nonces:       agentcrypto.NewStoredNonceGuard(dbService, db.ErrAgentNonceReplayed),
 		reseal:       reseal,
+		conns:        newConnRegistry(),
 		logger:       slog.Default().With("component", "agent_ws"),
 	}
 }
@@ -592,6 +598,12 @@ func (h *Handler) runAgentConnection(
 
 	state := &connState{agent: agent, workerUID: workerUID, versionChecked: versionChecked}
 
+	// Publish the connection so the incident pipeline can reach this agent, and
+	// retire it on the way out. The registration is identity-checked on removal
+	// so a reconnect that overtakes this connection's teardown keeps its own.
+	outbound := h.conns.add(workerUID)
+	defer h.conns.remove(workerUID, outbound)
+
 	// Reconnects have not seen a hello-with-identity yet; enrollment
 	// connections got theirs in the enrolled frame — a second hello echoing
 	// the identity is harmless and keeps the protocol uniform.
@@ -647,6 +659,13 @@ func (h *Handler) runAgentConnection(
 			return
 		case <-ping.C:
 			if !h.handlePingTick(loopCtx, conn, state) {
+				return
+			}
+		case frame := <-outbound:
+			// Unsolicited server->agent frame (today: an upload request).
+			// Written from the connection's own goroutine so it can never
+			// interleave with the responses handleFrame writes.
+			if err := wsjson.Write(loopCtx, conn, frame); err != nil {
 				return
 			}
 		case <-hints:

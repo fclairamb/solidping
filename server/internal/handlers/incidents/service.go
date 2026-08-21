@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -123,6 +124,26 @@ type AttachmentStore interface {
 	ListIncidentAttachments(ctx context.Context, orgUID, incidentUID string) ([]attachments.Response, error)
 }
 
+// AgentUploadRequester is the deported-agent side of onset evidence (spec
+// 2026-08-21-05).
+//
+// A deported agent cannot put a PNG on its JSON control channel, so its result
+// frame carries only a marker naming a capture it holds. When that result opens
+// or reopens an incident — and ONLY then — this asks the agent to upload the
+// bytes to POST /api/v1/agent/attachments under a topic THIS package generates
+// from the incident it just wrote.
+//
+// Same shape and same posture as PublicationHook: one small method, returning
+// nothing, so there is no failure the incident state machine could observe. The
+// implementation (agentws) drops the request when no live connection is
+// registered; the capture is then simply lost and the incident opens exactly as
+// it does today.
+type AgentUploadRequester interface {
+	// RequestScreenshotUpload asks the agent behind workerUID for the capture
+	// named by captureID, to be POSTed under topic.
+	RequestScreenshotUpload(ctx context.Context, workerUID, captureID, topic string)
+}
+
 // PublicationHook is the status-page publication side of the incident
 // lifecycle (spec 2026-08-19-08). It is an interface, and deliberately a small
 // one, so this package never imports the publication service — the dependency
@@ -167,6 +188,12 @@ type Service struct {
 	// deployment with file storage disabled).
 	attachmentStore AttachmentStore
 
+	// agentUploads asks a deported agent for a capture it advertised but could
+	// not send. Nil-safe: the call goes through requestAgentScreenshot, which
+	// no-ops when unset (the in-process worker path, tests, or any deployment
+	// with no agent transport).
+	agentUploads AgentUploadRequester
+
 	// maintenance resolves "is this check in an active maintenance window?".
 	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
 	// suppressed as maintenance and a result tagged as maintenance can never
@@ -196,6 +223,12 @@ func (s *Service) SetAttachmentStore(store AttachmentStore) {
 	s.attachmentStore = store
 }
 
+// SetAgentUploadRequester wires the deported-agent upload-request side.
+// Optional.
+func (s *Service) SetAgentUploadRequester(requester AgentUploadRequester) {
+	s.agentUploads = requester
+}
+
 // persistScreenshot writes the triggering result's browser capture as the
 // incident's screenshot attachment, when there is one.
 //
@@ -210,16 +243,21 @@ func (s *Service) persistScreenshot(
 	ctx context.Context, check *models.Check, incident *models.Incident,
 	result *models.Result, trigger string,
 ) {
-	if s.attachmentStore == nil || result == nil ||
-		result.Diagnostics == nil || result.Diagnostics.Screenshot == nil {
+	if result == nil || result.Diagnostics == nil || result.Diagnostics.Screenshot == nil {
 		return
 	}
 
 	shot := result.Diagnostics.Screenshot
 	if len(shot.PNG) == 0 {
 		// The agent path advertises a capture it holds rather than sending the
-		// bytes (see checkerdef.Screenshot). Nothing to persist here yet — the
-		// upload arrives out-of-band through POST /api/v1/agent/attachments.
+		// bytes (see checkerdef.Screenshot). Ask for it: the upload arrives
+		// out-of-band through POST /api/v1/agent/attachments.
+		s.requestAgentScreenshot(ctx, incident, result, shot)
+
+		return
+	}
+
+	if s.attachmentStore == nil {
 		return
 	}
 
@@ -244,6 +282,35 @@ func (s *Service) persistScreenshot(
 		slog.WarnContext(ctx, "Failed to persist incident screenshot",
 			"incidentUid", incident.UID, "error", err)
 	}
+}
+
+// requestAgentScreenshot asks the agent that produced this result to upload the
+// capture it advertised (spec 2026-08-21-05).
+//
+// BOUNDING THE ASK IS STRUCTURAL, NOT A COUNTER. This is reached only from
+// persistScreenshot, which is called only from createIncident and
+// reopenIncident. An agent that sets the marker on every single failing result
+// therefore still causes at most ONE request per open and one per reopen — the
+// incident state machine is the bound, so there is no way to talk the server
+// into an unbounded number of uploads by being chatty.
+//
+// The topic is built HERE, from the incident row the server just wrote. Nothing
+// about it comes from the agent. captureID is echoed verbatim, which is fine:
+// it names a slot in the agent's own memory and never becomes a storage key.
+func (s *Service) requestAgentScreenshot(
+	ctx context.Context, incident *models.Incident, result *models.Result, shot *checkerdef.Screenshot,
+) {
+	if s.agentUploads == nil || !shot.Available || shot.CaptureID == "" {
+		return
+	}
+
+	if result.WorkerUID == nil || *result.WorkerUID == "" {
+		return
+	}
+
+	s.agentUploads.RequestScreenshotUpload(
+		ctx, *result.WorkerUID, shot.CaptureID, attachments.IncidentScreenshotTopic(incident.UID),
+	)
 }
 
 // dropStaleScreenshot removes the previous onset's evidence when a relapse

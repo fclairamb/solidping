@@ -27,6 +27,18 @@ const (
 	MsgTypeAck           = "ack"
 	MsgTypeError         = "error"
 	MsgTypeJobsAvailable = "jobs-available"
+	// MsgTypeUploadRequest asks the agent to upload a binary capture it is
+	// holding (spec 2026-08-21-05). It is the server's half of the split the
+	// JSON control channel forces: the result frame carries only a marker
+	// naming the agent's own cache slot, and THIS frame — emitted only when
+	// that result opened or reopened an incident — names the topic to POST the
+	// bytes to.
+	//
+	// UNSOLICITED AND UNCORRELATED: it carries no ID, expects no response on
+	// the socket, and an agent that does not understand it ignores it. That is
+	// what makes it safe to add to a protocol whose agents upgrade on their own
+	// schedule.
+	MsgTypeUploadRequest = "upload-request"
 )
 
 // ClientFrame is the envelope every agent->server frame decodes into. Fields
@@ -176,6 +188,21 @@ type ServerFrame struct {
 	// error
 	Code  string `json:"code,omitempty"`
 	Title string `json:"title,omitempty"`
+
+	// upload-request
+	//
+	// Topic is the attachment topic the agent must POST to. It is ALWAYS
+	// server-generated from the entity the server just wrote (e.g.
+	// `incidents/<uid>/screenshot`) and is NEVER echoed from anything the agent
+	// sent: the topic is a storage key and an authorization subject, so letting
+	// an agent name it would hand it the choice of what it is writing over.
+	Topic string `json:"topic,omitempty"`
+	// CaptureID names the capture in the AGENT'S OWN cache. It is echoed back
+	// verbatim from the marker the agent sent, and that is fine precisely
+	// because it never leaves the agent's process boundary in any meaningful
+	// sense — it indexes a map in the agent's RAM, never a path, a query, or a
+	// storage key.
+	CaptureID string `json:"captureId,omitempty"`
 }
 
 // ToAgentJob converts a claimed CheckJob row into its wire shape. ConfigPrivate

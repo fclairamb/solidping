@@ -16,6 +16,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/agents/capturecache"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
@@ -113,6 +114,15 @@ type WSBackend struct {
 	tunnelMu sync.Mutex
 	tunnels  map[string]*tunnelSnapshot
 
+	// captures holds binary probe captures (today: browser screenshots) between
+	// the result frame that advertises them and the server's upload request
+	// (spec 2026-08-21-05). Bounded and TTL'd — see the capturecache package
+	// doc for why losing one is the designed behavior, not a failure.
+	captures *capturecache.Cache
+	// httpClient performs the out-of-band capture upload. Separate from the WS
+	// dial: this is a plain signed POST to the attachment endpoint.
+	httpClient *http.Client
+
 	logger *slog.Logger
 }
 
@@ -138,6 +148,25 @@ func WithPingInterval(interval time.Duration) Option {
 	return func(b *WSBackend) { b.pingInterval = interval }
 }
 
+// WithCaptureCache overrides the local capture cache (tests use tighter bounds
+// and a driven clock).
+func WithCaptureCache(cache *capturecache.Cache) Option {
+	return func(b *WSBackend) {
+		if cache != nil {
+			b.captures = cache
+		}
+	}
+}
+
+// WithHTTPClient overrides the client used for out-of-band capture uploads.
+func WithHTTPClient(client *http.Client) Option {
+	return func(b *WSBackend) {
+		if client != nil {
+			b.httpClient = client
+		}
+	}
+}
+
 // NewWSBackend creates a WSBackend. identity must carry the agent's keypairs;
 // AgentUID/Region may be empty (enrollment fills them, then onIdentityChange
 // fires so the caller can persist).
@@ -157,6 +186,8 @@ func NewWSBackend(
 		pingInterval:     defaultPingInterval,
 		onIdentityChange: onIdentityChange,
 		tunnels:          map[string]*tunnelSnapshot{},
+		captures:         capturecache.NewDefault(),
+		httpClient:       &http.Client{Timeout: uploadTimeout},
 		logger:           slog.Default().With("component", "agent_ws_backend"),
 	}
 
@@ -334,13 +365,16 @@ func (b *WSBackend) SubmitResult(
 	// Sched block is deliberately not sent — the server recomputes the whole
 	// scheduling state from the result it just persisted.
 	frame := &agents.ClientFrame{
-		Type:        agents.MsgTypeResult,
-		JobUID:      job.UID,
-		Status:      req.Status,
-		Duration:    req.Duration,
-		Metrics:     req.Metrics,
-		Output:      req.Output,
-		Diagnostics: req.Diagnostics,
+		Type:     agents.MsgTypeResult,
+		JobUID:   job.UID,
+		Status:   req.Status,
+		Duration: req.Duration,
+		Metrics:  req.Metrics,
+		Output:   req.Output,
+		// stashCapture is what keeps binary captures off this JSON channel: the
+		// bytes move into the agent's local cache and the frame carries only
+		// the `available`/`captureId` marker (spec 2026-08-21-05).
+		Diagnostics: b.stashCapture(req.Diagnostics),
 	}
 
 	if !req.ExecStart.IsZero() {
@@ -777,6 +811,13 @@ func (b *WSBackend) readPump(ctx context.Context, conn *websocket.Conn) {
 				}
 			}
 			b.mu.Unlock()
+		case frame.Type == agents.MsgTypeUploadRequest:
+			// Unsolicited and uncorrelated: the server is asking for a capture
+			// this agent advertised. Off the pump's goroutine so a slow upload
+			// cannot stall claim/result frame dispatch, and with the pump's
+			// (uncancellable) context so it outlives the request that produced
+			// the capture.
+			go b.handleUploadRequest(ctx, &frame)
 		case frame.ID != "":
 			b.mu.Lock()
 			waiter, ok := b.pending[frame.ID]
