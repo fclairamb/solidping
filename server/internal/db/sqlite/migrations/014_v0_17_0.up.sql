@@ -489,33 +489,3 @@ where not exists (
   where c.uid = user_notification_routes.contact_uid
     and c.deleted_at is null
 );
-
---bun:split
-
--- ==========================================================================
--- SECTION: generic-attachments
--- Was scratch migration 020_generic_attachments (spec 2026-08-21-01).
--- ==========================================================================
-
--- SQLite mirror of the generic-attachments section of
--- postgres/migrations/014_v0_17_0.up.sql — a `files` row can now say what it
--- is attached to (spec 2026-08-21-01). See the Postgres file for the full
--- rationale: why the key is path-like, why NULL is the norm, why the index is
--- partial, and why an attachment must never reach a public surface.
---
--- Dialect differences, both cosmetic:
---   * `details` is TEXT here, like every other jsonb column in the SQLite
---     schema — models.JSONMap marshals to a string either way.
---   * SQLite has no `ADD COLUMN IF NOT EXISTS`, so these two statements are
---     not re-runnable — same as every other section in this file.
-alter table files add column topic text;
-
---bun:split
-
-alter table files add column details text;
-
---bun:split
-
-create index if not exists files_org_topic_idx
-  on files (organization_uid, topic)
-  where deleted_at is null and topic is not null;

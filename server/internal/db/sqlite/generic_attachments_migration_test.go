@@ -9,10 +9,10 @@ import (
 )
 
 // downMigrationSection is the `.down.sql` twin of migrationSection: it slices
-// one `-- SECTION: <name>` block out of the consolidated v0.17.0 teardown file
-// so a test can EXECUTE just that block against an already-migrated database.
+// one `-- SECTION: <name>` block out of the teardown file that carries it, so
+// a test can EXECUTE just that block against an already-migrated database.
 //
-// One section rather than a whole-group `migrator.Rollback`: unwinding the
+// One section rather than a whole-group `migrator.Rollback`: unwinding an
 // entire release would also replay every other section's teardown, several of
 // which are documented as lossy table rebuilds, and a failure anywhere in that
 // chain would be reported as a failure of this section. Replaying one block is
@@ -20,20 +20,7 @@ import (
 func downMigrationSection(t *testing.T, name string) string {
 	t.Helper()
 
-	body, err := migrationsFS.ReadFile("migrations/014_v0_17_0.down.sql")
-	require.NoError(t, err)
-
-	marker := "-- SECTION: " + name + "\n"
-
-	start := strings.Index(string(body), marker)
-	require.GreaterOrEqual(t, start, 0, "section %q not found in the consolidated down migration", name)
-
-	section := string(body)[start+len(marker):]
-	if end := strings.Index(section, "\n-- SECTION: "); end >= 0 {
-		section = section[:end]
-	}
-
-	return section
+	return findMigrationSection(t, "down", name)
 }
 
 // execMigrationStatements runs a migration block statement by statement,
@@ -129,30 +116,37 @@ func TestGenericAttachmentsMigrationParity(t *testing.T) {
 	// non-attachment file in the table for no benefit.
 	r.Contains(up, "where deleted_at is null and topic is not null")
 
-	down, err := migrationsFS.ReadFile("migrations/014_v0_17_0.down.sql")
-	r.NoError(err)
+	down := downMigrationSection(t, "generic-attachments")
+	r.Contains(down, "drop index if exists files_org_topic_idx")
+	r.Contains(down, "alter table files drop column details")
+	r.Contains(down, "alter table files drop column topic")
 
-	body := string(down)
-
-	marker := "-- SECTION: generic-attachments\n"
-	start := strings.Index(body, marker)
-	r.GreaterOrEqual(start, 0, "the down file must carry a generic-attachments section")
-
-	section := body[start+len(marker):]
-	if end := strings.Index(section, "\n-- SECTION: "); end >= 0 {
-		section = section[:end]
+	// The section lives in the UNRELEASED v0.18.0 migration, and nowhere else.
+	// It was originally appended to 014_v0_17_0 on the belief that v0.17.0 was
+	// unreleased; it was not, and a released migration must never be modified —
+	// a database that already ran 014 never re-runs it, so those statements
+	// would silently never reach it.
+	for _, file := range []string{
+		"migrations/014_v0_17_0.up.sql",
+		"migrations/014_v0_17_0.down.sql",
+	} {
+		body, err := migrationsFS.ReadFile(file)
+		r.NoError(err)
+		r.NotContains(string(body), "-- SECTION: generic-attachments\n",
+			"%s is released; the attachments section must not have been appended to it", file)
 	}
 
-	r.Contains(section, "drop index if exists files_org_topic_idx")
-	r.Contains(section, "alter table files drop column details")
-	r.Contains(section, "alter table files drop column topic")
-
-	// The down file unwinds in REVERSE order, so this section — last in the up
-	// file — must be first here. Getting this wrong is how a down migration
-	// ends up dropping a column a later section still needs.
-	firstSection := strings.Index(body, "-- SECTION: ")
-	r.Equal(start, firstSection,
-		"generic-attachments is the last up section, so it must be the first down section")
+	// Positive control for the check above: the banner IS present in 015, in
+	// both directions, so the NotContains assertions are testing a real string.
+	for _, file := range []string{
+		"migrations/015_v0_18_0.up.sql",
+		"migrations/015_v0_18_0.down.sql",
+	} {
+		body, err := migrationsFS.ReadFile(file)
+		r.NoError(err)
+		r.Contains(string(body), "-- SECTION: generic-attachments\n",
+			"%s must carry the attachments section", file)
+	}
 }
 
 // TestGenericAttachmentsColumnsPresent proves the section actually ran: a fresh

@@ -150,30 +150,18 @@ func TestGenericAttachmentsMigration_Postgres(t *testing.T) {
 }
 
 // downMigrationSection is the `.down.sql` twin of migrationSection: it slices
-// one `-- SECTION: <name>` block out of the consolidated v0.17.0 teardown file
-// so a test can EXECUTE just that block against an already-migrated database.
+// one `-- SECTION: <name>` block out of the teardown file that carries it, so
+// a test can EXECUTE just that block against an already-migrated database.
 //
-// One section rather than a whole-group rollback: unwinding the entire release
-// would also replay every other section's teardown, several of which are
-// documented as lossy, and a failure anywhere in that chain would be reported
-// as a failure of this section.
+// One section rather than a whole-group `migrator.Rollback`: unwinding an
+// entire release would also replay every other section's teardown, several of
+// which are documented as lossy table rebuilds, and a failure anywhere in that
+// chain would be reported as a failure of this section. Replaying one block is
+// the same idiom migrationSection already established for the up direction.
 func downMigrationSection(t *testing.T, name string) string {
 	t.Helper()
 
-	body, err := migrationsFS.ReadFile("migrations/014_v0_17_0.down.sql")
-	require.NoError(t, err)
-
-	marker := "-- SECTION: " + name + "\n"
-
-	start := strings.Index(string(body), marker)
-	require.GreaterOrEqual(t, start, 0, "section %q not found in the consolidated down migration", name)
-
-	section := string(body)[start+len(marker):]
-	if end := strings.Index(section, "\n-- SECTION: "); end >= 0 {
-		section = section[:end]
-	}
-
-	return section
+	return findMigrationSection(t, "down", name)
 }
 
 // pgBunSplitRE matches bun's statement separator: a line containing nothing but

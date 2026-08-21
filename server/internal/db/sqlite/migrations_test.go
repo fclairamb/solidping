@@ -10,37 +10,74 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// migrationSection slices one `-- SECTION: <name>` block out of the
-// consolidated v0.17.0 migration (014_v0_17_0.up.sql).
+// findMigrationSection slices one `-- SECTION: <name>` block out of whichever
+// migration file carries that banner in the requested direction ("up" or
+// "down").
 //
-// That file is a whole release folded into one migration, so replaying it
-// wholesale against an already-initialized database fails on the statements
-// that are deliberately not re-runnable (a table rebuild, an ADD COLUMN with
-// no IF NOT EXISTS). A test that wants to exercise one block's behavior
-// replays just that block. Reading it out of the embedded FS rather than
-// restating the SQL here is what keeps the test from drifting from the file
-// that actually ships — renaming a section breaks these tests loudly, which is
-// why the banners are documented as a machine-readable anchor in the migration
-// itself.
+// It SCANS rather than naming a file, because a section outlives the release
+// that happened to ship it: generic-attachments was first written into
+// 014_v0_17_0 and moved to 015_v0_18_0 once v0.17.0 turned out to be already
+// released (a released migration is never modified — a database that already
+// ran it never re-runs it). Locating a section by its banner pins these tests
+// to the section, not to whichever file currently holds it.
+//
+// Exactly one file must carry the banner: two would mean a section was copied
+// instead of moved, and the tests would silently exercise the wrong copy.
+func findMigrationSection(t *testing.T, direction, name string) string {
+	t.Helper()
+
+	files, err := fs.Glob(migrationsFS, "migrations/*."+direction+".sql")
+	require.NoError(t, err)
+	require.NotEmpty(t, files, "the embedded FS must expose .%s.sql migrations", direction)
+
+	// The files' tables of contents indent their entries ("--   SECTION: ..."),
+	// so only a real banner matches, and only when the name is the whole line.
+	marker := "-- SECTION: " + name + "\n"
+
+	var (
+		found   []string
+		section string
+	)
+
+	for _, file := range files {
+		body, readErr := migrationsFS.ReadFile(file)
+		require.NoError(t, readErr)
+
+		start := strings.Index(string(body), marker)
+		if start < 0 {
+			continue
+		}
+
+		found = append(found, file)
+
+		section = string(body)[start+len(marker):]
+		if end := strings.Index(section, "\n-- SECTION: "); end >= 0 {
+			section = section[:end]
+		}
+	}
+
+	require.Len(t, found, 1,
+		"section %q must live in exactly one .%s.sql migration, found %v", name, direction, found)
+
+	return section
+}
+
+// migrationSection slices one `-- SECTION: <name>` block out of the migration
+// file that carries it.
+//
+// The release migrations are whole releases folded into one file each, so
+// replaying one wholesale against an already-initialized database fails on the
+// statements that are deliberately not re-runnable (a table rebuild, an ADD
+// COLUMN with no IF NOT EXISTS). A test that wants to exercise one block's
+// behavior replays just that block. Reading it out of the embedded FS rather
+// than restating the SQL here is what keeps the test from drifting from the
+// file that actually ships — renaming a section breaks these tests loudly,
+// which is why the banners are documented as a machine-readable anchor in the
+// migrations themselves.
 func migrationSection(t *testing.T, name string) string {
 	t.Helper()
 
-	body, err := migrationsFS.ReadFile("migrations/014_v0_17_0.up.sql")
-	require.NoError(t, err)
-
-	// The file's table of contents indents its entries ("--   SECTION: ..."),
-	// so only the real banner matches, and only when the name is the whole line.
-	marker := "-- SECTION: " + name + "\n"
-
-	start := strings.Index(string(body), marker)
-	require.GreaterOrEqual(t, start, 0, "section %q not found in the consolidated migration", name)
-
-	section := string(body)[start+len(marker):]
-	if end := strings.Index(section, "\n-- SECTION: "); end >= 0 {
-		section = section[:end]
-	}
-
-	return section
+	return findMigrationSection(t, "up", name)
 }
 
 // TestMigrationsEmbedded verifies that all expected migration files are embedded.
