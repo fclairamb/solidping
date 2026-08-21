@@ -10740,18 +10740,38 @@ components:
         sectionUid:
           type: string
           format: uuid
+          nullable: true
+          description: >-
+            Set/change the section (must belong to the update's status page), or
+            clear it with null. Omit the field to leave it unchanged; "" is a
+            VALIDATION_ERROR (send null to clear). Clearing sectionUid does not
+            implicitly clear checkUid.
         checkUid:
           type: string
           format: uuid
+          nullable: true
+          description: >-
+            Set/change the check (must be a resource of the update's status
+            page), or clear it with null. Omit the field to leave it unchanged;
+            "" is a VALIDATION_ERROR (send null to clear). Clearing checkUid
+            does not implicitly clear sectionUid.
         incidentUid:
           type: string
           format: uuid
+          nullable: true
+          description: >-
+            Set/change the incident, or clear it with null. Omit the field to
+            leave it unchanged; "" is a VALIDATION_ERROR (send null to clear).
         title:
           type: string
         bodyMarkdown:
           type: string
         linkUrl:
           type: string
+          nullable: true
+          description: >-
+            Set/replace the link URL (must be http/https), or clear it with
+            null or "". Omit the field to leave it unchanged.
         kind:
           type: string
         publishedAt:

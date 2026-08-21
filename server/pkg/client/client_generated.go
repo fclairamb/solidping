@@ -5271,14 +5271,22 @@ type UpdateStatusPageSectionRequest struct {
 
 // UpdateStatusUpdateRequest defines model for UpdateStatusUpdateRequest.
 type UpdateStatusUpdateRequest struct {
-	BodyMarkdown *string             `json:"bodyMarkdown,omitempty"`
-	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
-	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
-	Kind         *string             `json:"kind,omitempty"`
-	LinkUrl      *string             `json:"linkUrl,omitempty"`
-	PublishedAt  *time.Time          `json:"publishedAt,omitempty"`
-	SectionUid   *openapi_types.UUID `json:"sectionUid,omitempty"`
-	Title        *string             `json:"title,omitempty"`
+	BodyMarkdown *string `json:"bodyMarkdown,omitempty"`
+
+	// CheckUid Set/change the check (must be a resource of the update's status page), or clear it with null. Omit the field to leave it unchanged; "" is a VALIDATION_ERROR (send null to clear). Clearing checkUid does not implicitly clear sectionUid.
+	CheckUid *openapi_types.UUID `json:"checkUid,omitempty"`
+
+	// IncidentUid Set/change the incident, or clear it with null. Omit the field to leave it unchanged; "" is a VALIDATION_ERROR (send null to clear).
+	IncidentUid *openapi_types.UUID `json:"incidentUid,omitempty"`
+	Kind        *string             `json:"kind,omitempty"`
+
+	// LinkUrl Set/replace the link URL (must be http/https), or clear it with null or "". Omit the field to leave it unchanged.
+	LinkUrl     *string    `json:"linkUrl,omitempty"`
+	PublishedAt *time.Time `json:"publishedAt,omitempty"`
+
+	// SectionUid Set/change the section (must belong to the update's status page), or clear it with null. Omit the field to leave it unchanged; "" is a VALIDATION_ERROR (send null to clear). Clearing sectionUid does not implicitly clear checkUid.
+	SectionUid *openapi_types.UUID `json:"sectionUid,omitempty"`
+	Title      *string             `json:"title,omitempty"`
 }
 
 // UpsertCheckRequest defines model for UpsertCheckRequest.

@@ -96,7 +96,13 @@ Create a status update (notifies confirmed subscribers).
 Get a status update.
 
 ### PATCH /api/v1/orgs/:org/status-updates/:uid
-Update a status update.
+Update a status update. `sectionUid`, `checkUid`, `incidentUid` and `linkUrl` are
+presence-aware nullable fields: an omitted key leaves the column untouched, an
+explicit `null` clears it, and a non-empty value is validated (section belongs
+to the update's status page, check is a resource of it) and set. `""` clears
+`linkUrl` (browser inputs yield `""`, not `null`) but is a `VALIDATION_ERROR` for
+the three UID fields — send `null` to clear those instead. Clearing `sectionUid`
+never implicitly clears `checkUid`.
 
 ### DELETE /api/v1/orgs/:org/status-updates/:uid
 Delete a status update.
