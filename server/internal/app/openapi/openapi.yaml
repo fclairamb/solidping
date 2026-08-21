@@ -9084,6 +9084,73 @@ components:
             dropped when the new onset has no capture. **This block is
             operator-only — it is never serialized onto a status page or a
             subscriber payload.**
+        attachments:
+          type: array
+          description: >-
+            Evidence blobs attached to this incident (spec 2026-08-21-01).
+            Present on the DETAIL endpoint only — the list endpoint never
+            populates it. Today the only kind is `screenshot`: the PNG a
+            browser check captured when the incident opened or reopened, for
+            checks with the browser `screenshot` option enabled.
+
+
+            **Operator-only, exactly like `details`.** Each entry carries a
+            short-lived SIGNED download URL, so it is never serialized onto a
+            status page or a subscriber payload.
+          items:
+            $ref: "#/components/schemas/IncidentAttachment"
+
+    IncidentAttachment:
+      type: object
+      description: >-
+        One stored evidence blob hanging off an incident. The bytes are fetched
+        through `downloadUrl`, never inlined.
+      required: [uid, kind, name, mimeType, size, downloadUrl, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+          description: The `files` row uid.
+        kind:
+          type: string
+          description: Attachment kind, e.g. `screenshot`.
+        name:
+          type: string
+        mimeType:
+          type: string
+          description: >-
+            Content type as SNIFFED at write time from the bytes themselves,
+            not as declared by the uploader.
+        size:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+          description: >-
+            RELATIVE, short-lived signed URL
+            (`/pub/files/<uid>?exp=…&sig=…`). Relative so it resolves against
+            whichever host served the dashboard — SolidPing answers on
+            several. Re-signed on every fetch of the incident; do not cache it.
+        createdAt:
+          type: string
+          format: date-time
+        capturedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the probe took the capture. For a screenshot this is a moment
+            AFTER failure detection, not the failing frame itself.
+        region:
+          type: string
+          description: >-
+            Probing region, stamped server-side from the persisted result row.
+        checkUid:
+          type: string
+          format: uuid
+        trigger:
+          type: string
+          description: What caused the capture to be kept.
+          enum: [incident-open, incident-reopen, agent-upload]
 
     IncidentCheck:
       type: object

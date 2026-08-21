@@ -1426,7 +1426,7 @@ func (m *mockDBService) ListAttachmentsByTopicPrefix(
 }
 
 func (m *mockDBService) GetIncidentAny(_ context.Context, _ string) (*models.Incident, error) {
-	return nil, nil
+	return &models.Incident{}, nil
 }
 
 func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {

@@ -22,6 +22,37 @@ Auth (agent credentials, two phases):
   timestamp bounds replay windows and the nonce makes each signature
   single-use.
 
+### POST /api/v1/agent/attachments
+The WS route's sibling, and its counterpart: the socket is a JSON control
+channel, this is the only way an agent gets **binary bytes** into storage
+(spec 2026-08-21-01). Agents hold no object-storage credentials by design, so
+the server writes the blob on their behalf.
+
+Auth: the **same** Ed25519 signed headers as a WS reconnect
+(`X-Sp-Agent-Uid` / `X-Sp-Timestamp` / `X-Sp-Nonce` / `X-Sp-Signature`, ±5 min
+skew, cluster-wide replay guard). No bearer token, no second credential.
+
+Request: raw body (`image/png` today, **sniffed** from the magic bytes rather
+than believed from a header), with the attachment key in `?topic=`. The topic is
+`<entity>/<uid>/<kind>`, e.g.
+`incidents/9a1eb273-0a95-4d6b-b967-9af076c1f8e8/screenshot`. Per-file size cap
+and a per-agent rate limit apply.
+
+**Authorization never trusts the topic.** A prefix→authorizer registry resolves
+the topic's entity; the `incidents/` authorizer requires the incident to exist,
+derives the ORGANIZATION FROM THE INCIDENT ROW (never from the request), refuses
+an org agent whose org is not the incident's, and refuses an agent whose region
+does not serve the incident's check. An unregistered entity fails closed.
+
+Responses: `201 {"fileUid": "…"}`; `401` for any authentication failure
+(deliberately indistinguishable — no agent-existence oracle); `403` for a topic
+the caller may not write under (also deliberately unspecific); `400` malformed
+topic or empty body; `413` over the cap; `415` mime mismatch.
+
+Note: the server does not yet ASK an agent for an upload — the WS
+upload-request frame is a follow-up (spec 2026-08-21-05). The endpoint contract
+above is settled.
+
 ## Private regions
 
 A private region is the location label that agents attach to and that checks

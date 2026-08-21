@@ -3193,7 +3193,7 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 
 	slog.InfoContext(ctx, "Test mode detected, creating test data")
 
-	return testdata.CreateTestData(ctx, s.dbService)
+	return testdata.CreateTestData(ctx, s.dbService, s.config)
 }
 
 //nolint:ireturn // Returning interface is intentional for testing

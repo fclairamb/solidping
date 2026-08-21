@@ -103,7 +103,8 @@ type UploadResponse struct {
 func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 	agent, authErr := h.authenticate(req)
 	if authErr != nil {
-		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, authErr.Error())
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken,
+			"Invalid agent signature")
 	}
 
 	if !h.limiter.allow(agent.UID, time.Now()) {
@@ -186,7 +187,7 @@ func attachmentName(topic ParsedTopic) string {
 // errUnauthenticated is the single message every authentication failure
 // produces. Distinguishing "unknown agent" from "bad signature" would leak
 // which agent uids exist.
-var errUnauthenticated = errors.New("Invalid agent signature")
+var errUnauthenticated = errors.New("invalid agent signature")
 
 // authenticate verifies the signed headers exactly the way the WS reconnect
 // does: known active agent, timestamp inside the skew, nonce not seen before

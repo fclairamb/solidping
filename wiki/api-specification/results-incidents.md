@@ -57,6 +57,22 @@ Get a single incident. Auth: required
 Query parameters:
 - `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`)
 
+Response extra (detail endpoint only): `attachments[]` — the incident's stored
+evidence blobs (spec 2026-08-21-01). Today the only kind is `screenshot`: the
+PNG a browser check with `screenshot: true` captured when this incident opened
+or reopened. Each entry carries `uid`, `kind`, `name`, `mimeType`, `size`,
+`createdAt`, `capturedAt`, `region`, `checkUid`, `trigger`, and a **relative,
+short-lived signed** `downloadUrl` (`/pub/files/<uid>?exp=…&sig=…`) — relative
+so it resolves against whichever host served the client, re-signed on every
+fetch, so do not cache it.
+
+The LIST endpoint never populates `attachments`: signing a URL per attachment
+per incident across a whole page is work nobody asked for, and the list view has
+nowhere to show one.
+
+Like `details`, this block is **operator-only** and is never serialized onto a
+status page or a subscriber payload.
+
 ### GET /api/v1/orgs/:org/incidents/:uid/events
 List events for a specific incident. Auth: required
 

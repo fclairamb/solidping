@@ -13,10 +13,21 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// testPageURL / cfgKeyURL keep the shared literals in one place.
+const (
+	testPageURL = "https://example.com"
+	cfgKeyURL   = "url"
+)
+
+// errRendererGone stands in for a capture that failed inside chromedp.
+var errRendererGone = errors.New("renderer gone")
+
 // fakePNG is a recognizable byte blob standing in for a real capture. Nothing
 // in the capture path parses the image, so its content only has to be unique
 // enough to assert on.
-var fakePNG = []byte("\x89PNG\r\n\x1a\nfake-screenshot-bytes")
+func fakePNG() []byte {
+	return []byte("\x89PNG\r\n\x1a\nfake-screenshot-bytes")
+}
 
 // screenshotChecker builds a checker whose session returns `status` and whose
 // capture seam returns whatever `capture` says. Both seams are needed: one
@@ -37,10 +48,10 @@ func screenshotChecker(
 }
 
 func screenshotSpec(enabled bool) *BrowserConfig {
-	return &BrowserConfig{URL: "https://example.com", Timeout: 5 * time.Second, Screenshot: enabled}
+	return &BrowserConfig{URL: testPageURL, Timeout: 5 * time.Second, Screenshot: enabled}
 }
 
-// TestScreenshotCapturedOnlyOnOptedInFailure is the core behaviour: the capture
+// TestScreenshotCapturedOnlyOnOptedInFailure is the core behavior: the capture
 // happens when the check opted in AND failed, and in no other combination.
 //
 //nolint:paralleltest // mutates the process-wide settings
@@ -70,7 +81,7 @@ func TestScreenshotCapturedOnlyOnOptedInFailure(t *testing.T) {
 			checker := screenshotChecker(tc.status, func(context.Context) ([]byte, error) {
 				calls++
 
-				return fakePNG, nil
+				return fakePNG(), nil
 			})
 
 			result, err := checker.Execute(t.Context(), screenshotSpec(tc.enabled))
@@ -89,7 +100,7 @@ func TestScreenshotCapturedOnlyOnOptedInFailure(t *testing.T) {
 			r.Equal(1, calls)
 			r.NotNil(result.Diagnostics)
 			r.NotNil(result.Diagnostics.Screenshot)
-			r.Equal(fakePNG, result.Diagnostics.Screenshot.PNG)
+			r.Equal(fakePNG(), result.Diagnostics.Screenshot.PNG)
 			r.False(result.Diagnostics.Screenshot.CapturedAt.IsZero())
 		})
 	}
@@ -109,7 +120,7 @@ func TestScreenshotFailureNeverChangesOutcome(t *testing.T) {
 		capture func(ctx context.Context) ([]byte, error)
 	}{
 		{"capture errors", func(context.Context) ([]byte, error) {
-			return nil, errors.New("renderer gone")
+			return nil, errRendererGone
 		}},
 		{"capture returns nothing", func(context.Context) ([]byte, error) {
 			return nil, nil
@@ -191,11 +202,11 @@ func TestScreenshotCaptureSurvivesAnExpiredCheckContext(t *testing.T) {
 
 			_, sawDeadline = ctx.Deadline()
 
-			return fakePNG, nil
+			return fakePNG(), nil
 		},
 	}
 
-	spec := &BrowserConfig{URL: "https://example.com", Timeout: 20 * time.Millisecond, Screenshot: true}
+	spec := &BrowserConfig{URL: testPageURL, Timeout: 20 * time.Millisecond, Screenshot: true}
 
 	result, err := checker.Execute(t.Context(), spec)
 	r.NoError(err)
@@ -264,16 +275,16 @@ func TestScreenshotConfigRoundTrip(t *testing.T) {
 	r := require.New(t)
 
 	cfg := &BrowserConfig{}
-	r.NoError(cfg.FromMap(map[string]any{"url": "https://example.com", "screenshot": true}))
+	r.NoError(cfg.FromMap(map[string]any{cfgKeyURL: testPageURL, "screenshot": true}))
 	r.True(cfg.Screenshot)
 	r.Equal(true, cfg.GetConfig()["screenshot"])
 
 	// Default is off, and an off flag is omitted from the config map entirely.
 	off := &BrowserConfig{}
-	r.NoError(off.FromMap(map[string]any{"url": "https://example.com"}))
+	r.NoError(off.FromMap(map[string]any{cfgKeyURL: testPageURL}))
 	r.False(off.Screenshot)
 	r.NotContains(off.GetConfig(), "screenshot")
 
 	bad := &BrowserConfig{}
-	r.Error(bad.FromMap(map[string]any{"url": "https://example.com", "screenshot": "yes"}))
+	r.Error(bad.FromMap(map[string]any{cfgKeyURL: testPageURL, "screenshot": "yes"}))
 }

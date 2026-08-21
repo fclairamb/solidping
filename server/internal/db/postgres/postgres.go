@@ -6265,9 +6265,9 @@ func (s *Service) RemoveRecipientFromReportSchedules(ctx context.Context, orgUID
 }
 
 // applyFileTopicFilter narrows a files query to attachments. An exact Topic and
-// a TopicPrefix are both honoured when both are set; neither set leaves the
+// a TopicPrefix are both honored when both are set; neither set leaves the
 // query untouched, which is what keeps the historical "list every file"
-// behaviour intact for the dashboard's file browser.
+// behavior intact for the dashboard's file browser.
 //
 // LIKE with an escaped prefix, not a raw concatenation: a topic is
 // server-generated today, but the agent upload endpoint accepts one from the

@@ -3,19 +3,25 @@ package testdata
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
-// CreateTestData creates deterministic test data for test mode.
-func CreateTestData(ctx context.Context, dbService db.Service) error {
+// CreateTestData creates deterministic test data for test mode. cfg is needed
+// by the seeders that write real blobs through the files service (the incident
+// screenshot fixture); it may be nil, in which case those seeders are skipped.
+func CreateTestData(ctx context.Context, dbService db.Service, cfg *config.Config) error {
 	// Check if test organization already exists
 	count, err := dbService.DB().NewSelect().
 		Model((*models.Organization)(nil)).
@@ -95,6 +101,13 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 	// "What the probe saw" E2E has deterministic data for the text,
 	// truncated and binary renderings (spec 2026-08-20-01).
 	if err := createTestFailureResponseCaptures(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
+	// Seed a browser check whose incident carries a real screenshot attachment
+	// (spec 2026-08-21-01), so the incident screenshot card has deterministic
+	// data — bytes included, so the <img> actually loads.
+	if err := createTestIncidentScreenshot(ctx, dbService, cfg, testOrg.UID, now); err != nil {
 		return err
 	}
 
@@ -639,6 +652,92 @@ func createTestSLOData(ctx context.Context, dbService db.Service, orgUID string,
 	}
 
 	slog.InfoContext(ctx, "Created test SLO", "sloUID", sloUID, "checkUID", sloCheckUID)
+
+	return nil
+}
+
+// Fixture UIDs for the incident screenshot attachment (spec 2026-08-21-01).
+const (
+	shotCheckUID    = "00000000-0000-0000-0000-000000000025"
+	shotIncidentUID = "00000000-0000-0000-0000-000000000026"
+)
+
+// shotFixturePNG is a tiny but REAL PNG (a 2x2 image), base64-encoded. Real
+// bytes rather than a stub: the E2E asserts the <img> actually renders, which a
+// blob that is not a decodable image would fail — and that failure would be
+// indistinguishable from the card being broken.
+const shotFixturePNG = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAF0lEQVR4nGP8z8Dwn4" +
+	"GBgYmBgYGBgQEAGgcCAV3wQOsAAAAASUVORK5CYII="
+
+// createTestIncidentScreenshot seeds a down browser check with an active
+// incident and a real screenshot attachment written through the normal
+// attachment path — topic, details bag, storage blob and all.
+//
+// Written through the REAL path (unlike the failure-response fixture, which is
+// hand-rolled JSON) precisely because the bytes have to exist in the storage
+// backend for the signed download URL to serve anything.
+func createTestIncidentScreenshot(
+	ctx context.Context, dbService db.Service, cfg *config.Config, orgUID string, now time.Time,
+) error {
+	if cfg == nil {
+		slog.InfoContext(ctx, "Skipping incident screenshot fixture: no configuration")
+
+		return nil
+	}
+
+	check := models.NewCheck(orgUID, "shot-check", "browser")
+	check.UID = shotCheckUID
+	name := "Screenshot Check"
+	check.Name = &name
+	check.Config = models.JSONMap{"url": "https://acme.com/app", "screenshot": true}
+	check.Status = models.CheckStatusDown
+	check.StatusChangedAt = &now
+	check.CreatedAt = now
+	check.UpdatedAt = now
+
+	if err := dbService.CreateCheck(ctx, check); err != nil {
+		return fmt.Errorf("failed to create screenshot test check: %w", err)
+	}
+
+	incident := models.NewIncident(orgUID, shotCheckUID, now, "Screenshot Check is down")
+	incident.UID = shotIncidentUID
+	incident.CreatedAt = now
+	incident.UpdatedAt = now
+	incident.Details = models.JSONMap{
+		"failure_reason": "keyword check failed",
+		"first_result": models.JSONMap{
+			"resultUid":   shotIncidentUID,
+			"status":      "DOWN",
+			"region":      "eu-west",
+			"duration":    float32(2.5),
+			"periodStart": now,
+			"output":      models.JSONMap{"error": "keyword check failed"},
+		},
+	}
+
+	if err := dbService.CreateIncident(ctx, incident); err != nil {
+		return fmt.Errorf("failed to create screenshot test incident: %w", err)
+	}
+
+	png, err := base64.StdEncoding.DecodeString(shotFixturePNG)
+	if err != nil {
+		return fmt.Errorf("failed to decode screenshot fixture: %w", err)
+	}
+
+	svc := attachments.NewService(files.NewService(dbService, cfg), dbService, cfg)
+
+	fileUID, err := svc.PutIncidentScreenshot(ctx, orgUID, shotIncidentUID, png, models.JSONMap{
+		attachments.DetailKeyCapturedAt: now.UTC().Format(time.RFC3339),
+		attachments.DetailKeyRegion:     "eu-west",
+		attachments.DetailKeyCheckUID:   shotCheckUID,
+		attachments.DetailKeyTrigger:    attachments.TriggerIncidentOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write screenshot test attachment: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test incident screenshot",
+		"incidentUID", shotIncidentUID, "fileUID", fileUID)
 
 	return nil
 }

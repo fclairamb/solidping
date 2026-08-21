@@ -37,7 +37,8 @@ this page covers behavior and operational concerns.
     "waitSelector": "[data-loaded]",
     "keyword": "Welcome",
     "invertKeyword": false,
-    "timeout": "30s"
+    "timeout": "30s",
+    "screenshot": false
   }
 }
 ```
@@ -49,6 +50,44 @@ this page covers behavior and operational concerns.
 | `keyword` | Optional substring to look for in the rendered page text (`document.body.textContent` after JS has run). |
 | `invertKeyword` | Default `false` — keyword must be present for UP. Set `true` to fail-on-found ("expect this error message to be gone"). |
 | `timeout` | Default 30s. Hard cap 120s. The whole pipeline (alloc + navigate + waitFor + read) shares the budget. |
+| `screenshot` | Default `false`. See [Failure screenshots](#failure-screenshots) below. |
+
+## Failure screenshots
+
+With `screenshot: true`, a **failing** execution captures a full-page PNG before
+the browser context is disposed, and the incident pipeline keeps it — but only
+for the run that OPENED or REOPENED an incident. Every other failing run's
+capture exists in the worker's memory and is dropped: a flapping 30 s check
+would otherwise mint 2,880 blobs a day for evidence nobody looks at.
+
+What the capture is, precisely: what the page looked like a moment **after** the
+check decided the target was unhealthy — not the failing frame. The incident
+page labels it that way, and so should you when reading one; a page that
+finished loading half a second later can look perfectly healthy.
+
+Guardrails, all of them one-directional (a capture can be lost, never gained at
+the expense of a verdict):
+
+- The capture runs **after** the verdict is decided and can never change it. It
+  is time-boxed, and detached from the check's own (possibly already-expired)
+  deadline so a timed-out check still gets a picture.
+- `StatusError` is never captured — from this checker it means "no browser to
+  drive", so there is no page.
+- Over `MaxScreenshotBytes` (4 MiB) the capture is **dropped**, never truncated.
+  Half a PNG is a broken-image icon, not evidence.
+- Storage: the blob is a `files` row attached to the incident via
+  `files.topic = incidents/<uid>/screenshot` (spec 2026-08-21-01). It is served
+  through a short-lived **signed** URL on the incident detail API, is reaped
+  when the incident goes away, and is **never** exposed on a status page or in
+  a subscriber payload.
+- On reopen the relapse's capture replaces the previous one; a relapse with no
+  capture drops the stale one rather than showing the old outage's picture next
+  to a different failure.
+
+Deported (private) agents cannot upload their captures yet — the endpoint and
+its authorizer exist (`POST /api/v1/agent/attachments`), but the WS
+upload-request wiring is a follow-up (spec 2026-08-21-05). In-cluster and
+in-process browser checks capture normally.
 
 ## Execution model
 

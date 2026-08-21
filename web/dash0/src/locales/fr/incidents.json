@@ -113,6 +113,14 @@
       "truncated": "Corps tronqué à {{shown}} sur {{total}}.",
       "binary": "Corps non conservé : binaire ou UTF-8 invalide. Métadonnées seulement — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "une taille inconnue"
+    },
+    "screenshot": {
+      "title": "Capture d'écran à la détection",
+      "description": "À quoi ressemblait la page quand ce check a signalé l'échec. Prise juste APRÈS la détection, depuis une seule région — c'est un indice, pas l'image exacte de l'échec.",
+      "alt": "Capture d'écran de la page prise à l'ouverture de l'incident",
+      "caption": "Capturée {{capturedAt}} depuis {{region}}, peu après la détection de l'échec.",
+      "unknownTime": "à une heure inconnue",
+      "unknownRegion": "une région inconnue"
     }
   },
   "timeline": {

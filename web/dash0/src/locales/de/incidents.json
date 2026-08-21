@@ -113,6 +113,14 @@
       "truncated": "Body auf {{shown}} von {{total}} gekürzt.",
       "binary": "Body nicht gespeichert: binär oder kein gültiges UTF-8. Nur Metadaten — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "unbekannte Größe"
+    },
+    "screenshot": {
+      "title": "Screenshot bei Fehlererkennung",
+      "description": "So sah die Seite aus, als dieser Check den Fehler meldete. Kurz NACH der Erkennung aufgenommen, aus einer Region — ein Hinweis, nicht das fehlerhafte Bild selbst.",
+      "alt": "Screenshot der Seite, aufgenommen beim Öffnen des Vorfalls",
+      "caption": "Aufgenommen {{capturedAt}} aus {{region}}, kurz nach der Fehlererkennung.",
+      "unknownTime": "zu unbekannter Zeit",
+      "unknownRegion": "einer unbekannten Region"
     }
   },
   "timeline": {

@@ -37,7 +37,7 @@ type signedAgent struct {
 
 // enrollAgent creates an active agent row bound to `region`, owned by `orgUID`
 // (empty for a system agent), and returns it with its signing key.
-func enrollAgent(t *testing.T, ctx context.Context, dbSvc db.Service, orgUID, region string) *signedAgent {
+func enrollAgent(ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, region string) *signedAgent {
 	t.Helper()
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -68,7 +68,9 @@ func enrollAgent(t *testing.T, ctx context.Context, dbSvc db.Service, orgUID, re
 }
 
 // signedRequest builds a POST with valid signed headers for this agent.
-func (s *signedAgent) signedRequest(t *testing.T, ctx context.Context, topic string, body []byte) *http.Request {
+func (s *signedAgent) signedRequest(
+	ctx context.Context, t *testing.T, topic string, body []byte,
+) *http.Request {
 	t.Helper()
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, uploadPath+"?topic="+topic, bytes.NewReader(body))
@@ -95,8 +97,11 @@ func (s *signedAgent) sign(req *http.Request, timestamp, nonce string) {
 }
 
 // uploadFixture is one wired-up endpoint plus the data an upload needs.
+//
+// ctx is a FUNCTION rather than a field: t.Context() is cheap, and storing a
+// context on a struct is the pattern the containedctx linter (rightly) flags.
 type uploadFixture struct {
-	ctx      context.Context
+	ctx      func() context.Context
 	db       db.Service
 	svc      *Service
 	handler  *Handler
@@ -127,7 +132,8 @@ func setupUploadTest(t *testing.T) *uploadFixture {
 	handler.SetNonceGuard(agents.NewNonceCache())
 
 	return &uploadFixture{
-		ctx: ctx, db: dbService, svc: svc, handler: handler,
+		ctx: func() context.Context { return ctx },
+		db:  dbService, svc: svc, handler: handler,
 		org: org, incident: incident, check: check,
 	}
 }
@@ -151,17 +157,17 @@ func TestAgentUploadHappyPath(t *testing.T) {
 	r := require.New(t)
 	f := setupUploadTest(t)
 
-	agent := enrollAgent(t, f.ctx, f.db, f.org.UID, "eu-west")
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
 	topic := IncidentScreenshotTopic(f.incident.UID)
 
-	rec := f.serve(t, agent.signedRequest(t, f.ctx, topic, pngBytes("agent-capture")))
+	rec := f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("agent-capture")))
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
 
 	var resp UploadResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.NotEmpty(resp.FileUID)
 
-	stored, err := f.db.GetFile(f.ctx, f.org.UID, resp.FileUID)
+	stored, err := f.db.GetFile(f.ctx(), f.org.UID, resp.FileUID)
 	r.NoError(err)
 	r.NotNil(stored.Topic)
 	r.Equal(topic, *stored.Topic)
@@ -171,25 +177,30 @@ func TestAgentUploadHappyPath(t *testing.T) {
 // TestAgentUploadRejectsBadSignature covers the authentication surface: missing
 // headers, a signature from the wrong key, a stale timestamp, a revoked agent,
 // and an unknown agent uid. Each must be a 401 and must store nothing.
+//
+// one per-agent rate limiter; running them in parallel would make an assertion
+// about a 401 depend on which subtest happened to consume the nonce first.
+//
+//nolint:paralleltest,tparallel // the subtests share one in-memory database and
 func TestAgentUploadRejectsBadSignature(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	f := setupUploadTest(t)
 
-	agent := enrollAgent(t, f.ctx, f.db, f.org.UID, "eu-west")
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
 	topic := IncidentScreenshotTopic(f.incident.UID)
 
 	t.Run("no headers", func(t *testing.T) {
-		req := httptest.NewRequestWithContext(f.ctx, http.MethodPost,
+		req := httptest.NewRequestWithContext(f.ctx(), http.MethodPost,
 			uploadPath+"?topic="+topic, bytes.NewReader(pngBytes("x")))
 		r.Equal(http.StatusUnauthorized, f.serve(t, req).Code)
 	})
 
 	t.Run("signature from another key", func(t *testing.T) {
-		imposter := enrollAgent(t, f.ctx, f.db, f.org.UID, "eu-west")
+		imposter := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
 
-		req := agent.signedRequest(t, f.ctx, topic, pngBytes("x"))
+		req := agent.signedRequest(f.ctx(), t, topic, pngBytes("x"))
 		// Re-sign with the imposter's key while keeping the victim's agent uid.
 		challenge := agents.SignatureChallenge(req.Method, req.URL.Path,
 			req.Header.Get(headerTimestamp), req.Header.Get(headerNonce))
@@ -200,7 +211,7 @@ func TestAgentUploadRejectsBadSignature(t *testing.T) {
 	})
 
 	t.Run("stale timestamp", func(t *testing.T) {
-		req := httptest.NewRequestWithContext(f.ctx, http.MethodPost,
+		req := httptest.NewRequestWithContext(f.ctx(), http.MethodPost,
 			uploadPath+"?topic="+topic, bytes.NewReader(pngBytes("x")))
 		stale := time.Now().Add(-2 * agents.DefaultClockSkew).UTC().Format(time.RFC3339)
 		agent.sign(req, stale, "stale-nonce")
@@ -209,15 +220,15 @@ func TestAgentUploadRejectsBadSignature(t *testing.T) {
 	})
 
 	t.Run("revoked agent", func(t *testing.T) {
-		revoked := enrollAgent(t, f.ctx, f.db, f.org.UID, "eu-west")
-		r.NoError(f.db.RevokeAgent(f.ctx, f.org.UID, revoked.agent.UID))
+		revoked := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+		r.NoError(f.db.RevokeAgent(f.ctx(), f.org.UID, revoked.agent.UID))
 
 		r.Equal(http.StatusUnauthorized,
-			f.serve(t, revoked.signedRequest(t, f.ctx, topic, pngBytes("x"))).Code)
+			f.serve(t, revoked.signedRequest(f.ctx(), t, topic, pngBytes("x"))).Code)
 	})
 
 	t.Run("unknown agent uid", func(t *testing.T) {
-		req := agent.signedRequest(t, f.ctx, topic, pngBytes("x"))
+		req := agent.signedRequest(f.ctx(), t, topic, pngBytes("x"))
 		req.Header.Set(headerAgentUID, "00000000-0000-0000-0000-000000000000")
 
 		r.Equal(http.StatusUnauthorized, f.serve(t, req).Code)
@@ -232,14 +243,14 @@ func TestAgentUploadRejectsReplay(t *testing.T) {
 	r := require.New(t)
 	f := setupUploadTest(t)
 
-	agent := enrollAgent(t, f.ctx, f.db, f.org.UID, "eu-west")
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
 	topic := IncidentScreenshotTopic(f.incident.UID)
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	const nonce = "replay-me"
 
 	build := func() *http.Request {
-		req := httptest.NewRequestWithContext(f.ctx, http.MethodPost,
+		req := httptest.NewRequestWithContext(f.ctx(), http.MethodPost,
 			uploadPath+"?topic="+topic, bytes.NewReader(pngBytes("replay")))
 		agent.sign(req, timestamp, nonce)
 
@@ -261,34 +272,34 @@ func TestAgentUploadRejectsForeignAndMalformedTopics(t *testing.T) {
 	f := setupUploadTest(t)
 
 	other := models.NewOrganization("acmetwo", "Acme Two")
-	r.NoError(f.db.CreateOrganization(f.ctx, other))
+	r.NoError(f.db.CreateOrganization(f.ctx(), other))
 
-	foreignAgent := enrollAgent(t, f.ctx, f.db, other.UID, "eu-west")
-	wrongRegionAgent := enrollAgent(t, f.ctx, f.db, f.org.UID, "us-east")
-	goodAgent := enrollAgent(t, f.ctx, f.db, f.org.UID, "eu-west")
+	foreignAgent := enrollAgent(f.ctx(), t, f.db, other.UID, "eu-west")
+	wrongRegionAgent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "us-east")
+	goodAgent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
 
 	topic := IncidentScreenshotTopic(f.incident.UID)
 
 	r.Equal(http.StatusForbidden,
-		f.serve(t, foreignAgent.signedRequest(t, f.ctx, topic, pngBytes("x"))).Code,
+		f.serve(t, foreignAgent.signedRequest(f.ctx(), t, topic, pngBytes("x"))).Code,
 		"another org's agent must not attach to this incident")
 
 	r.Equal(http.StatusForbidden,
-		f.serve(t, wrongRegionAgent.signedRequest(t, f.ctx, topic, pngBytes("x"))).Code,
+		f.serve(t, wrongRegionAgent.signedRequest(f.ctx(), t, topic, pngBytes("x"))).Code,
 		"an agent whose region does not serve the check must be refused")
 
 	r.Equal(http.StatusForbidden,
-		f.serve(t, goodAgent.signedRequest(t, f.ctx,
+		f.serve(t, goodAgent.signedRequest(f.ctx(), t,
 			IncidentScreenshotTopic("11111111-1111-1111-1111-111111111111"), pngBytes("x"))).Code,
 		"an incident that does not exist must be refused")
 
 	r.Equal(http.StatusForbidden,
-		f.serve(t, goodAgent.signedRequest(t, f.ctx,
+		f.serve(t, goodAgent.signedRequest(f.ctx(), t,
 			"checks/"+f.check.UID+"/screenshot", pngBytes("x"))).Code,
 		"an entity with no registered authorizer must fail closed")
 
 	r.Equal(http.StatusBadRequest,
-		f.serve(t, goodAgent.signedRequest(t, f.ctx, "incidents..screenshot", pngBytes("x"))).Code,
+		f.serve(t, goodAgent.signedRequest(f.ctx(), t, "incidents..screenshot", pngBytes("x"))).Code,
 		"a malformed topic is a bad request")
 }
 
@@ -301,20 +312,20 @@ func TestAgentUploadRejectsBadBodies(t *testing.T) {
 	r := require.New(t)
 	f := setupUploadTest(t)
 
-	agent := enrollAgent(t, f.ctx, f.db, f.org.UID, "eu-west")
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
 	topic := IncidentScreenshotTopic(f.incident.UID)
 
 	// A declared image/png that is not one: sniffing is what catches this.
-	req := agent.signedRequest(t, f.ctx, topic, []byte("PK\x03\x04 this is a zip"))
+	req := agent.signedRequest(f.ctx(), t, topic, []byte("PK\x03\x04 this is a zip"))
 	req.Header.Set("Content-Type", "image/png")
 	r.Equal(http.StatusUnsupportedMediaType, f.serve(t, req).Code)
 
 	oversize := append(pngBytes(""), make([]byte, MaxAttachmentBytes)...)
 	r.Equal(http.StatusRequestEntityTooLarge,
-		f.serve(t, agent.signedRequest(t, f.ctx, topic, oversize)).Code)
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, oversize)).Code)
 
 	r.Equal(http.StatusBadRequest,
-		f.serve(t, agent.signedRequest(t, f.ctx, topic, nil)).Code,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, nil)).Code,
 		"an empty body is a bad request")
 }
 

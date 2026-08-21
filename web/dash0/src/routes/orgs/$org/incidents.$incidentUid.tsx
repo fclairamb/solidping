@@ -38,6 +38,7 @@ import {
   type Event,
   type IncidentDetail,
   type IncidentResultSnapshot,
+  type IncidentAttachment,
   type IncidentFailureResponse,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
@@ -1095,6 +1096,8 @@ function IncidentDetailPage() {
 
       <ProbeResponseCard incident={incident} />
 
+      <IncidentScreenshotCard incident={incident} />
+
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
 
       <IncidentPublicationsPanel org={org} incidentUid={incidentUid} />
@@ -1349,6 +1352,66 @@ function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
 function formatCaptureBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+// IncidentScreenshotCard renders the browser capture kept for this incident's
+// current onset (spec 2026-08-21-01).
+//
+// It is DELIBERATELY cautious about what it claims. The capture is taken right
+// after the check decided the target was unhealthy, not at the failing frame,
+// and a page that finished loading half a second later can look perfectly fine.
+// Saying so in the caption is the difference between evidence and a red
+// herring, so the honesty label is not optional decoration.
+function IncidentScreenshotCard({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("incidents");
+
+  const shots: IncidentAttachment[] = (incident.attachments ?? []).filter(
+    (a) => a.kind === "screenshot" && a.downloadUrl,
+  );
+
+  if (shots.length === 0) return null;
+
+  return (
+    <Card data-testid="incident-screenshot-card">
+      <CardHeader>
+        <CardTitle>{t("detail.screenshot.title")}</CardTitle>
+        <CardDescription>{t("detail.screenshot.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {shots.map((shot) => (
+          <figure key={shot.uid} className="space-y-2">
+            {/* The image is a link to itself so a full-resolution view is one
+                click away without a lightbox dependency. */}
+            <a
+              href={shot.downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block overflow-hidden rounded-md border bg-muted"
+            >
+              <img
+                src={shot.downloadUrl}
+                alt={t("detail.screenshot.alt")}
+                loading="lazy"
+                className="h-auto w-full max-w-full"
+                data-testid="incident-screenshot-image"
+              />
+            </a>
+            <figcaption
+              className="text-xs text-muted-foreground"
+              data-testid="incident-screenshot-caption"
+            >
+              {t("detail.screenshot.caption", {
+                capturedAt: shot.capturedAt
+                  ? new Date(shot.capturedAt).toLocaleString()
+                  : t("detail.screenshot.unknownTime"),
+                region: shot.region || t("detail.screenshot.unknownRegion"),
+              })}
+            </figcaption>
+          </figure>
+        ))}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ProbeResponseCard renders "What the probe saw": the opt-in capture of the

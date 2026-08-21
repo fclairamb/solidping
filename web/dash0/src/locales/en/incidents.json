@@ -113,6 +113,14 @@
       "truncated": "Body truncated to {{shown}} of {{total}}.",
       "binary": "Body not stored: it is binary or not valid UTF-8. Metadata only — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "an unknown size"
+    },
+    "screenshot": {
+      "title": "Screenshot at failure detection",
+      "description": "What the page looked like when this check reported the failure. Captured a moment AFTER detection, from one region — treat it as evidence, not as the failing frame itself.",
+      "alt": "Screenshot of the page captured when the incident opened",
+      "caption": "Captured {{capturedAt}} from {{region}}, shortly after failure detection.",
+      "unknownTime": "at an unknown time",
+      "unknownRegion": "an unknown region"
     }
   },
   "timeline": {

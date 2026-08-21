@@ -62,7 +62,47 @@ export interface Check {
    * check inherits its group's policy, then the org default, then none.
    */
   escalationPolicyUid?: string | null;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "prometheus" | "sleep";
+  type?:
+    | "http"
+    | "tcp"
+    | "icmp"
+    | "dns"
+    | "ssl"
+    | "heartbeat"
+    | "email"
+    | "domain"
+    | "smtp"
+    | "udp"
+    | "ssh"
+    | "pop3"
+    | "imap"
+    | "websocket"
+    | "postgresql"
+    | "mysql"
+    | "redis"
+    | "mongodb"
+    | "ftp"
+    | "sftp"
+    | "js"
+    | "mssql"
+    | "oracle"
+    | "clickhouse"
+    | "grpc"
+    | "kafka"
+    | "mqtt"
+    | "a2s"
+    | "minecraft"
+    | "rabbitmq"
+    | "snmp"
+    | "docker"
+    | "browser"
+    | "freebox_line"
+    | "dnsbl"
+    | "sip"
+    | "ntp"
+    | "rdp"
+    | "prometheus"
+    | "sleep";
   config?: Record<string, unknown>;
   /**
    * Derived, read-time-only host this check probes: config's `host` when
@@ -148,7 +188,47 @@ export interface CreateCheckRequest {
   checkGroupUid?: string;
   /** Escalation policy to assign; omit/empty inherits (group → org default → none). */
   escalationPolicyUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "prometheus" | "sleep";
+  type?:
+    | "http"
+    | "tcp"
+    | "icmp"
+    | "dns"
+    | "ssl"
+    | "heartbeat"
+    | "email"
+    | "domain"
+    | "smtp"
+    | "udp"
+    | "ssh"
+    | "pop3"
+    | "imap"
+    | "websocket"
+    | "postgresql"
+    | "mysql"
+    | "redis"
+    | "mongodb"
+    | "ftp"
+    | "sftp"
+    | "js"
+    | "mssql"
+    | "oracle"
+    | "clickhouse"
+    | "grpc"
+    | "kafka"
+    | "mqtt"
+    | "a2s"
+    | "minecraft"
+    | "rabbitmq"
+    | "snmp"
+    | "docker"
+    | "browser"
+    | "freebox_line"
+    | "dnsbl"
+    | "sip"
+    | "ntp"
+    | "rdp"
+    | "prometheus"
+    | "sleep";
   config: Record<string, unknown>;
   regions?: string[];
   /** Omit to use the automatic default (period / region count). */
@@ -257,6 +337,27 @@ export interface IncidentFailureResponse {
   region?: string;
 }
 
+/** One evidence blob attached to an incident (spec 2026-08-21-01).
+ *
+ * Operator-only: `downloadUrl` is a short-lived SIGNED url and is re-signed on
+ * every incident fetch, so it must never be cached or shared onward. */
+export interface IncidentAttachment {
+  uid: string;
+  /** Attachment kind, e.g. `screenshot`. */
+  kind?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+  /** Relative signed URL: `/pub/files/<uid>?exp=…&sig=…`. */
+  downloadUrl: string;
+  createdAt?: string;
+  /** When the probe took the capture — a moment AFTER failure detection. */
+  capturedAt?: string;
+  region?: string;
+  checkUid?: string;
+  trigger?: "incident-open" | "incident-reopen" | "agent-upload";
+}
+
 export interface IncidentDetails {
   /** Human-readable cause, same key the Slack notifier reads. */
   failure_reason?: string;
@@ -269,6 +370,8 @@ export interface IncidentDetails {
 }
 
 export interface IncidentDetail {
+  /** Evidence blobs. Populated by the DETAIL endpoint only. */
+  attachments?: IncidentAttachment[];
   uid?: string;
   /** Short per-org reference, rendered as `#42`. Assigned at creation, never reused. */
   number?: number;
@@ -342,14 +445,15 @@ function buildChecksUrl(
     /** Opt-in ordering. "group" = group sortOrder asc, ungrouped last, then
      * created_at DESC within a bucket. Omitted = default created_at DESC. */
     sort?: string;
-  }
+  },
 ): string {
   const params = new URLSearchParams();
   if (options?.labels) params.set("labels", options.labels);
   if (options?.with) params.set("with", options.with);
   if (options?.q) params.set("q", options.q);
   if (options?.type) params.set("type", options.type);
-  if (options?.checkGroupUid) params.set("checkGroupUid", options.checkGroupUid);
+  if (options?.checkGroupUid)
+    params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
   if (options?.status) params.set("status", options.status);
   if (options?.limit) params.set("limit", options.limit.toString());
@@ -370,7 +474,7 @@ export function useChecks(
     type?: string;
     checkGroupUid?: string;
     limit?: number;
-  }
+  },
 ) {
   return useQuery({
     queryKey: ["checks", org, options],
@@ -414,7 +518,7 @@ export interface CheckStats {
  */
 export function useCheckStats(
   org: string,
-  options?: { refetchInterval?: number }
+  options?: { refetchInterval?: number },
 ) {
   return useQuery({
     queryKey: ["check-stats", org],
@@ -443,7 +547,7 @@ export function useInfiniteChecks(
    * describes how often to refresh a cache entry, not which entry it is).
    * Kept as a second parameter so it can never accidentally fork the key.
    */
-  queryOptions?: { refetchInterval?: number }
+  queryOptions?: { refetchInterval?: number },
 ) {
   return useInfiniteQuery({
     queryKey: ["checks", "infinite", org, options],
@@ -472,7 +576,7 @@ export function useCheck(
      * guarantees the seed comes from fresh data, not a stale cache entry.
      */
     refetchOnMount?: boolean | "always";
-  }
+  },
 ) {
   return useQuery({
     // One canonical cache entry per check, keyed by org+uid only — every
@@ -484,7 +588,7 @@ export function useCheck(
     queryKey: ["check", org, uid],
     queryFn: async () =>
       apiFetch<Check>(
-        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`
+        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`,
       ),
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,
@@ -532,7 +636,7 @@ export interface LabelSuggestion {
 
 export function useLabelSuggestions(
   org: string,
-  opts: { key?: string; q?: string; limit?: number; enabled?: boolean }
+  opts: { key?: string; q?: string; limit?: number; enabled?: boolean },
 ) {
   const params = new URLSearchParams();
   if (opts.key) params.set("key", opts.key);
@@ -688,7 +792,11 @@ export function useConvertChecks(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { source: ConvertSource; body: string; dryRun?: boolean }) =>
+    mutationFn: (params: {
+      source: ConvertSource;
+      body: string;
+      dryRun?: boolean;
+    }) =>
       apiFetch<ConvertResult>(
         `/api/v1/orgs/${org}/checks/import/convert?source=${encodeURIComponent(params.source)}${
           params.dryRun ? "&dryRun=true" : ""
@@ -740,7 +848,7 @@ export function useCheckGroups(org: string) {
     queryKey: ["checkGroups", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: CheckGroup[] }>(
-        `/api/v1/orgs/${org}/check-groups`
+        `/api/v1/orgs/${org}/check-groups`,
       );
       return response.data || [];
     },
@@ -924,10 +1032,7 @@ export function useDeleteCheckDependency(org: string, checkUid: string) {
   });
 }
 
-export function useDependencyGraph(
-  org: string,
-  opts?: { enabled?: boolean },
-) {
+export function useDependencyGraph(org: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["dependencyGraph", org],
     queryFn: async () => {
@@ -954,7 +1059,7 @@ export function useResults(
     cursor?: string;
     size?: number;
     refetchInterval?: number;
-  }
+  },
 ) {
   const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
@@ -963,8 +1068,10 @@ export function useResults(
       const params = new URLSearchParams();
       if (options?.checkUid) params.set("checkUid", options.checkUid);
       if (options?.periodType) params.set("periodType", options.periodType);
-      if (options?.periodStartAfter) params.set("periodStartAfter", options.periodStartAfter);
-      if (options?.periodEndBefore) params.set("periodEndBefore", options.periodEndBefore);
+      if (options?.periodStartAfter)
+        params.set("periodStartAfter", options.periodStartAfter);
+      if (options?.periodEndBefore)
+        params.set("periodEndBefore", options.periodEndBefore);
       if (options?.region) params.set("region", options.region);
       if (options?.with) params.set("with", options.with);
       if (options?.cursor) params.set("cursor", options.cursor);
@@ -991,7 +1098,7 @@ export function useResult(
   org: string,
   checkUid: string,
   resultUid: string,
-  options?: { region?: string }
+  options?: { region?: string },
 ) {
   const region = options?.region;
   return useQuery<OrgResultDetail>({
@@ -1078,7 +1185,7 @@ export function useAllResults(
     with?: string;
     size?: number;
     refetchInterval?: number;
-  }
+  },
 ) {
   const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
@@ -1138,7 +1245,7 @@ export function useIncidents(
     // wire request always carries a UID and never a slug (issue #127).
     // Defaults to true so existing callers are unaffected.
     enabled?: boolean;
-  }
+  },
 ) {
   const { refetchInterval, enabled, ...queryOptions } = options || {};
   return useQuery({
@@ -1154,7 +1261,8 @@ export function useIncidents(
       if (options?.size) params.set("limit", options.size.toString());
       if (options?.with) params.set("with", options.with);
       if (options?.hideSuppressed) params.set("hideSuppressed", "true");
-      if (options?.causedByIncidentUid) params.set("causedByIncidentUid", options.causedByIncidentUid);
+      if (options?.causedByIncidentUid)
+        params.set("causedByIncidentUid", options.causedByIncidentUid);
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/incidents${query ? `?${query}` : ""}`;
       const response = await apiFetch<{
@@ -1269,7 +1377,7 @@ export function useEvents(
     cursor?: string;
     size?: number;
     refetchInterval?: number;
-  }
+  },
 ) {
   const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
@@ -1361,7 +1469,7 @@ export function useIncidentNotifications(
   options?: {
     status?: string;
     limit?: number;
-  }
+  },
 ) {
   return useQuery({
     queryKey: ["incidentNotifications", org, incidentUid, options],
@@ -1381,13 +1489,13 @@ export function useIncidentNotifications(
 export function useIncidentNotification(
   org: string,
   incidentUid: string,
-  notifUid: string
+  notifUid: string,
 ) {
   return useQuery<IncidentNotification>({
     queryKey: ["incidentNotification", org, incidentUid, notifUid],
     queryFn: () =>
       apiFetch<IncidentNotification>(
-        `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications/${notifUid}`
+        `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications/${notifUid}`,
       ),
     enabled: !!org && !!incidentUid && !!notifUid,
     staleTime: Infinity,
@@ -1402,7 +1510,7 @@ export function useOrgNotification(org: string, notifUid: string) {
     queryKey: ["orgNotification", org, notifUid],
     queryFn: () =>
       apiFetch<IncidentNotification>(
-        `/api/v1/orgs/${org}/notifications/${notifUid}`
+        `/api/v1/orgs/${org}/notifications/${notifUid}`,
       ),
     enabled: !!org && !!notifUid,
     staleTime: Infinity,
@@ -1414,7 +1522,7 @@ export function useOrgNotification(org: string, notifUid: string) {
 export function useIntegrationNotifications(
   org: string,
   integrationUid: string,
-  limit = 10
+  limit = 10,
 ) {
   return useQuery({
     queryKey: ["integrationNotifications", org, integrationUid, limit],
@@ -1424,7 +1532,7 @@ export function useIntegrationNotifications(
         limit: String(limit),
       });
       const response = await apiFetch<{ data?: IncidentNotification[] }>(
-        `/api/v1/orgs/${org}/notifications?${params.toString()}`
+        `/api/v1/orgs/${org}/notifications?${params.toString()}`,
       );
       return response.data || [];
     },
@@ -1452,7 +1560,7 @@ export function useEmailSuppressions(org: string) {
     queryKey: ["emailSuppressions", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: EmailSuppression[] }>(
-        `/api/v1/orgs/${org}/email-suppressions`
+        `/api/v1/orgs/${org}/email-suppressions`,
       );
       return response.data || [];
     },
@@ -1482,7 +1590,7 @@ export function useMyNotifications(
     status?: string;
     limit?: number;
     before?: string;
-  }
+  },
 ) {
   return useQuery({
     queryKey: ["myNotifications", org, options],
@@ -1548,7 +1656,7 @@ export function useTokens(org: string) {
     queryKey: ["tokens", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: TokenInfo[] }>(
-        `/api/v1/orgs/${org}/tokens?type=pat`
+        `/api/v1/orgs/${org}/tokens?type=pat`,
       );
       return response.data || [];
     },
@@ -1641,7 +1749,7 @@ export function useSessions(org: string) {
     queryKey: ["sessions", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: SessionInfo[] }>(
-        `/api/v1/orgs/${org}/tokens?type=refresh`
+        `/api/v1/orgs/${org}/tokens?type=refresh`,
       );
       return response.data || [];
     },
@@ -1888,7 +1996,7 @@ export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
     queryKey: ["statusPages", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: StatusPage[] }>(
-        `/api/v1/orgs/${org}/status-pages`
+        `/api/v1/orgs/${org}/status-pages`,
       );
       return response.data || [];
     },
@@ -1896,7 +2004,11 @@ export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
   });
 }
 
-export function useStatusPage(org: string, uid: string, options?: { with?: string }) {
+export function useStatusPage(
+  org: string,
+  uid: string,
+  options?: { with?: string },
+) {
   return useQuery({
     queryKey: ["statusPage", org, uid, { with: options?.with }],
     queryFn: async () => {
@@ -1964,7 +2076,7 @@ export function useVerifyStatusPageDomain(org: string, uid: string) {
     mutationFn: () =>
       apiFetch<StatusPage>(
         `/api/v1/orgs/${org}/status-pages/${uid}/custom-domain/verify`,
-        { method: "POST" }
+        { method: "POST" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
@@ -2002,7 +2114,7 @@ export function useStatusPageSubscribers(org: string, statusPageUid: string) {
 
 export function useDeleteStatusPageSubscriber(
   org: string,
-  statusPageUid: string
+  statusPageUid: string,
 ) {
   const queryClient = useQueryClient();
 
@@ -2010,7 +2122,7 @@ export function useDeleteStatusPageSubscriber(
     mutationFn: (uid: string) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers/${uid}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -2026,7 +2138,7 @@ export function useStatusPageSections(org: string, statusPageUid: string) {
     queryKey: ["statusPageSections", org, statusPageUid],
     queryFn: async () => {
       const response = await apiFetch<{ data?: StatusPageSection[] }>(
-        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections`
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections`,
       );
       return response.data || [];
     },
@@ -2041,27 +2153,39 @@ export function useCreateSection(org: string, statusPageUid: string) {
     mutationFn: (request: CreateSectionRequest) =>
       apiFetch<StatusPageSection>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections`,
-        { method: "POST", body: JSON.stringify(request) }
+        { method: "POST", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPageSections", org, statusPageUid] });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSections", org, statusPageUid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useUpdateSection(org: string, statusPageUid: string, sectionUid: string) {
+export function useUpdateSection(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (request: UpdateSectionRequest) =>
       apiFetch<StatusPageSection>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}`,
-        { method: "PATCH", body: JSON.stringify(request) }
+        { method: "PATCH", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPageSections", org, statusPageUid] });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSections", org, statusPageUid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2073,11 +2197,15 @@ export function useDeleteSection(org: string, statusPageUid: string) {
     mutationFn: (sectionUid: string) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPageSections", org, statusPageUid] });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSections", org, statusPageUid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2086,13 +2214,13 @@ export function useDeleteSection(org: string, statusPageUid: string) {
 export function useStatusPageResources(
   org: string,
   statusPageUid: string,
-  sectionUid: string
+  sectionUid: string,
 ) {
   return useQuery({
     queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
     queryFn: async () => {
       const response = await apiFetch<{ data?: StatusPageResource[] }>(
-        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources`
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources`,
       );
       return response.data || [];
     },
@@ -2100,20 +2228,26 @@ export function useStatusPageResources(
   });
 }
 
-export function useCreateResource(org: string, statusPageUid: string, sectionUid: string) {
+export function useCreateResource(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (request: CreateResourceRequest) =>
       apiFetch<StatusPageResource>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources`,
-        { method: "POST", body: JSON.stringify(request) }
+        { method: "POST", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2128,17 +2262,25 @@ export function useCreateResource(org: string, statusPageUid: string, sectionUid
 // original slot before the server roundtrip lands.
 export function useReorderSections(org: string, statusPageUid: string) {
   const queryClient = useQueryClient();
-  const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];
+  const pageWithSectionsKey = [
+    "statusPage",
+    org,
+    statusPageUid,
+    { with: "sections" },
+  ];
 
   return useMutation({
     mutationFn: (uids: string[]) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/reorder`,
-        { method: "POST", body: JSON.stringify({ uids }) }
+        { method: "POST", body: JSON.stringify({ uids }) },
       ),
     onMutate: async (uids) => {
-      await queryClient.cancelQueries({ queryKey: ["statusPage", org, statusPageUid] });
-      const snapshot = queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
+      await queryClient.cancelQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
+      const snapshot =
+        queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
       if (snapshot?.sections) {
         const byUid = new Map(snapshot.sections.map((s) => [s.uid, s]));
         const reordered = uids
@@ -2157,24 +2299,38 @@ export function useReorderSections(org: string, statusPageUid: string) {
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useReorderResources(org: string, statusPageUid: string, sectionUid: string) {
+export function useReorderResources(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
-  const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];
+  const pageWithSectionsKey = [
+    "statusPage",
+    org,
+    statusPageUid,
+    { with: "sections" },
+  ];
 
   return useMutation({
     mutationFn: (uids: string[]) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/reorder`,
-        { method: "POST", body: JSON.stringify({ uids }) }
+        { method: "POST", body: JSON.stringify({ uids }) },
       ),
     onMutate: async (uids) => {
-      await queryClient.cancelQueries({ queryKey: ["statusPage", org, statusPageUid] });
-      const snapshot = queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
+      await queryClient.cancelQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
+      const snapshot =
+        queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
       if (snapshot) {
         queryClient.setQueryData<StatusPage>(pageWithSectionsKey, {
           ...snapshot,
@@ -2199,43 +2355,63 @@ export function useReorderResources(org: string, statusPageUid: string, sectionU
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useUpdateResource(org: string, statusPageUid: string, sectionUid: string) {
+export function useUpdateResource(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ resourceUid, request }: { resourceUid: string; request: UpdateResourceRequest }) =>
+    mutationFn: ({
+      resourceUid,
+      request,
+    }: {
+      resourceUid: string;
+      request: UpdateResourceRequest;
+    }) =>
       apiFetch<StatusPageResource>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/${resourceUid}`,
-        { method: "PATCH", body: JSON.stringify(request) }
+        { method: "PATCH", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useDeleteResource(org: string, statusPageUid: string, sectionUid: string) {
+export function useDeleteResource(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (resourceUid: string) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/${resourceUid}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2257,7 +2433,7 @@ export function useProviders() {
     queryFn: async () => {
       const response = await apiFetch<ProvidersResponse>(
         "/api/v1/auth/providers",
-        { skipAuth: true }
+        { skipAuth: true },
       );
       return {
         providers: response.data || [],
@@ -2291,7 +2467,12 @@ export function useConfirmRegistration() {
         accessToken: string;
         refreshToken?: string;
         expiresIn?: number;
-        user: { email: string; name?: string; avatarUrl?: string; role: string };
+        user: {
+          email: string;
+          name?: string;
+          avatarUrl?: string;
+          role: string;
+        };
         organization?: { uid: string; slug: string; name?: string };
       }>("/api/v1/auth/confirm-registration", {
         method: "POST",
@@ -2328,7 +2509,13 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (data: { name: string }) =>
       apiFetch<{
-        user: { uid: string; email: string; name?: string; avatarUrl?: string; role: string };
+        user: {
+          uid: string;
+          email: string;
+          name?: string;
+          avatarUrl?: string;
+          role: string;
+        };
         organization: { uid: string; slug: string; name?: string };
         organizations: { slug: string; name?: string; role: string }[];
       }>("/api/v1/auth/me", {
@@ -2386,7 +2573,7 @@ export function useCreateInvitation(org: string) {
         {
           method: "POST",
           body: JSON.stringify(data),
-        }
+        },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invitations", org] });
@@ -2443,7 +2630,9 @@ export function useCreateMembershipRequest() {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "me"],
+      });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
   });
@@ -2454,7 +2643,7 @@ export function useMyMembershipRequests() {
     queryKey: ["membership-requests", "me"],
     queryFn: () =>
       apiFetch<{ data: MembershipRequestSummary[] }>(
-        "/api/v1/auth/membership-requests"
+        "/api/v1/auth/membership-requests",
       ),
   });
 }
@@ -2467,7 +2656,9 @@ export function useCancelMembershipRequest() {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "me"],
+      });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
   });
@@ -2475,7 +2666,7 @@ export function useCancelMembershipRequest() {
 
 export function useOrgMembershipRequests(
   org: string,
-  opts?: { status?: MembershipRequestStatus; enabled?: boolean }
+  opts?: { status?: MembershipRequestStatus; enabled?: boolean },
 ) {
   const status = opts?.status;
   const qs = status ? `?status=${status}` : "";
@@ -2483,7 +2674,7 @@ export function useOrgMembershipRequests(
     queryKey: ["membership-requests", "org", org, status ?? "all"],
     queryFn: () =>
       apiFetch<{ data: MembershipRequestAdminView[] }>(
-        `/api/v1/orgs/${org}/membership-requests${qs}`
+        `/api/v1/orgs/${org}/membership-requests${qs}`,
       ),
     enabled: opts?.enabled !== false,
   });
@@ -2493,13 +2684,10 @@ export function useApproveMembershipRequest(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ uid, role }: { uid: string; role?: string }) =>
-      apiFetch<void>(
-        `/api/v1/orgs/${org}/membership-requests/${uid}/approve`,
-        {
-          method: "POST",
-          body: JSON.stringify(role ? { role } : {}),
-        }
-      ),
+      apiFetch<void>(`/api/v1/orgs/${org}/membership-requests/${uid}/approve`, {
+        method: "POST",
+        body: JSON.stringify(role ? { role } : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["membership-requests", "org", org],
@@ -2513,13 +2701,10 @@ export function useRejectMembershipRequest(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ uid, reason }: { uid: string; reason?: string }) =>
-      apiFetch<void>(
-        `/api/v1/orgs/${org}/membership-requests/${uid}/reject`,
-        {
-          method: "POST",
-          body: JSON.stringify(reason ? { reason } : {}),
-        }
-      ),
+      apiFetch<void>(`/api/v1/orgs/${org}/membership-requests/${uid}/reject`, {
+        method: "POST",
+        body: JSON.stringify(reason ? { reason } : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["membership-requests", "org", org],
@@ -2595,7 +2780,12 @@ export interface DeleteOrgResponse {
     role: string;
   };
   organization?: { uid: string; slug: string; name?: string };
-  organizations?: { slug: string; name?: string; logoUrl?: string; role: string }[];
+  organizations?: {
+    slug: string;
+    name?: string;
+    logoUrl?: string;
+    role: string;
+  }[];
   loginAction?: string;
 }
 
@@ -2712,18 +2902,20 @@ export function useInviteInfo(token: string) {
 
 export interface AcceptInviteResponse {
   accessToken: string;
-  user: { uid: string; email: string; name?: string; avatarUrl?: string; role: string };
+  user: {
+    uid: string;
+    email: string;
+    name?: string;
+    avatarUrl?: string;
+    role: string;
+  };
   organization: { uid: string; slug: string; name?: string };
   organizations?: Array<{ slug: string; name?: string; role: string }>;
 }
 
 export function useAcceptInvite() {
   return useMutation({
-    mutationFn: (data: {
-      token: string;
-      name?: string;
-      password?: string;
-    }) =>
+    mutationFn: (data: { token: string; name?: string; password?: string }) =>
       apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {
         method: "POST",
         body: JSON.stringify(data),
@@ -2750,8 +2942,7 @@ export interface OrgSettings {
 export function useOrgSettings(org: string) {
   return useQuery({
     queryKey: ["org-settings", org],
-    queryFn: () =>
-      apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`),
+    queryFn: () => apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`),
   });
 }
 
@@ -2965,9 +3156,12 @@ interface SystemParametersResponse {
 
 async function fetchSystemParameters(): Promise<SystemParametersResponse> {
   const response = await apiFetch<SystemParametersResponse>(
-    "/api/v1/system/parameters"
+    "/api/v1/system/parameters",
   );
-  return { data: response.data || [], envOverrides: response.envOverrides || [] };
+  return {
+    data: response.data || [],
+    envOverrides: response.envOverrides || [],
+  };
 }
 
 export function useSystemParameters() {
@@ -3013,7 +3207,7 @@ export function useSchedulingLaneLoad() {
     queryKey: ["system-scheduling-lane-load"],
     queryFn: async () => {
       const response = await apiFetch<{ data: WorkerLaneLoad[] }>(
-        "/api/v1/system/scheduling/lane-load"
+        "/api/v1/system/scheduling/lane-load",
       );
       return response.data || [];
     },
@@ -3033,13 +3227,10 @@ export function useSetSystemParameter() {
       value: unknown;
       secret?: boolean;
     }) =>
-      apiFetch<SystemParameter>(
-        `/api/v1/system/parameters/${key}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ value, secret }),
-        }
-      ),
+      apiFetch<SystemParameter>(`/api/v1/system/parameters/${key}`, {
+        method: "PUT",
+        body: JSON.stringify({ value, secret }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["system-parameters"] });
     },
@@ -3059,9 +3250,7 @@ export function useSlackSocketStatus() {
   return useQuery({
     queryKey: ["slack-socket-status"],
     queryFn: async () =>
-      apiFetch<SlackSocketStatus>(
-        "/api/v1/integrations/slack/socket/status",
-      ),
+      apiFetch<SlackSocketStatus>("/api/v1/integrations/slack/socket/status"),
     refetchInterval: 5000,
     refetchIntervalInBackground: false,
   });
@@ -3075,7 +3264,7 @@ export function useTestEmail() {
         {
           method: "POST",
           body: JSON.stringify({ recipient }),
-        }
+        },
       ),
   });
 }
@@ -3135,7 +3324,7 @@ export function useCheckTypes(org: string) {
     queryKey: ["check-types", org],
     queryFn: async () => {
       const response = await apiFetch<{ data: CheckTypeInfo[] }>(
-        `/api/v1/orgs/${org}/check-types`
+        `/api/v1/orgs/${org}/check-types`,
       );
       return response.data || [];
     },
@@ -3148,9 +3337,9 @@ export function useSampleConfigs(checkType: string) {
   return useQuery({
     queryKey: ["check-types", "samples", checkType],
     queryFn: async () => {
-      const response = await apiFetch<{ data: Array<{ checkType: string; samples: SampleConfig[] }> }>(
-        `/api/v1/check-types/samples?type=${encodeURIComponent(checkType)}`
-      );
+      const response = await apiFetch<{
+        data: Array<{ checkType: string; samples: SampleConfig[] }>;
+      }>(`/api/v1/check-types/samples?type=${encodeURIComponent(checkType)}`);
       return response.data?.[0]?.samples || [];
     },
     staleTime: 10 * 60 * 1000,
@@ -3249,18 +3438,12 @@ export function useOnCallSchedule(org: string, uid: string) {
   return useQuery({
     queryKey: ["onCallSchedules", org, uid],
     queryFn: () =>
-      apiFetch<OnCallSchedule>(
-        `/api/v1/orgs/${org}/on-call-schedules/${uid}`,
-      ),
+      apiFetch<OnCallSchedule>(`/api/v1/orgs/${org}/on-call-schedules/${uid}`),
     enabled: !!org && !!uid,
   });
 }
 
-export function useOnCallSchedulePreview(
-  org: string,
-  uid: string,
-  days = 14,
-) {
+export function useOnCallSchedulePreview(org: string, uid: string, days = 14) {
   return useQuery({
     queryKey: ["onCallSchedules", org, uid, "preview", days],
     queryFn: async () => {
@@ -3304,10 +3487,10 @@ export function useUpdateOnCallSchedule(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: UpdateOnCallScheduleRequest) =>
-      apiFetch<OnCallSchedule>(
-        `/api/v1/orgs/${org}/on-call-schedules/${uid}`,
-        { method: "PATCH", body: JSON.stringify(request) },
-      ),
+      apiFetch<OnCallSchedule>(`/api/v1/orgs/${org}/on-call-schedules/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
     },
@@ -3574,7 +3757,10 @@ export interface UpdateEscalationPolicyRequest {
   steps?: EscalationPolicyStep[];
 }
 
-export function useEscalationPolicies(org: string, opts?: { enabled?: boolean }) {
+export function useEscalationPolicies(
+  org: string,
+  opts?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["escalationPolicies", org],
     queryFn: async () => {
@@ -4128,8 +4314,7 @@ export interface IntegrationIdentityListResponse {
   data: IntegrationIdentity[];
 }
 
-export interface IntegrationIdentitySyncResponse
-  extends IntegrationIdentityListResponse {
+export interface IntegrationIdentitySyncResponse extends IntegrationIdentityListResponse {
   matchedCount: number;
   notFoundCount: number;
   ambiguousCount: number;
@@ -4171,10 +4356,7 @@ export function useSyncIntegrationIdentities(
   });
 }
 
-export function useSetIntegrationIdentity(
-  org: string,
-  integrationUid: string,
-) {
+export function useSetIntegrationIdentity(org: string, integrationUid: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -4384,7 +4566,13 @@ export interface StatusUpdate {
   title: string;
   bodyMarkdown: string;
   linkUrl?: string;
-  kind: "investigating" | "identified" | "monitoring" | "resolved" | "maintenance" | "info";
+  kind:
+    | "investigating"
+    | "identified"
+    | "monitoring"
+    | "resolved"
+    | "maintenance"
+    | "info";
   publishedAt: string;
   authorUid: string;
   createdAt: string;
@@ -4423,7 +4611,7 @@ export function useStatusUpdates(
     incident?: string;
     limit?: number;
     offset?: number;
-  } = {}
+  } = {},
 ) {
   return useQuery({
     queryKey: ["statusUpdates", org, params],
@@ -4437,7 +4625,7 @@ export function useStatusUpdates(
       if (params.offset) query.set("offset", params.offset.toString());
       const qs = query.toString();
       const response = await apiFetch<{ data?: StatusUpdate[] }>(
-        `/api/v1/orgs/${org}/status-updates${qs ? `?${qs}` : ""}`
+        `/api/v1/orgs/${org}/status-updates${qs ? `?${qs}` : ""}`,
       );
       return response.data || [];
     },
@@ -4572,7 +4760,9 @@ export function useDiscoveryTypes(org: string) {
   return useQuery({
     queryKey: ["discoveryTypes", org],
     queryFn: () =>
-      apiFetch<{ data: DiscoveryType[] }>(`/api/v1/orgs/${org}/discovery/types`),
+      apiFetch<{ data: DiscoveryType[] }>(
+        `/api/v1/orgs/${org}/discovery/types`,
+      ),
     select: (res) => res?.data ?? [],
   });
 }
@@ -4598,7 +4788,9 @@ export function useListDiscoveryScans(org: string) {
   return useQuery({
     queryKey: ["discoveryScans", org],
     queryFn: () =>
-      apiFetch<{ data: DiscoveryScan[] }>(`/api/v1/orgs/${org}/discovery/scans`),
+      apiFetch<{ data: DiscoveryScan[] }>(
+        `/api/v1/orgs/${org}/discovery/scans`,
+      ),
     select: (res) => res?.data ?? [],
   });
 }
@@ -4642,7 +4834,9 @@ export function useCancelScan(org: string) {
         method: "POST",
       }),
     onSuccess: (_data, jobUid) => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryScan", org, jobUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["discoveryScan", org, jobUid],
+      });
       queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
     },
   });
@@ -4653,13 +4847,19 @@ export function useCancelScan(org: string) {
 // pollWhileActive to stream rows in as chunks land.
 export function useListDiscoveredChecks(
   org: string,
-  opts?: { jobUid?: string; group?: string; promoted?: boolean; source?: string },
+  opts?: {
+    jobUid?: string;
+    group?: string;
+    promoted?: boolean;
+    source?: string;
+  },
   pollWhileActive = false,
 ) {
   const params = new URLSearchParams();
   if (opts?.jobUid) params.set("jobUid", opts.jobUid);
   if (opts?.group) params.set("group", opts.group);
-  if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
+  if (opts?.promoted !== undefined)
+    params.set("promoted", String(opts.promoted));
   if (opts?.source) params.set("source", opts.source);
   const qs = params.toString();
 
@@ -4759,7 +4959,9 @@ export function useNotificationRoutes(org: string) {
   return useQuery({
     queryKey: ["notificationRoutes", org],
     queryFn: () =>
-      apiFetch<NotificationRoutesResponse>(`/api/v1/orgs/${org}/users/me/notification-routes`),
+      apiFetch<NotificationRoutesResponse>(
+        `/api/v1/orgs/${org}/users/me/notification-routes`,
+      ),
   });
 }
 
@@ -4767,10 +4969,13 @@ export function useCreateNotificationContact(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { type: string; value: string; label?: string }) =>
-      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-contacts`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      apiFetch<NotificationRoute>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },
@@ -4781,9 +4986,12 @@ export function useDeleteNotificationContact(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (contactUid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`, {
-        method: "DELETE",
-      }),
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`,
+        {
+          method: "DELETE",
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },
@@ -4818,9 +5026,12 @@ export interface TelegramLinkResponse {
 export function useCreateTelegramLink(org: string) {
   return useMutation({
     mutationFn: () =>
-      apiFetch<TelegramLinkResponse>(`/api/v1/orgs/${org}/users/me/telegram/link`, {
-        method: "POST",
-      }),
+      apiFetch<TelegramLinkResponse>(
+        `/api/v1/orgs/${org}/users/me/telegram/link`,
+        {
+          method: "POST",
+        },
+      ),
   });
 }
 
@@ -4842,11 +5053,20 @@ export function useConfirmVerifyContact(org: string) {
 export function usePatchNotificationRoute(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ routeUid, patch }: { routeUid: string; patch: { enabled?: boolean } }) =>
-      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      }),
+    mutationFn: ({
+      routeUid,
+      patch,
+    }: {
+      routeUid: string;
+      patch: { enabled?: boolean };
+    }) =>
+      apiFetch<NotificationRoute>(
+        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },
@@ -4856,9 +5076,12 @@ export function usePatchNotificationRoute(org: string) {
 export function useTestNotificationRoute(org: string) {
   return useMutation({
     mutationFn: (routeUid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`, {
-        method: "POST",
-      }),
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`,
+        {
+          method: "POST",
+        },
+      ),
   });
 }
 
@@ -5158,7 +5381,11 @@ export function useBackgroundJob(org: string, uid: string, opts?: JobsScope) {
 }
 
 // useBackgroundJobChain fetches the ordered retry chain a job belongs to.
-export function useBackgroundJobChain(org: string, uid: string, opts?: JobsScope) {
+export function useBackgroundJobChain(
+  org: string,
+  uid: string,
+  opts?: JobsScope,
+) {
   const allOrgs = opts?.allOrgs ?? false;
   return useQuery({
     queryKey: ["backgroundJobChain", org, uid, { allOrgs }],
@@ -5234,7 +5461,8 @@ export interface CreateMaintenanceWindowRequest {
   recurrenceEnd?: string | null;
 }
 
-export type UpdateMaintenanceWindowRequest = Partial<CreateMaintenanceWindowRequest>;
+export type UpdateMaintenanceWindowRequest =
+  Partial<CreateMaintenanceWindowRequest>;
 
 export interface SetMaintenanceWindowChecksRequest {
   checkUids: string[];
@@ -5265,7 +5493,9 @@ export function useMaintenanceWindow(org: string, uid: string) {
   return useQuery({
     queryKey: ["maintenanceWindow", org, uid],
     queryFn: () =>
-      apiFetch<MaintenanceWindow>(`/api/v1/orgs/${org}/maintenance-windows/${uid}`),
+      apiFetch<MaintenanceWindow>(
+        `/api/v1/orgs/${org}/maintenance-windows/${uid}`,
+      ),
     enabled: !!org && !!uid,
   });
 }
@@ -5312,7 +5542,9 @@ export function useUpdateMaintenanceWindow(org: string, uid: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
-      queryClient.invalidateQueries({ queryKey: ["maintenanceWindow", org, uid] });
+      queryClient.invalidateQueries({
+        queryKey: ["maintenanceWindow", org, uid],
+      });
     },
   });
 }
@@ -5440,9 +5672,12 @@ export function useDeletePrivateRegion(org: string) {
 
   return useMutation({
     mutationFn: (slug: string) =>
-      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/private-regions/${slug}`, {
-        method: "DELETE",
-      }),
+      apiFetch<{ status: string }>(
+        `/api/v1/orgs/${org}/private-regions/${slug}`,
+        {
+          method: "DELETE",
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
       queryClient.invalidateQueries({ queryKey: ["regions", org] });
@@ -5457,7 +5692,9 @@ export function useAgents(
   return useQuery({
     queryKey: ["agents", org],
     queryFn: async () => {
-      const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/orgs/${org}/agents`);
+      const response = await apiFetch<{ data?: AgentInfo[] }>(
+        `/api/v1/orgs/${org}/agents`,
+      );
       return response.data || [];
     },
     enabled: (options?.enabled ?? true) && !!org,
@@ -5467,11 +5704,16 @@ export function useAgents(
 
 /** Fleet-wide agent list (superadmin only): every org agent plus every
  * platform-operated system agent, across all organizations. */
-export function useAllAgents(options?: { refetchInterval?: number; enabled?: boolean }) {
+export function useAllAgents(options?: {
+  refetchInterval?: number;
+  enabled?: boolean;
+}) {
   return useQuery({
     queryKey: ["system-agents"],
     queryFn: async () => {
-      const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/system/agents`);
+      const response = await apiFetch<{ data?: AgentInfo[] }>(
+        `/api/v1/system/agents`,
+      );
       return response.data || [];
     },
     enabled: options?.enabled ?? true,
@@ -5516,12 +5758,17 @@ export function useMintEnrollmentToken(org: string) {
 
   return useMutation({
     mutationFn: (request: { regionSlug: string; expiresIn?: string }) =>
-      apiFetch<MintedEnrollmentToken>(`/api/v1/orgs/${org}/agent-enrollment-tokens`, {
-        method: "POST",
-        body: JSON.stringify(request),
-      }),
+      apiFetch<MintedEnrollmentToken>(
+        `/api/v1/orgs/${org}/agent-enrollment-tokens`,
+        {
+          method: "POST",
+          body: JSON.stringify(request),
+        },
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agent-enrollment-tokens", org] });
+      queryClient.invalidateQueries({
+        queryKey: ["agent-enrollment-tokens", org],
+      });
     },
   });
 }
@@ -5531,11 +5778,16 @@ export function useDeleteEnrollmentToken(org: string) {
 
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/agent-enrollment-tokens/${uid}`, {
-        method: "DELETE",
-      }),
+      apiFetch<{ status: string }>(
+        `/api/v1/orgs/${org}/agent-enrollment-tokens/${uid}`,
+        {
+          method: "DELETE",
+        },
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agent-enrollment-tokens", org] });
+      queryClient.invalidateQueries({
+        queryKey: ["agent-enrollment-tokens", org],
+      });
     },
   });
 }
@@ -5848,7 +6100,10 @@ export interface CreateSloRequest {
 
 export type UpdateSloRequest = Partial<CreateSloRequest>;
 
-export function useSlos(org: string, params?: { checkUid?: string; enabled?: boolean }) {
+export function useSlos(
+  org: string,
+  params?: { checkUid?: string; enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["slos", org, { checkUid: params?.checkUid }],
     queryFn: async () => {
@@ -5875,7 +6130,8 @@ export function useSlo(org: string, uid: string) {
 export function useSloStatus(org: string, uid: string) {
   return useQuery({
     queryKey: ["sloStatus", org, uid],
-    queryFn: () => apiFetch<SloStatus>(`/api/v1/orgs/${org}/slos/${uid}/status`),
+    queryFn: () =>
+      apiFetch<SloStatus>(`/api/v1/orgs/${org}/slos/${uid}/status`),
     enabled: !!org && !!uid,
   });
 }
@@ -5913,7 +6169,8 @@ export interface SloBurndown {
 export function useSloBurndown(org: string, uid: string) {
   return useQuery({
     queryKey: ["sloBurndown", org, uid],
-    queryFn: () => apiFetch<SloBurndown>(`/api/v1/orgs/${org}/slos/${uid}/burndown`),
+    queryFn: () =>
+      apiFetch<SloBurndown>(`/api/v1/orgs/${org}/slos/${uid}/burndown`),
     enabled: !!org && !!uid,
   });
 }
@@ -6015,7 +6272,8 @@ export function useReportSchedules(org: string) {
 export function useReportSchedule(org: string, uid: string) {
   return useQuery({
     queryKey: ["reportSchedule", org, uid],
-    queryFn: () => apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`),
+    queryFn: () =>
+      apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`),
     enabled: !!org && !!uid,
   });
 }
@@ -6056,7 +6314,9 @@ export function useDeleteReportSchedule(org: string) {
 
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}`, { method: "DELETE" }),
+      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}`, {
+        method: "DELETE",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
     },

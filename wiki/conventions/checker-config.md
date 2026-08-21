@@ -601,6 +601,7 @@ Requires scripting runtime. Script runs in a sandboxed Goja (Go-based JS) enviro
 | `keyword` | string | O | | Keyword to search in page content |
 | `invertKeyword` | bool | O | false | Fail if keyword IS found |
 | `timeout` | duration | O | 30s | Page load timeout (max: 120s) |
+| `screenshot` | bool | O | false | Capture a PNG of the page when the check FAILS, kept on the incident this failure opens or reopens |
 
 Requires Chrome/Chromium installed.
 

@@ -40,13 +40,22 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { EventTypeBadge, getEventTone } from "@/components/dashboard/event-display";
-import { CheckTypeBadge, CheckTypeIcon } from "@/components/shared/check-type-identity";
+import {
+  EventTypeBadge,
+  getEventTone,
+} from "@/components/dashboard/event-display";
+import {
+  CheckTypeBadge,
+  CheckTypeIcon,
+} from "@/components/shared/check-type-identity";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
-import { isValidStatusPattern, normalizeStatusPattern } from "@/lib/http-status";
+import {
+  isValidStatusPattern,
+  normalizeStatusPattern,
+} from "@/lib/http-status";
 import {
   CollapsibleCode,
   CopyableCode,
@@ -94,12 +103,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import {
@@ -119,7 +123,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
@@ -167,7 +175,9 @@ export const Route = createFileRoute("/orgs/$org/design-reference")({
 // Computed once at module scope (not inside a component render) so the
 // "N ago" showcase below stays a pure render — see the LiveDurationAgo
 // example.
-const RELATIVE_TIME_DEMO_SINCE = new Date(Date.now() - 5 * 60_000).toISOString();
+const RELATIVE_TIME_DEMO_SINCE = new Date(
+  Date.now() - 5 * 60_000,
+).toISOString();
 const TIME_AGO_DEMO_DATE = new Date(Date.now() - 46 * 60_000).toISOString();
 
 const SECTIONS: { id: string; label: string }[] = [
@@ -237,6 +247,7 @@ function DesignReferencePage() {
       <CopyableInlineSection />
       <DnsRecordRowSection />
       <CollapsibleCodeSection />
+      <EvidenceImageSection />
       <CollapsibleSectionSection />
       <SandboxedPreviewSection />
       <StepperSection />
@@ -265,13 +276,19 @@ function ConventionsSection() {
     >
       <div className="space-y-4">
         <div className="rounded-md border bg-card p-4 space-y-2">
-          <h3 className="text-sm font-semibold">Editing always changes the route</h3>
+          <h3 className="text-sm font-semibold">
+            Editing always changes the route
+          </h3>
           <p className="text-sm text-muted-foreground">
             Editing an entity must navigate to a dedicated route, never open a
             modal dialog. Mirror the create flow:{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">/&lt;resource&gt;/new</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              /&lt;resource&gt;/new
+            </code>{" "}
             for creation,{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">/&lt;resource&gt;/$id/edit</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              /&lt;resource&gt;/$id/edit
+            </code>{" "}
             for editing. The edit route renders a full page and reuses the same
             form component as the create route.
           </p>
@@ -287,40 +304,62 @@ function ConventionsSection() {
           </p>
         </div>
         <div className="rounded-md border bg-card p-4 space-y-2">
-          <h3 className="text-sm font-semibold">Row actions: icons, not menus</h3>
+          <h3 className="text-sm font-semibold">
+            Row actions: icons, not menus
+          </h3>
           <p className="text-sm text-muted-foreground">
             In list/table rows, prefer two ghost icon buttons (
             <code className="rounded bg-muted px-1 py-0.5 text-xs">Pencil</code>{" "}
             for edit,{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
             for delete with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              text-destructive
+            </code>
             ) over a{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              DropdownMenu
+            </code>{" "}
             with a{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">MoreVertical</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              MoreVertical
+            </code>{" "}
             trigger. The Edit icon links to the edit route; the Delete icon
             opens an{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">AlertDialog</code>
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              AlertDialog
+            </code>
             . Other per-row actions live on the edit page, not in the row.
           </p>
         </div>
         <div className="rounded-md border bg-card p-4 space-y-3">
-          <h3 className="text-sm font-semibold">Delete is always red, always a trash bin</h3>
+          <h3 className="text-sm font-semibold">
+            Delete is always red, always a trash bin
+          </h3>
           <p className="text-sm text-muted-foreground">
             Every delete (or otherwise irreversible) action is rendered in red
             and paired with the{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
             (trash bin) icon — no exceptions. Use a{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">Button variant=&quot;destructive&quot;</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              Button variant=&quot;destructive&quot;
+            </code>{" "}
             for standalone/prominent buttons, an icon button with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              text-destructive
+            </code>{" "}
             in row actions, and{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive focus:text-destructive</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              text-destructive focus:text-destructive
+            </code>{" "}
             on the delete item inside a{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              DropdownMenu
+            </code>
             . Both colors resolve to the{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">--destructive</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              --destructive
+            </code>{" "}
             token so dark mode stays correct. The destructive red is reserved
             for destructive actions — never use it for a neutral or primary
             action, and never delete with a different icon or a muted color.
@@ -466,7 +505,16 @@ function OverviewSection() {
       <div className="rounded-md border bg-card p-4">
         <PageThemeToggle />
         <p className="mt-3 text-sm text-muted-foreground">
-          Tip: open <code className="rounded bg-muted px-1 py-0.5 text-xs">web/dash0/src/routes/orgs/$org/design-reference.tsx</code> when copying patterns — many examples here lift directly from real routes (e.g. <code className="rounded bg-muted px-1 py-0.5 text-xs">checks.index.tsx</code>) and the source file is the canonical reference.
+          Tip: open{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            web/dash0/src/routes/orgs/$org/design-reference.tsx
+          </code>{" "}
+          when copying patterns — many examples here lift directly from real
+          routes (e.g.{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            checks.index.tsx
+          </code>
+          ) and the source file is the canonical reference.
         </p>
       </div>
     </Section>
@@ -539,7 +587,9 @@ import { PageHeader } from "@/components/shared/page-header";
       title="Page header"
       description="Every page opens with a page header — the page title plus its right-aligned actions. 'Page title' and 'page header' are the same surface, not two primitives. List and section pages render it with the boxed PageHeader component (@/components/shared/page-header); detail and edit pages compose the same header inline so it can carry a back arrow and per-record actions. Both patterns are documented here."
     >
-      <h3 className="text-sm font-medium">List &amp; section pages: the PageHeader component</h3>
+      <h3 className="text-sm font-medium">
+        List &amp; section pages: the PageHeader component
+      </h3>
       <p className="text-sm text-muted-foreground">
         Pass icon, title, an optional description, and right-aligned actions; it
         renders a rounded muted icon tile, a text-2xl font-semibold title, the
@@ -565,15 +615,19 @@ import { PageHeader } from "@/components/shared/page-header";
       </div>
       <CodeSnippet code={pageHeaderSnippet} />
       <p className="text-sm text-muted-foreground">
-        Notes: pass the same per-page Lucide icon you would have rendered
-        inline — <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+        Notes: pass the same per-page Lucide icon you would have rendered inline
+        —{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
         wraps it in the muted tile for you. Put the primary action(s) that used
         to sit in the header row (e.g.{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">+ New X</code>,
         export/import, a refresh button) into the{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
         prop; leave filter/search toolbars on their own row below the header.
-        Add <code className="rounded bg-muted px-1 py-0.5 text-xs">className="flex-wrap"</code>{" "}
+        Add{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          className="flex-wrap"
+        </code>{" "}
         so actions wrap instead of overflowing on mobile. Pass{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">docsHref</code>{" "}
         when a genuinely relevant docs page exists — it renders a small{" "}
@@ -583,34 +637,49 @@ import { PageHeader } from "@/components/shared/page-header";
         <a href="#docs-link" className="text-primary hover:underline">
           Docs link
         </a>{" "}
-        section below for the standalone primitive. The detail/edit-page
-        header — back arrow inside the right-aligned action cluster — is the
-        same surface for detail pages; it is documented just below.
+        section below for the standalone primitive. The detail/edit-page header
+        — back arrow inside the right-aligned action cluster — is the same
+        surface for detail pages; it is documented just below.
       </p>
 
-      <h3 className="text-sm font-medium">Detail &amp; edit pages: title block + right-aligned action cluster (back arrow first)</h3>
+      <h3 className="text-sm font-medium">
+        Detail &amp; edit pages: title block + right-aligned action cluster
+        (back arrow first)
+      </h3>
       <p className="text-sm text-muted-foreground">
         On detail/edit pages, compose a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex items-start justify-between gap-3</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          flex items-start justify-between gap-3
+        </code>{" "}
         row. The <strong>left</strong> is the title block — the page{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
         plus any subtitle/status — wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">min-w-0 flex-1</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          min-w-0 flex-1
+        </code>{" "}
         so it truncates instead of shoving the actions off-screen. The{" "}
         <strong>right</strong> is a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex gap-2 shrink-0</code>{" "}
-        cluster whose <strong>first child is the icon-only ghost back button</strong>,
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          flex gap-2 shrink-0
+        </code>{" "}
+        cluster whose{" "}
+        <strong>first child is the icon-only ghost back button</strong>,
         followed by the page actions (View / Edit / Delete, Refresh, …). The
         back arrow is <strong>not</strong> on the far left — it leads the
-        right-aligned cluster. It is{" "}
-        <strong>always icon-only</strong> — never paired with a &quot;Back&quot;
-        label. Use{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code>{" "}
+        right-aligned cluster. It is <strong>always icon-only</strong> — never
+        paired with a &quot;Back&quot; label. Use{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          ArrowLeft
+        </code>{" "}
         with{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;ghost&quot; size=&quot;icon&quot;</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          variant=&quot;ghost&quot; size=&quot;icon&quot;
+        </code>{" "}
         and an{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
-        A trailing Refresh button labels itself on desktop and collapses to
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          aria-label
+        </code>
+        . A trailing Refresh button labels itself on desktop and collapses to
         the icon below{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
       </p>
@@ -647,24 +716,39 @@ import { PageHeader } from "@/components/shared/page-header";
         importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    {/* One cluster = one button height. Don't mix size="sm" with the default. */}\n    <Button variant="outline" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" onClick={handleDelete} aria-label="Delete">\n      <Trash2 className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
       />
 
-      <h3 className="text-sm font-medium">Detail &amp; edit pages: collapse the action cluster into an overflow menu on mobile</h3>
+      <h3 className="text-sm font-medium">
+        Detail &amp; edit pages: collapse the action cluster into an overflow
+        menu on mobile
+      </h3>
       <p className="text-sm text-muted-foreground">
         When a detail header carries more than two or three actions, the inline
         toolbar overflows on a phone. Keep only the icon-only ghost{" "}
         <strong>back button</strong> always visible; render the labeled action
         buttons in a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">hidden md:flex</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          hidden md:flex
+        </code>{" "}
         cluster, and mirror every one of them as items inside a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">md:hidden</code>{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          md:hidden
+        </code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          DropdownMenu
+        </code>{" "}
         triggered by a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">MoreVertical</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          MoreVertical
+        </code>{" "}
         (⋯) button. The delete item is{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">text-destructive focus:text-destructive</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          text-destructive focus:text-destructive
+        </code>{" "}
         with a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
-        icon, just like the inline destructive button. Drive any confirm
-        dialog from controlled state so it opens from either surface.
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          Trash2
+        </code>{" "}
+        icon, just like the inline destructive button. Drive any confirm dialog
+        from controlled state so it opens from either surface.
       </p>
       <ExampleRow
         preview={
@@ -695,7 +779,11 @@ import { PageHeader } from "@/components/shared/page-header";
               <div className="md:hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="More actions">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="More actions"
+                    >
                       <MoreVertical />
                     </Button>
                   </DropdownMenuTrigger>
@@ -722,28 +810,37 @@ import { PageHeader } from "@/components/shared/page-header";
         importLine={`<div className="flex shrink-0 items-center gap-2">\n  <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n    <ArrowLeft className="h-4 w-4" />\n  </Button>\n  <div className="hidden items-center gap-2 md:flex">\n    {/* labeled action buttons */}\n  </div>\n  <div className="md:hidden">\n    <DropdownMenu>\n      <DropdownMenuTrigger asChild>\n        <Button variant="outline" size="icon" aria-label="More actions">\n          <MoreVertical className="h-4 w-4" />\n        </Button>\n      </DropdownMenuTrigger>\n      <DropdownMenuContent align="end">\n        {/* mirror each action; delete = text-destructive */}\n      </DropdownMenuContent>\n    </DropdownMenu>\n  </div>\n</div>`}
       />
 
-      <h3 className="text-sm font-medium">Detail &amp; edit pages: stack the action toolbar on its own row (action-dense headers)</h3>
+      <h3 className="text-sm font-medium">
+        Detail &amp; edit pages: stack the action toolbar on its own row
+        (action-dense headers)
+      </h3>
       <p className="text-sm text-muted-foreground">
         When a detail header carries <strong>more than ~three actions</strong>{" "}
         (e.g. the check detail page: back + Edit, Enable/Disable, Clone, Badges,
         Refresh, Delete) the labeled toolbar and a long title fight for the same
         row — even on a wide desktop. Instead of shrinking the buttons or hiding
-        them behind an overflow menu, drop the toolbar onto its own row. Make the
-        outer wrapper a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex flex-col gap-3</code>{" "}
+        them behind an overflow menu, drop the toolbar onto its own row. Make
+        the outer wrapper a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          flex flex-col gap-3
+        </code>{" "}
         column: the title block (still wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">min-w-0 flex-1</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          min-w-0 flex-1
+        </code>{" "}
         so the{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
         truncates) takes the first row, then the action cluster — back arrow
         leading, as ever — sits on a second row wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex flex-wrap items-center justify-end gap-2</code>.
-        It is right-aligned and wraps across lines on a narrow phone rather than
-        overflowing. The per-button responsive behaviour (icon-only below{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+          flex flex-wrap items-center justify-end gap-2
+        </code>
+        . It is right-aligned and wraps across lines on a narrow phone rather
+        than overflowing. The per-button responsive behaviour (icon-only below{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg</code>,
         icon + label at{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg+</code>) is
-        unchanged — only the wrappers move.
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg+</code>)
+        is unchanged — only the wrappers move.
       </p>
       <ExampleRow
         preview={
@@ -793,7 +890,9 @@ import { PageHeader } from "@/components/shared/page-header";
           <code className="rounded bg-muted px-1 py-0.5 text-xs">h-7 w-7</code>{" "}
           icon is no longer canonical. Do not reach for it on new pages — and
           migrate any remaining inline headers to{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            PageHeader
+          </code>{" "}
           so the app stays consistent.
         </p>
       </div>
@@ -854,31 +953,31 @@ function ButtonPlacementSection() {
         PageHeader actions: primary, page-level actions only
       </h3>
       <p className="text-sm text-muted-foreground">
-        The <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
-        slot on <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+        The{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
+        slot on{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
         is reserved for the page's primary action — typically a single &quot;New
         &lt;resource&gt;&quot; create button, plus at most one secondary
         page-level action (export/import, a scope toggle). It is{" "}
         <strong>not</strong> a catch-all toolbar: a page that has a
-        search/filter toolbar row below the header does not put Refresh in
-        the header — Refresh moves into that row (see below). The one
-        exception is a page with{" "}
-        <strong>no search toolbar at all</strong> — on-call has no search
-        field, so it keeps Refresh in the header, to the left of the primary
-        button.
+        search/filter toolbar row below the header does not put Refresh in the
+        header — Refresh moves into that row (see below). The one exception is a
+        page with <strong>no search toolbar at all</strong> — on-call has no
+        search field, so it keeps Refresh in the header, to the left of the
+        primary button.
       </p>
       <p className="text-sm text-muted-foreground">
         A third case reads like a toolbar but isn't one:{" "}
         <strong>filters scoped to a single table or card</strong>, rendered
-        inside that card's own header next to its title (e.g. a
-        source-type select next to a &quot;Scans&quot; card title, or a
-        per-tab status filter above one tab's table). That's card-level
-        chrome, not a page-level toolbar row — the row this section means
-        sits directly under <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>,
-        outside and above any card. A page whose only filtering controls are
-        card-nested like this has, from the page's point of view, no
-        toolbar at all — Refresh stays in the header, per the exception
-        above.
+        inside that card's own header next to its title (e.g. a source-type
+        select next to a &quot;Scans&quot; card title, or a per-tab status
+        filter above one tab's table). That's card-level chrome, not a
+        page-level toolbar row — the row this section means sits directly under{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>
+        , outside and above any card. A page whose only filtering controls are
+        card-nested like this has, from the page's point of view, no toolbar at
+        all — Refresh stays in the header, per the exception above.
       </p>
 
       <h3 className="text-sm font-medium">
@@ -891,8 +990,8 @@ function ButtonPlacementSection() {
           flex flex-wrap items-center gap-4
         </code>{" "}
         row below the header. Refresh sits to the{" "}
-        <strong>right of the search input</strong> (after any filter
-        selects, if the row has them) — mirror{" "}
+        <strong>right of the search input</strong> (after any filter selects, if
+        the row has them) — mirror{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
           integrations.index.tsx
         </code>{" "}
@@ -962,12 +1061,15 @@ function DocsLinkSection() {
         importLine={importLine}
       />
       <p className="text-sm text-muted-foreground">
-        Renders a <code className="rounded bg-muted px-1 py-0.5 text-xs">BookOpen</code>{" "}
+        Renders a{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">BookOpen</code>{" "}
         icon in a ~h-8 w-8 ghost button, with a "Documentation" tooltip and{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>. The{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">href</code> is a
-        same-origin relative path (e.g.{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">/docs/features/...</code>
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>
+        . The <code className="rounded bg-muted px-1 py-0.5 text-xs">href</code>{" "}
+        is a same-origin relative path (e.g.{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          /docs/features/...
+        </code>
         ), opened with{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
           target=&quot;_blank&quot; rel=&quot;noopener&quot;
@@ -1025,24 +1127,43 @@ if (isFooBar) {
     >
       <div className="rounded-md border bg-card p-4">
         <p className="text-sm text-muted-foreground">
-          Look at the header bar above the sidebar trigger — the breadcrumb shows{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">Design Reference</code>{" "}
+          Look at the header bar above the sidebar trigger — the breadcrumb
+          shows{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            Design Reference
+          </code>{" "}
           with the Palette icon. That branch was added alongside the others in{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">$org.tsx</code>.
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">$org.tsx</code>
+          .
         </p>
       </div>
       <CodeSnippet code={snippet} />
       <div className="rounded-md border bg-card p-4 space-y-2">
-        <p className="text-sm font-medium">Context-driven breadcrumbs with <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=</code></p>
+        <p className="text-sm font-medium">
+          Context-driven breadcrumbs with{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=</code>
+        </p>
         <p className="text-sm text-muted-foreground">
-          When a detail page can be reached from multiple parent surfaces, encode the
-          navigation context in a <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=type:uid</code> search
-          param (e.g. <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=incident:abc123</code> or{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=integration:xyz</code>).
-          The breadcrumb reads the param and renders the matching parent chain. Label resolution
-          uses the query cache — no extra fetch. The notification detail route
-          (<code className="rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/notifications/$notificationUid</code>) is
-          the canonical example of this pattern.
+          When a detail page can be reached from multiple parent surfaces,
+          encode the navigation context in a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            ?from=type:uid
+          </code>{" "}
+          search param (e.g.{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            ?from=incident:abc123
+          </code>{" "}
+          or{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            ?from=integration:xyz
+          </code>
+          ). The breadcrumb reads the param and renders the matching parent
+          chain. Label resolution uses the query cache — no extra fetch. The
+          notification detail route (
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            /orgs/$org/notifications/$notificationUid
+          </code>
+          ) is the canonical example of this pattern.
         </p>
       </div>
       <CodeSnippet code={contextualSnippet} />
@@ -1050,36 +1171,99 @@ if (isFooBar) {
   );
 }
 
-const COLOR_TOKENS: { name: string; varName: string; description?: string }[] = [
-  { name: "primary", varName: "--primary", description: "Action color (buttons, links, focus rings)" },
-  { name: "brand", varName: "--brand", description: "Logo/marketing chrome — never an interactive affordance" },
-  { name: "brand-muted", varName: "--brand-muted", description: "Soft brand wash for headers / hero strips" },
-  { name: "destructive", varName: "--destructive", description: "Delete / irreversible action confirms" },
-  { name: "accent", varName: "--accent", description: "Hover/highlight surface" },
-  {
-    name: "control",
-    varName: "--control",
-    description:
-      "Fill of interactive form surfaces (input, textarea, select trigger, outline button). Light raises it to white; dark recesses it below --card. Use bg-control — bg-background is reserved for the page shell, the sidebar rail and the switch thumb.",
-  },
-  {
-    name: "input",
-    varName: "--input",
-    description:
-      "BORDER color of form controls, consumed as border-input — not a fill. The fill is --control; there is deliberately no --input-background.",
-  },
-  { name: "muted-foreground", varName: "--muted-foreground", description: "Secondary text" },
-  { name: "status-ok", varName: "--status-ok", description: "Healthy / passing — swatch color (dots, bars, soft tints)" },
-  { name: "status-ok-foreground", varName: "--status-ok-foreground", description: "Text on a soft status-ok tint (badges, alerts)" },
-  { name: "status-warning", varName: "--status-warning", description: "Degraded — swatch color" },
-  { name: "status-warning-foreground", varName: "--status-warning-foreground", description: "Text on a soft status-warning tint" },
-  { name: "status-error", varName: "--status-error", description: "Failing — swatch color" },
-  { name: "status-error-foreground", varName: "--status-error-foreground", description: "Text on a soft status-error tint" },
+const COLOR_TOKENS: { name: string; varName: string; description?: string }[] =
+  [
+    {
+      name: "primary",
+      varName: "--primary",
+      description: "Action color (buttons, links, focus rings)",
+    },
+    {
+      name: "brand",
+      varName: "--brand",
+      description: "Logo/marketing chrome — never an interactive affordance",
+    },
+    {
+      name: "brand-muted",
+      varName: "--brand-muted",
+      description: "Soft brand wash for headers / hero strips",
+    },
+    {
+      name: "destructive",
+      varName: "--destructive",
+      description: "Delete / irreversible action confirms",
+    },
+    {
+      name: "accent",
+      varName: "--accent",
+      description: "Hover/highlight surface",
+    },
+    {
+      name: "control",
+      varName: "--control",
+      description:
+        "Fill of interactive form surfaces (input, textarea, select trigger, outline button). Light raises it to white; dark recesses it below --card. Use bg-control — bg-background is reserved for the page shell, the sidebar rail and the switch thumb.",
+    },
+    {
+      name: "input",
+      varName: "--input",
+      description:
+        "BORDER color of form controls, consumed as border-input — not a fill. The fill is --control; there is deliberately no --input-background.",
+    },
+    {
+      name: "muted-foreground",
+      varName: "--muted-foreground",
+      description: "Secondary text",
+    },
+    {
+      name: "status-ok",
+      varName: "--status-ok",
+      description: "Healthy / passing — swatch color (dots, bars, soft tints)",
+    },
+    {
+      name: "status-ok-foreground",
+      varName: "--status-ok-foreground",
+      description: "Text on a soft status-ok tint (badges, alerts)",
+    },
+    {
+      name: "status-warning",
+      varName: "--status-warning",
+      description: "Degraded — swatch color",
+    },
+    {
+      name: "status-warning-foreground",
+      varName: "--status-warning-foreground",
+      description: "Text on a soft status-warning tint",
+    },
+    {
+      name: "status-error",
+      varName: "--status-error",
+      description: "Failing — swatch color",
+    },
+    {
+      name: "status-error-foreground",
+      varName: "--status-error-foreground",
+      description: "Text on a soft status-error tint",
+    },
+  ];
+
+const CHART_TOKENS = [
+  "--chart-1",
+  "--chart-2",
+  "--chart-3",
+  "--chart-4",
+  "--chart-5",
 ];
 
-const CHART_TOKENS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
-
-function Swatch({ varName, label, description }: { varName: string; label: string; description?: string }) {
+function Swatch({
+  varName,
+  label,
+  description,
+}: {
+  varName: string;
+  label: string;
+  description?: string;
+}) {
   return (
     <div className="flex items-center gap-3 rounded-md border bg-card p-3">
       <div
@@ -1135,22 +1319,39 @@ function ButtonsBadgesSection() {
           importLine={`import { Button } from "@/components/ui/button";`}
         />
 
-        <h3 className="text-sm font-medium">Action buttons (icon + label, mobile collapses to icon)</h3>
+        <h3 className="text-sm font-medium">
+          Action buttons (icon + label, mobile collapses to icon)
+        </h3>
         <p className="text-sm text-muted-foreground">
           Pair every action with a recognisable icon and a one-word verb. Use{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Save</code> (floppy disk) for
-          save, <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Trash2</code> for
-          delete, <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Pencil</code> for
-          edit, and <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">RotateCw</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Save
+          </code>{" "}
+          (floppy disk) for save,{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Trash2
+          </code>{" "}
+          for delete,{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Pencil
+          </code>{" "}
+          for edit, and{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            RotateCw
+          </code>{" "}
           for reload. Below the{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code> breakpoint, the
-          label collapses and only the icon remains: wrap the label in{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>{" "}
+          breakpoint, the label collapses and only the icon remains: wrap the
+          label in{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             &lt;span className=&quot;hidden sm:inline&quot;&gt;
           </code>{" "}
           and pair every button with an{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code> so screen
-          readers still announce the action when the text is gone. Resize your viewport to verify.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            aria-label
+          </code>{" "}
+          so screen readers still announce the action when the text is gone.
+          Resize your viewport to verify.
         </p>
         <ExampleRow
           preview={
@@ -1176,25 +1377,41 @@ function ButtonsBadgesSection() {
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
         />
 
-        <h3 className="text-sm font-medium">Header refresh button (icon-only on mobile)</h3>
+        <h3 className="text-sm font-medium">
+          Header refresh button (icon-only on mobile)
+        </h3>
         <p className="text-sm text-muted-foreground">
           The canonical list/detail header refresh control. An{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">outline</code> button
-          wrapping{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">RefreshCw</code> that shows
-          the word <strong>Refresh</strong> from the{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code> breakpoint up and
-          collapses to icon-only below it. Drop{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            outline
+          </code>{" "}
+          button wrapping{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            RefreshCw
+          </code>{" "}
+          that shows the word <strong>Refresh</strong> from the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>{" "}
+          breakpoint up and collapses to icon-only below it. Drop{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            size=&quot;icon&quot;
+          </code>{" "}
           so the button sizes to its content, put{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm:mr-2</code> on the icon so
-          the gap only appears with the label, and keep an{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code> for the
-          icon-only state. Add{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">animate-spin</code> while the
-          query is refetching. (Use the localized{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">common:refresh</code> string
-          on real pages.)
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            sm:mr-2
+          </code>{" "}
+          on the icon so the gap only appears with the label, and keep an{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            aria-label
+          </code>{" "}
+          for the icon-only state. Add{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            animate-spin
+          </code>{" "}
+          while the query is refetching. (Use the localized{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            common:refresh
+          </code>{" "}
+          string on real pages.)
         </p>
         <ExampleRow
           preview={
@@ -1221,14 +1438,21 @@ function ButtonsBadgesSection() {
           importLine={`import { Badge } from "@/components/ui/badge";`}
         />
 
-        <h3 className="text-sm font-medium">Button with &quot;Last used&quot; badge</h3>
+        <h3 className="text-sm font-medium">
+          Button with &quot;Last used&quot; badge
+        </h3>
         <p className="text-sm text-muted-foreground">
           The promoted-slot pattern used on the login page: a full-width action
           button carries an inline{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">secondary</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            secondary
+          </code>{" "}
           Badge marking the option a returning user picked last. Keep the badge
           last in the button and spaced with{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ml-2</code>.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            ml-2
+          </code>
+          .
         </p>
         <ExampleRow
           preview={
@@ -1247,15 +1471,24 @@ function ButtonsBadgesSection() {
         <p className="text-sm text-muted-foreground">
           The small dot rendered beside a check name (listing) and the detail
           header. Colours come from the single source of truth{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">statusStyle()</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            statusStyle()
+          </code>{" "}
           so the dot always matches the{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">StatusBadge</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            StatusBadge
+          </code>{" "}
           beside it. A <strong>disabled</strong> check (
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">enabled === false</code>)
-          renders a neutral grey dot that overrides the last/live status colour, so a
-          paused check no longer reads as "healthy & live". Pass a localized{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code> (the
-          translated "Disabled") for the tooltip and accessible label.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            enabled === false
+          </code>
+          ) renders a neutral grey dot that overrides the last/live status
+          colour, so a paused check no longer reads as "healthy & live". Pass a
+          localized{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            title
+          </code>{" "}
+          (the translated "Disabled") for the tooltip and accessible label.
         </p>
         <ExampleRow
           preview={
@@ -1273,7 +1506,8 @@ function ButtonsBadgesSection() {
                 <StatusDot status="unknown" /> Unknown
               </span>
               <span className="inline-flex items-center gap-1.5 text-sm">
-                <StatusDot status="up" enabled={false} title="Disabled" /> Disabled
+                <StatusDot status="up" enabled={false} title="Disabled" />{" "}
+                Disabled
               </span>
             </>
           }
@@ -1282,17 +1516,21 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">IPv6 capability badge</h3>
         <p className="text-sm text-muted-foreground">
-          What a region's <strong>live</strong> workers report about their IPv6 egress
-          (spec 2026-08-15-11). Three states, three renderings —{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">unknown</code> means
-          "not reported yet" (no live worker, or an older agent) and must{" "}
+          What a region's <strong>live</strong> workers report about their IPv6
+          egress (spec 2026-08-15-11). Three states, three renderings —{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            unknown
+          </code>{" "}
+          means "not reported yet" (no live worker, or an older agent) and must{" "}
           <strong>never</strong> be rendered as{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">no</code>. The value is a
-          hint only: it never hides, disables or filters a region, because the run-time egress
-          probe is the authority. Use{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">hideUnknown</code> on dense
-          inline surfaces (the region picker) — "no" always renders, so a missing badge can
-          never be misread as a negative.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">no</code>.
+          The value is a hint only: it never hides, disables or filters a
+          region, because the run-time egress probe is the authority. Use{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            hideUnknown
+          </code>{" "}
+          on dense inline surfaces (the region picker) — "no" always renders, so
+          a missing badge can never be misread as a negative.
         </p>
         <ExampleRow
           preview={
@@ -1305,21 +1543,36 @@ function ButtonsBadgesSection() {
           importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
         />
 
-        <h3 className="text-sm font-medium">SLO state chip &amp; error-budget meter</h3>
+        <h3 className="text-sm font-medium">
+          SLO state chip &amp; error-budget meter
+        </h3>
         <p className="text-sm text-muted-foreground">
-          The four objective states (spec 2026-08-20-01) and the remaining-budget meter that
-          accompanies them.{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">unknown</code> is the
-          no-data state and is deliberately <strong>neutral grey, never green</strong>: an
-          objective over a window with no probes has null attainment, and rendering that as a
-          healthy 100% would turn "we were not watching" into "everything was fine". Attainment
-          itself follows the same rule — render{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code> as a dash via{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">formatAttainment</code>.
-          The meter is clamped to [0, 1] by{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">budgetRemainingFraction</code>,
-          while the label keeps the sign so an overspent budget reads as{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">-12m 30s</code>.
+          The four objective states (spec 2026-08-20-01) and the
+          remaining-budget meter that accompanies them.{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            unknown
+          </code>{" "}
+          is the no-data state and is deliberately{" "}
+          <strong>neutral grey, never green</strong>: an objective over a window
+          with no probes has null attainment, and rendering that as a healthy
+          100% would turn "we were not watching" into "everything was fine".
+          Attainment itself follows the same rule — render{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            null
+          </code>{" "}
+          as a dash via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            formatAttainment
+          </code>
+          . The meter is clamped to [0, 1] by{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            budgetRemainingFraction
+          </code>
+          , while the label keeps the sign so an overspent budget reads as{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            -12m 30s
+          </code>
+          .
         </p>
         <ExampleRow
           preview={
@@ -1327,15 +1580,21 @@ function ButtonsBadgesSection() {
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className={sloStateBadgeClass("healthy")}>Healthy</Badge>
                 <Badge className={sloStateBadgeClass("at_risk")}>At risk</Badge>
-                <Badge className={sloStateBadgeClass("breached")}>Breached</Badge>
+                <Badge className={sloStateBadgeClass("breached")}>
+                  Breached
+                </Badge>
                 <Badge className={sloStateBadgeClass("unknown")}>No data</Badge>
               </div>
               <div className="max-w-xs space-y-1">
                 <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div className={`h-full rounded-full ${sloBudgetBarClass("at_risk")}`} style={{ width: "38%" }} />
+                  <div
+                    className={`h-full rounded-full ${sloBudgetBarClass("at_risk")}`}
+                    style={{ width: "38%" }}
+                  />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {formatBudgetSeconds(990)} of {formatBudgetSeconds(2592)} remaining
+                  {formatBudgetSeconds(990)} of {formatBudgetSeconds(2592)}{" "}
+                  remaining
                 </p>
               </div>
             </div>
@@ -1345,15 +1604,19 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">Error-budget burn-down chart</h3>
         <p className="text-sm text-muted-foreground">
-          The objective detail page's burn-down (spec 2026-08-20-01): remaining budget over the
-          current window against the straight "ideal" line that spends it exactly. Two
-          conventions are load-bearing. The actual series is{" "}
-          <strong>never clamped at zero</strong> — an overspent budget dips below the dashed
-          destructive reference line, and flattening it there would hide the magnitude of a
-          breach. And every DATA dot renders a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">&lt;title&gt;</code>, which
-          recharts' hover activeDot does not, so an E2E can count{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">circle:has(title)</code>{" "}
+          The objective detail page's burn-down (spec 2026-08-20-01): remaining
+          budget over the current window against the straight "ideal" line that
+          spends it exactly. Two conventions are load-bearing. The actual series
+          is <strong>never clamped at zero</strong> — an overspent budget dips
+          below the dashed destructive reference line, and flattening it there
+          would hide the magnitude of a breach. And every DATA dot renders a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            &lt;title&gt;
+          </code>
+          , which recharts' hover activeDot does not, so an E2E can count{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            circle:has(title)
+          </code>{" "}
           deterministically.
         </p>
         <ExampleRow
@@ -1367,16 +1630,24 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">Agent version cell</h3>
         <p className="text-sm text-muted-foreground">
-          Compares an agent's self-reported build version against this server's own (spec
-          2026-08-19-07). Unlike the IPv6 badge above, this is not a stored three-state value —
-          it is a comparison computed at read time from two inputs, each already two-state: the
-          agent's version (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code>{" "}
+          Compares an agent's self-reported build version against this server's
+          own (spec 2026-08-19-07). Unlike the IPv6 badge above, this is not a
+          stored three-state value — it is a comparison computed at read time
+          from two inputs, each already two-state: the agent's version (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            null
+          </code>{" "}
           = never reported) and the server's own (from{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useVersion()</code>).
-          Matching and unknown render as plain text; only a genuine mismatch gets the amber
-          "Drifted" badge — <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">null</code>{" "}
-          must <strong>never</strong> render as drifted, or an agent that simply predates this
-          feature would look broken.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            useVersion()
+          </code>
+          ). Matching and unknown render as plain text; only a genuine mismatch
+          gets the amber "Drifted" badge —{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            null
+          </code>{" "}
+          must <strong>never</strong> render as drifted, or an agent that simply
+          predates this feature would look broken.
         </p>
         <ExampleRow
           preview={
@@ -1392,16 +1663,28 @@ function ButtonsBadgesSection() {
         <h3 className="text-sm font-medium">Check group status header</h3>
         <p className="text-sm text-muted-foreground">
           The checks index (
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checks.index.tsx</code>
-          ) buckets checks by <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checkGroupUid</code> into
-          collapsible sections. The header always reuses the same{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">StatusBadge</code> as check rows — no
-          new colors — next to a compact member summary derived from the group's{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">memberStatusCounts</code>: the "N/N up"
-          form when every counted member is up (the collapse-eligible case), otherwise
-          severity-ordered parts like "1 down · 3 up". A group defaults to collapsed only
-          when its rollup status is <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">up</code>; any
-          manual toggle overrides the default and persists per org in localStorage.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            checks.index.tsx
+          </code>
+          ) buckets checks by{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            checkGroupUid
+          </code>{" "}
+          into collapsible sections. The header always reuses the same{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            StatusBadge
+          </code>{" "}
+          as check rows — no new colors — next to a compact member summary
+          derived from the group's{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            memberStatusCounts
+          </code>
+          : the "N/N up" form when every counted member is up (the
+          collapse-eligible case), otherwise severity-ordered parts like "1 down
+          · 3 up". A group defaults to collapsed only when its rollup status is{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">up</code>;
+          any manual toggle overrides the default and persists per org in
+          localStorage.
         </p>
         <ExampleRow
           preview={
@@ -1411,14 +1694,20 @@ function ButtonsBadgesSection() {
                 <span className="font-semibold">prod-eu-west</span>
                 <StatusBadge status="up" />
                 <span className="text-xs text-muted-foreground">4/4 up</span>
-                <Badge variant="secondary" className="text-xs">4</Badge>
+                <Badge variant="secondary" className="text-xs">
+                  4
+                </Badge>
               </div>
               <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 <span className="font-semibold">prod-us-east</span>
                 <StatusBadge status="degraded" />
-                <span className="text-xs text-muted-foreground">1 down · 3 up</span>
-                <Badge variant="secondary" className="text-xs">4</Badge>
+                <span className="text-xs text-muted-foreground">
+                  1 down · 3 up
+                </span>
+                <Badge variant="secondary" className="text-xs">
+                  4
+                </Badge>
               </div>
             </>
           }
@@ -1427,15 +1716,28 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">Live connection status dot</h3>
         <p className="text-sm text-muted-foreground">
-          Passive indicator for the org live-updates WebSocket, mounted in the sidebar
-          footer utility row alongside <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LanguageSwitcher</code>{" "}
-          and <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ThemeToggle</code>. Reads{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useLiveConnectionStatus()</code>{" "}
-          from <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveEventsContext</code> — green
-          while streaming, red while dropped/retrying, grey while connecting or when
-          realtime is disabled/forbidden server-side (never red for a by-design
-          non-live state). Purely informational: no click action, no popover. The dot
-          below reflects this page's actual live connection.
+          Passive indicator for the org live-updates WebSocket, mounted in the
+          sidebar footer utility row alongside{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            LanguageSwitcher
+          </code>{" "}
+          and{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            ThemeToggle
+          </code>
+          . Reads{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            useLiveConnectionStatus()
+          </code>{" "}
+          from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            LiveEventsContext
+          </code>{" "}
+          — green while streaming, red while dropped/retrying, grey while
+          connecting or when realtime is disabled/forbidden server-side (never
+          red for a by-design non-live state). Purely informational: no click
+          action, no popover. The dot below reflects this page's actual live
+          connection.
         </p>
         <ExampleRow
           preview={
@@ -1450,18 +1752,31 @@ function ButtonsBadgesSection() {
         <p className="text-sm text-muted-foreground">
           Live-ticking "N ago" text for a timestamp — used by the check summary
           cards' "last checked" line and the private locations agents table's
-          "Last seen" column. Ticks on its own 1s interval (cleared on
-          unmount) via{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveDurationAgo</code>,
-          formats with the shared{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">formatDuration()</code>{" "}
-          (caps at <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Xd Yh Zm</code>),
-          and wraps the result in the translated{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">checks:detail.summary.ago</code>{" "}
-          template so FR/DE/ES render correctly instead of a hard-coded "ago" suffix. Pair it with a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code> carrying the full
-          local timestamp so the exact moment stays reachable on hover, and keep a separate
-          "never" fallback for a null/undefined timestamp — the component itself has no empty state.
+          "Last seen" column. Ticks on its own 1s interval (cleared on unmount)
+          via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            LiveDurationAgo
+          </code>
+          , formats with the shared{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            formatDuration()
+          </code>{" "}
+          (caps at{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Xd Yh Zm
+          </code>
+          ), and wraps the result in the translated{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            checks:detail.summary.ago
+          </code>{" "}
+          template so FR/DE/ES render correctly instead of a hard-coded "ago"
+          suffix. Pair it with a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            title
+          </code>{" "}
+          carrying the full local timestamp so the exact moment stays reachable
+          on hover, and keep a separate "never" fallback for a null/undefined
+          timestamp — the component itself has no empty state.
         </p>
         <ExampleRow
           preview={
@@ -1475,23 +1790,46 @@ function ButtonsBadgesSection() {
           importLine={`import { LiveDurationAgo } from "@/components/shared/relative-time";\n\n{agent.lastSeenAt ? (\n  <span title={new Date(agent.lastSeenAt).toLocaleString()}>\n    <LiveDurationAgo since={agent.lastSeenAt} />\n  </span>\n) : (\n  t("privateLocations.agents.never", "never")\n)}`}
         />
 
-        <h3 className="text-sm font-medium">TimeAgo (hover/tap + click-to-copy)</h3>
+        <h3 className="text-sm font-medium">
+          TimeAgo (hover/tap + click-to-copy)
+        </h3>
         <p className="text-sm text-muted-foreground">
-          The incidents list, incident detail (timeline, comments, header) and jobs
-          pages' timestamp. Unlike <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveDurationAgo</code> above,
-          the absolute time isn't just a passive <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code>{" "}
+          The incidents list, incident detail (timeline, comments, header) and
+          jobs pages' timestamp. Unlike{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            LiveDurationAgo
+          </code>{" "}
+          above, the absolute time isn't just a passive{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            title
+          </code>{" "}
           — hovering (or tapping, on touch) opens a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Tooltip</code> with both local and
-          UTC time, and clicking copies the UTC time as ISO&nbsp;8601 (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">2026-08-14T09:31:07Z</code>)
-          to the clipboard — the format that pastes cleanly into a log query. All instances
-          share a single 30s re-render timer (not one <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">setInterval</code> per
-          row) so long-lived tabs don't drift.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Tooltip
+          </code>{" "}
+          with both local and UTC time, and clicking copies the UTC time as
+          ISO&nbsp;8601 (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            2026-08-14T09:31:07Z
+          </code>
+          ) to the clipboard — the format that pastes cleanly into a log query.
+          All instances share a single 30s re-render timer (not one{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            setInterval
+          </code>{" "}
+          per row) so long-lived tabs don't drift.
         </p>
         <ExampleRow
           preview={
             <span className="text-sm">
-              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">tooltip</code> (default,
-              dense lists): <TimeAgo date={TIME_AGO_DEMO_DATE} data-testid="design-ref-time-ago-tooltip" />
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+                tooltip
+              </code>{" "}
+              (default, dense lists):{" "}
+              <TimeAgo
+                date={TIME_AGO_DEMO_DATE}
+                data-testid="design-ref-time-ago-tooltip"
+              />
             </span>
           }
           importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Dense lists (incidents index, jobs): compact relative text, absolute\n// time behind hover/tap.\n{incident.startedAt ? <TimeAgo date={incident.startedAt} /> : "-"}`}
@@ -1499,9 +1837,15 @@ function ButtonsBadgesSection() {
         <ExampleRow
           preview={
             <span className="text-sm">
-              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">inline</code> (incident
-              detail — several timestamps compared at once):{" "}
-              <TimeAgo date={TIME_AGO_DEMO_DATE} variant="inline" data-testid="design-ref-time-ago-inline" />
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+                inline
+              </code>{" "}
+              (incident detail — several timestamps compared at once):{" "}
+              <TimeAgo
+                date={TIME_AGO_DEMO_DATE}
+                variant="inline"
+                data-testid="design-ref-time-ago-inline"
+              />
             </span>
           }
           importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Incident detail (timeline, comments, header): absolute time shown\n// inline instead of hidden behind hover.\n<TimeAgo date={u.publishedAt} variant="inline" />`}
@@ -1509,16 +1853,39 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">Session card</h3>
         <p className="text-sm text-muted-foreground">
-          The account Sessions page (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/account/sessions</code>) lists
-          login/refresh-token sessions distinctly from API tokens. Each row: a device
-          icon from <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">parseUserAgent().device</code>{" "}
-          (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Smartphone</code> /{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Tablet</code> /{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Monitor</code>), a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">border-primary</code> accent
-          + &quot;Current session&quot; badge on the caller&apos;s own row, a login-method badge, the
-          raw user agent as muted mono text, and a destructive ghost icon revoke button. Static mock
-          below — the real page is data-driven via <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useSessions(org)</code>.
+          The account Sessions page (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            /orgs/$org/account/sessions
+          </code>
+          ) lists login/refresh-token sessions distinctly from API tokens. Each
+          row: a device icon from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            parseUserAgent().device
+          </code>{" "}
+          (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Smartphone
+          </code>{" "}
+          /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Tablet
+          </code>{" "}
+          /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Monitor
+          </code>
+          ), a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            border-primary
+          </code>{" "}
+          accent + &quot;Current session&quot; badge on the caller&apos;s own
+          row, a login-method badge, the raw user agent as muted mono text, and
+          a destructive ghost icon revoke button. Static mock below — the real
+          page is data-driven via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            useSessions(org)
+          </code>
+          .
         </p>
         <ExampleRow
           preview={
@@ -1530,7 +1897,9 @@ function ButtonsBadgesSection() {
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">Chrome 128 on macOS</span>
-                        <Badge className="border-primary">Current session</Badge>
+                        <Badge className="border-primary">
+                          Current session
+                        </Badge>
                         <Badge variant="secondary">password</Badge>
                       </div>
                       <div className="text-xs text-muted-foreground font-mono">
@@ -1541,7 +1910,12 @@ function ButtonsBadgesSection() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive hover:text-destructive" aria-label="Revoke">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                    aria-label="Revoke"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </CardContent>
@@ -1559,13 +1933,21 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">Organization row</h3>
         <p className="text-sm text-muted-foreground">
-          The account Organizations page (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/account/organizations</code>) reuses
-          the same current-marker card as the session list above: a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">border-primary</code> accent +
-          &quot;Current&quot; badge on the active org&apos;s row. The logo box falls back to the{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Building</code> icon exactly
-          like the sidebar org switcher, and every other row gets an outline Switch button instead
-          of a revoke action.
+          The account Organizations page (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            /orgs/$org/account/organizations
+          </code>
+          ) reuses the same current-marker card as the session list above: a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            border-primary
+          </code>{" "}
+          accent + &quot;Current&quot; badge on the active org&apos;s row. The
+          logo box falls back to the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Building
+          </code>{" "}
+          icon exactly like the sidebar org switcher, and every other row gets
+          an outline Switch button instead of a revoke action.
         </p>
         <ExampleRow
           preview={
@@ -1581,7 +1963,9 @@ function ButtonsBadgesSection() {
                         <span className="truncate font-medium">Acme Corp</span>
                         <Badge className="border-primary">Current</Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground">acme · Role: owner</div>
+                      <div className="text-xs text-muted-foreground">
+                        acme · Role: owner
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -1594,10 +1978,14 @@ function ButtonsBadgesSection() {
                     </div>
                     <div className="min-w-0">
                       <span className="truncate font-medium">Other Org</span>
-                      <div className="text-xs text-muted-foreground">other-org · Role: admin</div>
+                      <div className="text-xs text-muted-foreground">
+                        other-org · Role: admin
+                      </div>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0">Switch</Button>
+                  <Button variant="outline" size="sm" className="shrink-0">
+                    Switch
+                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -1605,31 +1993,44 @@ function ButtonsBadgesSection() {
           importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { Building } from "lucide-react";\n\n<Card className={isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">\n    {/* logo/Building fallback + name + slug + role, "Current" badge or a Switch button */}\n  </CardContent>\n</Card>`}
         />
 
-        <h3 className="text-sm font-medium">Secondary-path divider + sub-card</h3>
+        <h3 className="text-sm font-medium">
+          Secondary-path divider + sub-card
+        </h3>
         <p className="text-sm text-muted-foreground">
           When a page has one primary action and a clearly subordinate
           alternative path (e.g. the empty-state onboarding hero&apos;s
           &quot;let AI set everything up&quot; MCP link under the quick-create
           form), separate them with a hairline &quot;or&quot; divider followed
           by a bordered sub-card: icon + title/description on the left, an
-          outline <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Button asChild</code>{" "}
-          CTA on the right. Stacks vertically below <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
+          outline{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Button asChild
+          </code>{" "}
+          CTA on the right. Stacks vertically below{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
           The divider is decorative — mark it{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-hidden</code>.
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            aria-hidden
+          </code>
+          .
         </p>
         <ExampleRow
           preview={
             <div className="w-full max-w-md space-y-4">
               <div className="flex items-center gap-3" aria-hidden="true">
                 <div className="h-px flex-1 bg-border" />
-                <span className="text-xs uppercase text-muted-foreground">or</span>
+                <span className="text-xs uppercase text-muted-foreground">
+                  or
+                </span>
                 <div className="h-px flex-1 bg-border" />
               </div>
               <div className="flex flex-col gap-3 rounded-md border bg-card p-4 text-left sm:flex-row sm:items-center">
                 <div className="flex flex-1 items-start gap-3">
                   <Bot className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                   <div>
-                    <p className="text-sm font-medium">Let AI set everything up</p>
+                    <p className="text-sm font-medium">
+                      Let AI set everything up
+                    </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       Connect an AI assistant and ask it to do the work for you.
                     </p>
@@ -1671,7 +2072,11 @@ function FormsSection() {
           preview={
             <div className="w-full max-w-sm space-y-2">
               <Label htmlFor="dr-textarea">Textarea</Label>
-              <Textarea id="dr-textarea" placeholder="Multi-line input" rows={3} />
+              <Textarea
+                id="dr-textarea"
+                placeholder="Multi-line input"
+                rows={3}
+              />
             </div>
           }
           importLine={`import { Textarea } from "@/components/ui/textarea";`}
@@ -1745,7 +2150,9 @@ function FormsSection() {
         />
         <p className="text-sm text-muted-foreground">
           A hint line under a checkbox is a plain{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">{'<p className="text-xs text-muted-foreground">'}</code>{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            {'<p className="text-xs text-muted-foreground">'}
+          </code>{" "}
           immediately below the label row — no dedicated hint/description
           component exists. Used e.g. by the IMAP/POP3 check form's
           port&harr;TLS auto-toggle affordance to explain why the toggle just
@@ -1766,11 +2173,16 @@ function FormsSection() {
         <p className="text-sm text-muted-foreground">
           When a resource has both a human-readable name and a URL slug, render{" "}
           <strong>Name first</strong> and auto-fill the slug from it via{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">slugify()</code>{" "}
-          from <code className="rounded bg-muted px-1 py-0.5 text-xs">@/lib/utils</code>.
-          Stop auto-filling once the user has manually edited the slug, so their
-          override is never clobbered. Don't surface a separate "edit slug"
-          toggle — letting them type into the slug field is enough.
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            slugify()
+          </code>{" "}
+          from{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            @/lib/utils
+          </code>
+          . Stop auto-filling once the user has manually edited the slug, so
+          their override is never clobbered. Don't surface a separate "edit
+          slug" toggle — letting them type into the slug field is enough.
         </p>
         <NameSlugExample />
 
@@ -1779,8 +2191,8 @@ function FormsSection() {
           A field that accepts <em>either</em> a pasted URL or an uploaded file
           renders as one row: a fixed-size preview tile with a{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">lucide</code>{" "}
-          placeholder icon, the URL input, an outline{" "}
-          <strong>Upload</strong> button driving a hidden{" "}
+          placeholder icon, the URL input, an outline <strong>Upload</strong>{" "}
+          button driving a hidden{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             &lt;input type="file"&gt;
           </code>
@@ -1801,7 +2213,10 @@ function FormsSection() {
 
         <h3 className="text-sm font-medium">Assembled form</h3>
         <div className="rounded-md border bg-card p-4">
-          <form className="max-w-md space-y-4" onSubmit={(e) => e.preventDefault()}>
+          <form
+            className="max-w-md space-y-4"
+            onSubmit={(e) => e.preventDefault()}
+          >
             <div className="space-y-2">
               <Label htmlFor="dr-name">Name</Label>
               <Input id="dr-name" placeholder="Acme Inc." />
@@ -1979,7 +2394,10 @@ function HappyTable() {
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={3}
+                  className="py-8 text-center text-sm text-muted-foreground"
+                >
                   No matches.
                 </TableCell>
               </TableRow>
@@ -1990,7 +2408,9 @@ function HappyTable() {
                   <TableCell>
                     <StatusBadge status={row.status} />
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{row.latency}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {row.latency}
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -2035,7 +2455,10 @@ function EmptyTable() {
           <MockTableHeader />
           <TableBody>
             <TableRow>
-              <TableCell colSpan={3} className="py-12 text-center text-sm text-muted-foreground">
+              <TableCell
+                colSpan={3}
+                className="py-12 text-center text-sm text-muted-foreground"
+              >
                 No items yet. Create the first one to get started.
               </TableCell>
             </TableRow>
@@ -2098,8 +2521,16 @@ function ClickableTable() {
  * incident detail page uses to survive a 375px viewport. */
 function TruncatedCellTable() {
   const rows = [
-    { id: "1", name: "api.acme-staging.io document-storage version (http)", status: "up" as const },
-    { id: "2", name: "84698cfb-5b01-4fab-b898-13beda200722", status: "down" as const },
+    {
+      id: "1",
+      name: "api.acme-staging.io document-storage version (http)",
+      status: "up" as const,
+    },
+    {
+      id: "2",
+      name: "84698cfb-5b01-4fab-b898-13beda200722",
+      status: "down" as const,
+    },
   ];
 
   return (
@@ -2116,7 +2547,11 @@ function TruncatedCellTable() {
           {rows.map((row) => (
             <TableRow key={row.id}>
               <TableCell className="max-w-0">
-                <a href="#" title={row.name} className="block truncate text-primary hover:underline">
+                <a
+                  href="#"
+                  title={row.name}
+                  className="block truncate text-primary hover:underline"
+                >
                   {row.name}
                 </a>
               </TableCell>
@@ -2124,7 +2559,11 @@ function TruncatedCellTable() {
                 <StatusBadge status={row.status} />
               </TableCell>
               <TableCell className="whitespace-nowrap px-2 text-right">
-                <a href="#" aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">
+                <a
+                  href="#"
+                  aria-label="Open check"
+                  className="inline-flex text-muted-foreground hover:text-foreground"
+                >
                   <ArrowUpRight className="h-3.5 w-3.5" />
                 </a>
               </TableCell>
@@ -2169,8 +2608,8 @@ function DataDisplaySection() {
           <code>cursor-pointer hover:bg-muted/50</code> for affordance, and keep
           it keyboard-accessible with <code>role="link"</code>,{" "}
           <code>tabIndex=&#123;0&#125;</code>, and an Enter/Space{" "}
-          <code>onKeyDown</code>. The row must contain no nested links or buttons
-          so the click target is unambiguous.
+          <code>onKeyDown</code>. The row must contain no nested links or
+          buttons so the click target is unambiguous.
         </p>
         <ClickableTable />
       </div>
@@ -2181,20 +2620,19 @@ function DataDisplaySection() {
       <div className="space-y-2 pt-2">
         <h3 className="text-sm font-medium">Truncated cell</h3>
         <p className="text-sm text-muted-foreground">
-          When a column's value has no natural break point (a UUID, a long
-          URL), let it truncate instead of wrapping to several lines or
-          forcing the table wider than its container. Give the{" "}
-          <code>TableCell</code> itself <code>max-w-0</code> — not just the
-          text node inside it — so the browser's table layout algorithm
-          shrinks that column to its fair share instead of growing to fit the
-          content; other columns that must stay one line (a badge, an
-          icon-link) get <code>whitespace-nowrap</code> so the flexible
-          column absorbs whatever width is left. Pair the truncated element
-          with a <code>title</code> attribute (or Tooltip, above) so the full
-          value is still reachable on hover/focus. Two link targets in one
-          row (here: the name → detail page, the trailing icon → a related
-          page) stay distinguishable by weight — underlined text vs. a muted
-          icon — rather than by color alone.
+          When a column's value has no natural break point (a UUID, a long URL),
+          let it truncate instead of wrapping to several lines or forcing the
+          table wider than its container. Give the <code>TableCell</code> itself{" "}
+          <code>max-w-0</code> — not just the text node inside it — so the
+          browser's table layout algorithm shrinks that column to its fair share
+          instead of growing to fit the content; other columns that must stay
+          one line (a badge, an icon-link) get <code>whitespace-nowrap</code> so
+          the flexible column absorbs whatever width is left. Pair the truncated
+          element with a <code>title</code> attribute (or Tooltip, above) so the
+          full value is still reachable on hover/focus. Two link targets in one
+          row (here: the name → detail page, the trailing icon → a related page)
+          stay distinguishable by weight — underlined text vs. a muted icon —
+          rather than by color alone.
         </p>
         <TruncatedCellTable />
       </div>
@@ -2271,7 +2709,11 @@ function DnsRecordRowSection() {
       <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
         <div className="space-y-2">
           <DnsRecordRow
-            record={{ type: "CNAME", name: "status.acme.com", value: "cname.solidping.io" }}
+            record={{
+              type: "CNAME",
+              name: "status.acme.com",
+              value: "cname.solidping.io",
+            }}
           />
           <DnsRecordRow
             record={{
@@ -2310,6 +2752,46 @@ function CollapsibleCodeSection() {
         </div>
         <CodeSnippet
           code={`import { CollapsibleCode } from "@/components/shared/copyable-code";\n\n<CollapsibleCode label="Response body" value={json} defaultOpen={failed} />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+// A 1x1 transparent PNG: the reference page must be self-contained, so the
+// sample image is inline rather than a network fetch.
+const sampleEvidenceImage =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+function EvidenceImageSection() {
+  return (
+    <Section
+      id="evidence-image"
+      title="Evidence image (captioned)"
+      description="A captured image shown as evidence, wrapped in <figure>/<figcaption>. Use whenever an image is a PROBE ARTIFACT rather than decoration: the caption must say when and from where it was captured, and must not overclaim what it proves. The image is a link to its own full-resolution URL (no lightbox dependency), and scales to the container so it stays usable on a phone. Used by the incident screenshot card."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <figure className="space-y-2">
+          <a
+            href={sampleEvidenceImage}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block overflow-hidden rounded-md border bg-muted"
+          >
+            <img
+              src={sampleEvidenceImage}
+              alt="Sample captured evidence"
+              loading="lazy"
+              className="h-24 w-full max-w-full object-cover"
+            />
+          </a>
+          <figcaption className="text-xs text-muted-foreground">
+            Captured 21/08/2026, 09:14:02 from eu-west, shortly after failure
+            detection.
+          </figcaption>
+        </figure>
+        <CodeSnippet
+          code={`<figure className="space-y-2">\n  <a href={url} target="_blank" rel="noopener noreferrer"\n     className="block overflow-hidden rounded-md border bg-muted">\n    <img src={url} alt={alt} loading="lazy" className="h-auto w-full max-w-full" />\n  </a>\n  <figcaption className="text-xs text-muted-foreground">{caption}</figcaption>\n</figure>`}
         />
       </div>
     </Section>
@@ -2401,7 +2883,7 @@ function SandboxedPreviewSection() {
       id="sandboxed-preview"
       title="Sandboxed preview (iframe)"
       description={
-        'Renders third-party or user-typed HTML byte-for-byte — not a React ' +
+        "Renders third-party or user-typed HTML byte-for-byte — not a React " +
         "replica that could drift — via a sandboxed <iframe srcDoc>. Two rules " +
         'keep it safe: sandbox="allow-scripts" only (no allow-same-origin, so ' +
         "the frame gets an opaque origin and can't reach the parent document " +
@@ -2433,12 +2915,12 @@ function SandboxedPreviewSection() {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            The typed value renders as inert text even when it contains
-            markup — escaping happens before the string ever reaches the
-            iframe's HTML parser. The frame also gets explicit background and
-            text colors: an opaque origin can't read the app's CSS variables,
-            so a frame left on browser defaults renders black-on-transparent
-            and disappears against dark mode.
+            The typed value renders as inert text even when it contains markup —
+            escaping happens before the string ever reaches the iframe's HTML
+            parser. The frame also gets explicit background and text colors: an
+            opaque origin can't read the app's CSS variables, so a frame left on
+            browser defaults renders black-on-transparent and disappears against
+            dark mode.
           </p>
         </div>
         <CodeSnippet
@@ -2493,22 +2975,30 @@ function FeedbackSection() {
               <Alert>
                 <Info />
                 <AlertTitle>Default</AlertTitle>
-                <AlertDescription>Neutral, informational message.</AlertDescription>
+                <AlertDescription>
+                  Neutral, informational message.
+                </AlertDescription>
               </Alert>
               <Alert variant="success">
                 <CheckCircle2 />
                 <AlertTitle>Success</AlertTitle>
-                <AlertDescription>The action completed successfully.</AlertDescription>
+                <AlertDescription>
+                  The action completed successfully.
+                </AlertDescription>
               </Alert>
               <Alert variant="warning">
                 <AlertTriangle />
                 <AlertTitle>Warning</AlertTitle>
-                <AlertDescription>Something is degraded but still functional.</AlertDescription>
+                <AlertDescription>
+                  Something is degraded but still functional.
+                </AlertDescription>
               </Alert>
               <Alert variant="destructive">
                 <AlertCircle />
                 <AlertTitle>Destructive</AlertTitle>
-                <AlertDescription>An error occurred. Action failed.</AlertDescription>
+                <AlertDescription>
+                  An error occurred. Action failed.
+                </AlertDescription>
               </Alert>
             </div>
           }
@@ -2521,24 +3011,36 @@ function FeedbackSection() {
           <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-card</code>{" "}
           it sits on — never a bare border alone. Neutral content (e.g. the
           incident timeline entries) uses{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-muted/30</code>;
-          content that IS the error (e.g. the incident detail failure
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            bg-muted/30
+          </code>
+          ; content that IS the error (e.g. the incident detail failure
           snapshot) uses the destructive tint plus{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>{" "}
-          on the error text itself, so it reads as &quot;this is the
-          error&quot; at a glance. Tokens only, no raw hex, so both stay
-          correct in dark mode.
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            text-destructive
+          </code>{" "}
+          on the error text itself, so it reads as &quot;this is the error&quot;
+          at a glance. Tokens only, no raw hex, so both stay correct in dark
+          mode.
         </p>
         <ExampleRow
           preview={
             <div className="flex w-full max-w-md flex-col gap-2">
               <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
-                <div className="text-xs text-muted-foreground">Neutral (timeline entries)</div>
-                <div>Use for grouped detail that isn&apos;t itself an error.</div>
+                <div className="text-xs text-muted-foreground">
+                  Neutral (timeline entries)
+                </div>
+                <div>
+                  Use for grouped detail that isn&apos;t itself an error.
+                </div>
               </div>
               <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-                <div className="text-xs text-muted-foreground">Destructive (failure snapshot)</div>
-                <div className="font-mono text-destructive">connect ECONNREFUSED</div>
+                <div className="text-xs text-muted-foreground">
+                  Destructive (failure snapshot)
+                </div>
+                <div className="font-mono text-destructive">
+                  connect ECONNREFUSED
+                </div>
               </div>
             </div>
           }
@@ -2555,11 +3057,14 @@ function FeedbackSection() {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Dialog title</DialogTitle>
-                  <DialogDescription>Modal content for non-destructive flows.</DialogDescription>
+                  <DialogDescription>
+                    Modal content for non-destructive flows.
+                  </DialogDescription>
                 </DialogHeader>
                 <p className="text-sm">
-                  Use Dialog for inline forms, multi-step pickers, or any cancelable flow that
-                  doesn&apos;t carry irreversible consequences.
+                  Use Dialog for inline forms, multi-step pickers, or any
+                  cancelable flow that doesn&apos;t carry irreversible
+                  consequences.
                 </p>
                 <DialogFooter>
                   <Button variant="outline">Cancel</Button>
@@ -2585,8 +3090,8 @@ function FeedbackSection() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action is permanent. Use AlertDialog (not Dialog) for destructive
-                    confirmations.
+                    This action is permanent. Use AlertDialog (not Dialog) for
+                    destructive confirmations.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -2628,31 +3133,48 @@ function FeedbackSection() {
           information they have to keep. A toast keeps the neutral popover
           surface and carries its meaning in the{" "}
           <strong>icon color alone</strong> (
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">--status-ok</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            --status-ok
+          </code>{" "}
           /{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">--status-warning</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            --status-warning
+          </code>{" "}
           /{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">--status-error</code>
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            --status-error
+          </code>
           ), so success and failure read apart at a glance without a saturated
           banner sliding over the UI. That mapping lives once in{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">components/ui/sonner.tsx</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            components/ui/sonner.tsx
+          </code>{" "}
           — call the typed helper and the color follows; never hand-color a
           toast at the call site.
         </p>
         <p className="text-sm text-muted-foreground">
           <strong>Always use a typed helper.</strong> A bare{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">toast("…")</code>{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            toast("…")
+          </code>{" "}
           has no type, and sonner gives an untyped toast no icon at all — it
           arrives as unlabelled text, and there is no setting that adds one,
           because the icon lookup is keyed on the type it's missing. A neutral,
           non-status message is{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">toast.info()</code>,
-          which carries the blue (i).
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            toast.info()
+          </code>
+          , which carries the blue (i).
         </p>
         <ExampleRow
           preview={
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => toast.info("Maintenance window starts in 10 minutes")}>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  toast.info("Maintenance window starts in 10 minutes")
+                }
+              >
                 Info toast
               </Button>
               <Button
@@ -2702,8 +3224,8 @@ function FeedbackSection() {
               </PopoverTrigger>
               <PopoverContent className="p-3">
                 <p className="text-sm">
-                  Popover content — useful for inline pickers and contextual hints that need
-                  more space than a tooltip.
+                  Popover content — useful for inline pickers and contextual
+                  hints that need more space than a tooltip.
                 </p>
               </PopoverContent>
             </Popover>
@@ -2746,7 +3268,11 @@ function FeedbackSection() {
         <ExampleRow
           preview={
             <ErrorFallbackCard
-              error={new Error("Example failure — shown inside a collapsible details block")}
+              error={
+                new Error(
+                  "Example failure — shown inside a collapsible details block",
+                )
+              }
               onRetry={() => toast.info("Retry clicked")}
             />
           }
@@ -2781,7 +3307,8 @@ function BrandSection() {
       </div>
       <div className="space-y-2">
         <h3 className="text-sm font-medium">
-          Brand swatches (kept distinct from primary / destructive / status-error)
+          Brand swatches (kept distinct from primary / destructive /
+          status-error)
         </h3>
         <div className="grid gap-3 sm:grid-cols-3">
           <Swatch
@@ -2810,9 +3337,21 @@ function BrandSection() {
 // CHECK_TYPE_IDENTITY by eye, same as the spec's own table) — the canonical,
 // enforced source is CHECK_TYPE_IDENTITY in check-type-identity.tsx, guarded
 // by check-type-identity.test.ts.
-const CHECK_TYPE_FAMILY_TABLE: { family: string; types: string; tone: string }[] = [
-  { family: "Web", types: "http/https, websocket, browser", tone: "blue (shipped)" },
-  { family: "Raw network", types: "tcp, udp, ntp, snmp", tone: "cyan (shipped)" },
+const CHECK_TYPE_FAMILY_TABLE: {
+  family: string;
+  types: string;
+  tone: string;
+}[] = [
+  {
+    family: "Web",
+    types: "http/https, websocket, browser",
+    tone: "blue (shipped)",
+  },
+  {
+    family: "Raw network",
+    types: "tcp, udp, ntp, snmp",
+    tone: "cyan (shipped)",
+  },
   { family: "Naming", types: "dns, domain, dnsbl", tone: "amber (shipped)" },
   { family: "Reachability", types: "icmp/ping", tone: "purple (shipped)" },
   { family: "Certificates", types: "ssl/tls", tone: "emerald (shipped)" },
@@ -2823,14 +3362,22 @@ const CHECK_TYPE_FAMILY_TABLE: { family: string; types: string; tone: string }[]
     types: "postgresql, mysql, mssql, oracle, clickhouse, redis, mongodb",
     tone: "indigo",
   },
-  { family: "Messaging/RPC", types: "grpc, kafka, mqtt, rabbitmq", tone: "fuchsia" },
+  {
+    family: "Messaging/RPC",
+    types: "grpc, kafka, mqtt, rabbitmq",
+    tone: "fuchsia",
+  },
   { family: "Game", types: "a2s, minecraft", tone: "lime" },
   {
     family: "Infra",
     types: "docker, prometheus, freebox_line, kubernetes",
     tone: "sky",
   },
-  { family: "Scripted/synthetic", types: "js, sleep, heartbeat, sip", tone: "slate" },
+  {
+    family: "Scripted/synthetic",
+    types: "js, sleep, heartbeat, sip",
+    tone: "slate",
+  },
 ];
 
 const CHECK_TYPE_BADGE_SAMPLES = [
@@ -2858,12 +3405,11 @@ function CheckTypeIdentitySection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">CheckTypeBadge — the 10px chip</h3>
         <p className="text-xs text-muted-foreground">
-          Uppercase mono at 10px so a column of them aligns like a
-          fixed-width key, one tinted family per type. Text-first,
-          deliberately no icon inside the chip — at this size an abstract
-          glyph is noise and the acronym is the signal. An unrecognized type
-          falls back to the plain outline badge with its raw name, rather
-          than inventing a new color.
+          Uppercase mono at 10px so a column of them aligns like a fixed-width
+          key, one tinted family per type. Text-first, deliberately no icon
+          inside the chip — at this size an abstract glyph is noise and the
+          acronym is the signal. An unrecognized type falls back to the plain
+          outline badge with its raw name, rather than inventing a new color.
         </p>
         <ExampleRow
           preview={
@@ -2883,12 +3429,12 @@ function CheckTypeIdentitySection() {
           CheckTypeIcon — leading glyph (type picker, check detail)
         </h3>
         <p className="text-xs text-muted-foreground">
-          A leading icon tinted to the same tone, for surfaces with room for
-          one — the new-check type picker rows and the check detail header.
-          Never inside the 10px badge itself. Lucide today; the slot accepts
-          any component rendering <code>currentColor</code> on a square
-          viewBox, so an internally designed icon set can replace entries in
-          the registry later with no call-site changes.
+          A leading icon tinted to the same tone, for surfaces with room for one
+          — the new-check type picker rows and the check detail header. Never
+          inside the 10px badge itself. Lucide today; the slot accepts any
+          component rendering <code>currentColor</code> on a square viewBox, so
+          an internally designed icon set can replace entries in the registry
+          later with no call-site changes.
         </p>
         <ExampleRow
           preview={
@@ -2908,11 +3454,11 @@ function CheckTypeIdentitySection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Family → tone table</h3>
         <p className="text-xs text-muted-foreground">
-          40 distinguishable hues don't exist, so tones are assigned per
-          family. The five marked "shipped" are the original protocol-badge
-          tints and must never change color — they're in users' muscle
-          memory. Every other family gets its own hue, none colliding with
-          the status colors (green=ok / red=down stay reserved).
+          40 distinguishable hues don't exist, so tones are assigned per family.
+          The five marked "shipped" are the original protocol-badge tints and
+          must never change color — they're in users' muscle memory. Every other
+          family gets its own hue, none colliding with the status colors
+          (green=ok / red=down stay reserved).
         </p>
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-left text-sm">
@@ -2940,10 +3486,10 @@ function CheckTypeIdentitySection() {
         <h3 className="text-sm font-medium">Accessibility</h3>
         <p className="text-xs text-muted-foreground">
           Same rule as every other tinted badge in this app: the tint and the
-          icon are decoration layered on the label, never the only signal.
-          The text label always spells the check type out — <code>CheckTypeBadge</code>{" "}
-          renders it even for a type with no registry entry, and the icon is
-          marked <code>aria-hidden</code>.
+          icon are decoration layered on the label, never the only signal. The
+          text label always spells the check type out —{" "}
+          <code>CheckTypeBadge</code> renders it even for a type with no
+          registry entry, and the icon is marked <code>aria-hidden</code>.
         </p>
       </div>
     </Section>
@@ -2981,7 +3527,10 @@ const EVENT_BADGE_SAMPLES: { type: string; label: string }[] = [
 // useTranslation("events") — this page is a static catalog, not localized —
 // resolving `types.<eventType>` from the sample labels above and otherwise
 // behaving like i18next's own `defaultValue` fallback.
-function designReferenceEventT(key: string, options?: Record<string, unknown>): string {
+function designReferenceEventT(
+  key: string,
+  options?: Record<string, unknown>,
+): string {
   const sample = EVENT_BADGE_SAMPLES.find((s) => key === `types.${s.type}`);
   if (sample) return sample.label;
   const fallback = options?.defaultValue;
@@ -3018,15 +3567,19 @@ function EventToneSection() {
         />
       </div>
       <div className="space-y-2">
-        <h3 className="text-sm font-medium">Per-event-type badge (emoji + label + tone)</h3>
+        <h3 className="text-sm font-medium">
+          Per-event-type badge (emoji + label + tone)
+        </h3>
         <p className="text-xs text-muted-foreground">
-          <code>EventTypeBadge</code> is the canonical rendering of "which event was this" —
-          used in notification lists (incident detail, notification detail), the events page,
-          the dashboard feed, and the incident timeline. It layers a per-type emoji (from the
-          EVENT_TYPE_REGISTRY map in event-display.tsx) on top of the same tone + label as
-          above; a type with no registry entry (last two rows) still renders a plain badge via
-          the family fallback. The emoji pairing is binding product-wide — msteamsbot.go,
-          Telegram, and Slack are kept aligned to the same emoji per event type.
+          <code>EventTypeBadge</code> is the canonical rendering of "which event
+          was this" — used in notification lists (incident detail, notification
+          detail), the events page, the dashboard feed, and the incident
+          timeline. It layers a per-type emoji (from the EVENT_TYPE_REGISTRY map
+          in event-display.tsx) on top of the same tone + label as above; a type
+          with no registry entry (last two rows) still renders a plain badge via
+          the family fallback. The emoji pairing is binding product-wide —
+          msteamsbot.go, Telegram, and Slack are kept aligned to the same emoji
+          per event type.
         </p>
         <ExampleRow
           preview={
@@ -3169,12 +3722,12 @@ function ListSurfaceSection() {
           <a href="#button-placement" className="text-primary hover:underline">
             Button placement
           </a>
-          ) stays rendered above the empty state; only the table area swaps
-          out, so the page doesn't jump. A truly empty list — zero rows, no
-          filter applied — gets an icon, a title, and a one-line hint —{" "}
-          <strong>no CTA button</strong>. The create action already lives
-          once, in the page header (top right); repeating it inside the card
-          would just duplicate it.
+          ) stays rendered above the empty state; only the table area swaps out,
+          so the page doesn't jump. A truly empty list — zero rows, no filter
+          applied — gets an icon, a title, and a one-line hint —{" "}
+          <strong>no CTA button</strong>. The create action already lives once,
+          in the page header (top right); repeating it inside the card would
+          just duplicate it.
         </p>
         <ExampleRow
           preview={
@@ -3197,11 +3750,12 @@ function ListSurfaceSection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Empty state: no search matches</h3>
         <p className="text-sm text-muted-foreground">
-          Rows exist, but the current search/filter hides all of them. Same
-          card surface, a <code className="rounded bg-muted px-1 py-0.5 text-xs">Search</code>{" "}
+          Rows exist, but the current search/filter hides all of them. Same card
+          surface, a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Search</code>{" "}
           icon instead of the resource icon, title only —{" "}
-          <strong>no CTA</strong> (the fix is to clear the filter, not to
-          create a duplicate). Mirrors{" "}
+          <strong>no CTA</strong> (the fix is to clear the filter, not to create
+          a duplicate). Mirrors{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             escalation-policies.index.tsx
           </code>
@@ -3324,9 +3878,7 @@ function LabelFilterSection() {
       description="Faceted key:value filter used in the checks-list toolbar. Reuse this instead of LabelInput when filtering a list (LabelInput stays for authoring labels in a form). Applied filters are removable chips; the compact + Label trigger opens a single popover with a two-step key→value cmdk picker that applies on select. Try it below."
     >
       <ExampleRow
-        preview={
-          <LabelFilter org={org} value={labels} onChange={setLabels} />
-        }
+        preview={<LabelFilter org={org} value={labels} onChange={setLabels} />}
         importLine={snippet}
       />
     </Section>
@@ -3358,11 +3910,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
       description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Clickable tiles lift on hover (hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover) — no nested interactive elements inside."
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link
-          to="/orgs/$org/checks"
-          params={{ org }}
-          className="block"
-        >
+        <Link to="/orgs/$org/checks" params={{ org }} className="block">
           <Card className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -3371,7 +3919,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold tracking-tight tabular-nums">42</div>
+              <div className="text-3xl font-bold tracking-tight tabular-nums">
+                42
+              </div>
               <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
             </CardContent>
           </Card>
@@ -3384,7 +3934,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold tracking-tight tabular-nums">99.98%</div>
+            <div className="text-3xl font-bold tracking-tight tabular-nums">
+              99.98%
+            </div>
             <p className="text-xs text-muted-foreground mt-1">24h window</p>
           </CardContent>
         </Card>
@@ -3402,8 +3954,10 @@ function UptimeStripSection() {
       Date.now() - (23 - i) * 60 * 60 * 1000,
     ).toISOString();
     let availabilityPct: number | undefined = 100;
-    if (i === 22 || i === 23) availabilityPct = undefined; // most recent hours: no data yet
-    else if (i === 10) availabilityPct = 0; // a full outage hour
+    if (i === 22 || i === 23)
+      availabilityPct = undefined; // most recent hours: no data yet
+    else if (i === 10)
+      availabilityPct = 0; // a full outage hour
     else if (i === 11) availabilityPct = 66.7; // a partially-degraded hour
     return {
       periodStart,
@@ -3448,7 +4002,12 @@ function ColorTokensSection() {
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {COLOR_TOKENS.map((t) => (
-          <Swatch key={t.varName} varName={t.varName} label={t.name} description={t.description} />
+          <Swatch
+            key={t.varName}
+            varName={t.varName}
+            label={t.name}
+            description={t.description}
+          />
         ))}
       </div>
       <div className="space-y-2">
@@ -3475,16 +4034,27 @@ function CheckMultiPickerSection() {
       description="Multi-select for checks or check groups, parameterized by kind. Selected items render as removable Badge chips. Used by the maintenance-window form (which needs multiple checks and multiple groups). Mirrors the single-value CheckPicker."
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ CheckMultiPicker }"} from "@/components/shared/check-multi-picker"
+        import {"{ CheckMultiPicker }"} from
+        "@/components/shared/check-multi-picker"
       </p>
       <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
         <div className="space-y-2">
           <Label>Checks</Label>
-          <CheckMultiPicker org={org} kind="checks" value={checkUids} onChange={setCheckUids} />
+          <CheckMultiPicker
+            org={org}
+            kind="checks"
+            value={checkUids}
+            onChange={setCheckUids}
+          />
         </div>
         <div className="space-y-2">
           <Label>Check groups</Label>
-          <CheckMultiPicker org={org} kind="groups" value={groupUids} onChange={setGroupUids} />
+          <CheckMultiPicker
+            org={org}
+            kind="groups"
+            value={groupUids}
+            onChange={setGroupUids}
+          />
         </div>
       </div>
     </Section>
@@ -3500,10 +4070,11 @@ function CheckGroupPickerSection() {
     <Section
       id="check-group-picker"
       title="Check group picker"
-      description="Single-select for one check GROUP — the group twin of CheckPicker, with the same popover + search + arrow-key navigation shape. Each entry is labelled with its member count (&quot;N checks&quot;), which is operator-only context: the public status page never says a component aggregates several probes. Used by the status page editor to publish a group as one component."
+      description='Single-select for one check GROUP — the group twin of CheckPicker, with the same popover + search + arrow-key navigation shape. Each entry is labelled with its member count ("N checks"), which is operator-only context: the public status page never says a component aggregates several probes. Used by the status page editor to publish a group as one component.'
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ CheckGroupPicker }"} from "@/components/shared/check-group-picker"
+        import {"{ CheckGroupPicker }"} from
+        "@/components/shared/check-group-picker"
       </p>
       <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
         <div className="space-y-2">
@@ -3538,19 +4109,29 @@ function TokenChipsInputSection() {
       description="Generic chip/tag input for a free-form list of validated tokens — parameterized by validate, an optional normalize, placeholder, and data-testid. Each entry is a removable Badge chip, destructive-red when it fails validate. Typing a separator (space/comma/semicolon), pressing Enter, pasting a delimited list, or blurring all commit the current token(s) — normalize (if given) runs on commit and also sets the de-dupe key. Backspace on an empty field pops the last chip. RecipientsInput (email recipients, below) is a thin wrapper over this component; the HTTP check form's expected-status field is another."
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ TokenChipsInput }"} from "@/components/shared/token-chips-input"
+        import {"{ TokenChipsInput }"} from
+        "@/components/shared/token-chips-input"
       </p>
       <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
         <div className="space-y-2">
           <Label>Email recipients — all valid</Label>
           <p className="text-xs text-muted-foreground">
-            import {"{ RecipientsInput }"} from "@/components/shared/recipients-input"
+            import {"{ RecipientsInput }"} from
+            "@/components/shared/recipients-input"
           </p>
-          <RecipientsInput value={valid} onChange={setValid} placeholder="ops@example.com" />
+          <RecipientsInput
+            value={valid}
+            onChange={setValid}
+            placeholder="ops@example.com"
+          />
         </div>
         <div className="space-y-2">
           <Label>Email recipients — with an invalid entry</Label>
-          <RecipientsInput value={withInvalid} onChange={setWithInvalid} placeholder="ops@example.com" />
+          <RecipientsInput
+            value={withInvalid}
+            onChange={setWithInvalid}
+            placeholder="ops@example.com"
+          />
         </div>
         <div className="space-y-2">
           <Label>HTTP expected-status codes (exact or NXX wildcard)</Label>
@@ -3593,7 +4174,8 @@ function JobsPrimitivesSection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Tabs</h3>
         <p className="text-xs text-muted-foreground">
-          import {"{ Tabs, TabsList, TabsTrigger, TabsContent }"} from "@/components/ui/tabs"
+          import {"{ Tabs, TabsList, TabsTrigger, TabsContent }"} from
+          "@/components/ui/tabs"
         </p>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
@@ -3601,33 +4183,40 @@ function JobsPrimitivesSection() {
             <TabsTrigger value="second">Second</TabsTrigger>
           </TabsList>
           <TabsContent value="first">
-            <div className="rounded-md border bg-card p-4 text-sm">First panel</div>
+            <div className="rounded-md border bg-card p-4 text-sm">
+              First panel
+            </div>
           </TabsContent>
           <TabsContent value="second">
-            <div className="rounded-md border bg-card p-4 text-sm">Second panel</div>
+            <div className="rounded-md border bg-card p-4 text-sm">
+              Second panel
+            </div>
           </TabsContent>
         </Tabs>
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-medium">Segmented toggle (two-way view switch)</h3>
+        <h3 className="text-sm font-medium">
+          Segmented toggle (two-way view switch)
+        </h3>
         <p className="text-xs text-muted-foreground">
-          import {"{ SegmentedControl }"} from "@/components/ui/segmented-control"
+          import {"{ SegmentedControl }"} from
+          "@/components/ui/segmented-control"
         </p>
         <p className="text-xs text-muted-foreground">
           The pattern used for the jobs page's org-scope toggle and the checks
-          index's &ldquo;Group by&rdquo; view switch. Always render it through the{" "}
-          <code>SegmentedControl</code> primitive rather than hand-rolling
+          index's &ldquo;Group by&rdquo; view switch. Always render it through
+          the <code>SegmentedControl</code> primitive rather than hand-rolling
           Buttons — the elevation is easy to get backwards.
         </p>
         <p className="text-xs text-muted-foreground">
           <strong>Selected = raised pill on a recessed track.</strong> The track
           is <code>bg-muted</code> and the selected segment is a{" "}
-          <code>ghost</code> Button with <code>bg-card shadow-sm hover:bg-card</code>;
-          unselected segments stay plain <code>ghost</code>. Never make the
-          selected segment the darker one (the old{" "}
-          <code>variant=&quot;secondary&quot;</code> pattern did exactly that, and
-          read as recessed).
+          <code>ghost</code> Button with{" "}
+          <code>bg-card shadow-sm hover:bg-card</code>; unselected segments stay
+          plain <code>ghost</code>. Never make the selected segment the darker
+          one (the old <code>variant=&quot;secondary&quot;</code> pattern did
+          exactly that, and read as recessed).
         </p>
         <p className="text-xs text-muted-foreground">
           <strong>The track flips token in dark:</strong>{" "}
@@ -3689,7 +4278,13 @@ function MaintenanceScheduleSection() {
   const sampleWindow = useMemo(() => {
     const now = new Date();
     const sampleStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 22, 0),
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        22,
+        0,
+      ),
     );
     return {
       uid: "dr-sample",
@@ -3733,11 +4328,11 @@ function MaintenanceScheduleSection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Duration input (number + unit)</h3>
         <p className="text-xs text-muted-foreground">
-          {"<Input type=\"number\">"} paired with a unit {"<Select>"}. Also
-          used inline in <code>check-form.tsx</code>'s Scheduling card for the
-          check period (minutes/hours/days/weeks) and the optional "Region
-          Spread" override (seconds/minutes/hours — spread needs finer
-          granularity than a whole-minute period).
+          {'<Input type="number">'} paired with a unit {"<Select>"}. Also used
+          inline in <code>check-form.tsx</code>'s Scheduling card for the check
+          period (minutes/hours/days/weeks) and the optional "Region Spread"
+          override (seconds/minutes/hours — spread needs finer granularity than
+          a whole-minute period).
         </p>
         <div className="flex flex-wrap gap-2 max-w-xs">
           <Input
@@ -3764,8 +4359,7 @@ function MaintenanceScheduleSection() {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Schedule summary panel</h3>
         <p className="text-xs text-muted-foreground">
-          import{" "}
-          {"{ MaintenanceScheduleSummary }"} from
+          import {"{ MaintenanceScheduleSummary }"} from
           "@/components/shared/maintenance-schedule-summary"
         </p>
         <MaintenanceScheduleSummary window={sampleWindow} />

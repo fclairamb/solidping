@@ -34,7 +34,7 @@ func attachmentGCSetup(t *testing.T) (context.Context, db.Service, *models.Organ
 }
 
 // writeAttachment inserts an attachment row directly (no blob), aged by `age`.
-func writeAttachment(t *testing.T, ctx context.Context, dbSvc db.Service,
+func writeAttachment(ctx context.Context, t *testing.T, dbSvc db.Service,
 	orgUID, topic string, age time.Duration,
 ) *models.File {
 	t.Helper()
@@ -67,13 +67,13 @@ func TestSweepOrphanIncidentAttachments(t *testing.T) {
 
 	oldEnough := attachmentOrphanGrace + time.Hour
 
-	orphan := writeAttachment(t, ctx, dbSvc, org.UID,
+	orphan := writeAttachment(ctx, t, dbSvc, org.UID,
 		attachments.IncidentScreenshotTopic(uuid.New().String()), oldEnough)
-	attached := writeAttachment(t, ctx, dbSvc, org.UID,
+	attached := writeAttachment(ctx, t, dbSvc, org.UID,
 		attachments.IncidentScreenshotTopic(live.UID), oldEnough)
-	fresh := writeAttachment(t, ctx, dbSvc, org.UID,
+	fresh := writeAttachment(ctx, t, dbSvc, org.UID,
 		attachments.IncidentScreenshotTopic(uuid.New().String()), time.Minute)
-	malformed := writeAttachment(t, ctx, dbSvc, org.UID, "incidents/only-two-parts", oldEnough)
+	malformed := writeAttachment(ctx, t, dbSvc, org.UID, "incidents/only-two-parts", oldEnough)
 
 	// A plain file with no topic at all: the ordinary case the sweep must be
 	// blind to.
@@ -109,9 +109,9 @@ func TestListAttachmentsByTopicPrefixIgnoresNonAttachments(t *testing.T) {
 	r := require.New(t)
 	ctx, dbSvc, org := attachmentGCSetup(t)
 
-	old := writeAttachment(t, ctx, dbSvc, org.UID,
+	old := writeAttachment(ctx, t, dbSvc, org.UID,
 		attachments.IncidentScreenshotTopic(uuid.New().String()), 48*time.Hour)
-	writeAttachment(t, ctx, dbSvc, org.UID,
+	writeAttachment(ctx, t, dbSvc, org.UID,
 		attachments.IncidentScreenshotTopic(uuid.New().String()), time.Minute)
 
 	plain := models.NewFile(org.UID, "logo.png", "image/png", "file://logo", 3, nil)

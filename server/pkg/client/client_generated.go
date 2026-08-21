@@ -843,6 +843,27 @@ func (e HealthResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for IncidentAttachmentTrigger.
+const (
+	IncidentAttachmentTriggerAgentUpload    IncidentAttachmentTrigger = "agent-upload"
+	IncidentAttachmentTriggerIncidentOpen   IncidentAttachmentTrigger = "incident-open"
+	IncidentAttachmentTriggerIncidentReopen IncidentAttachmentTrigger = "incident-reopen"
+)
+
+// Valid indicates whether the value is a known member of the IncidentAttachmentTrigger enum.
+func (e IncidentAttachmentTrigger) Valid() bool {
+	switch e {
+	case IncidentAttachmentTriggerAgentUpload:
+		return true
+	case IncidentAttachmentTriggerIncidentOpen:
+		return true
+	case IncidentAttachmentTriggerIncidentReopen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IncidentDetailState.
 const (
 	IncidentDetailStateActive   IncidentDetailState = "active"
@@ -3354,6 +3375,37 @@ type IncidentAckRequest struct {
 	Note *string `json:"note,omitempty"`
 }
 
+// IncidentAttachment One stored evidence blob hanging off an incident. The bytes are fetched through `downloadUrl`, never inlined.
+type IncidentAttachment struct {
+	// CapturedAt When the probe took the capture. For a screenshot this is a moment AFTER failure detection, not the failing frame itself.
+	CapturedAt *time.Time          `json:"capturedAt,omitempty"`
+	CheckUid   *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt  time.Time           `json:"createdAt"`
+
+	// DownloadUrl RELATIVE, short-lived signed URL (`/pub/files/<uid>?exp=…&sig=…`). Relative so it resolves against whichever host served the dashboard — SolidPing answers on several. Re-signed on every fetch of the incident; do not cache it.
+	DownloadUrl string `json:"downloadUrl"`
+
+	// Kind Attachment kind, e.g. `screenshot`.
+	Kind string `json:"kind"`
+
+	// MimeType Content type as SNIFFED at write time from the bytes themselves, not as declared by the uploader.
+	MimeType string `json:"mimeType"`
+	Name     string `json:"name"`
+
+	// Region Probing region, stamped server-side from the persisted result row.
+	Region *string `json:"region,omitempty"`
+	Size   int64   `json:"size"`
+
+	// Trigger What caused the capture to be kept.
+	Trigger *IncidentAttachmentTrigger `json:"trigger,omitempty"`
+
+	// Uid The `files` row uid.
+	Uid openapi_types.UUID `json:"uid"`
+}
+
+// IncidentAttachmentTrigger What caused the capture to be kept.
+type IncidentAttachmentTrigger string
+
 // IncidentCheck Embedded check details for incidents
 type IncidentCheck struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
@@ -3370,6 +3422,11 @@ type IncidentCommentRequest struct {
 // IncidentDetail defines model for IncidentDetail.
 type IncidentDetail struct {
 	AcknowledgedAt *time.Time `json:"acknowledgedAt,omitempty"`
+
+	// Attachments Evidence blobs attached to this incident (spec 2026-08-21-01). Present on the DETAIL endpoint only — the list endpoint never populates it. Today the only kind is `screenshot`: the PNG a browser check captured when the incident opened or reopened, for checks with the browser `screenshot` option enabled.
+	//
+	// **Operator-only, exactly like `details`.** Each entry carries a short-lived SIGNED download URL, so it is never serialized onto a status page or a subscriber payload.
+	Attachments *[]IncidentAttachment `json:"attachments,omitempty"`
 
 	// Check Embedded check details for incidents
 	Check       *IncidentCheck      `json:"check,omitempty"`
