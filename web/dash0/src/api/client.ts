@@ -263,7 +263,17 @@ export async function apiFetch<T>(
   return handleResponse<T>(response, { skipAuth, suppress401Redirect, suppress401Handling });
 }
 
-async function handleResponse<T>(
+/** True when a JSON `Content-Type` header value denotes a JSON media type
+ * (`application/json`, `application/problem+json`, etc.), ignoring any
+ * `; charset=` suffix. */
+function isJsonContentType(contentType: string | null): boolean {
+  if (!contentType) return false;
+  const mediaType = contentType.split(";")[0]?.trim().toLowerCase();
+  return mediaType === "application/json" || mediaType.endsWith("+json");
+}
+
+/** Exported for tests only. */
+export async function handleResponse<T>(
   response: Response,
   {
     skipAuth,
@@ -304,9 +314,37 @@ async function handleResponse<T>(
     );
   }
 
-  if (response.status === 204) {
+  // 204/205 are bodiless by spec regardless of what headers a proxy adds.
+  if (response.status === 204 || response.status === 205) {
     return undefined as T;
   }
 
-  return response.json();
+  // Any other status can still carry an empty body — e.g. TestSend's bare
+  // `writer.WriteHeader(http.StatusAccepted)` — which is not limited to 204.
+  // Go's WriteHeader-with-no-write sets neither Content-Length nor
+  // Content-Type to anything JSON-like, so those headers are the first
+  // signal that there is nothing to parse.
+  const headersLookEmpty =
+    response.headers.get("Content-Length") === "0" || !isJsonContentType(response.headers.get("Content-Type"));
+
+  // Final backstop, robust regardless of what a proxy strips or adds:
+  // actually read the body as text and only hand a non-empty string to
+  // JSON.parse. response.json() throws a raw SyntaxError on an empty
+  // stream — this is what avoids that without also swallowing a genuinely
+  // malformed JSON body (a non-empty string under a JSON content-type still
+  // reaches JSON.parse below and still throws).
+  const text = await response.text();
+  if (text === "") {
+    return undefined as T;
+  }
+
+  if (headersLookEmpty) {
+    // Non-empty bytes under headers that say "no JSON body" (e.g. no
+    // Content-Type at all) — nothing in this codebase does this today, but
+    // be lenient rather than throw a confusing SyntaxError on stray bytes
+    // that were never meant to be parsed as JSON.
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
