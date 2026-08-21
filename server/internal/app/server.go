@@ -169,24 +169,25 @@ var docsFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
-	dbService             db.Service
-	jobSvc                jobsvc.Service
-	services              *services.Registry
-	router                *httpx.Router
-	config                *config.Config
-	authService           *auth.Service
-	mcpHandler            *mcp.Handler
-	profilerSrv           *profiler.Server
-	jmapManager           *jmap.Manager
-	slackSocketSupervisor *slack.SlackSocketSupervisor
-	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
-	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
-	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
-	customDomainCache     *customDomainCache      // host -> status-page resolution cache for custom-domain routing
-	tlsEdge               *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
-	status0FS             fs.FS                   // overridden in tests; nil means use the real embedded status0Files
-	cancelCtx             context.CancelFunc
-	workersWg             sync.WaitGroup // Tracks workers
+	dbService                db.Service
+	jobSvc                   jobsvc.Service
+	services                 *services.Registry
+	router                   *httpx.Router
+	config                   *config.Config
+	authService              *auth.Service
+	mcpHandler               *mcp.Handler
+	profilerSrv              *profiler.Server
+	jmapManager              *jmap.Manager
+	slackSocketSupervisor    *slack.SlackSocketSupervisor
+	discordGatewaySupervisor *discord.GatewaySupervisor
+	rateLimiter              *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	realtimeHub              *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
+	statusPagesService       *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
+	customDomainCache        *customDomainCache      // host -> status-page resolution cache for custom-domain routing
+	tlsEdge                  *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
+	status0FS                fs.FS                   // overridden in tests; nil means use the real embedded status0Files
+	cancelCtx                context.CancelFunc
+	workersWg                sync.WaitGroup // Tracks workers
 
 	// dbFault latches the first structural database fault (the schema this
 	// process needs is gone). Armed in Start to trigger a graceful shutdown:
@@ -1664,8 +1665,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	discordService := discord.NewService(s.dbService, s.config, checksService, incidentsService)
 	discordHandler := discord.NewHandler(discordService, s.config)
 
+	// Build the Gateway supervisor up-front when enabled so its status is
+	// readable even before Start(). The Run() goroutine is launched from
+	// Start() under workersWg, exactly like the Slack Socket Mode supervisor.
+	if s.config.Discord.Enabled && s.config.Discord.GatewayEnabled && s.config.ShouldRunAPI() {
+		s.discordGatewaySupervisor = discord.NewGatewaySupervisor(discordService, s.config, slog.Default())
+		discordHandler.SetGatewaySupervisor(s.discordGatewaySupervisor)
+	}
+
 	discordIntegration := api.NewGroup("/integrations/discord")
 	discordIntegration.GET("/oauth", discordHandler.OAuthCallback)
+	discordIntegration.GET("/gateway/status", discordHandler.GetGatewayStatus)
 	discordIntegration.POST("/interactions",
 		discordHandler.VerifyMiddleware(discordHandler.HandleInteractions))
 
@@ -2764,6 +2774,18 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runSlackSocketSupervisor(runnerCtx)
 	}
 
+	// Start the Discord Gateway supervisor when configured. Unlike Slack's
+	// Socket Mode this is not an alternative transport: the HTTP interactions
+	// endpoint and the Gateway carry DIFFERENT traffic, and both are needed for
+	// full parity — buttons and slash commands over HTTP, everything a human
+	// types (thread replies, mention commands) over the Gateway.
+	if s.discordGatewaySupervisor != nil {
+		s.workersWg.Add(1)
+
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go s.runDiscordGatewaySupervisor(runnerCtx)
+	}
+
 	// Telegram boot-time sanity check + webhook self-heal (no-op unless this
 	// node serves the API and Telegram is configured). Best-effort and off the
 	// startup path: a Telegram outage must never stop the server from booting.
@@ -2880,6 +2902,16 @@ func (s *Server) runSlackSocketSupervisor(ctx context.Context) {
 
 	if err := s.slackSocketSupervisor.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		slog.WarnContext(ctx, "Slack Socket Mode supervisor exited", "error", err)
+	}
+}
+
+// runDiscordGatewaySupervisor wraps GatewaySupervisor.Run for the goroutine
+// launched in Start.
+func (s *Server) runDiscordGatewaySupervisor(ctx context.Context) {
+	defer s.workersWg.Done()
+
+	if err := s.discordGatewaySupervisor.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.WarnContext(ctx, "Discord Gateway supervisor exited", "error", err)
 	}
 }
 

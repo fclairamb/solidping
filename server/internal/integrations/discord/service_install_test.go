@@ -3,10 +3,12 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -51,9 +53,18 @@ func setupDiscordService(t *testing.T) (context.Context, *Service, *fakeDiscord)
 	return ctx, svc, fake
 }
 
+// postedMessage is one message the fake Discord received.
+type postedMessage struct {
+	ChannelID string
+	Body      map[string]any
+}
+
 // fakeDiscord is a stand-in for Discord's REST + OAuth endpoints.
 type fakeDiscord struct {
 	server *httptest.Server
+
+	mu     sync.Mutex
+	posted []postedMessage
 
 	// guild is what the token exchange reports the bot was added to.
 	guild Guild
@@ -93,6 +104,28 @@ func newFakeDiscord(t *testing.T) *fakeDiscord {
 		_ = json.NewEncoder(w).Encode(User{ID: fake.installerID, Username: "alice", Bot: false})
 	})
 
+	mux.HandleFunc("/channels/", func(w http.ResponseWriter, r *http.Request) {
+		body := map[string]any{}
+
+		if raw, _ := io.ReadAll(r.Body); len(raw) > 0 {
+			_ = json.Unmarshal(raw, &body)
+		}
+
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		channelID := ""
+
+		if len(parts) > 1 {
+			channelID = parts[1]
+		}
+
+		fake.mu.Lock()
+		fake.posted = append(fake.posted, postedMessage{ChannelID: channelID, Body: body})
+		fake.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(MessageResult{ID: "M-POSTED", ChannelID: channelID})
+	})
+
 	mux.HandleFunc("/guilds/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/channels") {
 			w.Header().Set("Content-Type", "application/json")
@@ -109,6 +142,17 @@ func newFakeDiscord(t *testing.T) *fakeDiscord {
 	t.Cleanup(fake.server.Close)
 
 	return fake
+}
+
+// messages returns the messages posted to the fake so far.
+func (f *fakeDiscord) messages() []postedMessage {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	out := make([]postedMessage, len(f.posted))
+	copy(out, f.posted)
+
+	return out
 }
 
 // installState mints a valid install state the way BuildInstallURL does, and

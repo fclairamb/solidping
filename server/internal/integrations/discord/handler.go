@@ -17,8 +17,9 @@ import (
 // Handler provides the HTTP handlers for the Discord integration.
 type Handler struct {
 	base.HandlerBase
-	svc *Service
-	cfg *config.Config
+	svc        *Service
+	cfg        *config.Config
+	supervisor *GatewaySupervisor
 }
 
 // NewHandler creates a new Discord integration handler.
@@ -28,6 +29,23 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 		svc:         service,
 		cfg:         cfg,
 	}
+}
+
+// SetGatewaySupervisor attaches a running Gateway supervisor so GetGatewayStatus
+// can surface its state. Optional — call only on nodes that run it.
+func (h *Handler) SetGatewaySupervisor(sup *GatewaySupervisor) {
+	h.supervisor = sup
+}
+
+// GetGatewayStatus returns the Discord Gateway supervisor status.
+//
+// Route: GET /api/v1/integrations/discord/gateway/status.
+func (h *Handler) GetGatewayStatus(writer http.ResponseWriter, _ *http.Request) error {
+	if h.supervisor == nil {
+		return h.WriteJSON(writer, http.StatusOK, GatewayStatus{Enabled: false})
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, h.supervisor.GetStatus())
 }
 
 // installURLRequest is the optional JSON body for BuildInstallURLForOrg.
