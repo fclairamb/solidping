@@ -46,6 +46,7 @@ import (
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -1067,6 +1068,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgAgentsAdmin.GET("/agents", agentsAdminHandler.ListAgents)
 	orgAgentsAdmin.DELETE("/agents/:uid", agentsAdminHandler.RevokeAgent)
 
+	// Files + attachments. Created HERE rather than next to the /files routes
+	// below because three later blocks need them: the agent upload endpoint,
+	// the agent-path incident pipeline, and the dashboard-path one.
+	filesService := files.NewService(s.dbService, s.config)
+	attachmentsService := attachments.NewService(filesService, s.dbService, s.config)
+
 	// Deported-agent WebSocket transport (spec 2026-07-16-02). Registered
 	// directly on `api` — it carries its own auth, performed BEFORE the
 	// upgrade: a one-shot spe_ enrollment bearer on first connect, Ed25519
@@ -1098,6 +1105,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	)
 	api.GET("/agent/ws", agentWSHandler.Serve)
 
+	// Agent attachment upload (spec 2026-08-21-01) — the WS route's sibling,
+	// and its counterpart: the socket is the JSON control channel, this is the
+	// only way binary bytes get in. It carries the SAME Ed25519 signed-header
+	// auth performed inline, so it is registered on `api` and never on an
+	// authenticated group.
+	agentAttachmentsHandler := attachments.NewHandler(attachmentsService, s.dbService, s.config)
+	api.POST("/agent/attachments", agentAttachmentsHandler.Upload)
+
+	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
+
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)
 	resultsHandler := results.NewHandler(resultsService, s.config)
@@ -1117,6 +1134,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	incidentsService.SetPublicationHook(incidentPublicationsService)
+	incidentsService.SetAttachmentStore(attachmentsService)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := orgGroup("/orgs/:org/incidents")
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -1260,7 +1278,6 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/orgs/:org/events/ws", wsHandler.Serve)
 
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
-	filesService := files.NewService(s.dbService, s.config)
 	filesHandler := files.NewHandler(filesService, s.config)
 	orgFiles := orgGroup("/orgs/:org/files")
 	orgFiles.GET("", filesHandler.List)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -100,6 +101,28 @@ const (
 	keyEffectiveRecoveryThreshold = "effective_recovery_threshold"
 )
 
+// AttachmentStore is the attachment side of the incident lifecycle (spec
+// 2026-08-21-01). Like PublicationHook it is a deliberately small interface so
+// this package never imports the files/attachment services — the dependency
+// runs the other way, and the incident state machine must not be able to fail
+// because a screenshot could not be written.
+//
+// Every call is best-effort at the call site: a missing screenshot is a
+// papercut, a missing incident is an outage nobody is paged for.
+type AttachmentStore interface {
+	// PutIncidentScreenshot stores (replacing any previous one) the PNG
+	// capture that is this incident's current onset evidence.
+	PutIncidentScreenshot(
+		ctx context.Context, orgUID, incidentUID string, png []byte, details models.JSONMap,
+	) (string, error)
+	// DeleteIncidentAttachments soft-deletes everything attached to the
+	// incident and reports how many rows changed.
+	DeleteIncidentAttachments(ctx context.Context, orgUID, incidentUID string) (int, error)
+	// ListIncidentAttachments renders the incident's live attachments for the
+	// API, signed download URLs included.
+	ListIncidentAttachments(ctx context.Context, orgUID, incidentUID string) ([]attachments.Response, error)
+}
+
 // PublicationHook is the status-page publication side of the incident
 // lifecycle (spec 2026-08-19-08). It is an interface, and deliberately a small
 // one, so this package never imports the publication service — the dependency
@@ -138,6 +161,12 @@ type Service struct {
 	// Nil-safe — a nil publisher no-ops (realtime disabled, tests).
 	rt *realtime.Publisher
 
+	// attachmentStore persists incident attachments (today: the browser
+	// screenshot of the onset). Nil-safe: every call goes through the
+	// attach*/reap* helpers below, which no-op when unset (tests, or a
+	// deployment with file storage disabled).
+	attachmentStore AttachmentStore
+
 	// maintenance resolves "is this check in an active maintenance window?".
 	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
 	// suppressed as maintenance and a result tagged as maintenance can never
@@ -160,6 +189,89 @@ func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock, r
 // SetPublicationHook wires the status-page publication side. Optional.
 func (s *Service) SetPublicationHook(hook PublicationHook) {
 	s.publications = hook
+}
+
+// SetAttachmentStore wires the attachment side. Optional.
+func (s *Service) SetAttachmentStore(store AttachmentStore) {
+	s.attachmentStore = store
+}
+
+// persistScreenshot writes the triggering result's browser capture as the
+// incident's screenshot attachment, when there is one.
+//
+// TRANSITIONS ONLY. This is called from createIncident and reopenIncident and
+// nowhere else, which is the whole storage argument of the feature: a 30 s
+// browser check that flaps all day produces 2,880 captures, and exactly the
+// handful that opened or reopened an incident are kept. Every other capture
+// only ever existed in the worker's memory and dies with the result.
+//
+// Best-effort: a storage failure is logged and the incident proceeds.
+func (s *Service) persistScreenshot(
+	ctx context.Context, check *models.Check, incident *models.Incident,
+	result *models.Result, trigger string,
+) {
+	if s.attachmentStore == nil || result == nil ||
+		result.Diagnostics == nil || result.Diagnostics.Screenshot == nil {
+		return
+	}
+
+	shot := result.Diagnostics.Screenshot
+	if len(shot.PNG) == 0 {
+		// The agent path advertises a capture it holds rather than sending the
+		// bytes (see checkerdef.Screenshot). Nothing to persist here yet — the
+		// upload arrives out-of-band through POST /api/v1/agent/attachments.
+		return
+	}
+
+	details := models.JSONMap{
+		attachments.DetailKeyTrigger:  trigger,
+		attachments.DetailKeyCheckUID: check.UID,
+	}
+
+	if !shot.CapturedAt.IsZero() {
+		details[attachments.DetailKeyCapturedAt] = shot.CapturedAt.UTC().Format(time.RFC3339)
+	}
+
+	// Region comes from the PERSISTED result row, never from the checker: a
+	// deported agent must not be the authority on where it ran.
+	if result.Region != nil {
+		details[attachments.DetailKeyRegion] = *result.Region
+	}
+
+	if _, err := s.attachmentStore.PutIncidentScreenshot(
+		ctx, check.OrganizationUID, incident.UID, shot.PNG, details,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to persist incident screenshot",
+			"incidentUid", incident.UID, "error", err)
+	}
+}
+
+// dropStaleScreenshot removes the previous onset's evidence when a relapse
+// brought none of its own.
+//
+// Same rule as failureResponse on reopen: a screenshot of the ORIGINAL outage
+// shown next to an incident whose current onset is a different failure is
+// worse than no screenshot — it invites the reader to diagnose the wrong
+// thing. persistScreenshot already replaces on write, so this only has to
+// handle the "relapse produced no capture" branch.
+func (s *Service) dropStaleScreenshot(
+	ctx context.Context, check *models.Check, incident *models.Incident, result *models.Result,
+) {
+	if s.attachmentStore == nil {
+		return
+	}
+
+	if result != nil && result.Diagnostics != nil &&
+		result.Diagnostics.Screenshot != nil && len(result.Diagnostics.Screenshot.PNG) > 0 {
+		return
+	}
+
+	if _, err := s.attachmentStore.DeleteIncidentAttachments(
+		ctx, check.OrganizationUID, incident.UID,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to drop stale incident screenshot",
+			"incidentUid", incident.UID, "error", err)
+	}
 }
 
 // publishOpened / publishResolved / publishReopened / publishMemberJoined are
@@ -747,6 +859,10 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 		return fmt.Errorf("failed to create incident: %w", err)
 	}
 
+	// After the row exists: the attachment topic is keyed on the incident uid,
+	// so there is nothing to attach to before this point.
+	s.persistScreenshot(ctx, check, incident, result, attachments.TriggerIncidentOpen)
+
 	// Emit incident created event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
 		keyCheckUID:  check.UID,
@@ -951,6 +1067,11 @@ func (s *Service) reopenIncident(
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen incident: %w", err)
 	}
+
+	// A reopen is a NEW onset: the relapse's capture replaces the original
+	// one, and a relapse with no capture leaves no stale one behind.
+	s.dropStaleScreenshot(ctx, check, incident, result)
+	s.persistScreenshot(ctx, check, incident, result, attachments.TriggerIncidentReopen)
 
 	// Pass check fields to the incident for notification payload
 	incident.RelapseCount = newRelapseCount
@@ -1774,6 +1895,15 @@ type IncidentResponse struct {
 	// incident open/reopen (failure_reason, first_result, and — after a
 	// relapse — last_failure). See failureDetails / lastFailureDetails.
 	Details models.JSONMap `json:"details,omitempty"`
+	// Attachments are the incident's stored evidence blobs (today: the browser
+	// screenshot of the onset), each with a short-lived signed download URL.
+	//
+	// Populated by the DETAIL endpoint only. The list endpoint deliberately
+	// leaves it empty: signing a URL per attachment per incident on a 100-row
+	// page is work nobody asked for, and the list view has nowhere to show one.
+	//
+	// NEVER PUBLIC — see attachments.Response.
+	Attachments []attachments.Response `json:"attachments,omitempty"`
 }
 
 // IncidentMemberResponse represents a single member of a group incident.
@@ -2237,7 +2367,30 @@ func (s *Service) GetIncident(
 		s.loadIncidentMembers(ctx, org.UID, incident, &response)
 	}
 
+	s.loadIncidentAttachments(ctx, org.UID, incident, &response)
+
 	return &response, nil
+}
+
+// loadIncidentAttachments fills the response's attachments. Best-effort: a
+// storage hiccup must degrade the incident page to "no screenshot", never to a
+// 500 on the page an operator opens during an outage.
+func (s *Service) loadIncidentAttachments(
+	ctx context.Context, orgUID string, incident *models.Incident, resp *IncidentResponse,
+) {
+	if s.attachmentStore == nil {
+		return
+	}
+
+	list, err := s.attachmentStore.ListIncidentAttachments(ctx, orgUID, incident.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list incident attachments",
+			"incidentUid", incident.UID, "error", err)
+
+		return
+	}
+
+	resp.Attachments = list
 }
 
 // GetIncidentByUID gets an incident by UID, requiring organization UID.

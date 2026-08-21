@@ -1415,6 +1415,20 @@ func (m *mockDBService) ListFiles(
 	panic("not implemented")
 }
 
+func (m *mockDBService) DeleteFilesByTopicPrefix(_ context.Context, _, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) ListAttachmentsByTopicPrefix(
+	_ context.Context, _ string, _ time.Time, _ int,
+) ([]*models.File, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) GetIncidentAny(_ context.Context, _ string) (*models.Incident, error) {
+	return nil, nil
+}
+
 func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }

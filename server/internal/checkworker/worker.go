@@ -35,6 +35,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/errorreport"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
@@ -208,6 +210,14 @@ func NewCheckWorker(
 	}
 
 	incidentSvc.SetPublicationHook(publicationSvc)
+
+	// Incident screenshots (spec 2026-08-21-01) are captured by the IN-PROCESS
+	// browser checker, so this is the path that actually persists them — the
+	// HTTP server's own incident service would only ever see results submitted
+	// by remote workers.
+	incidentSvc.SetAttachmentStore(
+		attachments.NewService(files.NewService(dbService, cfg), dbService, cfg),
+	)
 
 	directBackend := backend.NewDirectBackend(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,

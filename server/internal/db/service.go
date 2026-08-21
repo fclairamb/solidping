@@ -422,6 +422,11 @@ type Service interface {
 	// Incident operations
 	CreateIncident(ctx context.Context, incident *models.Incident) error
 	GetIncident(ctx context.Context, orgUID, uid string) (*models.Incident, error)
+	// GetIncidentAny looks an incident up by UID with NO org scoping. Its only
+	// caller is the attachment topic authorizer (spec 2026-08-21-01), which has
+	// no org to scope by BY DESIGN: the incident row is what names the
+	// organization, so that a caller cannot pick one by forging a topic.
+	GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error)
 	// GetIncidentByNumber resolves the short per-org `#42` reference — the form
 	// humans type into Telegram and read in Slack. Returns sql.ErrNoRows if none.
 	GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error)

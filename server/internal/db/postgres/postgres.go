@@ -6350,3 +6350,21 @@ func (s *Service) ListAttachmentsByTopicPrefix(
 
 	return files, nil
 }
+
+// GetIncidentAny retrieves an incident by UID without org scoping. Used by the
+// attachment topic authorizer, which derives the organization FROM the incident
+// rather than trusting the caller for it.
+func (s *Service) GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
+}
