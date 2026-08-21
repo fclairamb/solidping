@@ -7916,7 +7916,7 @@ type ClientInterface interface {
 
 	// TestReportScheduleWithBody Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -7925,7 +7925,7 @@ type ClientInterface interface {
 
 	// TestReportSchedule Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -12441,7 +12441,7 @@ func (c *Client) UpdateReportSchedule(ctx context.Context, org OrgPath, uid Repo
 
 // TestReportScheduleWithBody Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes any type of body and a specified content type.
 //
@@ -12460,7 +12460,7 @@ func (c *Client) TestReportScheduleWithBody(ctx context.Context, org OrgPath, ui
 
 // TestReportSchedule Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -28349,7 +28349,7 @@ type ClientWithResponsesInterface interface {
 
 	// TestReportScheduleWithBodyWithResponse Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -28358,7 +28358,7 @@ type ClientWithResponsesInterface interface {
 
 	// TestReportScheduleWithResponse Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -38421,6 +38421,8 @@ type TestReportScheduleResult struct {
 	JSON401 *Unauthorized
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
@@ -38436,6 +38438,11 @@ func (r TestReportScheduleResult) GetJSON401() *Unauthorized {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r TestReportScheduleResult) GetJSON404() *NotFound {
 	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r TestReportScheduleResult) GetJSON409() *Conflict {
+	return r.JSON409
 }
 
 // GetBody returns the raw response body bytes
@@ -46024,7 +46031,7 @@ func (c *ClientWithResponses) UpdateReportScheduleWithResponse(ctx context.Conte
 
 // TestReportScheduleWithBodyWithResponse Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46039,7 +46046,7 @@ func (c *ClientWithResponses) TestReportScheduleWithBodyWithResponse(ctx context
 
 // TestReportScheduleWithResponse Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -54339,6 +54346,13 @@ func ParseTestReportScheduleResult(rsp *http.Response) (*TestReportScheduleResul
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 

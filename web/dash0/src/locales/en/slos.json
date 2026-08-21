@@ -122,6 +122,7 @@
     "test": "Send me a test",
     "testSent": "Test report queued to your address",
     "testFailed": "Failed to send the test report",
+    "testSuppressed": "You have unsubscribed this address and cannot receive a test send",
     "form": {
       "newTitle": "New uptime report",
       "editTitle": "Edit uptime report",

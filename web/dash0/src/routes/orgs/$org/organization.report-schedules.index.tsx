@@ -152,9 +152,17 @@ function ReportSchedulesIndexPage() {
                             await testSchedule.mutateAsync(schedule.uid);
                             toast.success(t("reports.testSent"));
                           } catch (err) {
-                            toast.error(
-                              err instanceof ApiError ? err.message : t("reports.testFailed"),
-                            );
+                            if (err instanceof ApiError && err.code === "CONFLICT") {
+                              // The resolved recipient is on the org's
+                              // suppression list: the send was honored (not a
+                              // failure), so say why rather than the generic
+                              // failure string.
+                              toast.error(t("reports.testSuppressed"));
+                            } else {
+                              toast.error(
+                                err instanceof ApiError ? err.message : t("reports.testFailed"),
+                              );
+                            }
                           }
                         }}
                       >

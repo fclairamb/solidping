@@ -122,6 +122,7 @@
     "test": "Test an mich senden",
     "testSent": "Testbericht an Ihre Adresse eingereiht",
     "testFailed": "Testbericht konnte nicht gesendet werden",
+    "testSuppressed": "Sie haben sich von dieser Adresse abgemeldet und können keinen Testversand empfangen",
     "form": {
       "newTitle": "Neuer Verfügbarkeitsbericht",
       "editTitle": "Verfügbarkeitsbericht bearbeiten",

@@ -5194,7 +5194,9 @@ paths:
       description: >-
         Renders the report for the period that most recently closed and mails it
         to the authenticated caller (or to `recipient`). It never fans out to the
-        schedule's recipient list.
+        schedule's recipient list. Returns 409 instead of 202 when the resolved
+        recipient is on the organization's suppression list, since nothing is
+        actually queued in that case.
       operationId: testReportSchedule
       security:
         - bearerAuth: []
@@ -5220,6 +5222,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/orgs/{org}/maintenance-windows:
     get:

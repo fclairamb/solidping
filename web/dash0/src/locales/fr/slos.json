@@ -122,6 +122,7 @@
     "test": "M'envoyer un test",
     "testSent": "Rapport de test mis en file vers votre adresse",
     "testFailed": "Échec de l'envoi du rapport de test",
+    "testSuppressed": "Vous vous êtes désabonné de cette adresse et ne pouvez pas recevoir d'envoi de test",
     "form": {
       "newTitle": "Nouveau rapport de disponibilité",
       "editTitle": "Modifier le rapport de disponibilité",

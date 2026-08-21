@@ -122,6 +122,7 @@
     "test": "Enviarme una prueba",
     "testSent": "Informe de prueba en cola hacia tu dirección",
     "testFailed": "No se pudo enviar el informe de prueba",
+    "testSuppressed": "Te has dado de baja de esta dirección y no puedes recibir un envío de prueba",
     "form": {
       "newTitle": "Nuevo informe de disponibilidad",
       "editTitle": "Editar informe de disponibilidad",
