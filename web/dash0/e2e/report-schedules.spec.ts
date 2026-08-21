@@ -70,6 +70,52 @@ test.describe("Uptime report schedules", () => {
       { headers: { Authorization: `Bearer ${token}` } },
     );
   });
+
+  // Regression coverage for spec 2026-08-21-04: TestSend queues correctly and
+  // returns 202 with an empty body, but apiFetch's handleResponse only ever
+  // special-cased 204 — so response.json() threw on the empty stream and the
+  // UI reported a manufactured failure for a request that had actually
+  // succeeded. Asserting the failure toast is ABSENT (not just that the
+  // success toast is present) is what would have caught that: both toasts
+  // firing together would still pass an assertion that only checked success.
+  test("sends a test report and shows success, not a manufactured failure", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const name = `E2E Test Send ${Date.now()}`;
+    const recipient = `e2e-test-send-${Date.now()}@acme.com`;
+
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/report-schedules`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name, frequency: "monthly", recipients: [recipient] },
+      },
+    );
+    expect(createResp.status()).toBe(201);
+    const { uid } = await createResp.json();
+
+    try {
+      await page.goto("orgs/test/organization/report-schedules");
+      await page.waitForLoadState("networkidle");
+
+      const row = page.getByTestId("report-row").filter({ hasText: name }).first();
+      await row.getByTestId("report-row-test").click();
+
+      await expect(
+        page.getByText("Test report queued to your address"),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Failed to send the test report"),
+      ).toHaveCount(0);
+    } finally {
+      await page.request.delete(
+        `${API_BASE}/api/v1/orgs/test/report-schedules/${uid}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    }
+  });
 });
 
 test.describe("Organization breadcrumb", () => {
