@@ -24,6 +24,17 @@ const portPresencePG = 15486
 // SQLite). Self-skips under `-short` and on any embedded-startup error,
 // mirroring the other embedded-postgres tests (see tunnel_postgres_test.go in
 // the checks package).
+//
+// No routine path (CI or a Makefile target) runs this package without
+// `-short`: ci.yml's only backend test step is `go test ./... -short`, and
+// `make test`/`test-scenario` never drop `-short` either — verified by
+// grepping .github/workflows/*.yml and the Makefile (2026-08-21). That is
+// true of every one of the ~35 other `*_postgres_test.go` files in this repo
+// (same `testing.Short()` guard throughout), so this is the established
+// repo-wide convention, not a gap unique to this test: embedded-Postgres
+// coverage here is run manually — `go test ./internal/handlers/statusupdates/...
+// -run TestUpdateStatusUpdate_Postgres -v` (no `-short`) — the same way a
+// developer would exercise any other `_postgres_test.go` in the tree.
 type pgPresenceFixture struct {
 	svc        *statusupdates.Service
 	dbSvc      *postgres.Service

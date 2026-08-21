@@ -99,7 +99,7 @@ export function StatusUpdateForm({
   }, [mode, pages, form.statusPageUid]);
 
   // Fetch the selected page with sections for cascading dropdowns
-  const { data: selectedPage } = useStatusPage(
+  const { data: selectedPage, isLoading: selectedPageLoading } = useStatusPage(
     org,
     form.statusPageUid,
     { with: "sections" }
@@ -321,7 +321,16 @@ export function StatusUpdateForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isPending} data-testid="status-update-form-submit">
+        <Button
+          type="submit"
+          // Also disabled while the selected page is (re)loading: the
+          // effectiveCheckUid guard above only knows whether the stored
+          // checkUid still belongs to the page once selectedPage has
+          // resolved, so a Save fired in that window could otherwise submit
+          // a pairing that hasn't been validated yet.
+          disabled={isPending || selectedPageLoading}
+          data-testid="status-update-form-submit"
+        >
           {isPending ? "Saving…" : mode === "create" ? "Create" : "Save changes"}
         </Button>
       </div>

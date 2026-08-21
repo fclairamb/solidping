@@ -8,11 +8,18 @@ import type { Page } from "@playwright/test";
 //    persist as NULL — the assertion proves the negative (the field reads
 //    "No section" / "No check" / empty after a reload), not merely that the
 //    PATCH request returned 200.
-// 2. A second pass that CHANGES values (rather than clearing them), then
-//    re-enters the edit page from the list within the 1-minute staleTime
-//    window, guards the stale-cache regression the query-key invalidation
-//    fix is for — the singular ["statusUpdate", org, uid] query must be
-//    invalidated alongside the list, or the edit form re-renders the
+// 2. A second pass that CHANGES values (rather than clearing them), saves,
+//    and re-enters the edit page via an IN-APP client-side navigation (never
+//    page.goto/reload) guards the stale-cache regression the query-key
+//    invalidation fix is for. A real navigation would tear down and recreate
+//    the QueryClient (constructed fresh in module scope, main.tsx) and always
+//    hit the network with an empty cache — that would never exercise the
+//    singular ["statusUpdate", org, uid] cache entry at all, making the
+//    assertion pass whether or not the fix exists. Only a client-side
+//    transition (clicking the in-app <Link> back into the same edit route)
+//    keeps the QueryClient instance alive long enough for the bug to
+//    reproduce: without invalidating the singular key alongside the list,
+//    react-query would still be within staleTime and would render the
 //    pre-edit cached payload.
 
 async function getAuthToken(page: Page): Promise<string> {
@@ -144,9 +151,9 @@ test.describe("Status update edit — clearing fields and stale cache", () => {
     expect(afterClear.linkUrl).toBeUndefined();
 
     // --- Second pass: change values (not clear them), save, go to the
-    // list, then re-enter edit within the 1-minute staleTime window and
-    // assert the NEW values render — guards the stale singular-cache
-    // regression the query-key invalidation fix is for. ---
+    // list, then re-enter edit via an in-app click within the 1-minute
+    // staleTime window and assert the NEW values render — guards the stale
+    // singular-cache regression the query-key invalidation fix is for. ---
     const newTitle = `E2E clear-fields update ${suffix} (changed)`;
     await page.getByTestId("status-update-form-title").fill(newTitle);
     await page.getByTestId("status-update-form-section").click();
@@ -159,12 +166,22 @@ test.describe("Status update edit — clearing fields and stale cache", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByText(newTitle)).toBeVisible({ timeout: 10000 });
 
-    // Re-enter the edit page immediately (well within the 1-minute
-    // staleTime) — the app-wide singular ["statusUpdate", org, uid] cache
-    // entry must have been invalidated by the save above, or this would
-    // render the pre-edit payload.
-    await page.goto(`orgs/test/status-updates/${update.uid}/edit`);
-    await page.waitForLoadState("networkidle");
+    // Re-enter the edit page via an IN-APP client-side transition — clicking
+    // the row's title <Link> (status-updates.index.tsx), NOT page.goto/reload.
+    // The QueryClient instance from the save above must survive this
+    // navigation for the assertion below to mean anything: the app-wide
+    // singular ["statusUpdate", org, uid] cache entry has to have been
+    // invalidated by the save, or react-query would still be within the
+    // 1-minute staleTime and would serve the pre-edit cached payload instead
+    // of refetching.
+    const updatedRow = page
+      .getByTestId("status-update-row")
+      .filter({ hasText: newTitle });
+    await updatedRow.getByTestId("status-update-row-title").click();
+    await page.waitForURL(
+      new RegExp(`/status-updates/${update.uid}/edit`),
+      { timeout: 10000 },
+    );
 
     await expect(page.getByTestId("status-update-form-title")).toHaveValue(
       newTitle,
