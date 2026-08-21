@@ -1,5 +1,7 @@
 package discord
 
+import "strings"
+
 // Discord API constants shared by the bot client, the interactions endpoint
 // and the Gateway supervisor.
 const (
@@ -176,4 +178,93 @@ func (u *User) DisplayName() string {
 	}
 
 	return u.Username
+}
+
+// Message-component custom ids. Discord gives a component a single opaque
+// string, so the action and its subject are packed into one value with a `:`
+// separator — the Discord counterpart of Slack's action_id + value pair.
+const (
+	// ActionAcknowledge acknowledges an incident.
+	ActionAcknowledge = "ack"
+	// ActionUnavailable declares the presser unavailable.
+	ActionUnavailable = "unavailable"
+	// ActionEscalate escalates the incident immediately.
+	ActionEscalate = "escalate"
+
+	// customIDSeparator splits the action from its subject.
+	customIDSeparator = ":"
+)
+
+// BuildCustomID packs an action and its subject into a component custom id.
+func BuildCustomID(action, subject string) string {
+	return action + customIDSeparator + subject
+}
+
+// ParseCustomID splits a component custom id back into its action and subject.
+// A malformed id yields ("", "") so a caller can reject it without a panic.
+func ParseCustomID(customID string) (string, string) {
+	action, subject, found := strings.Cut(customID, customIDSeparator)
+	if !found || action == "" || subject == "" {
+		return "", ""
+	}
+
+	return action, subject
+}
+
+// IncidentActionRow builds the action row attached to an active incident
+// message. Kept here rather than in the notifications package so the sender
+// (which writes the buttons) and the interactions endpoint (which reads their
+// custom ids) share one definition and cannot drift.
+func IncidentActionRow(incidentUID string) Component {
+	return Component{
+		Type: ComponentTypeActionRow,
+		Components: []Component{
+			{
+				Type:     ComponentTypeButton,
+				Style:    ButtonStyleSuccess,
+				Label:    "Acknowledge",
+				CustomID: BuildCustomID(ActionAcknowledge, incidentUID),
+			},
+			{
+				Type:     ComponentTypeButton,
+				Style:    ButtonStyleSecondary,
+				Label:    "I'm unavailable",
+				CustomID: BuildCustomID(ActionUnavailable, incidentUID),
+			},
+			{
+				Type:     ComponentTypeButton,
+				Style:    ButtonStyleDanger,
+				Label:    "Escalate",
+				CustomID: BuildCustomID(ActionEscalate, incidentUID),
+			},
+		},
+	}
+}
+
+// State-entry key schema shared between the notification sender (which writes
+// the reverse thread mapping when it opens an incident's thread) and the
+// Gateway (which resolves an inbound reply back to its incident).
+const (
+	reverseThreadStatePrefix = "discord/threads/"
+	commentDedupeStatePrefix = "discord/comments/"
+
+	// ThreadIncidentUIDKey / ThreadOrgUIDKey are the value keys of a reverse
+	// thread entry. Exported so the writer and the reader cannot drift.
+	ThreadIncidentUIDKey = "incident_uid"
+	ThreadOrgUIDKey      = "organization_uid"
+)
+
+// ReverseThreadStateKey maps a Discord thread (guild, thread) back to its
+// incident. Stored as a global (org-nil) entry: the guild's home org need not
+// own the incident, so the value carries the incident's org UID rather than
+// scoping the key to it.
+func ReverseThreadStateKey(guildID, threadID string) string {
+	return reverseThreadStatePrefix + guildID + "/" + threadID
+}
+
+// CommentDedupeStateKey builds the per-message idempotency marker key that
+// stops a Gateway redelivery (a RESUME replaying events, a reconnect) from
+// recording the same comment twice.
+func CommentDedupeStateKey(guildID, channelID, messageID string) string {
+	return commentDedupeStatePrefix + guildID + "/" + channelID + "/" + messageID
 }

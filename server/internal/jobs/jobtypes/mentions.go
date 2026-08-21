@@ -23,21 +23,35 @@ var mentionableEventTypes = map[string]bool{
 }
 
 // integrationWantsMentions reports whether this integration is configured to
-// mention the on-call person. Only Slack supports mentions today — Teams
-// mentions are explicitly out of scope (spec 2026-08-12-03) — and the flag
-// defaults to false, so every integration stored before the feature existed
-// keeps its previous behavior with no migration.
+// mention the on-call person. Slack and the Discord bot support it; Teams
+// mentions are explicitly out of scope (spec 2026-08-12-03). In both supported
+// cases the flag defaults to false, so every integration stored before the
+// feature existed keeps its previous behavior with no migration.
 func integrationWantsMentions(integration *models.Integration) bool {
-	if integration == nil || integration.Type != models.ConnectionTypeSlack {
+	if integration == nil {
 		return false
 	}
 
-	settings, err := models.SlackSettingsFromJSONMap(integration.Settings)
-	if err != nil {
+	switch integration.Type {
+	case models.ConnectionTypeSlack:
+		settings, err := models.SlackSettingsFromJSONMap(integration.Settings)
+		if err != nil {
+			return false
+		}
+
+		return settings.MentionOnCall
+	case models.ConnectionTypeDiscord:
+		settings, err := models.DiscordSettingsFromJSONMap(integration.Settings)
+		if err != nil {
+			return false
+		}
+
+		// A legacy webhook integration can never mention anyone: a webhook post
+		// has no identity mapping behind it and cannot ping a user id.
+		return settings.MentionOnCall && settings.UsesBot()
+	default:
 		return false
 	}
-
-	return settings.MentionOnCall
 }
 
 // ResolveOnCallMentions returns the humans the incident's effective escalation

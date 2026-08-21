@@ -21,6 +21,7 @@ type WebhookMessage struct {
 // Embed represents a Discord embed object.
 type Embed struct {
 	Title       string  `json:"title,omitempty"`
+	URL         string  `json:"url,omitempty"`
 	Description string  `json:"description,omitempty"`
 	Color       int     `json:"color,omitempty"`
 	Fields      []Field `json:"fields,omitempty"`
