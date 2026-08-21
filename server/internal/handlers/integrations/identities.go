@@ -15,9 +15,11 @@ import (
 // Identity-mapping errors.
 var (
 	// ErrIdentitiesUnsupportedType is returned when identity mapping is asked
-	// of an integration type that has no identity concept. Only Slack is
-	// supported today; Teams is explicitly out of scope (spec 2026-08-12-03).
-	ErrIdentitiesUnsupportedType = errors.New("identity mapping is only available for Slack integrations")
+	// of an integration type that has no identity concept. Slack and bot-mode
+	// Discord are supported; Teams is explicitly out of scope
+	// (spec 2026-08-12-03).
+	ErrIdentitiesUnsupportedType = errors.New(
+		"identity mapping is only available for Slack and Discord bot integrations")
 	// ErrSlackNotConnected is returned when the Slack integration carries no
 	// bot token, so no workspace lookup is possible.
 	ErrSlackNotConnected = errors.New("slack integration is not connected — install the Slack app")
@@ -134,7 +136,7 @@ func (s *Service) loadIdentityContext(
 		return nil, ErrConnectionNotFound
 	}
 
-	if conn.Type != models.ConnectionTypeSlack {
+	if !supportsIdentities(conn) {
 		return nil, ErrIdentitiesUnsupportedType
 	}
 
@@ -144,6 +146,34 @@ func (s *Service) loadIdentityContext(
 	}
 
 	return &identityContext{org: org, conn: conn, members: members}, nil
+}
+
+// supportsIdentities reports whether identity mapping applies to this
+// integration.
+//
+// A LEGACY webhook-mode Discord integration is excluded on purpose: a webhook
+// post carries no bot identity and cannot render a `<@id>` ping, so a mapping
+// there would be a setting that quietly does nothing.
+func supportsIdentities(conn *models.Integration) bool {
+	if conn.Type == models.ConnectionTypeSlack {
+		return true
+	}
+
+	if conn.Type == models.ConnectionTypeDiscord {
+		settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
+
+		return err == nil && settings.UsesBot()
+	}
+
+	return false
+}
+
+// identityHit is one resolved provider-side account, in the shape the sync
+// needs regardless of where it came from — a Slack workspace lookup or a
+// Discord sign-in already on file.
+type identityHit struct {
+	ID          string
+	DisplayName string
 }
 
 // memberUser returns the live user behind a membership row, or nil when the
@@ -280,11 +310,6 @@ func (s *Service) SyncIdentities(
 		return nil, err
 	}
 
-	token, err := s.slackAccessToken(ctx, ictx.conn)
-	if err != nil {
-		return nil, err
-	}
-
 	rows, err := s.db.ListUserIntegrationIdentities(ctx, ictx.conn.UID)
 	if err != nil {
 		return nil, fmt.Errorf("list identities: %w", err)
@@ -292,13 +317,12 @@ func (s *Service) SyncIdentities(
 
 	byUser := identitiesByUser(rows)
 	owners := externalIDOwners(rows)
-	client := s.slackIdentityClientFor(token)
 
-	// Phase 1 — ask Slack about every member, writing nothing yet. Resolving
-	// first makes the outcome independent of member iteration order: two people
-	// whose addresses collide on one Slack account must BOTH be reported
-	// ambiguous, not "whoever the query returned first wins".
-	resolved, err := s.lookupAll(ctx, client, ictx.members, byUser)
+	// Phase 1 — resolve every member, writing nothing yet. Resolving first
+	// makes the outcome independent of member iteration order: two people who
+	// collide on one provider account must BOTH be reported ambiguous, not
+	// "whoever the query returned first wins".
+	resolved, err := s.resolveIdentities(ctx, ictx, byUser)
 	if err != nil {
 		return nil, err
 	}
@@ -331,24 +355,49 @@ func (s *Service) SyncIdentities(
 	return buildSyncResponse(entries), nil
 }
 
-// lookupAll resolves every member's email against the workspace. Members with a
-// manual mapping are skipped entirely — their answer is already settled, so
-// spending a Slack call on them would only add latency and rate-limit pressure.
-func (s *Service) lookupAll(
+// resolveIdentities picks the right resolver for the integration type.
+func (s *Service) resolveIdentities(
+	ctx context.Context,
+	ictx *identityContext,
+	byUser map[string]*models.UserIntegrationIdentity,
+) (map[string]*identityHit, error) {
+	if ictx.conn.Type == models.ConnectionTypeDiscord {
+		return s.lookupDiscordIdentities(ctx, ictx.members, byUser), nil
+	}
+
+	token, err := s.slackAccessToken(ctx, ictx.conn)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.lookupSlackIdentities(ctx, s.slackIdentityClientFor(token), ictx.members, byUser)
+}
+
+// skipAutoMatch reports whether a member's mapping is already settled by an
+// admin, in which case the auto-match must not spend a lookup on them and must
+// not get a vote.
+func skipAutoMatch(user *models.User, byUser map[string]*models.UserIntegrationIdentity) bool {
+	if user == nil {
+		return true
+	}
+
+	existing := byUser[user.UID]
+
+	return existing != nil && existing.Source == models.IdentitySourceManual
+}
+
+// lookupSlackIdentities resolves every member's email against the workspace.
+func (s *Service) lookupSlackIdentities(
 	ctx context.Context,
 	client SlackIdentityLookup,
 	members []*models.OrganizationMember,
 	byUser map[string]*models.UserIntegrationIdentity,
-) (map[string]*slack.SlackUser, error) {
-	resolved := make(map[string]*slack.SlackUser, len(members))
+) (map[string]*identityHit, error) {
+	resolved := make(map[string]*identityHit, len(members))
 
 	for _, member := range members {
 		user := memberUser(member)
-		if user == nil || strings.TrimSpace(user.Email) == "" {
-			continue
-		}
-
-		if existing := byUser[user.UID]; existing != nil && existing.Source == models.IdentitySourceManual {
+		if user == nil || strings.TrimSpace(user.Email) == "" || skipAutoMatch(user, byUser) {
 			continue
 		}
 
@@ -358,11 +407,55 @@ func (s *Service) lookupAll(
 		}
 
 		if found && slackUser != nil {
-			resolved[user.UID] = slackUser
+			resolved[user.UID] = &identityHit{ID: slackUser.ID, DisplayName: slackDisplayName(slackUser)}
 		}
 	}
 
 	return resolved, nil
+}
+
+// lookupDiscordIdentities resolves members from the Discord sign-ins already on
+// file (`user_providers`, provider type `discord`).
+//
+// Deliberately no API call: Discord has no "look up a user by email" endpoint
+// for bots, and a guild member list would only tell us who is in the server,
+// not which SolidPing account they are. Anyone who has ever pressed "Sign in
+// with Discord" is therefore matched for free, and everyone else is mapped by
+// an admin through the manual override — which is also why a failure here is
+// impossible and the function returns no error.
+func (s *Service) lookupDiscordIdentities(
+	ctx context.Context,
+	members []*models.OrganizationMember,
+	byUser map[string]*models.UserIntegrationIdentity,
+) map[string]*identityHit {
+	resolved := make(map[string]*identityHit, len(members))
+
+	for _, member := range members {
+		user := memberUser(member)
+		if user == nil || skipAutoMatch(user, byUser) {
+			continue
+		}
+
+		providers, err := s.db.ListUserProvidersByUser(ctx, user.UID)
+		if err != nil {
+			continue
+		}
+
+		for _, provider := range providers {
+			if provider.ProviderType != models.ProviderTypeDiscord || provider.ProviderID == "" {
+				continue
+			}
+
+			resolved[user.UID] = &identityHit{
+				ID:          provider.ProviderID,
+				DisplayName: strings.TrimSpace(user.Name),
+			}
+
+			break
+		}
+	}
+
+	return resolved
 }
 
 // slackIdentityClientFor builds the lookup client, falling back to the real
@@ -392,12 +485,12 @@ func (s *Service) applyResolution(
 	conn *models.Integration,
 	user *models.User,
 	existing *models.UserIntegrationIdentity,
-	hit *slack.SlackUser,
+	hit *identityHit,
 	owners map[string]string,
 	claimCount map[string]int,
 ) (*MemberIdentityResponse, error) {
 	// A manual mapping is the admin's answer; the auto-match does not get a
-	// vote. Ditto for a member Slack could not place: keep whatever mapping
+	// vote. Ditto for a member the provider could not place: keep whatever mapping
 	// they already had rather than destroying it on one unhelpful answer, and
 	// report "not found" only when there is nothing to keep.
 	if hit == nil {
@@ -417,7 +510,7 @@ func (s *Service) applyResolution(
 
 	identity := models.NewUserIntegrationIdentity(
 		conn.OrganizationUID, conn.UID, user.UID,
-		hit.ID, slackDisplayName(hit), models.IdentitySourceAuto,
+		hit.ID, hit.DisplayName, models.IdentitySourceAuto,
 	)
 
 	if err := s.db.UpsertUserIntegrationIdentity(ctx, identity); err != nil {

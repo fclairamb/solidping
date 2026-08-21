@@ -377,3 +377,121 @@ func TestSyncIdentitiesRequiresConnectedSlack(t *testing.T) {
 	_, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, stub.UID)
 	r.ErrorIs(err, integrations.ErrSlackNotConnected)
 }
+
+// discordIdentityFixture is an org with a bot-mode Discord integration.
+type discordIdentityFixture struct {
+	svc   *integrations.Service
+	dbSvc db.Service
+	org   *models.Organization
+	conn  *models.Integration
+}
+
+func (f *discordIdentityFixture) addMember(
+	ctx context.Context, t *testing.T, email, name string,
+) *models.User {
+	t.Helper()
+
+	user := models.NewUser(email)
+	user.Name = name
+	require.NoError(t, f.dbSvc.CreateUser(ctx, user))
+	require.NoError(t, f.dbSvc.CreateOrganizationMember(
+		ctx, models.NewOrganizationMember(f.org.UID, user.UID, models.MemberRoleUser)))
+
+	return user
+}
+
+// signedInWithDiscord records the user_providers row "Sign in with Discord"
+// writes, which is the only source the Discord auto-match reads.
+func (f *discordIdentityFixture) signedInWithDiscord(
+	ctx context.Context, t *testing.T, user *models.User, discordUserID string,
+) {
+	t.Helper()
+
+	require.NoError(t, f.dbSvc.CreateUserProvider(
+		ctx, models.NewUserProvider(user.UID, models.ProviderTypeDiscord, discordUserID)))
+}
+
+func newDiscordIdentityFixture(
+	ctx context.Context, t *testing.T, slug string, settings *models.DiscordSettings,
+) *discordIdentityFixture {
+	t.Helper()
+
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	creds, err := credentials.NewService(newKEK(t), newMemDEKStore())
+	r.NoError(err)
+
+	org := models.NewOrganization(slug, "Discord Identity Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	settingsMap, err := settings.ToJSONMap()
+	r.NoError(err)
+
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeDiscord, "acme discord")
+	conn.Settings = settingsMap
+	r.NoError(dbSvc.CreateChannel(ctx, conn))
+
+	return &discordIdentityFixture{
+		svc:   integrations.NewService(dbSvc, creds, nil, nil),
+		dbSvc: dbSvc,
+		org:   org,
+		conn:  conn,
+	}
+}
+
+// TestSyncIdentitiesDiscordUsesSignIns proves the Discord auto-match: a member
+// who has signed in with Discord is mapped for free, with no API call (Discord
+// has no bot-facing "look up a user by email"), and a member who has not is
+// simply reported not-found for an admin to map by hand.
+func TestSyncIdentitiesDiscordUsesSignIns(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	fx := newDiscordIdentityFixture(ctx, t, "discord-ids", &models.DiscordSettings{
+		GuildID: "G-ACME", GuildName: "acme", ChannelID: "C-ALERTS",
+	})
+
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
+	bob := fx.addMember(ctx, t, "bob@acme.test", "Bob")
+
+	fx.signedInWithDiscord(ctx, t, alice, "111222333444555666")
+
+	resp, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, fx.conn.UID)
+	r.NoError(err)
+	r.Len(resp.Data, 2)
+	r.Equal(1, resp.MatchedCount)
+	r.Equal(1, resp.NotFoundCount)
+
+	aliceEntry := entryFor(resp.Data, alice.UID)
+	r.NotNil(aliceEntry)
+	r.Equal(integrations.IdentityStatusMatched, aliceEntry.Status)
+	r.Equal("111222333444555666", aliceEntry.ExternalID)
+
+	bobEntry := entryFor(resp.Data, bob.UID)
+	r.NotNil(bobEntry)
+	r.Equal(integrations.IdentityStatusNotFound, bobEntry.Status)
+}
+
+// TestSyncIdentitiesDiscordWebhookModeRejected: a legacy webhook integration
+// cannot render a `<@id>` ping at all, so offering identity mapping there would
+// be a setting that quietly does nothing.
+func TestSyncIdentitiesDiscordWebhookModeRejected(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	fx := newDiscordIdentityFixture(ctx, t, "discord-webhook-ids", &models.DiscordSettings{
+		WebhookURL: "https://discord.com/api/webhooks/1/acme-legacy",
+	})
+
+	_, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, fx.conn.UID)
+	r.ErrorIs(err, integrations.ErrIdentitiesUnsupportedType)
+}

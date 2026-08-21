@@ -1295,6 +1295,15 @@ function DiscordDestinationPanel({
 
         <DiscordMentionSwitch settings={settings} onChange={onChange} />
         <DiscordCommentIngestionSwitch settings={settings} onChange={onChange} />
+
+        {org && channelUid && currentId && (
+          <SlackMemberMapping
+            org={org}
+            integrationUid={channelUid}
+            workspaceUsers={[]}
+            variant="discord"
+          />
+        )}
       </div>
 
       {typeof settings.webhook_url === "string" &&
@@ -1769,6 +1778,13 @@ interface SlackMemberMappingProps {
   org: string;
   integrationUid: string;
   workspaceUsers: SlackUser[];
+  /**
+   * "slack" offers a workspace-user picker per row. "discord" does not: a bot
+   * cannot look a Discord user up by email, so mappings come from members who
+   * signed in with Discord (re-sync picks those up). Rendering a picker with
+   * no options would be a dead control that looks broken.
+   */
+  variant?: "slack" | "discord";
 }
 
 /**
@@ -1780,6 +1796,7 @@ function SlackMemberMapping({
   org,
   integrationUid,
   workspaceUsers,
+  variant = "slack",
 }: SlackMemberMappingProps) {
   const { t } = useTranslation("integrations");
   const { data, isLoading, isError } = useIntegrationIdentities(
@@ -1820,10 +1837,15 @@ function SlackMemberMapping({
             {t("form.slackMemberMapping", "Member mapping")}
           </p>
           <p className="text-xs text-muted-foreground">
-            {t(
-              "form.slackMemberMappingHelp",
-              "Which SolidPing members we can @-mention on this workspace. Matched automatically by email; override any row manually.",
-            )}
+            {variant === "discord"
+              ? t(
+                  "form.discordMemberMappingHelp",
+                  "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
+                )
+              : t(
+                  "form.slackMemberMappingHelp",
+                  "Which SolidPing members we can @-mention on this workspace. Matched automatically by email; override any row manually.",
+                )}
           </p>
         </div>
         <Button
@@ -1882,7 +1904,12 @@ function SlackMemberMapping({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <IdentityStatusBadge identity={identity} />
-                  <div className="w-full sm:w-[220px]">
+                  <div
+                    className={cn(
+                      "w-full sm:w-[220px]",
+                      variant === "discord" && "hidden",
+                    )}
+                  >
                     <SlackUserCombobox
                       users={workspaceUsers}
                       currentId={identity.externalId ?? ""}
