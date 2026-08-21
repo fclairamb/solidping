@@ -227,11 +227,79 @@ func SlackSettingsFromJSONMap(m JSONMap) (*SlackSettings, error) {
 	return &s, nil
 }
 
-// DiscordSettings represents Discord-specific settings stored in the Settings JSONB.
+// DiscordSettings represents Discord-specific settings stored in the Settings
+// JSONB. It covers BOTH Discord modes, and which one a connection is in is a
+// function of the data, never of a separate connection type:
+//
+//   - Legacy webhook mode: only WebhookURL is set. This is what every Discord
+//     integration created before the bot existed looks like, and it keeps
+//     working untouched — the sender picks the webhook path whenever the bot
+//     fields are absent, with no migration and no re-install.
+//   - Bot mode: GuildID + ChannelID are set (written by the bot install flow).
+//     Threads, message edits, the Acknowledge button, mentions and inbound
+//     comments are only available here.
+//
+// No credential lives in this blob: the bot token is instance-level system
+// config (`auth.discord.bot_token`), exactly like the Teams bot's Entra app
+// secret, so a stolen settings blob grants nothing.
 //
 //nolint:tagliatelle // JSON tags must match Discord webhook field names
 type DiscordSettings struct {
-	WebhookURL string `json:"webhook_url"`
+	// WebhookURL is the legacy, one-way mode. Kept first and unchanged so a
+	// pre-bot row decodes exactly as it always did.
+	WebhookURL string `json:"webhook_url,omitempty"`
+
+	// GuildID / GuildName identify the Discord server the bot was installed
+	// into. GuildID is the identity the org mapping is keyed on (see
+	// organization_providers, ProviderTypeDiscord).
+	GuildID   string `json:"guild_id,omitempty"`
+	GuildName string `json:"guild_name,omitempty"`
+
+	// BotUserID is the application's own user id inside the guild, used to
+	// recognize "this message is ours" on the Gateway.
+	BotUserID string `json:"bot_user_id,omitempty"`
+
+	// ChannelID / ChannelName are the default notification destination — the
+	// Discord counterpart of SlackSettings.ChannelID.
+	ChannelID   string `json:"channel_id,omitempty"`
+	ChannelName string `json:"channel_name,omitempty"`
+
+	// InstalledByUserID records the Discord user who performed the install.
+	InstalledByUserID string `json:"installed_by_user_id,omitempty"`
+
+	// MentionOnCall makes channel alerts ping the humans the escalation policy
+	// would page first (`<@123>`). Zero value is deliberately false so every
+	// integration stored before this field existed keeps behaving exactly as
+	// before; the bot install flow writes `true` explicitly for new installs.
+	MentionOnCall bool `json:"mention_on_call,omitempty"`
+
+	// CommentIngestion selects how inbound Discord thread replies are treated,
+	// with the same explicit/all semantics as SlackSettings.CommentIngestion.
+	// Zero value ("") means explicit — the safe direction.
+	CommentIngestion string `json:"comment_ingestion,omitempty"`
+}
+
+// Discord comment-ingestion modes. Deliberately the same string values as the
+// Slack ones so an operator reading two settings blobs sees one vocabulary.
+const (
+	// DiscordCommentIngestionExplicit ingests only `/solidping comment`.
+	DiscordCommentIngestionExplicit = "explicit"
+	// DiscordCommentIngestionAll ingests every human thread reply.
+	DiscordCommentIngestionAll = "all"
+)
+
+// UsesBot reports whether this connection is in bot mode. A guild and a target
+// channel are both required: a guild with no channel has nowhere to post, and
+// the sender must fall back to the webhook rather than silently doing nothing.
+func (ds *DiscordSettings) UsesBot() bool {
+	return ds != nil && ds.GuildID != "" && ds.ChannelID != ""
+}
+
+// IngestsAllThreadReplies reports whether this Discord integration captures
+// every human thread reply as an incident comment. Anything other than an
+// explicit "all" — including an absent value on a pre-existing row — means no.
+func (ds *DiscordSettings) IngestsAllThreadReplies() bool {
+	return ds != nil && ds.CommentIngestion == DiscordCommentIngestionAll
 }
 
 // ToJSONMap converts DiscordSettings to JSONMap for storage.

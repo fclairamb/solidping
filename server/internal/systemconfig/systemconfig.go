@@ -81,6 +81,8 @@ const (
 	KeyDiscordClientSecret      ParameterKey = "auth.discord.client_secret"
 	KeyDiscordBotToken          ParameterKey = "auth.discord.bot_token"
 	KeyDiscordRedirectURL       ParameterKey = "auth.discord.redirect_url"
+	KeyDiscordPublicKey         ParameterKey = "auth.discord.public_key"
+	KeyDiscordGatewayEnabled    ParameterKey = "auth.discord.gateway_enabled"
 	KeyGoogleEnabled            ParameterKey = "auth.google.enabled"
 	KeyGitHubEnabled            ParameterKey = "auth.github.enabled"
 	KeyGitLabEnabled            ParameterKey = "auth.gitlab.enabled"
@@ -765,6 +767,28 @@ func getKnownParameters() []ParameterDefinition {
 				if v, ok := value.(string); ok {
 					cfg.Discord.RedirectURL = v
 				}
+			},
+		},
+		{
+			// The application's Ed25519 public key. NOT secret: it is a public
+			// verification key Discord publishes on the app's own settings
+			// page, and the dashboard needs to render it so an operator can
+			// tell at a glance whether the value matches their Discord app.
+			Key:    KeyDiscordPublicKey,
+			EnvVar: "SP_DISCORD_PUBLIC_KEY",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Discord.PublicKey = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyDiscordGatewayEnabled,
+			EnvVar: "SP_DISCORD_GATEWAY_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Discord.GatewayEnabled = parseBool(value, cfg.Discord.GatewayEnabled)
 			},
 		},
 		{
