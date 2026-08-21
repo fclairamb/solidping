@@ -103,6 +103,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/whatsappcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/msteams"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
@@ -1656,6 +1657,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
 
+	// Discord bot integration routes (inbound from Discord — no org auth;
+	// authenticity for the interactions endpoint is the per-request Ed25519
+	// signature check in VerifyMiddleware, which Discord probes and which it
+	// DEACTIVATES the endpoint over if it ever fails).
+	discordService := discord.NewService(s.dbService, s.config, checksService, incidentsService)
+	discordHandler := discord.NewHandler(discordService, s.config)
+
+	discordIntegration := api.NewGroup("/integrations/discord")
+	discordIntegration.GET("/oauth", discordHandler.OAuthCallback)
+
 	// Microsoft Teams bot routes (inbound from Bot Framework — no org auth;
 	// authenticity is the per-request JWT check against Microsoft's JWKS in
 	// HandleMessages). The routes are always registered so the status and
@@ -1759,6 +1770,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/slack").
 		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	slackOrgIntegrationRoutes.POST("/install-url", slackHandler.BuildInstallURLForOrg)
+
+	// Discord destinations picker (authenticated, org-scoped).
+	discordOrgRoutes := orgGroup("/orgs/:org/channels/:uid/discord")
+	discordOrgRoutes.GET("/destinations", discordHandler.GetDestinations)
+
+	// Org-scoped Discord bot install-URL minting. Same reasoning as Slack: the
+	// org comes from the authenticated route context, never from a query param.
+	discordOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/discord").
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	discordOrgIntegrationRoutes.POST("/install-url", discordHandler.BuildInstallURLForOrg)
 
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)
