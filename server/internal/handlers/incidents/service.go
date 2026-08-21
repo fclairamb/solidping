@@ -51,6 +51,11 @@ const (
 	// /comment command. Unlike Slack, the author is a verified linked contact,
 	// so the comment is attributed to their SolidPing user via ActorUID.
 	CommentSourceTelegram = "telegram"
+	// CommentSourceDiscord marks a comment ingested from a Discord thread
+	// reply or posted with the bot's `comment` command. Like Slack (and unlike
+	// Telegram) the author usually has no SolidPing user, so attribution lives
+	// on the payload and ActorUID stays empty.
+	CommentSourceDiscord = "discord"
 )
 
 // Comment event payload keys. camelCase to match the wire shape the dashboard
@@ -65,6 +70,10 @@ const (
 	payloadKeySlackTs       = "slackTs"
 	payloadKeyTelegramChat  = "telegramChatId"
 	payloadKeyCommentAuthor = "authorName"
+	payloadKeyDiscordUserID = "discordUserId"
+	payloadKeyDiscordUser   = "discordUserName"
+	payloadKeyDiscordGuild  = "discordGuildId"
+	payloadKeyDiscordMsgID  = "discordMessageId"
 )
 
 // MaxSnoozeDuration caps how long an operator can silence an incident in a
@@ -2527,8 +2536,13 @@ type AcknowledgeIncidentRequest struct {
 	// entirely — this records who actually did it, which the user UID alone
 	// cannot express.
 	TelegramActor string
-	Note          string // Optional free-text note
-	Via           string // "slack", "web", "email", "phone", etc.
+	// DiscordUserID / DiscordUsername attribute a Discord button ack. Discord
+	// users are not SolidPing users, so — exactly like the Slack pair above —
+	// these land on the event payload and AcknowledgedBy stays empty.
+	DiscordUserID   string
+	DiscordUsername string
+	Note            string // Optional free-text note
+	Via             string // "slack", "web", "email", "phone", etc.
 }
 
 // AcknowledgeIncident marks an incident as acknowledged. Accepts the org
@@ -2618,6 +2632,12 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	// apart from "a colleague pressed the button in the team group".
 	if req.TelegramActor != "" {
 		event.Payload["acknowledged_by_telegram"] = req.TelegramActor
+	}
+	// Discord acks: same shape as the Slack pair, kept under their own keys so
+	// a timeline entry says which chat platform the button lived on.
+	if req.DiscordUserID != "" {
+		event.Payload["discord_user_id"] = req.DiscordUserID
+		event.Payload["discord_username"] = req.DiscordUsername
 	}
 	if req.AcknowledgedBy != "" {
 		event.ActorUID = &req.AcknowledgedBy
@@ -2745,6 +2765,17 @@ type AddCommentRequest struct {
 	// these two are display/provenance detail for the timeline.
 	TelegramChatID string
 	TelegramActor  string
+	// Discord attribution (discord source). Mirrors the Slack quartet.
+	DiscordUserID    string
+	DiscordUserName  string
+	DiscordGuildID   string
+	DiscordMessageID string
+	// EchoOriginGuildID names the Discord guild where this comment is ALREADY
+	// visible — the guild whose incident thread the author typed it into — and
+	// is therefore the guild the fan-out must skip. Set only by the thread-reply
+	// ingest path, never by the `comment` command, for the same reason as
+	// EchoOriginTeamID above.
+	EchoOriginGuildID string
 }
 
 // AddComment appends a user-authored comment to an incident's timeline as an
@@ -2796,6 +2827,55 @@ func (s *Service) AddCommentFromSlackCommand(
 		SlackUserID:   slackUserID,
 		SlackUserName: slackUserName,
 		SlackTeamID:   slackTeamID,
+	})
+}
+
+// AcknowledgeIncidentFromDiscord marks an incident acknowledged from a Discord
+// message-component (button) interaction. Same idempotent, escalation-canceling
+// path as the Slack variant; only the attribution differs.
+func (s *Service) AcknowledgeIncidentFromDiscord(
+	ctx context.Context, orgUID, incidentUID, discordUserID, discordUsername string,
+) (*models.Incident, error) {
+	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
+		IncidentUID:     incidentUID,
+		DiscordUserID:   discordUserID,
+		DiscordUsername: discordUsername,
+		Via:             CommentSourceDiscord,
+	})
+}
+
+// AddCommentFromDiscord appends a comment ingested from a Discord thread reply.
+// The echo origin is set so the guild whose thread the author typed into does
+// not get the comment repeated back at them.
+func (s *Service) AddCommentFromDiscord(
+	ctx context.Context, orgUID, incidentUID, text, discordUserID, discordUserName, guildID, messageID string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:       incidentUID,
+		Text:              text,
+		Source:            CommentSourceDiscord,
+		DiscordUserID:     discordUserID,
+		DiscordUserName:   discordUserName,
+		DiscordGuildID:    guildID,
+		DiscordMessageID:  messageID,
+		EchoOriginGuildID: guildID,
+	})
+}
+
+// AddCommentFromDiscordCommand appends a comment posted with the bot's
+// `comment` command. Separate from AddCommentFromDiscord for the same reason
+// the Slack pair is split: a command posts nothing visible in the channel, so
+// the originating guild MUST still receive the fan-out.
+func (s *Service) AddCommentFromDiscordCommand(
+	ctx context.Context, orgUID, incidentUID, text, discordUserID, discordUserName, guildID string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:     incidentUID,
+		Text:            text,
+		Source:          CommentSourceDiscord,
+		DiscordUserID:   discordUserID,
+		DiscordUserName: discordUserName,
+		DiscordGuildID:  guildID,
 	})
 }
 
@@ -2866,6 +2946,11 @@ func (s *Service) addCommentByOrgUID(
 		}
 		payload[payloadKeyTelegramChat] = req.TelegramChatID
 		payload[payloadKeyVia] = CommentSourceTelegram
+	case CommentSourceDiscord:
+		payload[payloadKeyDiscordUserID] = req.DiscordUserID
+		payload[payloadKeyDiscordUser] = req.DiscordUserName
+		payload[payloadKeyDiscordGuild] = req.DiscordGuildID
+		payload[payloadKeyDiscordMsgID] = req.DiscordMessageID
 	}
 
 	// Best-effort check identity for rendering, mirroring the ack path — the
@@ -2912,6 +2997,8 @@ func (s *Service) commentAuthorName(ctx context.Context, req *AddCommentRequest)
 		if actor := strings.TrimSpace(req.TelegramActor); actor != "" {
 			return actor
 		}
+	case CommentSourceDiscord:
+		return strings.TrimSpace(req.DiscordUserName)
 	}
 
 	if req.ActorUID == "" {
@@ -3041,20 +3128,36 @@ func (s *Service) commentFanoutConnections(
 // Slack thread is stored once per incident, so every Slack connection in that
 // workspace would post into the very thread the author is reading.
 func isCommentEchoOrigin(conn *models.Integration, req *AddCommentRequest) bool {
-	if req.Source != CommentSourceSlack || conn.Type != models.ConnectionTypeSlack {
+	switch {
+	case req.Source == CommentSourceSlack && conn.Type == models.ConnectionTypeSlack:
+		if req.EchoOriginTeamID == "" {
+			return false
+		}
+
+		settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+		if err != nil || settings == nil {
+			return false
+		}
+
+		return settings.TeamID == req.EchoOriginTeamID
+	case req.Source == CommentSourceDiscord && conn.Type == models.ConnectionTypeDiscord:
+		// Guild-level, for the same reason as the Slack workspace match: the
+		// incident's Discord thread is stored once per incident, so any
+		// connection in that guild would post into the very thread the author
+		// is reading.
+		if req.EchoOriginGuildID == "" {
+			return false
+		}
+
+		settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
+		if err != nil || settings == nil {
+			return false
+		}
+
+		return settings.GuildID == req.EchoOriginGuildID
+	default:
 		return false
 	}
-
-	if req.EchoOriginTeamID == "" {
-		return false
-	}
-
-	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
-	if err != nil || settings == nil {
-		return false
-	}
-
-	return settings.TeamID == req.EchoOriginTeamID
 }
 
 // UnacknowledgeIncident clears the acknowledgment on an incident. Use case:
