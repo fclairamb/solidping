@@ -1666,6 +1666,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	discordIntegration := api.NewGroup("/integrations/discord")
 	discordIntegration.GET("/oauth", discordHandler.OAuthCallback)
+	discordIntegration.POST("/interactions",
+		discordHandler.VerifyMiddleware(discordHandler.HandleInteractions))
 
 	// Microsoft Teams bot routes (inbound from Bot Framework — no org auth;
 	// authenticity is the per-request JWT check against Microsoft's JWKS in
