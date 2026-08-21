@@ -348,3 +348,114 @@ func TestAgentUploadRateLimited(t *testing.T) {
 
 	r.True(limiter.allow("a", now.Add(time.Minute)), "the window rolls")
 }
+
+// TestAgentUploadCreatesNoRowForAnUnknownIncident is the invariant behind the
+// §7 decision that there is no "unreferenced agent blob" class to sweep.
+//
+// The claim is that an attachment cannot be BORN unreferenced: the only wire
+// path that writes one refuses unless the topic authorizer resolves a live
+// incident. A 403 alone would not prove that — the refusal has to happen before
+// anything is written, otherwise a rejected upload could still leave a row (and
+// a blob) behind with a topic pointing at nothing.
+//
+// So this asserts on the `files` table, not on the status code, and pairs it
+// with a positive control proving the identical request shape DOES create a row
+// when the incident exists.
+func TestAgentUploadCreatesNoRowForAnUnknownIncident(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+
+	countFiles := func() int {
+		_, total, err := f.db.ListFiles(f.ctx(), f.org.UID, models.ListFilesFilter{})
+		r.NoError(err)
+
+		return int(total)
+	}
+
+	r.Zero(countFiles(), "the fixture starts with no files")
+
+	ghost := IncidentScreenshotTopic("11111111-1111-1111-1111-111111111111")
+	r.Equal(http.StatusForbidden,
+		f.serve(t, agent.signedRequest(f.ctx(), t, ghost, pngBytes("ghost"))).Code)
+
+	r.Zero(countFiles(),
+		"a refused upload must leave no row: that is what makes an unreferenced attachment impossible")
+
+	// Positive control: same agent, same bytes, a topic naming a LIVE incident.
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t,
+			IncidentScreenshotTopic(f.incident.UID), pngBytes("real"))).Code)
+	r.Equal(1, countFiles())
+}
+
+// TestAgentUploadReplacesTheSameTopic pins replace-on-write on the AGENT path.
+//
+// A topic names one current artifact, not a log. Without the replace, an agent
+// retrying an upload (or capturing on consecutive relapses) would stack live
+// rows that the incident card renders one under another — bounded only by the
+// rate limiter, and unreachable by the GC sweep for as long as the incident
+// exists, since every one of them points at a perfectly live incident.
+func TestAgentUploadReplacesTheSameTopic(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	first := f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("first")))
+	r.Equal(http.StatusCreated, first.Code)
+
+	second := f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("second")))
+	r.Equal(http.StatusCreated, second.Code)
+
+	var firstResp, secondResp UploadResponse
+	r.NoError(json.Unmarshal(first.Body.Bytes(), &firstResp))
+	r.NoError(json.Unmarshal(second.Body.Bytes(), &secondResp))
+	r.NotEqual(firstResp.FileUID, secondResp.FileUID)
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 1, "the second upload must retire the first, not stack on it")
+	r.Equal(secondResp.FileUID, live[0].UID)
+
+	_, err = f.db.GetFile(f.ctx(), f.org.UID, firstResp.FileUID)
+	r.Error(err, "the superseded attachment is soft-deleted")
+}
+
+// TestAgentUploadReplaceIsScopedToTheExactTopic is the negative that keeps the
+// replace from becoming a per-incident wipe: a different KIND on the same
+// incident is a different artifact and must survive a screenshot upload.
+//
+// This matters because the kind segment is a bare word — reaping the screenshot
+// topic as a PREFIX would also take `screenshot-after`, `har`, and anything
+// else a later spec hangs off the same incident.
+func TestAgentUploadReplaceIsScopedToTheExactTopic(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	// A sibling artifact on the same incident, written directly (there is only
+	// one registered kind on the wire today).
+	sibling := IncidentTopicPrefix(f.incident.UID) + "screenshot-after"
+	siblingUID, err := f.svc.Put(f.ctx(), f.org.UID, sibling, "after.png", pngBytes("after"), nil)
+	r.NoError(err)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("onset"))).Code)
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("onset-again"))).Code)
+
+	stored, err := f.db.GetFile(f.ctx(), f.org.UID, siblingUID)
+	r.NoError(err, "a different kind on the same incident must survive the replace")
+	r.NotNil(stored)
+}

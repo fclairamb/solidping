@@ -293,6 +293,40 @@ Ordered so every step lands on a green tree. Steps 1–2 are the generic rail;
   whose `incidents/<uid>/…` topic points at an incident that no longer exists
   (and which are older than a grace window) are soft-deleted.
 
+#### Decision: §7's "agent-uploaded blobs never referenced within a few hours" is not a separate sweep
+
+The Proposal asks the GC to also sweep "agent-uploaded blobs never referenced
+within a few hours". That phrasing comes from a design where an upload gets an
+id first and is *pointed at* later, so a blob can sit in an unreferenced limbo.
+**The shipped design has no such state**, and the sweep for it would be
+provably empty:
+
+1. **The topic IS the reference.** §1 chose a path-like `files.topic` precisely
+   so no second table records "what points at this blob". A row either carries a
+   topic naming an entity, or it is not an attachment at all. There is no
+   "uploaded but not yet referenced" row to find.
+2. **An attachment cannot be born unreferenced.** Only two code paths ever set a
+   topic. `PutIncidentScreenshot` is called from `createIncident`/`reopenIncident`
+   *after* the incident row is committed. The agent endpoint refuses the write
+   unless the topic authorizer resolves a **live** incident — and the org it
+   writes under is that incident's, not the caller's. So at write time every
+   attachment's topic names an existing entity, by construction.
+3. **Everything after write time is already the other class.** The only way an
+   attachment stops being referenced is that its entity goes away — which is
+   exactly the missing-incident class the shipped sweep collects.
+
+Because this is a claim about code paths and not about a value, it is pinned by
+a test rather than left as prose: `TestAgentUploadCreatesNoRowForAnUnknownIncident`
+asserts the endpoint writes **zero** `files` rows when the topic names an
+incident that does not exist (the case that would otherwise mint an unreferenced
+blob), with a positive control proving the same request shape does create a row
+for a live incident. `TestSweepOrphanIncidentAttachments` covers the other half:
+if such a row ever did appear, the sweep collects it.
+
+If a future attachment kind introduces a genuine reserve-then-reference flow,
+this decision has to be revisited — the invariant above is what makes the sweep
+unnecessary, not an argument that reapers are unnecessary.
+
 ### Step 8 — dash0 + E2E
 
 - `IncidentAttachment` type in `api/hooks.ts`; `IncidentScreenshotCard`

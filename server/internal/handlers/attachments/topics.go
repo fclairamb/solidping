@@ -88,11 +88,12 @@ func ParseTopic(topic string) (ParsedTopic, error) {
 	return ParsedTopic{Entity: parts[0], EntityUID: parts[1], Kind: parts[2]}, nil
 }
 
-// isTopicSegment allows only [A-Za-z0-9._-]. That covers UUIDs and kind names
-// while excluding the two characters that would make a topic dangerous: `%`
-// and `_` are LIKE wildcards in the prefix reap (escaped there, but not
-// relying on it twice is cheap), and `/` would let a caller invent extra
-// segments.
+// isTopicSegment allows only [A-Za-z0-9.-] — note that `_` is NOT allowed.
+//
+// That covers UUIDs and kind names while excluding the characters that would
+// make a topic dangerous: `%` and `_` are LIKE wildcards in the prefix reap
+// (they are escaped there too, but not relying on that twice is cheap), and
+// `/` would let a caller invent extra segments.
 func isTopicSegment(segment string) bool {
 	for _, char := range segment {
 		switch {

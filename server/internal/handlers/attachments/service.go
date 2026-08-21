@@ -113,16 +113,12 @@ type Response struct {
 }
 
 // PutIncidentScreenshot writes a PNG as the incident's screenshot attachment.
-// It REPLACES any previous one: the caller's contract is "this is the evidence
-// for the current onset", so the prior capture is soft-deleted first.
+// It REPLACES any previous one (see Put): the caller's contract is "this is the
+// evidence for the current onset", so the prior capture is retired first.
 func (s *Service) PutIncidentScreenshot(
 	ctx context.Context, orgUID, incidentUID string, png []byte, details models.JSONMap,
 ) (string, error) {
-	if _, err := s.DeleteIncidentAttachments(ctx, orgUID, incidentUID); err != nil {
-		return "", err
-	}
-
-	return s.put(
+	return s.Put(
 		ctx, orgUID,
 		IncidentScreenshotTopic(incidentUID),
 		"incident-"+incidentUID+"-screenshot.png",
@@ -157,9 +153,25 @@ func (s *Service) ListIncidentAttachments(
 
 // Put writes an arbitrary attachment under an already-AUTHORIZED topic. The
 // org must be the authorizer's answer, never a caller-supplied value.
+//
+// REPLACE-ON-WRITE, exactly like PutIncidentScreenshot. A topic names ONE
+// current artifact ("this incident's screenshot"), not a log of every artifact
+// ever produced for it, so a second write under the same topic retires the
+// first. Without this an agent retrying an upload — or simply capturing on
+// consecutive relapses — would stack live rows the incident card renders one
+// under another, bounded only by the per-agent rate limit and unreachable by
+// the GC sweep for as long as the incident exists.
+//
+// Scoped to the EXACT topic, never the entity prefix: a future `har` or `pcap`
+// attachment on the same incident is a different artifact and must not be
+// collateral damage of a screenshot upload.
 func (s *Service) Put(
 	ctx context.Context, orgUID, topic, name string, body []byte, details models.JSONMap,
 ) (string, error) {
+	if _, err := s.files.DeleteAttachmentsByTopic(ctx, orgUID, topic); err != nil {
+		return "", err
+	}
+
 	return s.put(ctx, orgUID, topic, name, body, details)
 }
 

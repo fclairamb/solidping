@@ -298,9 +298,56 @@ func (s *Service) ListAttachments(ctx context.Context, orgUID, topic string) ([]
 	return files, nil
 }
 
+// DeleteAttachmentsByTopic soft-deletes every live attachment of an org under
+// an EXACT topic and returns how many rows changed. This is the replace half of
+// replace-on-write.
+//
+// Exact rather than prefix, deliberately: a topic's kind segment is a bare
+// word, so reaping `incidents/<uid>/screenshot` as a PREFIX would also take
+// `incidents/<uid>/screenshot-after` or any future kind whose name happens to
+// start the same way. A replace must only ever retire the artifact it is
+// replacing.
+func (s *Service) DeleteAttachmentsByTopic(ctx context.Context, orgUID, topic string) (int, error) {
+	if topic == "" {
+		return 0, nil
+	}
+
+	existing, err := s.ListAttachments(ctx, orgUID, topic)
+	if err != nil {
+		return 0, err
+	}
+
+	deleted := 0
+
+	for _, file := range existing {
+		if delErr := s.DeleteFileByUID(ctx, orgUID, file.UID); delErr != nil {
+			return deleted, delErr
+		}
+
+		deleted++
+	}
+
+	return deleted, nil
+}
+
+// DeleteFileByUID soft-deletes one file by uid, scoped to the org. Unlike
+// DeleteFile it takes the org UID rather than a slug, for internal callers that
+// already resolved the organization.
+func (s *Service) DeleteFileByUID(ctx context.Context, orgUID, fileUID string) error {
+	if err := s.db.DeleteFile(ctx, orgUID, fileUID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrFileNotFound
+		}
+
+		return err
+	}
+
+	return nil
+}
+
 // DeleteAttachments soft-deletes every live attachment of an org under a topic
-// PREFIX and returns how many rows changed. Two callers: entity-deletion
-// reaping (`incidents/<uid>/`) and replace-on-reopen.
+// PREFIX and returns how many rows changed. Used for entity-deletion reaping
+// (`incidents/<uid>/`) — see DeleteAttachmentsByTopic for the replace path.
 //
 // The blobs are deliberately left in storage — same posture as DeleteFile —
 // and swept later by the GC pass.
