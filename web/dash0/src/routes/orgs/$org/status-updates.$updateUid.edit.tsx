@@ -26,16 +26,19 @@ function EditStatusUpdatePage() {
   const updateMutation = useUpdateStatusUpdate(org, updateUid);
 
   const handleSubmit = async (data: StatusUpdateFormData) => {
+    // sectionUid/checkUid/linkUrl are presence-aware nullable fields on the
+    // API: sending `null` clears them, `undefined` (an omitted key) would
+    // leave them untouched instead — always send all three explicitly so
+    // "No section" / "No check" / an emptied link actually persists.
+    // incidentUid has no field in this form, so it is never sent (untouched).
     await updateMutation.mutateAsync({
       kind: data.kind,
       title: data.title,
       bodyMarkdown: data.bodyMarkdown,
-      linkUrl: data.linkUrl || undefined,
-      publishedAt: data.publishedAt
-        ? new Date(data.publishedAt).toISOString()
-        : undefined,
-      sectionUid: data.sectionUid !== "none" ? data.sectionUid : undefined,
-      checkUid: data.checkUid !== "none" ? data.checkUid : undefined,
+      linkUrl: data.linkUrl || null,
+      publishedAt: new Date(data.publishedAt).toISOString(),
+      sectionUid: data.sectionUid !== "none" ? data.sectionUid : null,
+      checkUid: data.checkUid !== "none" ? data.checkUid : null,
     });
     toast.success(t("statusUpdates:toast.updated"));
     navigate({ to: "/orgs/$org/status-updates", params: { org } });

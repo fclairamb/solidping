@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStatusPages, useStatusPage, type StatusUpdate } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,16 +105,37 @@ export function StatusUpdateForm({
     { with: "sections" }
   );
 
-  const sections = selectedPage?.sections ?? [];
+  const sections = useMemo(() => selectedPage?.sections ?? [], [selectedPage]);
 
   // Build check options based on selected section.
   // A status update pins to an INDIVIDUAL check, so group-targeting resources
   // (which have no checkUid) are not selectable here — see spec 2026-08-01-03.
-  const checkOptions = (
-    form.sectionUid !== "none"
-      ? (sections.find((s) => s.uid === form.sectionUid)?.resources ?? [])
-      : sections.flatMap((s) => s.resources ?? [])
-  ).filter((r): r is typeof r & { checkUid: string } => Boolean(r.checkUid));
+  const checkOptions = useMemo(
+    () =>
+      (
+        form.sectionUid !== "none"
+          ? (sections.find((s) => s.uid === form.sectionUid)?.resources ?? [])
+          : sections.flatMap((s) => s.resources ?? [])
+      ).filter((r): r is typeof r & { checkUid: string } => Boolean(r.checkUid)),
+    [sections, form.sectionUid]
+  );
+
+  // Guard against an inconsistent section/check pairing. handleSectionChange
+  // already resets checkUid on an interactive section change; this covers the
+  // case that can't be validated up front — edit mode seeds form state
+  // directly from the loaded update (formDataFromUpdate) before sections have
+  // loaded. effectiveCheckUid is purely derived (no effect / no extra
+  // setState + render cycle): once selectedPage has loaded, it falls back to
+  // "none" if the stored checkUid no longer appears among the current
+  // section's options (e.g. the check's resource was removed from the page
+  // since the update was created) — used for both what the Select displays
+  // and what gets submitted, so a stale pairing can never be shown or sent.
+  const effectiveCheckUid =
+    selectedPage &&
+    form.checkUid !== "none" &&
+    !checkOptions.some((r) => r.checkUid === form.checkUid)
+      ? "none"
+      : form.checkUid;
 
   const handlePageChange = (v: string) => {
     setForm((f) => ({ ...f, statusPageUid: v, sectionUid: "none", checkUid: "none" }));
@@ -126,7 +147,7 @@ export function StatusUpdateForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit(form);
+    await onSubmit({ ...form, checkUid: effectiveCheckUid });
   };
 
   const cardDescription =
@@ -203,7 +224,7 @@ export function StatusUpdateForm({
           <div className="space-y-1">
             <Label htmlFor="check">Check (optional)</Label>
             <Select
-              value={form.checkUid}
+              value={effectiveCheckUid}
               onValueChange={(v) => setForm((f) => ({ ...f, checkUid: v }))}
               disabled={!form.statusPageUid}
             >

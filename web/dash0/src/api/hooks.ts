@@ -4592,12 +4592,16 @@ export interface CreateStatusUpdateRequest {
 }
 
 export interface UpdateStatusUpdateRequest {
-  sectionUid?: string;
-  checkUid?: string;
-  incidentUid?: string;
+  // Presence-aware nullable fields: omit the key to leave the column
+  // untouched, send `null` to clear it, or a non-empty value to set it. A
+  // plain optional string can't express "clear" — see
+  // server/internal/handlers/statusupdates/service.go.
+  sectionUid?: string | null;
+  checkUid?: string | null;
+  incidentUid?: string | null;
+  linkUrl?: string | null;
   title?: string;
   bodyMarkdown?: string;
-  linkUrl?: string;
   kind?: string;
   publishedAt?: string;
 }
@@ -4668,6 +4672,9 @@ export function useUpdateStatusUpdate(org: string, uid: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+      // The edit page reads through the singular key, which the app-wide
+      // 1-minute staleTime would otherwise leave stale after a save.
+      queryClient.invalidateQueries({ queryKey: ["statusUpdate", org, uid] });
     },
   });
 }
@@ -4680,8 +4687,9 @@ export function useDeleteStatusUpdate(org: string) {
       apiFetch<void>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
         method: "DELETE",
       }),
-    onSuccess: () => {
+    onSuccess: (_data, uid) => {
       queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+      queryClient.removeQueries({ queryKey: ["statusUpdate", org, uid] });
     },
   });
 }
