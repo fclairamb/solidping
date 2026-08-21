@@ -83,3 +83,67 @@ Implement the flow spec 2026-08-21-01 §6 describes, in the order it describes:
 - An agent that disconnected between the result and the request: the incident
   still opens, nothing is retried forever.
 - End-to-end: marker → request → POST → attachment visible on the incident.
+
+---
+
+## Implementation Plan
+
+### Decisions carried in from the spec (not re-litigated)
+
+- **Agent gone → the capture is simply lost.** Nothing on the incident path may
+  block, fail, or retry because an agent could not be reached. The hook returns
+  nothing at all, exactly like `PublicationHook`.
+- **Bounding the ask: one request per incident TRANSITION.** The request is
+  emitted from the same two call sites `persistScreenshot` already has —
+  `createIncident` and `reopenIncident` — and from nowhere else. A chatty agent
+  that sets the marker on every failing result therefore cannot make the server
+  emit more than one request per open/reopen; the confirmation window and the
+  incident state machine are what bound it, not a counter we could get wrong.
+- **The topic is SERVER-GENERATED.** `attachments.IncidentScreenshotTopic(incident.UID)`
+  built from the incident row the server just wrote. `captureId` is echoed back
+  verbatim because it only names a slot in the agent's own RAM — it never
+  reaches storage, a path, or a query.
+
+### Step 3 sub-decision: request-on-best-effort-and-drop
+
+**Chosen: best-effort, in-process, one shot, no pending record.**
+
+Justification, in two lines: the request rides the socket the result arrived on,
+and on the master the incident pipeline runs *synchronously inside*
+`workers.SubmitResult`, so at the instant the request is emitted the agent's
+connection is on this very replica and still open in ~all cases. A pending
+record would buy the residual case (agent reconnected in the millisecond
+between, or a later replica processes it) at the cost of a table, a retry loop
+and an expiry sweeper — for an artifact whose source is a TTL'd in-RAM LRU that
+has very likely already dropped the bytes by the time a retry fires. Losing the
+screenshot is a papercut; the incident is unaffected either way.
+
+Consequences accepted and pinned by tests: the send is a non-blocking channel
+put that returns `false` when no connection is registered for that worker (and
+is simply dropped), and the agent `Take`s the bytes out of its LRU, so a failed
+POST is never retried.
+
+### Steps
+
+1. **`server/internal/agents/capturecache`** — a bounded, TTL'd LRU keyed by a
+   generated capture id. Bounded by entry count AND total bytes; `Put` refuses a
+   blob larger than the whole budget; `Take` removes (one-shot). Injectable clock.
+2. **`agents/protocol.go`** — `MsgTypeUploadRequest = "upload-request"` plus
+   `ServerFrame.Topic` / `ServerFrame.CaptureID`. Nothing on the client frame changes.
+3. **`checkworker/backend/ws.go`** — on `SubmitResult`, move the screenshot bytes
+   into the LRU and replace them, **on a copy of the caller's Diagnostics**, with
+   `{available:true, captureId}`. A blob that does not fit advertises nothing.
+4. **`handlers/agentws`** — a small `connRegistry` (worker uid → buffered
+   outbound frame channel, registered for the life of one connection,
+   identity-checked on removal so a stale teardown cannot unregister the live
+   socket). The connection loop drains it in its existing `select`. `Handler`
+   grows `RequestScreenshotUpload(ctx, workerUID, captureID, topic)`.
+5. **`handlers/incidents`** — `AgentUploadRequester` hook, nil-safe, returning
+   nothing; `persistScreenshot`'s "marker with no bytes" branch becomes the
+   request instead of a bare `return`. Keyed on `result.WorkerUID`, which the
+   agent's WS connection registers itself under.
+6. **`checkworker/backend/ws.go`** — honour the frame: `Take` the bytes and POST
+   them to `/api/v1/agent/attachments?topic=…` with the SAME Ed25519 signed
+   headers the WS reconnect uses. One attempt, off the read pump's goroutine.
+7. **Wiring** in `app/server.go`: `agentWorkerIncidents.SetAgentUploadRequester(agentWSHandler)`.
+8. **Tests** — the spec's list, each as a real negative where one is stated.
