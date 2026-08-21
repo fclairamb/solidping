@@ -89,8 +89,16 @@ function hasOAuthTokenInURL(): boolean {
 
 export const Route = createFileRoute("/orgs/$org")({
   beforeLoad: ({ context, params, location }) => {
-    // Don't redirect if we're on a public page (login, register)
-    if (location.pathname.endsWith("/login") || location.pathname.endsWith("/register")) {
+    // Don't redirect if we're on a public page (login, register). Anchored to
+    // the org-level login/register routes specifically — a bare
+    // `.endsWith("/register")` also matches nested authenticated routes that
+    // happen to end in "register" (e.g.
+    // organization/private-locations/register), wrongly treating them as
+    // public and skipping the auth redirect.
+    if (
+      location.pathname.endsWith(`/orgs/${params.org}/login`) ||
+      location.pathname.endsWith(`/orgs/${params.org}/register`)
+    ) {
       return { org: params.org, isLoginPage: true };
     }
     // Allow through if OAuth callback tokens are present in the URL
@@ -957,7 +965,11 @@ function OrgLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();
-  const isLoginPage = location.pathname.endsWith("/login") || location.pathname.endsWith("/register");
+  // Anchored to the org-level login/register routes — see the matching
+  // beforeLoad check above for why a bare `.endsWith("/register")` is wrong.
+  const isLoginPage =
+    location.pathname.endsWith(`/orgs/${org}/login`) ||
+    location.pathname.endsWith(`/orgs/${org}/register`);
   const [oauthProcessing, setOauthProcessing] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const { data: features } = useFeatures();
