@@ -4,6 +4,7 @@ package statusupdates
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -14,8 +15,13 @@ import (
 )
 
 const (
-	fieldBody      = "body"
-	msgInvalidJSON = "Invalid JSON format"
+	fieldBody        = "body"
+	fieldSectionUID  = "sectionUid"
+	fieldCheckUID    = "checkUid"
+	fieldIncidentUID = "incidentUid"
+	fieldLinkURL     = "linkUrl"
+	msgInvalidJSON   = "Invalid JSON format"
+	msgUIDRequired   = "Must not be empty; send null to clear it"
 )
 
 // Handler provides HTTP handlers for status update management endpoints.
@@ -123,11 +129,30 @@ func (h *Handler) UpdateStatusUpdate(writer http.ResponseWriter, req *http.Reque
 	orgSlug := httpx.Param(req, "org")
 	uid := httpx.Param(req, "uid")
 
-	var updateReq UpdateStatusUpdateRequest
-	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
+	body, readErr := io.ReadAll(req.Body)
+	if readErr != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: fieldBody, Message: msgInvalidJSON},
 		})
+	}
+
+	var updateReq UpdateStatusUpdateRequest
+	if err := json.Unmarshal(body, &updateReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	// Presence detection: a plain *string can't tell "key omitted" from
+	// "key present with value null" apart — both decode to nil. Probe the raw
+	// object so sectionUid/checkUid/incidentUid/linkUrl can distinguish
+	// "leave untouched" (absent) from "clear" (present, null or "").
+	var presence map[string]json.RawMessage
+	if err := json.Unmarshal(body, &presence); err == nil {
+		_, updateReq.SectionUIDSet = presence[fieldSectionUID]
+		_, updateReq.CheckUIDSet = presence[fieldCheckUID]
+		_, updateReq.IncidentUIDSet = presence[fieldIncidentUID]
+		_, updateReq.LinkURLSet = presence[fieldLinkURL]
 	}
 
 	update, err := h.svc.UpdateStatusUpdate(req.Context(), orgSlug, uid, h.actorUID(req), &updateReq)
@@ -202,6 +227,18 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	case errors.Is(err, ErrCheckUIDMismatch):
 		return h.WriteValidationError(writer, "Check mismatch", []base.ValidationErrorField{
 			{Name: "checkUid", Message: "Check does not match the incident's check"},
+		})
+	case errors.Is(err, ErrSectionUIDRequired):
+		return h.WriteValidationError(writer, "Invalid sectionUid", []base.ValidationErrorField{
+			{Name: fieldSectionUID, Message: msgUIDRequired},
+		})
+	case errors.Is(err, ErrCheckUIDRequired):
+		return h.WriteValidationError(writer, "Invalid checkUid", []base.ValidationErrorField{
+			{Name: fieldCheckUID, Message: msgUIDRequired},
+		})
+	case errors.Is(err, ErrIncidentUIDRequired):
+		return h.WriteValidationError(writer, "Invalid incidentUid", []base.ValidationErrorField{
+			{Name: fieldIncidentUID, Message: msgUIDRequired},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)
