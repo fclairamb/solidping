@@ -133,7 +133,7 @@ func (f *captureServer) serveWS(writer http.ResponseWriter, req *http.Request) {
 
 	conn.SetReadLimit(256 * 1024)
 
-	ctx := context.Background()
+	ctx := req.Context()
 
 	if err := wsjson.Write(ctx, conn, agents.ServerFrame{
 		Type: agents.MsgTypeHello, Protocol: agents.ProtocolVersion,

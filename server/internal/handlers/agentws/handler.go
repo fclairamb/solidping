@@ -646,35 +646,60 @@ func (h *Handler) runAgentConnection(
 	hints := h.events.Listen("check.created")
 	defer h.events.Unlisten("check.created", hints)
 
+	h.serveConnEvents(loopCtx, conn, state, &connChannels{
+		frames:   frames,
+		readErr:  readErr,
+		outbound: outbound,
+		hints:    hints,
+	})
+}
+
+// connChannels bundles the event sources one agent connection's loop selects
+// on. It exists so serveConnEvents can be a function rather than a seventh
+// parameter list.
+type connChannels struct {
+	// frames carries decoded client frames from the read goroutine.
+	frames <-chan agentcrypto.ClientFrame
+	// readErr ends the connection on the first read failure.
+	readErr <-chan error
+	// outbound carries UNSOLICITED server->agent frames (today: capture upload
+	// requests). Drained here, from the connection's own goroutine, so such a
+	// frame can never interleave with the responses handleFrame writes.
+	outbound <-chan agentcrypto.ServerFrame
+	// hints fans out the "a check was created" express hint.
+	hints <-chan string
+}
+
+// serveConnEvents runs one connection's event loop until it ends.
+func (h *Handler) serveConnEvents(
+	ctx context.Context, conn *websocket.Conn, state *connState, chans *connChannels,
+) {
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
 
 	for {
 		select {
-		case <-loopCtx.Done():
+		case <-ctx.Done():
 			return
-		case err := <-readErr:
-			h.logger.DebugContext(ctx, "agent connection closed", "agent", agent.UID, "error", err)
+		case err := <-chans.readErr:
+			h.logger.DebugContext(ctx, "agent connection closed", "agent", state.agent.UID, "error", err)
 
 			return
 		case <-ping.C:
-			if !h.handlePingTick(loopCtx, conn, state) {
+			if !h.handlePingTick(ctx, conn, state) {
 				return
 			}
-		case frame := <-outbound:
-			// Unsolicited server->agent frame (today: an upload request).
-			// Written from the connection's own goroutine so it can never
-			// interleave with the responses handleFrame writes.
-			if err := wsjson.Write(loopCtx, conn, frame); err != nil {
+		case frame := <-chans.outbound:
+			if err := wsjson.Write(ctx, conn, frame); err != nil {
 				return
 			}
-		case <-hints:
+		case <-chans.hints:
 			// Express hint: a check was created somewhere. The agent's claim is
 			// hard-scoped, so forwarding unconditionally is safe — a claim for a
 			// foreign check simply returns no jobs.
-			_ = wsjson.Write(loopCtx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobsAvailable})
-		case frame := <-frames:
-			if !h.handleFrame(loopCtx, conn, state, &frame) {
+			_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobsAvailable})
+		case frame := <-chans.frames:
+			if !h.handleFrame(ctx, conn, state, &frame) {
 				return
 			}
 		}

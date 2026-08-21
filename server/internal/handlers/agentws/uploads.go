@@ -84,7 +84,7 @@ func (r *connRegistry) remove(workerUID string, outbound chan agentcrypto.Server
 
 // send queues one frame for a worker's live connection. It NEVER blocks:
 // an unknown worker or a full queue is a drop, reported as false.
-func (r *connRegistry) send(workerUID string, frame agentcrypto.ServerFrame) bool {
+func (r *connRegistry) send(workerUID string, frame *agentcrypto.ServerFrame) bool {
 	if workerUID == "" {
 		return false
 	}
@@ -98,7 +98,7 @@ func (r *connRegistry) send(workerUID string, frame agentcrypto.ServerFrame) boo
 	}
 
 	select {
-	case outbound <- frame:
+	case outbound <- *frame:
 		return true
 	default:
 		return false
@@ -120,7 +120,7 @@ func (h *Handler) RequestScreenshotUpload(ctx context.Context, workerUID, captur
 		return
 	}
 
-	if h.conns.send(workerUID, agentcrypto.ServerFrame{
+	if h.conns.send(workerUID, &agentcrypto.ServerFrame{
 		Type:      agentcrypto.MsgTypeUploadRequest,
 		CaptureID: captureID,
 		Topic:     topic,

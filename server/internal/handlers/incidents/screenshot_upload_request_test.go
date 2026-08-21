@@ -45,9 +45,14 @@ func (f *fakeUploadRequester) snapshot() []uploadAsk {
 	return append([]uploadAsk(nil), f.asks...)
 }
 
+// testWorkerUID is the worker row every deported-agent result in this file is
+// attributed to — the identity the upload request is addressed by.
+const testWorkerUID = "worker-1"
+
 // markerDownResult is a failing result the way a DEPORTED agent sends it: the
 // screenshot is advertised (available + captureId) and the bytes are not here.
-func markerDownResult(orgUID, checkUID, captureID, workerUID string) *models.Result {
+func markerDownResult(orgUID, checkUID, captureID string) *models.Result {
+	workerUID := testWorkerUID
 	result := downResult(orgUID, checkUID, "keyword check failed")
 	result.WorkerUID = &workerUID
 	result.Diagnostics = &checkerdef.Diagnostics{
@@ -77,7 +82,7 @@ func TestMarkerOnOpenRequestsTheUpload(t *testing.T) {
 	s.svc.SetAttachmentStore(&fakeAttachmentStore{})
 
 	r.NoError(s.svc.CreateIncidentForTest(ctx, s.check,
-		markerDownResult(s.org.UID, s.check.UID, "cap-open", "worker-1")))
+		markerDownResult(s.org.UID, s.check.UID, "cap-open")))
 
 	inc, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
@@ -119,7 +124,7 @@ func TestUploadRequestBoundedToOnePerTransition(t *testing.T) {
 
 	for i := range 5 {
 		r.NoError(s.svc.ProcessCheckResult(ctx, s.check,
-			markerDownResult(s.org.UID, s.check.UID, "cap-"+string(rune('a'+i)), "worker-1")))
+			markerDownResult(s.org.UID, s.check.UID, "cap-"+string(rune('a'+i)))))
 
 		// The flap back up: the incident stays open (recovery period unmet), so
 		// the next failure is not a transition either.
@@ -159,14 +164,14 @@ func TestNoUploadRequestWithoutATransition(t *testing.T) {
 
 	for range 5 {
 		r.NoError(s.svc.ProcessCheckResult(ctx, s.check,
-			markerDownResult(s.org.UID, s.check.UID, "cap-x", "worker-1")))
+			markerDownResult(s.org.UID, s.check.UID, "cap-x")))
 	}
 
 	r.Empty(requester.snapshot(), "a failing run that opens no incident must ask for nothing")
 
 	s.check.ConfirmationPeriodSeconds = 0
 	r.NoError(s.svc.ProcessCheckResult(ctx, s.check,
-		markerDownResult(s.org.UID, s.check.UID, "cap-open", "worker-1")))
+		markerDownResult(s.org.UID, s.check.UID, "cap-open")))
 
 	asks := requester.snapshot()
 	r.Len(asks, 1)
@@ -187,7 +192,7 @@ func TestReopenRequestsTheRelapseCapture(t *testing.T) {
 	s.svc.SetAgentUploadRequester(requester)
 
 	r.NoError(s.svc.CreateIncidentForTest(ctx, s.check,
-		markerDownResult(s.org.UID, s.check.UID, "cap-first", "worker-1")))
+		markerDownResult(s.org.UID, s.check.UID, "cap-first")))
 
 	inc, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
@@ -199,7 +204,7 @@ func TestReopenRequestsTheRelapseCapture(t *testing.T) {
 	}))
 
 	r.NoError(s.svc.CreateOrReopenIncidentForTest(ctx, s.check,
-		markerDownResult(s.org.UID, s.check.UID, "cap-relapse", "worker-1")))
+		markerDownResult(s.org.UID, s.check.UID, "cap-relapse")))
 
 	reopened, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
@@ -240,9 +245,6 @@ func TestInProcessCaptureNeverAsksTheAgent(t *testing.T) {
 func TestIncompleteMarkerAsksNothing(t *testing.T) {
 	t.Parallel()
 
-	r := require.New(t)
-	ctx := context.Background()
-
 	cases := []struct {
 		name  string
 		mutID func(*models.Result)
@@ -262,11 +264,13 @@ func TestIncompleteMarkerAsksNothing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			r := require.New(t)
+			ctx := t.Context()
 			s := newFailureSnapshotSetup(t)
 			requester := &fakeUploadRequester{}
 			s.svc.SetAgentUploadRequester(requester)
 
-			result := markerDownResult(s.org.UID, s.check.UID, "cap-1", "worker-1")
+			result := markerDownResult(s.org.UID, s.check.UID, "cap-1")
 			tc.mutID(result)
 
 			r.NoError(s.svc.CreateIncidentForTest(ctx, s.check, result))
@@ -291,7 +295,7 @@ func TestNoUploadRequesterIsSafe(t *testing.T) {
 	s := newFailureSnapshotSetup(t)
 
 	r.NoError(s.svc.CreateIncidentForTest(ctx, s.check,
-		markerDownResult(s.org.UID, s.check.UID, "cap-1", "worker-1")))
+		markerDownResult(s.org.UID, s.check.UID, "cap-1")))
 
 	inc, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
