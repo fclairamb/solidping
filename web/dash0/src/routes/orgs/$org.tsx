@@ -54,6 +54,7 @@ import {
   useMaintenanceWindow,
   useOnCallSchedule,
   useOrgNotification,
+  useReportSchedule,
   useResult,
   useSlo,
   useStatusPage,
@@ -117,6 +118,21 @@ const linkClass = "text-sm text-muted-foreground hover:text-foreground transitio
 const activeClass = "text-sm font-medium inline-flex items-center gap-1";
 const iconClass = "h-3.5 w-3.5";
 
+// Route-id -> nav i18n key for every tab (and URL-only route) under
+// /orgs/$org/organization. A flat table instead of a ternary chain so a new
+// tab can't silently regress the breadcrumb again (see spec
+// 2026-08-21-03-organization-breadcrumb-missing-tabs.md).
+const ORG_SECTION_LABELS: Record<string, string> = {
+  "/orgs/$org/organization/members": "members",
+  "/orgs/$org/organization/invitations": "invitations",
+  "/orgs/$org/organization/requests": "requests",
+  "/orgs/$org/organization/usage": "usage",
+  "/orgs/$org/organization/private-locations": "privateLocations",
+  "/orgs/$org/organization/report-schedules": "reportSchedules",
+  "/orgs/$org/organization/ai": "ai",
+  "/orgs/$org/organization/settings": "settings",
+};
+
 function BreadcrumbSeparator() {
   return <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />;
 }
@@ -158,6 +174,12 @@ function Breadcrumbs({ org }: { org: string }) {
   const isSlosNew = routeIds.has("/orgs/$org/slos/new");
   const isSlosDetail = routeIds.has("/orgs/$org/slos/$uid/");
   const isSlosEdit = routeIds.has("/orgs/$org/slos/$uid/edit");
+  // Organization section — the report-schedules detail/edit page is the same
+  // route (no separate /edit), and the layout routes for private-locations
+  // and report-schedules resolve their section label via startsWith below.
+  const isReportScheduleDetail = routeIds.has(
+    "/orgs/$org/organization/report-schedules/$uid",
+  );
   const isNotifications = routeIds.has("/orgs/$org/me/notifications");
   const isNotificationDetail = routeIds.has("/orgs/$org/notifications/$notificationUid");
 
@@ -228,6 +250,13 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: slo } = useSlo(
     org,
     isSlosDetail || isSlosEdit ? (params.uid ?? "") : "",
+  );
+  // Organization / report-schedules section — the route param is `uid`,
+  // shared with on-call, escalation-policies and SLOs, so gate on the
+  // section flag like those do; fetch the leaf label only on detail.
+  const { data: reportSchedule } = useReportSchedule(
+    org,
+    isReportScheduleDetail ? (params.uid ?? "") : "",
   );
 
   // Notification detail breadcrumb — subscribe to the same query the page uses
@@ -463,19 +492,34 @@ function Breadcrumbs({ org }: { org: string }) {
   // Organization section
   const isOrganization = matches.some((m) => m.routeId.startsWith("/orgs/$org/organization"));
   if (isOrganization) {
-    const isMembers = routeIds.has("/orgs/$org/organization/members");
-    const isInvitations = routeIds.has("/orgs/$org/organization/invitations");
-    const isSettings = routeIds.has("/orgs/$org/organization/settings");
-    const isUsage = routeIds.has("/orgs/$org/organization/usage");
-    const subLabel = isMembers
-      ? t("members")
-      : isInvitations
-        ? t("invitations")
-        : isUsage
-          ? t("usage")
-          : isSettings
-            ? t("settings")
-            : null;
+    let sectionKey: string | null = null;
+    for (const [routeId, key] of Object.entries(ORG_SECTION_LABELS)) {
+      if (matches.some((m) => m.routeId.startsWith(routeId))) {
+        sectionKey = key;
+        break;
+      }
+    }
+    const subLabel = sectionKey ? t(sectionKey) : null;
+
+    // Deep leaves — sections with a `.new` / `.$uid` / `.register` child that
+    // need a third crumb naming the record, the same shape the SLOs branch
+    // uses below.
+    const isPrivateLocationsRegister = routeIds.has(
+      "/orgs/$org/organization/private-locations/register",
+    );
+    const isReportScheduleNew = routeIds.has(
+      "/orgs/$org/organization/report-schedules/new",
+    );
+    const hasDeepLeaf =
+      isPrivateLocationsRegister || isReportScheduleNew || isReportScheduleDetail;
+    const reportScheduleTitle = reportSchedule?.name || params.uid?.slice(0, 8);
+    const sectionPath =
+      sectionKey === "privateLocations"
+        ? "/orgs/$org/organization/private-locations"
+        : sectionKey === "reportSchedules"
+          ? "/orgs/$org/organization/report-schedules"
+          : null;
+
     return (
       <>
         {subLabel ? (
@@ -486,7 +530,29 @@ function Breadcrumbs({ org }: { org: string }) {
         {subLabel && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{subLabel}</span>
+            {hasDeepLeaf && sectionPath ? (
+              <Link to={sectionPath} params={{ org }} className={linkClass}>{subLabel}</Link>
+            ) : (
+              <span className={activeClass}>{subLabel}</span>
+            )}
+          </>
+        )}
+        {isPrivateLocationsRegister && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("register")}</span>
+          </>
+        )}
+        {isReportScheduleNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {isReportScheduleDetail && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{reportScheduleTitle}</span>
           </>
         )}
       </>

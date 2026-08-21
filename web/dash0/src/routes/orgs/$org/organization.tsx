@@ -30,7 +30,7 @@ function OrganizationLayout() {
     },
     { label: t("nav:usage", "Usage"), path: "/orgs/$org/organization/usage" },
     {
-      label: t("nav:privateLocations", "Private locations"),
+      label: t("nav:privateLocations"),
       path: "/orgs/$org/organization/private-locations",
     },
     {
