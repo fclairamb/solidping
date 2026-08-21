@@ -619,7 +619,7 @@ func (ds *DiscordSender) buildDefaultEmbed(payload *Payload) discord.Embed {
 func (ds *DiscordSender) buildCommonFields(payload *Payload, checkName string) []discord.Field {
 	fields := []discord.Field{
 		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: "Cause", Value: getFailureReason(payload.Incident), Inline: true},
+		{Name: mmFieldCause, Value: getFailureReason(payload.Incident), Inline: true},
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
@@ -646,7 +646,7 @@ func (ds *DiscordSender) buildResolvedUpdateMessage(payload *Payload) *discord.M
 
 	fields := []discord.Field{
 		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
-		{Name: "Cause", Value: getFailureReason(payload.Incident), Inline: true},
+		{Name: mmFieldCause, Value: getFailureReason(payload.Incident), Inline: true},
 	}
 
 	if duration != "" {

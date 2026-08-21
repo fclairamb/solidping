@@ -101,8 +101,6 @@ type Message struct {
 // specific users it resolved from the escalation policy, so `parse` stays empty
 // (which disables @everyone/@here/role pings) and `users` carries the explicit
 // allow-list.
-//
-//nolint:tagliatelle // Discord API uses snake_case
 type AllowedMentions struct {
 	Parse []string `json:"parse"`
 	Users []string `json:"users,omitempty"`

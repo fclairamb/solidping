@@ -2599,49 +2599,7 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	incident.AcknowledgedAt = &now
 	incident.AcknowledgedBy = update.AcknowledgedBy
 
-	// Create acknowledgment event
-	event := models.NewEvent(orgUID, models.EventTypeIncidentAcknowledged, models.ActorTypeUser)
-	event.IncidentUID = &incident.UID
-	event.CheckUID = &incident.CheckUID
-	event.Payload = models.JSONMap{
-		payloadKeyVia:    req.Via,
-		"slack_user_id":  req.SlackUserID,
-		"slack_username": req.SlackUsername,
-		"note":           req.Note,
-		keyCheckUID:      incident.CheckUID,
-	}
-	// Best-effort: the check may have been deleted since the incident opened;
-	// don't fail the acknowledgment over a missing slug/name.
-	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
-		event.Payload[keyCheckSlug] = check.Slug
-		event.Payload[keyCheckName] = check.Name
-	}
-	// Magic-link acks come in with the recipient email even when the
-	// recipient is not a known platform user — record it on the payload so
-	// the audit trail names the acker even when actor_uid is NULL.
-	if req.AcknowledgedByEmail != "" {
-		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
-	}
-	// Phone (DTMF) acks record the caller's number, mirroring the email
-	// attribution above.
-	if req.PhoneNumber != "" {
-		event.Payload["acknowledged_by_phone"] = req.PhoneNumber
-	}
-	// Telegram acks: the credited user is the chat's linked account, so without
-	// this the timeline could not tell "the on-call person acked from their DM"
-	// apart from "a colleague pressed the button in the team group".
-	if req.TelegramActor != "" {
-		event.Payload["acknowledged_by_telegram"] = req.TelegramActor
-	}
-	// Discord acks: same shape as the Slack pair, kept under their own keys so
-	// a timeline entry says which chat platform the button lived on.
-	if req.DiscordUserID != "" {
-		event.Payload["discord_user_id"] = req.DiscordUserID
-		event.Payload["discord_username"] = req.DiscordUsername
-	}
-	if req.AcknowledgedBy != "" {
-		event.ActorUID = &req.AcknowledgedBy
-	}
+	event := s.buildAcknowledgmentEvent(ctx, orgUID, incident, req)
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "Failed to create acknowledgment event",
@@ -2662,6 +2620,66 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	)
 
 	return incident, nil
+}
+
+// buildAcknowledgmentEvent assembles the append-only acknowledgment event,
+// including the per-transport attribution keys. Split out of
+// acknowledgeIncidentByOrgUID because the attribution list only ever grows —
+// one branch per chat platform — and the state transition above it should not
+// get longer every time a new one ships.
+func (s *Service) buildAcknowledgmentEvent(
+	ctx context.Context, orgUID string, incident *models.Incident, req *AcknowledgeIncidentRequest,
+) *models.Event {
+	event := models.NewEvent(orgUID, models.EventTypeIncidentAcknowledged, models.ActorTypeUser)
+	event.IncidentUID = &incident.UID
+	event.CheckUID = &incident.CheckUID
+	event.Payload = models.JSONMap{
+		payloadKeyVia:    req.Via,
+		"slack_user_id":  req.SlackUserID,
+		"slack_username": req.SlackUsername,
+		"note":           req.Note,
+		keyCheckUID:      incident.CheckUID,
+	}
+
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the acknowledgment over a missing slug/name.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		event.Payload[keyCheckSlug] = check.Slug
+		event.Payload[keyCheckName] = check.Name
+	}
+
+	// Magic-link acks come in with the recipient email even when the
+	// recipient is not a known platform user — record it on the payload so
+	// the audit trail names the acker even when actor_uid is NULL.
+	if req.AcknowledgedByEmail != "" {
+		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
+	}
+
+	// Phone (DTMF) acks record the caller's number, mirroring the email
+	// attribution above.
+	if req.PhoneNumber != "" {
+		event.Payload["acknowledged_by_phone"] = req.PhoneNumber
+	}
+
+	// Telegram acks: the credited user is the chat's linked account, so without
+	// this the timeline could not tell "the on-call person acked from their DM"
+	// apart from "a colleague pressed the button in the team group".
+	if req.TelegramActor != "" {
+		event.Payload["acknowledged_by_telegram"] = req.TelegramActor
+	}
+
+	// Discord acks: same shape as the Slack pair, kept under their own keys so
+	// a timeline entry says which chat platform the button lived on.
+	if req.DiscordUserID != "" {
+		event.Payload["discord_user_id"] = req.DiscordUserID
+		event.Payload["discord_username"] = req.DiscordUsername
+	}
+
+	if req.AcknowledgedBy != "" {
+		event.ActorUID = &req.AcknowledgedBy
+	}
+
+	return event
 }
 
 // cancelPendingNotifications soft-deletes future notification jobs for an
@@ -2930,28 +2948,7 @@ func (s *Service) addCommentByOrgUID(
 		keyCheckUID:             incident.CheckUID,
 	}
 
-	switch req.Source {
-	case CommentSourceWeb:
-		if req.ActorUID != "" {
-			event.ActorUID = &req.ActorUID
-		}
-	case CommentSourceSlack:
-		payload[payloadKeySlackUserID] = req.SlackUserID
-		payload[payloadKeySlackUserName] = req.SlackUserName
-		payload[payloadKeySlackTeamID] = req.SlackTeamID
-		payload[payloadKeySlackTs] = req.SlackTs
-	case CommentSourceTelegram:
-		if req.ActorUID != "" {
-			event.ActorUID = &req.ActorUID
-		}
-		payload[payloadKeyTelegramChat] = req.TelegramChatID
-		payload[payloadKeyVia] = CommentSourceTelegram
-	case CommentSourceDiscord:
-		payload[payloadKeyDiscordUserID] = req.DiscordUserID
-		payload[payloadKeyDiscordUser] = req.DiscordUserName
-		payload[payloadKeyDiscordGuild] = req.DiscordGuildID
-		payload[payloadKeyDiscordMsgID] = req.DiscordMessageID
-	}
+	applyCommentAttribution(event, payload, req)
 
 	// Best-effort check identity for rendering, mirroring the ack path — the
 	// check may have been deleted since the incident opened.
@@ -2982,6 +2979,36 @@ func (s *Service) addCommentByOrgUID(
 	s.queueCommentNotifications(ctx, orgUID, incident, req, text, author)
 
 	return event, nil
+}
+
+// applyCommentAttribution records who authored a comment, in the shape each
+// source needs. Split out of addCommentByOrgUID for the same reason as the
+// acknowledgment attribution: the list grows once per chat platform, and the
+// function that validates and writes the comment should not grow with it.
+func applyCommentAttribution(event *models.Event, payload models.JSONMap, req *AddCommentRequest) {
+	switch req.Source {
+	case CommentSourceWeb:
+		if req.ActorUID != "" {
+			event.ActorUID = &req.ActorUID
+		}
+	case CommentSourceSlack:
+		payload[payloadKeySlackUserID] = req.SlackUserID
+		payload[payloadKeySlackUserName] = req.SlackUserName
+		payload[payloadKeySlackTeamID] = req.SlackTeamID
+		payload[payloadKeySlackTs] = req.SlackTs
+	case CommentSourceTelegram:
+		if req.ActorUID != "" {
+			event.ActorUID = &req.ActorUID
+		}
+
+		payload[payloadKeyTelegramChat] = req.TelegramChatID
+		payload[payloadKeyVia] = CommentSourceTelegram
+	case CommentSourceDiscord:
+		payload[payloadKeyDiscordUserID] = req.DiscordUserID
+		payload[payloadKeyDiscordUser] = req.DiscordUserName
+		payload[payloadKeyDiscordGuild] = req.DiscordGuildID
+		payload[payloadKeyDiscordMsgID] = req.DiscordMessageID
+	}
 }
 
 // commentAuthorName resolves the human label a channel message attributes the

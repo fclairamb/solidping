@@ -77,7 +77,6 @@ func newDiscordFake(t *testing.T) *discordFake {
 	return fake
 }
 
-//nolint:cyclop // a fake router is a flat dispatch by shape; splitting it hides the contract
 func (f *discordFake) route(w http.ResponseWriter, r *http.Request, body map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -94,7 +93,7 @@ func (f *discordFake) route(w http.ResponseWriter, r *http.Request, body map[str
 		f.threadArchived = false
 		f.mu.Unlock()
 
-		_ = json.NewEncoder(w).Encode(discord.ChannelInfo{
+		writeFakeJSON(w, discord.ChannelInfo{
 			ID: discordTestThread, Name: "incident", Type: discord.ChannelTypePublicThread,
 		})
 	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/channels/") &&
@@ -106,7 +105,7 @@ func (f *discordFake) route(w http.ResponseWriter, r *http.Request, body map[str
 			f.mu.Unlock()
 		}
 
-		_ = json.NewEncoder(w).Encode(discord.ChannelInfo{ID: discordTestThread})
+		writeFakeJSON(w, discord.ChannelInfo{ID: discordTestThread})
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/messages"):
 		f.mu.Lock()
 		archived := f.threadArchived && strings.HasPrefix(r.URL.Path, "/channels/"+discordTestThread+"/")
@@ -119,14 +118,23 @@ func (f *discordFake) route(w http.ResponseWriter, r *http.Request, body map[str
 			return
 		}
 
-		_ = json.NewEncoder(w).Encode(discord.MessageResult{ID: discordTestMessage, ChannelID: "c"})
+		writeFakeJSON(w, discord.MessageResult{ID: discordTestMessage, ChannelID: "c"})
 	case r.Method == http.MethodPatch:
 		// Message edit.
-		_ = json.NewEncoder(w).Encode(discord.MessageResult{ID: discordTestMessage})
+		writeFakeJSON(w, discord.MessageResult{ID: discordTestMessage})
 	case r.Method == http.MethodGet && r.URL.Path == "/users/@me":
-		_ = json.NewEncoder(w).Encode(discord.User{ID: "U-BOT", Username: "solidping", Bot: true})
+		writeFakeJSON(w, discord.User{ID: "U-BOT", Username: "solidping", Bot: true})
 	default:
-		_ = json.NewEncoder(w).Encode(map[string]any{})
+		writeFakeJSON(w, struct{}{})
+	}
+}
+
+// writeFakeJSON encodes a fake response, surfacing an encoding failure as a
+// 500 instead of swallowing it — a silently empty body would show up as a
+// confusing decode error three frames away in the code under test.
+func writeFakeJSON(w http.ResponseWriter, value any) {
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -220,7 +228,7 @@ func storedThreadDB(threadID string) *mockDBService {
 	return &mockDBService{
 		getStateEntryFunc: func(_ context.Context, _ *string, key string) (*models.StateEntry, error) {
 			if !strings.HasPrefix(key, "incidents/") {
-				return nil, nil //nolint:nilnil // stub: no entry
+				return nil, nil
 			}
 
 			return &models.StateEntry{Value: &models.JSONMap{
@@ -258,17 +266,26 @@ func TestDiscordSender_IncidentCreatedPostsEmbedButtonsAndThread(t *testing.T) {
 	embeds, ok := post.Body["embeds"].([]any)
 	r.True(ok)
 	r.Len(embeds, 1)
-	r.Contains(embeds[0].(map[string]any)["title"], "#42 · New incident for API health")
+
+	firstEmbed, ok := embeds[0].(map[string]any)
+	r.True(ok)
+	r.Contains(firstEmbed["title"], "#42 · New incident for API health")
 
 	// Acknowledge button present, carrying the incident uid.
 	components, ok := post.Body["components"].([]any)
 	r.True(ok)
 	r.Len(components, 1)
 
-	buttons, ok := components[0].(map[string]any)["components"].([]any)
+	actionRow, ok := components[0].(map[string]any)
+	r.True(ok)
+
+	buttons, ok := actionRow["components"].([]any)
 	r.True(ok)
 	r.Len(buttons, 3)
-	r.Equal("ack:inc-discord-1", buttons[0].(map[string]any)["custom_id"])
+
+	ackButton, ok := buttons[0].(map[string]any)
+	r.True(ok)
+	r.Equal("ack:inc-discord-1", ackButton["custom_id"])
 
 	// Mentions: a mapped user pings, an unmapped one is named in plain text,
 	// and the allow-list bounds what the message may notify.
@@ -352,7 +369,10 @@ func TestDiscordSender_ResolvedEditsOriginalAndRepliesInThread(t *testing.T) {
 
 	embeds, ok := edit.Body["embeds"].([]any)
 	r.True(ok)
-	r.Contains(embeds[0].(map[string]any)["title"], "Automatically resolved")
+
+	resolvedEmbed, ok := embeds[0].(map[string]any)
+	r.True(ok)
+	r.Contains(resolvedEmbed["title"], "Automatically resolved")
 
 	components, ok := edit.Body["components"].([]any)
 	r.True(ok)

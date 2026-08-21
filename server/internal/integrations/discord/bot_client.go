@@ -114,7 +114,7 @@ func (c *BotClient) send(ctx context.Context, method, path string, body any) (*h
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("marshalling discord request body: %w", err)
+			return nil, fmt.Errorf("marshaling discord request body: %w", err)
 		}
 
 		reader = bytes.NewReader(encoded)

@@ -109,18 +109,18 @@ func dispatchConfig(ctx context.Context, svc *Service, cmd *Command) (*CommandRe
 }
 
 // resolveOrg maps the invoking guild to its organization.
-func resolveOrg(ctx context.Context, svc *Service, guildID string) (*models.Organization, string, error) {
+func resolveOrg(ctx context.Context, svc *Service, guildID string) (*models.Organization, error) {
 	conn, err := svc.GetConnectionByGuildID(ctx, guildID)
 	if err != nil || conn == nil {
-		return nil, "", ErrConnectionNotFound
+		return nil, ErrConnectionNotFound
 	}
 
 	org, err := svc.db.GetOrganization(ctx, conn.OrganizationUID)
 	if err != nil {
-		return nil, "", ErrOrganizationNotFound
+		return nil, ErrOrganizationNotFound
 	}
 
-	return org, conn.UID, nil
+	return org, nil
 }
 
 const notConnectedMessage = "This Discord server is not connected to SolidPing. " +
@@ -168,8 +168,9 @@ func normalizeCheckURL(raw string) string {
 }
 
 func checksList(ctx context.Context, svc *Service, cmd *Command) (*CommandResponse, error) {
-	org, _, err := resolveOrg(ctx, svc, cmd.GuildID)
+	org, err := resolveOrg(ctx, svc, cmd.GuildID)
 	if err != nil {
+		//nolint:nilerr // an unconnected guild gets an explanation, not an error
 		return ephemeral(notConnectedMessage), nil
 	}
 
@@ -219,8 +220,9 @@ func checksRemove(ctx context.Context, svc *Service, cmd *Command) (*CommandResp
 		return ephemeral("Missing check slug. Usage: `/solidping checks rm <slug>`"), nil
 	}
 
-	org, _, err := resolveOrg(ctx, svc, cmd.GuildID)
+	org, err := resolveOrg(ctx, svc, cmd.GuildID)
 	if err != nil {
+		//nolint:nilerr // an unconnected guild gets an explanation, not an error
 		return ephemeral(notConnectedMessage), nil
 	}
 
@@ -244,8 +246,9 @@ func incidentsList(ctx context.Context, svc *Service, cmd *Command) (*CommandRes
 			"Unknown incidents subcommand: `%s`. Available: `list`.", cmd.Subcommand)), nil
 	}
 
-	org, _, err := resolveOrg(ctx, svc, cmd.GuildID)
+	org, err := resolveOrg(ctx, svc, cmd.GuildID)
 	if err != nil {
+		//nolint:nilerr // an unconnected guild gets an explanation, not an error
 		return ephemeral(notConnectedMessage), nil
 	}
 
@@ -259,6 +262,7 @@ func incidentsList(ctx context.Context, svc *Service, cmd *Command) (*CommandRes
 	if checkSlug != "" {
 		check, checkErr := svc.db.GetCheckByUidOrSlug(ctx, org.UID, checkSlug)
 		if checkErr != nil || check == nil {
+			//nolint:nilerr // a missing check is user error, reported as text
 			return ephemeral(fmt.Sprintf("Check `%s` not found.", checkSlug)), nil
 		}
 
@@ -377,8 +381,9 @@ func commentCommand(ctx context.Context, svc *Service, cmd *Command) (*CommandRe
 		return ephemeral(commentUsage), nil
 	}
 
-	org, _, err := resolveOrg(ctx, svc, cmd.GuildID)
+	org, err := resolveOrg(ctx, svc, cmd.GuildID)
 	if err != nil {
+		//nolint:nilerr // an unconnected guild gets an explanation, not an error
 		return ephemeral(notConnectedMessage), nil
 	}
 

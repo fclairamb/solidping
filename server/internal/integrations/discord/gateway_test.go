@@ -61,14 +61,14 @@ func (f *fakeGatewayConn) Close() error {
 	return nil
 }
 
-// push delivers a frame to the supervisor.
-func (f *fakeGatewayConn) push(t *testing.T, op int, eventName string, seq int, data any) {
+// push delivers one op-0 dispatch frame to the supervisor.
+func (f *fakeGatewayConn) push(t *testing.T, eventName string, seq int, data any) {
 	t.Helper()
 
 	raw, err := json.Marshal(data)
 	require.NoError(t, err)
 
-	frame, err := json.Marshal(gatewayPayload{Op: op, T: eventName, S: &seq, D: raw})
+	frame, err := json.Marshal(gatewayPayload{Op: opDispatch, T: eventName, S: &seq, D: raw})
 	require.NoError(t, err)
 
 	f.inbound <- frame
@@ -115,7 +115,7 @@ func newGatewayHarness(t *testing.T, ingestion string) *gatewayHarness {
 	org := models.NewOrganization("acme-gw", "acme")
 	require.NoError(t, svc.db.CreateOrganization(ctx, org))
 
-	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, org.Slug))
+	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, org.Slug))
 	require.NoError(t, err)
 
 	// Set the guild's comment-ingestion mode.
@@ -193,7 +193,7 @@ func (h *gatewayHarness) start(t *testing.T) {
 		"without MESSAGE_CONTENT every inbound message arrives with empty content")
 	require.NotZero(t, payload.Intents&intentGuildMessages)
 
-	h.conn.push(t, opDispatch, "READY", 1, readyData{
+	h.conn.push(t, "READY", 1, readyData{
 		SessionID:        "sess-1",
 		ResumeGatewayURL: "wss://resume.example",
 		User:             &User{ID: botUserIDGW, Username: "solidping", Bot: true},
@@ -209,7 +209,7 @@ func (h *gatewayHarness) start(t *testing.T) {
 func (h *gatewayHarness) trackThread(t *testing.T, threadID string) *models.Incident {
 	t.Helper()
 
-	checkUID := seedCheck(t, h.ctx, h.svc, h.org.UID, "acme-api-"+threadID)
+	checkUID := seedCheck(h.ctx, t, h.svc, h.org.UID, "acme-api-"+threadID)
 
 	incident := models.NewIncident(h.org.UID, checkUID, time.Now(), "acme api is down")
 	require.NoError(t, h.svc.db.CreateIncident(h.ctx, incident))
@@ -255,7 +255,7 @@ func TestGateway_IngestsThreadReplyAsComment(t *testing.T) {
 
 	incident := h.trackThread(t, "T-1")
 
-	h.conn.push(t, opDispatch, "MESSAGE_CREATE", 2, GatewayMessage{
+	h.conn.push(t, "MESSAGE_CREATE", 2, GatewayMessage{
 		ID: "M-100", ChannelID: "T-1", GuildID: h.guild,
 		Content: "restarting the pod",
 		Author:  &User{ID: "U-ALICE", Username: "alice"},
@@ -280,7 +280,7 @@ func TestGateway_ExplicitModeDoesNotIngest(t *testing.T) {
 
 	h.trackThread(t, "T-2")
 
-	h.conn.push(t, opDispatch, "MESSAGE_CREATE", 2, GatewayMessage{
+	h.conn.push(t, "MESSAGE_CREATE", 2, GatewayMessage{
 		ID: "M-200", ChannelID: "T-2", GuildID: h.guild,
 		Content: "lunch?",
 		Author:  &User{ID: "U-ALICE", Username: "alice"},
@@ -332,7 +332,7 @@ func TestGateway_IgnoresUntrackedAndNonHumanMessages(t *testing.T) {
 	}
 
 	for i := range cases {
-		h.conn.push(t, opDispatch, "MESSAGE_CREATE", 10+i, cases[i])
+		h.conn.push(t, "MESSAGE_CREATE", 10+i, cases[i])
 	}
 
 	time.Sleep(300 * time.Millisecond)
@@ -355,7 +355,7 @@ func TestGateway_DedupesRedeliveredMessage(t *testing.T) {
 		Content: "first note", Author: &User{ID: "U-ALICE"}, Type: messageTypeDefault,
 	}
 
-	h.conn.push(t, opDispatch, "MESSAGE_CREATE", 2, msg)
+	h.conn.push(t, "MESSAGE_CREATE", 2, msg)
 	r.Eventually(func() bool { return h.inc.commentIncident == incident.UID },
 		2*time.Second, 10*time.Millisecond)
 
@@ -363,7 +363,7 @@ func TestGateway_DedupesRedeliveredMessage(t *testing.T) {
 	// ingest would be visible.
 	h.inc.commentText = ""
 	msg.Content = "SHOULD NOT BE INGESTED"
-	h.conn.push(t, opDispatch, "MESSAGE_CREATE", 3, msg)
+	h.conn.push(t, "MESSAGE_CREATE", 3, msg)
 
 	time.Sleep(300 * time.Millisecond)
 	r.Empty(h.inc.commentText, "a redelivered message must not be ingested twice")
@@ -378,7 +378,7 @@ func TestGateway_MentionCommandIsAnswered(t *testing.T) {
 	h := newGatewayHarness(t, models.DiscordCommentIngestionAll)
 	h.start(t)
 
-	h.conn.push(t, opDispatch, "MESSAGE_CREATE", 2, GatewayMessage{
+	h.conn.push(t, "MESSAGE_CREATE", 2, GatewayMessage{
 		ID: "M-500", ChannelID: "C-ALERTS", GuildID: h.guild,
 		Content: "<@" + botUserIDGW + "> help",
 		Author:  &User{ID: "U-ALICE", Username: "alice"},
@@ -415,7 +415,7 @@ func TestGateway_MentionCommandInsideThreadCarriesContext(t *testing.T) {
 
 	incident := h.trackThread(t, "T-6")
 
-	h.conn.push(t, opDispatch, "MESSAGE_CREATE", 2, GatewayMessage{
+	h.conn.push(t, "MESSAGE_CREATE", 2, GatewayMessage{
 		ID: "M-600", ChannelID: "T-6", GuildID: h.guild,
 		Content: "<@" + botUserIDGW + "> comment rolled back the deploy",
 		Author:  &User{ID: "U-ALICE", Username: "alice"},
@@ -437,7 +437,7 @@ func TestGateway_GuildDeleteUnavailableKeepsIntegration(t *testing.T) {
 	h := newGatewayHarness(t, models.DiscordCommentIngestionAll)
 	h.start(t)
 
-	h.conn.push(t, opDispatch, "GUILD_DELETE", 2, guildDeleteData{ID: h.guild, Unavailable: true})
+	h.conn.push(t, "GUILD_DELETE", 2, guildDeleteData{ID: h.guild, Unavailable: true})
 	time.Sleep(200 * time.Millisecond)
 
 	conn, err := h.svc.GetConnectionByGuildID(h.ctx, h.guild)
@@ -445,7 +445,7 @@ func TestGateway_GuildDeleteUnavailableKeepsIntegration(t *testing.T) {
 	r.NotNil(conn)
 
 	// A real removal does clean up.
-	h.conn.push(t, opDispatch, "GUILD_DELETE", 3, guildDeleteData{ID: h.guild, Unavailable: false})
+	h.conn.push(t, "GUILD_DELETE", 3, guildDeleteData{ID: h.guild, Unavailable: false})
 
 	r.Eventually(func() bool {
 		_, err := h.svc.GetConnectionByGuildID(h.ctx, h.guild)

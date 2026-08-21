@@ -47,6 +47,9 @@ const (
 // DefaultGatewayURL is Discord's public Gateway entry point.
 const DefaultGatewayURL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
+// clientIdentity is what we tell Discord we are, in IDENTIFY's properties.
+const clientIdentity = "solidping"
+
 // gatewayReconnectBackoff is how long the supervisor waits before re-dialing.
 //
 //nolint:gochecknoglobals // overridden by tests to keep the reconnect loop fast.
@@ -161,7 +164,13 @@ func NewGatewaySupervisor(svc *Service, cfg *config.Config, log *slog.Logger) *G
 
 // defaultGatewayDial opens the real Discord Gateway connection.
 func defaultGatewayDial(ctx context.Context, url string) (gatewayConn, error) {
-	conn, _, err := websocket.Dial(ctx, url, nil)
+	conn, resp, err := websocket.Dial(ctx, url, nil)
+	if resp != nil && resp.Body != nil {
+		// The handshake response body carries nothing we need, but leaving it
+		// open leaks a connection on every reconnect.
+		_ = resp.Body.Close()
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("dialing discord gateway: %w", err)
 	}
@@ -246,25 +255,25 @@ func (g *GatewaySupervisor) runOnce(ctx context.Context, token string) error {
 		return err
 	}
 
-	if err := g.handshake(cycleCtx, conn, token); err != nil {
-		return err
+	if handshakeErr := g.handshake(cycleCtx, conn, token); handshakeErr != nil {
+		return handshakeErr
 	}
 
-	var wg sync.WaitGroup
+	var heartbeats sync.WaitGroup
 
-	wg.Add(1)
+	heartbeats.Add(1)
 
 	go func() {
-		defer wg.Done()
+		defer heartbeats.Done()
 		g.heartbeatLoop(cycleCtx, conn, interval)
 	}()
 
-	err = g.readLoop(cycleCtx, conn, token)
+	readErr := g.readLoop(cycleCtx, conn)
 
 	cancel()
-	wg.Wait()
+	heartbeats.Wait()
 
-	return err
+	return readErr
 }
 
 // dialURL prefers the resume URL Discord handed us on the last READY.
@@ -274,12 +283,6 @@ func (g *GatewaySupervisor) dialURL() string {
 
 	if g.sessionID != "" && g.resumeGatewayURL != "" {
 		return g.resumeGatewayURL + "/?v=10&encoding=json"
-	}
-
-	if g.cfg != nil && g.cfg.Discord.RedirectURL != "" {
-		// RedirectURL is unrelated to the gateway; never used here. Kept out of
-		// the way deliberately so a misconfiguration cannot redirect the socket.
-		_ = g.cfg.Discord.RedirectURL
 	}
 
 	return DefaultGatewayURL
@@ -337,7 +340,7 @@ func (g *GatewaySupervisor) handshake(ctx context.Context, conn gatewayConn, tok
 		Token:   token,
 		Intents: gatewayIntents,
 		Properties: identifyProperties{
-			OS: "linux", Browser: "solidping", Device: "solidping",
+			OS: "linux", Browser: clientIdentity, Device: clientIdentity,
 		},
 	})
 }
@@ -370,15 +373,15 @@ type resumePayload struct {
 }
 
 // send marshals and writes one frame.
-func (g *GatewaySupervisor) send(ctx context.Context, conn gatewayConn, op int, data any) error {
+func (g *GatewaySupervisor) send(ctx context.Context, conn gatewayConn, opcode int, data any) error {
 	body, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("marshalling gateway payload: %w", err)
+		return fmt.Errorf("marshaling gateway payload: %w", err)
 	}
 
-	frame, err := json.Marshal(gatewayPayload{Op: op, D: body})
+	frame, err := json.Marshal(gatewayPayload{Op: opcode, D: body})
 	if err != nil {
-		return fmt.Errorf("marshalling gateway frame: %w", err)
+		return fmt.Errorf("marshaling gateway frame: %w", err)
 	}
 
 	return conn.Write(ctx, frame)
@@ -388,7 +391,7 @@ func (g *GatewaySupervisor) send(ctx context.Context, conn gatewayConn, op int, 
 // the protocol requires, so a fleet of pods reconnecting together does not
 // heartbeat in lockstep.
 func (g *GatewaySupervisor) heartbeatLoop(ctx context.Context, conn gatewayConn, interval time.Duration) {
-	jitter := time.Duration(rand.Int63n(int64(interval))) //nolint:gosec // jitter, not a secret
+	jitter := time.Duration(rand.Int63n(int64(interval)))
 
 	select {
 	case <-ctx.Done():
@@ -416,14 +419,14 @@ func (g *GatewaySupervisor) sendHeartbeat(ctx context.Context, conn gatewayConn)
 
 	frame, err := json.Marshal(map[string]any{"op": opHeartbeat, "d": sequence})
 	if err != nil {
-		return fmt.Errorf("marshalling heartbeat: %w", err)
+		return fmt.Errorf("marshaling heartbeat: %w", err)
 	}
 
 	return conn.Write(ctx, frame)
 }
 
 // readLoop pumps frames until the connection or context ends.
-func (g *GatewaySupervisor) readLoop(ctx context.Context, conn gatewayConn, token string) error {
+func (g *GatewaySupervisor) readLoop(ctx context.Context, conn gatewayConn) error {
 	for {
 		raw, err := conn.Read(ctx)
 		if err != nil {
@@ -465,8 +468,6 @@ func (g *GatewaySupervisor) readLoop(ctx context.Context, conn gatewayConn, toke
 		default:
 			g.log.DebugContext(ctx, "Discord Gateway: unhandled opcode", "op", payload.Op)
 		}
-
-		_ = token
 	}
 }
 

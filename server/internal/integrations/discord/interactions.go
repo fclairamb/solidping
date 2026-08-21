@@ -78,9 +78,11 @@ const (
 	optionTypeSubCommandGroup = 2
 )
 
+// optionNameURL is the command option carrying a monitored URL. Named once so
+// the interaction flattener and the check-creation call agree.
+const optionNameURL = "url"
+
 // InteractionResponse is what we answer an interaction with.
-//
-//nolint:tagliatelle // Discord API uses snake_case
 type InteractionResponse struct {
 	Type int                      `json:"type"`
 	Data *InteractionResponseData `json:"data,omitempty"`
@@ -359,7 +361,7 @@ func CommandFromInteraction(interaction *Interaction) *Command {
 		}
 
 		switch options[i].Name {
-		case "text", "url", "slug", "target", "query":
+		case "text", optionNameURL, "slug", "target", "query":
 			cmd.Args = append(cmd.Args, value)
 		default:
 			cmd.Flags[strings.ToLower(options[i].Name)] = value

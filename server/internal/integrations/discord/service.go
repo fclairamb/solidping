@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -236,7 +237,7 @@ func (s *Service) BuildInstallURL(ctx context.Context, channelUID, orgSlug strin
 	params := url.Values{}
 	params.Set("client_id", s.cfg.Discord.ClientID)
 	params.Set("scope", botInstallScopes)
-	params.Set("permissions", fmt.Sprintf("%d", botPermissions))
+	params.Set("permissions", strconv.Itoa(botPermissions))
 	params.Set("response_type", "code")
 	params.Set("redirect_uri", s.installRedirectURI())
 	params.Set("state", nonce)
@@ -325,8 +326,8 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 	// Q2: the bot install lands in the SAME organization_providers mapping
 	// Discord auth writes. linkGuildToOrg never creates a second row for a
 	// guild that already has one.
-	if err := s.linkGuildToOrg(ctx, org.UID, guild.ID, guild.Name); err != nil {
-		return nil, err
+	if linkErr := s.linkGuildToOrg(ctx, org.UID, guild.ID, guild.Name); linkErr != nil {
+		return nil, linkErr
 	}
 
 	installedBy := s.fetchInstallerID(ctx, tokenResp.AccessToken)
@@ -818,7 +819,7 @@ func (s *Service) CreateCheck(ctx context.Context, guildID, target string) (*Cre
 
 	checkResp, err := s.checksService.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
 		Type:   "http",
-		Config: map[string]any{"url": target},
+		Config: map[string]any{optionNameURL: target},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create check: %w", err)

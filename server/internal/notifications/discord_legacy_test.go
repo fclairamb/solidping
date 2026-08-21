@@ -70,7 +70,7 @@ func legacyWebhookPayload(t *testing.T, eventType, webhookURL string) *Payload {
 		OrganizationUID: "org-legacy",
 		StartedAt:       time.Now().Add(-3 * time.Minute),
 		FailureCount:    2,
-		Details:         models.JSONMap{"failure_reason": "connection refused"},
+		Details:         models.JSONMap{"failure_reason": "upstream refused the connection"},
 	}
 
 	if eventType == eventTypeIncidentResolved {

@@ -22,8 +22,8 @@ func signedRequest(t *testing.T, priv ed25519.PrivateKey, timestamp, body string
 
 	sig := ed25519.Sign(priv, []byte(timestamp+body))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/discord/interactions",
-		strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
+		"/api/v1/integrations/discord/interactions", strings.NewReader(body))
 	req.Header.Set(TimestampHeader, timestamp)
 	req.Header.Set(SignatureHeader, hex.EncodeToString(sig))
 
@@ -55,13 +55,19 @@ func TestVerifyMiddleware_AcceptsValidSignature(t *testing.T) {
 
 	const body = `{"type":1}`
 
+	var (
+		downstreamBody string
+		downstreamErr  error
+	)
+
 	handler := h.VerifyMiddleware(func(w http.ResponseWriter, req *http.Request) error {
 		*reached = true
 
-		// The body must still be readable downstream.
+		// The body must still be readable downstream. Captured here and
+		// asserted after the handler returns: a failed assertion inside an
+		// HTTP handler aborts the wrong goroutine.
 		raw, readErr := io.ReadAll(req.Body)
-		r.NoError(readErr)
-		r.Equal(body, string(raw))
+		downstreamBody, downstreamErr = string(raw), readErr
 
 		w.WriteHeader(http.StatusOK)
 
@@ -74,6 +80,8 @@ func TestVerifyMiddleware_AcceptsValidSignature(t *testing.T) {
 	r.NoError(handler(rec, req))
 	r.True(*reached)
 	r.Equal(http.StatusOK, rec.Code)
+	r.NoError(downstreamErr)
+	r.Equal(body, downstreamBody)
 }
 
 // TestVerifyMiddleware_RejectsInvalidSignature is the one Discord probes with.
@@ -178,7 +186,7 @@ func TestVerifyMiddleware_RejectsFarFutureTimestamp(t *testing.T) {
 
 	h, reached := verifyHandler(t, hex.EncodeToString(pub))
 
-	handler := h.VerifyMiddleware(func(w http.ResponseWriter, _ *http.Request) error {
+	handler := h.VerifyMiddleware(func(_ http.ResponseWriter, _ *http.Request) error {
 		*reached = true
 
 		return nil
@@ -203,14 +211,15 @@ func TestVerifyMiddleware_RejectsMissingHeaders(t *testing.T) {
 
 	h, reached := verifyHandler(t, hex.EncodeToString(pub))
 
-	handler := h.VerifyMiddleware(func(w http.ResponseWriter, _ *http.Request) error {
+	handler := h.VerifyMiddleware(func(_ http.ResponseWriter, _ *http.Request) error {
 		*reached = true
 
 		return nil
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"type":1}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/x",
+		strings.NewReader(`{"type":1}`))
 
 	r.NoError(handler(rec, req))
 	r.False(*reached)
@@ -228,14 +237,15 @@ func TestVerifyMiddleware_UnconfiguredKeyRejects(t *testing.T) {
 	for _, key := range []string{"", "not-hex", "abcd" /* right hex, wrong length */} {
 		h, reached := verifyHandler(t, key)
 
-		handler := h.VerifyMiddleware(func(w http.ResponseWriter, _ *http.Request) error {
+		handler := h.VerifyMiddleware(func(_ http.ResponseWriter, _ *http.Request) error {
 			*reached = true
 
 			return nil
 		})
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"type":1}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/x",
+			strings.NewReader(`{"type":1}`))
 		req.Header.Set(TimestampHeader, strconv.FormatInt(time.Now().Unix(), 10))
 		req.Header.Set(SignatureHeader, strings.Repeat("00", ed25519.SignatureSize))
 

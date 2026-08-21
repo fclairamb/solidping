@@ -87,7 +87,7 @@ func installedService(t *testing.T) (context.Context, *Service, *fakeIncidents, 
 	org := models.NewOrganization("acme-int", "acme")
 	require.NoError(t, svc.db.CreateOrganization(ctx, org))
 
-	_, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, org.Slug))
+	_, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, org.Slug))
 	require.NoError(t, err)
 
 	require.NoError(t, svc.SetDefaultChannel(ctx, fake.guild.ID, "C-ALERTS", false))
@@ -96,7 +96,7 @@ func installedService(t *testing.T) (context.Context, *Service, *fakeIncidents, 
 }
 
 // seedCheck creates a check so incidents can reference it, and returns its uid.
-func seedCheck(t *testing.T, ctx context.Context, svc *Service, orgUID, slug string) string {
+func seedCheck(ctx context.Context, t *testing.T, svc *Service, orgUID, slug string) string {
 	t.Helper()
 
 	check := models.NewCheck(orgUID, slug, "http")
@@ -116,7 +116,8 @@ func TestHandleInteractions_PingAnswersPong(t *testing.T) {
 	h := NewHandler(NewService(nil, cfg, nil, nil), cfg)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"type":1}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/x",
+		strings.NewReader(`{"type":1}`))
 
 	r.NoError(h.HandleInteractions(rec, req))
 	r.Equal(http.StatusOK, rec.Code)
@@ -305,7 +306,8 @@ func TestDispatchCommand_CommentInThreadResolvesIncident(t *testing.T) {
 
 	// An incident, and the reverse mapping the sender writes when it opens the
 	// incident's thread.
-	incident := models.NewIncident(orgUID, seedCheck(t, ctx, svc, orgUID, "acme-api"), time.Now(), "acme api is down")
+	incident := models.NewIncident(
+		orgUID, seedCheck(ctx, t, svc, orgUID, "acme-api"), time.Now(), "acme api is down")
 	incident.Number = 7
 	r.NoError(svc.db.CreateIncident(ctx, incident))
 
@@ -358,11 +360,13 @@ func TestDispatchCommand_CommentByExplicitNumber(t *testing.T) {
 	r := require.New(t)
 	ctx, svc, incidents, orgUID := installedService(t)
 
-	named := models.NewIncident(orgUID, seedCheck(t, ctx, svc, orgUID, "named-check"), time.Now(), "named incident")
+	named := models.NewIncident(
+		orgUID, seedCheck(ctx, t, svc, orgUID, "named-check"), time.Now(), "named incident")
 	named.Number = 11
 	r.NoError(svc.db.CreateIncident(ctx, named))
 
-	threaded := models.NewIncident(orgUID, seedCheck(t, ctx, svc, orgUID, "threaded-check"), time.Now(), "threaded incident")
+	threaded := models.NewIncident(
+		orgUID, seedCheck(ctx, t, svc, orgUID, "threaded-check"), time.Now(), "threaded incident")
 	threaded.Number = 12
 	r.NoError(svc.db.CreateIncident(ctx, threaded))
 

@@ -157,7 +157,7 @@ func (f *fakeDiscord) messages() []postedMessage {
 
 // installState mints a valid install state the way BuildInstallURL does, and
 // returns the nonce so a test can drive HandleOAuthCallback end to end.
-func installState(t *testing.T, ctx context.Context, svc *Service, orgSlug string) string {
+func installState(ctx context.Context, t *testing.T, svc *Service, orgSlug string) string {
 	t.Helper()
 
 	authorizeURL, err := svc.BuildInstallURL(ctx, "", orgSlug)
@@ -214,7 +214,7 @@ func TestHandleOAuthCallback_ReusesAuthGuildMapping(t *testing.T) {
 	authMapping.ProviderName = fake.guild.Name
 	r.NoError(svc.db.CreateOrganizationProvider(ctx, authMapping))
 
-	state := installState(t, ctx, svc, org.Slug)
+	state := installState(ctx, t, svc, org.Slug)
 
 	result, err := svc.HandleOAuthCallback(ctx, "fake-code", state)
 	r.NoError(err)
@@ -253,7 +253,7 @@ func TestHandleOAuthCallback_CreatesMappingWhenNoneExists(t *testing.T) {
 	org := models.NewOrganization("acme-two", "acme")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	state := installState(t, ctx, svc, org.Slug)
+	state := installState(ctx, t, svc, org.Slug)
 
 	_, err := svc.HandleOAuthCallback(ctx, "fake-code", state)
 	r.NoError(err)
@@ -275,7 +275,7 @@ func TestHandleOAuthCallback_WritesBotSettings(t *testing.T) {
 	org := models.NewOrganization("acme-three", "acme")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, org.Slug))
+	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, org.Slug))
 	r.NoError(err)
 
 	conn, err := svc.db.GetChannel(ctx, result.ConnectionUID)
@@ -306,7 +306,7 @@ func TestHandleOAuthCallback_ReinstallKeepsOperatorChoices(t *testing.T) {
 	org := models.NewOrganization("acme-four", "acme")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	first, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, org.Slug))
+	first, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, org.Slug))
 	r.NoError(err)
 
 	// Operator makes their choices.
@@ -324,7 +324,7 @@ func TestHandleOAuthCallback_ReinstallKeepsOperatorChoices(t *testing.T) {
 	r.NoError(svc.db.UpdateChannel(ctx, first.ConnectionUID, &models.IntegrationUpdate{Settings: &settingsMap}))
 
 	// Re-install.
-	second, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, org.Slug))
+	second, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, org.Slug))
 	r.NoError(err)
 	r.Equal(first.ConnectionUID, second.ConnectionUID, "re-install must update, not duplicate")
 
@@ -349,7 +349,7 @@ func TestHandleOAuthCallback_RejectsReusedState(t *testing.T) {
 	org := models.NewOrganization("acme-five", "acme")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	state := installState(t, ctx, svc, org.Slug)
+	state := installState(ctx, t, svc, org.Slug)
 
 	_, err := svc.HandleOAuthCallback(ctx, "fake-code", state)
 	r.NoError(err)
@@ -369,7 +369,7 @@ func TestGetDestinations_FiltersAndSorts(t *testing.T) {
 	org := models.NewOrganization("acme-six", "acme")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, org.Slug))
+	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, org.Slug))
 	r.NoError(err)
 
 	resp, err := svc.GetDestinations(ctx, org.Slug, result.ConnectionUID)
@@ -419,7 +419,7 @@ func TestGetDestinations_RejectsForeignOrg(t *testing.T) {
 	other := models.NewOrganization("acme-other", "acme other")
 	r.NoError(svc.db.CreateOrganization(ctx, other))
 
-	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, owner.Slug))
+	result, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, owner.Slug))
 	r.NoError(err)
 
 	_, err = svc.GetDestinations(ctx, other.Slug, result.ConnectionUID)
@@ -438,7 +438,7 @@ func TestSetDefaultChannel_RejectsForeignChannelID(t *testing.T) {
 	org := models.NewOrganization("acme-seven", "acme")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	_, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(t, ctx, svc, org.Slug))
+	_, err := svc.HandleOAuthCallback(ctx, "fake-code", installState(ctx, t, svc, org.Slug))
 	r.NoError(err)
 
 	r.ErrorIs(svc.SetDefaultChannel(ctx, fake.guild.ID, "C-SOMEONE-ELSES", false), ErrConnectionNotFound)

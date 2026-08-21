@@ -32,15 +32,16 @@ func integrationWantsMentions(integration *models.Integration) bool {
 		return false
 	}
 
-	switch integration.Type {
-	case models.ConnectionTypeSlack:
+	if integration.Type == models.ConnectionTypeSlack {
 		settings, err := models.SlackSettingsFromJSONMap(integration.Settings)
 		if err != nil {
 			return false
 		}
 
 		return settings.MentionOnCall
-	case models.ConnectionTypeDiscord:
+	}
+
+	if integration.Type == models.ConnectionTypeDiscord {
 		settings, err := models.DiscordSettingsFromJSONMap(integration.Settings)
 		if err != nil {
 			return false
@@ -49,9 +50,9 @@ func integrationWantsMentions(integration *models.Integration) bool {
 		// A legacy webhook integration can never mention anyone: a webhook post
 		// has no identity mapping behind it and cannot ping a user id.
 		return settings.MentionOnCall && settings.UsesBot()
-	default:
-		return false
 	}
+
+	return false
 }
 
 // ResolveOnCallMentions returns the humans the incident's effective escalation
