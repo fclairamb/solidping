@@ -75,6 +75,7 @@ import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org
 import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server.mail'
 import { Route as OrgsOrgServerHashingRouteImport } from './routes/orgs/$org/server.hashing'
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
+import { Route as OrgsOrgServerDiscordRouteImport } from './routes/orgs/$org/server.discord'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
 import { Route as OrgsOrgServerAnalyticsRouteImport } from './routes/orgs/$org/server.analytics'
 import { Route as OrgsOrgServerAggregationRouteImport } from './routes/orgs/$org/server.aggregation'
@@ -480,6 +481,11 @@ const OrgsOrgServerHashingRoute = OrgsOrgServerHashingRouteImport.update({
 const OrgsOrgServerEmailInboxRoute = OrgsOrgServerEmailInboxRouteImport.update({
   id: '/email-inbox',
   path: '/email-inbox',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
+const OrgsOrgServerDiscordRoute = OrgsOrgServerDiscordRouteImport.update({
+  id: '/discord',
+  path: '/discord',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
 const OrgsOrgServerAuthRoute = OrgsOrgServerAuthRouteImport.update({
@@ -915,6 +921,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
   '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/discord': typeof OrgsOrgServerDiscordRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
@@ -1024,6 +1031,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
   '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/discord': typeof OrgsOrgServerDiscordRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
@@ -1155,6 +1163,7 @@ export interface FileRoutesById {
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
   '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/discord': typeof OrgsOrgServerDiscordRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
@@ -1289,6 +1298,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/aggregation'
     | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/discord'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
@@ -1398,6 +1408,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/aggregation'
     | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/discord'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
@@ -1528,6 +1539,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/aggregation'
     | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/discord'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
@@ -2064,6 +2076,13 @@ declare module '@tanstack/react-router' {
       path: '/email-inbox'
       fullPath: '/orgs/$org/server/email-inbox'
       preLoaderRoute: typeof OrgsOrgServerEmailInboxRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
+    '/orgs/$org/server/discord': {
+      id: '/orgs/$org/server/discord'
+      path: '/discord'
+      fullPath: '/orgs/$org/server/discord'
+      preLoaderRoute: typeof OrgsOrgServerDiscordRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
     '/orgs/$org/server/auth': {
@@ -2847,6 +2866,7 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerAggregationRoute: typeof OrgsOrgServerAggregationRoute
   OrgsOrgServerAnalyticsRoute: typeof OrgsOrgServerAnalyticsRoute
   OrgsOrgServerAuthRoute: typeof OrgsOrgServerAuthRoute
+  OrgsOrgServerDiscordRoute: typeof OrgsOrgServerDiscordRoute
   OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
   OrgsOrgServerHashingRoute: typeof OrgsOrgServerHashingRoute
   OrgsOrgServerMailRoute: typeof OrgsOrgServerMailRoute
@@ -2862,6 +2882,7 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerAggregationRoute: OrgsOrgServerAggregationRoute,
   OrgsOrgServerAnalyticsRoute: OrgsOrgServerAnalyticsRoute,
   OrgsOrgServerAuthRoute: OrgsOrgServerAuthRoute,
+  OrgsOrgServerDiscordRoute: OrgsOrgServerDiscordRoute,
   OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
   OrgsOrgServerHashingRoute: OrgsOrgServerHashingRoute,
   OrgsOrgServerMailRoute: OrgsOrgServerMailRoute,

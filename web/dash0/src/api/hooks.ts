@@ -3256,6 +3256,30 @@ export function useSlackSocketStatus() {
   });
 }
 
+// Discord Gateway status hook. The Gateway is what carries everything a human
+// types at the bot (thread replies, mention commands); the HTTP interactions
+// endpoint only carries buttons and slash commands.
+export interface DiscordGatewayStatus {
+  enabled: boolean;
+  connected: boolean;
+  lastConnectedAt?: string;
+  lastError?: string;
+  guildCount?: number;
+  botUserId?: string;
+}
+
+export function useDiscordGatewayStatus() {
+  return useQuery({
+    queryKey: ["discord-gateway-status"],
+    queryFn: async () =>
+      apiFetch<DiscordGatewayStatus>(
+        "/api/v1/integrations/discord/gateway/status",
+      ),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useTestEmail() {
   return useMutation({
     mutationFn: (recipient: string) =>
@@ -4209,6 +4233,37 @@ export function useSlackDestinations(
   });
 }
 
+// Discord destination picker types and hook
+
+export interface DiscordChannel {
+  id: string;
+  name: string;
+  type: number;
+}
+
+export interface DiscordDestinationsResponse {
+  channels: DiscordChannel[];
+  guildId: string;
+  guildName: string;
+  connected: boolean;
+}
+
+export function useDiscordDestinations(
+  org: string,
+  channelUid: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["discord-destinations", org, channelUid],
+    queryFn: () =>
+      apiFetch<DiscordDestinationsResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/discord/destinations`,
+      ),
+    enabled: enabled && Boolean(org && channelUid),
+    staleTime: 60_000,
+  });
+}
+
 // Per-member paging coverage (spec 2026-08-12-03, phase 2).
 //
 // Admin-only, and type-level only: the API deliberately returns channel types
@@ -4547,6 +4602,31 @@ export async function startSlackInstall(
 ): Promise<void> {
   const { url } = await apiFetch<SlackInstallURLResponse>(
     `/api/v1/orgs/${org}/integrations/slack/install-url`,
+    {
+      method: "POST",
+      body: JSON.stringify(channelUid ? { channelUid } : {}),
+    },
+  );
+  window.location.href = url;
+}
+
+interface DiscordInstallURLResponse {
+  url: string;
+}
+
+/**
+ * Mints an org-scoped Discord bot install URL and navigates the browser there.
+ *
+ * Unlike Slack there is deliberately no unauthenticated install entry point:
+ * an anonymous Discord install would have to trust a caller-supplied org, which
+ * is exactly the hole the Slack org-scoped endpoint was introduced to close.
+ */
+export async function startDiscordInstall(
+  org: string,
+  channelUid?: string,
+): Promise<void> {
+  const { url } = await apiFetch<DiscordInstallURLResponse>(
+    `/api/v1/orgs/${org}/integrations/discord/install-url`,
     {
       method: "POST",
       body: JSON.stringify(channelUid ? { channelUid } : {}),
