@@ -195,3 +195,78 @@ implement them as written.
    delivers feature-completeness parity for the *org* integration only. Do NOT
    add a WhatsApp-style `user_notification_routes` DM entry; a personal DM route
    is a cheap follow-up once the bot exists, and belongs in its own spec.
+
+## Implementation Plan
+
+Ordered so every step lands on a green tree, and the structural work (settings
+model, install flow) precedes the surface work. One commit per step.
+
+1. **Settings model + config keys.** Extend `models.DiscordSettings` with the
+   bot fields (`guild_id`, `guild_name`, `bot_user_id`, `channel_id`,
+   `channel_name`, `installed_by_user_id`, `mention_on_call`,
+   `comment_ingestion`) while keeping `webhook_url` as the legacy mode; add
+   `UsesBot()` / `IngestsAllThreadReplies()`. Add `DiscordOAuthConfig.PublicKey`
+   + `GatewayEnabled` and the `auth.discord.public_key` /
+   `auth.discord.gateway_enabled` systemconfig keys (`SP_DISCORD_PUBLIC_KEY`,
+   `SP_DISCORD_GATEWAY_ENABLED`).
+
+2. **Bot REST client.** Grow `integrations/discord` from a webhook poster into a
+   bot client: `CreateMessage`, `EditMessage`, `StartThreadFromMessage`,
+   `UnarchiveThread`, `CreateThreadMessage`, `ListGuildChannels`,
+   `GetGuild`. Keep `NewClient(webhookURL)`/`SendWebhookMessage` untouched so
+   the legacy path cannot regress. Message components (buttons) in `types.go`.
+
+3. **Install flow + org resolution (Q2).** New `discord.Service`/`discord.Handler`:
+   org-scoped install URL (`POST /orgs/:org/integrations/discord/install-url`,
+   scopes `bot applications.commands`), OAuth callback
+   (`GET /api/v1/integrations/discord/oauth`), `createOrUpdateConnection`, and
+   `findOrCreateOrganizationByGuildID` reading/writing the SAME
+   `organization_providers` row (`ProviderTypeDiscord`, guild id) that
+   `auth.DiscordOAuthService.findOrCreateOrganization` writes. Test: pre-seed
+   the auth mapping, install the bot, assert exactly one mapping.
+
+4. **Destinations endpoint.** `GET /api/v1/orgs/:org/channels/:uid/discord/destinations`
+   listing the guild's text channels through the bot token, mirroring the Slack
+   handler's error taxonomy (404 / 400 / 409 not-connected / 502).
+
+5. **Sender rework (Q3).** `notifications/discord.go` picks bot vs webhook by
+   settings. Bot path: `incident.created` posts a rich embed with an
+   Acknowledge button, stores the forward `incidents/<uid>/discord/thread`
+   entry and the reverse thread→incident entry; follow-ups create/reuse a real
+   thread on that message and **un-archive it first**; resolve also edits the
+   original embed. `requiresExistingThread` semantics enforced. On-call
+   mentions render `<@id>` gated by `mention_on_call`.
+
+6. **Ed25519 verify middleware.** `discord.VerifyMiddleware` over
+   `X-Signature-Ed25519` / `X-Signature-Timestamp`; rejects missing, malformed,
+   invalid and stale-timestamp requests with 401.
+
+7. **Interactions endpoint + command dispatch.**
+   `POST /api/v1/integrations/discord/interactions`: PING→PONG, button actions
+   (ack), and application commands routed through a transport-agnostic
+   `DispatchCommand` seam shared with the Gateway. Management command set
+   (`checks add/list/rm`, `incidents`, `results`, `config default-channel`,
+   `comment`, `help`) reusing the Slack parser shape.
+
+8. **Gateway supervisor (Q1).** `DiscordGatewaySupervisor` mirroring
+   `SlackSocketSupervisor`: identify with `GUILDS | GUILD_MESSAGES |
+   MESSAGE_CONTENT`, heartbeat, resume, reconnect with backoff, status
+   snapshot endpoint. `MESSAGE_CREATE` in a tracked incident thread →
+   incident comment (gated by `comment_ingestion`), and a bot mention →
+   `DispatchCommand`.
+
+9. **Frontend.** `DiscordDestinationPanel` in `integration-form.tsx` (install
+   CTA when unconnected, channel picker, mention/comment switches, legacy
+   webhook fallback), `useDiscordDestinations` / `startDiscordInstall` hooks,
+   and a `server.discord.tsx` server-admin page mirroring `server.slack.tsx`.
+
+10. **Docs.** Rewrite the Discord row/section of
+    `web/docs/docs/configuration/notifications.md`, add `wiki/discord/README.md`
+    (app setup, bot permissions, the `MESSAGE_CONTENT` review story), refresh
+    `wiki/features/notifications-and-escalation.md` and
+    `wiki/api-specification/integrations.md`.
+
+11. **Tests.** Sender table-tests (created/resolved/edit/buttons/mentions/
+    archived-thread), Ed25519 verify (valid/invalid/stale), interaction ack
+    flow, command dispatch, legacy-webhook regression, destinations handler,
+    one-org-mapping test, plus a dash0 Playwright E2E for the new panel.
