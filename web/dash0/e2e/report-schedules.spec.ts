@@ -71,3 +71,84 @@ test.describe("Uptime report schedules", () => {
     );
   });
 });
+
+test.describe("Organization breadcrumb", () => {
+  // Coverage for spec 2026-08-21-03: every tab under Organization must
+  // resolve a breadcrumb leaf, not just the original four (members,
+  // invitations, usage, settings).
+  test("resolves a leaf on every Organization tab", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const header = () => page.locator("header").first();
+
+    for (const [path, label] of [
+      ["requests", "Requests"],
+      ["private-locations", "Private locations"],
+      ["report-schedules", "Uptime reports"],
+    ] as const) {
+      await page.goto(`orgs/test/organization/${path}`);
+      await page.waitForLoadState("networkidle");
+      // Section root on its own index page renders as plain (non-link) text
+      // — the negative control that keeps "the leaf is visible" from passing
+      // vacuously on a blank page.
+      await expect(header().getByText(label, { exact: true })).toBeVisible();
+      await expect(header().getByRole("link", { name: label })).toHaveCount(0);
+    }
+  });
+
+  test("renders the full trail on deep Organization routes", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const header = () => page.locator("header").first();
+
+    // report-schedules/new: section crumb becomes a link, leaf is "New".
+    await page.goto("orgs/test/organization/report-schedules/new");
+    await page.waitForLoadState("networkidle");
+    await expect(
+      header().getByRole("link", { name: "Uptime reports" }),
+    ).toBeVisible();
+    await expect(header().getByText("New", { exact: true })).toBeVisible();
+
+    // report-schedules/$uid: leaf names the record.
+    const name = `E2E Breadcrumb Report ${Date.now()}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/report-schedules`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          name,
+          frequency: "monthly",
+          recipients: [`e2e-breadcrumb-${Date.now()}@acme.com`],
+        },
+      },
+    );
+    expect(createResp.status()).toBe(201);
+    const { uid } = await createResp.json();
+
+    try {
+      await page.goto(`orgs/test/organization/report-schedules/${uid}`);
+      await page.waitForLoadState("networkidle");
+      await expect(
+        header().getByRole("link", { name: "Uptime reports" }),
+      ).toBeVisible();
+      await expect(header().getByText(name, { exact: true })).toBeVisible();
+    } finally {
+      await page.request.delete(
+        `${API_BASE}/api/v1/orgs/test/report-schedules/${uid}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    }
+
+    // private-locations/register: section crumb becomes a link, leaf is
+    // "Register".
+    await page.goto("orgs/test/organization/private-locations/register");
+    await page.waitForLoadState("networkidle");
+    await expect(
+      header().getByRole("link", { name: "Private locations" }),
+    ).toBeVisible();
+    await expect(header().getByText("Register", { exact: true })).toBeVisible();
+  });
+});
