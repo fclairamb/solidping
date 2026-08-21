@@ -49,9 +49,24 @@ Responses: `201 {"fileUid": "…"}`; `401` for any authentication failure
 the caller may not write under (also deliberately unspecific); `400` malformed
 topic or empty body; `413` over the cap; `415` mime mismatch.
 
-Note: the server does not yet ASK an agent for an upload — the WS
-upload-request frame is a follow-up (spec 2026-08-21-05). The endpoint contract
-above is settled.
+**What triggers an upload.** An agent does not POST here spontaneously. It is
+asked, over the WebSocket, by the `upload-request` server frame (spec
+2026-08-21-05):
+
+```json
+{"type": "upload-request", "captureId": "9f2c…", "topic": "incidents/<uid>/screenshot"}
+```
+
+Unsolicited and uncorrelated (no `id`, no response frame), so an agent that
+predates it ignores it. It is emitted **only** when a result carrying a capture
+marker opens or reopens an incident — never per failing result — and its `topic`
+is always generated from the incident row the server just wrote, never echoed
+from anything the agent sent. `captureId` IS echoed from the agent's marker,
+which is safe because it names a slot in that agent's own memory.
+
+Best-effort in both directions: no live connection, an evicted capture, or a
+failed POST all mean "no screenshot on that incident". Nothing is queued and
+nothing is retried.
 
 ## Private regions
 

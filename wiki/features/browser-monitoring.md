@@ -84,10 +84,32 @@ the expense of a verdict):
   capture drops the stale one rather than showing the old outage's picture next
   to a different failure.
 
-Deported (private) agents cannot upload their captures yet — the endpoint and
-its authorizer exist (`POST /api/v1/agent/attachments`), but the WS
-upload-request wiring is a follow-up (spec 2026-08-21-05). In-cluster and
-in-process browser checks capture normally.
+### Deported agents
+
+A private agent runs the same capture code, but its WebSocket to the master is a
+JSON control channel, so the PNG cannot ride the result frame. The bytes are
+split from the announcement (spec 2026-08-21-05):
+
+1. The agent keeps the PNG in a small **bounded, TTL'd, take-once cache** (a few
+   entries, a few MiB; `internal/agents/capturecache`) and puts only a marker on
+   the result frame — `screenshot: {available: true, captureId: "…"}`. The bytes
+   never touch the socket in any encoding.
+2. If that result **opens or reopens an incident** — and only then — the server
+   sends an `upload-request` frame back down the same socket, naming the capture
+   id and a **server-generated** topic (`incidents/<uid>/screenshot`). Nothing in
+   the topic comes from the agent.
+3. The agent POSTs the bytes to `POST /api/v1/agent/attachments?topic=…` with
+   its normal Ed25519 signed headers, and the attachment appears on the incident.
+
+The ask is bounded by the incident state machine, not by a counter: a chatty
+agent that marks every failing result still provokes at most one request per
+open and one per reopen.
+
+Every hop is best-effort and **one-shot**. If the agent has disconnected, is on
+another replica, or has already evicted the capture, the screenshot is simply
+lost — the incident opens exactly as it would have, and nothing is retried. In-
+cluster and in-process browser checks skip all of this and hand the bytes over
+directly.
 
 ## Execution model
 
