@@ -1635,7 +1635,18 @@ func (s *Service) emitEvent(
 	// immediate so an opening incident reaches watching dashboards instantly.
 	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
-	// Queue notifications for incident lifecycle events
+	return s.queueLifecycleNotifications(ctx, orgUID, eventType, incident, payload)
+}
+
+// queueLifecycleNotifications decides what, if anything, an emitted incident
+// event pages. Split out of emitEvent because the switch has to enumerate
+// EVERY event type in the product (exhaustive lint), so it grows with families
+// that have nothing to do with incidents — the audit trail added twenty-six of
+// them at once.
+func (s *Service) queueLifecycleNotifications(
+	ctx context.Context, orgUID string, eventType models.EventType,
+	incident *models.Incident, payload models.JSONMap,
+) error {
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
@@ -1702,9 +1713,29 @@ func (s *Service) emitEvent(
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,
 		models.EventTypeOrgActivationFirstNotificationConfigured,
-		models.EventTypeOrgActivationFirstIncidentPaged:
+		models.EventTypeOrgActivationFirstIncidentPaged,
+		// The security/configuration audit trail (spec 2026-08-21-09) is
+		// recorded, never paged. An escalation policy edit is a fact for the
+		// audit page; waking the on-call engineer for it would be absurd.
+		models.EventTypeAuthLoginSucceeded, models.EventTypeAuthLoginFailed,
+		models.EventTypeAuthLogout,
+		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,
+		models.EventTypeMemberInvited, models.EventTypeMemberJoined,
+		models.EventTypeMemberRemoved, models.EventTypeMemberRoleChanged,
+		models.EventTypeIntegrationCreated, models.EventTypeIntegrationUpdated,
+		models.EventTypeIntegrationDeleted,
+		models.EventTypeEscalationPolicyCreated, models.EventTypeEscalationPolicyUpdated,
+		models.EventTypeEscalationPolicyDeleted,
+		models.EventTypeOnCallScheduleCreated, models.EventTypeOnCallScheduleUpdated,
+		models.EventTypeOnCallScheduleDeleted,
+		models.EventTypeStatusPageCreated, models.EventTypeStatusPageUpdated,
+		models.EventTypeStatusPageDeleted,
+		models.EventTypeMaintenanceWindowCreated, models.EventTypeMaintenanceWindowUpdated,
+		models.EventTypeMaintenanceWindowDeleted,
+		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated:
 		// No notifications for these event types — operator actions, soft
-		// escalation failures, status updates, or activation milestones.
+		// escalation failures, status updates, activation milestones, or
+		// audit-trail entries.
 	case models.EventTypeIncidentComment:
 		// Comments DO notify — but never through here. addCommentByOrgUID
 		// writes its own event row and calls queueCommentNotifications

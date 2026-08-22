@@ -228,19 +228,10 @@ type UpdatePolicyInput struct {
 	ClearRepeatAfterSeconds bool
 }
 
-// UpdatePolicy applies a partial update. The policy is addressed by UID.
-func (s *Service) UpdatePolicy(
-	ctx context.Context, orgUID, uid string, input *UpdatePolicyInput,
-) (*PolicyDetail, error) {
-	policy, err := s.db.GetEscalationPolicy(ctx, orgUID, uid)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrPolicyNotFound
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
+// validateUpdateInput checks the merged (post-PATCH) policy shape and every
+// step the request carries, so UpdatePolicy itself stays inside the
+// cyclomatic-complexity budget.
+func validateUpdateInput(policy *models.EscalationPolicy, input *UpdatePolicyInput) error {
 	repeatMax := policy.RepeatMax
 	if input.RepeatMax != nil {
 		repeatMax = *input.RepeatMax
@@ -256,16 +247,36 @@ func (s *Service) UpdatePolicy(
 	}
 
 	if shapeErr := validatePolicyShape(repeatMax, repeatAfter); shapeErr != nil {
-		return nil, shapeErr
+		return shapeErr
 	}
 
 	if input.Steps != nil {
 		for i := range *input.Steps {
 			step := &(*input.Steps)[i]
 			if stepErr := validateStep(step); stepErr != nil {
-				return nil, stepErr
+				return stepErr
 			}
 		}
+	}
+
+	return nil
+}
+
+// UpdatePolicy applies a partial update. The policy is addressed by UID.
+func (s *Service) UpdatePolicy(
+	ctx context.Context, orgUID, uid string, input *UpdatePolicyInput,
+) (*PolicyDetail, error) {
+	policy, err := s.db.GetEscalationPolicy(ctx, orgUID, uid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrPolicyNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if validateErr := validateUpdateInput(policy, input); validateErr != nil {
+		return nil, validateErr
 	}
 
 	update := &models.EscalationPolicyUpdate{

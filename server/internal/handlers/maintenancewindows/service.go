@@ -159,13 +159,17 @@ func (s *Service) CreateMaintenanceWindow(
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowCreated,
 		auditTarget(window), models.JSONMap{
-			"start_at":   window.StartAt.UTC().Format(time.RFC3339),
-			"end_at":     window.EndAt.UTC().Format(time.RFC3339),
-			"recurrence": window.Recurrence,
+			"start_at":      window.StartAt.UTC().Format(time.RFC3339),
+			"end_at":        window.EndAt.UTC().Format(time.RFC3339),
+			fieldRecurrence: window.Recurrence,
 		})
 
 	return convertWindowToResponse(window, time.Now().UTC()), nil
 }
+
+// fieldRecurrence is the recurrence field name, shared by the validation
+// messages and the audit payload.
+const fieldRecurrence = "recurrence"
 
 // auditTarget names a maintenance window for the audit trail.
 func auditTarget(window *models.MaintenanceWindow) audit.Target {
@@ -189,7 +193,7 @@ func auditSnapshot(window *models.MaintenanceWindow) map[string]any {
 		"description":    description,
 		"start_at":       window.StartAt.UTC().Format(time.RFC3339),
 		"end_at":         window.EndAt.UTC().Format(time.RFC3339),
-		"recurrence":     window.Recurrence,
+		fieldRecurrence:  window.Recurrence,
 		"recurrence_end": recurrenceEnd,
 	}
 }

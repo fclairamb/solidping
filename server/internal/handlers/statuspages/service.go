@@ -1130,9 +1130,9 @@ func (s *Service) CreateStatusPage(
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageCreated,
 		auditTarget(page), models.JSONMap{
-			"slug":       page.Slug,
-			"visibility": page.Visibility,
-			"enabled":    page.Enabled,
+			fieldSlug:       page.Slug,
+			fieldVisibility: page.Visibility,
+			"enabled":       page.Enabled,
 		})
 
 	page, err = s.applyCreateCustomDomain(ctx, org.UID, page, req)
@@ -1343,14 +1343,14 @@ func auditSnapshot(page *models.StatusPage) map[string]any {
 
 	return map[string]any{
 		"name":               page.Name,
-		"slug":               page.Slug,
+		fieldSlug:            page.Slug,
 		"description":        description,
-		"visibility":         page.Visibility,
+		fieldVisibility:      page.Visibility,
 		"enabled":            page.Enabled,
 		"is_default":         page.IsDefault,
 		"show_availability":  page.ShowAvailability,
 		"show_response_time": page.ShowResponseTime,
-		"history_period":     string(page.HistoryPeriod),
+		"history_period":     page.HistoryPeriod,
 		"custom_domain":      customDomain,
 		"auto_publish":       page.AutoPublish,
 		"auto_resolve":       page.AutoResolve,
@@ -1407,7 +1407,7 @@ func (s *Service) DeleteStatusPage(ctx context.Context, orgSlug, identifier stri
 	}
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageDeleted,
-		auditTarget(page), models.JSONMap{"slug": page.Slug})
+		auditTarget(page), models.JSONMap{fieldSlug: page.Slug})
 
 	// Reap the page's brand assets. This is NOT housekeeping: a status-page
 	// logo is public exactly while its file row is live, so without this the

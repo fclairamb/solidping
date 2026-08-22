@@ -43,12 +43,12 @@ func actorCtx(t *testing.T, userUID string) context.Context {
 	)
 }
 
-func listAudit(t *testing.T, dbSvc db.Service, orgUID, family string) []*models.Event {
+func listAudit(t *testing.T, dbSvc db.Service, orgUID string) []*models.Event {
 	t.Helper()
 
 	rows, err := dbSvc.ListEvents(t.Context(), &models.ListEventsFilter{
 		OrganizationUID:   orgUID,
-		EventTypePrefixes: []string{family},
+		EventTypePrefixes: []string{"escalation_policy"},
 		Limit:             100,
 	})
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestPolicyLifecycleIsAudited(t *testing.T) {
 	})
 	r.NoError(err)
 
-	created := listAudit(t, dbSvc, org.UID, "escalation_policy")
+	created := listAudit(t, dbSvc, org.UID)
 	r.Len(created, 1)
 	r.Equal(models.EventTypeEscalationPolicyCreated, created[0].EventType)
 	r.Equal(models.ActorTypeUser, created[0].ActorType)
@@ -97,7 +97,7 @@ func TestPolicyLifecycleIsAudited(t *testing.T) {
 	})
 	r.NoError(err)
 
-	rows := listAudit(t, dbSvc, org.UID, "escalation_policy")
+	rows := listAudit(t, dbSvc, org.UID)
 	r.Len(rows, 2)
 
 	updated := rows[0] // newest first
@@ -114,7 +114,7 @@ func TestPolicyLifecycleIsAudited(t *testing.T) {
 
 	r.NoError(svc.DeletePolicy(ctx, org.UID, policy.UID))
 
-	rows = listAudit(t, dbSvc, org.UID, "escalation_policy")
+	rows = listAudit(t, dbSvc, org.UID)
 	r.Len(rows, 3)
 	r.Equal(models.EventTypeEscalationPolicyDeleted, rows[0].EventType)
 	r.Equal(policy.UID, rows[0].Payload[audit.PayloadKeyTargetUID])
@@ -143,7 +143,7 @@ func TestNoOpUpdateWritesNoAuditEvent(t *testing.T) {
 	_, err = svc.UpdatePolicy(ctx, org.UID, policy.UID, &escalationpolicies.UpdatePolicyInput{Name: &same})
 	r.NoError(err)
 
-	rows := listAudit(t, dbSvc, org.UID, "escalation_policy")
+	rows := listAudit(t, dbSvc, org.UID)
 	r.Len(rows, 1, "re-sending the current name is not a change")
 	r.Equal(models.EventTypeEscalationPolicyCreated, rows[0].EventType)
 
@@ -152,7 +152,7 @@ func TestNoOpUpdateWritesNoAuditEvent(t *testing.T) {
 	_, err = svc.UpdatePolicy(ctx, org.UID, policy.UID, &escalationpolicies.UpdatePolicyInput{Name: &changed})
 	r.NoError(err)
 
-	rows = listAudit(t, dbSvc, org.UID, "escalation_policy")
+	rows = listAudit(t, dbSvc, org.UID)
 	r.Len(rows, 2)
 	r.Equal(models.EventTypeEscalationPolicyUpdated, rows[0].EventType)
 }
@@ -172,7 +172,7 @@ func TestAuditEventFallsBackToSystemActor(t *testing.T) {
 	})
 	r.NoError(err)
 
-	rows := listAudit(t, dbSvc, org.UID, "escalation_policy")
+	rows := listAudit(t, dbSvc, org.UID)
 	r.Len(rows, 1)
 	r.Equal(models.ActorTypeSystem, rows[0].ActorType)
 	r.Nil(rows[0].ActorUID)

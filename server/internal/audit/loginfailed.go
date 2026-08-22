@@ -20,7 +20,7 @@ import (
 //  1. FOLDING. Repeats of the same (org, email, source IP) inside
 //     DefaultFoldWindow update the counter on the row already written instead
 //     of writing another. One row then says "this address tried this account
-//     47 times between 09:02 and 09:11", which is also a better artefact to
+//     47 times between 09:02 and 09:11", which is also a better artifact to
 //     read than 47 rows.
 //
 //  2. A PER-ORG HOURLY CEILING on rows CREATED (folds are free — they touch a
@@ -253,6 +253,10 @@ func foldKey(orgUID, email, sourceIP string) string {
 }
 
 // defaultFolder is the process-wide folder used by RecordFailedLogin.
+// by ConfigureDefaultFolder at boot; see the file comment for why it is not
+// per-request state.
+//
+//nolint:gochecknoglobals // process-wide rate-limiter state, replaced wholesale
 var (
 	defaultFolderMu sync.RWMutex
 	defaultFolder   = NewFailedLoginFolder(DefaultFoldWindow, DefaultMaxPerOrgPerHour)

@@ -149,40 +149,65 @@ func (s *Service) ListActivationFunnel(ctx context.Context) (*ActivationFunnelRe
 		}
 
 		for _, event := range events {
-			occurredAt := event.CreatedAt
-			switch event.EventType {
-			case models.EventTypeOrgActivationSignupCompleted:
-				row.SignupAt = &occurredAt
-			case models.EventTypeOrgActivationFirstCheckCreated:
-				row.FirstCheckAt = &occurredAt
-			case models.EventTypeOrgActivationFirstResultReceived:
-				row.FirstResultAt = &occurredAt
-			case models.EventTypeOrgActivationFirstNotificationConfigured:
-				row.FirstNotifierAt = &occurredAt
-			case models.EventTypeOrgActivationFirstIncidentPaged:
-				row.FirstIncidentAt = &occurredAt
-			case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
-				models.EventTypeCheckDeleted,
-				models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
-				models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
-				models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
-				models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
-				models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
-				models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
-				models.EventTypeStatusUpdateDeleted,
-				models.EventTypeStatusPageIncidentPublished,
-				models.EventTypeStatusPageIncidentUpdated,
-				models.EventTypeStatusPageIncidentResolved,
-				models.EventTypeStatusSubscriberDisabled:
-				// Filter only requested activation events; these branches
-				// are unreachable but exhaustive lint requires them.
-			}
+			applyActivationEvent(row, event)
 		}
 
 		rows = append(rows, row)
 	}
 
 	return &ActivationFunnelResponse{Data: rows}, nil
+}
+
+// applyActivationEvent stamps one activation milestone onto a funnel row.
+// Split out of ListActivationFunnel because the switch must enumerate every
+// event type in the product (exhaustive lint), so it grows with families that
+// have nothing to do with activation.
+func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
+	occurredAt := event.CreatedAt
+
+	switch event.EventType {
+	case models.EventTypeOrgActivationSignupCompleted:
+		row.SignupAt = &occurredAt
+	case models.EventTypeOrgActivationFirstCheckCreated:
+		row.FirstCheckAt = &occurredAt
+	case models.EventTypeOrgActivationFirstResultReceived:
+		row.FirstResultAt = &occurredAt
+	case models.EventTypeOrgActivationFirstNotificationConfigured:
+		row.FirstNotifierAt = &occurredAt
+	case models.EventTypeOrgActivationFirstIncidentPaged:
+		row.FirstIncidentAt = &occurredAt
+	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
+		models.EventTypeCheckDeleted,
+		models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
+		models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
+		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
+		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
+		models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
+		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
+		models.EventTypeStatusUpdateDeleted,
+		models.EventTypeStatusPageIncidentPublished,
+		models.EventTypeStatusPageIncidentUpdated,
+		models.EventTypeStatusPageIncidentResolved,
+		models.EventTypeStatusSubscriberDisabled,
+		models.EventTypeAuthLoginSucceeded, models.EventTypeAuthLoginFailed,
+		models.EventTypeAuthLogout,
+		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,
+		models.EventTypeMemberInvited, models.EventTypeMemberJoined,
+		models.EventTypeMemberRemoved, models.EventTypeMemberRoleChanged,
+		models.EventTypeIntegrationCreated, models.EventTypeIntegrationUpdated,
+		models.EventTypeIntegrationDeleted,
+		models.EventTypeEscalationPolicyCreated, models.EventTypeEscalationPolicyUpdated,
+		models.EventTypeEscalationPolicyDeleted,
+		models.EventTypeOnCallScheduleCreated, models.EventTypeOnCallScheduleUpdated,
+		models.EventTypeOnCallScheduleDeleted,
+		models.EventTypeStatusPageCreated, models.EventTypeStatusPageUpdated,
+		models.EventTypeStatusPageDeleted,
+		models.EventTypeMaintenanceWindowCreated, models.EventTypeMaintenanceWindowUpdated,
+		models.EventTypeMaintenanceWindowDeleted,
+		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated:
+		// Filter only requested activation events; these branches
+		// are unreachable but exhaustive lint requires them.
+	}
 }
 
 // ListParameters returns all system parameters with secrets masked.

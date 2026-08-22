@@ -265,9 +265,9 @@ func (s *Service) AddMember(
 	// where the membership does not exist yet.
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberJoined,
 		auditMemberTarget(member, user), models.JSONMap{
-			"role":   string(member.Role),
-			"email":  user.Email,
-			"source": "admin_add",
+			fieldRole:  string(member.Role),
+			fieldEmail: user.Email,
+			"source":   "admin_add",
 		})
 
 	return &MemberResponse{
@@ -281,6 +281,12 @@ func (s *Service) AddMember(
 		CreatedAt: member.CreatedAt,
 	}, nil
 }
+
+// Field names shared by the validation messages and the audit payloads.
+const (
+	fieldRole  = "role"
+	fieldEmail = "email"
+)
 
 // auditMemberTarget names a membership for the audit trail. The target is the
 // USER (that is who a reader is looking for), identified by UID with the email
@@ -356,9 +362,9 @@ func (s *Service) UpdateMember(
 	if member.Role != previousRole {
 		audit.Record(ctx, s.db, org.UID, models.EventTypeMemberRoleChanged,
 			auditMemberTarget(member, user), models.JSONMap{
-				"email":         user.Email,
+				fieldEmail:      user.Email,
 				"previous_role": string(previousRole),
-				"role":          string(member.Role),
+				fieldRole:       string(member.Role),
 			})
 	}
 
@@ -475,9 +481,9 @@ func (s *Service) RemoveMember(
 	// failed user lookup must not turn a successful removal into an error.
 	user, _ := s.db.GetUser(ctx, member.UserUID)
 
-	payload := models.JSONMap{"role": string(member.Role)}
+	payload := models.JSONMap{fieldRole: string(member.Role)}
 	if user != nil {
-		payload["email"] = user.Email
+		payload[fieldEmail] = user.Email
 	}
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberRemoved,

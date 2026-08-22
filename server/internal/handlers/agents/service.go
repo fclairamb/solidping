@@ -20,6 +20,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
+// auditKeyTokenKind names the audit payload field that says WHICH kind of
+// credential an auth.token_* event is about.
+const auditKeyTokenKind = "token_kind"
+
 // DefaultEnrollmentTokenTTL is how long a minted enrollment token stays valid.
 const DefaultEnrollmentTokenTTL = 24 * time.Hour
 
@@ -318,9 +322,9 @@ func (s *Service) MintEnrollmentToken(
 	audit.Record(ctx, s.db, org.UID, models.EventTypeAuthTokenCreated,
 		audit.Target{Type: "agent_enrollment_token", UID: row.UID, Name: full},
 		models.JSONMap{
-			"token_kind": "agent_enrollment",
-			"region":     full,
-			"expires_at": expiresAt.UTC().Format(time.RFC3339),
+			auditKeyTokenKind: "agent_enrollment",
+			"region":          full,
+			"expires_at":      expiresAt.UTC().Format(time.RFC3339),
 		})
 
 	return &MintEnrollmentTokenResponse{
@@ -642,9 +646,9 @@ func (s *Service) recordAgentKeyRevoked(
 	audit.Record(ctx, s.db, orgUID, models.EventTypeAuthTokenRevoked,
 		audit.Target{Type: "agent_key", UID: agent.UID, Name: agent.Name},
 		models.JSONMap{
-			"token_kind": "agent_key",
-			"region":     agent.Region,
-			"action":     action,
+			auditKeyTokenKind: "agent_key",
+			"region":          agent.Region,
+			"action":          action,
 		})
 }
 

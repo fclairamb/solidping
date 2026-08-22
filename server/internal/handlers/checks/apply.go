@@ -16,6 +16,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// applyCountCreated names the config.applied payload's created counter. A
+// constant because "created" also appears as a sort key and a status string
+// elsewhere in this package.
+const applyCountCreated = "created"
+
 // ManagedLabelKey is the reserved label that marks a check as owned by a
 // config-as-code manifest. Its value is the manifest name (defaults to the
 // org slug). Reconcile (delete-by-absence) only ever touches checks carrying
@@ -457,14 +462,14 @@ func (s *Service) ApplyChecks(
 	audit.Record(ctx, s.db, org.UID, models.EventTypeConfigApplied,
 		audit.Target{Type: "manifest", Name: manifest},
 		models.JSONMap{
-			"manifest":  manifest,
-			"created":   result.Created,
-			"updated":   result.Updated,
-			"deleted":   result.Deleted,
-			"unmanaged": result.Unmanaged,
-			"pruned":    opts.Prune,
-			"forced":    opts.Force,
-			"errors":    len(result.Errors),
+			"manifest":        manifest,
+			applyCountCreated: result.Created,
+			"updated":         result.Updated,
+			"deleted":         result.Deleted,
+			"unmanaged":       result.Unmanaged,
+			"pruned":          opts.Prune,
+			"forced":          opts.Force,
+			"errors":          len(result.Errors),
 		})
 
 	return result, nil

@@ -445,13 +445,13 @@ func (s *Service) CreateIntegration(
 			"channel_type": string(conn.Type),
 		})
 
-	// Note what KIND of integration was wired up, never its settings — a
+	// Record what KIND of integration was wired up, never its settings — a
 	// connection's settings are exactly where the bot tokens, webhook URLs and
 	// Twilio auth tokens live.
 	audit.Record(ctx, s.db, org.UID, models.EventTypeIntegrationCreated,
 		auditTarget(conn), models.JSONMap{
-			"integration_type": string(conn.Type),
-			"enabled":          conn.Enabled,
+			auditKeyIntegrationType: string(conn.Type),
+			"enabled":               conn.Enabled,
 		})
 
 	resp := toResponse(conn, true)
@@ -730,13 +730,17 @@ func (s *Service) UpdateIntegration(
 	if len(changed) > 0 || len(extraFields) > 0 {
 		audit.Record(ctx, s.db, org.UID, models.EventTypeIntegrationUpdated,
 			auditTarget(updated), audit.ChangePayload(changed, safe, extraFields, models.JSONMap{
-				"integration_type":      string(updated.Type),
+				auditKeyIntegrationType: string(updated.Type),
 				"settings_keys_touched": settingsKeyNames(req.Settings),
 			}))
 	}
 
 	return toResponse(updated, true), nil
 }
+
+// auditKeyIntegrationType names the audit payload field carrying the
+// connection's type.
+const auditKeyIntegrationType = "integration_type"
 
 // auditTarget names an integration connection for the audit trail.
 func auditTarget(conn *models.Integration) audit.Target {

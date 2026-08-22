@@ -74,7 +74,7 @@ func newFixture(t *testing.T) *fixture {
 
 // seed writes one event, at an explicit time so ordering is deterministic.
 func (f *fixture) seed(
-	t *testing.T, ctx context.Context,
+	ctx context.Context, t *testing.T,
 	eventType models.EventType, actorUID *string, at time.Time, sourceIP string,
 ) *models.Event {
 	t.Helper()
@@ -117,9 +117,9 @@ func TestAuthEventsAreInvisibleToNonAdmins(t *testing.T) {
 	f := newFixture(t)
 
 	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
-	f.seed(t, ctx, models.EventTypeAuthLoginSucceeded, &f.admin.UID, base, "203.0.113.7")
-	f.seed(t, ctx, models.EventTypeAuthLoginFailed, nil, base.Add(time.Minute), "203.0.113.8")
-	f.seed(t, ctx, models.EventTypeCheckCreated, &f.admin.UID, base.Add(2*time.Minute), "203.0.113.9")
+	f.seed(ctx, t, models.EventTypeAuthLoginSucceeded, &f.admin.UID, base, "203.0.113.7")
+	f.seed(ctx, t, models.EventTypeAuthLoginFailed, nil, base.Add(time.Minute), "203.0.113.8")
+	f.seed(ctx, t, models.EventTypeCheckCreated, &f.admin.UID, base.Add(2*time.Minute), "203.0.113.9")
 
 	adminView, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
 		Size:   50,
@@ -168,7 +168,7 @@ func TestSourceIPIsAdminOnly(t *testing.T) {
 	ctx := t.Context()
 	f := newFixture(t)
 
-	f.seed(t, ctx, models.EventTypeCheckCreated, &f.admin.UID,
+	f.seed(ctx, t, models.EventTypeCheckCreated, &f.admin.UID,
 		time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC), "203.0.113.9")
 
 	adminView, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
@@ -198,7 +198,7 @@ func TestSuperAdminSeesRestrictedFamilies(t *testing.T) {
 	ctx := t.Context()
 	f := newFixture(t)
 
-	f.seed(t, ctx, models.EventTypeAuthLoginSucceeded, nil,
+	f.seed(ctx, t, models.EventTypeAuthLoginSucceeded, nil,
 		time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC), "")
 
 	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
@@ -230,8 +230,8 @@ func TestFamilyPrefixFilterIsNotASubstringMatch(t *testing.T) {
 	f := newFixture(t)
 
 	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
-	f.seed(t, ctx, models.EventTypeOnCallScheduleCreated, nil, base, "")
-	f.seed(t, ctx, models.EventTypeMemberInvited, nil, base.Add(time.Minute), "")
+	f.seed(ctx, t, models.EventTypeOnCallScheduleCreated, nil, base, "")
+	f.seed(ctx, t, models.EventTypeMemberInvited, nil, base.Add(time.Minute), "")
 	// A decoy that an unescaped `oncall_schedule.%` pattern would also match.
 	decoy := models.NewEvent(f.org.UID, models.EventType("oncallXschedule.created"), models.ActorTypeSystem)
 	decoy.CreatedAt = base.Add(2 * time.Minute)
@@ -256,9 +256,9 @@ func TestFamilyAndExactFiltersAreOred(t *testing.T) {
 	f := newFixture(t)
 
 	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
-	f.seed(t, ctx, models.EventTypeCheckCreated, nil, base, "")
-	f.seed(t, ctx, models.EventTypeMemberInvited, nil, base.Add(time.Minute), "")
-	f.seed(t, ctx, models.EventTypeIncidentCreated, nil, base.Add(2*time.Minute), "")
+	f.seed(ctx, t, models.EventTypeCheckCreated, nil, base, "")
+	f.seed(ctx, t, models.EventTypeMemberInvited, nil, base.Add(time.Minute), "")
+	f.seed(ctx, t, models.EventTypeIncidentCreated, nil, base.Add(2*time.Minute), "")
 
 	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
 		Size:              50,
@@ -280,8 +280,8 @@ func TestActorFilterAndResolution(t *testing.T) {
 	f := newFixture(t)
 
 	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
-	f.seed(t, ctx, models.EventTypeCheckCreated, &f.admin.UID, base, "")
-	f.seed(t, ctx, models.EventTypeCheckUpdated, &f.viewer.UID, base.Add(time.Minute), "")
+	f.seed(ctx, t, models.EventTypeCheckCreated, &f.admin.UID, base, "")
+	f.seed(ctx, t, models.EventTypeCheckUpdated, &f.viewer.UID, base.Add(time.Minute), "")
 
 	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
 		Size:     50,
@@ -313,7 +313,7 @@ func TestCursorPaginationWalksTheWholeTrail(t *testing.T) {
 
 	seeded := make(map[string]bool)
 	for i := 0; i < 5; i++ {
-		event := f.seed(t, ctx, models.EventTypeCheckCreated, nil, base.Add(time.Duration(i)*time.Minute), "")
+		event := f.seed(ctx, t, models.EventTypeCheckCreated, nil, base.Add(time.Duration(i)*time.Minute), "")
 		seeded[event.UID] = true
 	}
 
@@ -379,9 +379,9 @@ func TestTimeRangeFilterIsApplied(t *testing.T) {
 	f := newFixture(t)
 
 	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
-	f.seed(t, ctx, models.EventTypeCheckCreated, nil, base, "")
-	f.seed(t, ctx, models.EventTypeCheckUpdated, nil, base.Add(2*time.Hour), "")
-	f.seed(t, ctx, models.EventTypeCheckDeleted, nil, base.Add(4*time.Hour), "")
+	f.seed(ctx, t, models.EventTypeCheckCreated, nil, base, "")
+	f.seed(ctx, t, models.EventTypeCheckUpdated, nil, base.Add(2*time.Hour), "")
+	f.seed(ctx, t, models.EventTypeCheckDeleted, nil, base.Add(4*time.Hour), "")
 
 	since := base.Add(time.Hour)
 	until := base.Add(3 * time.Hour)

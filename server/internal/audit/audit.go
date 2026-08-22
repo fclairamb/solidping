@@ -66,9 +66,18 @@ const (
 // It is process-global because the alternative — threading an audit config
 // through forty service constructors — buys nothing: there is exactly one
 // setting, for the whole process, for the lifetime of the process.
-var captureIP atomic.Bool
+// through forty service constructors. Initialized true (the documented default)
+// by newCaptureIPFlag rather than by an init function.
+//
+//nolint:gochecknoglobals // one process-wide setting, deliberately not threaded
+var captureIP = newCaptureIPFlag()
 
-func init() { captureIP.Store(true) }
+func newCaptureIPFlag() *atomic.Bool {
+	flag := &atomic.Bool{}
+	flag.Store(true)
+
+	return flag
+}
 
 // SetCaptureIP applies the `audit.capture_ip` knob. Called once from app
 // wiring; tests flip it directly and restore it with a defer.

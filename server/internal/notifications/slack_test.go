@@ -583,6 +583,14 @@ func (m *mockDBService) CreateEvent(_ context.Context, _ *models.Event) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpdateEventPayload(_ context.Context, _ string, _ models.JSONMap) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteEventsBefore(_ context.Context, _ time.Time, _ int) (int64, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetEvent(_ context.Context, _ string) (*models.Event, error) {
 	panic("not implemented")
 }

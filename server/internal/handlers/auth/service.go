@@ -654,19 +654,7 @@ func (s *Service) completeLogin(
 		return nil, err
 	}
 
-	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := s.refreshTokenExpiry(ctx, resolvedOrg.UID, now, now)
-	refreshToken.ExpiresAt = &expiresAt
-	refreshToken.LastActiveAt = &now
-
-	createdWith := authContext.ToMap()
-	if createdWith == nil {
-		createdWith = map[string]any{}
-	}
-	createdWith[keyMethod] = method
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: createdWith,
-	}
+	refreshToken := s.newRefreshTokenRow(ctx, user, resolvedOrg, refreshTokenValue, method, now, authContext)
 
 	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, err
@@ -679,18 +667,7 @@ func (s *Service) completeLogin(
 		return nil, err
 	}
 
-	// completeLogin is the single funnel every successful interactive login
-	// goes through — password, LDAP, passkey and every OAuth/OIDC provider —
-	// so one emission here covers all of them and cannot drift out of sync
-	// with a new provider added later.
-	audit.Record(auditActorCtx(ctx, user.UID, authContext), s.db, resolvedOrg.UID,
-		models.EventTypeAuthLoginSucceeded,
-		audit.Target{Type: "user", UID: user.UID, Name: user.Email},
-		models.JSONMap{
-			auditKeyMethod: method,
-			auditKeyEmail:  user.Email,
-			auditKeyRole:   role,
-		})
+	s.recordLoginSucceeded(ctx, user, resolvedOrg, role, method, authContext)
 
 	return &LoginResponse{
 		AccessToken:   accessToken,
@@ -702,6 +679,35 @@ func (s *Service) completeLogin(
 		Organizations: orgSummaries,
 		LoginAction:   loginAction,
 	}, nil
+}
+
+// newRefreshTokenRow builds the refresh-token row a completed login persists,
+// tagged with the authentication method and the request provenance for
+// forensics (that tag is what the sessions listing shows).
+func (s *Service) newRefreshTokenRow(
+	ctx context.Context,
+	user *models.User,
+	resolvedOrg *models.Organization,
+	refreshTokenValue, method string,
+	now time.Time,
+	authContext Context,
+) *models.UserToken {
+	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
+	expiresAt := s.refreshTokenExpiry(ctx, resolvedOrg.UID, now, now)
+	refreshToken.ExpiresAt = &expiresAt
+	refreshToken.LastActiveAt = &now
+
+	createdWith := authContext.ToMap()
+	if createdWith == nil {
+		createdWith = map[string]any{}
+	}
+
+	createdWith[keyMethod] = method
+	refreshToken.Properties = models.JSONMap{
+		keyCreatedWith: createdWith,
+	}
+
+	return refreshToken
 }
 
 // enforceSessionCap prunes the user's active `refresh`-type sessions down to
@@ -979,7 +985,7 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	if token.OrganizationUID != nil {
 		audit.Record(auditActorCtx(ctx, token.UserUID, Context{}), s.db, *token.OrganizationUID,
 			models.EventTypeAuthLogout,
-			audit.Target{Type: "user", UID: token.UserUID}, nil)
+			audit.Target{Type: auditTargetUser, UID: token.UserUID}, nil)
 	}
 
 	return nil
@@ -1780,7 +1786,7 @@ func (s *Service) CreatePAT(
 	// or any suffix of it — in a table org admins can read would make the
 	// audit trail a credential store.
 	audit.Record(ctx, s.db, org.UID, models.EventTypeAuthTokenCreated,
-		audit.Target{Type: "token", UID: token.UID, Name: req.Name},
+		audit.Target{Type: auditTargetToken, UID: token.UID, Name: req.Name},
 		models.JSONMap{
 			"token_kind":   "pat",
 			"token_name":   req.Name,
@@ -1844,7 +1850,7 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 
 	if token.OrganizationUID != nil {
 		audit.Record(ctx, s.db, *token.OrganizationUID, models.EventTypeAuthTokenRevoked,
-			audit.Target{Type: "token", UID: token.UID, Name: stringFromMap(token.Properties, keyName)},
+			audit.Target{Type: auditTargetToken, UID: token.UID, Name: stringFromMap(token.Properties, keyName)},
 			models.JSONMap{
 				"token_kind": string(token.Type),
 				"token_name": stringFromMap(token.Properties, keyName),

@@ -3570,17 +3570,17 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 	// "?eventType=check.created&type=auth" means "either", not "both", which
 	// would be unsatisfiable.
 	if len(filter.EventTypes) > 0 || len(filter.EventTypePrefixes) > 0 {
-		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		query = query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
 			if len(filter.EventTypes) > 0 {
-				q = q.WhereOr("event_type IN (?)", bun.List(filter.EventTypes))
+				group = group.WhereOr("event_type IN (?)", bun.List(filter.EventTypes))
 			}
 
 			for _, prefix := range filter.EventTypePrefixes {
-				q = q.WhereOr("event_type LIKE ? ESCAPE ?",
+				group = group.WhereOr("event_type LIKE ? ESCAPE ?",
 					models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
 			}
 
-			return q
+			return group
 		})
 	}
 

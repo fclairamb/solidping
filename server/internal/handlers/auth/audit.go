@@ -13,6 +13,11 @@ const (
 	auditKeyEmail  = "email"
 	auditKeyRole   = "role"
 	auditKeySource = "source"
+
+	// Audit target types owned by this package. Named because they recur and
+	// goconst (rightly) refuses a third bare literal.
+	auditTargetUser  = "user"
+	auditTargetToken = "token"
 )
 
 // Reasons recorded on auth.login_failed. Deliberately coarse — the trail must
@@ -66,4 +71,31 @@ func (s *Service) recordLoginFailed(ctx context.Context, orgSlug, email, reason 
 	}
 
 	audit.RecordFailedLogin(ctx, s.db, org.UID, email, reason)
+}
+
+// recordLoginSucceeded writes the auth.login_succeeded event.
+//
+// completeLogin is the single funnel every successful interactive login goes
+// through — password, LDAP, passkey and every OAuth/OIDC provider — so one
+// emission here covers all of them and cannot drift out of sync with a new
+// provider added later.
+func (s *Service) recordLoginSucceeded(
+	ctx context.Context,
+	user *models.User,
+	resolvedOrg *models.Organization,
+	role, method string,
+	authContext Context,
+) {
+	if resolvedOrg == nil {
+		return
+	}
+
+	audit.Record(auditActorCtx(ctx, user.UID, authContext), s.db, resolvedOrg.UID,
+		models.EventTypeAuthLoginSucceeded,
+		audit.Target{Type: auditTargetUser, UID: user.UID, Name: user.Email},
+		models.JSONMap{
+			auditKeyMethod: method,
+			auditKeyEmail:  user.Email,
+			auditKeyRole:   role,
+		})
 }

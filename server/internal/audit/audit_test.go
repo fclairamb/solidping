@@ -14,6 +14,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// Static errors for the fake store: err113 forbids dynamic errors even in
+// tests, and a named error is easier to assert on anyway.
+var (
+	errInsertRefused = errors.New("insert refused")
+	errNoSuchEvent   = errors.New("no such event")
+)
+
 // fakeStore is a slice-backed audit.EventStore. Deliberately not a mock: every
 // assertion below is about what actually landed in a row, so the test needs the
 // rows, not a record of calls.
@@ -30,7 +37,7 @@ func (f *fakeStore) CreateEvent(_ context.Context, event *models.Event) error {
 	if f.failNext {
 		f.failNext = false
 
-		return errors.New("insert refused")
+		return errInsertRefused
 	}
 
 	f.events = append(f.events, event)
@@ -50,7 +57,7 @@ func (f *fakeStore) UpdateEventPayload(_ context.Context, uid string, payload mo
 		}
 	}
 
-	return errors.New("no such event")
+	return errNoSuchEvent
 }
 
 func (f *fakeStore) all() []*models.Event {
@@ -273,8 +280,10 @@ func TestRecordAttachesActorAndProvenance(t *testing.T) {
 //
 // The positive control is the first half: with capture on, the same call does
 // record the IP, so a Record that never wrote one would not pass.
+// another test that reads it.
+//
+//nolint:paralleltest // flips a process-wide setting; must not run alongside
 func TestRecordHonorsCaptureIPKnob(t *testing.T) {
-	// Not parallel: this flips a process-wide setting.
 	r := require.New(t)
 
 	original := audit.CaptureIPEnabled()

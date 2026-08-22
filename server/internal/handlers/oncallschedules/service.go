@@ -223,8 +223,8 @@ func (s *Service) UpdateSchedule(
 		weekday = nil
 	}
 
-	if err := validateScheduleParams(timezone, rotation, handoffTime, weekday); err != nil {
-		return nil, err
+	if validateErr := validateScheduleParams(timezone, rotation, handoffTime, weekday); validateErr != nil {
+		return nil, validateErr
 	}
 
 	update := &models.OnCallScheduleUpdate{
@@ -239,13 +239,13 @@ func (s *Service) UpdateSchedule(
 		ClearHandoffWeekday: input.ClearHandoffWeekday,
 	}
 
-	if err := s.db.UpdateOnCallSchedule(ctx, schedule.UID, update); err != nil {
-		return nil, err
+	if updateErr := s.db.UpdateOnCallSchedule(ctx, schedule.UID, update); updateErr != nil {
+		return nil, updateErr
 	}
 
 	if input.UserUIDs != nil {
-		if err := s.db.ReplaceOnCallScheduleUsers(ctx, schedule.UID, *input.UserUIDs); err != nil {
-			return nil, err
+		if replaceErr := s.db.ReplaceOnCallScheduleUsers(ctx, schedule.UID, *input.UserUIDs); replaceErr != nil {
+			return nil, replaceErr
 		}
 	}
 
@@ -276,8 +276,8 @@ func (s *Service) DeleteSchedule(ctx context.Context, orgUID, scheduleUID string
 		return err
 	}
 
-	if err := s.db.DeleteOnCallSchedule(ctx, scheduleUID); err != nil {
-		return err
+	if deleteErr := s.db.DeleteOnCallSchedule(ctx, scheduleUID); deleteErr != nil {
+		return deleteErr
 	}
 
 	audit.Record(ctx, s.db, orgUID, models.EventTypeOnCallScheduleDeleted, auditTarget(schedule), nil)

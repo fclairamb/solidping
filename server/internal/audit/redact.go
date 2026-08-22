@@ -27,6 +27,8 @@ const maxDepth = 3
 // The cost of over-matching is a dropped field in an audit row; the cost of
 // under-matching is a credential in a table an org admin can read. Those are
 // not symmetric, so this list errs long.
+//
+//nolint:gochecknoglobals // static denylist, treated as a constant.
 var sensitiveKeyFragments = []string{
 	"apikey",
 	"auth",
@@ -56,6 +58,8 @@ var sensitiveKeyFragments = []string{
 // token's name and prefix, never the value"), and the boolean/enumerated
 // facts that say what KIND of credential was involved without revealing any
 // part of it.
+//
+//nolint:gochecknoglobals // static allowlist, treated as a constant.
 var safeKeys = map[string]bool{
 	"token_kind":     true,
 	"token_name":     true,
@@ -173,7 +177,7 @@ func redactSlice(in []any, depth int) []any {
 //     scalars short enough to be evidence rather than a payload copy.
 //
 // Both halves land in the event as changed_fields / changes.
-func Changes(before, after map[string]any) (changed []string, safe map[string]any) {
+func Changes(before, after map[string]any) ([]string, map[string]any) {
 	keys := make(map[string]bool, len(before)+len(after))
 	for key := range before {
 		keys[key] = true
@@ -183,8 +187,8 @@ func Changes(before, after map[string]any) (changed []string, safe map[string]an
 		keys[key] = true
 	}
 
-	changed = make([]string, 0, len(keys))
-	safe = make(map[string]any)
+	changed := make([]string, 0, len(keys))
+	safe := make(map[string]any)
 
 	for key := range keys {
 		oldValue, oldOK := before[key]

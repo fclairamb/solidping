@@ -29,6 +29,8 @@ var (
 //
 // This is enforced as a filter EXCLUSION rather than by rejecting `?type=auth`,
 // which is what makes it hold for an unfiltered listing too.
+//
+//nolint:gochecknoglobals // static policy list, treated as a constant.
 var RestrictedEventTypePrefixes = []string{"auth"}
 
 // Service provides event listing functionality.
@@ -178,30 +180,7 @@ func (s *Service) ListEvents(
 	actors := s.resolveActors(ctx, events)
 
 	for _, evt := range events {
-		item := EventResponse{
-			UID:         evt.UID,
-			IncidentUID: evt.IncidentUID,
-			CheckUID:    evt.CheckUID,
-			EventType:   string(evt.EventType),
-			ActorType:   string(evt.ActorType),
-			ActorUID:    evt.ActorUID,
-			Payload:     evt.Payload,
-			CreatedAt:   evt.CreatedAt,
-		}
-
-		if isAdmin {
-			item.SourceIP = evt.SourceIP
-			item.UserAgent = evt.UserAgent
-		}
-
-		if evt.ActorUID != nil {
-			if actor, ok := actors[*evt.ActorUID]; ok {
-				item.ActorName = actor.name
-				item.ActorEmail = actor.email
-			}
-		}
-
-		response.Data = append(response.Data, item)
+		response.Data = append(response.Data, toResponse(evt, actors, isAdmin))
 	}
 
 	// Set cursor if there are more results
@@ -211,6 +190,35 @@ func (s *Service) ListEvents(
 	}
 
 	return response, nil
+}
+
+// toResponse renders one event, withholding the admin-only provenance fields
+// from a caller that is not an org admin.
+func toResponse(evt *models.Event, actors map[string]actorIdentity, isAdmin bool) EventResponse {
+	item := EventResponse{
+		UID:         evt.UID,
+		IncidentUID: evt.IncidentUID,
+		CheckUID:    evt.CheckUID,
+		EventType:   string(evt.EventType),
+		ActorType:   string(evt.ActorType),
+		ActorUID:    evt.ActorUID,
+		Payload:     evt.Payload,
+		CreatedAt:   evt.CreatedAt,
+	}
+
+	if isAdmin {
+		item.SourceIP = evt.SourceIP
+		item.UserAgent = evt.UserAgent
+	}
+
+	if evt.ActorUID != nil {
+		if actor, ok := actors[*evt.ActorUID]; ok {
+			item.ActorName = actor.name
+			item.ActorEmail = actor.email
+		}
+	}
+
+	return item
 }
 
 type actorIdentity struct {
