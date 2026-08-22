@@ -6,6 +6,45 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: audit-actor-metadata
+-- Teardown half of the audit-actor-metadata section (spec 2026-08-21-09).
+-- ==========================================================================
+
+-- LOSSY: every event whose actor_type is one of the two kinds this section
+-- introduced is DELETED, not downgraded. The narrowed constraint below has no
+-- room for them, and rewriting them to 'system' would silently turn "a token
+-- did this" into "the server did this" inside an audit trail — a worse outcome
+-- than losing the row on a rollback that is never run in production anyway.
+delete from events where actor_type in ('api_token', 'service');
+
+--bun:split
+
+drop index if exists idx_events_created;
+
+--bun:split
+
+drop index if exists idx_events_org_type_created;
+
+--bun:split
+
+alter table events drop constraint if exists events_actor_type_check;
+
+--bun:split
+
+alter table events add constraint events_actor_type_check
+  check (actor_type in ('system', 'user'));
+
+--bun:split
+
+alter table events drop column if exists user_agent;
+
+--bun:split
+
+alter table events drop column if exists source_ip;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: slo-burn-alerts
 -- Teardown half of the slo-burn-alerts section (spec 2026-08-21-08).
 -- ==========================================================================

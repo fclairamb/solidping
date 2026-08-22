@@ -11,6 +11,7 @@
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
+--   SECTION: audit-actor-metadata      events source_ip/user_agent + wider actor_type
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -371,3 +372,113 @@ create unique index if not exists uq_active_slo_burn_incident
 create index if not exists idx_incidents_kind_check_uid
   on incidents (kind, check_uid)
   where deleted_at is null;
+
+-- ==========================================================================
+-- SECTION: audit-actor-metadata
+-- Actor metadata on events, for the security/config audit trail
+-- (spec 2026-08-21-09).
+-- ==========================================================================
+
+-- SQLite mirror of the audit-actor-metadata section of
+-- postgres/migrations/015_v0_18_0.up.sql. See the Postgres file for why the
+-- spec's `actor_user_uid` is the pre-existing `actor_uid` column rather than a
+-- new one.
+--
+-- Postgres can widen the actor_type domain with two ALTERs. SQLite cannot drop
+-- a CHECK constraint, and `actor_type text not null check (actor_type in
+-- ('system','user'))` has been baked into this table since 001 — so admitting
+-- 'api_token' / 'service' means the established *_new rebuild pattern (same
+-- technique as the status-page-password section above). source_ip / user_agent
+-- are added as part of the rebuild rather than by separate ALTERs, so this
+-- section is one atomic shape change instead of three.
+--
+-- events is not itself FK-referenced by anything, but it DOES reference
+-- organizations / incidents / checks / users, so foreign_keys is still cycled
+-- off around the swap for the same reason as every other rebuild here: with it
+-- ON, the drop-and-rename dance is evaluated against live parent rows.
+--
+-- The PRAGMA statements are isolated with --bun:split so they execute on the
+-- migration connection in autocommit — a PRAGMA foreign_keys issued inside a
+-- transaction is silently a no-op.
+--
+-- The INSERT column list is spelled out explicitly (never `select *`), because
+-- `insert ... select` is positional and a silent column-order drift here would
+-- scramble the whole audit trail.
+
+--bun:split
+
+PRAGMA foreign_keys=OFF;
+
+--bun:split
+
+create table events_new (
+  uid               text primary key,
+  organization_uid  text not null references organizations(uid) on delete cascade, -- Owning organization
+  incident_uid      text references incidents(uid) on delete cascade, -- Related incident. NULL for non-incident events
+  check_uid         text references checks(uid) on delete cascade, -- Related check. NULL for non-check events
+  job_uid           text, -- Related background job (e.g., notification delivery)
+  event_type        text not null, -- Event type: check.created, auth.login_failed, member.role_changed, etc.
+  -- Who triggered the event. 'api_token' = a personal access token or agent
+  -- key; 'service' = a signed service-to-service call.
+  actor_type        text not null check (actor_type in ('system', 'user', 'api_token', 'service')),
+  actor_uid         text references users(uid), -- Acting user (the spec's "actor_user_uid"). NULL for system events
+  payload           text, -- Event-specific data as JSON
+  created_at        text not null default (datetime('now')),
+  source_ip         text, -- Client address. NULL when unknown or audit.capture_ip is off
+  user_agent        text  -- Raw User-Agent header, truncated. NULL when absent
+);
+
+--bun:split
+
+insert into events_new (
+  uid, organization_uid, incident_uid, check_uid, job_uid,
+  event_type, actor_type, actor_uid, payload, created_at
+)
+select
+  uid, organization_uid, incident_uid, check_uid, job_uid,
+  event_type, actor_type, actor_uid, payload, created_at
+from events;
+
+--bun:split
+
+drop table events;
+
+--bun:split
+
+alter table events_new rename to events;
+
+--bun:split
+
+-- Every index the dropped table carried, recreated verbatim.
+create index idx_events_org_created on events (organization_uid, created_at desc);
+
+--bun:split
+
+create index idx_events_org_incident_created on events (organization_uid, incident_uid, created_at) where incident_uid is not null;
+
+--bun:split
+
+create index idx_events_check_created on events (check_uid, created_at desc) where check_uid is not null;
+
+--bun:split
+
+create index idx_events_type_created on events (event_type, created_at desc);
+
+--bun:split
+
+create index idx_events_actor on events (actor_uid, created_at desc) where actor_uid is not null;
+
+--bun:split
+
+-- New in this section: the audit UI's org+family+time query, and the retention
+-- sweep's created_at-only scan.
+create index if not exists idx_events_org_type_created
+  on events (organization_uid, event_type, created_at desc);
+
+--bun:split
+
+create index if not exists idx_events_created on events (created_at);
+
+--bun:split
+
+PRAGMA foreign_keys=ON;

@@ -542,6 +542,13 @@ type Service interface {
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)
+	// UpdateEventPayload is the ONE sanctioned mutation of an audit row —
+	// auth.login_failed folding (spec 2026-08-21-09). Everything else about
+	// events stays append-only.
+	UpdateEventPayload(ctx context.Context, uid string, payload models.JSONMap) error
+	// DeleteEventsBefore is the audit-retention sweep (default 365 days),
+	// batched; returns how many rows it removed.
+	DeleteEventsBefore(ctx context.Context, before time.Time, limit int) (int64, error)
 
 	// --- IncidentNotifications ---
 	CreateIncidentNotification(ctx context.Context, n *models.IncidentNotification) error

@@ -6,6 +6,85 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: audit-actor-metadata
+-- Teardown half of the audit-actor-metadata section (spec 2026-08-21-09).
+-- ==========================================================================
+
+-- LOSSY the same way the Postgres half is: events attributed to an 'api_token'
+-- or 'service' actor are deleted rather than relabelled, because relabelling
+-- them 'system' would rewrite history inside an audit trail.
+--
+-- SQLite still cannot alter a CHECK constraint, so narrowing actor_type back to
+-- ('system','user') and dropping source_ip / user_agent is one more *_new
+-- rebuild — the exact inverse of the up half.
+
+PRAGMA foreign_keys=OFF;
+
+--bun:split
+
+delete from events where actor_type in ('api_token', 'service');
+
+--bun:split
+
+create table events_old (
+  uid               text primary key,
+  organization_uid  text not null references organizations(uid) on delete cascade,
+  incident_uid      text references incidents(uid) on delete cascade,
+  check_uid         text references checks(uid) on delete cascade,
+  job_uid           text,
+  event_type        text not null,
+  actor_type        text not null check (actor_type in ('system', 'user')),
+  actor_uid         text references users(uid),
+  payload           text,
+  created_at        text not null default (datetime('now'))
+);
+
+--bun:split
+
+insert into events_old (
+  uid, organization_uid, incident_uid, check_uid, job_uid,
+  event_type, actor_type, actor_uid, payload, created_at
+)
+select
+  uid, organization_uid, incident_uid, check_uid, job_uid,
+  event_type, actor_type, actor_uid, payload, created_at
+from events;
+
+--bun:split
+
+drop table events;
+
+--bun:split
+
+alter table events_old rename to events;
+
+--bun:split
+
+create index idx_events_org_created on events (organization_uid, created_at desc);
+
+--bun:split
+
+create index idx_events_org_incident_created on events (organization_uid, incident_uid, created_at) where incident_uid is not null;
+
+--bun:split
+
+create index idx_events_check_created on events (check_uid, created_at desc) where check_uid is not null;
+
+--bun:split
+
+create index idx_events_type_created on events (event_type, created_at desc);
+
+--bun:split
+
+create index idx_events_actor on events (actor_uid, created_at desc) where actor_uid is not null;
+
+--bun:split
+
+PRAGMA foreign_keys=ON;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: slo-burn-alerts
 -- Teardown half of the slo-burn-alerts section (spec 2026-08-21-08).
 -- ==========================================================================

@@ -3566,12 +3566,38 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 		query = query.Where("check_uid = ?", *filter.CheckUID)
 	}
 
-	if len(filter.EventTypes) > 0 {
-		query = query.Where("event_type IN (?)", bun.List(filter.EventTypes))
+	// Exact types and family prefixes are ORed together inside one AND group:
+	// "?eventType=check.created&type=auth" means "either", not "both", which
+	// would be unsatisfiable.
+	if len(filter.EventTypes) > 0 || len(filter.EventTypePrefixes) > 0 {
+		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			if len(filter.EventTypes) > 0 {
+				q = q.WhereOr("event_type IN (?)", bun.List(filter.EventTypes))
+			}
+
+			for _, prefix := range filter.EventTypePrefixes {
+				q = q.WhereOr("event_type LIKE ? ESCAPE ?",
+					models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
+			}
+
+			return q
+		})
+	}
+
+	// Exclusions are ANDed on top and therefore cannot be argued away by any
+	// caller-supplied include filter — this is what makes "auth events are
+	// admin-only" hold for `?type=auth` as well as for an unfiltered listing.
+	for _, prefix := range filter.ExcludeEventTypePrefixes {
+		query = query.Where("event_type NOT LIKE ? ESCAPE ?",
+			models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
 	}
 
 	if filter.ActorType != nil {
 		query = query.Where("actor_type = ?", *filter.ActorType)
+	}
+
+	if filter.ActorUID != nil {
+		query = query.Where("actor_uid = ?", *filter.ActorUID)
 	}
 
 	if filter.Since != nil {
@@ -3598,6 +3624,49 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 	err := query.Scan(ctx)
 
 	return events, err
+}
+
+// UpdateEventPayload replaces one event's payload in place.
+//
+// events is otherwise strictly append-only; the single exception is
+// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
+// (org, email, IP) inside a short window bump a counter on the row that is
+// already there instead of writing a new row per attempt. Anything else
+// mutating an audit row would be a bug.
+func (s *Service) UpdateEventPayload(ctx context.Context, uid string, payload models.JSONMap) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.Event)(nil)).
+		Set("payload = ?", payload).
+		Where("uid = ?", uid).
+		Exec(ctx)
+
+	return err
+}
+
+// DeleteEventsBefore hard-deletes up to limit events created before the cutoff
+// and reports how many rows went. Batched so a first sweep on a long-lived
+// installation cannot hold one enormous transaction.
+func (s *Service) DeleteEventsBefore(ctx context.Context, before time.Time, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	res, err := s.db.NewDelete().
+		Model((*models.Event)(nil)).
+		Where("uid IN (?)",
+			s.db.NewSelect().
+				Model((*models.Event)(nil)).
+				Column("uid").
+				Where("created_at < ?", before).
+				Order("created_at ASC").
+				Limit(limit),
+		).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
 }
 
 // GetStateEntry retrieves a state entry by organization and key.

@@ -12,6 +12,7 @@
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
+--   SECTION: audit-actor-metadata      events source_ip/user_agent + wider actor_type
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -427,3 +428,59 @@ create index if not exists idx_incidents_kind_check_uid
 
 comment on column incidents.kind is
   'check = a failing check (the original meaning); slo_burn = an SLO error-budget burn-rate alert.';
+
+-- ==========================================================================
+-- SECTION: audit-actor-metadata
+-- Actor metadata on events, for the security/config audit trail
+-- (spec 2026-08-21-09).
+-- ==========================================================================
+
+-- The spec asks for `actor_user_uid`. That column already exists under its
+-- original name: `actor_uid uuid references users(uid)`, added in 001. A second
+-- column of identical meaning would only create a split brain (which one does a
+-- reader trust?), so the column keeps its name and the API exposes it under the
+-- spec's `actorUserUid` parameter name instead. What is genuinely new here is
+-- the request provenance — source_ip / user_agent — plus two extra actor kinds.
+
+alter table events add column if not exists source_ip varchar(45);
+
+--bun:split
+
+alter table events add column if not exists user_agent text;
+
+--bun:split
+
+-- Widen the actor_type domain. The original inline check in 001 admitted only
+-- ('system','user'); audit events can also be caused by a personal access
+-- token / agent key, or by a signed service-to-service call.
+alter table events drop constraint if exists events_actor_type_check;
+
+--bun:split
+
+alter table events add constraint events_actor_type_check
+  check (actor_type in ('system', 'user', 'api_token', 'service'));
+
+--bun:split
+
+-- The audit UI's primary query is "this org's events, of this family, newest
+-- first". Until now an org-scoped event_type filter had no covering index —
+-- idx_events_org_created is org+time only and idx_events_type_created is
+-- type+time across every org.
+create index if not exists idx_events_org_type_created
+  on events (organization_uid, event_type, created_at desc);
+
+--bun:split
+
+-- The retention sweep deletes by created_at alone, across all orgs; every
+-- existing index leads with another column, so it had nothing to walk.
+create index if not exists idx_events_created on events (created_at);
+
+--bun:split
+
+comment on column events.actor_uid is
+  'Acting user (the spec 2026-08-21-09 "actor_user_uid"). NULL for system-originated events.';
+
+--bun:split
+
+comment on column events.source_ip is
+  'Client address of the request that caused the event. NULL when unknown or when audit.capture_ip is off.';
