@@ -364,10 +364,13 @@ func (s *Service) RevokeGrant(ctx context.Context, refreshToken, clientID string
 	}
 
 	// Client binding: revoke only when the grant was issued to the presenting
-	// client. A mismatch (or an unbound grant) is a silent no-op so one client
-	// can't probe or drop another's tokens.
+	// client. A mismatch (or an unbound grant) is a silent no-op to the CALLER
+	// — the HTTP answer is an indistinguishable 200 — but it is NOT silent in
+	// the audit trail: see recordGrantMisuse.
 	grantClientID := stringFromValue(row.Properties, paramClientID)
 	if grantClientID == "" || grantClientID != clientID {
+		s.recordGrantMisuse(ctx, row, grantClientID, clientID)
+
 		return false, nil
 	}
 
@@ -379,19 +382,18 @@ func (s *Service) RevokeGrant(ctx context.Context, refreshToken, clientID string
 		return false, fmt.Errorf("revoke grant: %w", err)
 	}
 
-	// Only a grant that was actually live gets an event. The silent-no-op
-	// branches above have already returned, and a lost race (deleted=false)
-	// means someone else's revocation already recorded it — a second row would
-	// claim a revocation that did not happen.
+	// Only a grant that was actually live gets a revocation event. A lost race
+	// (deleted=false) means someone else's revocation already recorded it — a
+	// second row would claim a revocation that did not happen.
 	if deleted && row.OrganizationUID != nil {
 		audit.Record(
 			audit.WithUser(ctx, row.UserUID, models.ActorTypeAPIToken),
 			s.db, *row.OrganizationUID, models.EventTypeAuthTokenRevoked,
 			audit.Target{Type: auditTargetOAuthGrant, UID: row.UID, Name: grantClientID},
 			models.JSONMap{
-				"token_kind":  auditTokenKindOAuthGrant,
-				paramClientID: grantClientID,
-				paramScope:    stringFromValue(row.Properties, paramScope),
+				paramTokenKind: auditTokenKindOAuthGrant,
+				paramClientID:  grantClientID,
+				paramScope:     stringFromValue(row.Properties, paramScope),
 			})
 	}
 
@@ -498,13 +500,57 @@ func (s *Service) recordGrantIssued(ctx context.Context, input *mintInput, grant
 	audit.Record(actorCtx, s.db, input.orgUID, models.EventTypeAuthTokenCreated,
 		audit.Target{Type: auditTargetOAuthGrant, UID: grantUID, Name: input.clientID},
 		models.JSONMap{
-			"token_kind":  auditTokenKindOAuthGrant,
-			paramClientID: input.clientID,
-			paramScope:    input.scope,
-			paramResource: input.resource,
-			"grant_type":  input.grant,
+			paramTokenKind: auditTokenKindOAuthGrant,
+			paramClientID:  input.clientID,
+			paramScope:     input.scope,
+			paramResource:  input.resource,
+			"grant_type":   input.grant,
 		})
 }
+
+// recordGrantMisuse records an OAuth client presenting a grant that belongs to
+// somebody else (spec 2026-08-21-09).
+//
+// The two OTHER silent branches of RevokeGrant — an unknown token and an
+// already-revoked one — genuinely cannot be recorded: there is no row, so
+// there is no organization to scope an org-scoped event to, and inventing one
+// would let an unauthenticated caller write into an org's trail by guessing.
+// That is the whole of the argument for their silence.
+//
+// This branch is different on every count. The row exists, so the org is
+// known. "Client A presented client B's grant" is a genuine security signal —
+// a leaked token being tried, or a confused-deputy bug — and it is exactly
+// what a compliance reader is looking for. And the oracle worry does not
+// transfer: the SUCCESS path already writes an event, so anyone who can both
+// call revoke and read this trail can already tell a live grant from a dead
+// one. Staying quiet here would buy no secrecy and cost a real signal.
+//
+// The caller still gets the same indistinguishable 200 that RFC 7009 requires.
+// The trail is an internal, admin-only surface; the HTTP response is not.
+//
+// The actor is deliberately SYSTEM, not the grant's owner: that user did not
+// do this, and attributing it to them would be a false accusation in a record
+// people are meant to act on. The presenting client is named in the payload,
+// and the source IP rides in from the request-meta middleware.
+func (s *Service) recordGrantMisuse(
+	ctx context.Context, row *models.UserToken, grantClientID, presentedClientID string,
+) {
+	if row.OrganizationUID == nil {
+		return
+	}
+
+	audit.Record(ctx, s.db, *row.OrganizationUID, models.EventTypeAuthTokenMisuse,
+		audit.Target{Type: auditTargetOAuthGrant, UID: row.UID, Name: grantClientID},
+		models.JSONMap{
+			paramTokenKind:        auditTokenKindOAuthGrant,
+			"reason":              misuseReasonWrongClient,
+			paramClientID:         grantClientID,
+			"presented_client_id": presentedClientID,
+		})
+}
+
+// misuseReasonWrongClient is the machine reason on auth.token_misuse.
+const misuseReasonWrongClient = "wrong_client"
 
 // Audit labels owned by this package.
 const (
@@ -513,8 +559,9 @@ const (
 
 	// Grant property / audit payload keys, named because they appear on both
 	// the persisted user_tokens row and the audit event.
-	paramScope    = "scope"
-	paramResource = "resource"
+	paramScope     = "scope"
+	paramResource  = "resource"
+	paramTokenKind = "token_kind"
 )
 
 // orgSlug resolves an organization UID to its slug for the access-token claims.

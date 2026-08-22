@@ -68,7 +68,8 @@
     "maintenance_window.updated": "Wartungsfenster aktualisiert",
     "maintenance_window.deleted": "Wartungsfenster gelöscht",
     "config.applied": "Konfiguration angewendet",
-    "org.settings_updated": "Organisationseinstellungen geändert"
+    "org.settings_updated": "Organisationseinstellungen geändert",
+    "auth.token_misuse": "Missbrauchsversuch mit Token"
   },
   "descriptions": {
     "org.activation.signup_completed": "Ihre Organisation ist eingerichtet und einsatzbereit.",

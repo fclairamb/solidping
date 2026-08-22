@@ -68,7 +68,8 @@
     "maintenance_window.updated": "Fenêtre de maintenance mise à jour",
     "maintenance_window.deleted": "Fenêtre de maintenance supprimée",
     "config.applied": "Configuration appliquée",
-    "org.settings_updated": "Paramètres de l'organisation modifiés"
+    "org.settings_updated": "Paramètres de l'organisation modifiés",
+    "auth.token_misuse": "Tentative d'usage abusif de jeton"
   },
   "descriptions": {
     "org.activation.signup_completed": "Votre organisation est configurée et prête à l'emploi.",

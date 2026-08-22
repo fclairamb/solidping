@@ -202,6 +202,7 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["auth.logout", "🚪"],
     ["auth.token_created", "🔑"],
     ["auth.token_revoked", "🔒"],
+    ["auth.token_misuse", "🚨"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {

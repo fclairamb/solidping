@@ -120,10 +120,12 @@ func TestOAuthGrantRevocationIsAudited(t *testing.T) {
 	r.Len(f.authEvents(t), 2)
 }
 
-// TestOAuthSilentNoOpsRecordNothing. RFC 7009 says a revoke endpoint must never
-// signal what happened — so the no-op branches must also stay out of the trail,
-// or the audit log becomes the oracle the endpoint refuses to be.
-func TestOAuthSilentNoOpsRecordNothing(t *testing.T) {
+// TestOAuthUnknownTokenRevokeRecordsNothing. An unknown or already-revoked
+// token has NO ROW, so there is no organization to scope an org-scoped event
+// to — recording one would mean letting an unauthenticated caller write into
+// some org's trail by guessing a token. That, not the oracle argument, is why
+// this branch is silent.
+func TestOAuthUnknownTokenRevokeRecordsNothing(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -136,17 +138,72 @@ func TestOAuthSilentNoOpsRecordNothing(t *testing.T) {
 	r.NoError(err)
 
 	before := len(f.authEvents(t))
+	r.Positive(before, "positive control: the grant itself was recorded")
 
-	// Unknown token, and a grant presented by the wrong client.
 	revoked, err := f.svc.RevokeGrant(f.ctx, "not-a-token", f.client.ClientID)
 	r.NoError(err)
 	r.False(revoked)
 
-	revoked, err = f.svc.RevokeGrant(f.ctx, res.RefreshToken, "some-other-client")
+	// Already revoked: the row is soft-deleted, so the lookup misses exactly
+	// as it does for an unknown token.
+	_, err = f.svc.RevokeGrant(f.ctx, res.RefreshToken, f.client.ClientID)
 	r.NoError(err)
-	r.False(revoked)
 
-	r.Len(f.authEvents(t), before)
+	afterRevoke := len(f.authEvents(t))
+
+	repeat, err := f.svc.RevokeGrant(f.ctx, res.RefreshToken, f.client.ClientID)
+	r.NoError(err)
+	r.False(repeat)
+
+	r.Len(f.authEvents(t), afterRevoke, "an unknown / already-revoked token writes nothing")
+}
+
+// TestOAuthWrongClientRevokeIsRecorded. "Client A presented client B's grant"
+// is a leaked token being tried, or a confused-deputy bug — a real security
+// signal, and one this branch CAN record because the row (and therefore the
+// org) exists.
+//
+// It is a distinct event type rather than an auth.token_revoked carrying a
+// `result` field, because nothing was revoked: auth.token_revoked has to mean
+// what it says or every reader has to check a discriminator before believing
+// it.
+func TestOAuthWrongClientRevokeIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupOAuthService(t)
+
+	code, err := f.svc.IssueAuthCode(f.ctx, f.grant(challengeFor(testVerifier), ScopeMCP))
+	r.NoError(err)
+
+	res, err := f.svc.ExchangeAuthCode(f.ctx, code, f.client.ClientID, testRedirectURI, testVerifier)
+	r.NoError(err)
+
+	revoked, err := f.svc.RevokeGrant(f.ctx, res.RefreshToken, "some-other-client")
+	r.NoError(err)
+	r.False(revoked, "the caller still gets the indistinguishable RFC 7009 no-op")
+
+	events := f.authEvents(t)
+	r.Len(events, 2)
+
+	misuse := events[0]
+	r.Equal(models.EventTypeAuthTokenMisuse, misuse.EventType)
+	r.Equal(misuseReasonWrongClient, misuse.Payload["reason"])
+	r.Equal(f.client.ClientID, misuse.Payload[paramClientID])
+	r.Equal("some-other-client", misuse.Payload["presented_client_id"])
+
+	// NOT attributed to the grant's owner: that user did not do this, and a
+	// false accusation in a record people act on is worse than no record.
+	r.Equal(models.ActorTypeSystem, misuse.ActorType)
+	r.Nil(misuse.ActorUID)
+
+	// And the grant is untouched — the misuse event must not read as a
+	// revocation that happened.
+	r.NotEqual(models.EventTypeAuthTokenRevoked, misuse.EventType)
+
+	stillLive, err := f.svc.RevokeGrant(f.ctx, res.RefreshToken, f.client.ClientID)
+	r.NoError(err)
+	r.True(stillLive, "the rightful client can still revoke it")
 }
 
 // TestOAuthGrantPayloadCarriesNoCredential — the payload assembled by this

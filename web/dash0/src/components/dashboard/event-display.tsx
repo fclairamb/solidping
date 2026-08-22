@@ -74,6 +74,11 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "auth.logout": { emoji: "🚪", tone: TONE_SLATE },
   "auth.token_created": { emoji: "🔑", tone: TONE_BLUE },
   "auth.token_revoked": { emoji: "🔒", tone: TONE_AMBER },
+  // A credential presented by a party it was not issued to (spec
+  // 2026-08-21-09). Destructive, not amber: this is not routine credential
+  // housekeeping like the two above it — it is a leaked token being tried, or
+  // a confused-deputy bug, and it must not read as bookkeeping in a feed.
+  "auth.token_misuse": { emoji: "🚨", tone: TONE_DESTRUCTIVE },
 };
 
 // CONFIG_EVENT_FAMILIES are the audit families that describe a configuration

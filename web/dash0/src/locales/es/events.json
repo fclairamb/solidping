@@ -68,7 +68,8 @@
     "maintenance_window.updated": "Ventana de mantenimiento actualizada",
     "maintenance_window.deleted": "Ventana de mantenimiento eliminada",
     "config.applied": "Configuración aplicada",
-    "org.settings_updated": "Ajustes de la organización actualizados"
+    "org.settings_updated": "Ajustes de la organización actualizados",
+    "auth.token_misuse": "Intento de uso indebido de token"
   },
   "descriptions": {
     "org.activation.signup_completed": "Tu organización está configurada y lista para empezar.",

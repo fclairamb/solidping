@@ -68,7 +68,8 @@
     "maintenance_window.updated": "Maintenance Window Updated",
     "maintenance_window.deleted": "Maintenance Window Deleted",
     "config.applied": "Configuration Applied",
-    "org.settings_updated": "Organization Settings Updated"
+    "org.settings_updated": "Organization Settings Updated",
+    "auth.token_misuse": "Token Misuse Attempt"
   },
   "descriptions": {
     "org.activation.signup_completed": "Your organization is set up and ready to go.",

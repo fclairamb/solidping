@@ -125,6 +125,16 @@ const (
 	EventTypeAuthTokenCreated EventType = "auth.token_created"
 	// EventTypeAuthTokenRevoked records an API token or agent key being revoked.
 	EventTypeAuthTokenRevoked EventType = "auth.token_revoked"
+	// EventTypeAuthTokenMisuse records a credential being presented by a party
+	// it was not issued to — today, an OAuth client asking to revoke a grant
+	// that belongs to a different client.
+	//
+	// Deliberately NOT a variant of auth.token_revoked with a `result` field:
+	// auth.token_revoked must mean "a grant was revoked", full stop, or every
+	// reader of the trail has to check a discriminator before believing it.
+	// This is a different fact — an attempt, not an outcome — and an org
+	// should be able to alert on it on its own.
+	EventTypeAuthTokenMisuse EventType = "auth.token_misuse"
 
 	// EventTypeMemberInvited records an invitation being sent.
 	EventTypeMemberInvited EventType = "member.invited"
