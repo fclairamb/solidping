@@ -194,7 +194,7 @@ func (s *GitHubOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user)
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodGitHub))
 	if err != nil {
 		return nil, err
 	}

@@ -96,7 +96,7 @@ func (e *installURLTestEnv) mintToken(t *testing.T, org *models.Organization, ro
 	member := models.NewOrganizationMember(org.UID, user.UID, role)
 	r.NoError(e.db.CreateOrganizationMember(ctx, member))
 
-	tokens, err := e.authSvc.GenerateTokensForOAuth(ctx, user, org, string(role))
+	tokens, err := e.authSvc.GenerateTokensForOAuth(ctx, user, org, string(role), "", auth.Context{})
 	r.NoError(err)
 
 	return tokens.AccessToken

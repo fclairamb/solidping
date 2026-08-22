@@ -395,7 +395,8 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 	// workspace attestation: the policy admits the installer when this org is
 	// the one linked to that workspace, and otherwise leaves them pending
 	// with a membership request.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user, auth.WithSlackWorkspace(oauthResp.Team.ID))
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
+		auth.WithSlackWorkspace(oauthResp.Team.ID), auth.WithLoginMethod(auth.SignupMethodSlack))
 	if err != nil {
 		return nil, fmt.Errorf("failed to complete organization login: %w", err)
 	}

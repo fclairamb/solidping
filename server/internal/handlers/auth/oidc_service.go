@@ -303,7 +303,7 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user)
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodOIDC))
 	if err != nil {
 		return nil, err
 	}

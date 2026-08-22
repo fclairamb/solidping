@@ -119,7 +119,7 @@ func (f *jobsFixture) newMember(
 func (f *jobsFixture) token(t *testing.T, user *models.User, org *models.Organization, role string) string {
 	t.Helper()
 
-	tokens, err := f.authSvc.GenerateTokensForOAuth(t.Context(), user, org, role)
+	tokens, err := f.authSvc.GenerateTokensForOAuth(t.Context(), user, org, role, "", auth.Context{})
 	require.NoError(t, err)
 
 	return tokens.AccessToken

@@ -377,7 +377,8 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	// handed to the policy as an attestation of workspace membership. The
 	// policy still verifies, server-side, that this very org is the one
 	// linked to that workspace.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithSlackWorkspace(oauthResp.Team.ID))
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
+		WithSlackWorkspace(oauthResp.Team.ID), WithLoginMethod(signupMethodSlack))
 	if err != nil {
 		return nil, err
 	}

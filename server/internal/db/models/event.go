@@ -101,8 +101,14 @@ const (
 	// and target identity only.
 
 	// EventTypeAuthLoginSucceeded records a successful authentication. The
-	// payload carries `method` (password / ldap / passkey / oauth / oidc /
-	// saml), never any credential.
+	// payload carries `auth_method` — a local first factor (password / ldap /
+	// passkey), a named federated connector (oidc / saml / github / …), a
+	// composite 2FA form ("password+totp"), or one of the local
+	// session-minting paths (invitation / registration / switch_org /
+	// org_session). Never any credential.
+	//
+	// Emitted from auth.Service.startSession, the single point at which a
+	// session row is created, so no login path can skip it.
 	EventTypeAuthLoginSucceeded EventType = "auth.login_succeeded"
 	// EventTypeAuthLoginFailed records a rejected authentication attempt. It is
 	// a brute-force amplification vector, so it is the one event type that is
@@ -264,6 +270,21 @@ type ListEventsFilter struct {
 	ActorType                *ActorType // Optional: filter by actor type
 	// ActorUID filters to the events one user caused (API: actorUserUid).
 	ActorUID *string
+	// TargetUID filters to the events about one object, matched against the
+	// payload's target_uid. Stored in JSON rather than a column because the
+	// target is polymorphic (a check, a policy, a token, a member…), so this
+	// is a payload predicate rather than an indexed one.
+	TargetUID *string
+	// TargetType filters to one kind of object ("integration", "member", …).
+	TargetType *string
+	// SourceIP filters to the events that came from one client address.
+	//
+	// ADMIN-ONLY at the service layer, for the same reason the column is
+	// withheld from non-admins: without that gate a viewer who cannot SEE the
+	// addresses could still use this filter as an oracle — ask for an IP, get
+	// a non-empty page, and you have confirmed a colleague was working from
+	// it. A withheld column plus an open filter is not a gate.
+	SourceIP *string
 	Since    *time.Time // Optional: events created after this time
 	Until    *time.Time // Optional: events created before this time
 

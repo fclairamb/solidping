@@ -344,11 +344,11 @@ func (s *Service) mintOrgSession(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if createTokenErr := s.db.CreateUserToken(ctx, refreshToken); createTokenErr != nil {
+	if createTokenErr := s.startSession(
+		ctx, sessionActor{UID: userUID}, org, refreshToken, role, AuthMethodOrgSession, authContext,
+	); createTokenErr != nil {
 		return nil, createTokenErr
 	}
-
-	s.enforceSessionCap(ctx, userUID)
 
 	accessToken, err := s.generateAccessToken(userUID, org.Slug, role, refreshToken.UID)
 	if err != nil {

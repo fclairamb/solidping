@@ -300,6 +300,11 @@ type TwoFAClaims struct {
 	OrgSlug string `json:"orgSlug"`
 	Role    string `json:"role"`
 	Purpose string `json:"purpose"`
+	// Method carries the FIRST factor across the 2FA hand-off, so the audit
+	// trail can record "password+totp" rather than losing how the user proved
+	// themselves before the code prompt. Empty on tokens minted before this
+	// field existed; withSecondFactor defaults those to password.
+	Method string `json:"method,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -521,7 +526,7 @@ func (s *Service) Login(
 		return nil, err
 	}
 
-	authMethod := "password"
+	authMethod := AuthMethodPassword
 
 	// Every rejection below funnels through recordLoginFailed, which folds
 	// repeats and enforces the per-org hourly ceiling — see internal/audit.
@@ -543,7 +548,7 @@ func (s *Service) Login(
 		}
 
 		user = ldapUser
-		authMethod = "ldap"
+		authMethod = AuthMethodLDAP
 	}
 
 	// Resolve organization treating orgSlug as a preference
@@ -559,7 +564,7 @@ func (s *Service) Login(
 			orgSlugForToken = resolvedOrg.Slug
 		}
 
-		tempToken, tokenErr := s.generate2FATempToken(user.UID, orgSlugForToken, role)
+		tempToken, tokenErr := s.generate2FATempToken(user.UID, orgSlugForToken, role, authMethod)
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -656,18 +661,16 @@ func (s *Service) completeLogin(
 
 	refreshToken := s.newRefreshTokenRow(ctx, user, resolvedOrg, refreshTokenValue, method, now, authContext)
 
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.startSession(
+		ctx, actorFromUser(user), resolvedOrg, refreshToken, role, method, authContext,
+	); err != nil {
 		return nil, err
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role, refreshToken.UID)
 	if err != nil {
 		return nil, err
 	}
-
-	s.recordLoginSucceeded(ctx, user, resolvedOrg, role, method, authContext)
 
 	return &LoginResponse{
 		AccessToken:   accessToken,
@@ -708,6 +711,38 @@ func (s *Service) newRefreshTokenRow(
 	}
 
 	return refreshToken
+}
+
+// startSession persists the refresh-token row that BRINGS A SESSION INTO
+// EXISTENCE, enforces the session cap, and records auth.login_succeeded.
+//
+// Every path that mints a real session must go through this function. It is
+// the lowest choke point that all of them share — a session is exactly a
+// `refresh`-type user_tokens row — and routing them all through one place is
+// what makes "who logged in?" answerable. Emitting per-path instead was the
+// first cut of spec 2026-08-21-09 and it silently missed federated logins,
+// 2FA logins, org switches, registration confirmations, invitation
+// acceptances and org creation.
+//
+// TestEverySessionMintingPathGoesThroughStartSession enforces this
+// structurally, so a NEW session path added later cannot quietly skip the
+// trail either.
+func (s *Service) startSession(
+	ctx context.Context,
+	actor sessionActor,
+	org *models.Organization,
+	refreshToken *models.UserToken,
+	role, method string,
+	authContext Context,
+) error {
+	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+		return err
+	}
+
+	s.enforceSessionCap(ctx, actor.UID)
+	s.recordLoginSucceeded(ctx, actor, org, role, method, authContext)
+
+	return nil
 }
 
 // enforceSessionCap prunes the user's active `refresh`-type sessions down to
@@ -1924,11 +1959,11 @@ func (s *Service) SwitchOrg(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodSwitchOrg, authContext,
+	); err != nil {
 		return nil, err
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	// Generate access token, bound to the new refresh-token row.
 	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
@@ -2104,8 +2139,13 @@ func (s *Service) GenerateTokensForOAuth(
 	ctx context.Context,
 	user *models.User,
 	org *models.Organization,
-	role string,
+	role, method string,
+	authContext Context,
 ) (*OAuthLoginResponse, error) {
+	if method == "" {
+		method = AuthMethodOAuth
+	}
+
 	// Generate refresh token
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
@@ -2118,17 +2158,19 @@ func (s *Service) GenerateTokensForOAuth(
 	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: map[string]any{
-			keyMethod: "oauth",
-		},
+	createdWith := authContext.ToMap()
+	if createdWith == nil {
+		createdWith = map[string]any{}
 	}
 
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	createdWith[keyMethod] = method
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+
+	if err = s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
+	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	// Generate access token, bound to the new refresh-token row.
 	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
@@ -2375,13 +2417,15 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "registration"}}
-
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
-		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	refreshToken.Properties = models.JSONMap{
+		keyCreatedWith: map[string]any{keyMethod: AuthMethodRegistration},
 	}
 
-	s.enforceSessionCap(ctx, user.UID)
+	if err = s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodRegistration, Context{},
+	); err != nil {
+		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
 
 	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
 	if err != nil {
@@ -2465,7 +2509,12 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 
 		if createErr := s.db.CreateOrganizationMember(ctx, member); createErr != nil {
 			slog.ErrorContext(ctx, "Failed to auto-join org", "error", createErr, "orgUID", *param.OrganizationUID)
+
+			continue
 		}
+
+		s.recordMemberJoined(ctx, *param.OrganizationUID, userUID, userEmail,
+			models.MemberRoleUser, joinSourceAutoJoin)
 	}
 }
 
@@ -3092,7 +3141,7 @@ func (s *Service) CreateInvitation(
 	s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, inviteURL)
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberInvited,
-		audit.Target{Type: "member", Name: req.Email},
+		audit.Target{Type: auditTargetMember, Name: req.Email},
 		models.JSONMap{
 			auditKeyEmail: req.Email,
 			auditKeyRole:  req.Role,
@@ -3292,7 +3341,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 
 		audit.Record(auditActorCtx(ctx, user.UID, Context{}), s.db, matchedOrg.UID,
 			models.EventTypeMemberJoined,
-			audit.Target{Type: "member", UID: user.UID, Name: user.Email},
+			audit.Target{Type: auditTargetMember, UID: user.UID, Name: user.Email},
 			models.JSONMap{
 				auditKeyEmail:  user.Email,
 				auditKeyRole:   string(role),
@@ -3324,13 +3373,15 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	expiresAt := s.refreshTokenExpiry(ctx, matchedOrg.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "invitation"}}
-
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
-		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	refreshToken.Properties = models.JSONMap{
+		keyCreatedWith: map[string]any{keyMethod: AuthMethodInvitation},
 	}
 
-	s.enforceSessionCap(ctx, user.UID)
+	if err = s.startSession(
+		ctx, actorFromUser(user), matchedOrg, refreshToken, role, AuthMethodInvitation, Context{},
+	); err != nil {
+		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
 
 	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID)
 	if err != nil {
@@ -3633,13 +3684,14 @@ const (
 )
 
 // generate2FATempToken creates a short-lived JWT for the 2FA verification step.
-func (s *Service) generate2FATempToken(userUID, orgSlug, role string) (string, error) {
+func (s *Service) generate2FATempToken(userUID, orgSlug, role, method string) (string, error) {
 	now := time.Now()
 	claims := &TwoFAClaims{
 		UserUID: userUID,
 		OrgSlug: orgSlug,
 		Role:    role,
 		Purpose: twoFAPurpose,
+		Method:  method,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(twoFATempTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -3794,7 +3846,8 @@ func (s *Service) Verify2FA(
 		return nil, ErrInvalid2FACode
 	}
 
-	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role, authContext)
+	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
+		withSecondFactor(claims.Method, SecondFactorTOTP), authContext)
 }
 
 // Recovery2FA validates a recovery code during login and returns full login tokens.
@@ -3844,7 +3897,8 @@ func (s *Service) Recovery2FA(
 		return nil, updateErr
 	}
 
-	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role, authContext)
+	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
+		withSecondFactor(claims.Method, SecondFactorRecoveryCode), authContext)
 }
 
 // Disable2FA disables 2FA for the user after validating the current TOTP code.
@@ -3881,7 +3935,7 @@ func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
 func (s *Service) completeLoginAfter2FA(
 	ctx context.Context,
 	user *models.User,
-	orgSlug, role string,
+	orgSlug, role, method string,
 	authContext Context,
 ) (*LoginResponse, error) {
 	// Update last active timestamp
@@ -3937,11 +3991,11 @@ func (s *Service) completeLoginAfter2FA(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if createErr := s.db.CreateUserToken(ctx, refreshToken); createErr != nil {
+	if createErr := s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
+	); createErr != nil {
 		return nil, createErr
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID)
 	if err != nil {

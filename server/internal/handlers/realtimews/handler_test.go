@@ -598,7 +598,7 @@ func TestServe_DBSuperAdminForeignOrgClosesForbidden(t *testing.T) {
 	user.SuperAdmin = true
 	r.NoError(fx.dbSvc.CreateUser(t.Context(), user))
 
-	resp, err := fx.authService.GenerateTokensForOAuth(t.Context(), user, otherOrg, "admin")
+	resp, err := fx.authService.GenerateTokensForOAuth(t.Context(), user, otherOrg, "admin", "", auth.Context{})
 	r.NoError(err)
 
 	conn := fx.dialPreAuth(t, resp.AccessToken)
