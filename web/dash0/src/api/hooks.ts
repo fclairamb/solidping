@@ -6291,6 +6291,12 @@ export interface Slo {
   timezone: string;
   excludeMaintenance: boolean;
   enabled: boolean;
+  /**
+   * True while at least one burn-rate alert policy on this objective has an
+   * open incident. Derived server-side from the incident rows, so it cannot go
+   * stale when somebody resolves the incident by hand.
+   */
+  burning?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -6466,6 +6472,96 @@ export function useDeleteSlo(org: string) {
       apiFetch<void>(`/api/v1/orgs/${org}/slos/${uid}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["slos", org] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SLO burn-rate alert policies (spec 2026-08-21-08)
+// ---------------------------------------------------------------------------
+
+export type SloAlertPolicyKind = "fast" | "slow";
+export type SloAlertSeverity = "critical" | "warning";
+
+export interface SloAlertPolicy {
+  uid: string;
+  sloUid: string;
+  /** Built-in identity. Not writable. */
+  kind: SloAlertPolicyKind;
+  enabled: boolean;
+  longWindowSeconds: number;
+  shortWindowSeconds: number;
+  /** Burn-rate multiple both windows must exceed for the policy to fire. */
+  threshold: number;
+  severity: SloAlertSeverity;
+  /** Per-window probe floor. Below it a window is inconclusive. */
+  minSamples: number;
+  lastEvaluatedAt: string | null;
+  /**
+   * Recomputed per request. `null` means the window carried no countable probe
+   * — it is NEVER 0, which would read as "healthy".
+   */
+  longBurnRate: number | null;
+  shortBurnRate: number | null;
+  longSamples: number;
+  shortSamples: number;
+  longConclusive: boolean;
+  shortConclusive: boolean;
+  overThresholdNow: boolean;
+  firing: boolean;
+  incidentUid: string | null;
+  incidentNumber: number | null;
+  firingSince: string | null;
+  /** Hysteresis anchor: both windows below threshold since this instant. */
+  resolvingSince: string | null;
+}
+
+export type UpdateSloAlertPolicyRequest = Partial<
+  Pick<
+    SloAlertPolicy,
+    | "enabled"
+    | "longWindowSeconds"
+    | "shortWindowSeconds"
+    | "threshold"
+    | "severity"
+    | "minSamples"
+  >
+>;
+
+export function useSloAlertPolicies(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["sloAlertPolicies", org, uid],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: SloAlertPolicy[] }>(
+        `/api/v1/orgs/${org}/slos/${uid}/alert-policies`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useUpdateSloAlertPolicy(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      policyUid,
+      request,
+    }: {
+      policyUid: string;
+      request: UpdateSloAlertPolicyRequest;
+    }) =>
+      apiFetch<SloAlertPolicy>(
+        `/api/v1/orgs/${org}/slos/${uid}/alert-policies/${policyUid}`,
+        { method: "PATCH", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sloAlertPolicies", org, uid] });
+      // The burning badge is derived from the same incidents, so the list and
+      // the detail header have to re-read too.
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+      queryClient.invalidateQueries({ queryKey: ["slo", org, uid] });
     },
   });
 }

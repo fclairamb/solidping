@@ -56,6 +56,48 @@
     "burndownEmpty": "The window has only just started — no points yet.",
     "burndownIdeal": "Ideal pace"
   },
+  "alerting": {
+    "title": "Alerting",
+    "subtitle": "Page on-call when the error budget is burning too fast. Both windows must exceed the threshold, so a spike that already ended does not page.",
+    "empty": "No alert policies yet",
+    "enable": "Enabled",
+    "enabled": "Alert policy enabled",
+    "disabled": "Alert policy disabled",
+    "toggleFailed": "Failed to update the alert policy",
+    "firing": "Firing",
+    "burning": "Burning",
+    "rule": "Fires above {{threshold}} over {{long}}, confirmed over {{short}}",
+    "longBurn": "Burn ({{window}})",
+    "shortBurn": "Burn ({{window}})",
+    "threshold": "Threshold",
+    "minSamples": "Min samples",
+    "inconclusive": "Not enough data to judge: {{long}} and {{short}} probes in the two windows, {{min}} required. An inconclusive window never fires.",
+    "resolving": "Both windows are below the threshold — the alert resolves once that has held for a full short window.",
+    "viewIncident": "View incident",
+    "viewIncidentNumbered": "View incident #{{number}}",
+    "editThresholds": "Edit thresholds",
+    "saved": "Alert policy updated",
+    "saveFailed": "Failed to update the alert policy",
+    "formSubtitle": "Tune when this policy pages. Both windows must exceed the threshold to fire.",
+    "enableHelp": "Alerting is opt-in. A disabled policy is never evaluated.",
+    "longWindow": "Long window (minutes)",
+    "longWindowHelp": "Proves the burn is significant. Capped at 7 days.",
+    "shortWindow": "Short window (minutes)",
+    "shortWindowHelp": "Proves it is still happening. Must be shorter than the long window.",
+    "windowsInvalid": "The short window must be greater than 0 and no longer than the long window (max 7 days).",
+    "thresholdHelp": "Burn-rate multiple. 1x spends the month's budget exactly by month end.",
+    "minSamplesHelp": "A window with fewer probes than this is inconclusive and never fires.",
+    "severityLabel": "Severity",
+    "severityHelp": "Carried into the incident title and every notification. Channel routing still comes from the escalation policy.",
+    "kind": {
+      "fast": "Fast burn",
+      "slow": "Slow burn"
+    },
+    "severity": {
+      "critical": "Critical",
+      "warning": "Warning"
+    }
+  },
   "form": {
     "newTitle": "New objective",
     "editTitle": "Edit objective",

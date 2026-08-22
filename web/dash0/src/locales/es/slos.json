@@ -56,6 +56,48 @@
     "burndownEmpty": "La ventana acaba de empezar: todavía no hay puntos.",
     "burndownIdeal": "Ritmo ideal"
   },
+  "alerting": {
+    "title": "Alertas",
+    "subtitle": "Avisar a la guardia cuando el presupuesto de error se consume demasiado rápido. Ambas ventanas deben superar el umbral, así un pico ya terminado no avisa.",
+    "empty": "Todavía no hay políticas de alerta",
+    "enable": "Activada",
+    "enabled": "Política de alerta activada",
+    "disabled": "Política de alerta desactivada",
+    "toggleFailed": "No se pudo actualizar la política de alerta",
+    "firing": "Disparada",
+    "burning": "Consumiendo",
+    "rule": "Se dispara por encima de {{threshold}} en {{long}}, confirmado en {{short}}",
+    "longBurn": "Consumo ({{window}})",
+    "shortBurn": "Consumo ({{window}})",
+    "threshold": "Umbral",
+    "minSamples": "Muestras mín.",
+    "inconclusive": "Datos insuficientes: {{long}} y {{short}} sondas en las dos ventanas, se requieren {{min}}. Una ventana no concluyente nunca se dispara.",
+    "resolving": "Ambas ventanas están por debajo del umbral: la alerta se resolverá cuando eso se mantenga durante una ventana corta completa.",
+    "viewIncident": "Ver incidente",
+    "viewIncidentNumbered": "Ver incidente n.º {{number}}",
+    "editThresholds": "Editar umbrales",
+    "saved": "Política de alerta actualizada",
+    "saveFailed": "No se pudo actualizar la política de alerta",
+    "formSubtitle": "Ajustar cuándo avisa esta política. Ambas ventanas deben superar el umbral.",
+    "enableHelp": "Las alertas son opcionales. Una política desactivada nunca se evalúa.",
+    "longWindow": "Ventana larga (minutos)",
+    "longWindowHelp": "Demuestra que el consumo es significativo. Limitada a 7 días.",
+    "shortWindow": "Ventana corta (minutos)",
+    "shortWindowHelp": "Demuestra que sigue ocurriendo. Debe ser más corta que la ventana larga.",
+    "windowsInvalid": "La ventana corta debe ser mayor que 0 y no más larga que la ventana larga (máx. 7 días).",
+    "thresholdHelp": "Múltiplo de consumo. 1x gasta el presupuesto del mes exactamente al final del mes.",
+    "minSamplesHelp": "Una ventana con menos sondas que esto no es concluyente y nunca se dispara.",
+    "severityLabel": "Gravedad",
+    "severityHelp": "Se refleja en el título del incidente y en cada notificación. El enrutamiento de canales sigue viniendo de la política de escalado.",
+    "kind": {
+      "fast": "Consumo rápido",
+      "slow": "Consumo lento"
+    },
+    "severity": {
+      "critical": "Crítico",
+      "warning": "Advertencia"
+    }
+  },
   "form": {
     "newTitle": "Nuevo objetivo",
     "editTitle": "Editar objetivo",

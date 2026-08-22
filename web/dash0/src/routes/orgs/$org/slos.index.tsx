@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Layers, Pencil, Plus, Target, Trash2 } from "lucide-react";
+import { Flame, Layers, Pencil, Plus, Target, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiError } from "@/api/client";
@@ -106,9 +106,19 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
         )}
       </TableCell>
       <TableCell>
-        <Badge className={sloStateBadgeClass(state)} data-testid="slo-row-state">
-          {t(`state.${state}`)}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge className={sloStateBadgeClass(state)} data-testid="slo-row-state">
+            {t(`state.${state}`)}
+          </Badge>
+          {/* Burning is orthogonal to the window state: an objective can still
+              be "healthy" on the month and be spending it far too fast today. */}
+          {slo.burning && (
+            <Badge variant="destructive" data-testid="slo-row-burning">
+              <Flame className="mr-1 h-3 w-3" />
+              {t("alerting.burning")}
+            </Badge>
+          )}
+        </div>
       </TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">

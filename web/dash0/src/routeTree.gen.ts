@@ -137,6 +137,7 @@ import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$or
 import { Route as OrgsOrgCheckGroupsUidEditRouteImport } from './routes/orgs/$org/check-groups.$uid.edit'
 import { Route as OrgsOrgAccountOrganizationsNewRouteImport } from './routes/orgs/$org/account.organizations.new'
 import { Route as OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.incidents.$uid'
+import { Route as OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport } from './routes/orgs/$org/slos.$uid.alert-policies.$policyUid'
 import { Route as OrgsOrgOrganizationMembersMemberUidPagingRouteImport } from './routes/orgs/$org/organization.members_.$memberUid.paging'
 import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
@@ -829,6 +830,12 @@ const OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute =
     path: '/incidents/$uid',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
+const OrgsOrgSlosUidAlertPoliciesPolicyUidRoute =
+  OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport.update({
+    id: '/alert-policies/$policyUid',
+    path: '/alert-policies/$policyUid',
+    getParentRoute: () => OrgsOrgSlosUidRoute,
+  } as any)
 const OrgsOrgOrganizationMembersMemberUidPagingRoute =
   OrgsOrgOrganizationMembersMemberUidPagingRouteImport.update({
     id: '/members_/$memberUid/paging',
@@ -979,6 +986,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRoutesByTo {
@@ -1087,6 +1095,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRoutesById {
@@ -1221,6 +1230,7 @@ export interface FileRoutesById {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members_/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRouteTypes {
@@ -1356,6 +1366,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1464,6 +1475,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   id:
     | '__root__'
@@ -1597,6 +1609,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
     | '/orgs/$org/organization/members_/$memberUid/paging'
+    | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   fileRoutesById: FileRoutesById
 }
@@ -2512,6 +2525,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
+    '/orgs/$org/slos/$uid/alert-policies/$policyUid': {
+      id: '/orgs/$org/slos/$uid/alert-policies/$policyUid'
+      path: '/alert-policies/$policyUid'
+      fullPath: '/orgs/$org/slos/$uid/alert-policies/$policyUid'
+      preLoaderRoute: typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport
+      parentRoute: typeof OrgsOrgSlosUidRoute
+    }
     '/orgs/$org/organization/members_/$memberUid/paging': {
       id: '/orgs/$org/organization/members_/$memberUid/paging'
       path: '/members/$memberUid/paging'
@@ -2899,11 +2919,14 @@ const OrgsOrgServerRouteWithChildren = OrgsOrgServerRoute._addFileChildren(
 interface OrgsOrgSlosUidRouteChildren {
   OrgsOrgSlosUidEditRoute: typeof OrgsOrgSlosUidEditRoute
   OrgsOrgSlosUidIndexRoute: typeof OrgsOrgSlosUidIndexRoute
+  OrgsOrgSlosUidAlertPoliciesPolicyUidRoute: typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
 }
 
 const OrgsOrgSlosUidRouteChildren: OrgsOrgSlosUidRouteChildren = {
   OrgsOrgSlosUidEditRoute: OrgsOrgSlosUidEditRoute,
   OrgsOrgSlosUidIndexRoute: OrgsOrgSlosUidIndexRoute,
+  OrgsOrgSlosUidAlertPoliciesPolicyUidRoute:
+    OrgsOrgSlosUidAlertPoliciesPolicyUidRoute,
 }
 
 const OrgsOrgSlosUidRouteWithChildren = OrgsOrgSlosUidRoute._addFileChildren(

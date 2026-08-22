@@ -56,6 +56,48 @@
     "burndownEmpty": "La fenêtre vient de commencer : pas encore de points.",
     "burndownIdeal": "Rythme idéal"
   },
+  "alerting": {
+    "title": "Alertes",
+    "subtitle": "Alerter l'astreinte quand le budget d'erreur brûle trop vite. Les deux fenêtres doivent dépasser le seuil, ainsi un pic déjà terminé n'alerte pas.",
+    "empty": "Aucune politique d'alerte",
+    "enable": "Activée",
+    "enabled": "Politique d'alerte activée",
+    "disabled": "Politique d'alerte désactivée",
+    "toggleFailed": "Échec de la mise à jour de la politique d'alerte",
+    "firing": "Déclenchée",
+    "burning": "En combustion",
+    "rule": "Déclenche au-delà de {{threshold}} sur {{long}}, confirmé sur {{short}}",
+    "longBurn": "Combustion ({{window}})",
+    "shortBurn": "Combustion ({{window}})",
+    "threshold": "Seuil",
+    "minSamples": "Sondes min.",
+    "inconclusive": "Données insuffisantes : {{long}} et {{short}} sondes dans les deux fenêtres, {{min}} requises. Une fenêtre non concluante ne déclenche jamais.",
+    "resolving": "Les deux fenêtres sont sous le seuil — l'alerte se résout une fois cela maintenu sur une fenêtre courte complète.",
+    "viewIncident": "Voir l'incident",
+    "viewIncidentNumbered": "Voir l'incident n°{{number}}",
+    "editThresholds": "Modifier les seuils",
+    "saved": "Politique d'alerte mise à jour",
+    "saveFailed": "Échec de la mise à jour de la politique d'alerte",
+    "formSubtitle": "Régler le déclenchement de cette politique. Les deux fenêtres doivent dépasser le seuil.",
+    "enableHelp": "L'alerte est facultative. Une politique désactivée n'est jamais évaluée.",
+    "longWindow": "Fenêtre longue (minutes)",
+    "longWindowHelp": "Prouve que la combustion est significative. Plafonnée à 7 jours.",
+    "shortWindow": "Fenêtre courte (minutes)",
+    "shortWindowHelp": "Prouve que cela dure encore. Doit être plus courte que la fenêtre longue.",
+    "windowsInvalid": "La fenêtre courte doit être supérieure à 0 et pas plus longue que la fenêtre longue (max 7 jours).",
+    "thresholdHelp": "Multiple du taux de combustion. 1x consomme exactement le budget du mois à la fin du mois.",
+    "minSamplesHelp": "Une fenêtre avec moins de sondes que cela est non concluante et ne déclenche jamais.",
+    "severityLabel": "Gravité",
+    "severityHelp": "Reprise dans le titre de l'incident et dans chaque notification. Le routage des canaux vient toujours de la politique d'escalade.",
+    "kind": {
+      "fast": "Combustion rapide",
+      "slow": "Combustion lente"
+    },
+    "severity": {
+      "critical": "Critique",
+      "warning": "Avertissement"
+    }
+  },
   "form": {
     "newTitle": "Nouvel objectif",
     "editTitle": "Modifier l'objectif",
