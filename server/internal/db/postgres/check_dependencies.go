@@ -230,6 +230,9 @@ func (s *Service) FindActiveIncidentsForChecksInWindow(
 
 	err := s.db.NewSelect().
 		Model(&incidents).
+		// Check incidents only: rolling a real outage up under a burn alert
+		// would suppress its paging on the strength of a budget statistic.
+		Where("kind = ?", models.IncidentKindCheck).
 		Where("check_uid IN (?)", bun.List(checkUIDs)).
 		Where("state = ?", models.IncidentStateActive).
 		Where("paging_suppressed = ?", false).

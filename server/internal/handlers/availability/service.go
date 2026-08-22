@@ -282,9 +282,13 @@ func (s *Service) fetchIncidents(
 	filter := &models.ListIncidentsFilter{
 		OrganizationUID: orgUID,
 		MemberCheckUID:  checkUID,
-		Since:           &window.start,
-		Until:           &window.end,
-		Limit:           1000,
+		// Downtime is what a FAILING CHECK did. An SLO burn alert is a
+		// statement about the error budget, so counting it here would
+		// double-count the outage that caused it (spec 2026-08-21-08).
+		Kinds: []string{models.IncidentKindCheck},
+		Since: &window.start,
+		Until: &window.end,
+		Limit: 1000,
 	}
 
 	incidents, _, err := s.db.ListIncidents(ctx, filter)

@@ -912,6 +912,23 @@ type Service interface {
 	// given checks. Powers the "covered by an SLO" chip on check detail.
 	ListSLOsForChecks(ctx context.Context, orgUID string, checkUIDs []string) ([]*models.SLO, error)
 
+	// SLO burn-rate alert policies (spec 2026-08-21-08)
+	CreateSLOAlertPolicy(ctx context.Context, policy *models.SLOAlertPolicy) error
+	GetSLOAlertPolicy(ctx context.Context, orgUID, uid string) (*models.SLOAlertPolicy, error)
+	ListSLOAlertPolicies(ctx context.Context, sloUID string) ([]*models.SLOAlertPolicy, error)
+	UpdateSLOAlertPolicy(ctx context.Context, uid string, update models.SLOAlertPolicyUpdate) error
+	// ListEnabledSLOAlertPolicies is the burn evaluator's work queue: every
+	// enabled policy across every org whose SLO is itself live and enabled,
+	// oldest-evaluated first so a large install still makes progress under a
+	// bounded per-sweep limit.
+	ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error)
+	// FindActiveBurnIncident returns the open burn incident for one
+	// (SLO, policy) pair, if any. sql.ErrNoRows when there is none.
+	FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error)
+	// ListActiveBurnIncidentsForSLOs powers the "burning" badge on the SLO
+	// list: one query for the whole page rather than one per row.
+	ListActiveBurnIncidentsForSLOs(ctx context.Context, orgUID string, sloUIDs []string) ([]*models.Incident, error)
+
 	// ReportSchedule operations (spec 2026-08-20-01)
 	CreateReportSchedule(ctx context.Context, schedule *models.ReportSchedule) error
 	GetReportSchedule(ctx context.Context, orgUID, uid string) (*models.ReportSchedule, error)

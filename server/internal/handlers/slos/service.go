@@ -698,9 +698,12 @@ func (s *Service) incidentBlock(
 		filter := &models.ListIncidentsFilter{
 			OrganizationUID: orgUID,
 			MemberCheckUID:  checkUID,
-			Since:           &window.Start,
-			Until:           &window.End,
-			Limit:           incidentFetchLimit,
+			// Check incidents only: the objective's own burn alert must not
+			// show up as an outage against the objective (spec 2026-08-21-08).
+			Kinds: []string{models.IncidentKindCheck},
+			Since: &window.Start,
+			Until: &window.End,
+			Limit: incidentFetchLimit,
 		}
 
 		incidents, _, err := s.db.ListIncidents(ctx, filter)

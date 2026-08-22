@@ -293,9 +293,12 @@ func (b *Builder) incidentBlock(
 		filter := &models.ListIncidentsFilter{
 			OrganizationUID: orgUID,
 			MemberCheckUID:  checkUID,
-			Since:           &window.Start,
-			Until:           &window.End,
-			Limit:           incidentFetchLimit,
+			// Check incidents only — the digest reports downtime, not budget
+			// alerts (spec 2026-08-21-08).
+			Kinds: []string{models.IncidentKindCheck},
+			Since: &window.Start,
+			Until: &window.End,
+			Limit: incidentFetchLimit,
 		}
 
 		incidents, _, err := b.db.ListIncidents(ctx, filter)

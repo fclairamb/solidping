@@ -3134,8 +3134,14 @@ func (s *Service) GetIncident(ctx context.Context, orgUID, uid string) (*models.
 func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error) {
 	incident := new(models.Incident)
 
+	// Restricted to check incidents: a burn incident carries a representative
+	// check purely so channel/escalation resolution has an anchor, and if this
+	// lookup returned one the check-result state machine would read a burning
+	// SLO as "this check is already down" and stop opening real incidents for
+	// it (spec 2026-08-21-08).
 	err := s.db.NewSelect().
 		Model(incident).
+		Where("kind = ?", models.IncidentKindCheck).
 		Where("state = ?", models.IncidentStateActive).
 		Where("deleted_at IS NULL").
 		Where(
@@ -3160,6 +3166,8 @@ func (s *Service) FindRecentlyResolvedIncidentByCheckUID(
 
 	err := s.db.NewSelect().
 		Model(incident).
+		// Check incidents only — see FindActiveIncidentByCheckUID.
+		Where("kind = ?", models.IncidentKindCheck).
 		Where("check_uid = ?", checkUID).
 		Where("check_group_uid IS NULL").
 		Where("state = ?", models.IncidentStateResolved).
@@ -3375,6 +3383,13 @@ func applyIncidentsFilter(query *bun.SelectQuery, filter *models.ListIncidentsFi
 
 	if len(filter.States) > 0 {
 		query = query.Where("state IN (?)", bun.List(filter.States))
+	}
+
+	// Empty Kinds means every kind, deliberately: the dashboard's incident
+	// list shows burn alerts next to check outages. Only the callers that
+	// derive DOWNTIME from incidents narrow it.
+	if len(filter.Kinds) > 0 {
+		query = query.Where("kind IN (?)", bun.In(filter.Kinds))
 	}
 
 	if filter.Since != nil {
@@ -6082,6 +6097,179 @@ func (s *Service) DeleteSLO(ctx context.Context, orgUID, uid string) error {
 		Exec(ctx)
 
 	return err
+}
+
+// --- SLO burn-rate alert policies (spec 2026-08-21-08) ---------------------
+
+// CreateSLOAlertPolicy inserts a new burn-rate alert policy.
+func (s *Service) CreateSLOAlertPolicy(ctx context.Context, policy *models.SLOAlertPolicy) error {
+	_, err := s.db.NewInsert().Model(policy).Exec(ctx)
+
+	return err
+}
+
+// GetSLOAlertPolicy retrieves one policy by UID within an organization.
+func (s *Service) GetSLOAlertPolicy(ctx context.Context, orgUID, uid string) (*models.SLOAlertPolicy, error) {
+	policy := new(models.SLOAlertPolicy)
+
+	err := s.db.NewSelect().
+		Model(policy).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return policy, nil
+}
+
+// ListSLOAlertPolicies lists one SLO's policies, fast before slow so the API
+// and the dashboard always render them in escalating order.
+func (s *Service) ListSLOAlertPolicies(ctx context.Context, sloUID string) ([]*models.SLOAlertPolicy, error) {
+	var policies []*models.SLOAlertPolicy
+
+	err := s.db.NewSelect().
+		Model(&policies).
+		Where("slo_uid = ?", sloUID).
+		Order("long_window_seconds ASC").
+		Scan(ctx)
+
+	return policies, err
+}
+
+// ListEnabledSLOAlertPolicies returns the burn evaluator's work queue.
+//
+// Joined to `slos` so a policy attached to a disabled or soft-deleted SLO is
+// never evaluated: disabling the objective has to stop the paging, or "turn it
+// off" would not mean what an operator expects.
+//
+// Ordered oldest-evaluated first (NULLs, i.e. never evaluated, first) so a
+// bounded per-sweep limit still gives every policy a turn on a large install
+// instead of starving the tail forever.
+func (s *Service) ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error) {
+	var policies []*models.SLOAlertPolicy
+
+	query := s.db.NewSelect().
+		Model(&policies).
+		Join("JOIN slos ON slos.uid = slo_alert_policies.slo_uid").
+		Where("slo_alert_policies.enabled = ?", true).
+		Where("slos.enabled = ?", true).
+		Where("slos.deleted_at IS NULL").
+		Order("slo_alert_policies.last_evaluated_at ASC NULLS FIRST")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	err := query.Scan(ctx)
+
+	return policies, err
+}
+
+// UpdateSLOAlertPolicy applies a partial update. Nil fields are left alone.
+//
+//nolint:cyclop // a flat field list; splitting it only hides which columns move.
+func (s *Service) UpdateSLOAlertPolicy(
+	ctx context.Context, uid string, update models.SLOAlertPolicyUpdate,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.SLOAlertPolicy)(nil)).
+		Where("uid = ?", uid).
+		Set("updated_at = ?", time.Now())
+
+	if update.Enabled != nil {
+		query = query.Set("enabled = ?", *update.Enabled)
+	}
+
+	if update.LongWindowSeconds != nil {
+		query = query.Set("long_window_seconds = ?", *update.LongWindowSeconds)
+	}
+
+	if update.ShortWindowSeconds != nil {
+		query = query.Set("short_window_seconds = ?", *update.ShortWindowSeconds)
+	}
+
+	if update.Threshold != nil {
+		query = query.Set("threshold = ?", *update.Threshold)
+	}
+
+	if update.Severity != nil {
+		query = query.Set("severity = ?", *update.Severity)
+	}
+
+	if update.MinSamples != nil {
+		query = query.Set("min_samples = ?", *update.MinSamples)
+	}
+
+	if update.LastEvaluatedAt != nil {
+		query = query.Set("last_evaluated_at = ?", *update.LastEvaluatedAt)
+	}
+
+	if update.ClearLastBurnRates {
+		query = query.Set("last_long_burn_rate = NULL").Set("last_short_burn_rate = NULL")
+	} else {
+		if update.LastLongBurnRate != nil {
+			query = query.Set("last_long_burn_rate = ?", *update.LastLongBurnRate)
+		}
+
+		if update.LastShortBurnRate != nil {
+			query = query.Set("last_short_burn_rate = ?", *update.LastShortBurnRate)
+		}
+	}
+
+	if update.ClearBelowThresholdSince {
+		query = query.Set("below_threshold_since = NULL")
+	} else if update.BelowThresholdSince != nil {
+		query = query.Set("below_threshold_since = ?", *update.BelowThresholdSince)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// FindActiveBurnIncident returns the open burn incident for one (SLO, policy).
+func (s *Service) FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("kind = ?", models.IncidentKindSLOBurn).
+		Where("slo_uid = ?", sloUID).
+		Where("slo_alert_policy_uid = ?", policyUID).
+		Where("state = ?", models.IncidentStateActive).
+		Where("deleted_at IS NULL").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
+}
+
+// ListActiveBurnIncidentsForSLOs returns every open burn incident bound to any
+// of the given SLOs — one query for a whole list page.
+func (s *Service) ListActiveBurnIncidentsForSLOs(
+	ctx context.Context, orgUID string, sloUIDs []string,
+) ([]*models.Incident, error) {
+	if len(sloUIDs) == 0 {
+		return nil, nil
+	}
+
+	var incidents []*models.Incident
+
+	err := s.db.NewSelect().
+		Model(&incidents).
+		Where("organization_uid = ?", orgUID).
+		Where("kind = ?", models.IncidentKindSLOBurn).
+		Where("slo_uid IN (?)", bun.In(sloUIDs)).
+		Where("state = ?", models.IncidentStateActive).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+
+	return incidents, err
 }
 
 // --- Report schedules (spec 2026-08-20-01) ---------------------------------
