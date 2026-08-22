@@ -31,6 +31,7 @@ provider signature in the request).
 | [entitlements.md](entitlements.md) | Per-org limits, the billing-service write API, and the audit log |
 | [checks.md](checks.md) | Checks, validate, export/import/apply, dependencies, clone, labels, check types, groups, severities, badges, availability |
 | [results-incidents.md](results-incidents.md) | Results, incidents and their actions, events, and the live-update WebSocket |
+| [events-catalogue.md](events-catalogue.md) | The audit trail: every event type, payload keys, redaction rules, flood control, retention |
 | [notifications.md](notifications.md) | Notification routes and contacts, notification history, web push, email suppressions, public unsubscribe |
 | [on-call.md](on-call.md) | Escalation policies, on-call schedules, overrides, iCal feeds |
 | [status-pages.md](status-pages.md) | Status pages, sections, resources, subscribers, status updates, public views and feeds |

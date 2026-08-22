@@ -133,12 +133,33 @@ Incident **notification** history (which routes fired, and when) lives in
 ### GET /api/v1/orgs/:org/events
 List events across the organization. Auth: required
 
+This is also the **audit trail** endpoint — see
+[the event catalogue](events-catalogue.md) for every type it can return, what
+each payload carries, and the redaction rules.
+
 Query parameters:
-- `eventType` - comma-separated event types
+- `eventType` - comma-separated event types, matched **exactly**
+- `type` - comma-separated event-type **families** (prefixes), e.g.
+  `?type=auth,member`. Distinct from `eventType`: `auth` is not a type.
+- `actorUserUid` - filter to the events one user caused (`actorUid` is accepted
+  as an alias)
 - `checkUid` - filter by check UID
 - `incidentUid` - filter by incident UID
-- `cursor` - pagination cursor
+- `since` / `until` - RFC3339 bounds (`since` inclusive, `until` exclusive)
+- `cursor` - pagination cursor. Opaque keyset cursor over
+  `(created_at, uid)`; hand back `pagination.cursor` verbatim. An unparseable
+  cursor is ignored (first page) rather than rejected.
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
+
+Response items carry `uid`, `eventType`, `actorType`
+(`system` | `user` | `api_token` | `service`), `actorUid` plus the resolved
+`actorName` / `actorEmail`, `payload`, `createdAt`, and — **for org admins and
+owners only** — `sourceIp` and `userAgent`.
+
+**Visibility:** the `auth.*` family is returned to org admins/owners (and super
+admins) only. The gate is a server-side filter exclusion, so it holds for an
+unfiltered listing, for `?type=auth`, and for `?eventType=auth.login_succeeded`
+alike. `sourceIp` / `userAgent` are withheld from non-admins on every event.
 
 ### GET /api/v1/orgs/:org/events/ws
 Live update hint WebSocket (v2 — per-entity subscriptions; superseded the v1
