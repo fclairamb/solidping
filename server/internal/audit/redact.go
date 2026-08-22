@@ -245,3 +245,42 @@ func safeScalar(value any) (any, bool) {
 		return nil, false
 	}
 }
+
+// ChangePayload assembles the canonical update-event payload: the sorted
+// changed field names, the safe old→new subset, plus any extra facts the
+// emitter wants to add. extraFields names changes that are not expressible as
+// a scalar diff (e.g. "steps", "checks") and are folded into changed_fields.
+//
+// Centralized so every *.updated event in the product has the same shape and
+// dash0 needs exactly one renderer.
+func ChangePayload(
+	changed []string, safe map[string]any, extraFields []string, extra models.JSONMap,
+) models.JSONMap {
+	all := make([]string, 0, len(changed)+len(extraFields))
+	seen := make(map[string]bool, len(changed)+len(extraFields))
+
+	for _, field := range append(append([]string{}, changed...), extraFields...) {
+		if field == "" || seen[field] {
+			continue
+		}
+
+		seen[field] = true
+
+		all = append(all, field)
+	}
+
+	sort.Strings(all)
+
+	payload := models.JSONMap{}
+	for key, value := range extra {
+		payload[key] = value
+	}
+
+	payload[PayloadKeyChangedFields] = all
+
+	if len(safe) > 0 {
+		payload[PayloadKeyChanges] = safe
+	}
+
+	return payload
+}

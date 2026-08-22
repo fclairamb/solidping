@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -156,7 +157,41 @@ func (s *Service) CreateMaintenanceWindow(
 		return MaintenanceWindowResponse{}, err
 	}
 
+	audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowCreated,
+		auditTarget(window), models.JSONMap{
+			"start_at":   window.StartAt.UTC().Format(time.RFC3339),
+			"end_at":     window.EndAt.UTC().Format(time.RFC3339),
+			"recurrence": window.Recurrence,
+		})
+
 	return convertWindowToResponse(window, time.Now().UTC()), nil
+}
+
+// auditTarget names a maintenance window for the audit trail.
+func auditTarget(window *models.MaintenanceWindow) audit.Target {
+	return audit.Target{Type: "maintenance_window", UID: window.UID, Name: window.Title}
+}
+
+// auditSnapshot is the scalar shape the audit trail diffs an update against.
+func auditSnapshot(window *models.MaintenanceWindow) map[string]any {
+	description := ""
+	if window.Description != nil {
+		description = *window.Description
+	}
+
+	recurrenceEnd := ""
+	if window.RecurrenceEnd != nil {
+		recurrenceEnd = window.RecurrenceEnd.UTC().Format(time.RFC3339)
+	}
+
+	return map[string]any{
+		"title":          window.Title,
+		"description":    description,
+		"start_at":       window.StartAt.UTC().Format(time.RFC3339),
+		"end_at":         window.EndAt.UTC().Format(time.RFC3339),
+		"recurrence":     window.Recurrence,
+		"recurrence_end": recurrenceEnd,
+	}
 }
 
 // GetMaintenanceWindow retrieves a single maintenance window by UID.
@@ -237,6 +272,11 @@ func (s *Service) UpdateMaintenanceWindow(
 		return MaintenanceWindowResponse{}, errFetch
 	}
 
+	if changed, safe := audit.Changes(auditSnapshot(window), auditSnapshot(updatedWindow)); len(changed) > 0 {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowUpdated,
+			auditTarget(updatedWindow), audit.ChangePayload(changed, safe, nil, nil))
+	}
+
 	return convertWindowToResponse(updatedWindow, time.Now().UTC()), nil
 }
 
@@ -256,7 +296,13 @@ func (s *Service) DeleteMaintenanceWindow(ctx context.Context, orgSlug, uid stri
 		return err
 	}
 
-	return s.db.DeleteMaintenanceWindow(ctx, org.UID, window.UID)
+	if err := s.db.DeleteMaintenanceWindow(ctx, org.UID, window.UID); err != nil {
+		return err
+	}
+
+	audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowDeleted, auditTarget(window), nil)
+
+	return nil
 }
 
 // ListChecks retrieves the check associations for a maintenance window.
@@ -314,7 +360,21 @@ func (s *Service) SetChecks(
 		return err
 	}
 
-	return s.db.SetMaintenanceWindowChecks(ctx, windowUID, req.CheckUIDs, req.CheckGroupUIDs)
+	if err := s.db.SetMaintenanceWindowChecks(ctx, windowUID, req.CheckUIDs, req.CheckGroupUIDs); err != nil {
+		return err
+	}
+
+	// A window with zero attached checks suppresses NOTHING, so "who changed
+	// the attachment set, and to how many" is exactly the fact an operator
+	// needs after a page that should have been suppressed.
+	audit.Record(ctx, s.db, org.UID, models.EventTypeMaintenanceWindowUpdated,
+		audit.Target{Type: "maintenance_window", UID: windowUID},
+		audit.ChangePayload(nil, nil, []string{"checks"}, models.JSONMap{
+			"check_count":       len(req.CheckUIDs),
+			"check_group_count": len(req.CheckGroupUIDs),
+		}))
+
+	return nil
 }
 
 func validateCreateRequest(req *CreateRequest) error {

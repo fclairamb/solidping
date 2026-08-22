@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -97,7 +98,44 @@ func (s *Service) CreateSchedule(ctx context.Context, input *CreateScheduleInput
 		}
 	}
 
+	audit.Record(ctx, s.db, input.OrganizationUID, models.EventTypeOnCallScheduleCreated,
+		auditTarget(schedule), models.JSONMap{
+			"rotation_type": string(schedule.RotationType),
+			"timezone":      schedule.Timezone,
+			"user_count":    len(input.UserUIDs),
+		})
+
 	return schedule, nil
+}
+
+// auditTarget names an on-call schedule for the audit trail.
+func auditTarget(schedule *models.OnCallSchedule) audit.Target {
+	return audit.Target{Type: "oncall_schedule", UID: schedule.UID, Name: schedule.Name}
+}
+
+// auditSnapshot is the scalar shape the audit trail diffs an update against.
+// The roster is a list, so it is reported as a changed field name (see
+// UpdateSchedule) rather than as a from→to pair.
+func auditSnapshot(schedule *models.OnCallSchedule) map[string]any {
+	description := ""
+	if schedule.Description != nil {
+		description = *schedule.Description
+	}
+
+	weekday := -1
+	if schedule.HandoffWeekday != nil {
+		weekday = *schedule.HandoffWeekday
+	}
+
+	return map[string]any{
+		"name":            schedule.Name,
+		"description":     description,
+		"timezone":        schedule.Timezone,
+		"rotation_type":   string(schedule.RotationType),
+		"handoff_time":    schedule.HandoffTime,
+		"handoff_weekday": weekday,
+		"start_at":        schedule.StartAt.UTC().Format(time.RFC3339),
+	}
 }
 
 // GetScheduleByUID returns a schedule by UID within an organization.
@@ -211,16 +249,40 @@ func (s *Service) UpdateSchedule(
 		}
 	}
 
-	return s.GetScheduleByUID(ctx, orgUID, scheduleUID)
+	refreshed, err := s.GetScheduleByUID(ctx, orgUID, scheduleUID)
+	if err != nil {
+		return nil, err
+	}
+
+	changed, safe := audit.Changes(auditSnapshot(schedule), auditSnapshot(refreshed))
+
+	var extraFields []string
+	if input.UserUIDs != nil {
+		extraFields = append(extraFields, "users")
+	}
+
+	if len(changed) > 0 || len(extraFields) > 0 {
+		audit.Record(ctx, s.db, orgUID, models.EventTypeOnCallScheduleUpdated,
+			auditTarget(refreshed), audit.ChangePayload(changed, safe, extraFields, nil))
+	}
+
+	return refreshed, nil
 }
 
 // DeleteSchedule soft-deletes the schedule.
 func (s *Service) DeleteSchedule(ctx context.Context, orgUID, scheduleUID string) error {
-	if _, err := s.GetScheduleByUID(ctx, orgUID, scheduleUID); err != nil {
+	schedule, err := s.GetScheduleByUID(ctx, orgUID, scheduleUID)
+	if err != nil {
 		return err
 	}
 
-	return s.db.DeleteOnCallSchedule(ctx, scheduleUID)
+	if err := s.db.DeleteOnCallSchedule(ctx, scheduleUID); err != nil {
+		return err
+	}
+
+	audit.Record(ctx, s.db, orgUID, models.EventTypeOnCallScheduleDeleted, auditTarget(schedule), nil)
+
+	return nil
 }
 
 // CreateOverrideInput captures the fields for an override.

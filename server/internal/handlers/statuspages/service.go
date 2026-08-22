@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -1127,6 +1128,13 @@ func (s *Service) CreateStatusPage(
 	// reasoning as the update path's capturePublishTransition.
 	s.capturePublishTransition(ctx, org.UID, nil, page)
 
+	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageCreated,
+		auditTarget(page), models.JSONMap{
+			"slug":       page.Slug,
+			"visibility": page.Visibility,
+			"enabled":    page.Enabled,
+		})
+
 	page, err = s.applyCreateCustomDomain(ctx, org.UID, page, req)
 	if err != nil {
 		return StatusPageResponse{}, err
@@ -1298,7 +1306,56 @@ func (s *Service) UpdateStatusPage(
 
 	s.capturePublishTransition(ctx, org.UID, page, updated)
 
+	if changed, safe := audit.Changes(auditSnapshot(page), auditSnapshot(updated)); len(changed) > 0 {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageUpdated,
+			auditTarget(updated), audit.ChangePayload(changed, safe, nil, nil))
+	}
+
 	return s.finalizeCustomDomainUpdate(ctx, org.UID, updated, req)
+}
+
+// auditTarget names a status page for the audit trail.
+func auditTarget(page *models.StatusPage) audit.Target {
+	return audit.Target{Type: "status_page", UID: page.UID, Name: page.Name}
+}
+
+// auditSnapshot is the scalar shape the audit trail diffs an update against.
+//
+// password_hash is present ON PURPOSE and is exactly why audit.Changes
+// separates "which fields moved" from "what they moved to": IsSensitiveKey
+// matches it, so the rotation is reported as a changed field name and the hash
+// itself never leaves this function.
+func auditSnapshot(page *models.StatusPage) map[string]any {
+	description := ""
+	if page.Description != nil {
+		description = *page.Description
+	}
+
+	customDomain := ""
+	if page.CustomDomain != nil {
+		customDomain = *page.CustomDomain
+	}
+
+	passwordHash := ""
+	if page.PasswordHash != nil {
+		passwordHash = *page.PasswordHash
+	}
+
+	return map[string]any{
+		"name":               page.Name,
+		"slug":               page.Slug,
+		"description":        description,
+		"visibility":         page.Visibility,
+		"enabled":            page.Enabled,
+		"is_default":         page.IsDefault,
+		"show_availability":  page.ShowAvailability,
+		"show_response_time": page.ShowResponseTime,
+		"history_period":     string(page.HistoryPeriod),
+		"custom_domain":      customDomain,
+		"auto_publish":       page.AutoPublish,
+		"auto_resolve":       page.AutoResolve,
+		"password_hash":      passwordHash,
+	}
 }
 
 // isPublished reports whether a status page is live and world-readable, which
@@ -1348,6 +1405,9 @@ func (s *Service) DeleteStatusPage(ctx context.Context, orgSlug, identifier stri
 	if delErr := s.db.DeleteStatusPage(ctx, page.UID); delErr != nil {
 		return delErr
 	}
+
+	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageDeleted,
+		auditTarget(page), models.JSONMap{"slug": page.Slug})
 
 	// Reap the page's brand assets. This is NOT housekeeping: a status-page
 	// logo is public exactly while its file row is live, so without this the

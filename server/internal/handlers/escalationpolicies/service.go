@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -104,7 +105,37 @@ func (s *Service) CreatePolicy(ctx context.Context, input *CreatePolicyInput) (*
 		return nil, err
 	}
 
+	audit.Record(ctx, s.db, input.OrganizationUID, models.EventTypeEscalationPolicyCreated,
+		auditTarget(policy), models.JSONMap{"step_count": len(input.Steps)})
+
 	return policy, nil
+}
+
+// auditTarget names an escalation policy for the audit trail.
+func auditTarget(policy *models.EscalationPolicy) audit.Target {
+	return audit.Target{Type: "escalation_policy", UID: policy.UID, Name: policy.Name}
+}
+
+// auditSnapshot is the scalar shape the audit trail diffs an update against.
+// Steps are deliberately excluded — they are a list, not a scalar, so they are
+// reported as a changed field name without values (see UpdatePolicy).
+func auditSnapshot(policy *models.EscalationPolicy) map[string]any {
+	description := ""
+	if policy.Description != nil {
+		description = *policy.Description
+	}
+
+	repeatAfter := 0
+	if policy.RepeatAfterSeconds != nil {
+		repeatAfter = *policy.RepeatAfterSeconds
+	}
+
+	return map[string]any{
+		"name":                 policy.Name,
+		"description":          description,
+		"repeat_max":           policy.RepeatMax,
+		"repeat_after_seconds": repeatAfter,
+	}
 }
 
 // GetPolicy returns a policy (with expanded steps and targets) addressed by
@@ -261,6 +292,18 @@ func (s *Service) UpdatePolicy(
 		return nil, err
 	}
 
+	changed, safe := audit.Changes(auditSnapshot(policy), auditSnapshot(refreshed))
+
+	var extraFields []string
+	if input.Steps != nil {
+		extraFields = append(extraFields, "steps")
+	}
+
+	if len(changed) > 0 || len(extraFields) > 0 {
+		audit.Record(ctx, s.db, orgUID, models.EventTypeEscalationPolicyUpdated,
+			auditTarget(refreshed), audit.ChangePayload(changed, safe, extraFields, nil))
+	}
+
 	return s.loadDetail(ctx, refreshed)
 }
 
@@ -287,7 +330,13 @@ func (s *Service) DeletePolicy(ctx context.Context, orgUID, uid string) error {
 		return ErrPolicyInUse
 	}
 
-	return s.db.DeleteEscalationPolicy(ctx, policy.UID)
+	if err := s.db.DeleteEscalationPolicy(ctx, policy.UID); err != nil {
+		return err
+	}
+
+	audit.Record(ctx, s.db, orgUID, models.EventTypeEscalationPolicyDeleted, auditTarget(policy), nil)
+
+	return nil
 }
 
 // policyHasOpenIncidents returns true when at least one open (unresolved)

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -443,6 +445,15 @@ func (s *Service) CreateIntegration(
 			"channel_type": string(conn.Type),
 		})
 
+	// Note what KIND of integration was wired up, never its settings — a
+	// connection's settings are exactly where the bot tokens, webhook URLs and
+	// Twilio auth tokens live.
+	audit.Record(ctx, s.db, org.UID, models.EventTypeIntegrationCreated,
+		auditTarget(conn), models.JSONMap{
+			"integration_type": string(conn.Type),
+			"enabled":          conn.Enabled,
+		})
+
 	resp := toResponse(conn, true)
 
 	if conn.Type == models.ConnectionTypeWebhook {
@@ -701,12 +712,64 @@ func (s *Service) UpdateIntegration(
 	}
 
 	// Fetch updated connection
-	conn, err = s.db.GetChannel(ctx, connectionUID)
+	updated, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return toResponse(conn, true), nil
+	changed, safe := audit.Changes(auditSnapshot(conn), auditSnapshot(updated))
+
+	var extraFields []string
+	if req.Settings != nil {
+		// The settings map is the connection's credential store. The audit
+		// trail records THAT it was rewritten and which top-level keys the
+		// request named — never any value, and never the merged result.
+		extraFields = append(extraFields, "settings")
+	}
+
+	if len(changed) > 0 || len(extraFields) > 0 {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeIntegrationUpdated,
+			auditTarget(updated), audit.ChangePayload(changed, safe, extraFields, models.JSONMap{
+				"integration_type":      string(updated.Type),
+				"settings_keys_touched": settingsKeyNames(req.Settings),
+			}))
+	}
+
+	return toResponse(updated, true), nil
+}
+
+// auditTarget names an integration connection for the audit trail.
+func auditTarget(conn *models.Integration) audit.Target {
+	return audit.Target{Type: "integration", UID: conn.UID, Name: conn.Name}
+}
+
+// auditSnapshot is the scalar shape the audit trail diffs an update against.
+// Settings are deliberately absent: the whole point of the redaction rule is
+// that a connection's settings never reach the trail, not even as a diff.
+func auditSnapshot(conn *models.Integration) map[string]any {
+	return map[string]any{
+		"name":       conn.Name,
+		"enabled":    conn.Enabled,
+		"is_default": conn.IsDefault,
+	}
+}
+
+// settingsKeyNames returns the sorted top-level KEY NAMES a settings PATCH
+// carried. Names only — "the auth_token was rewritten" is an audit fact worth
+// having, and is exactly as much as may be stored about it.
+func settingsKeyNames(settings models.JSONMap) []string {
+	if len(settings) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(settings))
+	for key := range settings {
+		names = append(names, key)
+	}
+
+	sort.Strings(names)
+
+	return names
 }
 
 // applyUpdateSettings PATCH-merges the incoming settings over the existing
@@ -1195,7 +1258,14 @@ func (s *Service) DeleteIntegration(ctx context.Context, orgSlug, connectionUID 
 		return ErrConnectionNotFound
 	}
 
-	return s.db.DeleteChannel(ctx, connectionUID)
+	if err := s.db.DeleteChannel(ctx, connectionUID); err != nil {
+		return err
+	}
+
+	audit.Record(ctx, s.db, org.UID, models.EventTypeIntegrationDeleted,
+		auditTarget(conn), models.JSONMap{"integration_type": string(conn.Type)})
+
+	return nil
 }
 
 // IntegrationTestResult is returned by TestIntegration. Success reports whether
