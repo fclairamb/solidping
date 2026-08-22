@@ -1533,6 +1533,42 @@ func (e ResultFallbackInfoReason) Valid() bool {
 	}
 }
 
+// Defines values for SLOAlertPolicyKind.
+const (
+	SLOAlertPolicyKindFast SLOAlertPolicyKind = "fast"
+	SLOAlertPolicyKindSlow SLOAlertPolicyKind = "slow"
+)
+
+// Valid indicates whether the value is a known member of the SLOAlertPolicyKind enum.
+func (e SLOAlertPolicyKind) Valid() bool {
+	switch e {
+	case SLOAlertPolicyKindFast:
+		return true
+	case SLOAlertPolicyKindSlow:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SLOAlertPolicySeverity.
+const (
+	SLOAlertPolicySeverityCritical SLOAlertPolicySeverity = "critical"
+	SLOAlertPolicySeverityWarning  SLOAlertPolicySeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the SLOAlertPolicySeverity enum.
+func (e SLOAlertPolicySeverity) Valid() bool {
+	switch e {
+	case SLOAlertPolicySeverityCritical:
+		return true
+	case SLOAlertPolicySeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SLOStatusRowState.
 const (
 	SLOStatusRowStateAtRisk   SLOStatusRowState = "at_risk"
@@ -1827,6 +1863,24 @@ func (e UpdateMemberRequestRole) Valid() bool {
 	case UpdateMemberRequestRoleUser:
 		return true
 	case UpdateMemberRequestRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateSLOAlertPolicyRequestSeverity.
+const (
+	UpdateSLOAlertPolicyRequestSeverityCritical UpdateSLOAlertPolicyRequestSeverity = "critical"
+	UpdateSLOAlertPolicyRequestSeverityWarning  UpdateSLOAlertPolicyRequestSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the UpdateSLOAlertPolicyRequestSeverity enum.
+func (e UpdateSLOAlertPolicyRequestSeverity) Valid() bool {
+	switch e {
+	case UpdateSLOAlertPolicyRequestSeverityCritical:
+		return true
+	case UpdateSLOAlertPolicyRequestSeverityWarning:
 		return true
 	default:
 		return false
@@ -4796,6 +4850,8 @@ type ResultsCursorPagination struct {
 
 // SLO defines model for SLO.
 type SLO struct {
+	// Burning True while at least one burn-rate alert policy on this objective has an open incident. Derived from the incident rows, never stored.
+	Burning        *bool   `json:"burning,omitempty"`
 	CheckGroupName *string `json:"checkGroupName,omitempty"`
 
 	// CheckGroupUid Set when the objective is scoped to one check group
@@ -4815,6 +4871,61 @@ type SLO struct {
 	Timezone  *string    `json:"timezone,omitempty"`
 	Uid       *string    `json:"uid,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
+// SLOAlertPolicy One built-in multiwindow burn-rate alert policy. An alert fires only when BOTH windows exceed the threshold: the long window proves the burn is significant, the short one proves it is still happening.
+type SLOAlertPolicy struct {
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Firing An open burn incident exists for this policy.
+	Firing         *bool               `json:"firing,omitempty"`
+	FiringSince    *time.Time          `json:"firingSince,omitempty"`
+	IncidentNumber *int64              `json:"incidentNumber,omitempty"`
+	IncidentUid    *openapi_types.UUID `json:"incidentUid,omitempty"`
+
+	// Kind Built-in identity. Not writable.
+	Kind            *SLOAlertPolicyKind `json:"kind,omitempty"`
+	LastEvaluatedAt *time.Time          `json:"lastEvaluatedAt,omitempty"`
+
+	// LongBurnRate Null when the window carries no countable probe. Never 0.
+	LongBurnRate   *float64 `json:"longBurnRate,omitempty"`
+	LongConclusive *bool    `json:"longConclusive,omitempty"`
+	LongSamples    *int     `json:"longSamples,omitempty"`
+
+	// LongWindowSeconds Significance window. Stored, never derived.
+	LongWindowSeconds *int `json:"longWindowSeconds,omitempty"`
+
+	// MinSamples Per-window probe floor. Below it the window is inconclusive: it does not fire, and it does not count as below-threshold for auto-resolve.
+	MinSamples *int `json:"minSamples,omitempty"`
+
+	// OverThresholdNow Both windows are conclusively over the threshold right now.
+	OverThresholdNow *bool `json:"overThresholdNow,omitempty"`
+
+	// ResolvingSince Hysteresis anchor: both windows have been below threshold since this instant, and the incident auto-resolves once that has held for a full short window.
+	ResolvingSince  *time.Time              `json:"resolvingSince,omitempty"`
+	Severity        *SLOAlertPolicySeverity `json:"severity,omitempty"`
+	ShortBurnRate   *float64                `json:"shortBurnRate,omitempty"`
+	ShortConclusive *bool                   `json:"shortConclusive,omitempty"`
+	ShortSamples    *int                    `json:"shortSamples,omitempty"`
+
+	// ShortWindowSeconds Confirmation window. Must be <= longWindowSeconds.
+	ShortWindowSeconds *int                `json:"shortWindowSeconds,omitempty"`
+	SloUid             *openapi_types.UUID `json:"sloUid,omitempty"`
+
+	// Threshold Burn-rate multiple both windows must exceed. 1.0 spends the calendar budget exactly by period end.
+	Threshold *float64            `json:"threshold,omitempty"`
+	Uid       *openapi_types.UUID `json:"uid,omitempty"`
+}
+
+// SLOAlertPolicyKind Built-in identity. Not writable.
+type SLOAlertPolicyKind string
+
+// SLOAlertPolicySeverity defines model for SLOAlertPolicy.Severity.
+type SLOAlertPolicySeverity string
+
+// SLOAlertPolicyListResponse defines model for SLOAlertPolicyListResponse.
+type SLOAlertPolicyListResponse struct {
+	Data *[]SLOAlertPolicy `json:"data,omitempty"`
 }
 
 // SLOBurndownPoint defines model for SLOBurndownPoint.
@@ -5491,6 +5602,19 @@ type UpdateProfileRequest struct {
 // UpdateReportScheduleRequest Partial update; every field is optional.
 type UpdateReportScheduleRequest = CreateReportScheduleRequest
 
+// UpdateSLOAlertPolicyRequest Partial update. Omitted fields are left alone.
+type UpdateSLOAlertPolicyRequest struct {
+	Enabled            *bool                                `json:"enabled,omitempty"`
+	LongWindowSeconds  *int                                 `json:"longWindowSeconds,omitempty"`
+	MinSamples         *int                                 `json:"minSamples,omitempty"`
+	Severity           *UpdateSLOAlertPolicyRequestSeverity `json:"severity,omitempty"`
+	ShortWindowSeconds *int                                 `json:"shortWindowSeconds,omitempty"`
+	Threshold          *float64                             `json:"threshold,omitempty"`
+}
+
+// UpdateSLOAlertPolicyRequestSeverity defines model for UpdateSLOAlertPolicyRequest.Severity.
+type UpdateSLOAlertPolicyRequestSeverity string
+
 // UpdateSLORequest Partial update; every field is optional.
 type UpdateSLORequest = CreateSLORequest
 
@@ -5781,6 +5905,9 @@ type ResourceUidPath = openapi_types.UUID
 
 // RouteUidPath defines model for RouteUidPath.
 type RouteUidPath = string
+
+// SLOAlertPolicyUidPath defines model for SLOAlertPolicyUidPath.
+type SLOAlertPolicyUidPath = openapi_types.UUID
 
 // SLOUidPath defines model for SLOUidPath.
 type SLOUidPath = string
@@ -6517,6 +6644,9 @@ type CreateSloJSONRequestBody = CreateSLORequest
 
 // UpdateSloJSONRequestBody defines body for UpdateSlo for application/json ContentType.
 type UpdateSloJSONRequestBody = UpdateSLORequest
+
+// UpdateSloAlertPolicyJSONRequestBody defines body for UpdateSloAlertPolicy for application/json ContentType.
+type UpdateSloAlertPolicyJSONRequestBody = UpdateSLOAlertPolicyRequest
 
 // CreateStatusPageJSONRequestBody defines body for CreateStatusPage for application/json ContentType.
 type CreateStatusPageJSONRequestBody = CreateStatusPageRequest
@@ -8354,6 +8484,36 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
 	UpdateSlo(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSloAlertPolicies List an objective's burn-rate alert policies
+	//
+	// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+	ListSloAlertPolicies(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSloAlertPolicy Get one burn-rate alert policy
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+	GetSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSloAlertPolicyWithBody Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicyWithBody(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSloAlertPolicy Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSloBurndown Error-budget burn-down for the current window
 	//
@@ -13166,6 +13326,76 @@ func (c *Client) UpdateSloWithBody(ctx context.Context, org OrgPath, uid SLOUidP
 // Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
 func (c *Client) UpdateSlo(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateSloRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSloAlertPolicies List an objective's burn-rate alert policies
+//
+// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+func (c *Client) ListSloAlertPolicies(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSloAlertPoliciesRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSloAlertPolicy Get one burn-rate alert policy
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+func (c *Client) GetSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSloAlertPolicyRequest(c.Server, org, uid, policyUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSloAlertPolicyWithBody Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *Client) UpdateSloAlertPolicyWithBody(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSloAlertPolicyRequestWithBody(c.Server, org, uid, policyUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSloAlertPolicy Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *Client) UpdateSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSloAlertPolicyRequest(c.Server, org, uid, policyUid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -23756,6 +23986,156 @@ func NewUpdateSloRequestWithBody(server string, org OrgPath, uid SLOUidPath, con
 	return req, nil
 }
 
+// NewListSloAlertPoliciesRequest constructs an http.Request for the ListSloAlertPolicies method
+func NewListSloAlertPoliciesRequest(server string, org OrgPath, uid SLOUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/alert-policies", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSloAlertPolicyRequest constructs an http.Request for the GetSloAlertPolicy method
+func NewGetSloAlertPolicyRequest(server string, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "policyUid", policyUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/alert-policies/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSloAlertPolicyRequest calls the generic UpdateSloAlertPolicy builder with application/json body
+func NewUpdateSloAlertPolicyRequest(server string, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSloAlertPolicyRequestWithBody(server, org, uid, policyUid, "application/json", bodyReader)
+}
+
+// NewUpdateSloAlertPolicyRequestWithBody constructs an http.Request for the UpdateSloAlertPolicy method, with any body, and a specified content type
+func NewUpdateSloAlertPolicyRequestWithBody(server string, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "policyUid", policyUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/alert-policies/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetSloBurndownRequest constructs an http.Request for the GetSloBurndown method
 func NewGetSloBurndownRequest(server string, org OrgPath, uid SLOUidPath) (*http.Request, error) {
 	var err error
@@ -29284,6 +29664,40 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
 	UpdateSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloResult, error)
+
+	// ListSloAlertPoliciesWithResponse List an objective's burn-rate alert policies
+	//
+	// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+	ListSloAlertPoliciesWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*ListSloAlertPoliciesResult, error)
+
+	// GetSloAlertPolicyWithResponse Get one burn-rate alert policy
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+	GetSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*GetSloAlertPolicyResult, error)
+
+	// UpdateSloAlertPolicyWithBodyWithResponse Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error)
+
+	// UpdateSloAlertPolicyWithResponse Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error)
 
 	// GetSloBurndownWithResponse Error-budget burn-down for the current window
 	//
@@ -40121,6 +40535,178 @@ func (r UpdateSloResult) ContentType() string {
 	return ""
 }
 
+type ListSloAlertPoliciesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOAlertPolicyListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSloAlertPoliciesResult) GetJSON200() *SLOAlertPolicyListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSloAlertPoliciesResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSloAlertPoliciesResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSloAlertPoliciesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSloAlertPoliciesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSloAlertPoliciesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSloAlertPoliciesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSloAlertPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOAlertPolicy
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSloAlertPolicyResult) GetJSON200() *SLOAlertPolicy {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSloAlertPolicyResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSloAlertPolicyResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSloAlertPolicyResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSloAlertPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSloAlertPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSloAlertPolicyResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateSloAlertPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOAlertPolicy
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON200() *SLOAlertPolicy {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSloAlertPolicyResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSloAlertPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSloAlertPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSloAlertPolicyResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetSloBurndownResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -47499,6 +48085,64 @@ func (c *ClientWithResponses) UpdateSloWithResponse(ctx context.Context, org Org
 		return nil, err
 	}
 	return ParseUpdateSloResult(rsp)
+}
+
+// ListSloAlertPoliciesWithResponse List an objective's burn-rate alert policies
+//
+// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+func (c *ClientWithResponses) ListSloAlertPoliciesWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*ListSloAlertPoliciesResult, error) {
+	rsp, err := c.ListSloAlertPolicies(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSloAlertPoliciesResult(rsp)
+}
+
+// GetSloAlertPolicyWithResponse Get one burn-rate alert policy
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+func (c *ClientWithResponses) GetSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*GetSloAlertPolicyResult, error) {
+	rsp, err := c.GetSloAlertPolicy(ctx, org, uid, policyUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSloAlertPolicyResult(rsp)
+}
+
+// UpdateSloAlertPolicyWithBodyWithResponse Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *ClientWithResponses) UpdateSloAlertPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error) {
+	rsp, err := c.UpdateSloAlertPolicyWithBody(ctx, org, uid, policyUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSloAlertPolicyResult(rsp)
+}
+
+// UpdateSloAlertPolicyWithResponse Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *ClientWithResponses) UpdateSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error) {
+	rsp, err := c.UpdateSloAlertPolicy(ctx, org, uid, policyUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSloAlertPolicyResult(rsp)
 }
 
 // GetSloBurndownWithResponse Error-budget burn-down for the current window
@@ -56254,6 +56898,133 @@ func ParseUpdateSloResult(rsp *http.Response) (*UpdateSloResult, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SLO
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSloAlertPoliciesResult parses an HTTP response from a ListSloAlertPoliciesWithResponse call
+func ParseListSloAlertPoliciesResult(rsp *http.Response) (*ListSloAlertPoliciesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSloAlertPoliciesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOAlertPolicyListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSloAlertPolicyResult parses an HTTP response from a GetSloAlertPolicyWithResponse call
+func ParseGetSloAlertPolicyResult(rsp *http.Response) (*GetSloAlertPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSloAlertPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOAlertPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSloAlertPolicyResult parses an HTTP response from a UpdateSloAlertPolicyWithResponse call
+func ParseUpdateSloAlertPolicyResult(rsp *http.Response) (*UpdateSloAlertPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSloAlertPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOAlertPolicy
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

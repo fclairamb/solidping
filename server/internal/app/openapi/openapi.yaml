@@ -5375,7 +5375,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/SLOAlertPolicy"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
