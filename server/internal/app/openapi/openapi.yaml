@@ -3222,6 +3222,34 @@ paths:
           description: Filter by incident UID
           schema:
             type: string
+        - name: type
+          in: query
+          description: >-
+            Filter by event-type FAMILY (comma-separated prefixes, e.g.
+            `auth,member`). Distinct from `eventType`, which matches exactly.
+            The `auth` family is only returned to org admins and owners.
+          schema:
+            type: string
+        - name: actorUserUid
+          in: query
+          description: >-
+            Filter to the events caused by one user. `actorUid` is accepted as
+            an alias.
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          description: Only events created at or after this RFC3339 timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: Only events created strictly before this RFC3339 timestamp
+          schema:
+            type: string
+            format: date-time
         - name: cursor
           in: query
           description: Cursor for pagination
@@ -3241,6 +3269,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EventListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -9554,21 +9584,35 @@ components:
           format: uuid
         eventType:
           type: string
-          enum:
-            - incident.created
-            - incident.escalated
-            - incident.resolved
-            - incident.acknowledged
-            - incident.comment
-            - check.created
-            - check.updated
-            - check.deleted
+          description: >-
+            Event type. Deliberately NOT an enum: the catalogue grows with the
+            product (see wiki/api-specification/events.md), and a client that
+            hard-fails on an unknown value would break on every new family.
         actorType:
           type: string
-          enum: [system, user]
+          enum: [system, user, api_token, service]
         actorUid:
           type: string
           format: uuid
+          description: >-
+            Acting user. This is the audit trail's `actor_user_uid` — filter on
+            it with the `actorUserUid` query parameter.
+        actorName:
+          type: string
+          description: Acting user's display name, resolved for the returned page.
+        actorEmail:
+          type: string
+          format: email
+          description: Acting user's email, resolved for the returned page.
+        sourceIp:
+          type: string
+          description: >-
+            Client address the action came from. Returned to org admins and
+            owners only, and absent entirely when `audit.capture_ip` is off.
+        userAgent:
+          type: string
+          description: >-
+            User-Agent of the originating request, truncated. Admin/owner only.
         payload:
           type: object
         createdAt:

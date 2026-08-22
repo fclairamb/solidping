@@ -776,52 +776,22 @@ func (e ErrorCode) Valid() bool {
 
 // Defines values for EventActorType.
 const (
-	EventActorTypeSystem EventActorType = "system"
-	EventActorTypeUser   EventActorType = "user"
+	EventActorTypeApiToken EventActorType = "api_token"
+	EventActorTypeService  EventActorType = "service"
+	EventActorTypeSystem   EventActorType = "system"
+	EventActorTypeUser     EventActorType = "user"
 )
 
 // Valid indicates whether the value is a known member of the EventActorType enum.
 func (e EventActorType) Valid() bool {
 	switch e {
+	case EventActorTypeApiToken:
+		return true
+	case EventActorTypeService:
+		return true
 	case EventActorTypeSystem:
 		return true
 	case EventActorTypeUser:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EventEventType.
-const (
-	EventEventTypeCheckCreated         EventEventType = "check.created"
-	EventEventTypeCheckDeleted         EventEventType = "check.deleted"
-	EventEventTypeCheckUpdated         EventEventType = "check.updated"
-	EventEventTypeIncidentAcknowledged EventEventType = "incident.acknowledged"
-	EventEventTypeIncidentComment      EventEventType = "incident.comment"
-	EventEventTypeIncidentCreated      EventEventType = "incident.created"
-	EventEventTypeIncidentEscalated    EventEventType = "incident.escalated"
-	EventEventTypeIncidentResolved     EventEventType = "incident.resolved"
-)
-
-// Valid indicates whether the value is a known member of the EventEventType enum.
-func (e EventEventType) Valid() bool {
-	switch e {
-	case EventEventTypeCheckCreated:
-		return true
-	case EventEventTypeCheckDeleted:
-		return true
-	case EventEventTypeCheckUpdated:
-		return true
-	case EventEventTypeIncidentAcknowledged:
-		return true
-	case EventEventTypeIncidentComment:
-		return true
-	case EventEventTypeIncidentCreated:
-		return true
-	case EventEventTypeIncidentEscalated:
-		return true
-	case EventEventTypeIncidentResolved:
 		return true
 	default:
 		return false
@@ -3508,21 +3478,33 @@ type EscalationTargetInput struct {
 
 // Event defines model for Event.
 type Event struct {
-	ActorType   *EventActorType         `json:"actorType,omitempty"`
-	ActorUid    *openapi_types.UUID     `json:"actorUid,omitempty"`
-	CheckUid    *openapi_types.UUID     `json:"checkUid,omitempty"`
-	CreatedAt   *time.Time              `json:"createdAt,omitempty"`
-	EventType   *EventEventType         `json:"eventType,omitempty"`
+	// ActorEmail Acting user's email, resolved for the returned page.
+	ActorEmail *openapi_types.Email `json:"actorEmail,omitempty"`
+
+	// ActorName Acting user's display name, resolved for the returned page.
+	ActorName *string         `json:"actorName,omitempty"`
+	ActorType *EventActorType `json:"actorType,omitempty"`
+
+	// ActorUid Acting user. This is the audit trail's `actor_user_uid` — filter on it with the `actorUserUid` query parameter.
+	ActorUid  *openapi_types.UUID `json:"actorUid,omitempty"`
+	CheckUid  *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt *time.Time          `json:"createdAt,omitempty"`
+
+	// EventType Event type. Deliberately NOT an enum: the catalogue grows with the product (see wiki/api-specification/events.md), and a client that hard-fails on an unknown value would break on every new family.
+	EventType   *string                 `json:"eventType,omitempty"`
 	IncidentUid *openapi_types.UUID     `json:"incidentUid,omitempty"`
 	Payload     *map[string]interface{} `json:"payload,omitempty"`
-	Uid         *openapi_types.UUID     `json:"uid,omitempty"`
+
+	// SourceIp Client address the action came from. Returned to org admins and owners only, and absent entirely when `audit.capture_ip` is off.
+	SourceIp *string             `json:"sourceIp,omitempty"`
+	Uid      *openapi_types.UUID `json:"uid,omitempty"`
+
+	// UserAgent User-Agent of the originating request, truncated. Admin/owner only.
+	UserAgent *string `json:"userAgent,omitempty"`
 }
 
 // EventActorType defines model for Event.ActorType.
 type EventActorType string
-
-// EventEventType defines model for Event.EventType.
-type EventEventType string
 
 // EventListResponse defines model for EventListResponse.
 type EventListResponse struct {
@@ -6126,6 +6108,18 @@ type ListEventsParams struct {
 
 	// IncidentUid Filter by incident UID
 	IncidentUid *string `form:"incidentUid,omitempty" json:"incidentUid,omitempty"`
+
+	// Type Filter by event-type FAMILY (comma-separated prefixes, e.g. `auth,member`). Distinct from `eventType`, which matches exactly. The `auth` family is only returned to org admins and owners.
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+
+	// ActorUserUid Filter to the events caused by one user. `actorUid` is accepted as an alias.
+	ActorUserUid *openapi_types.UUID `form:"actorUserUid,omitempty" json:"actorUserUid,omitempty"`
+
+	// Since Only events created at or after this RFC3339 timestamp
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+
+	// Until Only events created strictly before this RFC3339 timestamp
+	Until *time.Time `form:"until,omitempty" json:"until,omitempty"`
 
 	// Cursor Cursor for pagination
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -19486,6 +19480,54 @@ func NewListEventsRequest(server string, org OrgPath, params *ListEventsParams) 
 		if params.IncidentUid != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "incidentUid", *params.IncidentUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "type", *params.Type, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.ActorUserUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "actorUserUid", *params.ActorUserUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "uuid"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Since != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "since", *params.Since, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Until != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "until", *params.Until, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -35531,6 +35573,8 @@ type ListEventsResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *EventListResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -35540,6 +35584,11 @@ type ListEventsResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ListEventsResult) GetJSON200() *EventListResponse {
 	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListEventsResult) GetJSON400() *ValidationError {
+	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -53176,6 +53225,13 @@ func ParseListEventsResult(rsp *http.Response) (*ListEventsResult, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
