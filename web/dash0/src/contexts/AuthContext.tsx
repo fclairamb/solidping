@@ -36,7 +36,7 @@ interface User {
 export interface OrganizationSummary {
   slug: string;
   name?: string;
-  // Absolute http(s) URL, or a relative /pub/org-logos/<uid> path for an
+  // Absolute http(s) URL, or a relative /pub/assets/<uid> path for an
   // uploaded logo. null when the org has none — render the default mark.
   logoUrl?: string | null;
   role: string;

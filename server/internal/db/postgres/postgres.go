@@ -4698,12 +4698,9 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		}
 	}
 
-	query, err := applyStatusPageSettings(query, update)
-	if err != nil {
-		return err
-	}
+	query = applyStatusPageSettings(query, update)
 
-	_, err = query.Exec(ctx)
+	_, err := query.Exec(ctx)
 
 	return err
 }
@@ -4717,18 +4714,18 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 // illegal statement unreachable rather than merely unlikely.
 func applyStatusPageSettings(
 	query *bun.UpdateQuery, update *models.StatusPageUpdate,
-) (*bun.UpdateQuery, error) {
+) *bun.UpdateQuery {
 	if update.Settings != nil {
 		// The service layer has already applied the no-deep-merge
 		// section-replace-or-reset semantics; this is a whole-column overwrite.
-		return query.Set("settings = ?", foldHideBranding(*update.Settings, update.HideBranding)), nil
+		return query.Set("settings = ?", foldHideBranding(*update.Settings, update.HideBranding))
 	}
 
 	if update.HideBranding == nil {
-		return query, nil
+		return query
 	}
 
-	return query.Set(brandingSettingsMergePG, models.HideBrandingSectionPatch(*update.HideBranding)), nil
+	return query.Set(brandingSettingsMergePG, models.HideBrandingSectionPatch(*update.HideBranding))
 }
 
 // foldHideBranding applies a pending white-label opt-in onto a whole-column

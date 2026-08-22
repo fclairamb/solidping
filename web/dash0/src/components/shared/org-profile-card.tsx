@@ -124,7 +124,7 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
         name,
         slug,
         // Send logoUrl only when it is an external URL the user typed. An
-        // uploaded logo is a relative /pub/org-logos path the endpoint refuses
+        // uploaded logo is a relative /pub/assets path the endpoint refuses
         // by design, and re-sending it would clear the upload.
         ...(logoUrl.startsWith("http") || logoUrl === ""
           ? { logoUrl: logoUrl === "" ? null : logoUrl }

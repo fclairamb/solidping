@@ -4651,12 +4651,9 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		}
 	}
 
-	query, err := applyStatusPageSettings(query, update)
-	if err != nil {
-		return err
-	}
+	query = applyStatusPageSettings(query, update)
 
-	_, err = query.Exec(ctx)
+	_, err := query.Exec(ctx)
 
 	return err
 }
@@ -4666,22 +4663,22 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 // HideBranding lives in `settings -> branding -> hideBranding`, so it and a
 // whole-column Settings overwrite target the SAME column. Assigning a column
 // twice in one UPDATE is an error on Postgres and last-write-wins on SQLite —
-// neither is a behaviour to rely on, so when both are present the flag is
+// neither is a behavior to rely on, so when both are present the flag is
 // folded into the value in Go and written once.
 func applyStatusPageSettings(
 	query *bun.UpdateQuery, update *models.StatusPageUpdate,
-) (*bun.UpdateQuery, error) {
+) *bun.UpdateQuery {
 	if update.Settings != nil {
 		// The service layer has already applied the no-deep-merge
 		// section-replace-or-reset semantics; this is a whole-column overwrite.
-		return query.Set("settings = ?", foldHideBranding(*update.Settings, update.HideBranding)), nil
+		return query.Set("settings = ?", foldHideBranding(*update.Settings, update.HideBranding))
 	}
 
 	if update.HideBranding == nil {
-		return query, nil
+		return query
 	}
 
-	return query.Set(brandingSettingsMergeSQLite, models.HideBrandingSettingsPatch(*update.HideBranding)), nil
+	return query.Set(brandingSettingsMergeSQLite, models.HideBrandingSettingsPatch(*update.HideBranding))
 }
 
 // foldHideBranding applies a pending white-label opt-in onto a whole-column

@@ -46,35 +46,42 @@ var publicTopics = map[string]map[string]bool{
 // is still current, which is what makes replace and clear un-publish a blob (see
 // Service.GetPublicFile, which only ever reads live rows).
 func IsPublicTopic(topic string) bool {
-	entity, _, kind, ok := splitTopic(topic)
+	parsed, ok := splitTopic(topic)
 	if !ok {
 		return false
 	}
 
-	return publicTopics[entity][kind]
+	return publicTopics[parsed.entity][parsed.kind]
+}
+
+// parsedTopic is a topic split into its three segments.
+type parsedTopic struct {
+	entity string
+	uid    string
+	kind   string
 }
 
 // splitTopic validates and splits a topic into its three segments. Strict on
 // purpose — this stands between a stored string and an unsigned public read, so
 // anything ambiguous (empty segment, extra segment, traversal, whitespace,
 // trailing slash) is rejected rather than normalized.
-func splitTopic(topic string) (entity, uid, kind string, ok bool) {
+func splitTopic(topic string) (parsedTopic, bool) {
 	if topic == "" || len(topic) > maxPublicTopicLength {
-		return "", "", "", false
+		return parsedTopic{}, false
 	}
 
 	parts := strings.Split(topic, "/")
 	if len(parts) != 3 {
-		return "", "", "", false
+		return parsedTopic{}, false
 	}
 
 	for _, part := range parts {
 		if !isTopicSegment(part) {
-			return "", "", "", false
+			return parsedTopic{}, false
 		}
 	}
 
-	return parts[0], parts[1], parts[2], true
+	return parsedTopic{entity: parts[0], uid: parts[1], kind: parts[2]}, true
 }
 
 // isTopicSegment allows only a non-empty run of [A-Za-z0-9.-] — note that `_`
