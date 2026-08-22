@@ -166,6 +166,64 @@ const (
 	SecondFactorRecoveryCode = "recovery_code"
 )
 
+// authMethods is the canonical set of BASE auth_method values this server can
+// record — the single source of truth the event catalog is checked against.
+//
+// It deliberately lives in production code rather than in the test: a list
+// restated in a test is a second source of truth, and the failure mode this
+// guards (documentation promising a value nothing can emit) is exactly what
+// two lists drifting apart produces.
+//
+// 2FA-completed logins are NOT listed: they are a base method with a second
+// factor appended by withSecondFactor ("password+totp"), not values of their
+// own.
+func authMethods() []string {
+	return []string{
+		// Local first factors.
+		AuthMethodPassword,
+		AuthMethodLDAP,
+		AuthMethodPasskey,
+		// Federated connectors — the same constants the signup analytics use,
+		// so a connector cannot be labeled one way here and another there.
+		signupMethodOIDC,
+		signupMethodSAML,
+		signupMethodGitHub,
+		signupMethodGitLab,
+		signupMethodGoogle,
+		signupMethodMicrosoft,
+		signupMethodDiscord,
+		signupMethodSlack,
+		// Fallback for a connector that did not name itself.
+		AuthMethodOAuth,
+		// Local session-minting paths.
+		AuthMethodInvitation,
+		AuthMethodRegistration,
+		AuthMethodSwitchOrg,
+		AuthMethodOrgSession,
+	}
+}
+
+// federatedAuthMethods is the subset that must reach the audit trail through a
+// connector calling WithLoginMethod. Anything here that no connector names
+// would be recorded as the generic AuthMethodOAuth instead.
+func federatedAuthMethods() map[string]string {
+	return map[string]string{
+		"signupMethodOIDC":      signupMethodOIDC,
+		"signupMethodSAML":      signupMethodSAML,
+		"signupMethodGitHub":    signupMethodGitHub,
+		"signupMethodGitLab":    signupMethodGitLab,
+		"signupMethodGoogle":    signupMethodGoogle,
+		"signupMethodMicrosoft": signupMethodMicrosoft,
+		"signupMethodDiscord":   signupMethodDiscord,
+		"signupMethodSlack":     signupMethodSlack,
+	}
+}
+
+// secondFactors is the set of second-factor suffixes withSecondFactor appends.
+func secondFactors() []string {
+	return []string{SecondFactorTOTP, SecondFactorRecoveryCode}
+}
+
 // withSecondFactor renders the combined method for a 2FA-completed login.
 func withSecondFactor(firstFactor, secondFactor string) string {
 	if firstFactor == "" {

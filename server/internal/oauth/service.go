@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -144,8 +145,8 @@ func (s *Service) IssueAuthCode(ctx context.Context, grant *AuthCodeGrant) (stri
 		paramClientID:           grant.ClientID,
 		"user_uid":              grant.UserUID,
 		"redirect_uri":          grant.RedirectURI,
-		"scope":                 grant.Scope,
-		"resource":              grant.Resource,
+		paramScope:              grant.Scope,
+		paramResource:           grant.Resource,
 		"code_challenge":        grant.CodeChallenge,
 		"code_challenge_method": grant.CodeChallengeMethod,
 		"expires_at":            s.clock.Now().Add(authCodeTTL).Format(time.RFC3339Nano),
@@ -255,8 +256,9 @@ func (s *Service) ExchangeAuthCode(
 		userUID:  stringFromValue(value, "user_uid"),
 		orgUID:   orgUID,
 		orgSlug:  orgSlug,
-		scope:    stringFromValue(value, "scope"),
-		resource: stringFromValue(value, "resource"),
+		scope:    stringFromValue(value, paramScope),
+		resource: stringFromValue(value, paramResource),
+		grant:    grantAuthorizationCode,
 	})
 }
 
@@ -318,8 +320,9 @@ func (s *Service) ExchangeRefreshToken(
 		userUID:  row.UserUID,
 		orgUID:   *row.OrganizationUID,
 		orgSlug:  orgSlug,
-		scope:    stringFromValue(row.Properties, "scope"),
-		resource: stringFromValue(row.Properties, "resource"),
+		scope:    stringFromValue(row.Properties, paramScope),
+		resource: stringFromValue(row.Properties, paramResource),
+		grant:    grantRefreshRotation,
 	})
 }
 
@@ -376,6 +379,22 @@ func (s *Service) RevokeGrant(ctx context.Context, refreshToken, clientID string
 		return false, fmt.Errorf("revoke grant: %w", err)
 	}
 
+	// Only a grant that was actually live gets an event. The silent-no-op
+	// branches above have already returned, and a lost race (deleted=false)
+	// means someone else's revocation already recorded it — a second row would
+	// claim a revocation that did not happen.
+	if deleted && row.OrganizationUID != nil {
+		audit.Record(
+			audit.WithUser(ctx, row.UserUID, models.ActorTypeAPIToken),
+			s.db, *row.OrganizationUID, models.EventTypeAuthTokenRevoked,
+			audit.Target{Type: auditTargetOAuthGrant, UID: row.UID, Name: grantClientID},
+			models.JSONMap{
+				"token_kind":  auditTokenKindOAuthGrant,
+				paramClientID: grantClientID,
+				paramScope:    stringFromValue(row.Properties, paramScope),
+			})
+	}
+
 	return deleted, nil
 }
 
@@ -387,7 +406,19 @@ type mintInput struct {
 	orgSlug  string
 	scope    string
 	resource string
+	// grant distinguishes the FIRST issuance of a grant from a rotation of one
+	// that already exists. Only the first is an access-granting event worth
+	// recording: rotation happens every access-token TTL for the life of the
+	// grant, so auditing it would bury the trail under machine noise while
+	// telling a reader nothing they did not already learn at grant time.
+	grant string
 }
+
+// Grant types recorded on (or deliberately excluded from) the audit trail.
+const (
+	grantAuthorizationCode = "authorization_code"
+	grantRefreshRotation   = "refresh_token"
+)
 
 // mintTokens issues an audience-bound JWT access token (via the auth service's
 // signing key) and a persisted rotating refresh grant (a user_tokens row of
@@ -412,13 +443,15 @@ func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResul
 	refreshRow.ExpiresAt = &expiresAt
 	refreshRow.Properties = models.JSONMap{
 		paramClientID: input.clientID,
-		"scope":       input.scope,
-		"resource":    input.resource,
+		paramScope:    input.scope,
+		paramResource: input.resource,
 	}
 
 	if err = s.db.CreateUserToken(ctx, refreshRow); err != nil {
 		return nil, fmt.Errorf("persist refresh token: %w", err)
 	}
+
+	s.recordGrantIssued(ctx, input, refreshRow.UID)
 
 	accessToken, err := s.authSvc.GenerateMCPAccessToken(
 		input.userUID, input.orgSlug, scopes, input.resource, accessTokenTTL, refreshRow.UID,
@@ -434,6 +467,55 @@ func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResul
 		ExpiresIn:    int(accessTokenTTL.Seconds()),
 	}, nil
 }
+
+// recordGrantIssued writes auth.token_created for a NEWLY issued OAuth grant
+// (spec 2026-08-21-09).
+//
+// An OAuth grant is an access grant: it hands an external client the right to
+// act as this user, in this org, for the listed scopes, until it is revoked.
+// That is a sibling of "a personal access token was minted", and the spec
+// exists so an org can answer "who was granted access" — so it belongs in the
+// same trail, under the same event type.
+//
+// ROTATIONS ARE DELIBERATELY SILENT. ExchangeRefreshToken re-mints a pair every
+// access-token TTL for the entire life of the grant; recording each one would
+// bury the grant that matters under thousands of rows saying nothing new. The
+// grant and its revocation are the two facts a reader needs.
+//
+// The payload carries the client, scope and resource — never the token values,
+// which are the credential itself.
+func (s *Service) recordGrantIssued(ctx context.Context, input *mintInput, grantUID string) {
+	if input.grant != grantAuthorizationCode {
+		return
+	}
+
+	// The token endpoint carries no session, so the actor is named explicitly:
+	// the user who consented at the authorize step. Request provenance (source
+	// IP, user agent) is already on the context from the request-meta
+	// middleware and is preserved by WithUser.
+	actorCtx := audit.WithUser(ctx, input.userUID, models.ActorTypeUser)
+
+	audit.Record(actorCtx, s.db, input.orgUID, models.EventTypeAuthTokenCreated,
+		audit.Target{Type: auditTargetOAuthGrant, UID: grantUID, Name: input.clientID},
+		models.JSONMap{
+			"token_kind":  auditTokenKindOAuthGrant,
+			paramClientID: input.clientID,
+			paramScope:    input.scope,
+			paramResource: input.resource,
+			"grant_type":  input.grant,
+		})
+}
+
+// Audit labels owned by this package.
+const (
+	auditTargetOAuthGrant    = "oauth_grant"
+	auditTokenKindOAuthGrant = "oauth_grant"
+
+	// Grant property / audit payload keys, named because they appear on both
+	// the persisted user_tokens row and the audit event.
+	paramScope    = "scope"
+	paramResource = "resource"
+)
 
 // orgSlug resolves an organization UID to its slug for the access-token claims.
 func (s *Service) orgSlug(ctx context.Context, orgUID string) (string, error) {

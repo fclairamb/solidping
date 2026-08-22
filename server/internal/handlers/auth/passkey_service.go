@@ -457,7 +457,8 @@ func (s *PasskeyService) FinishLogin(
 		return nil, err
 	}
 
-	return s.authSvc.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, "passkey", authContext)
+	return s.authSvc.completeLogin(
+		ctx, user, resolvedOrg, role, loginAction, orgSummaries, AuthMethodPasskey, authContext)
 }
 
 // resolveAndVerifyAssertion handles both the "email known up-front"

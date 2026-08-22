@@ -72,7 +72,14 @@ func funcBodies(t *testing.T, source string) map[string]string {
 func authPackageSources(t *testing.T) map[string]string {
 	t.Helper()
 
-	entries, err := os.ReadDir(".")
+	return packageSources(t, ".")
+}
+
+// packageSources reads every non-test .go file in a package directory.
+func packageSources(t *testing.T, dir string) map[string]string {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
 	out := map[string]string{}
@@ -83,10 +90,10 @@ func authPackageSources(t *testing.T) map[string]string {
 			continue
 		}
 
-		content, readErr := os.ReadFile(filepath.Clean(name))
+		content, readErr := os.ReadFile(filepath.Clean(filepath.Join(dir, name)))
 		require.NoError(t, readErr)
 
-		out[name] = string(content)
+		out[filepath.Join(dir, name)] = string(content)
 	}
 
 	require.NotEmpty(t, out, "positive control: the package sources must have been read")
@@ -187,6 +194,97 @@ func TestEverySessionMintingPathGoesThroughStartSession(t *testing.T) {
 		createCalls)
 }
 
+// TestEveryCredentialMintingPathIsAudited widens the guard above past this
+// package's boundary.
+//
+// The session guard scans only `.`, which is exactly the kind of accident that
+// makes a structural check look like coverage it does not have:
+// internal/oauth mints a `oauth_refresh` user_tokens row — a real, user-facing
+// access grant that lets an external client act as the user — and no amount of
+// scanning this directory would ever have noticed.
+//
+// So this enumerates EVERY credential-minting site across both packages and
+// insists each routes through a choke point that records to the trail, and
+// that each of those choke points genuinely writes an event.
+func TestEveryCredentialMintingPathIsAudited(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// tokenType → the choke point that must persist it and record the event.
+	chokePoints := map[string]string{
+		"models.TokenTypeRefresh":      "startSession",
+		"models.TokenTypeOAuthRefresh": "mintTokens",
+		"models.TokenTypePAT":          "CreatePAT",
+	}
+
+	// Directories that mint credentials. Adding a third package here is the
+	// deliberate act this test wants a contributor to have to perform.
+	dirs := []string{".", filepath.Join("..", "..", "oauth")}
+
+	var (
+		offenders []string
+		found     = map[string]bool{}
+		bodies    = map[string]string{}
+	)
+
+	for _, dir := range dirs {
+		for filename, source := range packageSources(t, dir) {
+			for name, body := range funcBodies(t, source) {
+				bodies[name] = body
+
+				if !strings.Contains(body, "models.NewUserToken(") {
+					continue
+				}
+
+				for tokenType, chokePoint := range chokePoints {
+					// No trailing paren: the constant is not always the last
+					// argument on its line (internal/oauth wraps the call).
+					if !strings.Contains(body, tokenType) {
+						continue
+					}
+
+					found[tokenType] = true
+
+					// The choke point itself, a pure builder handing the row
+					// back, or a function that delegates to the choke point.
+					if name == chokePoint ||
+						strings.Contains(body, "s."+chokePoint+"(") ||
+						strings.Contains(body, ") *models.UserToken {") {
+						continue
+					}
+
+					offenders = append(offenders,
+						filename+":"+name+" ("+tokenType+")")
+				}
+			}
+		}
+	}
+
+	// Positive controls: all three credential kinds were actually found, so an
+	// empty `offenders` cannot mean "the matcher matched nothing".
+	for tokenType := range chokePoints {
+		r.Truef(found[tokenType], "no minting site found for %s — the scan is broken", tokenType)
+	}
+
+	r.Emptyf(offenders,
+		"these functions mint a user-facing credential without routing through the "+
+			"choke point that records it: %v", offenders)
+
+	// And each choke point really does write to the trail. A choke point that
+	// stopped emitting would satisfy every assertion above.
+	for tokenType, chokePoint := range chokePoints {
+		body, ok := bodies[chokePoint]
+		r.Truef(ok, "choke point %s not found", chokePoint)
+
+		records := strings.Contains(body, "audit.Record(") ||
+			strings.Contains(body, "s.recordLoginSucceeded(") ||
+			strings.Contains(body, "s.recordGrantIssued(")
+		r.Truef(records,
+			"%s persists %s but records nothing to the audit trail", chokePoint, tokenType)
+	}
+}
+
 // TestAdvertisedAuthMethodsAreProducible pins the docs to the code. event.go
 // and the event catalog both advertise the federated auth_method values; if
 // no connector can actually produce one, the documentation is a lie about a
@@ -196,6 +294,33 @@ func TestAdvertisedAuthMethodsAreProducible(t *testing.T) {
 
 	r := require.New(t)
 
+	catalogText := readEventCatalog(t)
+
+	// SET EQUALITY, not one-way containment. The previous shape ran code→doc
+	// over a hardcoded list, so a catalog entry with no Go constant behind it
+	// — `okta`, or a `passkey` someone renamed — passed silently. And it
+	// matched the value anywhere in the whole file, which "slack" and "github"
+	// satisfy incidentally about six times over.
+	//
+	// auth.authMethods() is the single source of truth; the catalog carries a
+	// machine-readable block; neither may drift from the other.
+	advertised := parseMarkedList(t, catalogText, "auth-methods")
+	producible := authMethods()
+
+	r.NotEmpty(advertised, "positive control: the catalog block really was parsed")
+	r.ElementsMatch(producible, advertised,
+		"the event catalog's advertised auth_method list and auth.authMethods() must "+
+			"be the SAME SET — an entry with nothing to emit it is a documented lie, and "+
+			"a value the code emits but the doc omits is an undocumented one")
+
+	// The second-factor suffixes are their own list (they are appended to a
+	// base method, never emitted alone).
+	r.ElementsMatch(secondFactors(), parseMarkedList(t, catalogText, "second-factors"))
+
+	// Each federated method must actually reach the trail through a connector.
+	// Without this, every SSO login would be recorded as the generic "oauth"
+	// while the catalog claimed otherwise — and set equality alone would not
+	// notice, because the constant would still exist.
 	joined := strings.Builder{}
 	for _, source := range authPackageSources(t) {
 		joined.WriteString(source)
@@ -203,46 +328,68 @@ func TestAdvertisedAuthMethodsAreProducible(t *testing.T) {
 
 	all := joined.String()
 
-	// Keyed by the CONSTANT NAME, valued by the constant itself — so this test
-	// restates no literal of its own (which would be a second source of truth,
-	// and would drift).
-	connectors := map[string]string{
-		"signupMethodOIDC":      signupMethodOIDC,
-		"signupMethodSAML":      signupMethodSAML,
-		"signupMethodGitHub":    signupMethodGitHub,
-		"signupMethodGitLab":    signupMethodGitLab,
-		"signupMethodGoogle":    signupMethodGoogle,
-		"signupMethodMicrosoft": signupMethodMicrosoft,
-		"signupMethodDiscord":   signupMethodDiscord,
-		"signupMethodSlack":     signupMethodSlack,
-	}
-
-	// The docs advertise these auth_method values. Reading the shipped file
-	// rather than restating the list is what stops the documentation from
-	// promising a value no connector can produce — which is exactly the state
-	// the first cut of this spec shipped in.
-	catalog, err := os.ReadFile(filepath.Clean(
-		filepath.Join("..", "..", "..", "..", "wiki", "api-specification", "events-catalogue.md"),
-	))
-	r.NoError(err)
-
-	catalogText := string(catalog)
-	r.Contains(catalogText, "auth.login_succeeded",
-		"positive control: the catalog file really was read")
-
-	for name, value := range connectors {
-		// require.Contains on a multi-megabyte string dumps the whole package
-		// into the failure message, so compute the boolean first.
+	for name, value := range federatedAuthMethods() {
+		// strings.Contains first: require.Contains on a multi-megabyte string
+		// dumps the whole package into the failure message.
 		named := strings.Contains(all, "WithLoginMethod("+name+")")
 		r.Truef(named,
 			"auth_method %s (%q) is advertised but no connector names itself with it — "+
 				"its logins would all be recorded as the generic %q",
 			name, value, AuthMethodOAuth)
 
-		r.NotEmptyf(value, "%s must carry a value", name)
-		r.Containsf(catalogText, value,
-			"the event catalog must advertise the %s auth_method it can now produce", name)
+		r.Containsf(producible, value, "%s must be in authMethods()", name)
 	}
+}
+
+// readEventCatalog reads the shipped event catalog.
+func readEventCatalog(t *testing.T) string {
+	t.Helper()
+
+	content, err := os.ReadFile(filepath.Clean(
+		filepath.Join("..", "..", "..", "..", "wiki", "api-specification", "events-catalogue.md"),
+	))
+	require.NoError(t, err)
+
+	text := string(content)
+	require.Contains(t, text, "auth.login_succeeded",
+		"positive control: the catalog file really was read")
+
+	return text
+}
+
+// parseMarkedList extracts the values from a
+// `<!-- name:begin --> ```text ... ``` <!-- name:end -->` block.
+//
+// A fenced block between explicit markers rather than the prose table above
+// it: a markdown table is for humans and reformats freely, and a guard that
+// parses one is a guard that breaks on a wrapped line rather than on a real
+// drift.
+func parseMarkedList(t *testing.T, text, name string) []string {
+	t.Helper()
+
+	begin := "<!-- " + name + ":begin -->"
+	end := "<!-- " + name + ":end -->"
+
+	startIdx := strings.Index(text, begin)
+	require.GreaterOrEqualf(t, startIdx, 0, "catalog must carry a %s block", name)
+
+	endIdx := strings.Index(text[startIdx:], end)
+	require.GreaterOrEqualf(t, endIdx, 0, "catalog's %s block must be closed", name)
+
+	block := text[startIdx+len(begin) : startIdx+endIdx]
+
+	var out []string
+
+	for _, line := range strings.Split(block, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "```") {
+			continue
+		}
+
+		out = append(out, trimmed)
+	}
+
+	return out
 }
 
 // ---------------------------------------------------------------------------
