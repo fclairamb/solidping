@@ -296,3 +296,138 @@ Open question 2.
    **Decision: out of scope** — as the spec already states. This spec covers
    branding and the public-asset check only. Do not touch the subscriber
    toggles.
+
+## Implementation Plan
+
+Ordered so each step leaves the tree building. Steps 1–3 are the storage move,
+4–6 the authorization move, 7 the reaping obligations, 8–9 docs and tests.
+
+### 1. Model — branding becomes a `settings` section
+
+- `models.BrandingSettings` (`logoFileUid`, `faviconFileUid`, `hideBranding`)
+  hangs off `StatusPageSettings.Branding`, exactly as the spec spells it.
+- Accessors on `StatusPageSettings` — `LogoFileUID()`, `FaviconFileUID()`,
+  `HideBranding()` — so every call site reads `page.Settings.LogoFileUID()`
+  and nothing has to nil-check the section.
+- `StatusPage.LogoFileUID` / `.FaviconFileUID` / `.HideBranding` bun fields are
+  **deleted**.
+- `StatusPageBrandingUpdate` keeps its name and its whole-write semantics, but
+  the unit it writes wholly is now the **`branding` section**, not two columns:
+  it gains `HideBranding bool`, and every caller restates all three.
+- `StatusPageUpdate.HideBranding *bool` stays on the generic update shape (the
+  PATCH wire field is unchanged); the DB layer routes it into `settings`.
+
+### 2. DB layer — a merge in SQL, never a read-modify-write in Go
+
+- `UpdateStatusPageBranding` writes the `branding` section with a **two-level**
+  merge, so a concurrent `availability` write cannot be clobbered:
+  - Postgres: `settings = settings || jsonb_build_object('branding',
+    coalesce(settings->'branding','{}'::jsonb) || ?::jsonb)`.
+    A one-level `settings || '{"branding":…}'` would be the same bug one level
+    down — it replaces the whole `branding` object.
+  - SQLite: `settings = json_patch(settings, ?)` with
+    `{"branding":{…}}`; `json_patch` is RFC 7386, i.e. already recursive.
+- Clearing a slot patches the key to JSON `null`: Postgres **stores** `null`,
+  SQLite **removes** the key, both decode to a nil `*string`. Pinned by a
+  parity test rather than trusted.
+- `UpdateStatusPage`'s `HideBranding` uses the same merge. When the same call
+  also carries `Settings` (a whole-column overwrite), the flag is folded into
+  that value **in Go before the write** — two `SET settings = …` clauses in one
+  UPDATE is a Postgres error, and the fold is what makes it unreachable.
+- `GetStatusPageByAssetFileUID` and `GetOrganizationByLogoFileUID` are deleted
+  from `db.Service` and both implementations: nothing authorizes by state any
+  more.
+
+### 3. Migration — edit `015` in place, both dialects
+
+- `status-page-branding` section keeps its banner (it is a test anchor) and
+  loses all three `alter table status_pages add column` statements and the two
+  partial indexes, up **and** down.
+- The SQLite `status-page-password` section rebuilds `status_pages`; the three
+  columns come out of its `create table`, out of both halves of its
+  positional `insert … select`, and the two index recreations go.
+- The branding section is not left empty — it now carries the **org-logo
+  backfill** that Resolved Q1 requires:
+  - `files.topic = 'organizations/<org uid>/logo'` for every file an
+    organization currently points at through `logo_file_uid`;
+  - `organizations.logo_url` rewritten from `/pub/org-logos/<uid>` to
+    `/pub/assets/<uid>`.
+  The down half reverses both, so the section still has a teardown.
+
+### 4. `files/publictopics.go` — the closed allowlist
+
+- `IsPublicTopic(topic string) bool`, plus the topic builders that are its only
+  legitimate producers: `StatusPageAssetTopic`, `StatusPageTopicPrefix`,
+  `OrganizationLogoTopic`, `OrganizationTopicPrefix`.
+- It parses strictly rather than string-matching: exactly three non-empty
+  segments over `[A-Za-z0-9.-]` (so `/`, `.` and `..` cannot appear inside a
+  segment), then an entity→kind allowlist. Empty, whitespace, trailing slash,
+  extra segment, unknown entity, unknown kind and traversal all deny.
+- It cannot reuse `attachments.ParseTopic`: `attachments` imports `files`, so
+  the dependency only runs one way. The grammar is re-stated, and a test pins
+  that the two agree on the shape.
+
+### 5. One public asset route, one access check
+
+- `files.Service.GetPublicFile(ctx, uid)` — org-agnostic, **live rows only**,
+  and returns `ErrFileNotFound` unless `IsPublicTopic(file.Topic)`. The
+  live-rows-only clause is the entire un-publish mechanism for replace and
+  clear, so it is asserted, not assumed.
+- `files.Handler.PublicAssetGet` serves it through `files.WriteContent`
+  (`nosniff`, attachment-disposition for SVG) with a 5-minute cache.
+- Canonical path `files.PublicAssetPathPrefix = "/pub/assets/"`. The
+  status-page prefix `/pub/status-page-assets/` is registered on the **same
+  handler**: the spec requires `logoUrl`/`faviconUrl` to stay byte-identical,
+  so that string has to keep resolving — but it is now an alias of the generic
+  route, not a second implementation.
+- `/pub/org-logos/` and `orglogo.OpenLogo`/`PublicGet` are **deleted**;
+  `statuspageassets.OpenAsset` and its `PublicGet` go the same way. There is
+  exactly one public-asset handler left in the tree.
+
+### 6. Producers set the topic
+
+- `statuspageassets.Upload` → `files.WithTopic(StatusPageAssetTopic(page, kind))`.
+- `orglogo.Upload` → `files.WithTopic(OrganizationLogoTopic(org))`, and its
+  stored `logo_url` becomes `/pub/assets/<uid>`.
+
+### 7. The two reaping obligations
+
+- Deleting a status page reaps `status-pages/<uid>/`; deleting an organization
+  reaps `organizations/<uid>/`. Both go through
+  `db.DeleteFilesByTopicPrefix` — the same primitive `files.DeleteAttachments`
+  wraps — because neither service holds a `files.Service` and injecting one to
+  reach the identical query would be ceremony.
+- Without these, a deleted page's logo (and a deleted org's) stays public
+  forever: the page/org row disappearing used to do this implicitly, and after
+  this change nothing does.
+
+### 8. Docs
+
+- `wiki/conventions/database.md`: the settings-vs-column rule, written down.
+- `web/docs/docs/features/status-pages.md`: state plainly that **disabling a
+  page no longer takes its logo URL offline** — an operator must clear the
+  asset, not disable the page.
+- OpenAPI (`/pub/assets/` in the org-logo prose), the embedded
+  `docsres/docs/api/upload-org-logo.md`, `server/CLAUDE.md` and
+  `wiki/api-specification/status-pages.md` follow the route rename.
+  `go generate ./pkg/client/...` is re-run and the generated client committed.
+
+### 9. Tests
+
+Per the spec's Testing section, and specifically:
+
+- **Schema guard**, both dialects: a fresh database has none of the three
+  columns on `status_pages` — with a positive control (`uid` is there) so the
+  assertion cannot pass against an empty enumeration.
+- **The clobber test**, both dialects, in both directions: availability
+  thresholds survive a branding write, and branding survives an availability
+  write.
+- Parity: clearing a logo decodes to nil on both engines whatever each stores.
+- `IsPublicTopic` table-driven, including every malformed case the spec lists.
+- Public route: live allowlisted file serves; replaced, cleared, and
+  deleted-page files 404; **disabled and password pages now serve** — asserted
+  explicitly so the loosening is a recorded decision, not a later discovery.
+- Golden response: `logoUrl` / `faviconUrl` / `hideBranding` byte-identical on
+  the org-facing and public payloads.
+- The existing `status_page_branding_migration_test.go` pair is updated, not
+  deleted, and Postgres replay/rollback still execute both halves.
