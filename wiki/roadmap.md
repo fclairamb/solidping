@@ -84,12 +84,20 @@ the natural second payload, and BetterStack's other diagnostics bullet.
 
 ## Priority 3: Enterprise maturity & cleanups
 
-### 3.1 Audit-log coverage for auth & config events — spec filed
+### 3.1 Audit-log coverage for auth & config events — SHIPPED
 `../specs/todos/2026-08-21-09-audit-log-auth-and-config-events.md`. The
-`events` table is still check/incident-centric; ISO/SOC2 buyers ask for
-login/SSO, membership, token, and config events. The entitlements audit trail
-is the in-repo pattern. SIEM/syslog export is a deliberate follow-up, not in
-the spec.
+`events` table now carries auth, membership, token and configuration events
+alongside the check/incident lifecycle, with actor + source-IP attribution, a
+365-day retention sweep, an admin-gated **Organization → Audit** page, and the
+catalogue in `api-specification/events-catalogue.md`.
+
+**Follow-up, deliberately NOT built:** streaming export to a SIEM (webhook or
+syslog). The in-product trail had to exist first — an export path with nothing
+worth exporting is a integration surface with no content. Worth its own spec
+now that the trail is real: the open questions are delivery guarantees
+(at-least-once with a cursor, or fire-and-forget), whether the format is
+CEF/ECS or SolidPing's own JSON, and how a self-hoster's egress failure is
+surfaced without becoming a second incident source.
 
 ### 3.2 On-call maturity
 Business-hours restriction windows, layered/concurrent rotations, per-user
