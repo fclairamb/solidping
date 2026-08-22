@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "k8s.io/client-go/kubernetes"
 
+	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -44,6 +45,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/agentattach"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
@@ -67,6 +69,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/features"
 	"github.com/fclairamb/solidping/server/internal/handlers/feedback"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
@@ -1098,6 +1101,26 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	)
 	api.GET("/agent/ws", agentWSHandler.Serve)
 
+	// Agent binary uploads (spec 2026-08-21-01 §6), a SIBLING of the WS route
+	// rather than part of the org API: same Ed25519 request signature, same
+	// replay guard, and no bearer/session/PAT path at all. It exists because
+	// the control channel is JSON — a PNG through it would be base64 in the
+	// frame that carries results.
+	//
+	// The topic registry is what makes it generic. `incidents` is the only
+	// entity registered today; a future attachment kind adds a validator here
+	// instead of a second endpoint. Registration is fail-closed: an
+	// unregistered entity is rejected, never stored.
+	//
+	// Registered even when file storage is unconfigured: the store's own
+	// write then fails and the agent gets a 500 it retries, which is the same
+	// behavior every other file-writing route already has.
+	agentTopicRegistry := agentattach.NewRegistry()
+	agentTopicRegistry.Register(
+		models.AttachmentEntityIncidents,
+		agentattach.NewIncidentAuthorizer(s.dbService),
+	)
+
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)
 	resultsHandler := results.NewHandler(resultsService, s.config)
@@ -1269,6 +1292,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgFiles.DELETE("/:uid", filesHandler.Delete)
 	pubFiles := mainGroup.NewGroup("/pub/files")
 	pubFiles.GET("/:uid", filesHandler.PublicGet)
+
+	// The generic attachments rail (spec 2026-08-21-01). The incident pipeline
+	// files its evidence — today a browser check's failure screenshot — under
+	// `incidents/<uid>/<kind>` topics through this adapter, which is why it is
+	// wired here rather than at incident-service construction: the files
+	// service is built further down the same function.
+	attachmentStore := files.NewAttachmentStore(filesService, filestorage.GroupTypeScreenshots)
+	incidentsService.SetAttachmentStore(attachmentStore)
+
+	// The agent upload route lands here rather than beside `/agent/ws`
+	// because it needs the same store the incident pipeline writes through,
+	// and that store needs the files service built just above.
+	agentAttachHandler := agentattach.NewHandler(
+		s.config, s.dbService, attachmentStore, agentTopicRegistry,
+		agentcrypto.NewStoredNonceGuard(s.dbService, db.ErrAgentNonceReplayed), slog.Default(),
+	)
+	api.POST("/agent/attachments", agentAttachHandler.Upload)
 
 	// Organization logo (spec 2026-08-08-12). Upload/clear are owner-gated; the
 	// public route is unsigned on purpose — a logo URL has to be stable enough
@@ -3176,7 +3216,7 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 
 	slog.InfoContext(ctx, "Test mode detected, creating test data")
 
-	return testdata.CreateTestData(ctx, s.dbService)
+	return testdata.CreateTestData(ctx, s.dbService, s.config)
 }
 
 //nolint:ireturn // Returning interface is intentional for testing

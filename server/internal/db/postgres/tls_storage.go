@@ -33,14 +33,23 @@ import (
 // Only internal/tlsedge may call these methods; never expose them via an API,
 // export, or debug surface.
 
-// tlsStoragePrefixLike returns the LIKE pattern matching every key that starts
+// likePrefixPattern returns the LIKE pattern matching every value that starts
 // with prefix. LIKE metacharacters the prefix itself may contain (% _ \ — a
 // CA-derived issuer path could grow one) are escaped with a backslash, so the
 // pattern must always be used with ESCAPE '\'.
-func tlsStoragePrefixLike(prefix string) string {
+//
+// Shared by the TLS-asset key queries below and the attachment-topic prefix
+// reaper in postgres.go: escaping a prefix before it becomes a pattern is the
+// kind of thing that must exist exactly once.
+func likePrefixPattern(prefix string) string {
 	escaper := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 	return escaper.Replace(prefix) + "%"
+}
+
+// tlsStoragePrefixLike is the TLS-asset spelling of likePrefixPattern.
+func tlsStoragePrefixLike(prefix string) string {
+	return likePrefixPattern(prefix)
 }
 
 // tlsStorageKeyLikeExpr is the WHERE fragment every prefix query uses; its

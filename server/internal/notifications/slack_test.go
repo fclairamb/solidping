@@ -405,6 +405,10 @@ func (m *mockDBService) CreateIncident(_ context.Context, _ *models.Incident) er
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetIncidentAny(_ context.Context, _ string) (*models.Incident, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetIncident(_ context.Context, _, _ string) (*models.Incident, error) {
 	panic("not implemented")
 }
@@ -1416,6 +1420,34 @@ func (m *mockDBService) ListFiles(
 }
 
 func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListAttachmentsByTopic(
+	_ context.Context, _, _ string,
+) ([]*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteAttachmentsByTopicPrefix(
+	_ context.Context, _, _ string,
+) (int64, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListOrphanIncidentAttachments(
+	_ context.Context, _ int,
+) ([]*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListPurgeableDeletedFiles(
+	_ context.Context, _ time.Time, _ int,
+) ([]*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) PurgeFile(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 

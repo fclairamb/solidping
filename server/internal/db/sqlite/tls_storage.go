@@ -29,10 +29,19 @@ import (
 // Only internal/tlsedge may call these methods; never expose them via an API,
 // export, or debug surface.
 
-// tlsStoragePrefixEnd returns the exclusive upper bound of the key range that
+// tlsStoragePrefixEnd is the TLS-asset spelling of prefixRangeEnd.
+func tlsStoragePrefixEnd(prefix string) (string, bool) {
+	return prefixRangeEnd(prefix)
+}
+
+// prefixRangeEnd returns the exclusive upper bound of the key range that
 // starts with prefix, or ok=false when no bound exists (an empty prefix, which
 // means "every key").
-func tlsStoragePrefixEnd(prefix string) (string, bool) {
+//
+// Shared by the TLS-asset key queries below and the attachment-topic prefix
+// reaper in sqlite.go — both want SQLite's byte-exact BINARY collation rather
+// than its ASCII-case-insensitive LIKE.
+func prefixRangeEnd(prefix string) (string, bool) {
 	if prefix == "" {
 		return "", false
 	}

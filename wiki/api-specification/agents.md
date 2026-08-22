@@ -22,6 +22,55 @@ Auth (agent credentials, two phases):
   timestamp bounds replay windows and the nonce makes each signature
   single-use.
 
+### POST /api/v1/agent/attachments
+The agent's binary upload path (spec 2026-08-21-01 §6): the control channel
+above is JSON, so a screenshot sent through it would be base64 inside the frame
+that carries results. Agents hold no object-storage credentials by design, so
+the bytes come here and the server writes them.
+
+Auth: **the same Ed25519 request signature as a reconnect** — `X-Sp-Agent-Uid`,
+`X-Sp-Timestamp`, `X-Sp-Nonce`, `X-Sp-Signature`, ±5 min skew, cluster-wide
+replay guard. No bearer token, no session, no PAT; a nonce-store failure
+rejects the upload rather than opening a replay window.
+
+Request: the raw bytes as the body (`Content-Type: image/png`), with the
+attachment topic in `X-Sp-Attachment-Topic`. A header, not a query parameter,
+so the topic and the entity uid it names never land in an access log. Body cap
+4 MiB — an over-cap upload is refused (413), never truncated.
+
+Response: `201` with `{ "fileUid": "..." }`. The agent references that uid from
+its result instead of carrying the bytes.
+
+**The topic is never trusted.** The org the file is written under comes from the
+agent's own binding (or, for a system agent serving a shared cloud region, from
+the incident row itself) — never from the request. For an `incidents/<uid>/<kind>`
+topic the server verifies, in order, that the kind is on the allowlist, that the
+incident exists, that (for an org agent) it belongs to this agent's org, and
+that its check is one this agent's **region** actually serves. Any failure
+returns one undifferentiated `403 BAD_ATTACHMENT_TOPIC`: telling a probing agent
+which incident uids exist in other tenants would be an oracle. The real reason
+is logged server-side.
+
+Content type is enforced against the **bytes**, not the header: the declared
+type must be on the allowlist *and* the magic bytes must agree. Believing an
+agent's Content-Type would let a caller store an HTML document as `image/png`
+and have it served back from our own origin.
+
+Rate limited **per agent** (burst 10, one token refilled per minute), keyed on
+the authenticated identity rather than the IP so a fleet behind one NAT neither
+shares nor can exhaust another agent's quota.
+
+Topic entities are a registry, not a switch: a future attachment kind registers
+a validator instead of adding a second endpoint. Unregistered entities are
+rejected — the registry is fail-closed.
+
+**Not yet wired:** the server does not currently send the WS upload-request
+frame that would tell an agent *when* to upload (§6's `screenshotAvailable`
+marker and the capture-id round trip). The endpoint and its authorizer are the
+settled contract; the frame that drives them is follow-up work. Until then an
+agent-side capture has no trigger, and an agent upload is recorded with
+`trigger: "agent-upload"` rather than an incident transition it cannot prove.
+
 ## Private regions
 
 A private region is the location label that agents attach to and that checks

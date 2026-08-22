@@ -422,6 +422,11 @@ type Service interface {
 	// Incident operations
 	CreateIncident(ctx context.Context, incident *models.Incident) error
 	GetIncident(ctx context.Context, orgUID, uid string) (*models.Incident, error)
+	// GetIncidentAny retrieves an incident by UID with NO org scoping. It
+	// exists for the agent-upload topic authorizer, where a system agent's
+	// org can only be resolved FROM the incident. Never use it on a
+	// user-facing path: the org check is the authorization there.
+	GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error)
 	// GetIncidentByNumber resolves the short per-org `#42` reference — the form
 	// humans type into Telegram and read in Slack. Returns sql.ErrNoRows if none.
 	GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error)
@@ -924,6 +929,29 @@ type Service interface {
 		ctx context.Context, orgUID string, filter models.ListFilesFilter,
 	) ([]*models.File, int64, error)
 	DeleteFile(ctx context.Context, orgUID, uid string) error
+
+	// File attachment operations (spec 2026-08-21-01). An attachment is a
+	// `files` row carrying a `topic` — `<entity>/<uid>/<kind>` — which is the
+	// ONLY link from a blob back to the entity it belongs to. Everything that
+	// lists or reaps attachments goes through these three.
+
+	// ListAttachmentsByTopic returns the live attachments filed under an EXACT
+	// topic, newest first.
+	ListAttachmentsByTopic(ctx context.Context, orgUID, topic string) ([]*models.File, error)
+	// DeleteAttachmentsByTopicPrefix soft-deletes every live attachment whose
+	// topic starts with the given prefix, returning how many rows changed.
+	// This is the reaping primitive: `incidents/<uid>/` erases one incident's
+	// evidence, and no shorter prefix is ever passed (see the service guard).
+	DeleteAttachmentsByTopicPrefix(ctx context.Context, orgUID, prefix string) (int64, error)
+	// ListOrphanIncidentAttachments returns live attachments whose
+	// `incidents/<uid>/...` topic names an incident that no longer exists.
+	// Cross-org and unscoped by design — it feeds the GC sweep.
+	ListOrphanIncidentAttachments(ctx context.Context, limit int) ([]*models.File, error)
+	// ListPurgeableDeletedFiles returns files soft-deleted before `before`,
+	// whose bytes the GC sweep may now drop from the storage backend.
+	ListPurgeableDeletedFiles(ctx context.Context, before time.Time, limit int) ([]*models.File, error)
+	// PurgeFile hard-deletes a file row. Called only after its bytes are gone.
+	PurgeFile(ctx context.Context, uid string) error
 
 	// CheckDependency operations
 	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error

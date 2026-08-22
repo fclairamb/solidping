@@ -163,6 +163,29 @@ func (b *Backend) ReadFile(
 	return out.Body, meta, nil
 }
 
+// DeleteFile removes the object. S3's DeleteObject is already idempotent —
+// deleting a key that does not exist succeeds — which matches the contract
+// the interface asks for.
+func (b *Backend) DeleteFile(
+	ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType, fileID string,
+) error {
+	key := b.objectKey(filestorage.BuildPath(orgUID, group, fileID))
+
+	if _, err := b.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(b.Bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return nil
+		}
+
+		return fmt.Errorf("delete object: %w", err)
+	}
+
+	return nil
+}
+
 // ParseURI splits "s3://orgUID/group/fileID" back into its parts.
 func (b *Backend) ParseURI(uri string) (uuid.UUID, filestorage.GroupType, string, error) {
 	prefix, rest, err := filestorage.SchemeFromURI(uri)

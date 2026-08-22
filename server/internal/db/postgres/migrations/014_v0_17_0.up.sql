@@ -14,6 +14,7 @@
 --   SECTION: incident-publications      public incident overlay + auto-publish
 --   SECTION: slo-reporting              SLOs, report schedules, maintenance tags
 --   SECTION: dangling-notification-routes  delete routes whose contact is gone
+--   SECTION: file-attachments          files.topic + files.details attachments
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones (on SQLite in particular, results-status-domain REBUILDS
@@ -577,3 +578,38 @@ where not exists (
   where c.uid = r.contact_uid
     and c.deleted_at is null
 );
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: file-attachments
+-- Generic file attachments: files.topic + files.details (spec 2026-08-21-01).
+-- ==========================================================================
+
+-- `topic` is what turns a `files` row from "a blob somebody uploaded" into "an
+-- attachment OF something". It is a path-like key, `<entity>/<uid>/<kind>`,
+-- e.g. `incidents/9a1eb273-.../screenshot`.
+--
+-- NULL for every file that is not an attachment — org logos and bug-report
+-- screenshots keep working untouched, which is why the column is nullable and
+-- has no default.
+--
+-- A path rather than a (entity_type, entity_uid, kind) triple on purpose: the
+-- reaping story is "delete everything under this prefix", which a single
+-- LIKE-anchored column answers directly, and a new attachment kind is a new
+-- topic string rather than a new column or a new enum value.
+alter table files add column topic text;
+
+-- Free metadata bag, same shape as every other jsonb column here. For a
+-- screenshot: {"capturedAt": ..., "region": ..., "checkUid": ..., "trigger": ...}.
+alter table files add column details jsonb;
+
+comment on column files.topic is
+  'Attachment key, <entity>/<uid>/<kind>. NULL for non-attachment files (org logos, bug reports).';
+comment on column files.details is
+  'Free metadata bag for an attachment (capture timestamp, region, originating check, ...).';
+
+-- Partial: attachments are a small minority of `files` rows, and every query
+-- against this column is an org-scoped, live-rows-only attachment lookup.
+create index files_org_topic_idx on files (organization_uid, topic)
+  where deleted_at is null and topic is not null;

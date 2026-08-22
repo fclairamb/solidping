@@ -8117,6 +8117,12 @@ components:
             redacted response headers and a 16 KiB-capped body, stored on the
             incident it opens as `details.failureResponse`. Opt-in because a
             response body can contain PII; never exposed on a status page).
+            Browser checks additionally accept `screenshot` (boolean, default
+            false — when true a FAILING execution captures the rendered page,
+            and the capture is attached to the incident it opens or reopens as
+            an `attachments[]` entry. Opt-in for the same reason: a rendered
+            page can show anything the monitored service shows; never exposed
+            on a status page).
             See wiki/conventions/checker-config.md for the full per-type field
             reference.
         targetHost:
@@ -9084,6 +9090,66 @@ components:
             dropped when the new onset has no capture. **This block is
             operator-only — it is never serialized onto a status page or a
             subscriber payload.**
+        attachments:
+          type: array
+          description: >-
+            Files attached to this incident on the generic attachments rail —
+            today a browser check's failure screenshot. Returned by the
+            single-incident GET only; the list endpoint omits it rather than
+            minting a signed URL per row.
+
+
+            **Operator-only, exactly like `details`.** A screenshot is a
+            picture of whatever the monitored page was rendering, and
+            `downloadUrl` is signed — the signature IS the authorization, so
+            publishing the link publishes the image. It is never serialized
+            onto a status page or a subscriber payload.
+          items:
+            $ref: "#/components/schemas/IncidentAttachment"
+
+    IncidentAttachment:
+      type: object
+      description: >-
+        One file attached to an incident, with a short-lived signed download
+        URL. See `Incident.attachments` for the confidentiality rules.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Filename a human sees when downloading it.
+        kind:
+          type: string
+          description: >-
+            What this attachment is — the last segment of its storage topic.
+          example: screenshot
+        mimeType:
+          type: string
+          example: image/png
+        size:
+          type: integer
+          format: int64
+          description: Size in bytes.
+        downloadUrl:
+          type: string
+          format: uri
+          description: >-
+            Short-lived SIGNED URL to the bytes. It EXPIRES (6h) and is minted
+            per response — it is not a stable identifier and must not be
+            stored, indexed or shared as one.
+        details:
+          type: object
+          additionalProperties: true
+          description: >-
+            Capture metadata. For a screenshot: `capturedAt` (when the probe
+            took the shot — necessarily a moment AFTER failure detection, never
+            the failure frame itself), `region` (stamped server-side from the
+            result row, never self-reported by a probe), `checkUid`, and
+            `trigger` (`incident-open` or `incident-reopen`).
+        createdAt:
+          type: string
+          format: date-time
 
     IncidentCheck:
       type: object

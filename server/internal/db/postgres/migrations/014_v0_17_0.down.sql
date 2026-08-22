@@ -7,6 +7,22 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: file-attachments
+-- Generic file attachments: files.topic + files.details (spec 2026-08-21-01).
+-- Teardown half.
+-- ==========================================================================
+
+-- LOSSY: dropping `topic` unlinks every attachment from the entity it was
+-- attached to, so the rows survive as anonymous blobs that nothing can find
+-- and nothing will reap. The bytes are untouched; only the link is gone.
+drop index if exists files_org_topic_idx;
+
+alter table files drop column if exists details;
+alter table files drop column if exists topic;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: dangling-notification-routes
 -- Was scratch migration 019_dangling_notification_routes (spec 2026-08-20-02). Teardown half.
 -- ==========================================================================

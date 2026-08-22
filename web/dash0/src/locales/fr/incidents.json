@@ -113,6 +113,15 @@
       "truncated": "Corps tronqué à {{shown}} sur {{total}}.",
       "binary": "Corps non conservé : binaire ou UTF-8 invalide. Métadonnées seulement — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "une taille inconnue"
+    },
+    "screenshot": {
+      "title": "Capture d'écran à l'échec",
+      "description": "Ce que la sonde qui a ouvert cet incident voyait de la page. Un navigateur, une région, un instant.",
+      "alt": "Capture d'écran de la page surveillée, prise à l'ouverture de l'incident",
+      "capturedAt": "Capturée {{when}}, peu après la détection de la panne",
+      "region": "Sondée depuis {{region}}",
+      "unknownTime": "à une heure inconnue",
+      "disclaimer": "La capture est prise après que le check a déjà conclu à l'échec : elle montre donc la page un instant plus tard, pas l'image exacte de l'échec. Visible uniquement par votre équipe ; jamais affichée sur une page de statut."
     }
   },
   "timeline": {

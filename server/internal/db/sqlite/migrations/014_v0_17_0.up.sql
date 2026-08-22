@@ -14,6 +14,7 @@
 --   SECTION: incident-publications      public incident overlay + auto-publish
 --   SECTION: slo-reporting              SLOs, report schedules, maintenance tags
 --   SECTION: dangling-notification-routes  delete routes whose contact is gone
+--   SECTION: file-attachments          files.topic + files.details attachments
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones (on SQLite in particular, results-status-domain REBUILDS
@@ -489,3 +490,21 @@ where not exists (
   where c.uid = user_notification_routes.contact_uid
     and c.deleted_at is null
 );
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: file-attachments
+-- Generic file attachments: files.topic + files.details (spec 2026-08-21-01).
+-- ==========================================================================
+
+-- See the postgres half for the full rationale. Two dialect notes:
+--   * `details` is TEXT here, like every other jsonb column in this schema —
+--     bun marshals the same Go type into both.
+--   * there is no `comment on column` in SQLite, so the documentation lives
+--     only in these comments.
+alter table files add column topic text;
+alter table files add column details text;
+
+create index files_org_topic_idx on files (organization_uid, topic)
+  where deleted_at is null and topic is not null;

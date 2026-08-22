@@ -50,6 +50,11 @@ type FileStorage interface {
 		r io.Reader, meta FileMetadata) (uri string, err error)
 	ReadFile(ctx context.Context, orgUID uuid.UUID, group GroupType, fileID string) (
 		io.ReadCloser, *FileMetadata, error)
+	// DeleteFile removes the blob. It is IDEMPOTENT: deleting bytes that are
+	// already gone returns nil, never ErrFileNotFound — the GC sweep that
+	// calls this only cares that the bytes are not there afterwards, and a
+	// half-finished previous sweep must not be able to wedge it.
+	DeleteFile(ctx context.Context, orgUID uuid.UUID, group GroupType, fileID string) error
 	ParseURI(uri string) (orgUID uuid.UUID, group GroupType, fileID string, err error)
 }
 

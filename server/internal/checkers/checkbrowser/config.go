@@ -20,6 +20,14 @@ type BrowserConfig struct {
 	Keyword       string        `json:"keyword,omitempty"`
 	InvertKeyword bool          `json:"invertKeyword,omitempty"`
 	Timeout       time.Duration `json:"timeout,omitempty"`
+	// Screenshot opts this check into capturing what the page looked like when
+	// it FAILED (spec 2026-08-21-01). Off by default: a rendered page can
+	// carry customer data, so nobody gets it without asking.
+	//
+	// The capture is kept only if that failure opens or reopens an incident;
+	// every other one is discarded in memory. It never affects the check's
+	// verdict — see captureScreenshot.
+	Screenshot bool `json:"screenshot,omitempty"`
 }
 
 // FromMap populates the configuration from a map.
@@ -44,6 +52,12 @@ func (c *BrowserConfig) FromMap(configMap map[string]any) error {
 
 	if ik, ok := configMap["invertKeyword"].(bool); ok {
 		c.InvertKeyword = ik
+	}
+
+	if ss, ok := configMap["screenshot"].(bool); ok {
+		c.Screenshot = ss
+	} else if configMap["screenshot"] != nil {
+		return checkerdef.NewConfigError("screenshot", "must be a boolean")
 	}
 
 	if t, ok := configMap["timeout"].(string); ok {
@@ -80,6 +94,10 @@ func (c *BrowserConfig) GetConfig() map[string]any {
 
 	if c.Timeout != 0 {
 		cfg["timeout"] = c.Timeout.String()
+	}
+
+	if c.Screenshot {
+		cfg["screenshot"] = c.Screenshot
 	}
 
 	return cfg

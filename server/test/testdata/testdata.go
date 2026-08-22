@@ -8,14 +8,23 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
 // CreateTestData creates deterministic test data for test mode.
-func CreateTestData(ctx context.Context, dbService db.Service) error {
+//
+// cfg is needed by the fixtures that write real file BYTES (the incident
+// screenshot attachment) rather than only rows — those go through the files
+// service, which owns the storage backend.
+func CreateTestData(ctx context.Context, dbService db.Service, cfg *config.Config) error {
 	// Check if test organization already exists
 	count, err := dbService.DB().NewSelect().
 		Model((*models.Organization)(nil)).
@@ -101,6 +110,13 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 	// Seed an objective over a check with a month rollup, so the SLO list and
 	// detail pages have deterministic non-null attainment (spec 2026-08-20-01).
 	if err := createTestSLOData(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
+	// Seed a browser check whose incident carries a screenshot attachment, so
+	// the incident page's screenshot card has something deterministic to
+	// render (spec 2026-08-21-01).
+	if err := createTestIncidentScreenshot(ctx, dbService, cfg, testOrg.UID, now); err != nil {
 		return err
 	}
 
@@ -639,6 +655,114 @@ func createTestSLOData(ctx context.Context, dbService db.Service, orgUID string,
 	}
 
 	slog.InfoContext(ctx, "Created test SLO", "sloUID", sloUID, "checkUID", sloCheckUID)
+
+	return nil
+}
+
+// Fixture UIDs for the incident screenshot attachment (spec 2026-08-21-01).
+const (
+	screenshotCheckUID    = "00000000-0000-0000-0000-000000000025"
+	screenshotIncidentUID = "00000000-0000-0000-0000-000000000026"
+)
+
+// onePixelPNG is a real, valid 1x1 PNG. Real bytes rather than a placeholder
+// because the E2E asserts the browser actually DECODES the image (naturalWidth
+// > 0) — a fixture the browser rejects would make that assertion vacuous while
+// still rendering an <img> element.
+//
+//nolint:gochecknoglobals // an immutable fixture Go cannot express as const
+var onePixelPNG = []byte{
+	0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+	0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+	0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+	0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
+	0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+	0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+	0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+	0x42, 0x60, 0x82,
+}
+
+// createTestIncidentScreenshot seeds a down BROWSER check with an active
+// incident and a screenshot attachment filed under
+// `incidents/<uid>/screenshot` — the exact shape the incident pipeline writes
+// when a failing browser check with `screenshot` enabled opens an incident
+// (spec 2026-08-21-01).
+//
+// The blob is written through the files SERVICE rather than as a bare row, so
+// the bytes really exist behind the configured storage backend and the
+// incident page's signed download URL resolves to an image a browser can
+// decode. A row-only fixture would render a broken image and the E2E's
+// "it actually loaded" assertion would be meaningless.
+func createTestIncidentScreenshot(
+	ctx context.Context, dbService db.Service, cfg *config.Config, orgUID string, now time.Time,
+) error {
+	check := models.NewCheck(orgUID, "screenshot-check", "browser")
+	check.UID = screenshotCheckUID
+	name := "Screenshot Check"
+	check.Name = &name
+	check.Config = models.JSONMap{
+		"url":        "https://acme.com/shop",
+		"screenshot": true,
+	}
+	check.Status = models.CheckStatusDown
+	check.StatusChangedAt = &now
+	check.CreatedAt = now
+	check.UpdatedAt = now
+
+	if err := dbService.CreateCheck(ctx, check); err != nil {
+		return fmt.Errorf("failed to create screenshot test check: %w", err)
+	}
+
+	incident := models.NewIncident(orgUID, screenshotCheckUID, now, "Screenshot Check is down")
+	incident.UID = screenshotIncidentUID
+	incident.CreatedAt = now
+	incident.UpdatedAt = now
+	incident.Details = models.JSONMap{
+		"failure_reason": "keyword check failed",
+		"first_result": models.JSONMap{
+			"resultUid":   screenshotIncidentUID,
+			"status":      "DOWN",
+			"region":      "eu",
+			"duration":    float32(1.25),
+			"periodStart": now,
+			"output":      models.JSONMap{"error": "keyword check failed"},
+		},
+	}
+
+	if err := dbService.CreateIncident(ctx, incident); err != nil {
+		return fmt.Errorf("failed to create screenshot test incident: %w", err)
+	}
+
+	parsedOrgUID, err := uuid.Parse(orgUID)
+	if err != nil {
+		return fmt.Errorf("failed to parse test org uid: %w", err)
+	}
+
+	topic := models.AttachmentTopic(
+		models.AttachmentEntityIncidents, screenshotIncidentUID, models.AttachmentKindScreenshot,
+	)
+
+	store := files.NewAttachmentStore(
+		files.NewService(dbService, cfg), filestorage.GroupTypeScreenshots,
+	)
+
+	fileUID, err := store.CreateAttachment(
+		ctx, parsedOrgUID, "shop-screenshot.png", "image/png", topic,
+		models.JSONMap{
+			models.AttachmentDetailCapturedAt: now,
+			models.AttachmentDetailRegion:     "eu",
+			models.AttachmentDetailCheckUID:   screenshotCheckUID,
+			models.AttachmentDetailTrigger:    models.AttachmentTriggerIncidentOpen,
+		},
+		onePixelPNG,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create screenshot attachment: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test incident screenshot attachment",
+		"incidentUid", screenshotIncidentUID, "fileUid", fileUID)
 
 	return nil
 }

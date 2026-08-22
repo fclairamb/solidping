@@ -113,6 +113,15 @@
       "truncated": "Cuerpo truncado a {{shown}} de {{total}}.",
       "binary": "Cuerpo no almacenado: es binario o UTF-8 no válido. Solo metadatos — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "un tamaño desconocido"
+    },
+    "screenshot": {
+      "title": "Captura en el fallo",
+      "description": "Cómo veía la página la sonda que abrió esta incidencia. Un navegador, una región, un instante.",
+      "alt": "Captura de la página monitorizada, tomada al abrirse la incidencia",
+      "capturedAt": "Capturada {{when}}, poco después de detectar el fallo",
+      "region": "Sondeada desde {{region}}",
+      "unknownTime": "a una hora desconocida",
+      "disclaimer": "La captura se toma después de que el check ya haya determinado el fallo, así que muestra la página un instante más tarde, no el fotograma exacto del fallo. Visible solo para tu equipo; nunca se muestra en una página de estado."
     }
   },
   "timeline": {

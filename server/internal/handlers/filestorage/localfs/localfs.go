@@ -102,6 +102,24 @@ func (b *Backend) ReadFile(
 	return file, meta, nil
 }
 
+// DeleteFile removes the blob. Idempotent: an already-missing file is not an
+// error, so a GC sweep re-running over a partially-swept batch converges.
+//
+// The empty parent directories are deliberately left behind: two concurrent
+// writers under the same org/group would race a directory removal against a
+// sibling's MkdirAll, and an empty directory costs one inode.
+func (b *Backend) DeleteFile(
+	_ context.Context, orgUID uuid.UUID, group filestorage.GroupType, fileID string,
+) error {
+	full := filepath.Join(b.Root, filestorage.BuildPath(orgUID, group, fileID))
+
+	if err := os.Remove(full); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove file: %w", err)
+	}
+
+	return nil
+}
+
 // ParseURI splits "file://orgUID/group/fileID" back into its parts.
 func (b *Backend) ParseURI(uri string) (uuid.UUID, filestorage.GroupType, string, error) {
 	prefix, rest, err := filestorage.SchemeFromURI(uri)

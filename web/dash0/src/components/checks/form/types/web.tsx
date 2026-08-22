@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { getFieldError } from "@/hooks/use-check-validation";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
@@ -88,6 +89,7 @@ export interface BrowserState {
   url: string;
   waitSelector: string;
   keyword: string;
+  screenshot: boolean;
 }
 
 export const browserModule: CheckTypeModule<BrowserState> = {
@@ -96,12 +98,14 @@ export const browserModule: CheckTypeModule<BrowserState> = {
     url: getConfigField(config, "url"),
     waitSelector: getConfigField(config, "waitSelector"),
     keyword: getConfigField(config, "keyword"),
+    screenshot: config.screenshot === true,
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.url) cfg.url = state.url;
     if (state.waitSelector) cfg.waitSelector = state.waitSelector;
     if (state.keyword) cfg.keyword = state.keyword;
+    if (state.screenshot) cfg.screenshot = true;
     const errors: FieldErrors = state.url
       ? []
       : [{ name: "url", message: "URL is required" }];
@@ -161,6 +165,30 @@ function BrowserFields({
         <p className="text-xs text-muted-foreground">
           Text to search for in the rendered page content.
         </p>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="browser-screenshot"
+            checked={state.screenshot}
+            onCheckedChange={(screenshot) => onChange({ ...state, screenshot })}
+            data-testid="check-screenshot-switch"
+          />
+          <Label htmlFor="browser-screenshot">
+            Capture a screenshot on failure
+          </Label>
+        </div>
+        {state.screenshot && (
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid="check-screenshot-hint"
+          >
+            When a failure opens or reopens an incident, the page as the probe
+            saw it is attached to that incident. The capture is taken shortly
+            after detection, is visible to your team only, and may contain
+            whatever the page was showing.
+          </p>
+        )}
       </div>
     </>
   );

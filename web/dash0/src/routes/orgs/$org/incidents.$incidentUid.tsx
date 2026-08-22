@@ -39,6 +39,7 @@ import {
   type IncidentDetail,
   type IncidentResultSnapshot,
   type IncidentFailureResponse,
+  type IncidentAttachment,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
@@ -1095,6 +1096,8 @@ function IncidentDetailPage() {
 
       <ProbeResponseCard incident={incident} />
 
+      <ProbeScreenshotCard incident={incident} />
+
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
 
       <IncidentPublicationsPanel org={org} incidentUid={incidentUid} />
@@ -1339,6 +1342,88 @@ function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
             snapshot={details.last_failure}
           />
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// formatAttachmentBytes renders an attachment's size. Unlike a text capture,
+// a screenshot is routinely hundreds of KB, so MB has to be reachable.
+function formatAttachmentBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ProbeScreenshotCard renders the browser check's failure screenshot next to
+// "What the probe saw".
+//
+// The caption is deliberately precise about WHEN the shot was taken: the
+// capture happens after the checker has already decided the target failed, so
+// it is "shortly after failure detection", never "the failure frame". A page
+// that recovered in the intervening second would photograph as healthy, and
+// presenting that as the moment of failure would be a lie the reader cannot
+// detect.
+//
+// The image is fetched through a short-lived signed URL minted for this
+// response — it expires, so nothing here caches or persists it.
+function ProbeScreenshotCard({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("incidents");
+
+  const shot: IncidentAttachment | undefined = incident.attachments?.find(
+    (attachment) => attachment.kind === "screenshot" && attachment.downloadUrl,
+  );
+
+  if (!shot) return null;
+
+  const capturedAt = shot.details?.capturedAt ?? shot.createdAt;
+  const region = shot.details?.region;
+
+  return (
+    <Card data-testid="probe-screenshot-card">
+      <CardHeader>
+        <CardTitle>{t("detail.screenshot.title")}</CardTitle>
+        <CardDescription>{t("detail.screenshot.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Plain <img>: the bytes come from our own origin behind a signed
+            URL, and a max-w-full image is what keeps this usable on a phone. */}
+        <a
+          href={shot.downloadUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="block overflow-hidden rounded-md border bg-muted"
+          data-testid="probe-screenshot-link"
+        >
+          <img
+            src={shot.downloadUrl}
+            alt={t("detail.screenshot.alt")}
+            loading="lazy"
+            className="h-auto max-h-[32rem] w-full object-contain"
+            data-testid="probe-screenshot-image"
+          />
+        </a>
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+          data-testid="probe-screenshot-caption"
+        >
+          <span>
+            {t("detail.screenshot.capturedAt", {
+              when: capturedAt
+                ? new Date(capturedAt).toLocaleString()
+                : t("detail.screenshot.unknownTime"),
+            })}
+          </span>
+          {region && (
+            <span>{t("detail.screenshot.region", { region })}</span>
+          )}
+          {typeof shot.size === "number" && (
+            <span>{formatAttachmentBytes(shot.size)}</span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t("detail.screenshot.disclaimer")}
+        </p>
       </CardContent>
     </Card>
   );

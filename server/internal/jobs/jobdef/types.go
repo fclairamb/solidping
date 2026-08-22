@@ -91,6 +91,13 @@ const (
 	// user-managed and never touched. Global, self-rescheduling every 6h
 	// (spec 2026-07-27-01).
 	JobTypeAgentGC JobType = "agent_gc"
+	// JobTypeFilesGC is the file-storage hygiene sweep (spec 2026-08-21-01
+	// §7). Two passes: it soft-deletes attachments whose owning entity is
+	// gone — the attachment `topic` is the ONLY link from a blob back to its
+	// entity, so an orphan is unreachable and nothing else will ever find it
+	// — and it drops the BYTES of files soft-deleted longer ago than the
+	// retention window, then their rows. Global, self-rescheduling hourly.
+	JobTypeFilesGC JobType = "files_gc"
 	// JobTypeUptimeReport emits the scheduled uptime-report digests
 	// (spec 2026-08-20-01). Global and self-rescheduling hourly; each run
 	// looks for schedules whose weekly/monthly period has just closed in

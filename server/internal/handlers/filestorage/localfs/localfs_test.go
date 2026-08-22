@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -95,4 +96,41 @@ func TestLocalFS_ReadMissing(t *testing.T) {
 		"missing",
 	)
 	r.ErrorIs(err, filestorage.ErrFileNotFound)
+}
+
+// TestDeleteFileIsIdempotent pins the contract the GC sweep relies on:
+// deleting bytes removes them, and deleting bytes that are already gone is
+// success, not an error — a sweep resuming over a partly-swept batch must
+// converge rather than wedge on the first row it already handled.
+func TestDeleteFileIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	backend := localfs.New(t.TempDir())
+	orgUID := uuid.New()
+
+	uri, err := backend.WriteFile(
+		ctx, orgUID, filestorage.GroupTypeScreenshots, "shot-1",
+		strings.NewReader("pixels"), filestorage.FileMetadata{MimeType: "image/png", Size: 6},
+	)
+	r.NoError(err)
+	r.NotEmpty(uri)
+
+	// Positive control: the bytes really are readable before the delete.
+	body, _, err := backend.ReadFile(ctx, orgUID, filestorage.GroupTypeScreenshots, "shot-1")
+	r.NoError(err)
+	r.NoError(body.Close())
+
+	r.NoError(backend.DeleteFile(ctx, orgUID, filestorage.GroupTypeScreenshots, "shot-1"))
+
+	_, _, err = backend.ReadFile(ctx, orgUID, filestorage.GroupTypeScreenshots, "shot-1")
+	r.ErrorIs(err, filestorage.ErrFileNotFound)
+
+	// The second delete is the idempotence assertion.
+	r.NoError(backend.DeleteFile(ctx, orgUID, filestorage.GroupTypeScreenshots, "shot-1"))
+
+	// And deleting something that never existed is equally fine.
+	r.NoError(backend.DeleteFile(ctx, orgUID, filestorage.GroupTypeScreenshots, "never-written"))
 }

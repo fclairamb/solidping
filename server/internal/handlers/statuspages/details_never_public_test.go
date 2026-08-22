@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/attachments"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -16,10 +17,19 @@ import (
 // PUBLIC status-page payload. `details` is the incidents.details JSONB column,
 // which since spec 2026-08-20-01 can carry the probe's failure capture —
 // response bodies with internal hostnames, stack traces or PII.
+//
+// `attachments` / `downloadurl` / `topic` join the list with spec
+// 2026-08-21-01: an attachment is org-operational evidence of the same kind,
+// and a browser check's screenshot is a picture of whatever the monitored
+// page was rendering. Its signed download URL is no safer than the bytes —
+// the signature IS the authorization, so publishing the URL publishes the
+// image.
 func isForbiddenPublicFieldName(name string) bool {
 	switch name {
 	case "details", "failureresponse", "firstresult", "first_result",
-		"lastfailure", "last_failure", "output", "diagnostics":
+		"lastfailure", "last_failure", "output", "diagnostics",
+		"attachments", "attachment", "downloadurl", "signedurl", "topic",
+		"screenshot", "screenshoturl":
 		return true
 	default:
 		return false
@@ -34,7 +44,12 @@ func isForbiddenPublicType(typ reflect.Type) bool {
 	switch typ {
 	case reflect.TypeOf(models.JSONMap{}),
 		reflect.TypeOf(models.Incident{}),
-		reflect.TypeOf(map[string]any{}):
+		reflect.TypeOf(map[string]any{}),
+		// attachments.View carries a signed download URL for org-only
+		// evidence. Pinned by TYPE as well as by field name so renaming the
+		// field cannot smuggle it onto a public page.
+		reflect.TypeOf(attachments.View{}),
+		reflect.TypeOf(models.File{}):
 		return true
 	default:
 		return false
@@ -226,4 +241,86 @@ func TestViewStatusPageNeverLeaksIncidentDetails(t *testing.T) {
 	r.NotContains(string(rawView), "failureResponse")
 	r.NotContains(string(rawView), "failure_reason")
 	r.NotContains(string(rawView), `"details"`)
+}
+
+// TestViewStatusPageNeverLeaksIncidentAttachments is the attachments-rail
+// companion (spec 2026-08-21-01): an incident with a real screenshot
+// attachment renders a public page carrying neither the attachment nor its
+// signed URL.
+//
+// Value-level rather than structural, because the structural pin above only
+// proves the TYPE is absent — this proves the bytes and the link are too,
+// even though the same incident is the one being published.
+func TestViewStatusPageNeverLeaksIncidentAttachments(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	const (
+		fileMarker = "acme-incident-screenshot-file-uid"
+		urlMarker  = "acme-signed-download-marker"
+	)
+
+	check := models.NewCheck(org.UID, "shop", "browser")
+	check.Status = models.CheckStatusDown
+	r.NoError(svc.db.CreateCheck(ctx, check))
+
+	incident := models.NewIncident(org.UID, check.UID, time.Now(), "shop is down")
+	r.NoError(svc.db.CreateIncident(ctx, incident))
+
+	// The attachment as the org-only API would see it, complete with a signed
+	// link. Nothing on the public side may reproduce either field.
+	topic := models.AttachmentTopic(
+		models.AttachmentEntityIncidents, incident.UID, models.AttachmentKindScreenshot,
+	)
+	view := attachments.View{
+		UID:         fileMarker,
+		Name:        "shop-screenshot.png",
+		Kind:        attachments.Kind(&topic),
+		MimeType:    "image/png",
+		Size:        4096,
+		DownloadURL: "https://status.acme.com/pub/files/" + fileMarker + "?sig=" + urlMarker,
+		Details: models.JSONMap{
+			models.AttachmentDetailRegion:  "eu-west",
+			models.AttachmentDetailTrigger: models.AttachmentTriggerIncidentOpen,
+		},
+		CreatedAt: time.Now(),
+	}
+
+	// Positive control: the view really does carry both markers, so their
+	// absence below is a property of the public payload and not of the fixture.
+	rawView, err := json.Marshal(view)
+	r.NoError(err)
+	r.Contains(string(rawView), fileMarker)
+	r.Contains(string(rawView), urlMarker)
+
+	page := models.NewStatusPage(org.UID, "Acme Status", testPublicSlug)
+	page.Enabled = true
+	page.Visibility = visibilityPublic
+	r.NoError(svc.db.CreateStatusPage(ctx, page))
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.Slug, CreateSectionRequest{Name: "Core"})
+	r.NoError(err)
+
+	_, err = svc.CreateResource(ctx, org.Slug, page.Slug, section.Slug, CreateResourceRequest{
+		CheckUID: check.UID,
+	})
+	r.NoError(err)
+
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	r.NoError(err)
+
+	rawPublic, err := json.Marshal(public)
+	r.NoError(err)
+
+	// Positive control: this is a real, populated page render.
+	r.Contains(string(rawPublic), "Acme Status")
+	r.Contains(string(rawPublic), "Core")
+
+	r.NotContains(string(rawPublic), fileMarker)
+	r.NotContains(string(rawPublic), urlMarker)
+	r.NotContains(string(rawPublic), `"attachments"`)
+	r.NotContains(string(rawPublic), "downloadUrl")
+	r.NotContains(string(rawPublic), "/pub/files/")
 }

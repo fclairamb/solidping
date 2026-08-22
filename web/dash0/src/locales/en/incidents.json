@@ -113,6 +113,15 @@
       "truncated": "Body truncated to {{shown}} of {{total}}.",
       "binary": "Body not stored: it is binary or not valid UTF-8. Metadata only — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "an unknown size"
+    },
+    "screenshot": {
+      "title": "Screenshot at failure",
+      "description": "What the page looked like to the probe that opened this incident. One browser, one region, one moment.",
+      "alt": "Screenshot of the monitored page, captured when the incident opened",
+      "capturedAt": "Captured {{when}}, shortly after failure detection",
+      "region": "Probed from {{region}}",
+      "unknownTime": "at an unknown time",
+      "disclaimer": "The capture is taken after the check has already decided the target failed, so it shows the page a moment later — not the exact frame that failed. Visible to your team only; never shown on a status page."
     }
   },
   "timeline": {

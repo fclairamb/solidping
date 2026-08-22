@@ -93,6 +93,14 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
+	// Ensure the file-storage GC sweep exists (global). It self-reschedules
+	// hourly; seeding it here is what makes an attachment whose incident is
+	// already gone start being reaped after a deploy rather than lingering
+	// until somebody notices the storage bill.
+	if err := r.ensureFilesGCJob(ctx, jctx); err != nil {
+		return err
+	}
+
 	// Ensure the abandoned-result reaper exists (global, not per-org). Running
 	// it at startup gives an immediate first sweep after a deploy — exactly
 	// when a check that's been quietly stuck on its creation marker for weeks
@@ -520,6 +528,31 @@ func (r *StartupJobRun) ensureCustomDomainVerifyJob(ctx context.Context, jctx *j
 		log.InfoContext(ctx, "Failed to create custom-domain verify job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured custom-domain verify job exists")
+	}
+
+	return nil
+}
+
+// ensureFilesGCJob provisions the global file-storage GC sweep. It
+// reschedules itself hourly; this just ensures the very first one exists.
+// CreateJob dedupes on type+config+org+pending, so a restart won't stack a
+// duplicate.
+func (r *StartupJobRun) ensureFilesGCJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping files GC provisioning (services not available)")
+
+		return nil
+	}
+
+	log.InfoContext(ctx, "Ensuring files GC job exists")
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeFilesGC), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create files GC job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured files GC job exists")
 	}
 
 	return nil

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/attachments"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -137,6 +138,12 @@ type Service struct {
 	// transition, `incidents`+`events` (immediate) alongside event writes.
 	// Nil-safe — a nil publisher no-ops (realtime disabled, tests).
 	rt *realtime.Publisher
+
+	// attachments files incident evidence (today: browser-check screenshots)
+	// on the generic attachments rail. Nil-safe: every call goes through the
+	// helpers in attachments.go, which no-op when unset (file storage
+	// disabled, tests).
+	attachments AttachmentStore
 
 	// maintenance resolves "is this check in an active maintenance window?".
 	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
@@ -747,6 +754,10 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 		return fmt.Errorf("failed to create incident: %w", err)
 	}
 
+	// The incident row must exist first: the topic embeds its uid, and an
+	// attachment written before the insert could be orphaned by a failed one.
+	s.persistScreenshot(ctx, check, result, incident.UID, models.AttachmentTriggerIncidentOpen)
+
 	// Emit incident created event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
 		keyCheckUID:  check.UID,
@@ -951,6 +962,10 @@ func (s *Service) reopenIncident(
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen incident: %w", err)
 	}
+
+	// The relapse is a NEW onset, so its capture replaces the original one —
+	// the same rule lastFailureDetails applies to failureResponse just above.
+	s.persistScreenshot(ctx, check, result, incident.UID, models.AttachmentTriggerIncidentReopen)
 
 	// Pass check fields to the incident for notification payload
 	incident.RelapseCount = newRelapseCount
@@ -1774,6 +1789,14 @@ type IncidentResponse struct {
 	// incident open/reopen (failure_reason, first_result, and — after a
 	// relapse — last_failure). See failureDetails / lastFailureDetails.
 	Details models.JSONMap `json:"details,omitempty"`
+	// Attachments is the incident's operational evidence on the generic
+	// attachments rail (today: a browser check's failure screenshot), each
+	// with a short-lived signed download URL. Populated on the single-incident
+	// GET only — the list endpoint would mint a URL per row for links nobody
+	// clicked.
+	//
+	// NEVER PUBLIC, for the same reason Details is not: see attachments.View.
+	Attachments []attachments.View `json:"attachments,omitempty"`
 }
 
 // IncidentMemberResponse represents a single member of a group incident.
@@ -2200,6 +2223,10 @@ func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, id
 type GetIncidentOptions struct {
 	WithCheck   bool // Include check details in response
 	WithMembers bool // Include group-incident members and checkGroupSlug in response
+	// BaseURL is the scheme://host the caller reached us on. Signed
+	// attachment URLs are rooted at it so a link works for the tenant that
+	// asked for it; empty falls back to the configured server base URL.
+	BaseURL string
 }
 
 // GetIncident gets a single incident by UID.
@@ -2236,6 +2263,13 @@ func (s *Service) GetIncident(
 	if opts != nil && opts.WithMembers {
 		s.loadIncidentMembers(ctx, org.UID, incident, &response)
 	}
+
+	baseURL := ""
+	if opts != nil {
+		baseURL = opts.BaseURL
+	}
+
+	s.loadAttachments(ctx, org.UID, incident.UID, baseURL, &response)
 
 	return &response, nil
 }

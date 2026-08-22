@@ -136,7 +136,10 @@ func (h *Handler) GetIncident(writer http.ResponseWriter, req *http.Request) err
 	incidentUID := httpx.Param(req, "uid")
 
 	// Parse with parameter (e.g., ?with=check,members)
-	opts := &GetIncidentOptions{}
+	//
+	// BaseURL roots the signed attachment download links at the host this
+	// request arrived on, so a link handed to a tenant works for that tenant.
+	opts := &GetIncidentOptions{BaseURL: requestOrigin(req)}
 	if withParam := req.URL.Query().Get("with"); withParam != "" {
 		for _, w := range strings.Split(withParam, ",") {
 			switch w {
@@ -425,4 +428,31 @@ func (h *Handler) AddComment(writer http.ResponseWriter, req *http.Request) erro
 		Payload:     event.Payload,
 		CreatedAt:   event.CreatedAt,
 	})
+}
+
+// requestScheme resolves the request scheme, preferring the first token of a
+// proxy-set X-Forwarded-Proto, then the TLS state, defaulting to http. A twin
+// of the statuspages helper: both build a self-referential absolute URL from
+// the request, and neither package should import the other for it.
+func requestScheme(req *http.Request) string {
+	if proto := req.Header.Get("X-Forwarded-Proto"); proto != "" {
+		if idx := strings.IndexByte(proto, ','); idx != -1 {
+			proto = proto[:idx]
+		}
+
+		if proto = strings.TrimSpace(proto); proto != "" {
+			return proto
+		}
+	}
+
+	if req.TLS != nil {
+		return "https"
+	}
+
+	return "http"
+}
+
+// requestOrigin builds the "scheme://host" origin for a request.
+func requestOrigin(req *http.Request) string {
+	return requestScheme(req) + "://" + req.Host
 }

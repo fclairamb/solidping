@@ -113,6 +113,15 @@
       "truncated": "Body auf {{shown}} von {{total}} gekürzt.",
       "binary": "Body nicht gespeichert: binär oder kein gültiges UTF-8. Nur Metadaten — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "unbekannte Größe"
+    },
+    "screenshot": {
+      "title": "Screenshot beim Ausfall",
+      "description": "Wie die Seite für die Sonde aussah, die diesen Vorfall geöffnet hat. Ein Browser, eine Region, ein Moment.",
+      "alt": "Screenshot der überwachten Seite, aufgenommen beim Öffnen des Vorfalls",
+      "capturedAt": "Aufgenommen {{when}}, kurz nach der Fehlererkennung",
+      "region": "Gemessen aus {{region}}",
+      "unknownTime": "zu einer unbekannten Zeit",
+      "disclaimer": "Die Aufnahme entsteht, nachdem der Check den Ausfall bereits festgestellt hat — sie zeigt die Seite also einen Moment später, nicht exakt das fehlerhafte Bild. Nur für Ihr Team sichtbar; nie auf einer Statusseite."
     }
   },
   "timeline": {

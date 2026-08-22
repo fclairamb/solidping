@@ -7,6 +7,21 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: file-attachments
+-- Generic file attachments: files.topic + files.details (spec 2026-08-21-01).
+-- Teardown half.
+-- ==========================================================================
+
+-- LOSSY in the same way as the postgres half: the blobs survive, the link
+-- that made them findable and reapable does not.
+drop index if exists files_org_topic_idx;
+
+alter table files drop column details;
+alter table files drop column topic;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: dangling-notification-routes
 -- Was scratch migration 019_dangling_notification_routes (spec 2026-08-20-02). Teardown half.
 -- ==========================================================================

@@ -25,7 +25,45 @@ type Diagnostics struct {
 	// response, so the capture degrades to absent and the existing error
 	// output remains the only evidence.
 	FailureResponse *FailureResponse `json:"failureResponse,omitempty"`
+
+	// Screenshot is the page capture of a FAILED browser check (opt-in:
+	// `screenshot`). Nil on every other path.
+	//
+	// `json:"-"`, NOT `omitempty` — see the Screenshot doc comment. This is
+	// the single line that keeps a megabyte-scale PNG out of the agent's JSON
+	// control channel; an agent-side capture travels over the dedicated
+	// upload endpoint (spec 2026-08-21-01 §6) instead.
+	Screenshot *Screenshot `json:"-"`
 }
+
+// Screenshot is a PNG capture of what a failing browser check's page looked
+// like, taken before the browser context is disposed.
+//
+// It exists in MEMORY ONLY until the incident pipeline decides this result
+// opened or reopened an incident; every other failing run's capture is
+// dropped on the floor. That is what keeps a flapping 30 s check from writing
+// 2,880 blobs a day.
+//
+// SECURITY: a rendered page can carry anything the monitored service shows —
+// customer data, session-bound content, internal hostnames. Like
+// FailureResponse it is opt-in per check and must never reach a public
+// surface (status pages, subscriber payloads).
+type Screenshot struct {
+	// PNG is the raw image. Bounded by MaxScreenshotBytes at capture time; an
+	// over-cap capture is DROPPED, never truncated (a truncated PNG is not an
+	// image, it is a corrupt file that renders as a broken icon).
+	PNG []byte
+	// CapturedAt is when the probe took the shot. Necessarily a moment AFTER
+	// failure detection, which is why every surface that shows it labels it
+	// as such rather than as the failure frame.
+	CapturedAt time.Time
+}
+
+// MaxScreenshotBytes caps a single capture. Deliberately tighter than
+// files.MaxFileSize (25 MB): a full-page PNG of a real error page is tens to
+// a few hundred KB, and anything past a few MB is a pathological page whose
+// image is worth less than the memory it would hold on every worker.
+const MaxScreenshotBytes = 4 * 1024 * 1024
 
 // FailureResponse is the textual capture of the response a failing probe
 // received. It is bounded by construction (see the caps in the capturing

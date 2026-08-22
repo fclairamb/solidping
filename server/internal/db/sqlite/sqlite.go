@@ -3131,6 +3131,28 @@ func (s *Service) GetIncident(ctx context.Context, orgUID, uid string) (*models.
 	return incident, nil
 }
 
+// GetIncidentAny retrieves an incident by UID with NO org scoping.
+//
+// Used only by the agent-upload topic authorizer (spec 2026-08-21-01 §6): a
+// system agent serves a shared cloud region across every tenant, so the
+// incident's own organization is the only place the org can come from — the
+// request must never be believed about it. The authorizer supplies the
+// org/region checks itself; this is the raw lookup, not an authorization.
+func (s *Service) GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
+}
+
 func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error) {
 	incident := new(models.Incident)
 
@@ -5578,6 +5600,120 @@ func (s *Service) DeleteFile(ctx context.Context, orgUID, uid string) error {
 	}
 
 	return nil
+}
+
+// ListAttachmentsByTopic returns the live attachments filed under an exact
+// topic, newest first. See the PostgreSQL twin for the full rationale.
+func (s *Service) ListAttachmentsByTopic(
+	ctx context.Context, orgUID, topic string,
+) ([]*models.File, error) {
+	var files []*models.File
+
+	err := s.db.NewSelect().
+		Model(&files).
+		Where("organization_uid = ?", orgUID).
+		Where("topic = ?", topic).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+// DeleteAttachmentsByTopicPrefix soft-deletes every live attachment under a
+// topic prefix and reports how many rows changed. Zero rows is success.
+//
+// Uses a half-open key RANGE rather than the twin's LIKE, for exactly the
+// reason tls_storage.go documents: SQLite's LIKE is ASCII-case-insensitive by
+// default, and a reaper must never delete a neighbor that differs from its
+// prefix only in case.
+func (s *Service) DeleteAttachmentsByTopicPrefix(
+	ctx context.Context, orgUID, prefix string,
+) (int64, error) {
+	query := s.db.NewUpdate().
+		Model((*models.File)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("topic >= ?", prefix).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now())
+
+	if end, ok := prefixRangeEnd(prefix); ok {
+		query = query.Where("topic < ?", end)
+	}
+
+	res, err := query.Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
+}
+
+// orphanIncidentAttachmentsQuery finds attachments whose incident is gone.
+// `substr(topic, 11, 36)` slices the uid out of `incidents/<uid>/<kind>`:
+// 'incidents/' is 10 characters and a uid is a 36-character UUID string.
+const orphanIncidentAttachmentsQuery = `
+	SELECT f.*
+	FROM files AS f
+	WHERE f.deleted_at IS NULL
+		AND f.topic >= 'incidents/'
+		AND f.topic < 'incidents0'
+		AND NOT EXISTS (
+			SELECT 1 FROM incidents AS i
+			WHERE i.uid = substr(f.topic, 11, 36)
+				AND i.deleted_at IS NULL
+		)
+	ORDER BY f.created_at
+	LIMIT ?
+`
+
+// ListOrphanIncidentAttachments returns live attachments pointing at an
+// incident that no longer exists. Cross-org: the GC sweep is a platform job.
+//
+// The bounds are the byte-exact range for the `incidents/` prefix ('0' is the
+// character after '/'), not a LIKE — same collation reasoning as above.
+func (s *Service) ListOrphanIncidentAttachments(ctx context.Context, limit int) ([]*models.File, error) {
+	var files []*models.File
+
+	if err := s.db.NewRaw(orphanIncidentAttachmentsQuery, limit).Scan(ctx, &files); err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+// ListPurgeableDeletedFiles returns files soft-deleted before the cutoff, so
+// the GC sweep can drop their bytes.
+func (s *Service) ListPurgeableDeletedFiles(
+	ctx context.Context, before time.Time, limit int,
+) ([]*models.File, error) {
+	var files []*models.File
+
+	err := s.db.NewSelect().
+		Model(&files).
+		Where("deleted_at IS NOT NULL").
+		Where("deleted_at < ?", before).
+		Order("deleted_at").
+		Limit(limit).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+// PurgeFile hard-deletes a file row, after the GC sweep dropped its bytes.
+func (s *Service) PurgeFile(ctx context.Context, uid string) error {
+	_, err := s.db.NewDelete().
+		Model((*models.File)(nil)).
+		Where("uid = ?", uid).
+		Exec(ctx)
+
+	return err
 }
 
 // CreateMembershipRequest inserts a new pending request.

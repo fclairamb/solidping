@@ -299,6 +299,34 @@ export interface IncidentDetail {
   causedByIncidentUid?: string;
   pagingSuppressed?: boolean;
   details?: IncidentDetails;
+  /**
+   * Files attached to this incident (today: a browser check's failure
+   * screenshot). Present on the single-incident GET only.
+   *
+   * Operator-only: `downloadUrl` is signed and short-lived — the signature IS
+   * the authorization, so it must never be rendered on a public surface.
+   */
+  attachments?: IncidentAttachment[];
+}
+
+/** One file attached to an incident, with a short-lived signed download URL. */
+export interface IncidentAttachment {
+  uid?: string;
+  name?: string;
+  /** What the attachment is — the last segment of its storage topic. */
+  kind?: string;
+  mimeType?: string;
+  size?: number;
+  /** Signed, EXPIRING URL to the bytes. Not a stable identifier. */
+  downloadUrl?: string;
+  /** Capture metadata: capturedAt, region, checkUid, trigger. */
+  details?: {
+    capturedAt?: string;
+    region?: string;
+    checkUid?: string;
+    trigger?: "incident-open" | "incident-reopen";
+  };
+  createdAt?: string;
 }
 
 export interface Event {
