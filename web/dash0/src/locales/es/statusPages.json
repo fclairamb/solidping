@@ -251,5 +251,18 @@
     "hideBranding": "Ocultar «Con tecnología de SolidPing»",
     "hideBrandingHint": "Elimina el enlace a SolidPing del pie de la página pública.",
     "hideBrandingLocked": "La marca blanca no está incluida en tu plan actual. El ajuste se guarda y se aplicará en cuanto el plan lo incluya."
+  },
+  "visibilityField": {
+    "label": "Visibilidad",
+    "public": "Pública",
+    "private": "Privada",
+    "password": "Protegida con contraseña",
+    "publicHint": "Cualquiera con el enlace puede ver esta página.",
+    "privateHint": "La página queda totalmente oculta: las URL públicas responden como si no existiera.",
+    "passwordHint": "Los visitantes deben introducir una contraseña para ver la página.",
+    "passwordLabel": "Contraseña de la página",
+    "passwordPlaceholder": "Al menos 6 caracteres",
+    "passwordKeepPlaceholder": "Déjalo vacío para conservar la contraseña actual",
+    "passwordFieldHint": "Compártela con quienes deban ver la página. Cambiarla cierra el acceso a todos de inmediato."
   }
 }

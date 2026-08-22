@@ -10,11 +10,25 @@
 -- Teardown half of the status-page-password section (spec 2026-08-21-07).
 -- ==========================================================================
 
--- LOSSY: dropping the hash makes every password page unopenable rather than
--- public — the API refuses to serve a `password` page it cannot check a
--- password for. That is the safe direction, but it does mean a down-migration
--- takes those pages offline until an operator re-sets a password or moves them
--- back to `public`.
+-- LOSSY, and more so than the Postgres half.
+--
+-- Dropping the hash makes every password page unopenable rather than public —
+-- the API refuses to serve a `password` page it cannot check a password for.
+-- That is the safe direction, but it takes those pages offline until an
+-- operator re-sets a password or moves them back to `public`.
+--
+-- The widened CHECK constraint is NOT narrowed back: doing so would need a
+-- second full table rebuild, and it would FAIL outright on any database still
+-- holding a `password` row. Instead the rows are moved back to `private` first
+-- (the safe reading: a page that was shared behind a secret must not become
+-- world-readable because someone rolled a migration back), and the constraint
+-- is left permissive. A permissive constraint on a database whose application
+-- code predates the value is inert — models.ValidStatusPageVisibility is the
+-- real gate.
+
+update status_pages set visibility = 'private' where visibility = 'password';
+
+--bun:split
 
 alter table status_pages drop column password_hash;
 

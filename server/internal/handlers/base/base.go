@@ -30,17 +30,24 @@ const (
 	ErrorCodeIntegrationNotFound  ErrorCode = "INTEGRATION_NOT_FOUND"
 	// ErrorCodeChannelNotFound is the prior name of ErrorCodeIntegrationNotFound,
 	// kept as a deprecated alias for one release cycle. PR-E removes it.
-	ErrorCodeChannelNotFound           ErrorCode = ErrorCodeIntegrationNotFound
-	ErrorCodeInvalidCredentials        ErrorCode = "INVALID_CREDENTIALS"
-	ErrorCodeInvalidToken              ErrorCode = "INVALID_TOKEN"
-	ErrorCodeNoToken                   ErrorCode = "NO_TOKEN"
-	ErrorCodeInvalidOrg                ErrorCode = "INVALID_ORG"
-	ErrorCodeTokenNotFound             ErrorCode = "TOKEN_NOT_FOUND"
-	ErrorCodeOAuthFailed               ErrorCode = "OAUTH_FAILED"
-	ErrorCodeInvalidState              ErrorCode = "INVALID_STATE"
-	ErrorCodeEmailNotVerified          ErrorCode = "EMAIL_NOT_VERIFIED"
-	ErrorCodeTokenExchangeFailed       ErrorCode = "TOKEN_EXCHANGE_FAILED"
-	ErrorCodeStatusPageNotFound        ErrorCode = "STATUS_PAGE_NOT_FOUND"
+	ErrorCodeChannelNotFound     ErrorCode = ErrorCodeIntegrationNotFound
+	ErrorCodeInvalidCredentials  ErrorCode = "INVALID_CREDENTIALS"
+	ErrorCodeInvalidToken        ErrorCode = "INVALID_TOKEN"
+	ErrorCodeNoToken             ErrorCode = "NO_TOKEN"
+	ErrorCodeInvalidOrg          ErrorCode = "INVALID_ORG"
+	ErrorCodeTokenNotFound       ErrorCode = "TOKEN_NOT_FOUND"
+	ErrorCodeOAuthFailed         ErrorCode = "OAUTH_FAILED"
+	ErrorCodeInvalidState        ErrorCode = "INVALID_STATE"
+	ErrorCodeEmailNotVerified    ErrorCode = "EMAIL_NOT_VERIFIED"
+	ErrorCodeTokenExchangeFailed ErrorCode = "TOKEN_EXCHANGE_FAILED"
+	ErrorCodeStatusPageNotFound  ErrorCode = "STATUS_PAGE_NOT_FOUND"
+	// ErrorCodeStatusPageLocked accompanies the 401 a password-protected
+	// status page answers with until the visitor unlocks it (spec
+	// 2026-08-21-07). It is deliberately NOT ErrorCodeUnauthorized: status0
+	// keys the unlock form off this exact code, and conflating it with a
+	// session problem would send the visitor to a login page they have no
+	// account for.
+	ErrorCodeStatusPageLocked          ErrorCode = "STATUS_PAGE_LOCKED"
 	ErrorCodeStatusPageSectionNotFound ErrorCode = "STATUS_PAGE_SECTION_NOT_FOUND"
 	ErrorCodeCheckGroupNotFound        ErrorCode = "CHECK_GROUP_NOT_FOUND"
 	ErrorCodeSeverityNotFound          ErrorCode = "SEVERITY_NOT_FOUND"

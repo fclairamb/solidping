@@ -70,5 +70,11 @@
     "major": "Major",
     "critical": "Critical"
   },
-  "resourceAffected": "Affected"
+  "resourceAffected": "Affected",
+  "unlockTitle": "Password required",
+  "unlockDescription": "This status page is private. Enter the password you were given to view it.",
+  "unlockPasswordLabel": "Password",
+  "unlockSubmit": "View status page",
+  "unlockSubmitting": "Checking…",
+  "unlockGenericError": "Could not check the password. Please try again."
 }

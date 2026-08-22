@@ -123,6 +123,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
@@ -690,7 +691,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// orgGroup by design. These are exactly the URLs customers paste into
 	// their own sites (status pages, SVG badges, the /embed/v1 widget's
 	// summary endpoint), so they are the ones a rename must not break.
-	publicOrgAPI := api.Use(orgSlugRedirect.Middleware)
+	publicOrgAPI := api.Use(orgSlugRedirect.Middleware, statusPageUnlockGrant)
 
 	// Org creation (protected). Any authenticated user may create an org; the
 	// creator becomes its owner (spec 2026-08-08-11).
@@ -1619,6 +1620,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// above, with a Cache-Control header the full view doesn't set (spec
 	// 2026-08-08-06).
 	publicOrgAPI.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
+	// Unlock a password-protected page (spec 2026-08-21-07). Public and
+	// unauthenticated by design: the password IS the credential. It sets a
+	// host-only cookie so it works identically on a custom domain.
+	publicOrgAPI.POST("/status-pages/:org/:slug/unlock", statusPagesHandler.Unlock)
+	publicOrgAPI.POST("/status-pages/:org/unlock", statusPagesHandler.UnlockDefault)
 	// Public SVG badge (page-level rollup) — same sibling as the per-check
 	// badge under /orgs/:org/checks/:check/badges/:components (spec
 	// 2026-08-08-07).
@@ -3442,4 +3448,18 @@ func readMasterKeyFile(path string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(bytes)), nil
+}
+
+// statusPageUnlockGrant installs the request's own status-page unlock decision
+// on its context (spec 2026-08-21-07).
+//
+// It is mounted on the public API surface rather than checked in each handler
+// so the gate lives at ONE place, next to the visibility check it belongs
+// with. Anything reached without it — the MCP tools, a background job — gets
+// statuspagelock's deny-by-default, so forgetting to mount it locks pages
+// rather than exposing them.
+func statusPageUnlockGrant(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		return next(writer, statuspagelock.WithRequestGrant(req))
+	}
 }

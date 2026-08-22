@@ -30,6 +30,7 @@ function StatusPageNewPage() {
           showResponseTime: data.showResponseTime,
           historyPeriod: data.historyPeriod,
           hideBranding: data.hideBranding,
+          password: data.password,
           autoPublish: data.autoPublish,
           autoPublishDelaySeconds: data.autoPublishDelaySeconds,
           autoResolve: data.autoResolve,

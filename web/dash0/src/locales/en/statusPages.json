@@ -251,5 +251,18 @@
     "hideBranding": "Hide “Powered by SolidPing”",
     "hideBrandingHint": "Removes the SolidPing footer link from the public page.",
     "hideBrandingLocked": "White labelling is not included in your current plan. The setting is saved, and takes effect as soon as the plan includes it."
+  },
+  "visibilityField": {
+    "label": "Visibility",
+    "public": "Public",
+    "private": "Private",
+    "password": "Password protected",
+    "publicHint": "Anyone with the link can see this page.",
+    "privateHint": "The page is hidden entirely — public URLs answer as if it did not exist.",
+    "passwordHint": "Visitors must enter a password before they can see the page.",
+    "passwordLabel": "Page password",
+    "passwordPlaceholder": "At least 6 characters",
+    "passwordKeepPlaceholder": "Leave empty to keep the current password",
+    "passwordFieldHint": "Share this with the people who should see the page. Changing it signs everyone out immediately."
   }
 }

@@ -251,5 +251,18 @@
     "hideBranding": "„Powered by SolidPing“ ausblenden",
     "hideBrandingHint": "Entfernt den SolidPing-Link aus der Fußzeile der öffentlichen Seite.",
     "hideBrandingLocked": "White-Labeling ist in Ihrem aktuellen Tarif nicht enthalten. Die Einstellung wird gespeichert und wirkt, sobald der Tarif sie enthält."
+  },
+  "visibilityField": {
+    "label": "Sichtbarkeit",
+    "public": "Öffentlich",
+    "private": "Privat",
+    "password": "Passwortgeschützt",
+    "publicHint": "Jede Person mit dem Link kann diese Seite sehen.",
+    "privateHint": "Die Seite ist vollständig verborgen — öffentliche URLs antworten, als gäbe es sie nicht.",
+    "passwordHint": "Besucher müssen ein Passwort eingeben, um die Seite zu sehen.",
+    "passwordLabel": "Seitenpasswort",
+    "passwordPlaceholder": "Mindestens 6 Zeichen",
+    "passwordKeepPlaceholder": "Leer lassen, um das aktuelle Passwort zu behalten",
+    "passwordFieldHint": "Teilen Sie es mit den Berechtigten. Eine Änderung sperrt sofort alle aus."
   }
 }

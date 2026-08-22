@@ -41,6 +41,10 @@ interface StatusPageFormData {
   // White-label opt-in (spec 2026-08-21-07). Stored whether or not the org is
   // entitled, so an upgrade takes effect without the operator re-ticking it.
   hideBranding: boolean;
+  // Write-only unlock password (spec 2026-08-21-07). undefined = leave the
+  // stored one alone; a string sets/replaces it. It is never read back, so the
+  // field always starts empty on the edit form.
+  password?: string;
   // Incident auto-publication (spec 2026-08-19-08).
   autoPublish: boolean;
   autoPublishDelaySeconds: number;
@@ -82,6 +86,9 @@ export function StatusPageForm({
   const [hideBranding, setHideBranding] = useState(
     initialData?.hideBranding ?? false
   );
+  // Always starts empty: the server never returns the password (only
+  // `hasPassword`), so pre-filling anything here would be a fiction.
+  const [password, setPassword] = useState("");
   // Auto-publish. A NEW page defaults to on; an existing page shows whatever
   // the server says, which for pages created before this feature is off — the
   // migration deliberately did not opt anyone in retroactively.
@@ -144,6 +151,10 @@ export function StatusPageForm({
       showResponseTime,
       historyPeriod,
       hideBranding,
+      // Send the password only when the operator typed one. An empty field on
+      // an already-protected page means "leave it as it is", NOT "clear it" —
+      // clearing is done by switching the page off `password` visibility.
+      password: password.trim() === "" ? undefined : password,
       autoPublish,
       // An unparseable or blank delay falls back to the documented default
       // rather than sending NaN, which the API would reject with a validation
@@ -219,17 +230,56 @@ export function StatusPageForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="visibility">Visibility</Label>
+            <Label htmlFor="visibility">{t("visibilityField.label")}</Label>
             <Select value={visibility} onValueChange={(v) => setVisibility(v as StatusPageVisibility)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="public">Public</SelectItem>
-                <SelectItem value="private">Private</SelectItem>
+                <SelectItem value="public">{t("visibilityField.public")}</SelectItem>
+                <SelectItem value="private">{t("visibilityField.private")}</SelectItem>
+                <SelectItem value="password">{t("visibilityField.password")}</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {visibility === "private"
+                ? t("visibilityField.privateHint")
+                : visibility === "password"
+                  ? t("visibilityField.passwordHint")
+                  : t("visibilityField.publicHint")}
+            </p>
           </div>
+
+          {/* The password field appears only for the visibility that uses it.
+              On a page that already has one it is optional — the placeholder
+              says so — because the server keeps the stored hash when the field
+              is left empty, and re-typing a shared secret to save an unrelated
+              setting would be a trap. */}
+          {visibility === "password" && (
+            <div className="space-y-2">
+              <Label htmlFor="status-page-password">
+                {t("visibilityField.passwordLabel")}
+              </Label>
+              <Input
+                id="status-page-password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required={!initialData?.hasPassword}
+                minLength={6}
+                placeholder={
+                  initialData?.hasPassword
+                    ? t("visibilityField.passwordKeepPlaceholder")
+                    : t("visibilityField.passwordPlaceholder")
+                }
+                data-testid="status-page-password-field"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("visibilityField.passwordFieldHint")}
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">

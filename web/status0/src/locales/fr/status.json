@@ -70,5 +70,11 @@
     "major": "Majeur",
     "critical": "Critique"
   },
-  "resourceAffected": "Impacté"
+  "resourceAffected": "Impacté",
+  "unlockTitle": "Mot de passe requis",
+  "unlockDescription": "Cette page de statut est privée. Saisissez le mot de passe qui vous a été communiqué pour la consulter.",
+  "unlockPasswordLabel": "Mot de passe",
+  "unlockSubmit": "Voir la page de statut",
+  "unlockSubmitting": "Vérification…",
+  "unlockGenericError": "Impossible de vérifier le mot de passe. Veuillez réessayer."
 }

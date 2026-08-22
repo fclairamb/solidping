@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 // Handler provides HTTP handlers for subscriber management + the Atom feed.
@@ -193,6 +194,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found")
+	case errors.Is(err, statuspagelock.ErrLocked):
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeStatusPageLocked,
+			"This status page is password protected")
 	case errors.Is(err, ErrSubscriberNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Subscriber not found")
 	case errors.Is(err, ErrIncidentNotFound):
@@ -304,8 +308,16 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 	}
 
 	page, err := h.dbService.GetStatusPageBySlug(ctx, org.UID, slug)
-	if err != nil || page == nil || !page.Enabled || page.Visibility != "public" {
+	if err != nil || !statuspagelock.Visible(page) {
 		return h.writeFeedNotFound(writer)
+	}
+
+	// The feed is a read of the page, so it is gated like the page. A feed
+	// reader that followed the URL after unlocking in a browser carries the
+	// cookie; one that never unlocked gets a 401 it can surface to its user.
+	if !statuspagelock.RequestUnlocks(req, page) {
+		return h.WriteError(writer, http.StatusUnauthorized,
+			base.ErrorCodeStatusPageLocked, "This status page is password protected")
 	}
 
 	historyDays := page.HistoryDays

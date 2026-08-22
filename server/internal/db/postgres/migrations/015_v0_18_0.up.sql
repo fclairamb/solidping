@@ -156,20 +156,34 @@ comment on column status_pages.hide_branding is
 -- Password-protected status pages (spec 2026-08-21-07).
 -- ==========================================================================
 
--- `visibility` gains a third value, `password`. There is deliberately NO check
--- constraint listing the three values: `visibility` has always been free-form
--- text validated by the API, and adding a constraint here would turn every
--- future value into a migration on a table other deployments are actively
--- serving from. models.ValidStatusPageVisibility is the single gate.
+-- `visibility` gains a third value, `password`. The column has carried a CHECK
+-- constraint since 001 (`visibility in ('public','private')`), so admitting the
+-- new value means replacing that constraint — dropping it and re-adding the
+-- widened one, which Postgres does in place with no table rewrite.
 --
 -- The hash is bcrypt, and it is never returned by any endpoint — reads expose
 -- a `hasPassword` boolean instead. It doubles as the unlock cookie's HMAC key
 -- (sha256 of the hash), which is what makes "change the password" invalidate
 -- every outstanding cookie without a second column, a revocation list, or a
 -- new server secret.
+alter table status_pages drop constraint if exists status_pages_visibility_check;
+
+--bun:split
+
+alter table status_pages
+  add constraint status_pages_visibility_check
+  check (visibility in ('public', 'private', 'password'));
+
+--bun:split
+
 alter table status_pages add column if not exists password_hash text;
 
 --bun:split
 
 comment on column status_pages.password_hash is
-  'bcrypt hash gating a visibility=password page (spec 2026-08-21-07). NEVER serialized; reads expose hasPassword only.';
+  'Password hash (internal/utils/passwords, argon2id by default) gating a visibility=password page (spec 2026-08-21-07). NEVER serialized; reads expose hasPassword only.';
+
+--bun:split
+
+comment on column status_pages.visibility is
+  'Access control: public (anyone), private (hidden entirely, 404), or password (shared with a secret, 401 until unlocked).';

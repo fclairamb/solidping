@@ -16,6 +16,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 // nowUTC returns the current time in UTC. Wrapped so tests can reason about it.
@@ -151,8 +152,17 @@ func (s *Service) Subscribe(
 		return nil, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != "public" {
+	if !statuspagelock.Visible(page) {
 		return nil, ErrStatusPageNotFound
+	}
+
+	// The subscribe FORM sits behind the unlock — a page shared with a
+	// password should not be a mailing-list signup for the whole internet.
+	// Already-confirmed subscribers are untouched by this: the fan-out in
+	// notifier.go never consults visibility, so locking a page down does not
+	// silently stop the notifications people already opted into.
+	if !statuspagelock.Allows(ctx, page) {
+		return nil, statuspagelock.ErrLocked
 	}
 
 	if incidentUID != nil {

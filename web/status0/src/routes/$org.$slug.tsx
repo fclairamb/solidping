@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { usePublicStatusPage } from "@/api/hooks";
+import { isLockedError, usePublicStatusPage } from "@/api/hooks";
 import { StatusPageView } from "@/components/shared/status-page-view";
+import { UnlockForm } from "@/components/shared/unlock-form";
 import { useTranslation } from "react-i18next";
 import { useLanguageFromPage } from "@/hooks/useLanguageFromPage";
 
@@ -12,7 +13,12 @@ export const Route = createFileRoute("/$org/$slug")({
 function StatusPageRoute() {
   const { t } = useTranslation();
   const { org, slug } = Route.useParams();
-  const { data: page, isLoading, error } = usePublicStatusPage(org, slug);
+  const {
+    data: page,
+    isLoading,
+    error,
+    refetch,
+  } = usePublicStatusPage(org, slug);
 
   useLanguageFromPage(page?.language);
 
@@ -37,6 +43,13 @@ function StatusPageRoute() {
         <div className="text-muted-foreground">{t("loading")}</div>
       </div>
     );
+  }
+
+  // A password-protected page answers 401 STATUS_PAGE_LOCKED, which is NOT a
+  // "not found": the page exists and the visitor can get in. Checked before
+  // the generic error branch so a locked page never renders as missing.
+  if (isLockedError(error)) {
+    return <UnlockForm org={org} slug={slug} onUnlocked={() => refetch()} />;
   }
 
   if (error || !page) {

@@ -70,5 +70,11 @@
     "major": "Mayor",
     "critical": "Crítica"
   },
-  "resourceAffected": "Afectado"
+  "resourceAffected": "Afectado",
+  "unlockTitle": "Se requiere contraseña",
+  "unlockDescription": "Esta página de estado es privada. Introduce la contraseña que te han facilitado para verla.",
+  "unlockPasswordLabel": "Contraseña",
+  "unlockSubmit": "Ver la página de estado",
+  "unlockSubmitting": "Comprobando…",
+  "unlockGenericError": "No se ha podido comprobar la contraseña. Inténtalo de nuevo."
 }

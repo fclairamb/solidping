@@ -262,6 +262,60 @@ export function useSubscribe() {
   });
 }
 
+/**
+ * Machine code the API answers a password-protected page with, alongside 401.
+ * Deliberately distinct from a plain UNAUTHORIZED: it means "unlock me", not
+ * "log in" — status0 has no accounts to log into.
+ */
+export const STATUS_PAGE_LOCKED = "STATUS_PAGE_LOCKED";
+
+/** True when an error is the API telling us the page needs unlocking. */
+export function isLockedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === STATUS_PAGE_LOCKED;
+}
+
+/**
+ * Submits the unlock password. On success the server sets a host-only,
+ * HTTP-only cookie — nothing is returned to store, and nothing about the
+ * password stays in JS memory beyond the form's own state.
+ *
+ * `slug` is optional: the org's default page is addressed without one, and the
+ * server resolves it the same way the view endpoint does.
+ */
+export function useUnlockStatusPage(org: string, slug?: string) {
+  return useMutation<void, ApiError | NetworkError, string>({
+    mutationFn: async (password: string) => {
+      const path = slug
+        ? `/api/v1/status-pages/${org}/${slug}/unlock`
+        : `/api/v1/status-pages/${org}/unlock`;
+
+      let response: Response;
+      try {
+        response = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+          // The whole point is the Set-Cookie that comes back; a
+          // cross-origin embed must send/accept it too.
+          credentials: "same-origin",
+        });
+      } catch {
+        throw new NetworkError();
+      }
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new ApiError(
+          error.title || "Unlock failed",
+          error.code || "UNKNOWN_ERROR",
+          error.detail,
+          response.status,
+        );
+      }
+    },
+  });
+}
+
 export function useDefaultStatusPage(org: string) {
   return useQuery<StatusPage>({
     queryKey: ["public-status-page", org, "__default__"],

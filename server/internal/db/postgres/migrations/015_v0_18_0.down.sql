@@ -16,6 +16,23 @@
 -- takes those pages offline until an operator re-sets a password or moves them
 -- back to `public`.
 
+-- Move any password page back to `private` BEFORE narrowing the constraint:
+-- the rows would otherwise violate it, and letting them fall back to `public`
+-- would publish a page that was deliberately shared behind a secret.
+update status_pages set visibility = 'private' where visibility = 'password';
+
+--bun:split
+
+alter table status_pages drop constraint if exists status_pages_visibility_check;
+
+--bun:split
+
+alter table status_pages
+  add constraint status_pages_visibility_check
+  check (visibility in ('public', 'private'));
+
+--bun:split
+
 alter table status_pages drop column if exists password_hash;
 
 -- ==========================================================================

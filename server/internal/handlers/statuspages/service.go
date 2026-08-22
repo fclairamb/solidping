@@ -24,6 +24,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
@@ -350,6 +351,8 @@ type Service struct {
 	ent *entitlements.Service
 	// verifier runs the custom-domain DNS checks. Injectable for tests.
 	verifier *domainverify.Verifier
+	// unlockLimiter throttles password-page unlock attempts per (IP, page).
+	unlockLimiter *unlockRateLimiter
 	// verifyLimiter throttles the synchronous verify-now endpoint per org.
 	verifyLimiter *verifyRateLimiter
 	// certStatus reports the in-server-ACME certificate state for a custom
@@ -440,6 +443,7 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 		ent:           ent,
 		verifier:      domainverify.New(),
 		verifyLimiter: newVerifyRateLimiter(customDomainVerifyPerMinute, time.Minute),
+		unlockLimiter: newUnlockRateLimiter(),
 	}
 }
 
@@ -1055,6 +1059,17 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, errCSS
 	}
 
+	if errVis := validateVisibility(req.Visibility); errVis != nil {
+		return StatusPageResponse{}, errVis
+	}
+
+	// nil `current` — there is no page yet, so "password visibility needs a
+	// password" has no prior hash to fall back on.
+	passwordHash, errPwd := resolvePasswordChange(nil, req.Visibility, req.Password)
+	if errPwd != nil {
+		return StatusPageResponse{}, errPwd
+	}
+
 	if errThresholds := validateAvailabilitySettings(createRequestAvailability(req)); errThresholds != nil {
 		return StatusPageResponse{}, errThresholds
 	}
@@ -1075,6 +1090,7 @@ func (s *Service) CreateStatusPage(
 
 	page := models.NewStatusPage(org.UID, req.Name, slug)
 	applyCreateFields(page, req)
+	page.PasswordHash = passwordHash
 
 	// Check if this should be default (first page or explicitly set)
 	existingPages, _ := s.db.ListStatusPages(ctx, org.UID)
@@ -1187,6 +1203,10 @@ func (s *Service) validateStatusPageUpdate(
 		return nil, err
 	}
 
+	if err := validateVisibility(req.Visibility); err != nil {
+		return nil, err
+	}
+
 	return resolveSettingsUpdate(page.Settings, req)
 }
 
@@ -1209,6 +1229,11 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, errVal
 	}
 
+	passwordHash, errPwd := resolvePasswordChange(page, req.Visibility, req.Password)
+	if errPwd != nil {
+		return StatusPageResponse{}, errPwd
+	}
+
 	// Handle default toggle
 	if req.IsDefault != nil && *req.IsDefault && !page.IsDefault {
 		if errClear := s.clearDefaultStatusPage(ctx, org.UID); errClear != nil {
@@ -1229,6 +1254,7 @@ func (s *Service) UpdateStatusPage(
 		HistoryPeriod:    req.HistoryPeriod,
 		Language:         req.Language,
 		HideBranding:     req.HideBranding,
+		PasswordHash:     passwordHash,
 		CustomCSS:        req.CustomCSS,
 		Settings:         newSettings,
 
@@ -1792,8 +1818,15 @@ func (s *Service) ViewStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != visibilityPublic {
+	if !statuspagelock.Visible(page) {
 		return StatusPageResponse{}, ErrStatusPageNotFound
+	}
+
+	// A `password` page is KNOWN to exist and answers 401, unlike `private`,
+	// which 404s. The distinction is the whole product difference between
+	// "hidden from everyone" and "shared with our customers".
+	if !statuspagelock.Allows(ctx, page) {
+		return StatusPageResponse{}, statuspagelock.ErrLocked
 	}
 
 	response := convertPageToResponse(page)
@@ -1908,8 +1941,12 @@ func (s *Service) ViewStatusPageSummary(
 		return StatusPageSummary{}, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != visibilityPublic {
+	if !statuspagelock.Visible(page) {
 		return StatusPageSummary{}, ErrStatusPageNotFound
+	}
+
+	if !statuspagelock.Allows(ctx, page) {
+		return StatusPageSummary{}, statuspagelock.ErrLocked
 	}
 
 	sections, err := s.loadSectionsWithResources(ctx, page.UID)

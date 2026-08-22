@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"io/fs"
 	"net"
 	"net/http"
@@ -177,7 +178,10 @@ func (s *Server) lookupCustomDomain(ctx context.Context, host string) *resolvedC
 		return nil
 	}
 
-	if statusPage.CustomDomainVerifiedAt == nil || !statusPage.Enabled || statusPage.Visibility != "public" {
+	// A password-protected page IS served on its custom domain — that is where
+	// the unlock form has to appear. The API behind it stays gated; only the
+	// SPA shell is routed here.
+	if statusPage.CustomDomainVerifiedAt == nil || !statuspagelock.Visible(statusPage) {
 		return nil
 	}
 

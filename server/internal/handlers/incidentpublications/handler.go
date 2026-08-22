@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 const (
@@ -216,6 +217,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteError(
 			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found")
+	case errors.Is(err, statuspagelock.ErrLocked):
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeStatusPageLocked,
+			"This status page is password protected")
 	case errors.Is(err, ErrPublicationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Incident publication not found")
 	case errors.Is(err, ErrIncidentNotFound):

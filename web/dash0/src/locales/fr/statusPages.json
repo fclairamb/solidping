@@ -251,5 +251,18 @@
     "hideBranding": "Masquer « Propulsé par SolidPing »",
     "hideBrandingHint": "Retire le lien SolidPing du pied de page public.",
     "hideBrandingLocked": "La marque blanche n’est pas incluse dans votre offre actuelle. Le réglage est enregistré et s’appliquera dès que l’offre l’inclura."
+  },
+  "visibilityField": {
+    "label": "Visibilité",
+    "public": "Publique",
+    "private": "Privée",
+    "password": "Protégée par mot de passe",
+    "publicHint": "Toute personne disposant du lien peut voir cette page.",
+    "privateHint": "La page est entièrement masquée — les URL publiques répondent comme si elle n’existait pas.",
+    "passwordHint": "Les visiteurs doivent saisir un mot de passe pour voir la page.",
+    "passwordLabel": "Mot de passe de la page",
+    "passwordPlaceholder": "6 caractères minimum",
+    "passwordKeepPlaceholder": "Laisser vide pour conserver le mot de passe actuel",
+    "passwordFieldHint": "Partagez-le avec les personnes autorisées. Le modifier déconnecte immédiatement tout le monde."
   }
 }

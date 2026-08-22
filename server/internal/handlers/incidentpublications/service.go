@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	clockpkg "github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -1209,10 +1210,15 @@ func (s *Service) ViewPublicIncidents(
 		return nil, ErrStatusPageNotFound
 	}
 
-	// Identical gate to statuspages.ViewStatusPage: not enabled or not public
+	// Identical gate to statuspages.ViewStatusPage: not enabled, or private,
 	// is indistinguishable from not existing.
-	if !page.Enabled || page.Visibility != "public" {
+	if !statuspagelock.Visible(page) {
 		return nil, ErrStatusPageNotFound
+	}
+
+	// A password page's incident history is part of what the password buys.
+	if !statuspagelock.Allows(ctx, page) {
+		return nil, statuspagelock.ErrLocked
 	}
 
 	return s.ListPublicIncidents(ctx, page, activeOnly)

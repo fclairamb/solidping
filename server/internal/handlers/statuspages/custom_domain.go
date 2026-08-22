@@ -14,6 +14,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 // Custom-domain tuning constants.
@@ -344,7 +345,10 @@ func (s *Service) CustomDomainServable(ctx context.Context, domain string) bool 
 		return false
 	}
 
-	return page.CustomDomainVerifiedAt != nil && page.Enabled && page.Visibility == visibilityPublic
+	// A password-protected page still needs a certificate on its custom
+	// domain: the unlock form is served over that hostname, and refusing the
+	// cert would make the page unreachable rather than protected.
+	return page.CustomDomainVerifiedAt != nil && statuspagelock.Visible(page)
 }
 
 // isUniqueViolation reports whether an error looks like a unique-constraint

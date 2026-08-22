@@ -70,5 +70,11 @@
     "major": "Erheblich",
     "critical": "Kritisch"
   },
-  "resourceAffected": "Betroffen"
+  "resourceAffected": "Betroffen",
+  "unlockTitle": "Passwort erforderlich",
+  "unlockDescription": "Diese Statusseite ist privat. Geben Sie das Passwort ein, das Sie erhalten haben.",
+  "unlockPasswordLabel": "Passwort",
+  "unlockSubmit": "Statusseite anzeigen",
+  "unlockSubmitting": "Wird geprüft…",
+  "unlockGenericError": "Das Passwort konnte nicht geprüft werden. Bitte erneut versuchen."
 }
