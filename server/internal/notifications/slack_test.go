@@ -1357,6 +1357,49 @@ func (m *mockDBService) ListSLOsForChecks(
 	panic("not implemented")
 }
 
+// SLO burn-rate alert policies (spec 2026-08-21-08). Same rule: notifications
+// read the burn numbers off the incident's details, never from the database.
+
+func (m *mockDBService) CreateSLOAlertPolicy(_ context.Context, _ *models.SLOAlertPolicy) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetSLOAlertPolicy(
+	_ context.Context, _, _ string,
+) (*models.SLOAlertPolicy, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSLOAlertPolicies(
+	_ context.Context, _ string,
+) ([]*models.SLOAlertPolicy, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateSLOAlertPolicy(
+	_ context.Context, _ string, _ models.SLOAlertPolicyUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListEnabledSLOAlertPolicies(
+	_ context.Context, _ int,
+) ([]*models.SLOAlertPolicy, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) FindActiveBurnIncident(
+	_ context.Context, _, _ string,
+) (*models.Incident, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListActiveBurnIncidentsForSLOs(
+	_ context.Context, _ string, _ []string,
+) ([]*models.Incident, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateReportSchedule(_ context.Context, _ *models.ReportSchedule) error {
 	panic("not implemented")
 }

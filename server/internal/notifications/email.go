@@ -114,6 +114,44 @@ func incidentTemplateForEvent(eventType string) (string, bool) {
 	}
 }
 
+// burnTemplateForEvent picks the burn-specific template for an SLO burn-rate
+// incident. Returns false for every other incident, leaving the ordinary
+// check-outage templates in place.
+func burnTemplateForEvent(incident *models.Incident, eventType string) (string, bool) {
+	if incident == nil || incident.Kind != models.IncidentKindSLOBurn {
+		return "", false
+	}
+
+	switch eventType {
+	case eventTypeIncidentCreated, eventTypeIncidentReopened:
+		return "incident-burn-created.html", true
+	case eventTypeIncidentResolved:
+		return "incident-burn-resolved.html", true
+	default:
+		// Escalations and comments keep the generic incident templates: they
+		// are about the paging cycle, not about the burn numbers.
+		return "", false
+	}
+}
+
+// applyBurnViewModel adds the burn-specific keys the burn templates render.
+// The three that matter — rate, budget remaining, projected exhaustion — are
+// the ones that let a reader decide without opening the dashboard.
+func applyBurnViewModel(viewModel map[string]any, burn *BurnInfo) {
+	viewModel["SLOName"] = burn.SLOName
+	viewModel["BurnPolicyLabel"] = burn.PolicyLabel
+	viewModel["BurnSeverity"] = burn.Severity
+	viewModel["BurnRate"] = burn.RateText()
+	viewModel["BurnShortRate"] = burn.ShortRateText()
+	viewModel["BurnPeakRate"] = fmt.Sprintf("%.1fx", burn.PeakRate)
+	viewModel["BurnThreshold"] = burn.ThresholdText()
+	viewModel["BurnLongWindow"] = humanDuration(burn.LongWindow)
+	viewModel["BurnShortWindow"] = humanDuration(burn.ShortWindow)
+	viewModel["BurnBudgetRemaining"] = burn.BudgetRemainingText()
+	viewModel["BurnProjectedExhaustion"] = burn.ProjectedExhaustionText()
+	viewModel["BurnTarget"] = fmt.Sprintf("%.3g%%", burn.TargetPct)
+}
+
 var (
 	// ErrEmailSenderNotConfigured is returned when the email sender service is not available.
 	ErrEmailSenderNotConfigured = errors.New("email sender not configured")
@@ -435,6 +473,15 @@ func (s *EmailSender) buildEmailContent(
 	}
 
 	templateName, ok := incidentTemplateForEvent(payload.EventType)
+
+	// A burn alert rides the SAME incident.created / incident.resolved events
+	// a check outage does, so the event type alone cannot pick the template:
+	// "[DOWN] api is down" would be an outright lie about an objective that
+	// merely spent budget too fast. The incident's kind is the discriminator.
+	if burnName, burnOK := burnTemplateForEvent(payload.Incident, payload.EventType); burnOK {
+		templateName, ok = burnName, true
+	}
+
 	if !ok {
 		// Unrecognized event type: no dedicated template exists. Keep a
 		// minimal ad-hoc body rather than failing the whole notification —
@@ -485,6 +532,10 @@ func (s *EmailSender) buildIncidentViewModel(
 	if payload.Incident.ResolvedAt != nil {
 		viewModel["ResolvedAt"] = payload.Incident.ResolvedAt.Format("2006-01-02 15:04:05")
 		viewModel["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Round(time.Second).String()
+	}
+
+	if burn := BurnInfoFor(payload.Incident); burn != nil {
+		applyBurnViewModel(viewModel, burn)
 	}
 
 	if payload.Comment != nil {
