@@ -1231,10 +1231,16 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 	}, nil
 }
 
+// PATTokenPrefix is the literal prefix every personal access token carries. It
+// is what distinguishes a PAT from a session JWT without parsing either, both
+// for validation routing here and for audit actor classification in
+// middleware.actorTypeForToken.
+const PATTokenPrefix = "pat_"
+
 // ValidateToken validates a JWT or PAT token and returns its claims.
 func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claims, error) {
 	// Check if it's a PAT token
-	if strings.HasPrefix(tokenString, "pat_") {
+	if strings.HasPrefix(tokenString, PATTokenPrefix) {
 		return s.ValidatePATToken(ctx, tokenString)
 	}
 

@@ -545,6 +545,12 @@ func (s *Server) buildMainGroup(ctx context.Context, router *httpx.Router) *http
 		middleware.Recoverer,
 		rateLimiter.RateLimit,
 		rateLimiter.ConcurrencyLimit,
+		// Capture-only: parks the client address and user agent on the context
+		// for the audit trail (spec 2026-08-21-09). It emits nothing — audit
+		// events are minted by the services that perform the change. Placed
+		// last so it runs for every request, including the unauthenticated
+		// login attempts whose source IP matters most.
+		middleware.AuditRequestMeta,
 	)
 }
 
