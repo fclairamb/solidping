@@ -129,6 +129,100 @@ Past calendar windows, most recent first, computed off the permanent month
 rollups. `months` defaults to 12 and is capped at 60. Auth: required.
 Response: `{ "data": [ <same shape as `current`> ] }`.
 
+## Burn-rate alert policies
+
+Spec: `2026-08-21-08`. Google-SRE-style **multiwindow, multi-burn-rate**
+alerting on top of the burn rate the status endpoint already reports.
+
+- Two **built-in** policies per objective, materialized on demand (an objective
+  created before the feature existed answers exactly like a new one):
+
+  | `kind` | Long window | Short window | Default threshold | Severity |
+  |---|---|---|---|---|
+  | `fast` | 1h | 5m | 14.4x | `critical` |
+  | `slow` | 6h | 30m | 6x | `warning` |
+
+- Both start **disabled**. Alerting is opt-in — upgrading must never start
+  paging on its own.
+- An alert fires only when **both** windows exceed the threshold: the long
+  window proves the burn is significant, the short one proves it is still
+  happening. That is what stops a spike that ended forty minutes ago from
+  paging for the rest of the hour.
+- Thresholds and windows are **stored, not derived**, so operators can tune
+  them. `kind` is not writable.
+- A window carrying fewer than `minSamples` countable probes is
+  **inconclusive**: it does not fire, and it does not count as "below
+  threshold" for the auto-resolve hysteresis either. Sparse data must not
+  fabricate an alert, nor silently close one.
+- `results.maintenance` is excluded exactly as the objective's own denominator
+  excludes it, so planned maintenance never pages.
+- Firing opens an **incident** with `kind: "slo_burn"`, bound to the SLO and
+  the policy, through the ordinary incidents service — so ack, snooze, manual
+  resolve, escalation policies and severity-gated channel routing all apply
+  unchanged. At most one open burn incident exists per objective+policy
+  (enforced by a partial unique index); while it is open the evaluator updates
+  it, tracking the peak burn rate, rather than paging again.
+- Auto-resolve is **hysteretic**: both windows must sit below the threshold for
+  a full short-window duration. Resolving an alert by hand while the objective
+  is still burning opens a fresh incident on the next evaluation, the same rule
+  check incidents follow.
+- Burn incidents never publish to a status page: a burn rate is an internal
+  operations signal about an error budget, not a customer-facing outage.
+- Evaluation runs once a minute (`slo_burn_eval` job, not publicly creatable).
+
+`GET /api/v1/orgs/:org/slos` and `/slos/:uid` carry `burning: true` while any
+policy on the objective has an open burn incident.
+
+### GET /api/v1/orgs/:org/slos/:uid/alert-policies
+Both policies with their live state. Auth: required.
+
+```json
+{
+  "data": [
+    {
+      "uid": "...", "sloUid": "...", "kind": "fast", "enabled": true,
+      "longWindowSeconds": 3600, "shortWindowSeconds": 300,
+      "threshold": 14.4, "severity": "critical", "minSamples": 3,
+      "lastEvaluatedAt": "2026-08-21T09:14:00Z",
+      "longBurnRate": 31.2, "shortBurnRate": 44.5,
+      "longSamples": 60, "shortSamples": 5,
+      "longConclusive": true, "shortConclusive": true,
+      "overThresholdNow": true,
+      "firing": true, "incidentUid": "...", "incidentNumber": 42,
+      "firingSince": "2026-08-21T08:57:00Z", "resolvingSince": null
+    }
+  ]
+}
+```
+
+`longBurnRate` / `shortBurnRate` are recomputed for the request rather than read
+back from the stored readout, so the number on screen is current even when the
+evaluator is a minute behind. `null` means the window carries no countable
+probe — never `0`, which would read as "healthy".
+
+`resolvingSince` is the hysteresis anchor: when set, both windows have been
+below threshold since that instant and the incident auto-resolves once that has
+held for a full short window.
+
+### GET /api/v1/orgs/:org/slos/:uid/alert-policies/:policyUid
+One policy, same shape. Auth: required. A policy belonging to another objective
+is a `404`, not an edit.
+
+### PATCH /api/v1/orgs/:org/slos/:uid/alert-policies/:policyUid
+Tune a policy. Auth: required.
+
+Body (all optional): `enabled`, `longWindowSeconds`, `shortWindowSeconds`,
+`threshold`, `severity` (`critical` | `warning`), `minSamples`.
+
+`shortWindowSeconds` must be > 0 and ≤ `longWindowSeconds`, and the long window
+is capped at 7 days — beyond that the short window stops being answerable from
+the raw-retention band and the alert stops being about "right now". A violation
+is a `400`, not a `500` from the CHECK constraint.
+
+Changing a threshold or either window **clears the hysteresis anchor**: it was
+measured against the old numbers, and carrying it forward could auto-resolve an
+incident on evidence gathered under a rule that no longer applies.
+
 ## Report schedules
 
 Recipients are PII and get the same handling bar as status-page subscribers:
