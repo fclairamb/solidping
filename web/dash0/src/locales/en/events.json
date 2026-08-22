@@ -99,7 +99,11 @@
       "actor": "Actor",
       "allActors": "Anyone",
       "range": "Period",
-      "clear": "Clear filters"
+      "clear": "Clear filters",
+      "targetType": "Target kind",
+      "allTargetTypes": "Any target",
+      "target": "Target name or UID",
+      "ip": "IP address"
     },
     "ranges": {
       "24h": "Last 24 hours",
@@ -131,6 +135,21 @@
     "system": "System",
     "loadMore": "Load more",
     "changedFields": "Changed",
-    "retentionNote": "Audit events are kept for {{days}} days."
+    "retentionNote": "Audit events are kept for {{days}} days.",
+    "targetTypes": {
+      "user": "User",
+      "member": "Member",
+      "token": "API token",
+      "agent_enrollment_token": "Agent enrollment token",
+      "agent_key": "Agent key",
+      "integration": "Integration",
+      "escalation_policy": "Escalation policy",
+      "oncall_schedule": "On-call schedule",
+      "status_page": "Status page",
+      "maintenance_window": "Maintenance window",
+      "check": "Check",
+      "manifest": "Config manifest",
+      "organization": "Organization"
+    }
   }
 }

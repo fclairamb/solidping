@@ -64,7 +64,9 @@ audit trail under its own noise:
   window, collapse into **one entry with a counter** ("47 attempts between
   09:02 and 09:11"), which is also easier to read than 47 rows.
 - An hourly per-organization ceiling caps how many failed-sign-in entries can
-  be created at all.
+  be created. The counter lives in each server process's memory, so a
+  multi-replica deployment enforces the ceiling **per replica** — still a hard
+  bound, just N times the configured one.
 
 A sign-in attempt that cannot be matched to an organization is not recorded —
 there is no shared bucket a stranger can write into.
@@ -98,6 +100,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 - `type` filters by category (`auth`, `member`, `integration`, …)
 - `eventType` filters by exact type (`member.role_changed`)
 - `actorUserUid` filters to one person's actions
+- `targetType` / `targetUid` filter to a kind of object, or one object
+- `sourceIp` filters to one client address (admins and owners only)
 - `since` / `until` bound the window (RFC3339)
 - `cursor` pages through the result; hand `pagination.cursor` back verbatim
 

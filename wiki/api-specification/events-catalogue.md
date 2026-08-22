@@ -54,11 +54,29 @@ These are contract, not implementation detail:
 
 | Type | Payload highlights |
 |---|---|
-| `auth.login_succeeded` | `auth_method` (password / ldap / passkey / oauth / oidc / saml), `email`, `role` |
+| `auth.login_succeeded` | `auth_method`, `email`, `role` |
 | `auth.login_failed` | `email`, `reason`, `count`, `first_at`, `last_at` |
 | `auth.logout` | — |
 | `auth.token_created` | `token_kind` (`pat` / `agent_enrollment`), `token_name`, `token_prefix` |
 | `auth.token_revoked` | `token_kind`, `token_name` |
+
+**`auth_method` values.** Every path that mints a session records one, because
+a session IS a `refresh`-type `user_tokens` row and they all go through
+`auth.Service.startSession` (enforced structurally by
+`TestEverySessionMintingPathGoesThroughStartSession`):
+
+| Value | Path |
+|---|---|
+| `password`, `ldap`, `passkey` | local first factors |
+| `oidc`, `saml`, `github`, `gitlab`, `google`, `microsoft`, `discord`, `slack` | federated connectors, named via `auth.WithLoginMethod` |
+| `oauth` | fallback for a connector that did not name itself |
+| `<first>+totp`, `<first>+recovery_code` | 2FA-completed logins — the first factor survives the hand-off on the temp token, so a TOTP sign-in reads `password+totp`, not just `totp` |
+| `invitation`, `registration` | sessions minted by accepting an invite / confirming a registration |
+| `switch_org`, `org_session` | sessions minted for another org the user already belongs to, or re-minted because the org itself changed (creation, slug rename) |
+
+A federated login that is NOT admitted to the org (the membership-request
+outcome) mints no org-scoped session, and therefore records no login — claiming
+one would assert access that was never granted.
 
 **`auth.login_failed` flood control.** This is the one event an
 unauthenticated stranger can cause at will, so a naive one-row-per-attempt
@@ -87,6 +105,11 @@ into.
 Payloads carry `email`, `role`, and for role changes `previous_role`.
 `member.role_changed` fires only when the role actually moved.
 
+`member.joined` also covers the memberships a LOGIN creates on the fly, which
+is how most seats appear in an SSO org. Its `source` says which admission rule
+let the user in: `admin_add`, `invitation`, `org_bootstrap`,
+`invitation_at_login`, `slack_workspace`, `email_pattern`, `auto_join_pattern`.
+
 ### Configuration families
 
 `integration.*`, `escalation_policy.*`, `oncall_schedule.*`, `status_page.*`,
@@ -107,6 +130,21 @@ Payloads carry `email`, `role`, and for role changes `previous_role`.
 the audit work and are unchanged, except that `check.*` events now carry a real
 actor (before, they hardcoded `actor_type=user` and never set `actor_uid`, so
 "who deleted this check?" had no answer).
+
+## Filters
+
+`GET /api/v1/orgs/:org/events` accepts `eventType` (exact), `type` (family
+prefix), `actorUserUid`, `targetType`, `targetUid`, `sourceIp`, `since`,
+`until`, `cursor` and `limit`.
+
+Two of them are role-sensitive, and both fail **closed and quietly**:
+
+- the `auth` family is excluded for a non-admin, whether they filtered for it
+  or not;
+- `sourceIp` is *ignored* for a non-admin rather than rejected. Withholding the
+  column while honouring the predicate would leave the fact just as reachable
+  (ask for an address, get a non-empty page), and erroring on it would turn the
+  endpoint into an oracle for "am I an admin?".
 
 ## Retention
 

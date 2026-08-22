@@ -71,6 +71,64 @@ test.describe("Organization audit log", () => {
     );
   });
 
+  test("the target filter narrows the table and lives in the URL", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const name = `audit-target-${Date.now()}`;
+    const created = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/escalation-policies`,
+      { data: { name, steps: [] } },
+    );
+    expect(created.status()).toBe(201);
+    const policy = await created.json();
+
+    await page.goto("orgs/test/organization/audit");
+    await page.waitForLoadState("networkidle");
+
+    // The typed filter is debounced into the URL, then into the request.
+    const requestPromise = page.waitForRequest((req) =>
+      req.url().includes(`targetUid=${policy.uid}`),
+    );
+    await page.getByTestId("audit-target-filter").fill(policy.uid);
+    await requestPromise;
+
+    await expect(page).toHaveURL(new RegExp(`target=${policy.uid}`));
+
+    const rows = page.getByTestId("audit-row");
+    await expect(rows).toHaveCount(1, { timeout: 10000 });
+    await expect(rows.first()).toContainText(name);
+
+    await page.request.delete(
+      `${API_BASE}/api/v1/orgs/test/escalation-policies/${policy.uid}`,
+    );
+  });
+
+  test("the IP filter is offered to an admin and reaches the API", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/organization/audit");
+    await page.waitForLoadState("networkidle");
+
+    // The control exists for an admin (the test org's user is a super admin);
+    // the server-side half — that a non-admin's sourceIp is ignored rather
+    // than honoured — is covered by TestSourceIPFilterIsAdminOnly, which can
+    // create a viewer without a second browser session.
+    const ipFilter = page.getByTestId("audit-ip-filter");
+    await expect(ipFilter).toBeVisible();
+
+    const requestPromise = page.waitForRequest((req) =>
+      req.url().includes("sourceIp=203.0.113.7"),
+    );
+    await ipFilter.fill("203.0.113.7");
+    await requestPromise;
+
+    await expect(page).toHaveURL(/ip=203\.0\.113\.7/);
+  });
+
   test("the audit request asks the API for the family, not for everything", async ({
     authenticatedPage,
   }) => {

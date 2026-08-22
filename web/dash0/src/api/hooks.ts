@@ -1430,6 +1430,15 @@ export function useAuditEvents(
   options: {
     family?: string;
     actorUserUid?: string;
+    targetType?: string;
+    /** Free-text target match — the object's UID or its captured name. */
+    targetUid?: string;
+    /**
+     * Client address. The API honours this for org admins/owners only and
+     * silently ignores it otherwise, so a non-admin cannot use it as an
+     * oracle for a column they are not allowed to read.
+     */
+    sourceIp?: string;
     /**
      * Window size in hours, not an absolute timestamp: the caller must not
      * compute `Date.now()` during render (it is impure, and it would also make
@@ -1447,6 +1456,9 @@ export function useAuditEvents(
       const params = new URLSearchParams();
       if (options.family) params.set("type", options.family);
       if (options.actorUserUid) params.set("actorUserUid", options.actorUserUid);
+      if (options.targetType) params.set("targetType", options.targetType);
+      if (options.targetUid) params.set("targetUid", options.targetUid);
+      if (options.sourceIp) params.set("sourceIp", options.sourceIp);
       if (options.sinceHours) {
         params.set(
           "since",

@@ -99,7 +99,11 @@
       "actor": "Autor",
       "allActors": "Cualquiera",
       "range": "Periodo",
-      "clear": "Borrar filtros"
+      "clear": "Borrar filtros",
+      "targetType": "Tipo de destino",
+      "allTargetTypes": "Cualquier destino",
+      "target": "Nombre o UID del destino",
+      "ip": "Dirección IP"
     },
     "ranges": {
       "24h": "Últimas 24 horas",
@@ -131,6 +135,21 @@
     "system": "Sistema",
     "loadMore": "Cargar más",
     "changedFields": "Modificado",
-    "retentionNote": "Los eventos de auditoría se conservan {{days}} días."
+    "retentionNote": "Los eventos de auditoría se conservan {{days}} días.",
+    "targetTypes": {
+      "user": "Usuario",
+      "member": "Miembro",
+      "token": "Token de API",
+      "agent_enrollment_token": "Token de registro de agente",
+      "agent_key": "Clave de agente",
+      "integration": "Integración",
+      "escalation_policy": "Política de escalado",
+      "oncall_schedule": "Turno de guardia",
+      "status_page": "Página de estado",
+      "maintenance_window": "Ventana de mantenimiento",
+      "check": "Comprobación",
+      "manifest": "Manifiesto de configuración",
+      "organization": "Organización"
+    }
   }
 }

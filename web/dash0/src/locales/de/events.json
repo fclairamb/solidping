@@ -99,7 +99,11 @@
       "actor": "Akteur",
       "allActors": "Alle",
       "range": "Zeitraum",
-      "clear": "Filter zurücksetzen"
+      "clear": "Filter zurücksetzen",
+      "targetType": "Zielart",
+      "allTargetTypes": "Alle Ziele",
+      "target": "Zielname oder UID",
+      "ip": "IP-Adresse"
     },
     "ranges": {
       "24h": "Letzte 24 Stunden",
@@ -131,6 +135,21 @@
     "system": "System",
     "loadMore": "Mehr laden",
     "changedFields": "Geändert",
-    "retentionNote": "Audit-Ereignisse werden {{days}} Tage aufbewahrt."
+    "retentionNote": "Audit-Ereignisse werden {{days}} Tage aufbewahrt.",
+    "targetTypes": {
+      "user": "Benutzer",
+      "member": "Mitglied",
+      "token": "API-Token",
+      "agent_enrollment_token": "Agent-Registrierungstoken",
+      "agent_key": "Agent-Schlüssel",
+      "integration": "Integration",
+      "escalation_policy": "Eskalationsrichtlinie",
+      "oncall_schedule": "Bereitschaftsplan",
+      "status_page": "Statusseite",
+      "maintenance_window": "Wartungsfenster",
+      "check": "Prüfung",
+      "manifest": "Konfigurationsmanifest",
+      "organization": "Organisation"
+    }
   }
 }

@@ -143,6 +143,11 @@ Query parameters:
   `?type=auth,member`. Distinct from `eventType`: `auth` is not a type.
 - `actorUserUid` - filter to the events one user caused (`actorUid` is accepted
   as an alias)
+- `targetType` / `targetUid` - filter by the acted-on object's kind or identity
+  (payload predicates: the target is polymorphic, so it lives in `payload`)
+- `sourceIp` - filter by client address. **Admin/owner only**, and silently
+  ignored for anyone else rather than rejected — honouring it for a caller who
+  cannot see the column would turn the filter into an oracle for it.
 - `checkUid` - filter by check UID
 - `incidentUid` - filter by incident UID
 - `since` / `until` - RFC3339 bounds (`since` inclusive, `until` exclusive)

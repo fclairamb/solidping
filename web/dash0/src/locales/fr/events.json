@@ -99,7 +99,11 @@
       "actor": "Auteur",
       "allActors": "Tout le monde",
       "range": "Période",
-      "clear": "Effacer les filtres"
+      "clear": "Effacer les filtres",
+      "targetType": "Type de cible",
+      "allTargetTypes": "Toutes les cibles",
+      "target": "Nom ou UID de la cible",
+      "ip": "Adresse IP"
     },
     "ranges": {
       "24h": "Dernières 24 heures",
@@ -131,6 +135,21 @@
     "system": "Système",
     "loadMore": "Charger plus",
     "changedFields": "Modifié",
-    "retentionNote": "Les évènements d'audit sont conservés {{days}} jours."
+    "retentionNote": "Les évènements d'audit sont conservés {{days}} jours.",
+    "targetTypes": {
+      "user": "Utilisateur",
+      "member": "Membre",
+      "token": "Jeton d'API",
+      "agent_enrollment_token": "Jeton d'enrôlement d'agent",
+      "agent_key": "Clé d'agent",
+      "integration": "Intégration",
+      "escalation_policy": "Politique d'escalade",
+      "oncall_schedule": "Planning d'astreinte",
+      "status_page": "Page de statut",
+      "maintenance_window": "Fenêtre de maintenance",
+      "check": "Contrôle",
+      "manifest": "Manifeste de configuration",
+      "organization": "Organisation"
+    }
   }
 }

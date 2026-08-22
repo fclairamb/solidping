@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import { RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useAuditEvents, useMembers, type Event } from "@/api/hooks";
 import { EventTypeBadge } from "@/components/dashboard/event-display";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { useAuth } from "@/contexts/AuthContext";
 import { DurationAgo } from "@/components/shared/relative-time";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -52,6 +54,26 @@ const FAMILIES = [
 
 type Family = (typeof FAMILIES)[number];
 
+/** The object kinds the backend writes as `target_type`, in the order the
+ *  families above list them. */
+const TARGET_TYPES = [
+  "user",
+  "member",
+  "token",
+  "agent_enrollment_token",
+  "agent_key",
+  "integration",
+  "escalation_policy",
+  "oncall_schedule",
+  "status_page",
+  "maintenance_window",
+  "check",
+  "manifest",
+  "organization",
+] as const;
+
+type TargetType = (typeof TARGET_TYPES)[number];
+
 const RANGES = ["24h", "7d", "30d", "90d", "all"] as const;
 type Range = (typeof RANGES)[number];
 
@@ -65,10 +87,16 @@ const RANGE_HOURS: Record<Range, number | null> = {
 
 const PAGE_SIZE = 50;
 
+/** How long a typed filter settles before it reaches the URL (and the API). */
+const FILTER_DEBOUNCE_MS = 400;
+
 interface AuditSearch {
   family?: Family;
   actor?: string;
   range?: Range;
+  targetType?: TargetType;
+  target?: string;
+  ip?: string;
 }
 
 export const Route = createFileRoute("/orgs/$org/organization/audit")({
@@ -96,6 +124,21 @@ export const Route = createFileRoute("/orgs/$org/organization/audit")({
       (RANGES as readonly string[]).includes(search.range)
     ) {
       out.range = search.range as Range;
+    }
+
+    if (
+      typeof search.targetType === "string" &&
+      (TARGET_TYPES as readonly string[]).includes(search.targetType)
+    ) {
+      out.targetType = search.targetType as TargetType;
+    }
+
+    if (typeof search.target === "string" && search.target !== "") {
+      out.target = search.target;
+    }
+
+    if (typeof search.ip === "string" && search.ip !== "") {
+      out.ip = search.ip;
     }
 
     return out;
@@ -141,7 +184,7 @@ function changedFields(event: Event): string[] {
 function AuditPage() {
   const { t } = useTranslation(["events", "common"]);
   const { org } = Route.useParams();
-  const { family, actor, range } = Route.useSearch();
+  const { family, actor, range, targetType, target, ip } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
 
   const activeRange: Range = range ?? "7d";
@@ -154,19 +197,62 @@ function AuditPage() {
   const { data, isLoading, error, refetch, isRefetching } = useAuditEvents(org, {
     family,
     actorUserUid: actor,
+    targetType,
+    targetUid: target,
+    sourceIp: ip,
     sinceHours: RANGE_HOURS[activeRange] ?? undefined,
     cursor,
     size: PAGE_SIZE,
   });
 
+  const { user } = useAuth();
   const { data: membersData } = useMembers(org);
   const members = membersData?.data ?? [];
 
   // Any filter change resets pagination — keeping a cursor from the previous
   // filter set would page into a result list that no longer exists.
-  const setFilters = (next: AuditSearch) => {
+  const setFilters = (next: Partial<AuditSearch>) => {
     setCursors([]);
-    navigate({ to: ".", search: next, replace: true });
+    navigate({
+      to: ".",
+      search: (prev) => ({ ...prev, ...next }),
+      replace: true,
+    });
+  };
+
+  // The two free-text filters are typed, so the URL is written on a debounce
+  // rather than on every keystroke — a keystroke-per-request audit query would
+  // hammer an endpoint that scans a large table.
+  //
+  // The debounce is a timer started from the CHANGE HANDLER, not an effect
+  // watching a debounced value: the effect form has to call setState during
+  // render-phase reconciliation, which React (and the lint rule) rightly
+  // objects to. The only effect here clears pending timers on unmount.
+  //
+  // Drafts are seeded from the URL once, at mount, so a shared link renders
+  // with its filters visible in the inputs (the search params alone do not
+  // survive a cold deep-link into a layout route).
+  const [targetDraft, setTargetDraft] = useState(target ?? "");
+  const [ipDraft, setIpDraft] = useState(ip ?? "");
+
+  const commitTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(
+    () => () => {
+      for (const timer of Object.values(commitTimers.current)) {
+        clearTimeout(timer);
+      }
+    },
+    [],
+  );
+
+  const commitFilter = (key: "target" | "ip", value: string) => {
+    clearTimeout(commitTimers.current[key]);
+
+    commitTimers.current[key] = setTimeout(() => {
+      const next = value.trim();
+      setFilters({ [key]: next === "" ? undefined : next });
+    }, FILTER_DEBOUNCE_MS);
   };
 
   const events = data?.data ?? [];
@@ -200,11 +286,7 @@ function AuditPage() {
         <Select
           value={family ?? "all"}
           onValueChange={(value) =>
-            setFilters({
-              family: value === "all" ? undefined : (value as Family),
-              actor,
-              range,
-            })
+            setFilters({ family: value === "all" ? undefined : (value as Family) })
           }
         >
           <SelectTrigger
@@ -228,11 +310,7 @@ function AuditPage() {
         <Select
           value={actor ?? "all"}
           onValueChange={(value) =>
-            setFilters({
-              family,
-              actor: value === "all" ? undefined : value,
-              range,
-            })
+            setFilters({ actor: value === "all" ? undefined : value })
           }
         >
           <SelectTrigger
@@ -255,9 +333,7 @@ function AuditPage() {
 
         <Select
           value={activeRange}
-          onValueChange={(value) =>
-            setFilters({ family, actor, range: value as Range })
-          }
+          onValueChange={(value) => setFilters({ range: value as Range })}
         >
           <SelectTrigger
             className="w-full sm:w-[180px]"
@@ -273,6 +349,65 @@ function AuditPage() {
             ))}
           </SelectContent>
         </Select>
+
+        <Select
+          value={targetType ?? "all"}
+          onValueChange={(value) =>
+            setFilters({
+              targetType: value === "all" ? undefined : (value as TargetType),
+            })
+          }
+        >
+          <SelectTrigger
+            className="w-full sm:w-[200px]"
+            data-testid="audit-target-type-filter"
+          >
+            <SelectValue placeholder={t("events:audit.filters.targetType")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">
+              {t("events:audit.filters.allTargetTypes")}
+            </SelectItem>
+            {TARGET_TYPES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {t(`events:audit.targetTypes.${value}`, { defaultValue: value })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="relative w-full sm:w-[220px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder={t("events:audit.filters.target")}
+            value={targetDraft}
+            onChange={(event) => {
+              setTargetDraft(event.target.value);
+              commitFilter("target", event.target.value);
+            }}
+            data-testid="audit-target-filter"
+          />
+        </div>
+
+        {/* The IP filter is offered to admins only, mirroring the API: a
+            non-admin's sourceIp parameter is ignored server-side, so showing
+            the control would be a promise the backend deliberately breaks. */}
+        {user?.isAdmin && (
+          <div className="relative w-full sm:w-[180px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-9 font-mono text-xs"
+              placeholder={t("events:audit.filters.ip")}
+              value={ipDraft}
+              onChange={(event) => {
+                setIpDraft(event.target.value);
+                commitFilter("ip", event.target.value);
+              }}
+              data-testid="audit-ip-filter"
+            />
+          </div>
+        )}
       </div>
 
       {error ? (
