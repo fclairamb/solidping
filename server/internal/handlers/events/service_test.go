@@ -1,0 +1,397 @@
+package events_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/handlers/events"
+)
+
+// newTestDB spins an in-memory, fully migrated SQLite service. A real database
+// rather than a fake store: the visibility gate is half Go and half SQL (the
+// NOT LIKE exclusion lives in the store), and a fake would only test the half
+// that is not the security boundary.
+func newTestDB(t *testing.T) db.Service {
+	t.Helper()
+
+	ctx := t.Context()
+
+	svc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	require.NoError(t, svc.Initialize(ctx))
+
+	t.Cleanup(func() { _ = svc.Close() })
+
+	return svc
+}
+
+type fixture struct {
+	db      db.Service
+	svc     *events.Service
+	org     *models.Organization
+	admin   *models.User
+	viewer  *models.User
+	orgSlug string
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+
+	ctx := t.Context()
+	dbSvc := newTestDB(t)
+
+	org := models.NewOrganization("acme", "Acme")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	admin := models.NewUser("admin@acme.com")
+	admin.Name = "Admin Person"
+	require.NoError(t, dbSvc.CreateUser(ctx, admin))
+
+	viewer := models.NewUser("viewer@acme.com")
+	viewer.Name = "Viewer Person"
+	require.NoError(t, dbSvc.CreateUser(ctx, viewer))
+
+	require.NoError(t, dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, admin.UID, models.MemberRoleAdmin)))
+	require.NoError(t, dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, viewer.UID, models.MemberRoleViewer)))
+
+	return &fixture{
+		db:      dbSvc,
+		svc:     events.NewService(dbSvc),
+		org:     org,
+		admin:   admin,
+		viewer:  viewer,
+		orgSlug: org.Slug,
+	}
+}
+
+// seed writes one event, at an explicit time so ordering is deterministic.
+func (f *fixture) seed(
+	t *testing.T, ctx context.Context,
+	eventType models.EventType, actorUID *string, at time.Time, sourceIP string,
+) *models.Event {
+	t.Helper()
+
+	event := models.NewEvent(f.org.UID, eventType, models.ActorTypeUser)
+	event.ActorUID = actorUID
+	event.CreatedAt = at
+
+	if sourceIP != "" {
+		event.SourceIP = &sourceIP
+	}
+
+	require.NoError(t, f.db.CreateEvent(ctx, event))
+
+	return event
+}
+
+func typesOf(resp *events.ListEventsResponse) []string {
+	out := make([]string, 0, len(resp.Data))
+	for _, item := range resp.Data {
+		out = append(out, item.EventType)
+	}
+
+	return out
+}
+
+// TestAuthEventsAreInvisibleToNonAdmins is the security guard the spec asks
+// for. Three assertions, and all three are load-bearing:
+//
+//  1. an admin sees the auth event (positive control — without it a ListEvents
+//     that returned nothing at all would "pass");
+//  2. a viewer's unfiltered listing does not contain it;
+//  3. a viewer who asks for it BY NAME still does not get it. That is the
+//     assertion a UI-only gate would fail.
+func TestAuthEventsAreInvisibleToNonAdmins(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+	f.seed(t, ctx, models.EventTypeAuthLoginSucceeded, &f.admin.UID, base, "203.0.113.7")
+	f.seed(t, ctx, models.EventTypeAuthLoginFailed, nil, base.Add(time.Minute), "203.0.113.8")
+	f.seed(t, ctx, models.EventTypeCheckCreated, &f.admin.UID, base.Add(2*time.Minute), "203.0.113.9")
+
+	adminView, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   50,
+		Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Contains(typesOf(adminView), "auth.login_succeeded")
+	r.Contains(typesOf(adminView), "auth.login_failed")
+	r.Contains(typesOf(adminView), "check.created")
+
+	viewerView, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   50,
+		Caller: events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.NotContains(typesOf(viewerView), "auth.login_succeeded")
+	r.NotContains(typesOf(viewerView), "auth.login_failed")
+	// Positive control: the viewer is not simply seeing an empty list.
+	r.Contains(typesOf(viewerView), "check.created")
+
+	// Asking for the restricted family by name does not unlock it.
+	viewerAsking, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:              50,
+		EventTypePrefixes: []string{"auth"},
+		Caller:            events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.Empty(viewerAsking.Data, "?type=auth must not be a way around the admin gate")
+
+	// Nor does naming the exact type.
+	viewerExact, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:       50,
+		EventTypes: []string{"auth.login_succeeded"},
+		Caller:     events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.Empty(viewerExact.Data, "?eventType=auth.login_succeeded must not be a way around the admin gate")
+}
+
+// TestSourceIPIsAdminOnly — the address a colleague works from is the same
+// class of information as the auth family itself.
+func TestSourceIPIsAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	f.seed(t, ctx, models.EventTypeCheckCreated, &f.admin.UID,
+		time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC), "203.0.113.9")
+
+	adminView, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   10,
+		Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Len(adminView.Data, 1)
+	r.NotNil(adminView.Data[0].SourceIP, "positive control: an admin does see the address")
+	r.Equal("203.0.113.9", *adminView.Data[0].SourceIP)
+
+	viewerView, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   10,
+		Caller: events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.Len(viewerView.Data, 1, "the event itself is not restricted, only its provenance")
+	r.Nil(viewerView.Data[0].SourceIP)
+}
+
+// TestSuperAdminSeesRestrictedFamilies — a super admin is not a member of the
+// org at all, so the membership lookup fails; the bypass must be explicit.
+func TestSuperAdminSeesRestrictedFamilies(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	f.seed(t, ctx, models.EventTypeAuthLoginSucceeded, nil,
+		time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC), "")
+
+	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   10,
+		Caller: events.Caller{UserUID: "not-a-member", SuperAdmin: true},
+	})
+	r.NoError(err)
+	r.Contains(typesOf(resp), "auth.login_succeeded")
+
+	// Positive control: the same non-member WITHOUT the flag sees nothing
+	// restricted, so the assertion above is testing the flag, not the fixture.
+	stranger, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   10,
+		Caller: events.Caller{UserUID: "not-a-member"},
+	})
+	r.NoError(err)
+	r.Empty(stranger.Data)
+}
+
+// TestFamilyPrefixFilterIsNotASubstringMatch pins the LIKE escaping. Family
+// names contain `_`, which LIKE treats as "any character", so an unescaped
+// pattern would make family filtering quietly wrong — and in the exclusion
+// direction, quietly unsafe.
+func TestFamilyPrefixFilterIsNotASubstringMatch(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+	f.seed(t, ctx, models.EventTypeOnCallScheduleCreated, nil, base, "")
+	f.seed(t, ctx, models.EventTypeMemberInvited, nil, base.Add(time.Minute), "")
+	// A decoy that an unescaped `oncall_schedule.%` pattern would also match.
+	decoy := models.NewEvent(f.org.UID, models.EventType("oncallXschedule.created"), models.ActorTypeSystem)
+	decoy.CreatedAt = base.Add(2 * time.Minute)
+	r.NoError(f.db.CreateEvent(ctx, decoy))
+
+	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:              50,
+		EventTypePrefixes: []string{"oncall_schedule"},
+		Caller:            events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Equal([]string{"oncall_schedule.created"}, typesOf(resp))
+}
+
+// TestFamilyAndExactFiltersAreOred — asking for one exact type and one family
+// must return the union, not the (empty) intersection.
+func TestFamilyAndExactFiltersAreOred(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+	f.seed(t, ctx, models.EventTypeCheckCreated, nil, base, "")
+	f.seed(t, ctx, models.EventTypeMemberInvited, nil, base.Add(time.Minute), "")
+	f.seed(t, ctx, models.EventTypeIncidentCreated, nil, base.Add(2*time.Minute), "")
+
+	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:              50,
+		EventTypes:        []string{"check.created"},
+		EventTypePrefixes: []string{"member"},
+		Caller:            events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.ElementsMatch([]string{"check.created", "member.invited"}, typesOf(resp))
+}
+
+// TestActorFilterAndResolution covers the actorUserUid filter and the actor
+// identity the audit table renders.
+func TestActorFilterAndResolution(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+	f.seed(t, ctx, models.EventTypeCheckCreated, &f.admin.UID, base, "")
+	f.seed(t, ctx, models.EventTypeCheckUpdated, &f.viewer.UID, base.Add(time.Minute), "")
+
+	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:     50,
+		ActorUID: &f.viewer.UID,
+		Caller:   events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Equal([]string{"check.updated"}, typesOf(resp))
+	r.NotNil(resp.Data[0].ActorName)
+	r.Equal("Viewer Person", *resp.Data[0].ActorName)
+	r.NotNil(resp.Data[0].ActorEmail)
+	r.Equal("viewer@acme.com", *resp.Data[0].ActorEmail)
+}
+
+// TestCursorPaginationWalksTheWholeTrail. Before this spec the endpoint handed
+// out a bare UID that the service then ignored, so "next page" silently
+// returned page 1 — an infinite loop for any client that trusted it.
+//
+// The load-bearing assertion is the last one: the two pages together cover
+// every seeded event exactly once.
+func TestCursorPaginationWalksTheWholeTrail(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+	seeded := make(map[string]bool)
+	for i := 0; i < 5; i++ {
+		event := f.seed(t, ctx, models.EventTypeCheckCreated, nil, base.Add(time.Duration(i)*time.Minute), "")
+		seeded[event.UID] = true
+	}
+
+	first, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   3,
+		Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Len(first.Data, 3)
+	r.NotEmpty(first.Pagination.Cursor)
+
+	second, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   3,
+		Cursor: first.Pagination.Cursor,
+		Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Len(second.Data, 2, "the second page must be the REST, not page one again")
+	r.Empty(second.Pagination.Cursor)
+
+	seen := map[string]int{}
+	for _, item := range append(append([]events.EventResponse{}, first.Data...), second.Data...) {
+		seen[item.UID]++
+	}
+
+	r.Len(seen, 5)
+
+	for uid := range seeded {
+		r.Equalf(1, seen[uid], "event %s must appear exactly once across the pages", uid)
+	}
+}
+
+// TestCursorRoundTripAndGarbageTolerance. A malformed cursor is a client bug,
+// not a reason to 500 — and the legacy bare-UID cursors that used to be handed
+// out must degrade to "first page" rather than erroring.
+func TestCursorRoundTripAndGarbageTolerance(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	at := time.Date(2026, time.August, 21, 9, 30, 15, 123456789, time.UTC)
+	cursor := events.EncodeCursor(at, "abc-123")
+
+	ts, uid, ok := events.DecodeCursor(cursor)
+	r.True(ok)
+	r.Equal("abc-123", uid)
+	r.True(at.Equal(ts))
+
+	for _, garbage := range []string{"", "not-base64!!", "YWJj", "1e5b9d20-0000-0000-0000-000000000000"} {
+		_, _, ok := events.DecodeCursor(garbage)
+		r.Falsef(ok, "%q must decode as 'no cursor', not as a usable position", garbage)
+	}
+}
+
+// TestTimeRangeFilterIsApplied — since/until were declared on the options
+// struct and the filter from the start but never parsed or passed, so a
+// time-bounded audit query silently returned the whole trail.
+func TestTimeRangeFilterIsApplied(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+	f.seed(t, ctx, models.EventTypeCheckCreated, nil, base, "")
+	f.seed(t, ctx, models.EventTypeCheckUpdated, nil, base.Add(2*time.Hour), "")
+	f.seed(t, ctx, models.EventTypeCheckDeleted, nil, base.Add(4*time.Hour), "")
+
+	since := base.Add(time.Hour)
+	until := base.Add(3 * time.Hour)
+
+	resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   50,
+		Since:  &since,
+		Until:  &until,
+		Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Equal([]string{"check.updated"}, typesOf(resp))
+}
