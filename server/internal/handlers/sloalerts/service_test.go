@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/sloalerts"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -609,4 +610,106 @@ func TestSLOListReportsBurning(t *testing.T) {
 	r.NoError(err)
 	r.Len(rows, 1)
 	r.True(rows[0].Burning)
+}
+
+// TestFireAndResolveEmitAuditEvents: the burn alert rides the existing
+// incident.* event types rather than inventing its own, so the incident
+// timeline, the resolution notice and every channel sender keep working — but
+// each event has to carry the burn payload, or the audit trail cannot tell a
+// burn alert from an outage after the fact.
+func TestFireAndResolveEmitAuditEvents(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+	objective := e.seedSLO()
+	e.enablePolicy(objective.UID, models.SLOAlertPolicyKindFast)
+
+	fired := time.Now().Add(-time.Hour)
+	e.seedRaw(fired, time.Hour, 60, 30, false)
+
+	_, err := e.svc.EvaluateBurnRates(context.Background(), fired)
+	r.NoError(err)
+
+	open := e.activeBurnIncidents(objective.UID)
+	r.Len(open, 1)
+
+	created := e.eventsFor(open[0].UID, models.EventTypeIncidentCreated)
+	r.Len(created, 1)
+	r.Equal(models.ActorTypeSystem, created[0].ActorType)
+	r.Equal(objective.UID, created[0].Payload["slo_uid"])
+	// check_uid is load-bearing: emitEvent refuses to page without it, so a
+	// burn incident that lost its routing anchor would silently notify nobody.
+	r.Equal(e.check.UID, created[0].Payload["check_uid"])
+	r.Contains(created[0].Payload, "burn_rate_long")
+	r.Contains(created[0].Payload, "budget_remaining_seconds")
+
+	cooled := time.Now()
+	e.seedRaw(cooled.Add(10*time.Minute), 70*time.Minute, 70, 0, false)
+
+	for _, at := range []time.Time{cooled, cooled.Add(6 * time.Minute)} {
+		_, evalErr := e.svc.EvaluateBurnRates(context.Background(), at)
+		r.NoError(evalErr)
+	}
+
+	r.Empty(e.activeBurnIncidents(objective.UID))
+
+	resolved := e.eventsFor(open[0].UID, models.EventTypeIncidentResolved)
+	r.Len(resolved, 1)
+	r.Equal(objective.UID, resolved[0].Payload["slo_uid"])
+	r.Contains(resolved[0].Payload, "duration_seconds")
+}
+
+// eventsFor returns one incident's events of a given type.
+func (e *env) eventsFor(incidentUID string, eventType models.EventType) []*models.Event {
+	e.t.Helper()
+
+	events, err := e.db.ListEvents(e.t.Context(), &models.ListEventsFilter{
+		OrganizationUID: e.org.UID,
+		IncidentUID:     &incidentUID,
+		EventTypes:      []models.EventType{eventType},
+		Limit:           50,
+	})
+	require.NoError(e.t, err)
+
+	return events
+}
+
+// TestBurnAlertPagesThroughTheOrdinaryChannelFanOut is the load-bearing claim
+// of this whole design: because firing goes through the existing incidents
+// service, the objective's routing anchor's channels are notified with no new
+// alerting path. If this regresses, burn alerts become silent.
+func TestBurnAlertPagesThroughTheOrdinaryChannelFanOut(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+
+	conn := models.NewIntegration(e.org.UID, models.ConnectionTypeWebhook, "ops")
+	conn.Enabled = true
+	r.NoError(e.db.CreateChannel(t.Context(), conn))
+	r.NoError(e.db.CreateCheckConnection(
+		t.Context(), models.NewCheckConnection(e.check.UID, conn.UID, e.org.UID),
+	))
+
+	objective := e.seedSLO()
+	e.enablePolicy(objective.UID, models.SLOAlertPolicyKindFast)
+
+	now := time.Now()
+	e.seedRaw(now, time.Hour, 60, 30, false)
+
+	_, err := e.svc.EvaluateBurnRates(context.Background(), now)
+	r.NoError(err)
+	r.Len(e.activeBurnIncidents(objective.UID), 1)
+
+	var jobs []*models.Job
+
+	r.NoError(e.db.DB().NewSelect().
+		Model(&jobs).
+		Where("organization_uid = ?", e.org.UID).
+		Where("type = ?", string(jobdef.JobTypeNotification)).
+		Where("deleted_at IS NULL").
+		Scan(t.Context()))
+
+	r.NotEmpty(jobs, "a burn alert must fan out to the anchor check's channels")
 }
