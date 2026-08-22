@@ -139,23 +139,23 @@ func (b *BurnInfo) SummaryLines() []string {
 		fmt.Sprintf("Burn rate: %s over %s (%s over %s), threshold %s",
 			b.RateText(), humanDuration(b.LongWindow),
 			b.ShortRateText(), humanDuration(b.ShortWindow), b.ThresholdText()),
-		fmt.Sprintf("Error budget remaining: %s", b.BudgetRemainingText()),
-		fmt.Sprintf("Projected exhaustion: %s", b.ProjectedExhaustionText()),
+		"Error budget remaining: " + b.BudgetRemainingText(),
+		"Projected exhaustion: " + b.ProjectedExhaustionText(),
 	}
 }
 
 // humanDuration renders a duration in the coarsest unit that stays honest.
-func humanDuration(d time.Duration) string {
-	if d <= 0 {
+func humanDuration(duration time.Duration) string {
+	if duration <= 0 {
 		return "0m"
 	}
 
 	switch {
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(math.Round(d.Minutes())))
-	case d < 24*time.Hour:
-		hours := int(d / time.Hour)
-		minutes := int((d % time.Hour) / time.Minute)
+	case duration < time.Hour:
+		return fmt.Sprintf("%dm", int(math.Round(duration.Minutes())))
+	case duration < 24*time.Hour:
+		hours := int(duration / time.Hour)
+		minutes := int((duration % time.Hour) / time.Minute)
 
 		if minutes == 0 {
 			return fmt.Sprintf("%dh", hours)
@@ -163,8 +163,8 @@ func humanDuration(d time.Duration) string {
 
 		return fmt.Sprintf("%dh%dm", hours, minutes)
 	default:
-		days := int(d / (24 * time.Hour))
-		hours := int((d % (24 * time.Hour)) / time.Hour)
+		days := int(duration / (24 * time.Hour))
+		hours := int((duration % (24 * time.Hour)) / time.Hour)
 
 		if hours == 0 {
 			return fmt.Sprintf("%dd", days)

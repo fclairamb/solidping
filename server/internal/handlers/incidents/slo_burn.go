@@ -60,7 +60,7 @@ type BurnSnapshot struct {
 }
 
 // Details renders the snapshot as the incident's `details` JSON.
-func (s BurnSnapshot) Details() models.JSONMap {
+func (s *BurnSnapshot) Details() models.JSONMap {
 	out := models.JSONMap{
 		keySLOUID:              s.SLOUID,
 		keySLOName:             s.SLOName,
@@ -99,7 +99,7 @@ type OpenSLOBurnIncidentRequest struct {
 	AnchorCheck     *models.Check
 	StartedAt       time.Time
 	Title           string
-	Snapshot        BurnSnapshot
+	Snapshot        *BurnSnapshot
 }
 
 // OpenSLOBurnIncident opens a burn-rate incident through the normal incident
@@ -169,7 +169,7 @@ func (s *Service) OpenSLOBurnIncident(
 // hit 40x at 3am" is the number the post-mortem wants and the current rate has
 // long since forgotten it.
 func (s *Service) UpdateSLOBurnIncident(
-	ctx context.Context, incident *models.Incident, snapshot BurnSnapshot,
+	ctx context.Context, incident *models.Incident, snapshot *BurnSnapshot,
 ) error {
 	details := snapshot.Details()
 
@@ -194,7 +194,7 @@ func (s *Service) UpdateSLOBurnIncident(
 // has to be told it ended, and the resolution notice / channel fan-out that
 // does that is the incident machinery's, not this feature's.
 func (s *Service) AutoResolveSLOBurnIncident(
-	ctx context.Context, incident *models.Incident, resolvedAt time.Time, snapshot BurnSnapshot,
+	ctx context.Context, incident *models.Incident, resolvedAt time.Time, snapshot *BurnSnapshot,
 ) error {
 	state := models.IncidentStateResolved
 	resolutionType := models.ResolutionTypeAuto

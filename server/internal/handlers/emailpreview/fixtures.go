@@ -92,33 +92,33 @@ func incidentFixture() map[string]any {
 // incident — same ack link, same deep links — with the three deciding numbers
 // added: burn rate, budget remaining, projected exhaustion.
 func burnIncidentFixture() map[string]any {
-	fx := incidentFixture()
-	fx["SLOName"] = "Acme API availability"
-	fx["BurnPolicyLabel"] = "Fast burn"
-	fx["BurnSeverity"] = "critical"
-	fx["BurnRate"] = "31.0x"
-	fx["BurnShortRate"] = "44.5x"
-	fx["BurnPeakRate"] = "52.0x"
-	fx["BurnThreshold"] = "14.4x"
-	fx["BurnLongWindow"] = "1h"
-	fx["BurnShortWindow"] = "5m"
-	fx["BurnBudgetRemaining"] = "1h30m"
-	fx["BurnProjectedExhaustion"] = "2026-07-05 14:30:00 UTC"
-	fx["BurnTarget"] = "99.9%"
+	fixture := incidentFixture()
+	fixture["SLOName"] = "Acme API availability"
+	fixture["BurnPolicyLabel"] = "Fast burn"
+	fixture["BurnSeverity"] = "critical"
+	fixture["BurnRate"] = "31.0x"
+	fixture["BurnShortRate"] = "44.5x"
+	fixture["BurnPeakRate"] = "52.0x"
+	fixture["BurnThreshold"] = "14.4x"
+	fixture["BurnLongWindow"] = "1h"
+	fixture["BurnShortWindow"] = "5m"
+	fixture["BurnBudgetRemaining"] = "1h30m"
+	fixture["BurnProjectedExhaustion"] = "2026-07-05 14:30:00 UTC"
+	fixture["BurnTarget"] = "99.9%"
 
-	return fx
+	return fixture
 }
 
 // resolvedBurnIncidentFixture is the cleared-alert half: no ack (there is
 // nothing left to acknowledge) and a rate back under the threshold.
 func resolvedBurnIncidentFixture() map[string]any {
-	fx := burnIncidentFixture()
-	fx["AckURL"] = ""
-	fx["ResolvedAt"] = "2026-07-05 10:15:00"
-	fx["Duration"] = "15m0s"
-	fx["BurnRate"] = "1.2x"
+	fixture := burnIncidentFixture()
+	fixture["AckURL"] = ""
+	fixture["ResolvedAt"] = "2026-07-05 10:15:00"
+	fixture["Duration"] = "15m0s"
+	fixture["BurnRate"] = "1.2x"
 
-	return fx
+	return fixture
 }
 
 // resolvedIncidentFixture extends incidentFixture with the resolved-only

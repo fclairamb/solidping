@@ -133,7 +133,7 @@ func DefaultSLOAlertPolicies() []SLOAlertPolicyDefault {
 }
 
 // NewSLOAlertPolicy builds a policy row from a built-in default.
-func NewSLOAlertPolicy(orgUID, sloUID string, def SLOAlertPolicyDefault) *SLOAlertPolicy {
+func NewSLOAlertPolicy(orgUID, sloUID string, def *SLOAlertPolicyDefault) *SLOAlertPolicy {
 	now := time.Now()
 
 	return &SLOAlertPolicy{

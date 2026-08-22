@@ -74,7 +74,16 @@ func newEnv(t *testing.T) *env {
 func (e *env) seedSLO() *models.SLO {
 	e.t.Helper()
 
-	objective := models.NewSLO(e.org.UID, "api", "api", 99.9)
+	return e.seedSLOTarget("api", 99.9)
+}
+
+// seedSLOTarget creates an objective at an arbitrary target. A looser target
+// buys a bigger error budget, which is what makes a MODERATE burn rate
+// reachable with a realistic number of probes.
+func (e *env) seedSLOTarget(slug string, targetPct float64) *models.SLO {
+	e.t.Helper()
+
+	objective := models.NewSLO(e.org.UID, slug, slug, targetPct)
 	objective.CheckUID = &e.check.UID
 	require.NoError(e.t, e.db.CreateSLO(e.t.Context(), objective))
 
@@ -99,7 +108,7 @@ func (e *env) enablePolicy(sloUID, kind string) *models.SLOAlertPolicy {
 
 		enabled := true
 		require.NoError(e.t, e.db.UpdateSLOAlertPolicy(
-			e.t.Context(), policy.UID, models.SLOAlertPolicyUpdate{Enabled: &enabled},
+			e.t.Context(), policy.UID, &models.SLOAlertPolicyUpdate{Enabled: &enabled},
 		))
 
 		reloaded, getErr := e.db.GetSLOAlertPolicy(e.t.Context(), e.org.UID, policy.UID)
@@ -237,7 +246,7 @@ func TestSparseDataDoesNotFabricateAnAlert(t *testing.T) {
 
 	minSamples := 10
 	r.NoError(e.db.UpdateSLOAlertPolicy(
-		t.Context(), policy.UID, models.SLOAlertPolicyUpdate{MinSamples: &minSamples},
+		t.Context(), policy.UID, &models.SLOAlertPolicyUpdate{MinSamples: &minSamples},
 	))
 
 	now := time.Now()
@@ -544,7 +553,7 @@ func TestUpdatePolicyClearsTheHysteresisClockOnRetune(t *testing.T) {
 
 	anchor := time.Now().Add(-time.Minute)
 	r.NoError(e.db.UpdateSLOAlertPolicy(
-		t.Context(), policy.UID, models.SLOAlertPolicyUpdate{BelowThresholdSince: &anchor},
+		t.Context(), policy.UID, &models.SLOAlertPolicyUpdate{BelowThresholdSince: &anchor},
 	))
 	r.NotNil(e.reloadPolicy(policy.UID).BelowThresholdSince)
 
@@ -712,4 +721,48 @@ func TestBurnAlertPagesThroughTheOrdinaryChannelFanOut(t *testing.T) {
 		Scan(t.Context()))
 
 	r.NotEmpty(jobs, "a burn alert must fan out to the anchor check's channels")
+}
+
+// TestSlowBurnFiresWhereFastDoesNot is the reason there are two policies at
+// all: a burn that would quietly eat the month over a day is invisible to the
+// fast policy's 14.4x threshold, and must still reach somebody — as a warning,
+// not as a 3am page.
+//
+// 10% failures against a 99% objective is a 10x burn: over the slow policy's
+// 6x, under the fast policy's 14.4x.
+func TestSlowBurnFiresWhereFastDoesNot(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+	objective := e.seedSLOTarget("api", 99)
+	policy := e.enablePolicy(objective.UID, models.SLOAlertPolicyKindSlow)
+
+	r.Equal(6*3600, policy.LongWindowSeconds)
+	r.Equal(1800, policy.ShortWindowSeconds)
+	r.InDelta(6.0, policy.Threshold, 0.001)
+	r.Equal(models.SLOAlertSeverityWarning, policy.Severity)
+
+	now := time.Now()
+	e.seedRaw(now, 6*time.Hour, 360, 36, false)
+
+	_, err := e.svc.EvaluateBurnRates(context.Background(), now)
+	r.NoError(err)
+
+	open := e.activeBurnIncidents(objective.UID)
+	r.Len(open, 1)
+	r.NotNil(open[0].Title)
+	r.Contains(*open[0].Title, "Slow burn")
+
+	// Negative control on the same data: the fast policy's threshold is not
+	// reached, so enabling it must not open a second incident.
+	fast := e.enablePolicy(objective.UID, models.SLOAlertPolicyKindFast)
+
+	_, err = e.svc.EvaluateBurnRates(context.Background(), now)
+	r.NoError(err)
+
+	still := e.activeBurnIncidents(objective.UID)
+	r.Len(still, 1)
+	r.Equal(policy.UID, *still[0].SLOAlertPolicyUID)
+	r.NotEqual(fast.UID, *still[0].SLOAlertPolicyUID)
 }

@@ -3389,7 +3389,7 @@ func applyIncidentsFilter(query *bun.SelectQuery, filter *models.ListIncidentsFi
 	// list shows burn alerts next to check outages. Only the callers that
 	// derive DOWNTIME from incidents narrow it.
 	if len(filter.Kinds) > 0 {
-		query = query.Where("kind IN (?)", bun.In(filter.Kinds))
+		query = query.Where("kind IN (?)", bun.List(filter.Kinds))
 	}
 
 	if filter.Since != nil {
@@ -6168,10 +6168,8 @@ func (s *Service) ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([
 }
 
 // UpdateSLOAlertPolicy applies a partial update. Nil fields are left alone.
-//
-//nolint:cyclop // a flat field list; splitting it only hides which columns move.
 func (s *Service) UpdateSLOAlertPolicy(
-	ctx context.Context, uid string, update models.SLOAlertPolicyUpdate,
+	ctx context.Context, uid string, update *models.SLOAlertPolicyUpdate,
 ) error {
 	query := s.db.NewUpdate().
 		Model((*models.SLOAlertPolicy)(nil)).
@@ -6264,7 +6262,7 @@ func (s *Service) ListActiveBurnIncidentsForSLOs(
 		Model(&incidents).
 		Where("organization_uid = ?", orgUID).
 		Where("kind = ?", models.IncidentKindSLOBurn).
-		Where("slo_uid IN (?)", bun.In(sloUIDs)).
+		Where("slo_uid IN (?)", bun.List(sloUIDs)).
 		Where("state = ?", models.IncidentStateActive).
 		Where("deleted_at IS NULL").
 		Scan(ctx)

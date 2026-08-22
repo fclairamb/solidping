@@ -141,8 +141,8 @@ func (s *Service) UpdatePolicy(
 		update.ClearBelowThresholdSince = true
 	}
 
-	if err := s.db.UpdateSLOAlertPolicy(ctx, policy.UID, update); err != nil {
-		return PolicyResponse{}, fmt.Errorf("update alert policy: %w", err)
+	if updateErr := s.db.UpdateSLOAlertPolicy(ctx, policy.UID, &update); updateErr != nil {
+		return PolicyResponse{}, fmt.Errorf("update alert policy: %w", updateErr)
 	}
 
 	updated, err := s.db.GetSLOAlertPolicy(ctx, row.OrganizationUID, policy.UID)

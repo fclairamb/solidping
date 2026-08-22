@@ -109,13 +109,13 @@ type evaluation struct {
 // window proves the burn is significant; the short one proves it is still
 // happening, which is exactly what stops a spike that ended forty minutes ago
 // from paging for the rest of the hour.
-func (e evaluation) firing(threshold float64) bool {
+func (e *evaluation) firing(threshold float64) bool {
 	return e.Long.over(threshold) && e.Short.over(threshold)
 }
 
 // cooled reports that both windows are conclusively below threshold — the
 // precondition for starting the resolution hysteresis clock.
-func (e evaluation) cooled(threshold float64) bool {
+func (e *evaluation) cooled(threshold float64) bool {
 	return e.Long.under(threshold) && e.Short.under(threshold)
 }
 
@@ -165,13 +165,13 @@ func (s *Service) evaluatePolicy(ctx context.Context, policy *models.SLOAlertPol
 	}
 
 	update := models.SLOAlertPolicyUpdate{LastEvaluatedAt: &now}
-	applyBurnReadout(&update, result)
+	applyBurnReadout(&update, &result)
 
-	if lifecycleErr := s.applyLifecycle(ctx, row, policy, result, open, now, &update); lifecycleErr != nil {
+	if lifecycleErr := s.applyLifecycle(ctx, row, policy, &result, open, now, &update); lifecycleErr != nil {
 		return lifecycleErr
 	}
 
-	if err := s.db.UpdateSLOAlertPolicy(ctx, policy.UID, update); err != nil {
+	if err := s.db.UpdateSLOAlertPolicy(ctx, policy.UID, &update); err != nil {
 		return fmt.Errorf("update alert policy state: %w", err)
 	}
 
@@ -179,11 +179,9 @@ func (s *Service) evaluatePolicy(ctx context.Context, policy *models.SLOAlertPol
 }
 
 // applyLifecycle is the fire / update / hysteresis-resolve state machine.
-//
-//nolint:cyclop // the whole alert lifecycle in one readable ladder; splitting it hides the rule.
 func (s *Service) applyLifecycle(
 	ctx context.Context, row *models.SLO, policy *models.SLOAlertPolicy,
-	result evaluation, open *models.Incident, now time.Time,
+	result *evaluation, open *models.Incident, now time.Time,
 	update *models.SLOAlertPolicyUpdate,
 ) error {
 	switch {
@@ -245,7 +243,7 @@ func (s *Service) applyLifecycle(
 // openIncident resolves the routing anchor and opens the burn incident.
 func (s *Service) openIncident(
 	ctx context.Context, row *models.SLO, policy *models.SLOAlertPolicy,
-	snapshot incidents.BurnSnapshot, now time.Time,
+	snapshot *incidents.BurnSnapshot, now time.Time,
 ) error {
 	anchor, err := s.anchorCheck(ctx, row)
 	if err != nil {
@@ -333,14 +331,14 @@ func (s *Service) evaluate(
 	}
 
 	return evaluation{
-		Long:  toSample(rows[0], policy.MinSamples),
-		Short: toSample(rows[1], policy.MinSamples),
+		Long:  toSample(&rows[0], policy.MinSamples),
+		Short: toSample(&rows[1], policy.MinSamples),
 		Month: rows[2],
 	}, nil
 }
 
 // toSample applies the minimum-sample floor.
-func toSample(row slos.StatusRow, minSamples int) windowSample {
+func toSample(row *slos.StatusRow, minSamples int) windowSample {
 	return windowSample{
 		BurnRate:   row.BurnRate,
 		Samples:    row.TotalChecks,
@@ -350,9 +348,9 @@ func toSample(row slos.StatusRow, minSamples int) windowSample {
 
 // snapshot packs an evaluation into the incident/notification payload.
 func (s *Service) snapshot(
-	row *models.SLO, policy *models.SLOAlertPolicy, result evaluation,
-) incidents.BurnSnapshot {
-	return incidents.BurnSnapshot{
+	row *models.SLO, policy *models.SLOAlertPolicy, result *evaluation,
+) *incidents.BurnSnapshot {
+	return &incidents.BurnSnapshot{
 		SLOUID:                 row.UID,
 		SLOName:                row.Name,
 		SLOSlug:                row.Slug,
@@ -372,7 +370,7 @@ func (s *Service) snapshot(
 
 // applyBurnReadout records the live rates so the dashboard and the evaluator
 // cannot disagree about what the burn rate was a minute ago.
-func applyBurnReadout(update *models.SLOAlertPolicyUpdate, result evaluation) {
+func applyBurnReadout(update *models.SLOAlertPolicyUpdate, result *evaluation) {
 	if result.Long.BurnRate == nil && result.Short.BurnRate == nil {
 		// Null rather than stale: "no data" is not "the same as last time".
 		update.ClearLastBurnRates = true
@@ -386,7 +384,7 @@ func applyBurnReadout(update *models.SLOAlertPolicyUpdate, result evaluation) {
 
 // burnTitle is what a phone shows at 3am, so it leads with the severity and the
 // rate rather than with the word "incident".
-func burnTitle(row *models.SLO, policy *models.SLOAlertPolicy, snapshot incidents.BurnSnapshot) string {
+func burnTitle(row *models.SLO, policy *models.SLOAlertPolicy, snapshot *incidents.BurnSnapshot) string {
 	label := "Slow burn"
 	if policy.Kind == models.SLOAlertPolicyKindFast {
 		label = "Fast burn"

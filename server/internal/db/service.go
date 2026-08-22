@@ -916,7 +916,7 @@ type Service interface {
 	CreateSLOAlertPolicy(ctx context.Context, policy *models.SLOAlertPolicy) error
 	GetSLOAlertPolicy(ctx context.Context, orgUID, uid string) (*models.SLOAlertPolicy, error)
 	ListSLOAlertPolicies(ctx context.Context, sloUID string) ([]*models.SLOAlertPolicy, error)
-	UpdateSLOAlertPolicy(ctx context.Context, uid string, update models.SLOAlertPolicyUpdate) error
+	UpdateSLOAlertPolicy(ctx context.Context, uid string, update *models.SLOAlertPolicyUpdate) error
 	// ListEnabledSLOAlertPolicies is the burn evaluator's work queue: every
 	// enabled policy across every org whose SLO is itself live and enabled,
 	// oldest-evaluated first so a large install still makes progress under a

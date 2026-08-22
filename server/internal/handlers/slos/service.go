@@ -520,13 +520,14 @@ func (s *Service) EnsureAlertPolicies(
 
 	created := false
 
-	for _, def := range models.DefaultSLOAlertPolicies() {
-		if _, ok := byKind[def.Kind]; ok {
+	defaults := models.DefaultSLOAlertPolicies()
+	for i := range defaults {
+		if _, ok := byKind[defaults[i].Kind]; ok {
 			continue
 		}
 
 		if createErr := s.db.CreateSLOAlertPolicy(
-			ctx, models.NewSLOAlertPolicy(orgUID, sloUID, def),
+			ctx, models.NewSLOAlertPolicy(orgUID, sloUID, &defaults[i]),
 		); createErr != nil {
 			return nil, fmt.Errorf("create alert policy: %w", createErr)
 		}

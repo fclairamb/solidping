@@ -1377,7 +1377,7 @@ func (m *mockDBService) ListSLOAlertPolicies(
 }
 
 func (m *mockDBService) UpdateSLOAlertPolicy(
-	_ context.Context, _ string, _ models.SLOAlertPolicyUpdate,
+	_ context.Context, _ string, _ *models.SLOAlertPolicyUpdate,
 ) error {
 	panic("not implemented")
 }
