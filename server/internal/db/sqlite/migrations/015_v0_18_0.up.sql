@@ -64,19 +64,27 @@ create index if not exists files_org_topic_idx
 --
 -- Dialect difference: SQLite has no `UPDATE ... FROM`, so the org-logo topic
 -- backfill uses a correlated subquery.
+--
+-- `o.deleted_at is null` is a SECURITY filter — see the Postgres file for why
+-- a soft-deleted org's logo must NOT be granted a public topic. It is repeated
+-- in both the SET subquery and the WHERE so the two can never select different
+-- rows.
 
 update files
    set topic = 'organizations/'
-            || (select o.uid from organizations o where o.logo_file_uid = files.uid)
+            || (select o.uid from organizations o
+                 where o.logo_file_uid = files.uid and o.deleted_at is null)
             || '/logo'
  where topic is null
-   and exists (select 1 from organizations o where o.logo_file_uid = files.uid);
+   and exists (select 1 from organizations o
+                where o.logo_file_uid = files.uid and o.deleted_at is null);
 
 --bun:split
 
 update organizations
    set logo_url = '/pub/assets/' || logo_file_uid
  where logo_file_uid is not null
+   and deleted_at is null
    and logo_url like '/pub/org-logos/%';
 
 -- ==========================================================================

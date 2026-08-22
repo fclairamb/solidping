@@ -235,7 +235,7 @@ type OrganizationInfo struct {
 	UID  string `json:"uid"`
 	Slug string `json:"slug"`
 	Name string `json:"name,omitempty"`
-	// LogoURL is the org's logo (absolute http(s) URL, or /pub/org-logos/<uid>
+	// LogoURL is the org's logo (absolute http(s) URL, or /pub/assets/<uid>
 	// for an uploaded one). Null means "no logo" and the client falls back to
 	// the product default.
 	LogoURL *string `json:"logoUrl"`

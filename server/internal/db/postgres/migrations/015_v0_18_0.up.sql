@@ -118,10 +118,20 @@ comment on column files.details is
 -- Give every uploaded org logo the topic that authorizes it. Without this an
 -- already-uploaded logo 404s after the deploy, which spec 2026-08-22-03 calls
 -- a regression rather than an acceptable migration cost.
+--
+-- `o.deleted_at is null` is a SECURITY filter, not tidiness. The check this
+-- replaces required a LIVE organization, and deleting an org did NOT reap its
+-- files, so every historically-deleted org still owns a live `files` row whose
+-- logo stopped being reachable purely because the org row went away. Granting
+-- those rows a public topic would RE-publish them — an authorization widening
+-- nobody asked for, and one the spec's Today/After table does not list. The
+-- reap added to org deletion only covers deletes from here on; this clause is
+-- what covers the ones that already happened.
 update files
    set topic = 'organizations/' || o.uid || '/logo'
   from organizations o
  where o.logo_file_uid = files.uid
+   and o.deleted_at is null
    and files.topic is null;
 
 --bun:split
@@ -129,9 +139,15 @@ update files
 -- ...and point the stored URL at the route that now serves it. The bespoke
 -- /pub/org-logos/:uid handler and its "is this some live org's current logo"
 -- state query are retired; there is one public asset route.
+--
+-- Same `deleted_at is null` scope as the topic backfill above. A deleted org's
+-- stored URL is harmless either way (both routes 404 for it), but a row that
+-- was deliberately NOT granted a topic must not be left claiming a URL on the
+-- route that requires one.
 update organizations
    set logo_url = '/pub/assets/' || logo_file_uid
  where logo_file_uid is not null
+   and deleted_at is null
    and logo_url like '/pub/org-logos/%';
 
 -- ==========================================================================

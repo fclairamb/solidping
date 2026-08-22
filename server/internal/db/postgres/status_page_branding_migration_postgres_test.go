@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 )
 
 // Embedded-postgres ports for this spec's migration tests. Each test owns one,
@@ -352,4 +355,118 @@ func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
 	                  where table_name = 'status_page_subscriber'
 	                    and column_name = 'email' and is_nullable = 'NO'`),
 		"the NOT NULL on email must be restored")
+}
+
+// portOrgLogoBackfill is this test's own embedded-postgres port.
+const portOrgLogoBackfill = 15489
+
+// TestOrgLogoBackfillSkipsDeletedOrganizations_Postgres is the negative control
+// that keeps the backfill from WIDENING authorization.
+//
+// The retired check required a LIVE organization, and deleting an org never
+// reaped its files — so a historically-deleted org still owns a live `files`
+// row whose logo stopped being reachable only because the org row went away.
+// A backfill without `deleted_at is null` would hand those rows a public topic
+// and re-publish them, which the spec's Today/After table does not sanction.
+//
+// The Postgres backfill is written differently from the SQLite one (UPDATE ...
+// FROM rather than a correlated subquery), so the SQLite twin passing says
+// nothing about this one. The live org is the positive control: without it the
+// test would pass against a backfill that stopped working entirely.
+//
+//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
+func TestOrgLogoBackfillSkipsDeletedOrganizations_Postgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, &Config{Embedded: true, Port: portOrgLogoBackfill, RunMode: runModeTest})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+
+	t.Cleanup(func() { _ = svc.Close() })
+
+	if initErr := svc.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	const (
+		liveOrg   = "cccccccc-0000-0000-0000-000000000001"
+		deadOrg   = "cccccccc-0000-0000-0000-000000000002"
+		liveFile  = "cccccccc-0000-0000-0000-000000000003"
+		deadFile  = "cccccccc-0000-0000-0000-000000000004"
+		legacyURL = "/pub/org-logos/"
+	)
+
+	_, err = svc.DB().ExecContext(ctx,
+		`insert into organizations (uid, slug, name) values (?, 'acmelive', 'Acme Live')`, liveOrg)
+	r.NoError(err)
+
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into organizations (uid, slug, name, deleted_at)
+		values (?, 'acmegone', 'Acme Gone', now())`, deadOrg)
+	r.NoError(err)
+
+	for fileUID, orgUID := range map[string]string{liveFile: liveOrg, deadFile: deadOrg} {
+		_, err = svc.DB().ExecContext(ctx, `
+			insert into files (uid, organization_uid, name, mime_type, file_uri, size)
+			values (?, ?, 'logo.png', 'image/png', 'local://x', 10)`, fileUID, orgUID)
+		r.NoError(err)
+
+		_, err = svc.DB().ExecContext(ctx,
+			`update organizations set logo_file_uid = ?, logo_url = ? where uid = ?`,
+			fileUID, legacyURL+fileUID, orgUID)
+		r.NoError(err)
+	}
+
+	execPGMigrationStatements(ctx, t, svc, migrationSection(t, sectionBrandingPG))
+
+	topicOf := func(fileUID string) *string {
+		t.Helper()
+
+		var topic *string
+
+		r.NoError(svc.DB().QueryRowContext(ctx, `select topic from files where uid = ?`, fileUID).Scan(&topic))
+
+		return topic
+	}
+
+	// Positive control: the live org's logo DID get its topic.
+	live := topicOf(liveFile)
+	r.NotNil(live, "the backfill must still publish a live org's logo")
+	r.Equal("organizations/"+liveOrg+"/logo", *live)
+
+	// The point of the test: the deleted org's logo did NOT.
+	r.Nil(topicOf(deadFile), "a soft-deleted org's logo must not be granted a public topic")
+
+	// ...and it therefore stays unreachable through the public read, which is
+	// the property the topic is only a proxy for.
+	filesSvc := files.NewService(svc, &config.Config{})
+
+	_, err = filesSvc.GetPublicFile(ctx, deadFile)
+	r.ErrorIs(err, files.ErrFileNotFound, "a deleted org's logo must not become publicly readable")
+
+	// Positive control for the ErrorIs above: the live one IS readable.
+	served, err := filesSvc.GetPublicFile(ctx, liveFile)
+	r.NoError(err)
+	r.Equal(liveFile, served.UID)
+
+	// The URL rewrite is scoped the same way.
+	urlOf := func(orgUID string) string {
+		t.Helper()
+
+		var url string
+
+		r.NoError(svc.DB().QueryRowContext(ctx,
+			`select logo_url from organizations where uid = ?`, orgUID).Scan(&url))
+
+		return url
+	}
+
+	r.Equal("/pub/assets/"+liveFile, urlOf(liveOrg))
+	r.Equal(legacyURL+deadFile, urlOf(deadOrg), "a deleted org's URL must not be migrated either")
 }

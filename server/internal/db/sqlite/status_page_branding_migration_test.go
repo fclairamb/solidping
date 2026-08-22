@@ -500,3 +500,87 @@ func TestOrgLogoBackfillLeavesExternalURLsAlone(t *testing.T) {
 	r.NoError(svc.DB().QueryRowContext(ctx, `select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
 	r.Equal(external, logoURL)
 }
+
+// TestOrgLogoBackfillSkipsDeletedOrganizations is the negative control that
+// keeps the backfill from WIDENING authorization.
+//
+// The check this migration retires required a LIVE organization, and deleting
+// an org never reaped its files — so a historically-deleted org still owns a
+// live `files` row whose logo stopped being reachable only because the org row
+// went away. A backfill without `deleted_at is null` would hand those rows a
+// public topic and re-publish them, which is not in the spec's Today/After
+// table and is not something this change is allowed to do.
+//
+// The live org in the same database is the positive control: without it this
+// test would pass just as well against a backfill that stopped working at all.
+func TestOrgLogoBackfillSkipsDeletedOrganizations(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, liveOrg := migratedSQLite(t)
+
+	const (
+		deadOrg   = "aaaabbbb-0000-0000-0000-000000000001"
+		liveFile  = "aaaabbbb-0000-0000-0000-000000000002"
+		deadFile  = "aaaabbbb-0000-0000-0000-000000000003"
+		legacyURL = "/pub/org-logos/"
+	)
+
+	_, err := svc.DB().ExecContext(ctx, `
+		insert into organizations (uid, slug, name, deleted_at)
+		values (?, 'gone', 'Gone', '2026-08-01T00:00:00Z')`, deadOrg)
+	r.NoError(err)
+
+	insertLogo := func(fileUID, orgUID string) {
+		t.Helper()
+
+		_, execErr := svc.DB().ExecContext(ctx, `
+			insert into files (uid, organization_uid, name, mime_type, file_uri, size)
+			values (?, ?, 'logo.png', 'image/png', 'local://x', 10)`, fileUID, orgUID)
+		r.NoError(execErr)
+
+		_, execErr = svc.DB().ExecContext(ctx,
+			`update organizations set logo_file_uid = ?, logo_url = ? where uid = ?`,
+			fileUID, legacyURL+fileUID, orgUID)
+		r.NoError(execErr)
+	}
+
+	insertLogo(liveFile, liveOrg)
+	insertLogo(deadFile, deadOrg)
+
+	execMigrationStatements(ctx, t, svc, migrationSection(t, sectionBranding))
+
+	topicOf := func(fileUID string) *string {
+		t.Helper()
+
+		var topic *string
+
+		r.NoError(svc.DB().QueryRowContext(ctx, `select topic from files where uid = ?`, fileUID).Scan(&topic))
+
+		return topic
+	}
+
+	// Positive control: the live org's logo DID get its topic.
+	live := topicOf(liveFile)
+	r.NotNil(live, "the backfill must still publish a live org's logo")
+	r.Equal("organizations/"+liveOrg+"/logo", *live)
+
+	// The point of the test: the deleted org's logo did NOT.
+	r.Nil(topicOf(deadFile), "a soft-deleted org's logo must not be granted a public topic")
+
+	// ...and the URL rewrite is scoped the same way, so a row with no topic is
+	// never left claiming a URL on the route that requires one.
+	urlOf := func(orgUID string) string {
+		t.Helper()
+
+		var url string
+
+		r.NoError(svc.DB().QueryRowContext(ctx,
+			`select logo_url from organizations where uid = ?`, orgUID).Scan(&url))
+
+		return url
+	}
+
+	r.Equal("/pub/assets/"+liveFile, urlOf(liveOrg))
+	r.Equal(legacyURL+deadFile, urlOf(deadOrg), "a deleted org's URL must not be migrated either")
+}
