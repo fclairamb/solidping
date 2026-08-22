@@ -6608,10 +6608,11 @@ paths:
         harmless, which is what makes that safe.
 
 
-        The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable,
-        but authorized by state: it only serves a file that is the CURRENT logo
-        of a live organization, so replacing or clearing the logo un-publishes
-        the previous image immediately. Uploaded SVGs are always served with
+        The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but
+        authorized by the stored file's attachment topic: only a file attached
+        under `organizations/{orgUid}/logo` is served there, and only while that
+        file row is live — so replacing or clearing the logo un-publishes the
+        previous image immediately. Uploaded SVGs are always served with
         `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`
         so they cannot execute as a document on the application's origin; they
         still render normally in an `img` element.
@@ -13076,7 +13077,7 @@ components:
           nullable: true
           description: >-
             The organization's logo: an absolute http(s) URL, or a relative
-            `/pub/org-logos/{fileUid}` path for an uploaded image. Null when the
+            `/pub/assets/{fileUid}` path for an uploaded image. Null when the
             organization has no logo.
         accessToken:
           type: string

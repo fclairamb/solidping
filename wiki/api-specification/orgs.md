@@ -73,19 +73,28 @@ an SVG uploaded as `image/png` is stored and served as `image/png`. That is
 safe rather than sloppy: the serving headers below never trust the type to be
 harmless (always `nosniff`, and only raster types are served `inline`), so no
 declared value can turn an upload into an executable document. Returns the updated profile with `logoUrl` set to
-`/pub/org-logos/<fileUid>`.
+`/pub/assets/<fileUid>`.
 
 ### DELETE /api/v1/orgs/:org/logo
 Clear the organization's logo. Auth: required (**owner**). Retires the uploaded
 file, so its public URL stops resolving. Returns the updated profile.
 
-### GET /pub/org-logos/:fileUid
+### GET /pub/assets/:fileUid
 Serve an uploaded logo. **Public, unsigned** — unlike `/pub/files/:uid`, which
 needs an expiring signed URL, a logo URL must be stable enough to paste into a
-status page or an email. Authorization is by state instead of by signature: the
-file is served only while it is the **current** logo of a **live**
-organization, so replacing the logo, clearing it, or deleting the org
-un-publishes the image immediately.
+status page or an email.
+
+Authorization is by the stored file's **attachment topic**, not by signature and
+not by a per-feature state query (spec 2026-08-22-03): the file is served only
+while its topic is on the closed public allowlist (`organizations/<uid>/logo`,
+`status-pages/<uid>/logo`, `status-pages/<uid>/favicon`) **and** its row is
+live. Replacing the logo or clearing it soft-deletes the file and un-publishes
+it immediately; deleting the organization reaps the whole
+`organizations/<uid>/` prefix, which is what keeps a deleted org's logo from
+staying readable.
+
+The bespoke `/pub/org-logos/:fileUid` route this replaced is **retired**, not
+aliased.
 
 Uploaded bytes are served with `X-Content-Type-Options: nosniff`, and only
 raster images get `Content-Disposition: inline` — an SVG is always

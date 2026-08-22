@@ -4450,7 +4450,7 @@ type OrgResponse struct {
 	// ExpiresIn Access token lifetime in seconds
 	ExpiresIn int `json:"expiresIn"`
 
-	// LogoUrl The organization's logo: an absolute http(s) URL, or a relative `/pub/org-logos/{fileUid}` path for an uploaded image. Null when the organization has no logo.
+	// LogoUrl The organization's logo: an absolute http(s) URL, or a relative `/pub/assets/{fileUid}` path for an uploaded image. Null when the organization has no logo.
 	LogoUrl      *string            `json:"logoUrl,omitempty"`
 	Name         string             `json:"name"`
 	RefreshToken string             `json:"refreshToken"`
@@ -8028,7 +8028,7 @@ type ClientInterface interface {
 	//
 	// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 	//
-	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+	// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -12149,7 +12149,7 @@ func (c *Client) DeleteOrgLogo(ctx context.Context, org OrgPath, reqEditors ...R
 //
 // The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 //
-// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 //
 // Takes any type of body and a specified content type.
 //
@@ -29140,7 +29140,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 	//
-	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+	// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -47124,7 +47124,7 @@ func (c *ClientWithResponses) DeleteOrgLogoWithResponse(ctx context.Context, org
 //
 // The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 //
-// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //

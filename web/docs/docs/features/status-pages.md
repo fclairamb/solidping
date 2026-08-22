@@ -111,8 +111,20 @@ Upload them from **Status page → Edit → Branding**:
   custom domain too, not just on the SolidPing-hosted URL.
 
 Both are served from a stable public URL you can paste anywhere. That URL stops
-working the moment the asset is replaced, removed, or the page is disabled or
-deleted — so retiring an image really retires it.
+working the moment the asset is **replaced**, **removed**, or the page is
+**deleted**.
+
+:::caution Disabling a page does not hide its logo
+
+Turning a page off — or setting it to **private** or **password** — takes the
+*page* offline, but the logo and favicon URLs keep resolving. They are stable,
+unguessable links to an image, not to anything about your monitoring, and on a
+password-protected page the logo is what visitors see above the prompt anyway.
+
+To take an uploaded image offline, **clear it** (or replace it). Disabling the
+page is not enough.
+
+:::
 
 The `sp-logo` CSS hook still applies to an uploaded logo, so existing custom CSS
 keeps working.

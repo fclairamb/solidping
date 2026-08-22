@@ -6,6 +6,41 @@
 - Soft deletes: `deleted_at` timestamp, never hard delete
 - Audit trail: `created_at` and `updated_at` timestamps
 
+# Column or `settings` JSON? (spec 2026-08-22-03)
+
+Several tables carry a typed JSON `settings` column (`status_pages.settings`
+decodes into `models.StatusPageSettings`). New per-entity knobs keep landing as
+columns anyway, one migration section, one bun tag and one `Set(...)` branch per
+dialect at a time, because the rule was never written down. It is:
+
+> A per-entity knob read **only while rendering** belongs in `settings`.
+> A field that is **filtered, joined, uniquely constrained, resolved by an
+> external lookup, or is a credential** belongs in a column.
+
+Worked example, `status_pages`:
+
+| Field | Home | Why |
+|---|---|---|
+| `settings.availability.*`, `settings.branding.*` | JSON | read only while rendering the page |
+| `visibility`, `enabled` | column | filtered in every list query |
+| `custom_domain*` | column | globally unique, resolved by `Host` on every request |
+| `password_hash` | column | a credential, read on the auth path, never serialized |
+| `custom_css` | column | *grandfathered* — released, behaviourally identical either way, and moving it is a backfill over released rows for zero behaviour change |
+
+Two consequences worth stating, because they are what makes the JSON side safe:
+
+- **Never read-modify-write the whole column in Go** to change one section. That
+  clobbers a concurrent write to a sibling section. Merge in SQL:
+  Postgres `settings || jsonb_build_object('<section>', coalesce(settings->'<section>', '{}'::jsonb) || ?::jsonb)`
+  (`||` is shallow, so the nesting is load-bearing), SQLite
+  `json_patch(settings, ?)` (RFC 7386, already recursive).
+- **The two dialects disagree on a null**: `json_patch` REMOVES the key, `||`
+  STORES `null`. They agree on what it decodes to. Pin that with a parity test
+  rather than trusting it.
+
+A knob that later needs an index is a knob that stopped being render-only —
+promote it to a column then, with a backfill, rather than pre-paying for it.
+
 # Indexes conventions
 Indexes should have the name `${table}_${columns}_idx`, the columns should not contain `_uid`.
 So for example `incidents_organization`.

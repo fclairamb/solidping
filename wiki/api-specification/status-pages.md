@@ -39,15 +39,27 @@ Related fields on create/update:
 | `hasPassword` | read-only | Whether a password is stored. The hash is never serialized. |
 | `hideBranding` | read/write | The page's white-label OPT-IN. On admin payloads this is the raw stored value; on the PUBLIC payload it is already ANDed with the org's `whiteLabel` entitlement. |
 | `whiteLabelAllowed` | read-only, **admin only** | Whether the org holds the `whiteLabel` entitlement. Never present on a public payload — plan state is not public. |
-| `logoUrl` / `faviconUrl` | read-only | Public paths of the uploaded brand assets, or absent. Set by the asset endpoints below, never by PATCH. |
+| `logoUrl` / `faviconUrl` | read-only | Public paths of the uploaded brand assets, or absent. Derived from the file UIDs in `settings -> branding`; set by the asset endpoints below, never by PATCH. |
 
 ## Brand assets
 
-Per-page logo and favicon (spec 2026-08-21-07). Uploads are `multipart/form-data`
-with a single file part named after the slot. The blobs are served from an
-unsigned public route whose authorization is state-based: a file is public
-exactly while it is the CURRENT logo/favicon of a live, ENABLED status page, so
-replacing, clearing, disabling or deleting takes it offline immediately.
+Per-page logo and favicon (specs 2026-08-21-07, 2026-08-22-03). Uploads are
+`multipart/form-data` with a single file part named after the slot.
+
+The three knobs are stored in `status_pages.settings -> branding`, not in
+columns of their own; `logoUrl` / `faviconUrl` / `hideBranding` are unchanged on
+the wire.
+
+The blobs are served from an unsigned public route authorized by the file's
+**attachment topic** (`status-pages/<uid>/logo` or `/favicon`) and by the file
+row still being live. Replacing or clearing an asset soft-deletes the file and
+takes it offline immediately, and deleting the page reaps the whole
+`status-pages/<uid>/` prefix.
+
+**Disabling a page does NOT take its assets offline**, and neither does making
+it `private` or `password`. That is a deliberate loosening: the URL embeds an
+unguessable UUIDv4 and a brand logo is not a secret (on a password page it is
+the image shown above the prompt). To un-publish a logo, clear it.
 
 ### POST /api/v1/orgs/:org/status-pages/:statusPageUid/logo
 Upload the page logo (part name `logo`). PNG/JPEG/WebP/GIF/SVG, max 1 MB.
@@ -64,9 +76,14 @@ JPEG is deliberately not accepted for a favicon. Auth: required
 Clear the page favicon. Auth: required
 
 ### GET /pub/status-page-assets/:uid
-Serve an uploaded asset. Auth: **public, unsigned**. `404` once the file stops
-being a live page's current asset. Served with `nosniff`; SVG is served as an
-attachment so it can never execute as a document on the origin.
+Serve an uploaded asset. Auth: **public, unsigned**. `404` once the file is
+replaced, cleared, or reaped with its page. Served with `nosniff`; SVG is served
+as an attachment so it can never execute as a document on the origin.
+
+This path and `/pub/assets/:uid` are the **same handler and the same check** —
+`/pub/status-page-assets/` is the URL shape `logoUrl` / `faviconUrl` emit, kept
+byte-identical because spec 2026-08-22-03 is a storage-and-authorization
+refactor rather than a URL change.
 
 ## Sections
 
