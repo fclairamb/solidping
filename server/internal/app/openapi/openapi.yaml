@@ -5296,6 +5296,91 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/slos/{uid}/alert-policies:
+    get:
+      tags: [SLOs]
+      summary: List an objective's burn-rate alert policies
+      description: >-
+        Two built-in multiwindow burn-rate policies (`fast` and `slow`),
+        materialized on demand so an objective created before the feature
+        existed answers exactly like a new one. Both start disabled — alerting
+        is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the
+        request rather than read back from the stored readout, and are null
+        (never 0) when a window carries no countable probe.
+      operationId: listSloAlertPolicies
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Alert policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOAlertPolicyListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid}:
+    get:
+      tags: [SLOs]
+      summary: Get one burn-rate alert policy
+      operationId: getSloAlertPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+        - $ref: "#/components/parameters/SLOAlertPolicyUidPath"
+      responses:
+        "200":
+          description: Alert policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOAlertPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [SLOs]
+      summary: Tune a burn-rate alert policy
+      description: >-
+        `kind` is not writable — there are exactly two built-ins. Changing a
+        threshold or either window clears the auto-resolve hysteresis anchor,
+        which was measured against the old numbers.
+      operationId: updateSloAlertPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+        - $ref: "#/components/parameters/SLOAlertPolicyUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSLOAlertPolicyRequest"
+      responses:
+        "200":
+          description: Updated alert policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOAlertPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/report-schedules:
     get:
       tags: [SLOs]
@@ -7345,6 +7430,15 @@ components:
       schema:
         type: string
       description: SLO UID or slug
+
+    SLOAlertPolicyUidPath:
+      name: policyUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Burn-rate alert policy UID
 
     ReportScheduleUidPath:
       name: uid
@@ -11802,12 +11896,132 @@ components:
           type: boolean
         enabled:
           type: boolean
+        burning:
+          type: boolean
+          description: >-
+            True while at least one burn-rate alert policy on this objective has
+            an open incident. Derived from the incident rows, never stored.
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    SLOAlertPolicy:
+      type: object
+      description: >-
+        One built-in multiwindow burn-rate alert policy. An alert fires only
+        when BOTH windows exceed the threshold: the long window proves the burn
+        is significant, the short one proves it is still happening.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        sloUid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [fast, slow]
+          description: Built-in identity. Not writable.
+        enabled:
+          type: boolean
+        longWindowSeconds:
+          type: integer
+          description: Significance window. Stored, never derived.
+        shortWindowSeconds:
+          type: integer
+          description: Confirmation window. Must be <= longWindowSeconds.
+        threshold:
+          type: number
+          format: double
+          description: >-
+            Burn-rate multiple both windows must exceed. 1.0 spends the calendar
+            budget exactly by period end.
+        severity:
+          type: string
+          enum: [critical, warning]
+        minSamples:
+          type: integer
+          description: >-
+            Per-window probe floor. Below it the window is inconclusive: it does
+            not fire, and it does not count as below-threshold for auto-resolve.
+        lastEvaluatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        longBurnRate:
+          type: number
+          format: double
+          nullable: true
+          description: Null when the window carries no countable probe. Never 0.
+        shortBurnRate:
+          type: number
+          format: double
+          nullable: true
+        longSamples:
+          type: integer
+        shortSamples:
+          type: integer
+        longConclusive:
+          type: boolean
+        shortConclusive:
+          type: boolean
+        overThresholdNow:
+          type: boolean
+          description: Both windows are conclusively over the threshold right now.
+        firing:
+          type: boolean
+          description: An open burn incident exists for this policy.
+        incidentUid:
+          type: string
+          format: uuid
+          nullable: true
+        incidentNumber:
+          type: integer
+          format: int64
+          nullable: true
+        firingSince:
+          type: string
+          format: date-time
+          nullable: true
+        resolvingSince:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Hysteresis anchor: both windows have been below threshold since this
+            instant, and the incident auto-resolves once that has held for a
+            full short window.
+
+    SLOAlertPolicyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLOAlertPolicy"
+
+    UpdateSLOAlertPolicyRequest:
+      type: object
+      description: Partial update. Omitted fields are left alone.
+      properties:
+        enabled:
+          type: boolean
+        longWindowSeconds:
+          type: integer
+        shortWindowSeconds:
+          type: integer
+        threshold:
+          type: number
+          format: double
+        severity:
+          type: string
+          enum: [critical, warning]
+        minSamples:
+          type: integer
+          minimum: 1
 
     SLOListResponse:
       type: object
