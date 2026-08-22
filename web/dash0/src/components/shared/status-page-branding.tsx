@@ -138,17 +138,20 @@ function AssetSlot({
           {currentUrl ? t("branding.replace") : t("branding.upload")}
         </Button>
         {currentUrl && (
+          /* Icon button with text-destructive, matching the image-upload
+             pattern in the design reference (design-reference.tsx → "Image
+             upload"). Delete is always red and always a trash bin. */
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon"
             className="text-destructive"
             disabled={busy}
             onClick={handleClear}
+            aria-label={t("branding.remove")}
             data-testid={`status-page-asset-remove-${kind}`}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {t("branding.remove")}
+            <Trash2 className="h-4 w-4" />
           </Button>
         )}
       </div>
