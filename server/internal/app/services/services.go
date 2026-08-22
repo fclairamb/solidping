@@ -2,6 +2,9 @@
 package services
 
 import (
+	"context"
+	"time"
+
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -13,6 +16,19 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
+
+// SLOBurnEvaluator runs one sweep of the SLO burn-rate alert policies and
+// returns how many were evaluated.
+//
+// Declared here as an interface rather than as the concrete
+// handlers/sloalerts.Service for one hard reason: the periodic job that calls
+// it lives in jobs/jobtypes, jobtypes -> jobdef -> app/services, and
+// sloalerts -> handlers/incidents -> jobtypes. A concrete field would close
+// that loop into an import cycle. The interface breaks it while keeping the
+// evaluator itself a normal, directly-testable service.
+type SLOBurnEvaluator interface {
+	EvaluateBurnRates(ctx context.Context, now time.Time) (int, error)
+}
 
 // Registry holds all application services for dependency injection.
 type Registry struct {
@@ -39,6 +55,10 @@ type Registry struct {
 	// WebPushOptions holds VAPID credentials for Web Push dispatch. Zero
 	// value means "not configured" — callers check VAPIDPublicKey != "".
 	WebPushOptions webpush.Options
+	// SLOBurn evaluates SLO burn-rate alert policies once a minute. Nil in
+	// tests and in processes that run no job worker — the job checks before
+	// calling.
+	SLOBurn SLOBurnEvaluator
 	// SMS resolves, per org and per capability, whether a phone send goes
 	// through the org's own Twilio integration (bring-your-own) or the
 	// instance-level provider (server-provided, the default). Nil only in

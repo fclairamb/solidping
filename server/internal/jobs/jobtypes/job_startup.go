@@ -104,7 +104,35 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	// Ensure the uptime-report sweep exists (global, not per-org — one sweep
 	// serves every org's schedules). It self-reschedules hourly; this seeds the
 	// first run (spec 2026-08-20-01).
-	return r.ensureUptimeReportJob(ctx, jctx)
+	if err := r.ensureUptimeReportJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure the SLO burn-rate evaluation sweep exists. Self-reschedules every
+	// minute; this seeds the first run (spec 2026-08-21-08).
+	return r.ensureSLOBurnEvalJob(ctx, jctx)
+}
+
+// ensureSLOBurnEvalJob provisions the global SLO burn-rate evaluation sweep.
+// CreateJob dedupes on type+config+org+pending, so a restart won't stack a
+// duplicate.
+func (r *StartupJobRun) ensureSLOBurnEvalJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping SLO burn evaluation provisioning (services not available)")
+
+		return nil
+	}
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeSLOBurnEval), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create SLO burn evaluation job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured SLO burn evaluation job exists")
+	}
+
+	return nil
 }
 
 // ensureUptimeReportJob provisions the global uptime-report sweep. The job

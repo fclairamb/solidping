@@ -89,6 +89,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/reportschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
+	"github.com/fclairamb/solidping/server/internal/handlers/sloalerts"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
@@ -1610,6 +1611,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSLOs.GET("/:uid/status", sloHandler.Status)
 	orgSLOs.GET("/:uid/history", sloHandler.History)
 	orgSLOs.GET("/:uid/burndown", sloHandler.Burndown)
+
+	// SLO burn-rate alert policies (spec 2026-08-21-08, authentication
+	// required). The evaluator is registered on the services registry through
+	// the SLOBurnEvaluator interface so the periodic job in jobs/jobtypes can
+	// reach it without importing handlers/incidents (import cycle).
+	sloAlertsService := sloalerts.NewService(
+		s.dbService, sloService, incidentsService, s.services.Clock, slog.Default(),
+	)
+	s.services.SLOBurn = sloAlertsService
+	sloAlertsHandler := sloalerts.NewHandler(sloAlertsService, s.config)
+	orgSLOs.GET("/:uid/alert-policies", sloAlertsHandler.List)
+	orgSLOs.GET("/:uid/alert-policies/:policyUid", sloAlertsHandler.Get)
+	orgSLOs.PATCH("/:uid/alert-policies/:policyUid", sloAlertsHandler.Update)
 
 	// Scheduled uptime reports (spec 2026-08-20-01, authentication required)
 	reportBuilder := uptimereport.NewBuilder(s.dbService, s.config, sloService)

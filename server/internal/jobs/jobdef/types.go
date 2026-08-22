@@ -101,6 +101,14 @@ const (
 	// arbitrary stored addresses, so a public creation endpoint for it would
 	// be a spam primitive with extra steps.
 	JobTypeUptimeReport JobType = "uptime_report"
+	// JobTypeSLOBurnEval evaluates every enabled SLO burn-rate alert policy
+	// (spec 2026-08-21-08). Global and self-rescheduling every minute: a burn
+	// alert whose whole point is "you are spending the month in an afternoon"
+	// is worthless at hourly resolution.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes — it opens incidents
+	// and therefore pages people.
+	JobTypeSLOBurnEval JobType = "slo_burn_eval"
 )
 
 // publiclyCreatableJobTypes is the allowlist of job types that may be enqueued
