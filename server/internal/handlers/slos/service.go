@@ -79,16 +79,21 @@ type Response struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 	// Exactly one of CheckUID / CheckGroupUID is set.
-	CheckUID           *string   `json:"checkUid,omitempty"`
-	CheckGroupUID      *string   `json:"checkGroupUid,omitempty"`
-	CheckName          *string   `json:"checkName,omitempty"`
-	CheckGroupName     *string   `json:"checkGroupName,omitempty"`
-	TargetPct          float64   `json:"targetPct"`
-	Timezone           string    `json:"timezone"`
-	ExcludeMaintenance bool      `json:"excludeMaintenance"`
-	Enabled            bool      `json:"enabled"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+	CheckUID           *string `json:"checkUid,omitempty"`
+	CheckGroupUID      *string `json:"checkGroupUid,omitempty"`
+	CheckName          *string `json:"checkName,omitempty"`
+	CheckGroupName     *string `json:"checkGroupName,omitempty"`
+	TargetPct          float64 `json:"targetPct"`
+	Timezone           string  `json:"timezone"`
+	ExcludeMaintenance bool    `json:"excludeMaintenance"`
+	Enabled            bool    `json:"enabled"`
+	// Burning is true while at least one burn-rate alert policy on this SLO
+	// has an open incident. It is what the list's "Burning" badge renders —
+	// derived from the incident rows rather than stored, so it cannot go stale
+	// when somebody resolves the incident by hand (spec 2026-08-21-08).
+	Burning   bool      `json:"burning"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // CreateRequest is the POST body.
@@ -223,6 +228,13 @@ func (s *Service) CreateSLO(ctx context.Context, orgSlug string, req *CreateRequ
 	}
 
 	if err := s.db.CreateSLO(ctx, row); err != nil {
+		return Response{}, err
+	}
+
+	// Both built-in burn policies exist from the first second, disabled. An
+	// operator toggling one on must never have to wonder whether the row is
+	// there yet.
+	if _, err := s.EnsureAlertPolicies(ctx, org.UID, row.UID); err != nil {
 		return Response{}, err
 	}
 
@@ -410,9 +422,11 @@ func (s *Service) resolve(ctx context.Context, orgSlug, ident string) (*models.O
 	return org, row, nil
 }
 
-// decorate resolves the human-readable scope names for a batch of SLOs.
+// decorate resolves the human-readable scope names for a batch of SLOs, plus
+// the live burning flag.
 func (s *Service) decorate(ctx context.Context, orgUID string, rows []*models.SLO) []Response {
 	out := make([]Response, 0, len(rows))
+	burning := s.burningSLOUIDs(ctx, orgUID, rows)
 
 	for _, row := range rows {
 		resp := Response{
@@ -428,6 +442,8 @@ func (s *Service) decorate(ctx context.Context, orgUID string, rows []*models.SL
 			CreatedAt:          row.CreatedAt,
 			UpdatedAt:          row.UpdatedAt,
 		}
+
+		_, resp.Burning = burning[row.UID]
 
 		if row.CheckUID != nil {
 			if check, err := s.db.GetCheck(ctx, orgUID, *row.CheckUID); err == nil {
@@ -446,6 +462,119 @@ func (s *Service) decorate(ctx context.Context, orgUID string, rows []*models.SL
 	}
 
 	return out
+}
+
+// burningSLOUIDs returns the subset of the given SLOs that currently have an
+// open burn incident. One query for the whole batch, and deliberately
+// best-effort: a list page that cannot show a badge is a far smaller problem
+// than a list page that 500s.
+func (s *Service) burningSLOUIDs(
+	ctx context.Context, orgUID string, rows []*models.SLO,
+) map[string]struct{} {
+	out := make(map[string]struct{})
+
+	if len(rows) == 0 {
+		return out
+	}
+
+	uids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		uids = append(uids, row.UID)
+	}
+
+	incidents, err := s.db.ListActiveBurnIncidentsForSLOs(ctx, orgUID, uids)
+	if err != nil {
+		return out
+	}
+
+	for _, inc := range incidents {
+		if inc.SLOUID != nil {
+			out[*inc.SLOUID] = struct{}{}
+		}
+	}
+
+	return out
+}
+
+// EnsureAlertPolicies materializes the two built-in burn-rate policies for an
+// SLO, creating only the ones that are missing.
+//
+// Lazy rather than backfilled by the migration: SQLite has no UUID generator,
+// so a dialect-neutral backfill would have to be written twice and would still
+// miss SLOs created by a rolled-back-then-forward deploy. Creating on demand —
+// at SLO creation, and again whenever the alerting API or the evaluator asks —
+// makes "the two policies exist" true by construction for every SLO, however
+// old.
+func (s *Service) EnsureAlertPolicies(
+	ctx context.Context, orgUID, sloUID string,
+) ([]*models.SLOAlertPolicy, error) {
+	existing, err := s.db.ListSLOAlertPolicies(ctx, sloUID)
+	if err != nil {
+		return nil, fmt.Errorf("list alert policies: %w", err)
+	}
+
+	byKind := make(map[string]struct{}, len(existing))
+	for _, policy := range existing {
+		byKind[policy.Kind] = struct{}{}
+	}
+
+	created := false
+
+	for _, def := range models.DefaultSLOAlertPolicies() {
+		if _, ok := byKind[def.Kind]; ok {
+			continue
+		}
+
+		if createErr := s.db.CreateSLOAlertPolicy(
+			ctx, models.NewSLOAlertPolicy(orgUID, sloUID, def),
+		); createErr != nil {
+			return nil, fmt.Errorf("create alert policy: %w", createErr)
+		}
+
+		created = true
+	}
+
+	if !created {
+		return existing, nil
+	}
+
+	refreshed, err := s.db.ListSLOAlertPolicies(ctx, sloUID)
+	if err != nil {
+		return nil, fmt.Errorf("list alert policies: %w", err)
+	}
+
+	return refreshed, nil
+}
+
+// EvaluateWindows evaluates one SLO over several arbitrary windows, resolving
+// the scope EXACTLY ONCE.
+//
+// This is the path the burn-rate evaluator uses, and it deliberately runs the
+// same private `evaluate` that GetStatus / GetHistory / EvaluateWindow do:
+// group aggregation, the coverage clamp and the `results.maintenance`
+// exclusion are therefore identical to the objective's own denominator by
+// construction. An evaluator that re-derived any of that could page for
+// planned maintenance the SLO page says never happened.
+func (s *Service) EvaluateWindows(
+	ctx context.Context, orgUID string, row *models.SLO, windows []slo.Window, now time.Time,
+) ([]StatusRow, error) {
+	scoped, err := s.resolveScope(ctx, orgUID, row)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]StatusRow, 0, len(windows))
+
+	for i := range windows {
+		status, evalErr := s.evaluate(ctx, orgUID, row, scoped, windows[i], now)
+		if evalErr != nil {
+			return nil, evalErr
+		}
+
+		out = append(out, status)
+	}
+
+	return out, nil
 }
 
 // Slugify derives a URL-safe slug from a display name.
