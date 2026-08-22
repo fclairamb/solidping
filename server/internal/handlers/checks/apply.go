@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -446,6 +447,25 @@ func (s *Service) ApplyChecks(
 			result.Deleted++
 		}
 	}
+
+	// One config.applied event per apply, carrying the SUMMARY COUNTS and the
+	// manifest name — never the manifest body. A config-as-code document is
+	// exactly where secret references and check credentials live, so storing
+	// it would defeat the whole redaction rule; the counts are what an auditor
+	// asks about ("what changed in the 09:14 apply?") and the per-check
+	// check.created/updated/deleted events already carry the detail.
+	audit.Record(ctx, s.db, org.UID, models.EventTypeConfigApplied,
+		audit.Target{Type: "manifest", Name: manifest},
+		models.JSONMap{
+			"manifest":  manifest,
+			"created":   result.Created,
+			"updated":   result.Updated,
+			"deleted":   result.Deleted,
+			"unmanaged": result.Unmanaged,
+			"pruned":    opts.Prune,
+			"forced":    opts.Force,
+			"errors":    len(result.Errors),
+		})
 
 	return result, nil
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/pquerna/otp/totp"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -522,14 +523,22 @@ func (s *Service) Login(
 
 	authMethod := "password"
 
+	// Every rejection below funnels through recordLoginFailed, which folds
+	// repeats and enforces the per-org hourly ceiling — see internal/audit.
+	auditCtx := auditActorCtx(ctx, "", authContext)
+
 	switch {
 	case user != nil && user.PasswordHash != nil && *user.PasswordHash != "":
 		if verifyErr := s.verifyLocalPassword(ctx, user, password); verifyErr != nil {
+			s.recordLoginFailed(auditCtx, orgSlug, email, auditReasonInvalidCredentials)
+
 			return nil, verifyErr
 		}
 	default:
 		ldapUser, ldapErr := s.authenticateViaLDAP(ctx, orgSlug, email, password)
 		if ldapErr != nil {
+			s.recordLoginFailed(auditCtx, orgSlug, email, auditReasonInvalidCredentials)
+
 			return nil, ldapErr
 		}
 
@@ -669,6 +678,19 @@ func (s *Service) completeLogin(
 	if err != nil {
 		return nil, err
 	}
+
+	// completeLogin is the single funnel every successful interactive login
+	// goes through — password, LDAP, passkey and every OAuth/OIDC provider —
+	// so one emission here covers all of them and cannot drift out of sync
+	// with a new provider added later.
+	audit.Record(auditActorCtx(ctx, user.UID, authContext), s.db, resolvedOrg.UID,
+		models.EventTypeAuthLoginSucceeded,
+		audit.Target{Type: "user", UID: user.UID, Name: user.Email},
+		models.JSONMap{
+			auditKeyMethod: method,
+			auditKeyEmail:  user.Email,
+			auditKeyRole:   role,
+		})
 
 	return &LoginResponse{
 		AccessToken:   accessToken,
@@ -950,9 +972,17 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return err
 	}
 
-	_, err = s.db.DeleteUserToken(ctx, token.UID)
+	if _, err = s.db.DeleteUserToken(ctx, token.UID); err != nil {
+		return err
+	}
 
-	return err
+	if token.OrganizationUID != nil {
+		audit.Record(auditActorCtx(ctx, token.UserUID, Context{}), s.db, *token.OrganizationUID,
+			models.EventTypeAuthLogout,
+			audit.Target{Type: "user", UID: token.UserUID}, nil)
+	}
+
+	return nil
 }
 
 // LogoutUser invalidates all refresh tokens for a user across all orgs.
@@ -1746,6 +1776,18 @@ func (s *Service) CreatePAT(
 		return nil, err
 	}
 
+	// Name and prefix only. The token VALUE is the credential; storing it —
+	// or any suffix of it — in a table org admins can read would make the
+	// audit trail a credential store.
+	audit.Record(ctx, s.db, org.UID, models.EventTypeAuthTokenCreated,
+		audit.Target{Type: "token", UID: token.UID, Name: req.Name},
+		models.JSONMap{
+			"token_kind":   "pat",
+			"token_name":   req.Name,
+			"token_prefix": tokenDisplayPrefix(tokenValue),
+			"scope_count":  len(req.Scopes),
+		})
+
 	return &CreateTokenResponse{
 		UID:       token.UID,
 		Token:     tokenValue,
@@ -1753,6 +1795,20 @@ func (s *Service) CreatePAT(
 		ExpiresAt: token.ExpiresAt,
 		CreatedAt: token.CreatedAt,
 	}, nil
+}
+
+// tokenDisplayPrefix returns the leading, non-secret slice of a token value —
+// enough for a human to match a trail entry against the token list, far too
+// little to authenticate with. The 8 characters after the "pat_" marker are
+// well under the entropy needed to guess the rest.
+func tokenDisplayPrefix(value string) string {
+	const prefixLen = len(PATTokenPrefix) + 8
+
+	if len(value) <= prefixLen {
+		return value
+	}
+
+	return value[:prefixLen]
 }
 
 // RevokeToken revokes (deletes) a user token. User-scoped, no org check needed.
@@ -1782,9 +1838,20 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 		s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeOAuthRefresh)
 	}
 
-	_, err = s.db.DeleteUserToken(ctx, tokenUID)
+	if _, err = s.db.DeleteUserToken(ctx, tokenUID); err != nil {
+		return err
+	}
 
-	return err
+	if token.OrganizationUID != nil {
+		audit.Record(ctx, s.db, *token.OrganizationUID, models.EventTypeAuthTokenRevoked,
+			audit.Target{Type: "token", UID: token.UID, Name: stringFromMap(token.Properties, keyName)},
+			models.JSONMap{
+				"token_kind": string(token.Type),
+				"token_name": stringFromMap(token.Properties, keyName),
+			})
+	}
+
+	return nil
 }
 
 // SwitchOrg switches the user's current organization context.
@@ -3018,6 +3085,13 @@ func (s *Service) CreateInvitation(
 	// Send invitation email
 	s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, inviteURL)
 
+	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberInvited,
+		audit.Target{Type: "member", Name: req.Email},
+		models.JSONMap{
+			auditKeyEmail: req.Email,
+			auditKeyRole:  req.Role,
+		})
+
 	return &InviteResponse{
 		UID:       entry.UID,
 		Token:     token,
@@ -3210,6 +3284,15 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			return nil, fmt.Errorf("failed to create membership: %w", createErr)
 		}
 
+		audit.Record(auditActorCtx(ctx, user.UID, Context{}), s.db, matchedOrg.UID,
+			models.EventTypeMemberJoined,
+			audit.Target{Type: "member", UID: user.UID, Name: user.Email},
+			models.JSONMap{
+				auditKeyEmail:  user.Email,
+				auditKeyRole:   string(role),
+				auditKeySource: "invitation",
+			})
+
 		// Delete the invitation
 		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
 	}
@@ -3373,7 +3456,36 @@ func (s *Service) UpdateOrgSettings(
 		}
 	}
 
+	if changed := orgSettingsChangedFields(req); len(changed) > 0 {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeOrgSettingsUpdated,
+			audit.Target{Type: "organization", UID: org.UID, Name: org.Slug},
+			audit.ChangePayload(changed, nil, nil, nil))
+	}
+
 	return s.GetOrgSettings(ctx, orgSlug)
+}
+
+// orgSettingsChangedFields names the settings a request actually carried.
+// Field names rather than a value diff: registration_email_pattern is a regex
+// that decides who may auto-join the org, and session_max_duration is a
+// security control — knowing they were touched, by whom and when is the audit
+// fact; reconstructing them is what GetOrgSettings is for.
+func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
+	var changed []string
+
+	if req.RegistrationEmailPattern != nil {
+		changed = append(changed, "registration_email_pattern")
+	}
+
+	if req.SessionMaxDurationSeconds != nil {
+		changed = append(changed, "session_max_duration_seconds")
+	}
+
+	if req.DefaultEscalationPolicyUID != nil {
+		changed = append(changed, "default_escalation_policy_uid")
+	}
+
+	return changed
 }
 
 // updateDefaultEscalationPolicy sets or clears the org's default escalation

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -259,6 +260,16 @@ func (s *Service) AddMember(
 		return nil, err
 	}
 
+	// member.joined rather than member.invited: this path creates the
+	// membership row outright. member.invited belongs to the invitation flow,
+	// where the membership does not exist yet.
+	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberJoined,
+		auditMemberTarget(member, user), models.JSONMap{
+			"role":   string(member.Role),
+			"email":  user.Email,
+			"source": "admin_add",
+		})
+
 	return &MemberResponse{
 		UID:       member.UID,
 		UserUID:   member.UserUID,
@@ -269,6 +280,18 @@ func (s *Service) AddMember(
 		JoinedAt:  member.JoinedAt,
 		CreatedAt: member.CreatedAt,
 	}, nil
+}
+
+// auditMemberTarget names a membership for the audit trail. The target is the
+// USER (that is who a reader is looking for), identified by UID with the email
+// as the readable name.
+func auditMemberTarget(member *models.OrganizationMember, user *models.User) audit.Target {
+	target := audit.Target{Type: "member", UID: member.UserUID}
+	if user != nil {
+		target.Name = user.Email
+	}
+
+	return target
 }
 
 // UpdateMember updates a member's role.
@@ -298,6 +321,8 @@ func (s *Service) UpdateMember(
 		return nil, ErrMemberNotFound
 	}
 
+	previousRole := member.Role
+
 	// Prepare update
 	update := models.OrganizationMemberUpdate{}
 
@@ -324,6 +349,17 @@ func (s *Service) UpdateMember(
 	user, err := s.db.GetUser(ctx, member.UserUID)
 	if err != nil {
 		return nil, ErrUserNotFound
+	}
+
+	// Only when the role actually moved — a PATCH that re-sends the current
+	// role is not a privilege change and must not read as one in the trail.
+	if member.Role != previousRole {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeMemberRoleChanged,
+			auditMemberTarget(member, user), models.JSONMap{
+				"email":         user.Email,
+				"previous_role": string(previousRole),
+				"role":          string(member.Role),
+			})
 	}
 
 	return &MemberResponse{
@@ -431,7 +467,23 @@ func (s *Service) RemoveMember(
 		}
 	}
 
-	return s.db.DeleteOrganizationMember(ctx, memberUID)
+	if err := s.db.DeleteOrganizationMember(ctx, memberUID); err != nil {
+		return err
+	}
+
+	// Best-effort name resolution: the membership is already gone and a
+	// failed user lookup must not turn a successful removal into an error.
+	user, _ := s.db.GetUser(ctx, member.UserUID)
+
+	payload := models.JSONMap{"role": string(member.Role)}
+	if user != nil {
+		payload["email"] = user.Email
+	}
+
+	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberRemoved,
+		auditMemberTarget(member, user), payload)
+
+	return nil
 }
 
 // isValidRole checks if the given role is valid.

@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
@@ -2218,16 +2219,17 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return fmt.Errorf("failed to delete check: %w", err)
 	}
 
-	// Emit check.deleted event
-	event := models.NewEvent(org.UID, models.EventTypeCheckDeleted, models.ActorTypeUser)
+	// Emit check.deleted event (actor-attributed — see emitEvent).
+	event := audit.NewEvent(ctx, org.UID, models.EventTypeCheckDeleted,
+		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
+		models.JSONMap{
+			eventPayloadCheckUIDKey:  check.UID,
+			"check_slug":             check.Slug,
+			"check_name":             check.Name,
+			"check_type":             check.Type,
+			"active_incidents_count": activeIncidentCount,
+		})
 	event.CheckUID = &check.UID
-	event.Payload = models.JSONMap{
-		eventPayloadCheckUIDKey:  check.UID,
-		"check_slug":             check.Slug,
-		"check_name":             check.Name,
-		"check_type":             check.Type,
-		"active_incidents_count": activeIncidentCount,
-	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
@@ -2866,14 +2868,19 @@ func (s *Service) emitEvent(
 	eventType models.EventType,
 	check *models.Check,
 ) error {
-	event := models.NewEvent(orgUID, eventType, models.ActorTypeUser)
+	// Built through internal/audit so a check event carries the same actor
+	// identity (user/token, source IP, user agent) as every other audit event.
+	// Before spec 2026-08-21-09 these rows hardcoded actor_type=user and never
+	// set actor_uid at all, so "who deleted this check?" had no answer.
+	event := audit.NewEvent(ctx, orgUID, eventType,
+		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
+		models.JSONMap{
+			eventPayloadCheckUIDKey: check.UID,
+			"check_slug":            check.Slug,
+			"check_name":            check.Name,
+			"check_type":            check.Type,
+		})
 	event.CheckUID = &check.UID
-	event.Payload = models.JSONMap{
-		eventPayloadCheckUIDKey: check.UID,
-		"check_slug":            check.Slug,
-		"check_name":            check.Name,
-		"check_type":            check.Type,
-	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		return fmt.Errorf("failed to create event: %w", err)
@@ -4263,4 +4270,18 @@ func (s *Service) applyConfigPatch(
 	}
 
 	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
+}
+
+// checkDisplayName is the check's name for the audit trail, falling back to
+// its slug when the optional name is unset.
+func checkDisplayName(check *models.Check) string {
+	if check.Name != nil && *check.Name != "" {
+		return *check.Name
+	}
+
+	if check.Slug != nil {
+		return *check.Slug
+	}
+
+	return ""
 }
