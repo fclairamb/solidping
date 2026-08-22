@@ -252,7 +252,7 @@ func openEndpoint(
 // row is created already confirmed and starts delivering on the next update.
 func (s *Service) CreateEndpointSubscriber(
 	ctx context.Context, orgSlug, statusPageUID string, req *CreateEndpointSubscriberRequest,
-) (*SubscriberResponse, error) {
+) (*CreateEndpointSubscriberResponse, error) {
 	channel := models.SubscriberChannel(strings.TrimSpace(req.Channel))
 	if !channel.IsEndpoint() {
 		return nil, ErrInvalidChannel
@@ -273,7 +273,7 @@ func (s *Service) CreateEndpointSubscriber(
 		return nil, err
 	}
 
-	envelope, err := s.sealFor(ctx, org.UID, normalized, req.SigningSecret)
+	envelope, secret, err := s.sealFor(ctx, org.UID, normalized, req.SigningSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -300,13 +300,16 @@ func (s *Service) CreateEndpointSubscriber(
 		return nil, createErr
 	}
 
-	return &SubscriberResponse{
-		UID:       sub.UID,
-		Channel:   string(sub.Channel),
-		Endpoint:  sub.EndpointHint,
-		Scope:     string(sub.Scope),
-		Confirmed: true,
-		CreatedAt: sub.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	return &CreateEndpointSubscriberResponse{
+		SubscriberResponse: SubscriberResponse{
+			UID:       sub.UID,
+			Channel:   string(sub.Channel),
+			Endpoint:  sub.EndpointHint,
+			Scope:     string(sub.Scope),
+			Confirmed: true,
+			CreatedAt: sub.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		},
+		SigningSecret: secret,
 	}, nil
 }
 
@@ -335,10 +338,12 @@ func (s *Service) resolveOrgAndPage(
 }
 
 // sealFor generates the signing secret when the caller supplied none and
-// returns the encrypted envelope to store.
+// returns the encrypted envelope to store PLUS the plaintext secret, which the
+// caller shows the operator exactly once. Returning it is the whole point: a
+// signature nobody can verify is decoration.
 func (s *Service) sealFor(
 	ctx context.Context, orgUID, normalizedURL string, suppliedSecret *string,
-) (string, error) {
+) (string, string, error) {
 	secret := ""
 	if suppliedSecret != nil {
 		secret = strings.TrimSpace(*suppliedSecret)
@@ -347,18 +352,19 @@ func (s *Service) sealFor(
 	if secret == "" {
 		generated, err := generateSigningSecret()
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 
 		secret = generated
 	}
 
-	envelope, err := sealEndpoint(ctx, s.creds, orgUID, endpointSecrets{URL: normalizedURL, SigningSecret: secret})
+	envelope, err := sealEndpoint(ctx, s.creds, orgUID,
+		endpointSecrets{URL: normalizedURL, SigningSecret: secret})
 	if err != nil {
-		return "", fmt.Errorf("seal endpoint: %w", err)
+		return "", "", fmt.Errorf("seal endpoint: %w", err)
 	}
 
-	return envelope, nil
+	return envelope, secret, nil
 }
 
 // resolveScope validates the optional scope/incident pair shared by the public

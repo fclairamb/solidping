@@ -131,7 +131,12 @@
     "url": "Zustell-URL",
     "add": "Hinzufügen",
     "endpointAdded": "Zustellung hinzugefügt",
-    "endpointAddError": "Zustellung konnte nicht hinzugefügt werden"
+    "endpointAddError": "Zustellung konnte nicht hinzugefügt werden",
+    "signingSecret": "Signatur-Secret (optional)",
+    "signingSecretPlaceholder": "Leer lassen, um eines zu generieren",
+    "signingSecretHint": "Signiert jede Zustellung (HMAC-SHA256), damit Ihr Empfänger prüfen kann, dass sie von SolidPing stammt.",
+    "signingSecretIssued": "Kopieren Sie dieses Signatur-Secret jetzt — es wird nur einmal angezeigt und lässt sich später nicht abrufen.",
+    "signingSecretSaved": "Gespeichert"
   },
   "customDomain": {
     "title": "Eigene Domain",

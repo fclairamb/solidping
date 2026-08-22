@@ -2207,8 +2207,21 @@ export interface StatusPageSubscriber {
 export interface CreateEndpointSubscriberRequest {
   channel: Exclude<StatusPageSubscriberChannel, "email">;
   url: string;
-  /** Optional; the server generates one when omitted. Never read back. */
+  /**
+   * Optional. When omitted the server generates one and returns it in the
+   * create response — see CreateEndpointSubscriberResponse. Either way it is
+   * never readable again afterwards.
+   */
   signingSecret?: string;
+}
+
+/**
+ * Create-only response. `signingSecret` is returned EXACTLY ONCE, here: the
+ * receiver needs it to verify the HMAC on every delivery, and it is never
+ * stored in a readable column nor echoed by the list endpoint.
+ */
+export interface CreateEndpointSubscriberResponse extends StatusPageSubscriber {
+  signingSecret: string;
 }
 
 /**
@@ -2222,8 +2235,11 @@ export function useCreateEndpointSubscriber(org: string, statusPageUid: string) 
 
   return useMutation({
     mutationFn: (request: CreateEndpointSubscriberRequest) =>
-      apiFetch<{ data: StatusPageSubscriber }>(
-        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers`,
+      apiFetch<{ data: CreateEndpointSubscriberResponse }>(
+        // `/subscribers/endpoints`, not `/subscribers`: the latter is the
+        // PUBLIC email-only subscribe route, and the two cannot share a
+        // pattern on the router (see app/server.go).
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers/endpoints`,
         { method: "POST", body: JSON.stringify(request) },
       ),
     onSuccess: () => {

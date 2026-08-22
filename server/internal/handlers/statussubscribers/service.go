@@ -108,6 +108,23 @@ type SubscriberResponse struct {
 	CreatedAt    string `json:"createdAt"`
 }
 
+// CreateEndpointSubscriberResponse is the create-only shape. It is a SEPARATE
+// type from SubscriberResponse, not that type with an extra optional field,
+// precisely so the signing secret cannot leak from the list endpoint by
+// someone later populating a shared struct: there is no field on the list
+// shape that could carry it.
+type CreateEndpointSubscriberResponse struct {
+	SubscriberResponse
+
+	// SigningSecret is returned EXACTLY ONCE, here, at creation. It is never
+	// stored in a readable column and never returned again — a receiver that
+	// loses it must have the subscription re-created. That is the standard
+	// show-once contract for a shared secret, and it is what makes the HMAC on
+	// every delivery actually verifiable: without it the operator would be
+	// handed signed requests they could not check.
+	SigningSecret string `json:"signingSecret"`
+}
+
 // CreateEndpointSubscriberRequest is the body of the AUTHENTICATED
 // webhook/slack subscription endpoint. There is deliberately no public
 // equivalent: a visitor pasting an incoming-webhook URL has no verification
@@ -115,9 +132,10 @@ type SubscriberResponse struct {
 type CreateEndpointSubscriberRequest struct {
 	Channel string `json:"channel"`
 	URL     string `json:"url"`
-	// SigningSecret is optional; when omitted one is generated. It is
-	// write-only — the response never echoes it, so an operator who wants to
-	// verify signatures on their side must supply their own.
+	// SigningSecret is optional; when omitted one is generated and returned
+	// once in the create response (see CreateEndpointSubscriberResponse).
+	// Supplying your own is useful when the receiver already has a secret it
+	// verifies other SolidPing calls with.
 	SigningSecret *string `json:"signingSecret,omitempty"`
 	Scope         *string `json:"scope,omitempty"`
 	IncidentUID   *string `json:"incidentUid,omitempty"`

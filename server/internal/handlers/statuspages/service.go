@@ -795,7 +795,8 @@ type CreateStatusPageRequest struct {
 	// to come back and re-tick it.
 	HideBranding *bool `json:"hideBranding,omitempty"`
 	// Password sets the unlock password for a `visibility: password` page.
-	// WRITE-ONLY: it is hashed with bcrypt on the way in and never appears on
+	// WRITE-ONLY: it is hashed on the way in (internal/utils/passwords —
+	// argon2id by default) and never appears on
 	// any response.
 	Password *string `json:"password,omitempty"`
 	// CustomCSS optionally sets the page's custom stylesheet at create time.

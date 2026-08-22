@@ -490,8 +490,12 @@ your receiver can prove it came from SolidPing:
 | `X-SP-Key-Id` | `status-page-subscriber` |
 
 The signed string is `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`.
-SolidPing generates a signing secret when you add the subscription, or you can
-supply your own.
+
+You can paste your own signing secret when adding the subscription — useful if
+your receiver already verifies a secret you control. Leave the field empty and
+SolidPing generates one and **shows it to you once, right after you add the
+delivery**. Copy it then: it is stored encrypted and is never displayed again,
+so losing it means removing the subscription and adding it back.
 
 **Your URL stays secret.** It is stored encrypted, and the dashboard and API only
 ever show a masked form of it — enough to tell two webhooks apart, useless to

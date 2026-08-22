@@ -131,7 +131,12 @@
     "url": "Delivery URL",
     "add": "Add",
     "endpointAdded": "Delivery added",
-    "endpointAddError": "Could not add the delivery"
+    "endpointAddError": "Could not add the delivery",
+    "signingSecret": "Signing secret (optional)",
+    "signingSecretPlaceholder": "Leave empty to have one generated",
+    "signingSecretHint": "Used to sign every delivery (HMAC-SHA256) so your receiver can verify it came from SolidPing.",
+    "signingSecretIssued": "Copy this signing secret now — it is shown once and cannot be retrieved later.",
+    "signingSecretSaved": "I've saved it"
   },
   "customDomain": {
     "title": "Custom domain",

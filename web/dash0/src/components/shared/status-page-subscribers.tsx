@@ -68,15 +68,29 @@ export function StatusPageSubscribers({
   const [channel, setChannel] =
     useState<Exclude<StatusPageSubscriberChannel, "email">>("webhook");
   const [url, setUrl] = useState("");
+  const [secret, setSecret] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  // The generated signing secret, shown ONCE after a successful add. The API
+  // never returns it again, so losing this means re-creating the subscription.
+  const [issuedSecret, setIssuedSecret] = useState<string | null>(null);
 
   const handleAdd = async (event: React.FormEvent) => {
     event.preventDefault();
     setAddError(null);
 
     try {
-      await createEndpoint.mutateAsync({ channel, url: url.trim() });
+      const created = await createEndpoint.mutateAsync({
+        channel,
+        url: url.trim(),
+        // Omitted when the operator left the field empty, so the server
+        // generates one and hands it back below.
+        ...(secret.trim() === "" ? {} : { signingSecret: secret.trim() }),
+      });
       setUrl("");
+      // Only surface a secret the operator does NOT already have. One they
+      // typed themselves needs no "save this now" banner.
+      setIssuedSecret(secret.trim() === "" ? created.data.signingSecret : null);
+      setSecret("");
       toast.success(t("subscribers.endpointAdded"));
     } catch (err) {
       const message =
@@ -248,6 +262,51 @@ export function StatusPageSubscribers({
               {t("subscribers.add")}
             </Button>
           </div>
+
+          {/* Optional own-secret field. Only meaningful for a generic webhook:
+              Slack does not verify signatures, so offering the field there
+              would suggest a control that has no effect. */}
+          {channel === "webhook" && (
+            <div className="space-y-2">
+              <Label htmlFor="subscriber-secret">
+                {t("subscribers.signingSecret")}
+              </Label>
+              <Input
+                id="subscriber-secret"
+                type="text"
+                autoComplete="off"
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                placeholder={t("subscribers.signingSecretPlaceholder")}
+                data-testid="subscriber-secret-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("subscribers.signingSecretHint")}
+              </p>
+            </div>
+          )}
+
+          {/* Show-once banner. The server never returns this again, so it is
+              deliberately loud and deliberately not auto-dismissed. */}
+          {issuedSecret && (
+            <Alert data-testid="subscriber-issued-secret">
+              <AlertDescription className="space-y-2">
+                <p>{t("subscribers.signingSecretIssued")}</p>
+                <code className="block break-all rounded bg-muted px-2 py-1 font-mono text-xs">
+                  {issuedSecret}
+                </code>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIssuedSecret(null)}
+                  data-testid="subscriber-issued-secret-dismiss"
+                >
+                  {t("subscribers.signingSecretSaved")}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           {addError && (
             <Alert variant="destructive">
               <AlertDescription data-testid="subscriber-add-error">

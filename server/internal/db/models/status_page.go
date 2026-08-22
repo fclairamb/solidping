@@ -138,7 +138,10 @@ type StatusPage struct {
 	// org holds the `whiteLabel` entitlement. Keeping the two halves separate
 	// means a downgrade silently restores the badge without rewriting the page.
 	HideBranding bool `bun:"hide_branding,notnull,default:false"`
-	// PasswordHash is the bcrypt hash gating a `visibility = password` page.
+	// PasswordHash is the password hash gating a `visibility = password` page.
+	// It is produced by internal/utils/passwords, whose active policy is
+	// argon2id by default (bcrypt is selectable) — the same policy user
+	// passwords use, so there is one hashing decision in the system, not two.
 	// It is NEVER serialized onto any response — reads expose `hasPassword`
 	// only. nil on public/private pages.
 	PasswordHash *string `bun:"password_hash"`
@@ -200,7 +203,7 @@ type StatusPageUpdate struct {
 	CustomCSS *string
 	// HideBranding flips the page-level white-label opt-in. nil leaves it.
 	HideBranding *bool
-	// PasswordHash writes the bcrypt hash gating a password page. A pointer to
+	// PasswordHash writes the password hash gating a password page. A pointer to
 	// the empty string CLEARS the column (the page stopped being password
 	// protected); a nil pointer leaves it untouched, which is what keeps an
 	// unrelated PATCH from silently unlocking a page.

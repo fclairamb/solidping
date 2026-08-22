@@ -1572,10 +1572,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
 	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
-	// Operator-side webhook/Slack subscriptions (spec 2026-08-21-07). Note the
-	// deliberate asymmetry with the PUBLIC subscribe route further down: that
-	// one is email-only, this one is the only way to register a delivery URL.
-	orgStatusPages.POST("/:statusPageUid/subscribers", statusSubscribersHandler.CreateEndpointSubscriber)
+	// Operator-side webhook/Slack subscriptions (spec 2026-08-21-07).
+	//
+	// The path is `/subscribers/endpoints`, NOT `/subscribers`, and that is
+	// load-bearing: the public email-subscribe route further down registers
+	// `POST /orgs/:org/status-pages/:statusPageUid/subscribers` on the SAME
+	// chi mux. chi's node.setEndpoint silently OVERWRITES a duplicate
+	// method+pattern rather than panicking, so two handlers on one pattern do
+	// not fail loudly — the last registration simply wins and the other one
+	// becomes unreachable. Splitting the path is the only way to keep both.
+	// Pinned by TestStatusSubscriberRoutesDoNotCollide.
+	orgStatusPages.POST(
+		"/:statusPageUid/subscribers/endpoints", statusSubscribersHandler.CreateEndpointSubscriber)
 	orgStatusPages.DELETE("/:statusPageUid/subscribers/:uid", statusSubscribersHandler.RemoveSubscriber)
 
 	// Maintenance windows routes (authentication required)
@@ -1648,6 +1656,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
 	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
 	// single-purpose token links that render an HTML landing page.
+	// Email-only, public. Its operator-side sibling deliberately lives at
+	// `.../subscribers/endpoints` — see the comment there for why they cannot
+	// share this pattern.
 	publicOrgAPI.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
 	publicSubscribers := api.NewGroup("/public/status-subscribers")
 	publicSubscribers.GET("/confirm", statusSubscribersHandler.Confirm)

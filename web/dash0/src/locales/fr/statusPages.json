@@ -131,7 +131,12 @@
     "url": "URL de remise",
     "add": "Ajouter",
     "endpointAdded": "Remise ajoutée",
-    "endpointAddError": "Impossible d’ajouter la remise"
+    "endpointAddError": "Impossible d’ajouter la remise",
+    "signingSecret": "Secret de signature (facultatif)",
+    "signingSecretPlaceholder": "Laisser vide pour en générer un",
+    "signingSecretHint": "Sert à signer chaque remise (HMAC-SHA256) pour que votre récepteur puisse vérifier qu’elle vient bien de SolidPing.",
+    "signingSecretIssued": "Copiez ce secret de signature maintenant : il n’est affiché qu’une fois et ne pourra pas être récupéré.",
+    "signingSecretSaved": "C’est enregistré"
   },
   "customDomain": {
     "title": "Domaine personnalisé",

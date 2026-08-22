@@ -139,16 +139,28 @@ Each row carries `channel`, the masked `endpoint` (endpoint channels only),
 `failureCount` and `disabled`.
 
 ### POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers
-Two distinct endpoints share this path, separated by the auth chain:
+Request an email subscription. Auth: **public**. Body: `{ "email": "…" }`.
+Sends a confirmation email; creates nothing deliverable until confirmed.
+Returns `202`. A `channel` other than `email` is refused with
+`VALIDATION_ERROR`.
 
-* **Authenticated** — register a webhook/Slack delivery:
-  `{ "channel": "webhook" | "slack", "url": "https://…", "signingSecret": "…" }`.
-  `signingSecret` is optional (generated when omitted) and write-only. The URL
-  must be `https` and must not resolve to a loopback/private host; a `slack`
-  row must point at `hooks.slack.com`. Returns `201`.
-* **Public** — request an email subscription: `{ "email": "…" }`. Sends a
-  confirmation email; creates nothing deliverable until confirmed. Returns
-  `202`. A `channel` other than `email` is refused with `VALIDATION_ERROR`.
+### POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/endpoints
+Register a webhook/Slack delivery. Auth: **required**. Body:
+`{ "channel": "webhook" | "slack", "url": "https://…", "signingSecret": "…" }`.
+The URL must be `https` and must not resolve to a loopback/private host; a
+`slack` row must point at `hooks.slack.com`. Returns `201`.
+
+`signingSecret` is optional. Supply your own when the receiver already verifies
+a known secret; omit it and one is generated. **Either way the create response
+carries it once**, as `data.signingSecret` — it is never stored in a readable
+column and never returned again, so a receiver that loses it needs the
+subscription re-created. Without that one-time disclosure the HMAC on every
+delivery would be unverifiable, which is worse than not signing at all.
+
+The separate path is not cosmetic. Both routes live on one chi mux, and chi
+silently OVERWRITES a duplicate method+pattern instead of panicking — the two
+handlers cannot share `…/subscribers`, or the last registration wins and the
+other becomes unreachable. Pinned by `TestStatusSubscriberRoutesDoNotCollide`.
 
 ### DELETE /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/:uid
 Remove a subscriber. Auth: required

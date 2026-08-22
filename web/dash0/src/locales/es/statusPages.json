@@ -131,7 +131,12 @@
     "url": "URL de entrega",
     "add": "Añadir",
     "endpointAdded": "Entrega añadida",
-    "endpointAddError": "No se ha podido añadir la entrega"
+    "endpointAddError": "No se ha podido añadir la entrega",
+    "signingSecret": "Secreto de firma (opcional)",
+    "signingSecretPlaceholder": "Déjalo vacío para generar uno",
+    "signingSecretHint": "Firma cada entrega (HMAC-SHA256) para que tu receptor pueda verificar que viene de SolidPing.",
+    "signingSecretIssued": "Copia ahora este secreto de firma: se muestra una sola vez y no podrá recuperarse.",
+    "signingSecretSaved": "Ya lo he guardado"
   },
   "customDomain": {
     "title": "Dominio personalizado",

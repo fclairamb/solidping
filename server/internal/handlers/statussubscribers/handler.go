@@ -165,12 +165,19 @@ func (h *Handler) statusPageURL(orgSlug, pageSlug string) string {
 }
 
 // CreateEndpointSubscriber handles
-// POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers (AUTHED).
+// POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/endpoints
+// (AUTHED).
 //
-// The public subscribe endpoint lives at a different path and is email-only.
-// This one is deliberately operator-side: a visitor pasting an incoming-webhook
-// URL has no verification story, and the URL is a credential that would then
-// be accepted from anyone.
+// Deliberately operator-side: a visitor pasting an incoming-webhook URL has no
+// verification story, and the URL is a credential that would then be accepted
+// from anyone. The public email subscribe lives one path segment up.
+//
+// The `/endpoints` suffix is load-bearing, not decorative — see the route
+// registration in app/server.go: chi silently overwrites a duplicate
+// method+pattern, so these two handlers cannot share `…/subscribers`.
+//
+// The response carries the signing secret ONCE. That is the only moment it is
+// ever readable; see CreateEndpointSubscriberResponse.
 func (h *Handler) CreateEndpointSubscriber(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
 	statusPageUID := httpx.Param(req, "statusPageUid")

@@ -162,7 +162,9 @@ comment on column status_pages.hide_branding is
 -- new value means replacing that constraint — dropping it and re-adding the
 -- widened one, which Postgres does in place with no table rewrite.
 --
--- The hash is bcrypt, and it is never returned by any endpoint — reads expose
+-- The hash comes from internal/utils/passwords (argon2id by default, bcrypt
+-- selectable — the same policy user passwords use), and it is never returned
+-- by any endpoint — reads expose
 -- a `hasPassword` boolean instead. It doubles as the unlock cookie's HMAC key
 -- (sha256 of the hash), which is what makes "change the password" invalidate
 -- every outstanding cookie without a second column, a revocation list, or a
@@ -224,6 +226,13 @@ alter table status_page_subscriber alter column email drop not null;
 
 alter table status_page_subscriber
   add column if not exists channel text not null default 'email';
+
+--bun:split
+
+-- Dropped first so the whole section is re-runnable: `add constraint` has no
+-- IF NOT EXISTS, and a section that cannot be replayed cannot be exercised
+-- against a populated database by a test either.
+alter table status_page_subscriber drop constraint if exists status_page_subscriber_channel_check;
 
 --bun:split
 

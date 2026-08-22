@@ -91,7 +91,7 @@ func (r *receiver) captured() []capturedRequest {
 // the slack rendering, and TestEndpointValidation covers the host rule itself.
 func endpointSubscriber(
 	t *testing.T, s *subSetup, url, secret string,
-) *statussubscribers.SubscriberResponse {
+) *statussubscribers.CreateEndpointSubscriberResponse {
 	t.Helper()
 
 	created, err := s.svc.CreateEndpointSubscriber(t.Context(), s.org.Slug, s.page.UID,
@@ -401,4 +401,63 @@ func TestMaskedEndpointDistinguishesTwoWebhooks(t *testing.T) {
 	r.Len(list, 2)
 	r.NotEqual(*list[0].Endpoint, *list[1].Endpoint)
 	r.True(strings.HasPrefix(*list[0].Endpoint, "https://hooks.example.com/"))
+}
+
+// TestSigningSecretIsReturnedOnceAndNeverAgain pins the show-once contract.
+//
+// It matters because the alternative — generating a secret and never revealing
+// it — produces signed deliveries the receiver cannot verify, which is worse
+// than not signing at all: it looks secure and is not.
+func TestSigningSecretIsReturnedOnceAndNeverAgain(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newSubSetup(t)
+
+	created, err := s.svc.CreateEndpointSubscriber(t.Context(), s.org.Slug, s.page.UID,
+		&statussubscribers.CreateEndpointSubscriberRequest{
+			Channel: "webhook", URL: "https://hooks.example.com/services/abc123",
+		})
+	r.NoError(err)
+	r.NotEmpty(created.SigningSecret, "a generated secret must be handed back once")
+
+	// ...and the list shape has nowhere to put it. Serialize a list row and
+	// assert the key is simply absent, rather than trusting the struct by eye.
+	list, err := s.svc.ListSubscribers(t.Context(), s.org.Slug, s.page.UID)
+	r.NoError(err)
+	r.Len(list, 1)
+
+	encoded, err := json.Marshal(list[0])
+	r.NoError(err)
+	r.NotContains(string(encoded), "signingSecret")
+	r.NotContains(string(encoded), created.SigningSecret)
+}
+
+// TestSuppliedSigningSecretIsUsedVerbatim: an operator whose receiver already
+// verifies a known secret must be able to bring it, or they have to rewrite
+// their verifier for this one integration.
+func TestSuppliedSigningSecretIsUsedVerbatim(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newSubSetup(t)
+	rec := newReceiver(t)
+
+	const mine = "my-own-shared-secret"
+
+	created := endpointSubscriber(t, s, rec.server.URL+"/hooks/mine", mine)
+	r.Equal(mine, created.SigningSecret, "a supplied secret must be echoed, not replaced")
+
+	deliverOnce(t, s, rec)
+
+	got := rec.captured()
+	r.Len(got, 1)
+
+	digest := sha256.Sum256(got[0].Body)
+	canonical := got[0].Timestamp + ".POST." + got[0].Path + "." + hex.EncodeToString(digest[:])
+	mac := hmac.New(sha256.New, []byte(mine))
+	mac.Write([]byte(canonical))
+
+	r.Equal(servicesig.SignaturePrefix+base64.StdEncoding.EncodeToString(mac.Sum(nil)), got[0].Signature,
+		"the delivery must be signed with the operator's own secret")
 }
