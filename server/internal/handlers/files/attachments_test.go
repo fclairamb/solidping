@@ -60,7 +60,7 @@ func TestCreateFileWithoutOptionsIsUnchanged(t *testing.T) {
 
 	file, err := svc.CreateFile(
 		t.Context(), orgUID, filestorage.GroupTypeOrgLogos,
-		"logo.png", "image/png", nil, strings.NewReader("logo"), 4,
+		"logo.png", mimeTypePNG, nil, strings.NewReader("logo"), 4,
 	)
 	r.NoError(err)
 	r.Nil(file.Topic)
@@ -95,7 +95,7 @@ func TestAttachmentRoundTripThroughTheStore(t *testing.T) {
 	}
 
 	fileUID, err := store.CreateAttachment(
-		t.Context(), orgUID, "shop-screenshot.png", "image/png", topic, details, []byte("pixels"),
+		t.Context(), orgUID, "shop-screenshot.png", mimeTypePNG, topic, details, []byte("pixels"),
 	)
 	r.NoError(err)
 	r.NotEmpty(fileUID)
@@ -109,7 +109,7 @@ func TestAttachmentRoundTripThroughTheStore(t *testing.T) {
 	r.Equal("shop-screenshot.png", view.Name)
 	// Kind is derived from the topic, so no caller has to parse one.
 	r.Equal(models.AttachmentKindScreenshot, view.Kind)
-	r.Equal("image/png", view.MimeType)
+	r.Equal(mimeTypePNG, view.MimeType)
 	r.EqualValues(6, view.Size)
 	r.Equal("eu-west", view.Details[models.AttachmentDetailRegion])
 
@@ -144,7 +144,7 @@ func TestSignedURLFallsBackToConfiguredBaseURL(t *testing.T) {
 	topic := models.AttachmentTopic(models.AttachmentEntityIncidents, "inc-1", models.AttachmentKindScreenshot)
 
 	_, err := store.CreateAttachment(
-		t.Context(), orgUID, "s.png", "image/png", topic, nil, []byte("x"))
+		t.Context(), orgUID, "s.png", mimeTypePNG, topic, nil, []byte("x"))
 	r.NoError(err)
 
 	views, err := store.ListAttachmentViews(t.Context(), orgUID.String(), topic, "")
@@ -167,7 +167,7 @@ func TestDeleteAttachmentsRefusesABroadPrefix(t *testing.T) {
 	topic := models.AttachmentTopic(models.AttachmentEntityIncidents, "inc-1", models.AttachmentKindScreenshot)
 
 	_, err := store.CreateAttachment(
-		t.Context(), orgUID, "s.png", "image/png", topic, nil, []byte("x"))
+		t.Context(), orgUID, "s.png", mimeTypePNG, topic, nil, []byte("x"))
 	r.NoError(err)
 
 	for _, prefix := range []string{"", "/", "incidents", "incidents/", "incidents//"} {
@@ -197,13 +197,13 @@ func TestFileResponseOmitsAttachmentFieldsForPlainFiles(t *testing.T) {
 
 	r := require.New(t)
 
-	plain := toResponse(&models.File{UID: "f1", Name: "logo.png", MimeType: "image/png"})
+	plain := toResponse(&models.File{UID: "f1", Name: "logo.png", MimeType: mimeTypePNG})
 	r.Nil(plain.Topic)
 	r.Nil(plain.Details)
 
 	topic := "incidents/inc-1/screenshot"
 	attached := toResponse(&models.File{
-		UID: "f2", Name: "s.png", MimeType: "image/png",
+		UID: "f2", Name: "s.png", MimeType: mimeTypePNG,
 		Topic:   &topic,
 		Details: models.JSONMap{models.AttachmentDetailRegion: "eu"},
 	})

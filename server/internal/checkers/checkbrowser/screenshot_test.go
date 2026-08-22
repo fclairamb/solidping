@@ -43,7 +43,7 @@ func screenshotChecker(
 }
 
 func screenshotSpec(enabled bool) *BrowserConfig {
-	return &BrowserConfig{URL: "https://example.com", Timeout: 5 * time.Second, Screenshot: enabled}
+	return &BrowserConfig{URL: exampleURL, Timeout: 5 * time.Second, Screenshot: enabled}
 }
 
 // TestScreenshotCapturedOnlyOnFailureWhenEnabled is the core matrix: the flag
@@ -144,28 +144,34 @@ func TestScreenshotFailureNeverChangesTheVerdict(t *testing.T) {
 	}
 }
 
-// TestScreenshotCapturesEvenOnAnExpiredContext proves the WithoutCancel in
-// captureScreenshot is load-bearing: a timed-out check arrives with a context
-// that is already Done, and a capture that simply inherited it could never run.
+// TestScreenshotSurvivesAProbeThatTimedOut is the reason Execute splits its
+// budget in two.
 //
-//nolint:paralleltest // mutates the process-wide settings
-func TestScreenshotCapturesEvenOnAnExpiredContext(t *testing.T) {
-	withSettings(t, Settings{CDPURL: fakeCDPServer(t).URL})
+// A timed-out probe is exactly when a screenshot is most useful, and it is
+// also when the naive implementation cannot take one: the probe's context is
+// spent. The session context outlives it by the screenshot budget, so the tab
+// is still there to photograph.
+//
+// It also pins what must NOT be done to get there. An earlier version reached
+// for context.WithoutCancel, which detached the capture from the lifecycle
+// chromedp was managing and let it race the allocator's teardown — that
+// panicked the whole server process with "close of closed channel". The
+// assertions below require a capture context that is alive, bounded, AND
+// still a descendant of the session, which WithoutCancel would not be.
+func TestScreenshotSurvivesAProbeThatTimedOut(t *testing.T) {
+	t.Parallel()
 
-	r := require.New(t)
-
-	var sawDeadline bool
+	var (
+		captureHadDeadline bool
+		captureErr         error
+	)
 
 	checker := &BrowserChecker{
 		session: func(
 			ctx context.Context, _ *BrowserConfig, start time.Time, metrics, output map[string]any,
 		) *checkerdef.Result {
-			// Simulate the timeout path: the check's own context is spent by
-			// the time the verdict is in.
-			expired, cancel := context.WithCancel(ctx)
-			cancel()
-
-			<-expired.Done()
+			// Burn the probe's whole budget, the way a hung page does.
+			<-ctx.Done()
 
 			return &checkerdef.Result{
 				Status: checkerdef.StatusTimeout, Duration: time.Since(start),
@@ -173,23 +179,95 @@ func TestScreenshotCapturesEvenOnAnExpiredContext(t *testing.T) {
 			}
 		},
 		capture: func(ctx context.Context) ([]byte, error) {
-			// Positive control: the capture context is alive AND bounded.
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-
-			_, sawDeadline = ctx.Deadline()
+			captureErr = ctx.Err()
+			_, captureHadDeadline = ctx.Deadline()
 
 			return fakePNG, nil
 		},
 	}
 
-	result, err := checker.Execute(t.Context(), screenshotSpec(true))
+	r := require.New(t)
+
+	cfg := &BrowserConfig{URL: exampleURL, Timeout: 50 * time.Millisecond, Screenshot: true}
+
+	result, err := checker.Execute(t.Context(), cfg)
 	r.NoError(err)
 	r.Equal(checkerdef.StatusTimeout, result.Status)
+
+	r.NoError(captureErr, "the capture context must still be alive after the probe timed out")
+	r.True(captureHadDeadline, "and it must still be time-boxed")
+
 	r.NotNil(result.Diagnostics)
 	r.NotNil(result.Diagnostics.Screenshot)
-	r.True(sawDeadline, "the capture must be time-boxed by its own budget")
+	r.Equal(fakePNG, result.Diagnostics.Screenshot.PNG)
+}
+
+// TestScreenshotStaysBoundToCallerCancellation is the direct regression guard
+// for the crash this feature caused once.
+//
+// The capture context must remain a DESCENDANT of the context the worker
+// handed in. An earlier version used context.WithoutCancel to survive a spent
+// probe deadline, which also detached it from shutdown — and, worse, from the
+// lifecycle chromedp was managing, letting the capture race the allocator's
+// teardown and panic the process. Canceling the caller must still reach the
+// capture; if this assertion ever fails, something has been detached again.
+func TestScreenshotStaysBoundToCallerCancellation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	var captureErr error
+
+	checker := &BrowserChecker{
+		session: func(
+			_ context.Context, _ *BrowserConfig, start time.Time, metrics, output map[string]any,
+		) *checkerdef.Result {
+			// The worker goes away mid-execution (a shutdown).
+			cancel()
+
+			return &checkerdef.Result{
+				Status: checkerdef.StatusDown, Duration: time.Since(start),
+				Metrics: metrics, Output: output,
+			}
+		},
+		capture: func(captureCtx context.Context) ([]byte, error) {
+			captureErr = captureCtx.Err()
+
+			return fakePNG, captureErr
+		},
+	}
+
+	result, err := checker.Execute(ctx, screenshotSpec(true))
+	r.NoError(err)
+
+	r.ErrorIs(captureErr, context.Canceled,
+		"the capture context must still be canceled by the caller's cancellation")
+	r.Nil(result.Diagnostics, "and a canceled capture is dropped, not stored")
+	r.Equal(checkerdef.StatusDown, result.Status, "the verdict is untouched either way")
+}
+
+// TestScreenshotPanicIsContained: a panicking capture must be reported as an
+// ordinary failed capture, never propagated. A monitoring worker that dies
+// because an optional screenshot went wrong stops watching everything else —
+// which is exactly what a chromedp lifecycle panic did once.
+func TestScreenshotPanicIsContained(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	checker := screenshotChecker(checkerdef.StatusDown, func(context.Context) ([]byte, error) {
+		panic("close of closed channel")
+	})
+
+	r.NotPanics(func() {
+		result, err := checker.Execute(t.Context(), screenshotSpec(true))
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status, "the verdict survives a panicking capture")
+		r.Nil(result.Diagnostics)
+	})
 }
 
 // TestScreenshotBytesNeverReachTheAgentFrame is the security assertion of §3:

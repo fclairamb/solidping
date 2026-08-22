@@ -709,6 +709,12 @@ func createTestIncidentScreenshot(
 	check.StatusChangedAt = &now
 	check.CreatedAt = now
 	check.UpdatedAt = now
+	// DISABLED on purpose. This is a fixture for the incident page's screenshot
+	// card, not a check anybody wants executed: leaving it enabled makes the
+	// test-mode worker spawn a real Chrome against an unreachable host every
+	// period, which is pure cost and a source of E2E flakiness. The incident
+	// and its attachment below are seeded directly.
+	check.Enabled = false
 
 	if err := dbService.CreateCheck(ctx, check); err != nil {
 		return fmt.Errorf("failed to create screenshot test check: %w", err)

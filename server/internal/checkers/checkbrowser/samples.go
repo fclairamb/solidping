@@ -14,7 +14,7 @@ func (c *BrowserChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []che
 			Slug:   "browser-example-com",
 			Period: time.Hour,
 			Config: (&BrowserConfig{
-				URL: "https://example.com",
+				URL: exampleURL,
 			}).GetConfig(),
 		},
 	}

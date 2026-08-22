@@ -16,6 +16,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
+// mimeTypePNG is the stored content type of every screenshot attachment, and
+// one of the inline-safe raster types below. Declared once so the two uses
+// cannot drift.
+const mimeTypePNG = "image/png"
+
 // Standard error codes for file operations.
 const (
 	errCodeFileNotFound base.ErrorCode = "FILE_NOT_FOUND"
@@ -160,7 +165,7 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error
 // inside an SVG referenced by <img> never execute.
 func safeInlineMIME(mimeType string) bool {
 	switch mimeType {
-	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp":
+	case mimeTypePNG, "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp":
 		return true
 	default:
 		return false

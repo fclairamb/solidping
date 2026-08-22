@@ -162,7 +162,7 @@ func (f *fixture) signedRequest(t *testing.T, opts requestOpts) *http.Request {
 	}
 
 	if opts.contentType == "" {
-		opts.contentType = "image/png"
+		opts.contentType = mimeTypePNG
 	}
 
 	if opts.nonce == "" {
@@ -189,7 +189,9 @@ func (f *fixture) signedRequest(t *testing.T, opts requestOpts) *http.Request {
 		r.NoError(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, uploadPath, bytes.NewReader(opts.body))
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, uploadPath, bytes.NewReader(opts.body),
+	)
 	req.Header.Set(headerAgentUID, agentUID)
 	req.Header.Set(headerTimestamp, opts.timestamp)
 	req.Header.Set(headerNonce, opts.nonce)
@@ -401,7 +403,7 @@ func TestUploadRejectsBadContent(t *testing.T) {
 			"real png bytes under the wrong declared type", pngBody, "application/octet-stream",
 			http.StatusUnsupportedMediaType,
 		},
-		{"an empty body", []byte{}, "image/png", http.StatusBadRequest},
+		{"an empty body", []byte{}, mimeTypePNG, http.StatusBadRequest},
 		{
 			"a body over the cap", make([]byte, MaxUploadBytes+1), "image/png",
 			http.StatusRequestEntityTooLarge,

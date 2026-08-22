@@ -62,7 +62,7 @@ func withSettings(t *testing.T, s Settings) {
 }
 
 func browserSpec(timeout time.Duration) *BrowserConfig {
-	return &BrowserConfig{URL: "https://example.com", Timeout: timeout}
+	return &BrowserConfig{URL: exampleURL, Timeout: timeout}
 }
 
 // TestUnreachableCDPIsAnErrorNotADown is the load-bearing assertion of the

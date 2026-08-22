@@ -32,6 +32,11 @@ const (
 	headerTopic = "X-Sp-Attachment-Topic"
 )
 
+// mimeTypePNG is the only attachment format on the allowlist today. Declared
+// once because the sniffer, the stored row and the tests must not be able to
+// disagree about what it is.
+const mimeTypePNG = "image/png"
+
 // MaxUploadBytes caps one upload. It mirrors checkerdef.MaxScreenshotBytes —
 // the capturing side already refuses to hold more than this in memory, so an
 // agent that sends more is either broken or hostile, and either way the body
@@ -309,7 +314,7 @@ func sniffMIME(declared string, body []byte) (string, bool) {
 
 	declared = strings.TrimSpace(declared)
 
-	if declared != "" && declared != "image/png" {
+	if declared != "" && declared != mimeTypePNG {
 		return "", false
 	}
 
@@ -317,7 +322,7 @@ func sniffMIME(declared string, body []byte) (string, bool) {
 		return "", false
 	}
 
-	return "image/png", true
+	return mimeTypePNG, true
 }
 
 // rateLimiter is a per-agent token bucket.

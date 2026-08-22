@@ -13,6 +13,11 @@ const (
 	maxTimeout     = 30 * time.Second
 )
 
+// exampleURL is the placeholder target used by the sample config and by the
+// package's tests. A constant because it appears in both and neither is the
+// owner of the value.
+const exampleURL = "https://example.com"
+
 // BrowserConfig holds the configuration for browser-based health checks.
 type BrowserConfig struct {
 	URL           string        `json:"url"`
