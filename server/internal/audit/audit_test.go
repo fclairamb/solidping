@@ -576,3 +576,96 @@ func itoa(i int) string {
 
 	return string(digits)
 }
+
+// TestNormalizeSourceIPStripsThePort. http.Request.RemoteAddr is host:port,
+// and the IPv6 form of that is 47 characters — two over the varchar(45)
+// column. Left alone it would make the INSERT fail outright on Postgres while
+// quietly succeeding on SQLite, i.e. the audit trail would silently stop
+// recording on the engine production actually runs.
+func TestNormalizeSourceIPStripsThePort(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cases := map[string]string{
+		"203.0.113.7:54321": "203.0.113.7",
+		"[::1]:58265":       "::1",
+		"[2001:db8:85a3:8d3:1319:8a2e:370:7348]:65535": "2001:db8:85a3:8d3:1319:8a2e:370:7348",
+		// Already bare — the X-Forwarded-For path carries no port.
+		"203.0.113.7":                          "203.0.113.7",
+		"2001:db8:85a3:8d3:1319:8a2e:370:7348": "2001:db8:85a3:8d3:1319:8a2e:370:7348",
+		// base.ExtractRemoteAddr's "nothing known" sentinel is not an address.
+		"unknown": "",
+		"":        "",
+	}
+
+	for raw, want := range cases {
+		r.Equalf(want, audit.NormalizeSourceIP(raw), "NormalizeSourceIP(%q)", raw)
+	}
+
+	// Every produced value fits the column.
+	for raw := range cases {
+		r.LessOrEqual(len(audit.NormalizeSourceIP(raw)), 45)
+	}
+}
+
+// TestRecordStoresTheBareAddress is the end-to-end half of the guard above.
+func TestRecordStoresTheBareAddress(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	ctx := audit.WithRequest(t.Context(), "[2001:db8::1]:443", "curl/8.7")
+
+	event := audit.Record(ctx, &fakeStore{}, testOrg,
+		models.EventTypeAuthLoginSucceeded, audit.Target{}, nil)
+
+	r.NotNil(event)
+	r.NotNil(event.SourceIP)
+	r.Equal("2001:db8::1", *event.SourceIP)
+}
+
+// TestFailedLoginFoldsAcrossEphemeralPorts is a regression guard on a bug that
+// made the whole fold mechanism a no-op in a live server while every unit test
+// passed: http.Request.RemoteAddr is "host:port", the port is different on
+// every single TCP connection, and the fold key includes the source address.
+// With the raw value, five attempts from one client looked like five clients
+// and produced five rows with count=1 each.
+func TestFailedLoginFoldsAcrossEphemeralPorts(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	store := &fakeStore{}
+
+	now, advance := clockAt(time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC))
+	folder := audit.NewFailedLoginFolder(10*time.Minute, 100)
+	folder.SetClock(now)
+
+	ports := []string{"[::1]:58265", "[::1]:58266", "[::1]:59991", "203.0.113.7:1024"}
+
+	for i, addr := range ports {
+		ctx := audit.WithRequest(t.Context(), addr, "curl/8.7")
+		outcome := folder.Record(ctx, store, testOrg, "alice@acme.com", "invalid_credentials")
+
+		switch i {
+		case 0:
+			r.Equal(audit.OutcomeCreated, outcome)
+		case 1, 2:
+			r.Equalf(audit.OutcomeFolded, outcome,
+				"a different ephemeral port is the SAME client (%s)", addr)
+		default:
+			// Positive control: a genuinely different host still gets its own row.
+			r.Equal(audit.OutcomeCreated, outcome)
+		}
+
+		advance(time.Second)
+	}
+
+	events := store.all()
+	r.Len(events, 2, "three attempts from ::1 are one row; 203.0.113.7 is another")
+
+	for _, event := range events {
+		r.NotNil(event.SourceIP)
+		r.NotContains(*event.SourceIP, ":5", "the stored address must carry no port")
+	}
+}

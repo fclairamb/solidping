@@ -26,6 +26,8 @@ package audit
 import (
 	"context"
 	"log/slog"
+	"net"
+	"strings"
 	"sync/atomic"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -98,7 +100,12 @@ type actorContextKey struct{}
 // login attempt that gets rejected is precisely the one whose IP matters.
 func WithRequest(ctx context.Context, sourceIP, userAgent string) context.Context {
 	actor := ActorFromContext(ctx)
-	actor.SourceIP = sourceIP
+	// Normalized HERE, at capture, not only at write time. The raw value is
+	// "host:port" with an ephemeral port that differs on every request, and
+	// the failed-login folder keys on (org, email, IP) — an unnormalized
+	// address would make every attempt look like it came from a new client and
+	// silently defeat the folding entirely.
+	actor.SourceIP = NormalizeSourceIP(sourceIP)
 	actor.UserAgent = truncate(userAgent, maxUserAgentLen)
 
 	return context.WithValue(ctx, actorContextKey{}, actor)
@@ -121,6 +128,9 @@ func WithUser(ctx context.Context, userUID string, actorType models.ActorType) c
 // WithActor replaces the whole actor. Mostly for tests and for the auth
 // service, which knows who is logging in before any middleware could.
 func WithActor(ctx context.Context, actor Actor) context.Context {
+	actor.SourceIP = NormalizeSourceIP(actor.SourceIP)
+	actor.UserAgent = truncate(actor.UserAgent, maxUserAgentLen)
+
 	return context.WithValue(ctx, actorContextKey{}, actor)
 }
 
@@ -142,7 +152,42 @@ type Target struct {
 	Name string
 }
 
-const maxUserAgentLen = 512
+const (
+	maxUserAgentLen = 512
+	// maxSourceIPLen matches the events.source_ip column (varchar(45) on
+	// Postgres — the longest possible textual IPv6 address).
+	maxSourceIPLen = 45
+)
+
+// NormalizeSourceIP reduces a raw remote address to the bare IP the audit
+// trail stores.
+//
+// This is not cosmetic. http.Request.RemoteAddr is "host:port", and for IPv6
+// that is "[2001:db8:85a3:8d3:1319:8a2e:370:7348]:65535" — 47 characters,
+// which does not fit the varchar(45) column and would make the INSERT fail
+// outright on Postgres while quietly succeeding on SQLite. The ephemeral
+// source port is also worthless to a reader: it identifies a TCP connection
+// that no longer exists, not a client.
+//
+// Values that are already bare (the X-Forwarded-For path, which carries no
+// port) pass through untouched.
+func NormalizeSourceIP(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "unknown" {
+		return ""
+	}
+
+	if host, _, err := net.SplitHostPort(trimmed); err == nil && host != "" {
+		trimmed = host
+	}
+
+	// A bracketed IPv6 literal with no port ("[::1]") is not host:port, so
+	// SplitHostPort leaves it alone.
+	trimmed = strings.TrimPrefix(trimmed, "[")
+	trimmed = strings.TrimSuffix(trimmed, "]")
+
+	return truncate(trimmed, maxSourceIPLen)
+}
 
 // Record writes one audit event, best-effort.
 //
@@ -205,9 +250,10 @@ func NewEvent(
 		event.ActorUID = &uid
 	}
 
-	if actor.SourceIP != "" && captureIP.Load() {
-		ip := actor.SourceIP
-		event.SourceIP = &ip
+	if captureIP.Load() {
+		if ip := NormalizeSourceIP(actor.SourceIP); ip != "" {
+			event.SourceIP = &ip
+		}
 	}
 
 	if actor.UserAgent != "" {

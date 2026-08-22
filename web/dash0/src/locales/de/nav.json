@@ -138,5 +138,6 @@
   },
   "security": "Sicherheit",
   "slos": "SLOs",
-  "reportSchedules": "Verfügbarkeitsberichte"
+  "reportSchedules": "Verfügbarkeitsberichte",
+  "audit": "Audit"
 }

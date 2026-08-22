@@ -88,6 +88,7 @@ import { Route as OrgsOrgOrganizationReportSchedulesRouteImport } from './routes
 import { Route as OrgsOrgOrganizationPrivateLocationsRouteImport } from './routes/orgs/$org/organization.private-locations'
 import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
+import { Route as OrgsOrgOrganizationAuditRouteImport } from './routes/orgs/$org/organization.audit'
 import { Route as OrgsOrgOrganizationAiRouteImport } from './routes/orgs/$org/organization.ai'
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
 import { Route as OrgsOrgOnCallUidRouteImport } from './routes/orgs/$org/on-call.$uid'
@@ -557,6 +558,12 @@ const OrgsOrgOrganizationInvitationsRoute =
     path: '/invitations',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOrganizationAuditRoute =
+  OrgsOrgOrganizationAuditRouteImport.update({
+    id: '/audit',
+    path: '/audit',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
 const OrgsOrgOrganizationAiRoute = OrgsOrgOrganizationAiRouteImport.update({
   id: '/ai',
   path: '/ai',
@@ -916,6 +923,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
+  '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
@@ -1029,6 +1037,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
+  '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
@@ -1160,6 +1169,7 @@ export interface FileRoutesById {
   '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
+  '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
@@ -1296,6 +1306,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
+    | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/private-locations'
@@ -1409,6 +1420,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/oauth/consent'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
+    | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/requests'
@@ -1539,6 +1551,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
+    | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/private-locations'
@@ -2180,6 +2193,13 @@ declare module '@tanstack/react-router' {
       path: '/invitations'
       fullPath: '/orgs/$org/organization/invitations'
       preLoaderRoute: typeof OrgsOrgOrganizationInvitationsRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
+    '/orgs/$org/organization/audit': {
+      id: '/orgs/$org/organization/audit'
+      path: '/audit'
+      fullPath: '/orgs/$org/organization/audit'
+      preLoaderRoute: typeof OrgsOrgOrganizationAuditRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
     }
     '/orgs/$org/organization/ai': {
@@ -2850,6 +2870,7 @@ const OrgsOrgOrganizationReportSchedulesRouteWithChildren =
 
 interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationAiRoute: typeof OrgsOrgOrganizationAiRoute
+  OrgsOrgOrganizationAuditRoute: typeof OrgsOrgOrganizationAuditRoute
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
   OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
   OrgsOrgOrganizationPrivateLocationsRoute: typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
@@ -2863,6 +2884,7 @@ interface OrgsOrgOrganizationRouteChildren {
 
 const OrgsOrgOrganizationRouteChildren: OrgsOrgOrganizationRouteChildren = {
   OrgsOrgOrganizationAiRoute: OrgsOrgOrganizationAiRoute,
+  OrgsOrgOrganizationAuditRoute: OrgsOrgOrganizationAuditRoute,
   OrgsOrgOrganizationInvitationsRoute: OrgsOrgOrganizationInvitationsRoute,
   OrgsOrgOrganizationMembersRoute: OrgsOrgOrganizationMembersRoute,
   OrgsOrgOrganizationPrivateLocationsRoute:

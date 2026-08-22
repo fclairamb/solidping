@@ -140,5 +140,6 @@
     "aiDescription": "Connect AI assistants via MCP"
   },
   "slos": "SLOs",
-  "reportSchedules": "Uptime reports"
+  "reportSchedules": "Uptime reports",
+  "audit": "Audit"
 }

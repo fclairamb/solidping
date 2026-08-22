@@ -407,8 +407,18 @@ export interface IncidentDetail {
 export interface Event {
   uid?: string;
   eventType?: string;
-  actorType?: "system" | "user";
+  actorType?: "system" | "user" | "api_token" | "service";
   actorUid?: string;
+  /** Resolved by the API for the returned page; absent for system events. */
+  actorName?: string;
+  actorEmail?: string;
+  /**
+   * Request provenance (spec 2026-08-21-09). The API returns these to org
+   * admins/owners ONLY, and never at all when `audit.capture_ip` is off — so
+   * absent means "not visible to you or not recorded", never "0.0.0.0".
+   */
+  sourceIp?: string;
+  userAgent?: string;
   checkUid?: string;
   incidentUid?: string;
   payload?: Record<string, unknown>;
@@ -1403,6 +1413,59 @@ export function useEvents(
     },
     enabled: !!org,
     refetchInterval,
+  });
+}
+
+/**
+ * useAuditEvents is the org Audit page's reader.
+ *
+ * Distinct from useEvents rather than another pile of optional arguments on
+ * it: this one drives a page whose whole job is filtering, so its inputs are
+ * required-shaped (family, actor, time window, cursor) and its query key is
+ * built from all of them. Sharing useEvents would mean every dashboard feed
+ * re-fetching whenever the audit page's filters moved.
+ */
+export function useAuditEvents(
+  org: string,
+  options: {
+    family?: string;
+    actorUserUid?: string;
+    /**
+     * Window size in hours, not an absolute timestamp: the caller must not
+     * compute `Date.now()` during render (it is impure, and it would also make
+     * the query key drift on every re-render). The instant is resolved here,
+     * when the request is actually made.
+     */
+    sinceHours?: number;
+    cursor?: string;
+    size?: number;
+  },
+) {
+  return useQuery({
+    queryKey: ["audit-events", org, options],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options.family) params.set("type", options.family);
+      if (options.actorUserUid) params.set("actorUserUid", options.actorUserUid);
+      if (options.sinceHours) {
+        params.set(
+          "since",
+          new Date(Date.now() - options.sinceHours * 3600_000).toISOString(),
+        );
+      }
+      if (options.cursor) params.set("cursor", options.cursor);
+      params.set("limit", String(options.size ?? 50));
+      const path = `/api/v1/orgs/${org}/events?${params.toString()}`;
+      const response = await apiFetch<{
+        data?: Event[];
+        pagination?: CursorPagination;
+      }>(path);
+      return {
+        data: response.data || [],
+        cursor: response.pagination?.cursor,
+      };
+    },
+    enabled: !!org,
   });
 }
 

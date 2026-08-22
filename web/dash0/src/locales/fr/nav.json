@@ -140,5 +140,6 @@
   },
   "security": "Sécurité",
   "slos": "SLO",
-  "reportSchedules": "Rapports de dispo."
+  "reportSchedules": "Rapports de dispo.",
+  "audit": "Audit"
 }
