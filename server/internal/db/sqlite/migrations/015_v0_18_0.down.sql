@@ -6,6 +6,46 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: slo-burn-alerts
+-- Teardown half of the slo-burn-alerts section (spec 2026-08-21-08).
+-- ==========================================================================
+
+-- LOSSY the same way the Postgres half is: burn incidents are deleted rather
+-- than downgraded, because a surviving row would read as an ordinary check
+-- incident once `kind` is gone.
+
+delete from incidents where kind = 'slo_burn';
+
+--bun:split
+
+drop index if exists idx_incidents_kind_check_uid;
+
+--bun:split
+
+drop index if exists uq_active_slo_burn_incident;
+
+--bun:split
+
+-- Modern SQLite (3.35+) supports DROP COLUMN, and none of these three is
+-- referenced by an index or a generated column at this point, so no rebuild is
+-- needed on the way down either.
+alter table incidents drop column slo_alert_policy_uid;
+
+--bun:split
+
+alter table incidents drop column slo_uid;
+
+--bun:split
+
+alter table incidents drop column kind;
+
+--bun:split
+
+drop table if exists slo_alert_policies;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: status-subscriber-channels
 -- Teardown half of the status-subscriber-channels section (spec 2026-08-21-07).
 -- ==========================================================================

@@ -6,6 +6,48 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: slo-burn-alerts
+-- Teardown half of the slo-burn-alerts section (spec 2026-08-21-08).
+-- ==========================================================================
+
+-- LOSSY: every burn incident is DELETED, not downgraded. The schema below has
+-- no `kind` column, so a surviving row would silently become an ordinary check
+-- incident on its routing anchor — i.e. a rollback would invent an outage that
+-- never happened. Deleting is the honest outcome.
+
+delete from incidents where kind = 'slo_burn';
+
+--bun:split
+
+drop index if exists idx_incidents_kind_check_uid;
+
+--bun:split
+
+drop index if exists uq_active_slo_burn_incident;
+
+--bun:split
+
+alter table incidents drop constraint if exists incidents_kind_check;
+
+--bun:split
+
+alter table incidents drop column if exists slo_alert_policy_uid;
+
+--bun:split
+
+alter table incidents drop column if exists slo_uid;
+
+--bun:split
+
+alter table incidents drop column if exists kind;
+
+--bun:split
+
+drop table if exists slo_alert_policies;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: status-subscriber-channels
 -- Teardown half of the status-subscriber-channels section (spec 2026-08-21-07).
 -- ==========================================================================

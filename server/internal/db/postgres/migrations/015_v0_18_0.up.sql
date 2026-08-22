@@ -11,6 +11,7 @@
 --   SECTION: status-page-branding       status_pages logo/favicon/hide_branding
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
+--   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -285,3 +286,147 @@ comment on column status_page_subscriber.endpoint_private is
 
 comment on column status_page_subscriber.endpoint_hint is
   'Masked remnant of the delivery URL — the only part an API response may echo.';
+
+-- ==========================================================================
+-- SECTION: slo-burn-alerts
+-- Multiwindow burn-rate alerting for SLOs (spec 2026-08-21-08).
+-- ==========================================================================
+
+-- An SLO's burn rate has been computed since 2026-08-20-01 and consumed by
+-- nobody. These two tables' worth of columns are what turn it into a page.
+--
+-- One row per (SLO, built-in policy). There are exactly two built-ins — a fast
+-- burn and a slow burn — and they are rows rather than constants for one
+-- reason: the SRE-workbook thresholds are a starting point, not a law. An org
+-- whose traffic shape makes 14.4x too twitchy has to be able to change it
+-- without a code deploy, and the value it changed has to survive a restart.
+--
+-- The windows are stored for the same reason. "Fast burn" is not intrinsically
+-- 1h/5m; it is intrinsically "a long window that proves significance and a
+-- short window that proves it is still happening". Deriving the pair from the
+-- kind would hard-code one org's opinion into everyone's schema.
+--
+-- `enabled` defaults to FALSE. Upgrading to a version that adds alerting must
+-- never start paging on its own: an operator opts in per policy, per SLO.
+create table if not exists slo_alert_policies (
+  uid                   uuid primary key default gen_random_uuid(),
+  organization_uid      uuid not null references organizations(uid),
+  slo_uid               uuid not null references slos(uid) on delete cascade,
+  -- The built-in identity. Unique per SLO: these are the two named policies
+  -- the product ships, not a free-form list.
+  kind                  text not null,
+  enabled               boolean not null default false,
+  -- The long window proves significance; the short window proves the burn is
+  -- still happening right now. An alert needs BOTH to be over threshold, which
+  -- is what stops a long-resolved spike from paging for the rest of the hour.
+  long_window_seconds   integer not null,
+  short_window_seconds  integer not null,
+  -- Burn-rate multiple: 1.0 spends the budget exactly by the end of the
+  -- calendar window, 14.4 spends a 30-day budget in ~2h.
+  threshold             numeric(8,3) not null,
+  severity              text not null,
+  -- Sparse data must not fabricate an alert. A window carrying fewer than this
+  -- many countable probes is INCONCLUSIVE — it does not fire, and it also does
+  -- not count as "below threshold" for the auto-resolve hysteresis. Three is
+  -- deliberately low: a check whose period exceeds short_window/min_samples can
+  -- never satisfy its own short window, and silently never alerting is worse
+  -- than alerting slightly noisily.
+  min_samples           integer not null default 3,
+  -- Live readout, refreshed on every evaluation. Stored so the dashboard's
+  -- Alerting section and the evaluator cannot disagree about what the burn
+  -- rate was a minute ago.
+  last_evaluated_at     timestamptz,
+  last_long_burn_rate   numeric(12,4),
+  last_short_burn_rate  numeric(12,4),
+  -- Hysteresis anchor: the instant BOTH windows first dropped below threshold.
+  -- Resolution waits until that has held for a full short window. Cleared the
+  -- moment either window goes back over, so a flapping burn never resolves.
+  below_threshold_since timestamptz,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  constraint slo_alert_policies_kind_check check (kind in ('fast', 'slow')),
+  constraint slo_alert_policies_severity_check check (severity in ('critical', 'warning')),
+  constraint slo_alert_policies_windows_check check (
+    long_window_seconds > 0
+    and short_window_seconds > 0
+    and short_window_seconds <= long_window_seconds
+  ),
+  constraint slo_alert_policies_threshold_check check (threshold > 0),
+  constraint slo_alert_policies_min_samples_check check (min_samples >= 1)
+);
+
+--bun:split
+
+create unique index if not exists uq_slo_alert_policies_slo_kind
+  on slo_alert_policies (slo_uid, kind);
+
+--bun:split
+
+-- The evaluator's work queue: every enabled policy across every org, once a
+-- minute. Partial so the index only carries the rows the sweep actually reads.
+create index if not exists idx_slo_alert_policies_enabled
+  on slo_alert_policies (enabled)
+  where enabled = true;
+
+--bun:split
+
+comment on table slo_alert_policies is
+  'Per-SLO multiwindow burn-rate alert policies. Thresholds and windows are stored, never derived, so operators can tune them.';
+
+--bun:split
+
+-- A burn alert is an INCIDENT, not a new object. That is the whole design: it
+-- inherits ack, snooze, manual resolve, escalation policies, severity-gated
+-- channel routing, group correlation and the incident timeline for free,
+-- because it goes through exactly the same service.
+--
+-- `kind` is the discriminator. 'check' is the pre-existing meaning and the
+-- default, so every existing row keeps it with no backfill.
+alter table incidents add column if not exists kind text not null default 'check';
+
+--bun:split
+
+alter table incidents drop constraint if exists incidents_kind_check;
+
+--bun:split
+
+alter table incidents add constraint incidents_kind_check check (kind in ('check', 'slo_burn'));
+
+--bun:split
+
+-- The binding. Nullable because only a burn incident has one.
+--
+-- `on delete set null` rather than cascade on both: deleting an SLO or
+-- retuning a policy must not erase the history of the pages it sent. The
+-- incident survives as a record of what happened, merely unbound.
+alter table incidents add column if not exists slo_uid uuid references slos(uid) on delete set null;
+
+--bun:split
+
+alter table incidents
+  add column if not exists slo_alert_policy_uid uuid references slo_alert_policies(uid) on delete set null;
+
+--bun:split
+
+-- Dedup enforced by the database, not merely by the evaluator: at most ONE
+-- open burn incident per (SLO, policy). Two evaluator replicas racing on the
+-- same minute both see "no open incident" and both insert; this is what makes
+-- the loser fail instead of double-paging.
+create unique index if not exists uq_active_slo_burn_incident
+  on incidents (slo_uid, slo_alert_policy_uid)
+  where state = 1 and kind = 'slo_burn' and deleted_at is null;
+
+--bun:split
+
+-- The check state machine looks up "is there an open incident on this check"
+-- by check_uid. A burn incident carries a representative check for routing, so
+-- without kind in the index that lookup would start returning burn incidents
+-- and a burning SLO would make its own check look permanently down.
+create index if not exists idx_incidents_kind_check_uid
+  on incidents (kind, check_uid)
+  where deleted_at is null;
+
+--bun:split
+
+comment on column incidents.kind is
+  'check = a failing check (the original meaning); slo_burn = an SLO error-budget burn-rate alert.';

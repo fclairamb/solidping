@@ -10,6 +10,7 @@
 --   SECTION: status-page-branding       status_pages logo/favicon/hide_branding
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
+--   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -304,3 +305,86 @@ create unique index idx_status_page_subscriber_live
 --bun:split
 
 PRAGMA foreign_keys=ON;
+
+-- ==========================================================================
+-- SECTION: slo-burn-alerts
+-- Multiwindow burn-rate alerting for SLOs (spec 2026-08-21-08).
+-- ==========================================================================
+
+-- SQLite mirror of the slo-burn-alerts section of
+-- postgres/migrations/015_v0_18_0.up.sql. See the Postgres file for why the
+-- thresholds and windows are stored rather than derived, why `enabled`
+-- defaults to false, and what `below_threshold_since` / `min_samples` are for.
+--
+-- Dialect differences: no gen_random_uuid() (the Go layer supplies the UID),
+-- numeric -> real, timestamptz -> text, boolean -> integer.
+create table if not exists slo_alert_policies (
+  uid                   text primary key,
+  organization_uid      text not null references organizations(uid),
+  slo_uid               text not null references slos(uid) on delete cascade,
+  kind                  text not null,
+  enabled               integer not null default 0,
+  long_window_seconds   integer not null,
+  short_window_seconds  integer not null,
+  threshold             real not null,
+  severity              text not null,
+  min_samples           integer not null default 3,
+  last_evaluated_at     text,
+  last_long_burn_rate   real,
+  last_short_burn_rate  real,
+  below_threshold_since text,
+  created_at            text not null default (datetime('now')),
+  updated_at            text not null default (datetime('now')),
+  constraint slo_alert_policies_kind_check check (kind in ('fast', 'slow')),
+  constraint slo_alert_policies_severity_check check (severity in ('critical', 'warning')),
+  constraint slo_alert_policies_windows_check check (
+    long_window_seconds > 0
+    and short_window_seconds > 0
+    and short_window_seconds <= long_window_seconds
+  ),
+  constraint slo_alert_policies_threshold_check check (threshold > 0),
+  constraint slo_alert_policies_min_samples_check check (min_samples >= 1)
+);
+
+--bun:split
+
+create unique index if not exists uq_slo_alert_policies_slo_kind
+  on slo_alert_policies (slo_uid, kind);
+
+--bun:split
+
+create index if not exists idx_slo_alert_policies_enabled
+  on slo_alert_policies (enabled)
+  where enabled = 1;
+
+--bun:split
+
+-- `kind` discriminates a burn alert from a failing check. 'check' is the
+-- pre-existing meaning and the default, so no backfill is needed.
+--
+-- SQLite allows ALTER TABLE ADD COLUMN with a REFERENCES clause only when the
+-- default is NULL, which is exactly the case for the two binding columns — so
+-- the incidents table does NOT need the *_new rebuild dance here.
+alter table incidents add column kind text not null default 'check';
+
+--bun:split
+
+alter table incidents add column slo_uid text references slos(uid) on delete set null;
+
+--bun:split
+
+alter table incidents add column slo_alert_policy_uid text references slo_alert_policies(uid) on delete set null;
+
+--bun:split
+
+-- Dedup enforced by the database: at most ONE open burn incident per
+-- (SLO, policy). See the Postgres file for the racing-replica rationale.
+create unique index if not exists uq_active_slo_burn_incident
+  on incidents (slo_uid, slo_alert_policy_uid)
+  where state = 1 and kind = 'slo_burn' and deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_incidents_kind_check_uid
+  on incidents (kind, check_uid)
+  where deleted_at is null;
