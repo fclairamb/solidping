@@ -143,8 +143,12 @@ Query parameters:
   `?type=auth,member`. Distinct from `eventType`: `auth` is not a type.
 - `actorUserUid` - filter to the events one user caused (`actorUid` is accepted
   as an alias)
-- `targetType` / `targetUid` - filter by the acted-on object's kind or identity
-  (payload predicates: the target is polymorphic, so it lives in `payload`)
+- `targetType` / `targetUid` - filter by the acted-on object's kind or exact
+  identity (payload predicates: the target is polymorphic, so it lives in
+  `payload`)
+- `target` - free-text: an exact `target_uid` OR a case-insensitive substring
+  of the captured `target_name`. This is what the dashboard's "target name or
+  UID" box sends
 - `sourceIp` - filter by client address. **Admin/owner only**, and silently
   ignored for anyone else rather than rejected — honouring it for a caller who
   cannot see the column would turn the filter into an oracle for it.

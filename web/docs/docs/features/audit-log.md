@@ -19,7 +19,7 @@ Find it in the dashboard under **Organization → Audit**. It is visible to org
 | Category | Events |
 |---|---|
 | Authentication | sign-in succeeded / failed, sign-out |
-| Credentials | API token and agent enrollment key created / revoked |
+| Credentials | API token, agent enrollment key, and OAuth/MCP grant created / revoked |
 | Membership | invited, joined, removed, role changed |
 | Integrations | created, updated, deleted |
 | Escalation policies | created, updated, deleted |
@@ -100,7 +100,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 - `type` filters by category (`auth`, `member`, `integration`, …)
 - `eventType` filters by exact type (`member.role_changed`)
 - `actorUserUid` filters to one person's actions
-- `targetType` / `targetUid` filter to a kind of object, or one object
+- `targetType` filters to a kind of object; `targetUid` to one exact object;
+  `target` is free text (a UID, or part of the object's name)
 - `sourceIp` filters to one client address (admins and owners only)
 - `since` / `until` bound the window (RFC3339)
 - `cursor` pages through the result; hand `pagination.cursor` back verbatim

@@ -57,8 +57,25 @@ These are contract, not implementation detail:
 | `auth.login_succeeded` | `auth_method`, `email`, `role` |
 | `auth.login_failed` | `email`, `reason`, `count`, `first_at`, `last_at` |
 | `auth.logout` | — |
-| `auth.token_created` | `token_kind` (`pat` / `agent_enrollment`), `token_name`, `token_prefix` |
-| `auth.token_revoked` | `token_kind`, `token_name` |
+| `auth.token_created` | `token_kind` (`pat` / `agent_enrollment` / `oauth_grant`), `token_name`, `token_prefix`; for an OAuth grant: `client_id`, `scope`, `resource`, `grant_type` |
+| `auth.token_revoked` | `token_kind`, `token_name`; for an OAuth grant: `client_id`, `scope` |
+
+**OAuth / MCP grants.** Completing the OAuth authorization-code exchange
+(`internal/oauth`) hands an external client the right to act as a user, in an
+org, for a set of scopes — an access grant, so it is recorded as
+`auth.token_created` with `token_kind: oauth_grant`, attributed to the user who
+consented. Revoking it (RFC 7009) records `auth.token_revoked`.
+
+Two deliberate silences:
+
+- **Refresh rotations are not recorded.** The token endpoint re-mints a pair
+  every access-token TTL for the life of the grant; a row per rotation would
+  bury the grant that matters under thousands saying nothing new. The grant and
+  its revocation are the two facts a reader needs.
+- **RFC 7009's no-op branches are not recorded** (unknown token, already
+  revoked, wrong client). The endpoint answers 200 either way precisely so it
+  cannot be used to probe token validity — writing an event would make the
+  audit log the oracle the endpoint refuses to be.
 
 **`auth_method` values.** Every path that mints a session records one, because
 a session IS a `refresh`-type `user_tokens` row and they all go through
@@ -70,9 +87,46 @@ a session IS a `refresh`-type `user_tokens` row and they all go through
 | `password`, `ldap`, `passkey` | local first factors |
 | `oidc`, `saml`, `github`, `gitlab`, `google`, `microsoft`, `discord`, `slack` | federated connectors, named via `auth.WithLoginMethod` |
 | `oauth` | fallback for a connector that did not name itself |
-| `<first>+totp`, `<first>+recovery_code` | 2FA-completed logins — the first factor survives the hand-off on the temp token, so a TOTP sign-in reads `password+totp`, not just `totp` |
 | `invitation`, `registration` | sessions minted by accepting an invite / confirming a registration |
 | `switch_org`, `org_session` | sessions minted for another org the user already belongs to, or re-minted because the org itself changed (creation, slug rename) |
+
+A 2FA-completed login appends its **second factor** to the base method, so a
+TOTP sign-in reads `password+totp` rather than losing the first factor. The
+suffixes are:
+
+<!-- second-factors:begin -->
+```text
+totp
+recovery_code
+```
+<!-- second-factors:end -->
+
+The block below is the **machine-readable** list of base values, checked for
+SET EQUALITY against `auth.AuthMethods()` by
+`TestAdvertisedAuthMethodsAreProducible`. Neither side can drift: a value here
+with nothing to emit it fails, and a value the code can emit that is missing
+here fails too.
+
+<!-- auth-methods:begin -->
+```text
+password
+ldap
+passkey
+oidc
+saml
+github
+gitlab
+google
+microsoft
+discord
+slack
+oauth
+invitation
+registration
+switch_org
+org_session
+```
+<!-- auth-methods:end -->
 
 A federated login that is NOT admitted to the org (the membership-request
 outcome) mints no org-scoped session, and therefore records no login — claiming
@@ -134,8 +188,9 @@ actor (before, they hardcoded `actor_type=user` and never set `actor_uid`, so
 ## Filters
 
 `GET /api/v1/orgs/:org/events` accepts `eventType` (exact), `type` (family
-prefix), `actorUserUid`, `targetType`, `targetUid`, `sourceIp`, `since`,
-`until`, `cursor` and `limit`.
+prefix), `actorUserUid`, `targetType`, `targetUid` (exact), `target`
+(free-text: exact UID or a case-insensitive substring of the captured target
+name), `sourceIp`, `since`, `until`, `cursor` and `limit`.
 
 Two of them are role-sensitive, and both fail **closed and quietly**:
 

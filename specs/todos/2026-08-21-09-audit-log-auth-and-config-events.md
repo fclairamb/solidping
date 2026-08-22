@@ -215,3 +215,33 @@ they get a manual `applyAuditEnv` reader plus `manualReaderEnvVars` entries
 
 - `wiki/api-specification/` — the event catalogue + the new filters.
 - Docs site: a security/audit-log feature page.
+
+---
+
+## Known gaps at completion
+
+Recorded here rather than left implicit, so a later reader is not left
+wondering whether these were missed or decided.
+
+1. **Refresh-token rotations of an OAuth/MCP grant are not recorded.** The
+   grant and its revocation are; the hourly re-mints in between are not. See
+   the reasoning in `wiki/api-specification/events-catalogue.md`.
+2. **RFC 7009 no-op revocations are not recorded** (unknown token, already
+   revoked, wrong client). Recording them would turn the audit log into the
+   token-validity oracle the endpoint deliberately refuses to be.
+3. **A federated login that is not admitted to the org records nothing.** No
+   org-scoped session is minted, so there is no access to claim — the
+   membership request is the surface for that.
+4. **A failed login that cannot be resolved to an organization is not
+   recorded.** The `events` table is org-scoped and there is no global bucket;
+   inventing one would let an unauthenticated stranger write rows nobody's
+   retention policy owns.
+5. **Failed-login flood control is per-process.** The fold window and the
+   hourly ceiling live in memory, so a multi-replica deployment enforces N
+   times the configured ceiling. Still a hard bound, and documented in both the
+   wiki and the docs site.
+6. **The per-incident and per-check event sub-endpoints did not gain the new
+   filters.** They are already scoped to a single object, where a family or
+   target filter has nothing to narrow.
+7. **Streaming export to a SIEM (webhook / syslog) is out of scope**, per the
+   spec, and is scoped as a follow-up in `wiki/roadmap.md`.
