@@ -3556,8 +3556,45 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 	query := s.db.NewSelect().
 		Model(&events).
 		Where("organization_uid = ?", filter.OrganizationUID).
-		Order("created_at DESC")
+		// uid is part of the sort key, not decoration: the keyset cursor's
+		// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
+		// only works if rows sharing a created_at have a DEFINED order. Without
+		// this tie-break an audit trail — which bulk-inserts within the same
+		// microsecond constantly — could skip events at a page boundary.
+		Order("created_at DESC", "uid DESC")
 
+	query = applyEventFilters(query, filter)
+
+	if filter.CursorTimestamp != nil {
+		if filter.CursorUID != nil {
+			query = query.Where("(created_at < ? OR (created_at = ? AND uid < ?))",
+				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
+		} else {
+			query = query.Where("created_at < ?", *filter.CursorTimestamp)
+		}
+	}
+
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+
+	err := query.Scan(ctx)
+
+	return events, err
+}
+
+// UpdateEventPayload replaces one event's payload in place.
+//
+// events is otherwise strictly append-only; the single exception is
+// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
+// (org, email, IP) inside a short window bump a counter on the row that is
+// already there instead of writing a new row per attempt. Anything else
+// mutating an audit row would be a bug.
+// applyEventFilters folds the ListEvents predicates onto the query. Split out
+// of ListEvents so that function stays inside the cyclomatic-complexity budget
+// as the audit trail's filter set grows; it is a straight-line list of
+// independent `if`s and carries no logic of its own.
+func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
 	if filter.IncidentUID != nil {
 		query = query.Where("incident_uid = ?", *filter.IncidentUID)
 	}
@@ -3600,6 +3637,20 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 		query = query.Where("actor_uid = ?", *filter.ActorUID)
 	}
 
+	if filter.SourceIP != nil {
+		query = query.Where("source_ip = ?", *filter.SourceIP)
+	}
+
+	// The SQLite half of the polymorphic target predicate. `payload` is TEXT
+	// holding JSON here, so json_extract does what Postgres's ->> does.
+	if filter.TargetUID != nil {
+		query = query.Where("json_extract(payload, '$.target_uid') = ?", *filter.TargetUID)
+	}
+
+	if filter.TargetType != nil {
+		query = query.Where("json_extract(payload, '$.target_type') = ?", *filter.TargetType)
+	}
+
 	if filter.Since != nil {
 		query = query.Where("created_at >= ?", *filter.Since)
 	}
@@ -3608,31 +3659,9 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 		query = query.Where("created_at < ?", *filter.Until)
 	}
 
-	if filter.CursorTimestamp != nil {
-		if filter.CursorUID != nil {
-			query = query.Where("(created_at < ? OR (created_at = ? AND uid < ?))",
-				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
-		} else {
-			query = query.Where("created_at < ?", *filter.CursorTimestamp)
-		}
-	}
-
-	if filter.Limit > 0 {
-		query = query.Limit(filter.Limit)
-	}
-
-	err := query.Scan(ctx)
-
-	return events, err
+	return query
 }
 
-// UpdateEventPayload replaces one event's payload in place.
-//
-// events is otherwise strictly append-only; the single exception is
-// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
-// (org, email, IP) inside a short window bump a counter on the row that is
-// already there instead of writing a new row per attempt. Anything else
-// mutating an audit row would be a bug.
 func (s *Service) UpdateEventPayload(ctx context.Context, uid string, payload models.JSONMap) error {
 	_, err := s.db.NewUpdate().
 		Model((*models.Event)(nil)).

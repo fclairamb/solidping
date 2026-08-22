@@ -63,6 +63,13 @@ type ListEventsOptions struct {
 	EventTypePrefixes []string
 	// ActorUID filters to one user's actions — the `actorUserUid` parameter.
 	ActorUID *string
+	// TargetUID / TargetType filter to the events about one object, or one
+	// kind of object — the `targetUid` / `targetType` parameters.
+	TargetUID  *string
+	TargetType *string
+	// SourceIP filters to one client address — the `sourceIp` parameter.
+	// ADMIN-ONLY: see the note in ListEvents.
+	SourceIP *string
 	Since    *time.Time
 	Until    *time.Time
 	Cursor   string
@@ -140,6 +147,8 @@ func (s *Service) ListEvents(
 		CheckUID:          opts.CheckUID,
 		EventTypePrefixes: opts.EventTypePrefixes,
 		ActorUID:          opts.ActorUID,
+		TargetUID:         opts.TargetUID,
+		TargetType:        opts.TargetType,
 		Since:             opts.Since,
 		Until:             opts.Until,
 		Limit:             opts.Size + 1, // Fetch one extra to determine hasMore
@@ -147,6 +156,18 @@ func (s *Service) ListEvents(
 
 	if !isAdmin {
 		filter.ExcludeEventTypePrefixes = RestrictedEventTypePrefixes
+	}
+
+	// The source-IP filter is admin-only, not merely the source-IP COLUMN.
+	// Withholding the value while honoring the predicate would turn the
+	// filter into an oracle: a viewer asks for an address, gets a non-empty
+	// page back, and has confirmed which addresses their colleagues work from
+	// — the exact fact the column was withheld to protect. Silently ignoring
+	// the parameter (rather than erroring) keeps the two roles' responses
+	// shaped identically, so the endpoint does not become an oracle for
+	// "am I an admin?" either.
+	if isAdmin {
+		filter.SourceIP = opts.SourceIP
 	}
 
 	// Convert event type strings to EventType values

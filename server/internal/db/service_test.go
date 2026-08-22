@@ -71,6 +71,14 @@ func testService(t *testing.T, svc db.Service) {
 		testJobsCleanupRetention(ctx, t, svc)
 	})
 
+	t.Run("EventsKeysetPaginationTieBreak", func(t *testing.T) {
+		testEventsKeysetPaginationTieBreak(ctx, t, svc)
+	})
+
+	t.Run("EventsTargetPayloadFilters", func(t *testing.T) {
+		testEventsTargetPayloadFilters(ctx, t, svc)
+	})
+
 	t.Run("StateEntries", func(t *testing.T) {
 		testStateEntries(ctx, t, svc)
 	})
@@ -2344,4 +2352,142 @@ func testEmailSuppressions(ctx context.Context, t *testing.T, svc db.Service) {
 			r.False(suppressed, "a suppression in one org must not suppress the same email in another org")
 		})
 	})
+}
+
+// testEventsKeysetPaginationTieBreak runs the audit trail's cursor pagination
+// against BOTH engines with every row sharing one created_at.
+//
+// This lives in the cross-engine harness rather than beside the events service
+// because it is a question about the STORE: the keyset predicate is
+// `created_at < ? OR (created_at = ? AND uid < ?)`, which is only correct when
+// rows sharing a created_at have a defined order. SQLite happens to return
+// insertion order for a small table even without the tie-break, so a
+// SQLite-only test passes either way and proves nothing — Postgres is where an
+// unordered tie actually skips rows, and it is what production runs.
+//
+// Audit rows tie constantly: a config apply, an SSO backfill, or a burst of
+// failed logins all insert within the same microsecond.
+func testEventsKeysetPaginationTieBreak(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("evtie-"+uuid.New().String()[:8], "Acme")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	// One instant, twenty events. Not "close together" — identical.
+	at := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+	seeded := map[string]bool{}
+
+	for i := 0; i < 20; i++ {
+		event := models.NewEvent(org.UID, models.EventTypeCheckCreated, models.ActorTypeSystem)
+		event.CreatedAt = at
+		r.NoError(svc.CreateEvent(ctx, event))
+		seeded[event.UID] = true
+	}
+
+	r.Len(seeded, 20, "positive control: twenty distinct events were seeded")
+
+	const pageSize = 6
+
+	seen := map[string]int{}
+
+	var (
+		cursorTS  *time.Time
+		cursorUID *string
+	)
+
+	for page := 0; page < 10; page++ {
+		rows, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+			OrganizationUID: org.UID,
+			Limit:           pageSize,
+			CursorTimestamp: cursorTS,
+			CursorUID:       cursorUID,
+		})
+		r.NoError(err)
+
+		if len(rows) == 0 {
+			break
+		}
+
+		for _, row := range rows {
+			seen[row.UID]++
+		}
+
+		last := rows[len(rows)-1]
+		ts := last.CreatedAt
+		uid := last.UID
+		cursorTS = &ts
+		cursorUID = &uid
+
+		if len(rows) < pageSize {
+			break
+		}
+	}
+
+	// The load-bearing assertion: nothing skipped, nothing duplicated.
+	r.Lenf(seen, 20, "expected all 20 tied events across the pages, saw %d", len(seen))
+
+	for uid := range seeded {
+		r.Equalf(1, seen[uid],
+			"event %s sharing a created_at with 19 others must appear exactly once", uid)
+	}
+}
+
+// testEventsTargetPayloadFilters runs the target filters against BOTH engines.
+//
+// They are the only filters in this table that reach INTO the payload rather
+// than into a column — Postgres spells it `payload->>'target_uid'`, SQLite
+// spells it `json_extract(payload, '$.target_uid')`. Two different expressions
+// for one contract is exactly the shape of change that works on the engine you
+// developed against and silently matches nothing on the other, and "the audit
+// page's target filter returns nothing" is a bug nobody would suspect the
+// dialect for.
+func testEventsTargetPayloadFilters(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("evtgt-"+uuid.New().String()[:8], "Acme")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	seed := func(eventType models.EventType, targetType, targetUID string) {
+		event := models.NewEvent(org.UID, eventType, models.ActorTypeSystem)
+		event.Payload = models.JSONMap{"target_type": targetType, "target_uid": targetUID}
+		r.NoError(svc.CreateEvent(ctx, event))
+	}
+
+	seed(models.EventTypeIntegrationUpdated, "integration", "int-1")
+	seed(models.EventTypeIntegrationDeleted, "integration", "int-2")
+	seed(models.EventTypeMemberRemoved, "member", "user-9")
+
+	targetUID := "int-1"
+	byUID, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		TargetUID:       &targetUID,
+		Limit:           50,
+	})
+	r.NoError(err)
+	r.Len(byUID, 1)
+	r.Equal(models.EventTypeIntegrationUpdated, byUID[0].EventType)
+
+	targetType := "integration"
+	byType, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		TargetType:      &targetType,
+		Limit:           50,
+	})
+	r.NoError(err)
+	r.Len(byType, 2)
+
+	// Positive control: unfiltered, all three come back — so the two
+	// assertions above are testing the predicates, not an empty table or a
+	// json function that silently errors into "no rows" on this engine.
+	all, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		Limit:           50,
+	})
+	r.NoError(err)
+	r.Len(all, 3)
 }

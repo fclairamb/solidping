@@ -3490,7 +3490,7 @@ type Event struct {
 	CheckUid  *openapi_types.UUID `json:"checkUid,omitempty"`
 	CreatedAt *time.Time          `json:"createdAt,omitempty"`
 
-	// EventType Event type. Deliberately NOT an enum: the catalogue grows with the product (see wiki/api-specification/events.md), and a client that hard-fails on an unknown value would break on every new family.
+	// EventType Event type. Deliberately NOT an enum: the catalogue grows with the product (see wiki/api-specification/events-catalogue.md), and a client that hard-fails on an unknown value would break on every new family.
 	EventType   *string                 `json:"eventType,omitempty"`
 	IncidentUid *openapi_types.UUID     `json:"incidentUid,omitempty"`
 	Payload     *map[string]interface{} `json:"payload,omitempty"`
@@ -6114,6 +6114,15 @@ type ListEventsParams struct {
 
 	// ActorUserUid Filter to the events caused by one user. `actorUid` is accepted as an alias.
 	ActorUserUid *openapi_types.UUID `form:"actorUserUid,omitempty" json:"actorUserUid,omitempty"`
+
+	// TargetType Filter to one kind of acted-on object (`integration`, `member`, `escalation_policy`, …), matched against the payload's `target_type`.
+	TargetType *string `form:"targetType,omitempty" json:"targetType,omitempty"`
+
+	// TargetUid Filter to the events about one object, matched against the payload's `target_uid`.
+	TargetUid *string `form:"targetUid,omitempty" json:"targetUid,omitempty"`
+
+	// SourceIp Filter to one client address. Honoured for org admins and owners ONLY; for anyone else it is silently ignored rather than rejected, so it cannot be used as an oracle for a column they are not allowed to read.
+	SourceIp *string `form:"sourceIp,omitempty" json:"sourceIp,omitempty"`
 
 	// Since Only events created at or after this RFC3339 timestamp
 	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
@@ -19504,6 +19513,42 @@ func NewListEventsRequest(server string, org OrgPath, params *ListEventsParams) 
 		if params.ActorUserUid != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "actorUserUid", *params.ActorUserUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "uuid"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TargetType != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "targetType", *params.TargetType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TargetUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "targetUid", *params.TargetUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.SourceIp != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sourceIp", *params.SourceIp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

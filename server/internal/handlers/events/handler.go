@@ -61,6 +61,24 @@ func (h *Handler) ListEvents(writer http.ResponseWriter, req *http.Request) erro
 		opts.ActorUID = &actorUID
 	}
 
+	// Target identity lives in the redacted payload (target_uid /
+	// target_type), so these are payload predicates rather than column ones —
+	// the target is polymorphic across checks, policies, tokens and members.
+	if targetUID := query.Get("targetUid"); targetUID != "" {
+		opts.TargetUID = &targetUID
+	}
+
+	if targetType := query.Get("targetType"); targetType != "" {
+		opts.TargetType = &targetType
+	}
+
+	// Honored for org admins/owners only — the service drops it otherwise,
+	// so the filter cannot be used as an oracle for a column the caller is not
+	// allowed to read.
+	if sourceIP := query.Get("sourceIp"); sourceIP != "" {
+		opts.SourceIP = &sourceIP
+	}
+
 	since, until, err := parseTimeRange(query)
 	if err != nil {
 		return h.WriteErrorErr(

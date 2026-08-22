@@ -92,6 +92,21 @@ func (f *fixture) seed(
 	return event
 }
 
+// seedWithPayload writes one event carrying an explicit payload, so the
+// target-filter tests exercise the same payload shape internal/audit writes.
+func (f *fixture) seedWithPayload(
+	ctx context.Context, t *testing.T,
+	eventType models.EventType, at time.Time, payload models.JSONMap,
+) {
+	t.Helper()
+
+	event := models.NewEvent(f.org.UID, eventType, models.ActorTypeUser)
+	event.CreatedAt = at
+	event.Payload = payload
+
+	require.NoError(t, f.db.CreateEvent(ctx, event))
+}
+
 func typesOf(resp *events.ListEventsResponse) []string {
 	out := make([]string, 0, len(resp.Data))
 	for _, item := range resp.Data {
@@ -395,3 +410,172 @@ func TestTimeRangeFilterIsApplied(t *testing.T) {
 	r.NoError(err)
 	r.Equal([]string{"check.updated"}, typesOf(resp))
 }
+
+// TestCursorPaginationSurvivesIdenticalTimestamps is the tie-break guard.
+//
+// The keyset predicate is `created_at < ? OR (created_at = ? AND uid < ?)`,
+// which is only correct if rows sharing a created_at have a DEFINED order.
+// With `ORDER BY created_at DESC` alone, the order among equal timestamps is
+// whatever the engine feels like, so a page boundary landing inside a tied
+// group could skip events entirely — silently losing audit rows, which is the
+// worst possible failure for this table.
+//
+// TestCursorPaginationWalksTheWholeTrail seeds timestamps a minute apart and
+// therefore never exercises the tie. This one makes every row share a single
+// instant, which is exactly what a bulk insert (a config apply, an SSO
+// backfill, a burst of failed logins) produces in the real table.
+func TestCursorPaginationSurvivesIdenticalTimestamps(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	// One instant, twelve events. Not "close together" — identical.
+	at := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+	seeded := make(map[string]bool)
+	for i := 0; i < 12; i++ {
+		event := f.seed(ctx, t, models.EventTypeCheckCreated, nil, at, "")
+		seeded[event.UID] = true
+	}
+
+	r.Len(seeded, 12, "positive control: twelve distinct events were seeded")
+
+	seen := map[string]int{}
+	cursor := ""
+
+	for page := 0; page < 10; page++ {
+		resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+			Size:   5,
+			Cursor: cursor,
+			Caller: events.Caller{UserUID: f.admin.UID},
+		})
+		r.NoError(err)
+
+		for _, item := range resp.Data {
+			seen[item.UID]++
+		}
+
+		cursor = resp.Pagination.Cursor
+		if cursor == "" {
+			break
+		}
+	}
+
+	r.Empty(cursor, "pagination must terminate")
+
+	// The load-bearing assertion: nothing skipped, nothing duplicated.
+	r.Lenf(seen, 12, "expected all 12 tied events, saw %d", len(seen))
+
+	for uid := range seeded {
+		r.Equalf(1, seen[uid],
+			"event %s sharing a created_at with 11 others must appear exactly once", uid)
+	}
+}
+
+// TestTargetFiltersNarrowToOneObject covers the `targetUid` / `targetType`
+// filters. They are payload predicates rather than column ones because the
+// target is polymorphic, so they are exactly the kind of thing that works on
+// one engine and silently matches nothing on the other.
+func TestTargetFiltersNarrowToOneObject(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+	f.seedWithPayload(ctx, t, models.EventTypeIntegrationUpdated, base,
+		models.JSONMap{"target_type": "integration", "target_uid": "int-1"})
+	f.seedWithPayload(ctx, t, models.EventTypeIntegrationDeleted, base.Add(time.Minute),
+		models.JSONMap{"target_type": "integration", "target_uid": "int-2"})
+	f.seedWithPayload(ctx, t, models.EventTypeMemberRemoved, base.Add(2*time.Minute),
+		models.JSONMap{"target_type": "member", "target_uid": "user-9"})
+
+	byUID, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:      50,
+		TargetUID: strPtr("int-1"),
+		Caller:    events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Equal([]string{"integration.updated"}, typesOf(byUID))
+
+	byType, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:       50,
+		TargetType: strPtr("integration"),
+		Caller:     events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.ElementsMatch([]string{"integration.updated", "integration.deleted"}, typesOf(byType))
+
+	// Positive control: an unfiltered listing still returns all three, so the
+	// two assertions above are testing the filters rather than an empty table.
+	all, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   50,
+		Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Len(all.Data, 3)
+}
+
+// TestSourceIPFilterIsAdminOnly is the security half of the IP filter.
+//
+// Withholding the sourceIp COLUMN from a non-admin while honoring a sourceIp
+// FILTER would leave the fact just as reachable: ask for an address, get a
+// non-empty page, and you have confirmed a colleague works from it. So the
+// service drops the predicate for a non-admin — and drops it SILENTLY, so the
+// endpoint does not become an oracle for "am I an admin?" either.
+//
+// The positive control is the admin half: the filter genuinely narrows for
+// someone allowed to use it, so this is not passing because the filter is
+// broken for everyone.
+func TestSourceIPFilterIsAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+	f.seed(ctx, t, models.EventTypeCheckCreated, &f.admin.UID, base, "203.0.113.7")
+	f.seed(ctx, t, models.EventTypeCheckUpdated, &f.admin.UID, base.Add(time.Minute), "198.51.100.9")
+
+	// Positive control: an admin's filter narrows.
+	adminFiltered, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:     50,
+		SourceIP: strPtr("203.0.113.7"),
+		Caller:   events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Equal([]string{"check.created"}, typesOf(adminFiltered))
+
+	// A non-admin's identical request is answered as if no IP filter had been
+	// sent: both events come back, so no address is confirmed or denied.
+	viewerFiltered, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:     50,
+		SourceIP: strPtr("203.0.113.7"),
+		Caller:   events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.Len(viewerFiltered.Data, 2,
+		"a non-admin's IP filter must be ignored, not honored — otherwise it is an oracle")
+
+	// And an address that matches NOTHING is answered the same way, so the
+	// response size cannot be used to probe either.
+	viewerMiss, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:     50,
+		SourceIP: strPtr("192.0.2.1"),
+		Caller:   events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.Len(viewerMiss.Data, 2, "a miss and a hit must be indistinguishable to a non-admin")
+
+	// The column stays withheld regardless.
+	for _, item := range viewerFiltered.Data {
+		r.Nil(item.SourceIP)
+	}
+}
+
+func strPtr(value string) *string { return &value }

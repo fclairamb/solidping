@@ -3238,6 +3238,30 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: targetType
+          in: query
+          description: >-
+            Filter to one kind of acted-on object (`integration`, `member`,
+            `escalation_policy`, …), matched against the payload's
+            `target_type`.
+          schema:
+            type: string
+        - name: targetUid
+          in: query
+          description: >-
+            Filter to the events about one object, matched against the
+            payload's `target_uid`.
+          schema:
+            type: string
+        - name: sourceIp
+          in: query
+          description: >-
+            Filter to one client address. Honoured for org admins and owners
+            ONLY; for anyone else it is silently ignored rather than rejected,
+            so it cannot be used as an oracle for a column they are not
+            allowed to read.
+          schema:
+            type: string
         - name: since
           in: query
           description: Only events created at or after this RFC3339 timestamp
@@ -9586,7 +9610,7 @@ components:
           type: string
           description: >-
             Event type. Deliberately NOT an enum: the catalogue grows with the
-            product (see wiki/api-specification/events.md), and a client that
+            product (see wiki/api-specification/events-catalogue.md), and a client that
             hard-fails on an unknown value would break on every new family.
         actorType:
           type: string
