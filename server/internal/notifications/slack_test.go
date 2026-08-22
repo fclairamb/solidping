@@ -1118,6 +1118,16 @@ func (m *mockDBService) UpdateStatusPageCustomDomain(
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpdateStatusPageBranding(
+	_ context.Context, _ string, _ *models.StatusPageBrandingUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetStatusPageByAssetFileUID(_ context.Context, _ string) (*models.StatusPage, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetStatusPageByCustomDomain(_ context.Context, _ string) (*models.StatusPage, error) {
 	panic("not implemented")
 }

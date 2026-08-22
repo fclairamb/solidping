@@ -234,5 +234,22 @@
     "updated": "Página de estado actualizada correctamente",
     "deleted": "Página de estado eliminada correctamente",
     "deleteFailed": "Error al eliminar la página de estado"
+  },
+  "branding": {
+    "title": "Personalización",
+    "description": "El logotipo y el favicon de esta página de estado. Un logotipo subido sustituye la marca de SolidPing en la cabecera.",
+    "logo": "Logotipo",
+    "logoHint": "PNG, JPEG, WebP, GIF o SVG, hasta 1 MB. Se muestra en la cabecera de la página.",
+    "favicon": "Favicon",
+    "faviconHint": "ICO, PNG, WebP, GIF o SVG, hasta 256 KB. Se muestra en la pestaña del navegador, incluso en un dominio propio.",
+    "upload": "Subir",
+    "replace": "Reemplazar",
+    "remove": "Eliminar",
+    "uploaded": "Imagen actualizada",
+    "removed": "Imagen eliminada",
+    "unexpectedError": "Algo ha salido mal. Inténtalo de nuevo.",
+    "hideBranding": "Ocultar «Con tecnología de SolidPing»",
+    "hideBrandingHint": "Elimina el enlace a SolidPing del pie de la página pública.",
+    "hideBrandingLocked": "La marca blanca no está incluida en tu plan actual. El ajuste se guarda y se aplicará en cuanto el plan lo incluya."
   }
 }

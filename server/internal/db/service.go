@@ -804,6 +804,15 @@ type Service interface {
 	// UpdateStatusPageCustomDomain overwrites all custom-domain columns in one
 	// write (set/clear/verify/re-verify all go through here).
 	UpdateStatusPageCustomDomain(ctx context.Context, uid string, update *models.StatusPageCustomDomainUpdate) error
+	// UpdateStatusPageBranding overwrites BOTH brand-asset columns in one
+	// write, so set/replace/clear share a single shape (spec 2026-08-21-07).
+	UpdateStatusPageBranding(ctx context.Context, uid string, update *models.StatusPageBrandingUpdate) error
+	// GetStatusPageByAssetFileUID resolves the live, ENABLED status page whose
+	// current logo or favicon is the given file. This is the whole
+	// authorization rule behind the unsigned /pub/status-page-assets/:uid
+	// route: replacing, clearing or disabling a page un-publishes the blob in
+	// the same write.
+	GetStatusPageByAssetFileUID(ctx context.Context, fileUID string) (*models.StatusPage, error)
 	DeleteStatusPage(ctx context.Context, uid string) error
 
 	// StatusPageSection operations

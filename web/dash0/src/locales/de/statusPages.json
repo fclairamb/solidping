@@ -234,5 +234,22 @@
     "updated": "Statusseite erfolgreich aktualisiert",
     "deleted": "Statusseite erfolgreich gelöscht",
     "deleteFailed": "Löschen der Statusseite fehlgeschlagen"
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "Logo und Favicon dieser Statusseite. Ein hochgeladenes Logo ersetzt die SolidPing-Marke im Seitenkopf.",
+    "logo": "Logo",
+    "logoHint": "PNG, JPEG, WebP, GIF oder SVG, bis 1 MB. Wird im Kopfbereich der Statusseite gezeigt.",
+    "favicon": "Favicon",
+    "faviconHint": "ICO, PNG, WebP, GIF oder SVG, bis 256 KB. Wird im Browser-Tab gezeigt, auch auf einer eigenen Domain.",
+    "upload": "Hochladen",
+    "replace": "Ersetzen",
+    "remove": "Entfernen",
+    "uploaded": "Bild aktualisiert",
+    "removed": "Bild entfernt",
+    "unexpectedError": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
+    "hideBranding": "„Powered by SolidPing“ ausblenden",
+    "hideBrandingHint": "Entfernt den SolidPing-Link aus der Fußzeile der öffentlichen Seite.",
+    "hideBrandingLocked": "White-Labeling ist in Ihrem aktuellen Tarif nicht enthalten. Die Einstellung wird gespeichert und wirkt, sobald der Tarif sie enthält."
   }
 }

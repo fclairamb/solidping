@@ -4690,6 +4690,51 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 	return err
 }
 
+// UpdateStatusPageBranding overwrites both brand-asset columns in one write.
+// Every transition (upload, replace, clear) goes through here, so a nil
+// pointer writes SQL NULL verbatim rather than "leave alone" — that is what
+// guarantees a cleared asset stops being publicly reachable immediately.
+func (s *Service) UpdateStatusPageBranding(
+	ctx context.Context, uid string, update *models.StatusPageBrandingUpdate,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.StatusPage)(nil)).
+		Set("logo_file_uid = ?", update.LogoFileUID).
+		Set("favicon_file_uid = ?", update.FaviconFileUID).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+
+	return err
+}
+
+// GetStatusPageByAssetFileUID returns the live, enabled status page whose
+// current logo or favicon is the given file. Disabled pages are excluded on
+// purpose: turning a page off must take its brand assets offline with it,
+// exactly as it takes the page itself offline.
+func (s *Service) GetStatusPageByAssetFileUID(
+	ctx context.Context, fileUID string,
+) (*models.StatusPage, error) {
+	page := new(models.StatusPage)
+
+	err := s.db.NewSelect().
+		Model(page).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				Where("logo_file_uid = ?", fileUID).
+				WhereOr("favicon_file_uid = ?", fileUID)
+		}).
+		Where("enabled = ?", true).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return page, nil
+}
+
 // UpdateStatusPageCustomDomain overwrites every custom-domain column in one
 // write. All lifecycle transitions (set, clear, verify-now, re-verify) go
 // through here, so nil pointers write SQL NULL verbatim.

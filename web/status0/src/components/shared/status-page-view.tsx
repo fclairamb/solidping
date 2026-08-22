@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
@@ -352,6 +353,34 @@ export function StatusPageView({
   // dash0 appearance editor can drive it live over postMessage.
   const customCss = usePreviewCss(page.customCss);
 
+  // Favicon: written from here rather than from index.html so it also applies
+  // on a custom domain, where the served document is the same SPA shell for
+  // every page. The previous href is restored on unmount so navigating between
+  // two pages of the same org never leaves the wrong icon behind.
+  useEffect(() => {
+    if (!page.faviconUrl) return;
+
+    const link =
+      document.querySelector<HTMLLinkElement>("link[rel~='icon']") ??
+      (() => {
+        const created = document.createElement("link");
+        created.rel = "icon";
+        document.head.appendChild(created);
+        return created;
+      })();
+
+    const previous = link.getAttribute("href");
+    link.setAttribute("href", page.faviconUrl);
+
+    return () => {
+      if (previous === null) {
+        link.removeAttribute("href");
+      } else {
+        link.setAttribute("href", previous);
+      }
+    };
+  }, [page.faviconUrl]);
+
   return (
     <div className="min-h-screen">
       {/* Operator-authored theme override. Rendered as a React TEXT CHILD, so
@@ -373,7 +402,22 @@ export function StatusPageView({
             {/* `sp-logo` is added by <Logo> itself; `sp-page-name` here.
                 Both are documented custom-CSS hooks (public API) — see
                 web/docs/docs/features/status-pages.md. Do not rename. */}
-            <Logo size={26} />
+            {page.logoUrl ? (
+              /* An uploaded logo REPLACES the SolidPing mark rather than
+                 sitting next to it — a status page wearing two logos reads as
+                 a co-brand nobody asked for. `sp-logo` is kept on the <img> so
+                 the documented custom-CSS hook keeps working either way, and
+                 the alt text is the page name because that is what the mark
+                 stands for here. */
+              <img
+                src={page.logoUrl}
+                alt={page.name}
+                className="sp-logo h-[26px] w-auto max-w-[160px] object-contain"
+                data-testid="status-page-logo"
+              />
+            ) : (
+              <Logo size={26} />
+            )}
             <span className="sp-page-name text-sm font-semibold tracking-tight">
               {page.name}
             </span>
@@ -541,14 +585,22 @@ export function StatusPageView({
             custom-CSS hooks (public API) — see
             web/docs/docs/features/status-pages.md. Do not rename. */}
         <div className="sp-footer mt-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-1">
-          <a
-            href="https://www.solidping.io"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="sp-powered-by text-brand hover:underline"
-          >
-            {t("poweredBy")}
-          </a>
+          {/* White label (spec 2026-08-21-07): `hideBranding` on the PUBLIC
+              payload is already the AND of the org's `whiteLabel` entitlement
+              and the page's opt-in — the server resolves it so this component
+              never has to know what a plan is. The version line stays either
+              way: it is operational information about the instance, not a
+              SolidPing advertisement, and support answers depend on it. */}
+          {page.hideBranding ? null : (
+            <a
+              href="https://www.solidping.io"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="sp-powered-by text-brand hover:underline"
+            >
+              {t("poweredBy")}
+            </a>
+          )}
           {versionInfo ? (
             // Machine-generated chrome. Note this one does NOT churn (useVersion
             // is staleTime: Infinity, never refetched) — opted out for

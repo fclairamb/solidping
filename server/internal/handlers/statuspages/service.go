@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
@@ -533,6 +534,12 @@ type StatusPageResponse struct {
 	AutoPublish             bool   `json:"autoPublish"`
 	AutoPublishDelaySeconds int    `json:"autoPublishDelaySeconds"`
 	AutoResolve             string `json:"autoResolve"`
+	// LogoURL / FaviconURL are the stable public paths of the page's uploaded
+	// brand assets (spec 2026-08-21-07), or absent when the slot is unset.
+	// They are set on BOTH admin and public payloads: a brand asset is
+	// deliberately world-readable, and status0 is the primary consumer.
+	LogoURL    *string `json:"logoUrl,omitempty"`
+	FaviconURL *string `json:"faviconUrl,omitempty"`
 	// CustomCSS is the operator-authored stylesheet the public page injects as
 	// a <style> text node. Unlike the custom-domain fields below it is set on
 	// the PUBLIC responses too — status0 is its only consumer.
@@ -2775,6 +2782,8 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		AutoPublishDelaySeconds: page.AutoPublishDelaySeconds,
 		AutoResolve:             page.AutoResolve,
 		CustomCSS:               page.CustomCSS,
+		LogoURL:                 statuspageassets.PublicURL(page.LogoFileUID),
+		FaviconURL:              statuspageassets.PublicURL(page.FaviconFileUID),
 		CreatedAt:               &page.CreatedAt,
 		Settings:                convertSettingsToResponse(page.Settings),
 		AvailabilityThresholds: AvailabilityThresholdsResponse{

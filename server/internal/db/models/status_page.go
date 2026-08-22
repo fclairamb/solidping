@@ -49,6 +49,27 @@ func PeriodFromDays(days int) StatusPagePeriod {
 	}
 }
 
+// Status page visibility values. `public` is world-readable, `private` is
+// fully hidden (the public endpoints 404 as if it did not exist), and
+// `password` is shared-with-a-secret: the public endpoints answer 401 until
+// the visitor unlocks the page (spec 2026-08-21-07).
+const (
+	StatusPageVisibilityPublic   = "public"
+	StatusPageVisibilityPrivate  = "private"
+	StatusPageVisibilityPassword = "password"
+)
+
+// ValidStatusPageVisibility reports whether v is one of the three supported
+// visibility values.
+func ValidStatusPageVisibility(v string) bool {
+	switch v {
+	case StatusPageVisibilityPublic, StatusPageVisibilityPrivate, StatusPageVisibilityPassword:
+		return true
+	default:
+		return false
+	}
+}
+
 // StatusPage represents a public status page for an organization.
 type StatusPage struct {
 	UID              string  `bun:"uid,pk,type:varchar(36)"`
@@ -105,6 +126,22 @@ type StatusPage struct {
 	// CustomDomainFailures counts consecutive re-verification failures. At 3 the
 	// verification is cleared (domain release/takeover protection).
 	CustomDomainFailures int `bun:"custom_domain_failures,notnull,default:0"`
+	// LogoFileUID / FaviconFileUID are the `files.uid` of the page's own brand
+	// assets (spec 2026-08-21-07). nil = wear the SolidPing logo / the default
+	// favicon. They hold a file UID rather than a URL because the public route
+	// that serves them is unsigned and authorized purely by state: a blob is
+	// public exactly while it is the CURRENT asset of a live, enabled page.
+	LogoFileUID    *string `bun:"logo_file_uid"`
+	FaviconFileUID *string `bun:"favicon_file_uid"`
+	// HideBranding is the page's half of the white-label decision: the
+	// "powered by SolidPing" footer disappears only when this is true AND the
+	// org holds the `whiteLabel` entitlement. Keeping the two halves separate
+	// means a downgrade silently restores the badge without rewriting the page.
+	HideBranding bool `bun:"hide_branding,notnull,default:false"`
+	// PasswordHash is the bcrypt hash gating a `visibility = password` page.
+	// It is NEVER serialized onto any response — reads expose `hasPassword`
+	// only. nil on public/private pages.
+	PasswordHash *string `bun:"password_hash"`
 	// Settings holds per-page display customization (e.g. availability color
 	// thresholds), typed rather than a free-form map so keys stay
 	// discoverable (spec 2026-08-03-01). Column is NOT NULL DEFAULT '{}'.
@@ -161,6 +198,13 @@ type StatusPageUpdate struct {
 	// string clears the column (the appearance editor's "empty textarea"), a
 	// nil pointer leaves it untouched.
 	CustomCSS *string
+	// HideBranding flips the page-level white-label opt-in. nil leaves it.
+	HideBranding *bool
+	// PasswordHash writes the bcrypt hash gating a password page. A pointer to
+	// the empty string CLEARS the column (the page stopped being password
+	// protected); a nil pointer leaves it untouched, which is what keeps an
+	// unrelated PATCH from silently unlocking a page.
+	PasswordHash *string
 	// Settings overwrites the whole settings column when non-nil (the caller
 	// — statuspages.Service — has already applied the no-deep-merge
 	// section-replace-or-reset semantics against the current value). A nil
@@ -180,6 +224,16 @@ type StatusPageCustomDomainUpdate struct {
 	VerifiedAt *time.Time
 	CheckedAt  *time.Time
 	Failures   int
+}
+
+// StatusPageBrandingUpdate is the whole-column writer for a status page's two
+// brand-asset columns. Both fields are written verbatim on every call (nil
+// clears the column to NULL), mirroring StatusPageCustomDomainUpdate: one
+// shape expresses set, replace and clear, so no caller can accidentally leave
+// a stale file UID behind and keep a retired blob publicly reachable.
+type StatusPageBrandingUpdate struct {
+	LogoFileUID    *string
+	FaviconFileUID *string
 }
 
 // StatusPageSection represents a section within a status page.

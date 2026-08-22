@@ -1836,12 +1836,19 @@ export interface AvailabilityThresholds {
   thresholdDegraded: number;
 }
 
+/**
+ * Status page visibility. `public` is world-readable, `private` is fully
+ * hidden (the public endpoints 404), and `password` is shared-with-a-secret:
+ * the public endpoints answer 401 until the visitor unlocks the page.
+ */
+export type StatusPageVisibility = "public" | "private" | "password";
+
 export interface StatusPage {
   uid: string;
   name: string;
   slug: string;
   description?: string;
-  visibility: "public" | "private";
+  visibility: StatusPageVisibility;
   isDefault: boolean;
   enabled: boolean;
   showAvailability: boolean;
@@ -1863,6 +1870,24 @@ export interface StatusPage {
   // Never applied to dash0's own chrome — only inside the appearance preview
   // iframe, which loads the real status0 renderer.
   customCss?: string;
+  /**
+   * Public paths of the page's uploaded brand assets (spec 2026-08-21-07), or
+   * absent when the slot is empty. Read-only here: they are set by the
+   * dedicated upload endpoints, never by PATCH.
+   */
+  logoUrl?: string;
+  faviconUrl?: string;
+  /**
+   * The page's white-label OPT-IN, as stored — not the resolved decision. On
+   * the admin payload this is the raw column so the toggle round-trips
+   * honestly even while the org is not entitled; `whiteLabelAllowed` says
+   * whether it currently has any effect.
+   */
+  hideBranding?: boolean;
+  /** Whether the org holds the `whiteLabel` entitlement. Admin payload only. */
+  whiteLabelAllowed?: boolean;
+  /** True when the page is password-protected. The hash is never returned. */
+  hasPassword?: boolean;
   // Custom-domain fields are only present on the authenticated org endpoints.
   customDomain?: string;
   customDomainStatus?: CustomDomainStatus;
@@ -1916,7 +1941,10 @@ export interface CreateStatusPageRequest {
   name: string;
   slug: string;
   description?: string;
-  visibility?: "public" | "private";
+  visibility?: StatusPageVisibility;
+  /** Write-only. Required when visibility is "password"; never read back. */
+  password?: string;
+  hideBranding?: boolean;
   isDefault?: boolean;
   showAvailability?: boolean;
   showResponseTime?: boolean;
@@ -1933,7 +1961,14 @@ export interface UpdateStatusPageRequest {
   name?: string;
   slug?: string;
   description?: string;
-  visibility?: "public" | "private";
+  visibility?: StatusPageVisibility;
+  /**
+   * Write-only. A non-empty string sets the unlock password (and invalidates
+   * every outstanding unlock cookie); an empty string clears it; omit to leave
+   * it untouched. Never read back.
+   */
+  password?: string;
+  hideBranding?: boolean;
   isDefault?: boolean;
   enabled?: boolean;
   showAvailability?: boolean;
@@ -2049,6 +2084,65 @@ export function useUpdateStatusPage(org: string, uid: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
       queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+    },
+  });
+}
+
+/**
+ * Response of the status-page asset endpoints — just enough of the page for
+ * the caller to update what it already holds without a refetch.
+ */
+export interface StatusPageAssetResponse {
+  uid: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  faviconUrl: string | null;
+}
+
+/** The asset slots a status page has. One logo, one favicon — never a list. */
+export type StatusPageAssetKind = "logo" | "favicon";
+
+// useUploadStatusPageAsset posts the image as multipart/form-data. The
+// Content-Type header is deliberately left unset so the browser adds the
+// multipart boundary (same reason as useUploadOrgLogo).
+export function useUploadStatusPageAsset(
+  org: string,
+  uid: string,
+  kind: StatusPageAssetKind,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData();
+      body.append(kind, file);
+      return apiFetch<StatusPageAssetResponse>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/${kind}`,
+        { method: "POST", body },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
+export function useClearStatusPageAsset(
+  org: string,
+  uid: string,
+  kind: StatusPageAssetKind,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<StatusPageAssetResponse>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/${kind}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
     },
   });
 }

@@ -20,13 +20,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { AvailabilitySettings, StatusPage, StatusPagePeriod } from "@/api/hooks";
+import type {
+  AvailabilitySettings,
+  StatusPage,
+  StatusPagePeriod,
+  StatusPageVisibility,
+} from "@/api/hooks";
 
 interface StatusPageFormData {
   name: string;
   slug: string;
   description: string;
-  visibility: "public" | "private";
+  visibility: StatusPageVisibility;
   isDefault: boolean;
   enabled: boolean;
   showAvailability: boolean;
@@ -59,7 +64,7 @@ export function StatusPageForm({
   const [slug, setSlug] = useState(initialData?.slug || "");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
   const [description, setDescription] = useState(initialData?.description || "");
-  const [visibility, setVisibility] = useState<"public" | "private">(
+  const [visibility, setVisibility] = useState<StatusPageVisibility>(
     initialData?.visibility || "public"
   );
   const [isDefault, setIsDefault] = useState(initialData?.isDefault || false);
@@ -206,7 +211,7 @@ export function StatusPageForm({
 
           <div className="space-y-2">
             <Label htmlFor="visibility">Visibility</Label>
-            <Select value={visibility} onValueChange={(v) => setVisibility(v as "public" | "private")}>
+            <Select value={visibility} onValueChange={(v) => setVisibility(v as StatusPageVisibility)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

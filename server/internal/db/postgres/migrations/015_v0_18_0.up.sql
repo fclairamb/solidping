@@ -8,6 +8,8 @@
 -- verbatim:
 --
 --   SECTION: generic-attachments        files.topic/details attachment link
+--   SECTION: status-page-branding       status_pages logo/favicon/hide_branding
+--   SECTION: status-page-password       status_pages password_hash
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -84,3 +86,90 @@ comment on column files.topic is
 
 comment on column files.details is
   'Free metadata bag for the attachment kind. Org-operational evidence — never serialized onto a public surface.';
+
+-- ==========================================================================
+-- SECTION: status-page-branding
+-- Status-page brand assets and the white-label opt-in (spec 2026-08-21-07).
+-- ==========================================================================
+
+-- A status page can now carry its OWN logo and favicon instead of wearing
+-- SolidPing's, and can opt out of the "powered by SolidPing" footer.
+--
+-- The two asset columns hold a `files.uid`, not a URL. That is deliberate and
+-- mirrors `organizations.logo_file_uid`: the public route
+-- /pub/status-page-assets/:uid is unsigned, and its ENTIRE authorization story
+-- is "this file is the current logo or favicon of a live, enabled status page".
+-- Storing the file UID is what makes that a single indexed lookup, and it is
+-- what makes replacing or clearing an asset un-publish the old blob in the
+-- same write. A URL column would have made the route either unauthorizable or
+-- permanently public.
+--
+-- `hide_branding` is only the page's HALF of the white-label decision. The
+-- other half is the org's `whiteLabel` entitlement, and the footer disappears
+-- only when both are true — which is why this column is a plain opt-in with a
+-- FALSE default and carries no entitlement state of its own. An org that
+-- downgrades keeps the flag set and simply gets the badge back; nothing has to
+-- be rewritten on the billing side.
+alter table status_pages add column if not exists logo_file_uid text;
+
+--bun:split
+
+alter table status_pages add column if not exists favicon_file_uid text;
+
+--bun:split
+
+alter table status_pages add column if not exists hide_branding boolean not null default false;
+
+--bun:split
+
+-- Partial indexes: the columns are NULL on the overwhelming majority of rows
+-- (a page with no uploaded asset), and every lookup that uses them is the
+-- public-route authorization check, which is by definition non-NULL and
+-- live-rows-only.
+create index if not exists status_pages_logo_file_idx
+  on status_pages (logo_file_uid)
+  where deleted_at is null and logo_file_uid is not null;
+
+--bun:split
+
+create index if not exists status_pages_favicon_file_idx
+  on status_pages (favicon_file_uid)
+  where deleted_at is null and favicon_file_uid is not null;
+
+--bun:split
+
+comment on column status_pages.logo_file_uid is
+  'files.uid of the page''s uploaded logo (spec 2026-08-21-07). NULL = wear the SolidPing logo.';
+
+--bun:split
+
+comment on column status_pages.favicon_file_uid is
+  'files.uid of the page''s uploaded favicon (spec 2026-08-21-07). NULL = the default favicon.';
+
+--bun:split
+
+comment on column status_pages.hide_branding is
+  'Page-level white-label opt-in. Effective only when the org also holds the whiteLabel entitlement.';
+
+-- ==========================================================================
+-- SECTION: status-page-password
+-- Password-protected status pages (spec 2026-08-21-07).
+-- ==========================================================================
+
+-- `visibility` gains a third value, `password`. There is deliberately NO check
+-- constraint listing the three values: `visibility` has always been free-form
+-- text validated by the API, and adding a constraint here would turn every
+-- future value into a migration on a table other deployments are actively
+-- serving from. models.ValidStatusPageVisibility is the single gate.
+--
+-- The hash is bcrypt, and it is never returned by any endpoint — reads expose
+-- a `hasPassword` boolean instead. It doubles as the unlock cookie's HMAC key
+-- (sha256 of the hash), which is what makes "change the password" invalidate
+-- every outstanding cookie without a second column, a revocation list, or a
+-- new server secret.
+alter table status_pages add column if not exists password_hash text;
+
+--bun:split
+
+comment on column status_pages.password_hash is
+  'bcrypt hash gating a visibility=password page (spec 2026-08-21-07). NEVER serialized; reads expose hasPassword only.';

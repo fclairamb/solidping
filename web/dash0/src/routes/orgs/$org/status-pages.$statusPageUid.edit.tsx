@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { StatusPageForm } from "@/components/shared/status-page-form";
+import { StatusPageBranding } from "@/components/shared/status-page-branding";
 import { StatusPageCustomDomain } from "@/components/shared/status-page-custom-domain";
 import { StatusPageSubscribers } from "@/components/shared/status-page-subscribers";
 
@@ -115,6 +116,8 @@ function StatusPageEditPage() {
           </Link>
         </CardContent>
       </Card>
+
+      <StatusPageBranding org={org} page={page} />
 
       <StatusPageCustomDomain org={org} page={page} />
 

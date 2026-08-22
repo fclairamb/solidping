@@ -234,5 +234,22 @@
     "updated": "Page de statut mise à jour avec succès",
     "deleted": "Page de statut supprimée avec succès",
     "deleteFailed": "Échec de la suppression de la page de statut"
+  },
+  "branding": {
+    "title": "Personnalisation",
+    "description": "Le logo et la favicon portés par cette page de statut. Un logo téléversé remplace la marque SolidPing dans l’en-tête.",
+    "logo": "Logo",
+    "logoHint": "PNG, JPEG, WebP, GIF ou SVG, jusqu’à 1 Mo. Affiché dans l’en-tête de la page.",
+    "favicon": "Favicon",
+    "faviconHint": "ICO, PNG, WebP, GIF ou SVG, jusqu’à 256 Ko. Affichée dans l’onglet du navigateur, même sur un domaine personnalisé.",
+    "upload": "Téléverser",
+    "replace": "Remplacer",
+    "remove": "Supprimer",
+    "uploaded": "Image mise à jour",
+    "removed": "Image supprimée",
+    "unexpectedError": "Une erreur est survenue. Veuillez réessayer.",
+    "hideBranding": "Masquer « Propulsé par SolidPing »",
+    "hideBrandingHint": "Retire le lien SolidPing du pied de page public.",
+    "hideBrandingLocked": "La marque blanche n’est pas incluse dans votre offre actuelle. Le réglage est enregistré et s’appliquera dès que l’offre l’inclura."
   }
 }

@@ -90,6 +90,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
@@ -1521,6 +1522,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.DELETE("/:statusPageUid", statusPagesHandler.DeleteStatusPage)
 	// Custom-domain verify-now (authenticated): runs the DNS checks synchronously.
 	orgStatusPages.POST("/:statusPageUid/custom-domain/verify", statusPagesHandler.VerifyCustomDomain)
+
+	// Per-page brand assets (spec 2026-08-21-07). Upload/clear are admin-gated
+	// by the org group's own chain; the public route below is unsigned on
+	// purpose — a favicon URL has to be stable enough to sit in a <link> tag on
+	// a custom domain — and is authorized by state instead: the file must be
+	// the CURRENT logo/favicon of a live, enabled status page.
+	statusPageAssetsService := statuspageassets.NewService(s.dbService, filesService)
+	statusPageAssetsHandler := statuspageassets.NewHandler(statusPageAssetsService, s.config)
+	orgStatusPages.POST("/:statusPageUid/logo", statusPageAssetsHandler.UploadLogo)
+	orgStatusPages.DELETE("/:statusPageUid/logo", statusPageAssetsHandler.DeleteLogo)
+	orgStatusPages.POST("/:statusPageUid/favicon", statusPageAssetsHandler.UploadFavicon)
+	orgStatusPages.DELETE("/:statusPageUid/favicon", statusPageAssetsHandler.DeleteFavicon)
+	pubStatusPageAssets := mainGroup.NewGroup("/pub/status-page-assets")
+	pubStatusPageAssets.GET("/:uid", statusPageAssetsHandler.PublicGet)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
 	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)

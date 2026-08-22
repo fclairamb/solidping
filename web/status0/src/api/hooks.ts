@@ -146,6 +146,20 @@ export interface StatusPage {
    * endpoint — this page is its only consumer.
    */
   customCss?: string;
+  /**
+   * Stable public path of the page's uploaded logo, e.g.
+   * `/pub/status-page-assets/<file uid>`. Absent when the operator uploaded
+   * none — the brand bar then falls back to the SolidPing mark.
+   */
+  logoUrl?: string;
+  /** Same, for the favicon written into <link rel="icon">. */
+  faviconUrl?: string;
+  /**
+   * RESOLVED white-label decision: true only when the org holds the
+   * `whiteLabel` entitlement AND the page opted in. The server does the AND —
+   * status0 never sees entitlements and must not try to reconstruct them.
+   */
+  hideBranding?: boolean;
   sections?: StatusPageSection[];
   recentUpdates?: StatusUpdatePublicResponse[];
   createdAt?: string;

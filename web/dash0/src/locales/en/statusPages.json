@@ -234,5 +234,22 @@
     "updated": "Status page updated successfully",
     "deleted": "Status page deleted successfully",
     "deleteFailed": "Failed to delete status page"
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "The logo and favicon this status page wears. Uploading a logo replaces the SolidPing mark in the page header.",
+    "logo": "Logo",
+    "logoHint": "PNG, JPEG, WebP, GIF or SVG, up to 1 MB. Shown in the status page header.",
+    "favicon": "Favicon",
+    "faviconHint": "ICO, PNG, WebP, GIF or SVG, up to 256 KB. Shown in the browser tab, including on a custom domain.",
+    "upload": "Upload",
+    "replace": "Replace",
+    "remove": "Remove",
+    "uploaded": "Image updated",
+    "removed": "Image removed",
+    "unexpectedError": "Something went wrong. Please try again.",
+    "hideBranding": "Hide “Powered by SolidPing”",
+    "hideBrandingHint": "Removes the SolidPing footer link from the public page.",
+    "hideBrandingLocked": "White labelling is not included in your current plan. The setting is saved, and takes effect as soon as the plan includes it."
   }
 }
