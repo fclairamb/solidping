@@ -54,6 +54,27 @@ assumption that whatever it stores is disclosed to all of them:
   that moved, and shows before → after only for non-sensitive scalar values.
   Rotating a webhook secret shows up as "the secret changed", and nothing more.
 
+Two more absences are worth knowing about, because they are things you might
+reasonably go looking for:
+
+- **Token refreshes are not entries.** When an app connected through OAuth (for
+  example an MCP client) trades its refresh token for a new one — which it does
+  automatically, over and over, for as long as the connection lasts — nothing
+  is written. You get one entry when the app was **granted** access and one
+  when that access was **revoked**; the routine renewals in between would run
+  to thousands of entries a month and tell you nothing the grant did not
+  already say.
+- **Revoking a token that was already gone is not an entry.** Asking to revoke
+  an unknown or already-revoked token succeeds quietly, by design — the
+  endpoint answers the same way either way so that nobody can use it to test
+  whether a stolen token is still live. Writing an entry for it would give away
+  exactly what that silence protects. A revocation you actually see in the log
+  is one that really happened.
+
+  A **mismatched** revoke is different and **is** recorded: if an app presents
+  a token that belongs to a different app, that is a security signal, and it
+  appears as a "token misuse" entry naming both apps.
+
 ## Failed sign-ins
 
 Failed sign-ins are the one event a stranger can trigger at will, so they get

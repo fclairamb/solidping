@@ -226,9 +226,12 @@ wondering whether these were missed or decided.
 1. **Refresh-token rotations of an OAuth/MCP grant are not recorded.** The
    grant and its revocation are; the hourly re-mints in between are not. See
    the reasoning in `wiki/api-specification/events-catalogue.md`.
-2. **RFC 7009 no-op revocations are not recorded** (unknown token, already
-   revoked, wrong client). Recording them would turn the audit log into the
-   token-validity oracle the endpoint deliberately refuses to be.
+2. **Revoking an unknown or already-revoked OAuth token is not recorded.**
+   There is no row, so there is no organization to scope an org-scoped event
+   to; recording one would let an unauthenticated caller write into an org's
+   trail by guessing a token. (A WRONG-CLIENT revoke *is* recorded, as
+   `auth.token_misuse` — that branch knows the org, and it is a real security
+   signal.)
 3. **A federated login that is not admitted to the org records nothing.** No
    org-scoped session is minted, so there is no access to claim — the
    membership request is the surface for that.

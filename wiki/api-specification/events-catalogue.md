@@ -59,6 +59,7 @@ These are contract, not implementation detail:
 | `auth.logout` | — |
 | `auth.token_created` | `token_kind` (`pat` / `agent_enrollment` / `oauth_grant`), `token_name`, `token_prefix`; for an OAuth grant: `client_id`, `scope`, `resource`, `grant_type` |
 | `auth.token_revoked` | `token_kind`, `token_name`; for an OAuth grant: `client_id`, `scope` |
+| `auth.token_misuse` | `token_kind`, `reason`, `client_id` (the grant's owner), `presented_client_id` (who tried) |
 
 **OAuth / MCP grants.** Completing the OAuth authorization-code exchange
 (`internal/oauth`) hands an external client the right to act as a user, in an
@@ -66,16 +67,28 @@ org, for a set of scopes — an access grant, so it is recorded as
 `auth.token_created` with `token_kind: oauth_grant`, attributed to the user who
 consented. Revoking it (RFC 7009) records `auth.token_revoked`.
 
-Two deliberate silences:
+Two deliberate silences, and one deliberate exception:
 
 - **Refresh rotations are not recorded.** The token endpoint re-mints a pair
   every access-token TTL for the life of the grant; a row per rotation would
   bury the grant that matters under thousands saying nothing new. The grant and
   its revocation are the two facts a reader needs.
-- **RFC 7009's no-op branches are not recorded** (unknown token, already
-  revoked, wrong client). The endpoint answers 200 either way precisely so it
-  cannot be used to probe token validity — writing an event would make the
-  audit log the oracle the endpoint refuses to be.
+- **An unknown or already-revoked token is not recorded.** There is no row, so
+  there is no `organization_uid` to scope an org-scoped event to — recording
+  one would mean letting an unauthenticated caller write into an org's trail by
+  guessing a token. That is the whole of the argument: it is a scoping problem,
+  not an oracle one.
+- **A WRONG-CLIENT revoke IS recorded**, as `auth.token_misuse`. That branch
+  found a row, so the org is known, and "client A presented client B's grant"
+  is a leaked token being tried or a confused-deputy bug — precisely what a
+  compliance reader wants. The oracle worry does not transfer either: the
+  SUCCESS path already writes an event, so anyone who can both call revoke and
+  read this trail can already tell a live grant from a dead one. The HTTP
+  caller still gets the same indistinguishable 200 RFC 7009 requires; the trail
+  is an admin-only surface, the response is not.
+
+  Its actor is `system`, not the grant's owner — that user did not do this, and
+  a false accusation in a record people act on is worse than no record.
 
 **`auth_method` values.** Every path that mints a session records one, because
 a session IS a `refresh`-type `user_tokens` row and they all go through
@@ -102,7 +115,7 @@ recovery_code
 <!-- second-factors:end -->
 
 The block below is the **machine-readable** list of base values, checked for
-SET EQUALITY against `auth.AuthMethods()` by
+SET EQUALITY against `auth.authMethods()` by
 `TestAdvertisedAuthMethodsAreProducible`. Neither side can drift: a value here
 with nothing to emit it fails, and a value the code can emit that is missing
 here fails too.
