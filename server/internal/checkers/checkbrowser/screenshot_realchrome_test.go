@@ -11,44 +11,44 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/chromedp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-// chromeCandidates are the places a real Chrome/Chromium usually lives. The
-// Playwright-managed one comes first because that is what CI has.
+// findChrome returns the Chrome path these tests should drive, or skips.
 //
-//nolint:gochecknoglobals // an immutable lookup table Go cannot express as const
-var chromeCandidates = []string{
-	"/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-	"/usr/bin/chromium",
-	"/usr/bin/chromium-browser",
-	"/usr/bin/google-chrome",
-}
-
-// findChrome returns a usable Chrome path, or skips the test.
+// OPT-IN ONLY, via SP_TEST_CHROME_PATH. There is deliberately no
+// auto-detection, and the reason is worth stating because the obvious
+// convenience is the wrong trade here:
 //
-// Skipping rather than failing: these tests drive a REAL browser, and a
-// machine without one is a normal developer machine, not a broken build. The
-// pure-seam tests in screenshot_test.go cover the logic on every machine; what
-// only a real browser can prove is the lifecycle behavior below.
+// These tests spawn a real browser, and a panic raised on a goroutine chromedp
+// owns cannot be recovered — it takes the whole test binary down and fails the
+// entire backend job, not just this package. The crash they were written for
+// behaved differently on a CI runner than on a developer machine (a Chrome
+// that starts but fails its CDP handshake), so auto-detecting a browser makes
+// CI's blast radius depend on which image it happens to be running.
+//
+// The regression itself is guarded on every machine, browser-free, by
+// TestBrowserWasAllocatedGatesTheCapture and
+// TestScreenshotStaysBoundToCallerCancellation in this package. What follows
+// is the end-to-end confirmation you run deliberately:
+//
+//	SP_TEST_CHROME_PATH=/usr/bin/chromium go test ./internal/checkers/checkbrowser/
 func findChrome(t *testing.T) string {
 	t.Helper()
 
-	if fromEnv := os.Getenv("SP_TEST_CHROME_PATH"); fromEnv != "" {
-		return fromEnv
+	path := os.Getenv("SP_TEST_CHROME_PATH")
+	if path == "" {
+		t.Skip("set SP_TEST_CHROME_PATH to a Chrome/Chromium binary to run the real-browser tests")
 	}
 
-	for _, candidate := range chromeCandidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate
-		}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		t.Skipf("SP_TEST_CHROME_PATH=%q is not a usable binary", path)
 	}
 
-	t.Skip("no Chrome/Chromium binary found; set SP_TEST_CHROME_PATH to run the real-browser tests")
-
-	return ""
+	return path
 }
 
 // refusedURL returns an http:// URL nothing is listening on, so navigation
@@ -176,4 +176,40 @@ func TestRealChromeUnreachableTargetDegradesToNoCapture(t *testing.T) {
 
 	r.Equal(checkerdef.StatusDown, result.Status, "the target is still reported down")
 	r.Nil(result.Diagnostics, "and no empty capture is invented")
+}
+
+// TestBrowserWasAllocatedGatesTheCapture pins the guard that prevents a
+// second chromedp allocation — the one that panics the process.
+//
+// Unit-level and browser-free on purpose: the crash it prevents needs a very
+// specific chromedp state (a context whose Allocate armed its process reaper
+// but never set Browser) that cannot be provoked on demand. What CAN be
+// asserted everywhere is the rule the guard encodes: no browser attached
+// means chromedp.Run is never called.
+func TestBrowserWasAllocatedGatesTheCapture(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// A plain context is not a chromedp context at all.
+	r.False(browserWasAllocated(t.Context()))
+
+	// A real chromedp context that has never run anything has an Allocator
+	// but no Browser — precisely the state in which a capture must not call
+	// Run, because Run would allocate one.
+	allocCtx, allocCancel := chromedp.NewExecAllocator(t.Context(), chromedp.DefaultExecAllocatorOptions[:]...)
+	t.Cleanup(allocCancel)
+
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	r.NotNil(chromedp.FromContext(browserCtx), "positive control: this really is a chromedp context")
+	r.False(browserWasAllocated(browserCtx), "no browser has been allocated yet")
+
+	// And the capture path refuses rather than calling Run.
+	checker := &BrowserChecker{}
+
+	png, err := checker.takeShot(browserCtx)
+	r.ErrorIs(err, errNoBrowserAllocated)
+	r.Nil(png)
 }

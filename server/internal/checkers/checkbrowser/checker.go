@@ -263,6 +263,33 @@ const screenshotBudget = 2 * time.Second
 // PNG (it is lossless) but required by the API.
 const screenshotQuality = 100
 
+// browserWasAllocated reports whether a browser is actually attached to this
+// chromedp context.
+//
+// This guard is NOT an optimization — it is the fix for a crash that took the
+// whole server down twice. chromedp's `Run` funnels through
+// `initContextBrowser`, which calls `Allocator.Allocate` **whenever
+// `c.Browser == nil`**. `ExecAllocator.Allocate` in turn arms a goroutine that
+// does `close(c.allocated)` once the Chrome process exits.
+//
+// So when the probe's own Run fails AFTER that goroutine is armed but BEFORE
+// `c.Browser` is set — a Chrome that starts and then fails its CDP handshake,
+// which is exactly what a sandbox-restricted CI runner produces — the context
+// is left with a nil Browser and an already-closing `allocated` channel. A
+// second Run on it allocates again and closes that channel a second time:
+//
+//	panic: close of closed channel
+//	chromedp.(*ExecAllocator).Allocate.func2()
+//
+// That panic happens on a goroutine chromedp owns, so no recover() of ours can
+// contain it. Not calling Run at all is the only reliable defense, and it
+// costs nothing real: a context with no browser has no page worth capturing.
+func browserWasAllocated(ctx context.Context) bool {
+	chromeCtx := chromedp.FromContext(ctx)
+
+	return chromeCtx != nil && chromeCtx.Browser != nil
+}
+
 // captureScreenshot hangs a PNG of the failing page on the result, in memory.
 //
 // THE CAPTURE MUST NEVER CHANGE THE CHECK'S OUTCOME. Every failure mode here
@@ -325,13 +352,15 @@ func (c *BrowserChecker) captureScreenshot(
 
 // runCapture takes the shot, through the test seam when one is installed.
 //
-// A panic in here is turned into an ordinary error. That is not defensive
-// paranoia about our own code: this is the ONE place a monitoring worker hands
-// control to a browser-automation library after the verdict is already
-// decided, and chromedp has panicked on lifecycle races before (a
-// "close of closed channel" from its allocator took the whole server down
-// once). Nothing about an optional screenshot is worth a process that stops
-// monitoring everything else.
+// A panic on THIS goroutine is turned into an ordinary error. This is the one
+// place a monitoring worker hands control to a browser-automation library
+// after the verdict is already decided, and nothing about an optional
+// screenshot is worth a process that stops monitoring everything else.
+//
+// What this does NOT cover: a panic raised on a goroutine chromedp owns (its
+// allocator's process reaper, for one) cannot be recovered from here, or from
+// anywhere. That class of crash has to be prevented rather than caught, which
+// is what browserWasAllocated above does.
 func (c *BrowserChecker) runCapture(ctx context.Context) ([]byte, error) {
 	var (
 		png []byte
@@ -359,6 +388,13 @@ func (c *BrowserChecker) takeShot(ctx context.Context) ([]byte, error) {
 		return c.capture(ctx)
 	}
 
+	// The guard sits HERE, immediately before the only chromedp.Run this
+	// package makes outside the probe itself, because calling that Run is
+	// precisely the hazard — see browserWasAllocated.
+	if !browserWasAllocated(ctx) {
+		return nil, errNoBrowserAllocated
+	}
+
 	var buf []byte
 	if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, screenshotQuality)); err != nil {
 		return nil, fmt.Errorf("full screenshot: %w", err)
@@ -367,9 +403,16 @@ func (c *BrowserChecker) takeShot(ctx context.Context) ([]byte, error) {
 	return buf, nil
 }
 
-// errCapturePanicked marks a capture that panicked rather than failing
-// cleanly. Reported like any other capture error: logged, result untouched.
-var errCapturePanicked = errors.New("screenshot capture panicked")
+// Capture failures that are not chromedp's own errors.
+var (
+	// errCapturePanicked marks a capture that panicked rather than failing
+	// cleanly. Reported like any other capture error: logged, result untouched.
+	errCapturePanicked = errors.New("screenshot capture panicked")
+	// errNoBrowserAllocated marks a capture skipped because no browser was
+	// ever attached to the context — nothing to photograph, and calling
+	// chromedp.Run would be actively dangerous. See browserWasAllocated.
+	errNoBrowserAllocated = errors.New("no browser was allocated for this execution")
+)
 
 // allocator builds the chromedp allocator for the configured backend: a remote
 // one against the long-lived Chrome when a CDP URL is set, the historical exec
