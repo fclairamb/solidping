@@ -325,6 +325,7 @@ func (s *Service) VerifyCustomDomain(
 
 	response := convertPageToResponse(updated)
 	s.enrichCustomDomain(&response, updated)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, org.UID))
 
 	return response, nil
 }

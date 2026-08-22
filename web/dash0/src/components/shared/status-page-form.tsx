@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,9 @@ interface StatusPageFormData {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyPeriod: StatusPagePeriod;
+  // White-label opt-in (spec 2026-08-21-07). Stored whether or not the org is
+  // entitled, so an upgrade takes effect without the operator re-ticking it.
+  hideBranding: boolean;
   // Incident auto-publication (spec 2026-08-19-08).
   autoPublish: boolean;
   autoPublishDelaySeconds: number;
@@ -60,6 +64,7 @@ export function StatusPageForm({
   onSubmit: (data: StatusPageFormData) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation("statusPages");
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
@@ -73,6 +78,9 @@ export function StatusPageForm({
   const [showResponseTime, setShowResponseTime] = useState(initialData?.showResponseTime ?? true);
   const [historyPeriod, setHistoryPeriod] = useState<StatusPagePeriod>(
     initialData?.historyPeriod ?? "90d"
+  );
+  const [hideBranding, setHideBranding] = useState(
+    initialData?.hideBranding ?? false
   );
   // Auto-publish. A NEW page defaults to on; an existing page shows whatever
   // the server says, which for pages created before this feature is off — the
@@ -135,6 +143,7 @@ export function StatusPageForm({
       showAvailability,
       showResponseTime,
       historyPeriod,
+      hideBranding,
       autoPublish,
       // An unparseable or blank delay falls back to the documented default
       // rather than sending NaN, which the API would reject with a validation
@@ -230,6 +239,34 @@ export function StatusPageForm({
               </p>
             </div>
             <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+          </div>
+
+          {/* White label (spec 2026-08-21-07). The toggle is NEVER disabled,
+              even when the org is not entitled: the flag is stored either way,
+              so upgrading a plan takes effect without anyone coming back here.
+              The note below is what explains that the setting is currently
+              inert — an entitlement is a billing state, not a form error. */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="hide-branding">{t("branding.hideBranding")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("branding.hideBrandingHint")}
+              </p>
+              {hideBranding && initialData?.whiteLabelAllowed === false && (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="white-label-locked-note"
+                >
+                  {t("branding.hideBrandingLocked")}
+                </p>
+              )}
+            </div>
+            <Switch
+              id="hide-branding"
+              checked={hideBranding}
+              onCheckedChange={setHideBranding}
+              data-testid="hide-branding-switch"
+            />
           </div>
 
           {mode === "edit" && (

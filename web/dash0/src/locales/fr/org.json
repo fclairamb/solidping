@@ -64,7 +64,11 @@
       "runaway": "{{count}} message(s) ont été refusés car le plafond SMS de cette instance ({{limit}}/heure) a été atteint. Des alertes sont perdues pour toute l'instance — prévenez votre opérateur.",
       "country": "{{count}} message(s) ont été refusés car le pays de destination ne figure pas dans la liste autorisée de cette instance ({{countries}})."
     },
-    "slos": "Objectifs de niveau de service"
+    "slos": "Objectifs de niveau de service",
+    "whiteLabel": "Marque blanche",
+    "included": "Incluse",
+    "notIncluded": "Non incluse",
+    "whiteLabelHint": "Permet à une page de statut de masquer le pied de page « Propulsé par SolidPing »."
   },
   "ai": {
     "title": "Assistants IA",

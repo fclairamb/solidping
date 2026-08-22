@@ -4668,6 +4668,21 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("auto_resolve = ?", *update.AutoResolve)
 	}
 
+	if update.HideBranding != nil {
+		query = query.Set("hide_branding = ?", *update.HideBranding)
+	}
+
+	if update.PasswordHash != nil {
+		// An empty hash means "this page is no longer password protected" and
+		// is stored as NULL, never as '': a '' hash would compare against
+		// nothing and would read back as hasPassword=true.
+		if *update.PasswordHash == "" {
+			query = query.Set("password_hash = NULL")
+		} else {
+			query = query.Set("password_hash = ?", *update.PasswordHash)
+		}
+	}
+
 	if update.CustomCSS != nil {
 		// An empty stylesheet is stored as NULL, not '': the appearance editor
 		// clears the field by submitting an empty textarea, and "no custom CSS"

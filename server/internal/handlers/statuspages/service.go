@@ -534,6 +534,25 @@ type StatusPageResponse struct {
 	AutoPublish             bool   `json:"autoPublish"`
 	AutoPublishDelaySeconds int    `json:"autoPublishDelaySeconds"`
 	AutoResolve             string `json:"autoResolve"`
+	// HideBranding means different things on the two payload families, and
+	// that is deliberate.
+	//
+	//   * On the ADMIN payloads it is the page's raw opt-in column, so the
+	//     dash0 toggle round-trips honestly even while the org is not
+	//     entitled. `WhiteLabelAllowed` alongside says whether it has any
+	//     effect right now.
+	//   * On the PUBLIC payload it is the RESOLVED decision — already ANDed
+	//     with the org's `whiteLabel` entitlement — so status0 never has to
+	//     know what a plan is, and a downgrade restores the badge with no
+	//     client-side logic at all.
+	HideBranding bool `json:"hideBranding"`
+	// WhiteLabelAllowed reports the org's `whiteLabel` entitlement. Admin
+	// payloads only: it is plan information, and a public status page has no
+	// business disclosing which plan pays for it.
+	WhiteLabelAllowed *bool `json:"whiteLabelAllowed,omitempty"`
+	// HasPassword reports that the page is gated by a password. The hash
+	// itself is never serialized anywhere.
+	HasPassword bool `json:"hasPassword,omitempty"`
 	// LogoURL / FaviconURL are the stable public paths of the page's uploaded
 	// brand assets (spec 2026-08-21-07), or absent when the slot is unset.
 	// They are set on BOTH admin and public payloads: a brand asset is
@@ -766,6 +785,15 @@ type CreateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// HideBranding opts the new page out of the "powered by SolidPing" footer.
+	// It only takes effect while the org holds the `whiteLabel` entitlement —
+	// the flag is stored either way, so an upgrade does not need the operator
+	// to come back and re-tick it.
+	HideBranding *bool `json:"hideBranding,omitempty"`
+	// Password sets the unlock password for a `visibility: password` page.
+	// WRITE-ONLY: it is hashed with bcrypt on the way in and never appears on
+	// any response.
+	Password *string `json:"password,omitempty"`
 	// CustomCSS optionally sets the page's custom stylesheet at create time.
 	// Max 64 KB, no @import (see validateCustomCSS).
 	CustomCSS *string `json:"customCss,omitempty"`
@@ -798,6 +826,14 @@ type UpdateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// HideBranding flips the page's white-label opt-in. nil leaves it.
+	HideBranding *bool `json:"hideBranding,omitempty"`
+	// Password sets, replaces or clears the unlock password: a non-empty
+	// string re-hashes it (which also invalidates every outstanding unlock
+	// cookie, since the cookie's HMAC key is derived from the hash), an empty
+	// string clears it, and an omitted field leaves it untouched.
+	// WRITE-ONLY — never echoed back.
+	Password *string `json:"password,omitempty"`
 	// CustomCSS sets, replaces or clears the page's custom stylesheet: an empty
 	// string clears the column, an omitted field leaves it untouched. Max
 	// 64 KB, no @import (see validateCustomCSS).
@@ -888,10 +924,15 @@ func (s *Service) ListStatusPages(ctx context.Context, orgSlug string) ([]Status
 		return nil, err
 	}
 
+	// One entitlement resolve for the whole list, not one per page: the flag is
+	// org-wide, and a list of 50 pages must not become 50 lookups.
+	allowed := s.whiteLabelAllowed(ctx, org.UID)
+
 	responses := make([]StatusPageResponse, len(pages))
 	for i, page := range pages {
 		responses[i] = convertPageToResponse(page)
 		s.enrichCustomDomain(&responses[i], page)
+		s.enrichAdminBranding(&responses[i], allowed)
 	}
 
 	return responses, nil
@@ -928,6 +969,10 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 
 	if req.Language != nil {
 		page.Language = req.Language
+	}
+
+	if req.HideBranding != nil {
+		page.HideBranding = *req.HideBranding
 	}
 
 	if req.AutoPublish != nil {
@@ -1060,6 +1105,7 @@ func (s *Service) CreateStatusPage(
 
 	response := convertPageToResponse(page)
 	s.enrichCustomDomain(&response, page)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, org.UID))
 
 	return response, nil
 }
@@ -1097,6 +1143,7 @@ func (s *Service) GetStatusPage(
 
 	response := convertPageToResponse(page)
 	s.enrichCustomDomain(&response, page)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, org.UID))
 
 	if opts.IncludeSections {
 		sections, err := s.loadSectionsWithResources(ctx, page.UID)
@@ -1181,6 +1228,7 @@ func (s *Service) UpdateStatusPage(
 		HistoryDays:      req.HistoryDays,
 		HistoryPeriod:    req.HistoryPeriod,
 		Language:         req.Language,
+		HideBranding:     req.HideBranding,
 		CustomCSS:        req.CustomCSS,
 		Settings:         newSettings,
 
@@ -1241,6 +1289,7 @@ func (s *Service) finalizeCustomDomainUpdate(
 
 	response := convertPageToResponse(page)
 	s.enrichCustomDomain(&response, page)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, orgUID))
 
 	return response, nil
 }
@@ -1691,6 +1740,40 @@ func (s *Service) DeleteResource(
 	return s.db.DeleteStatusPageResource(ctx, resourceUID)
 }
 
+// --- White label (spec 2026-08-21-07) ---
+
+// whiteLabelAllowed reports the org's `whiteLabel` entitlement.
+//
+// It FAILS CLOSED in both directions that can go wrong: a nil entitlements
+// service (the MCP wiring and most unit tests) and a resolve error both mean
+// "keep the badge". Showing the badge when it should have been hidden is a
+// cosmetic annoyance; hiding it when the plan does not include it is a silent
+// revenue leak, so the asymmetry is deliberate.
+func (s *Service) whiteLabelAllowed(ctx context.Context, orgUID string) bool {
+	if s.ent == nil {
+		return false
+	}
+
+	return s.ent.WhiteLabelAllowed(ctx, orgUID)
+}
+
+// enrichAdminBranding annotates an ADMIN payload with the entitlement, leaving
+// HideBranding as the raw stored opt-in. The dashboard needs both halves: the
+// toggle reflects what is stored, and the note next to it explains whether it
+// currently does anything.
+func (s *Service) enrichAdminBranding(resp *StatusPageResponse, allowed bool) {
+	resp.WhiteLabelAllowed = &allowed
+}
+
+// resolvePublicBranding collapses the two halves into the single boolean the
+// public payload carries: the badge disappears only when the page opted in AND
+// the org is entitled. WhiteLabelAllowed is stripped — which plan an
+// organization pays for is nobody else's business.
+func (s *Service) resolvePublicBranding(ctx context.Context, orgUID string, resp *StatusPageResponse) {
+	resp.HideBranding = resp.HideBranding && s.whiteLabelAllowed(ctx, orgUID)
+	resp.WhiteLabelAllowed = nil
+}
+
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
@@ -1714,6 +1797,7 @@ func (s *Service) ViewStatusPage(
 	}
 
 	response := convertPageToResponse(page)
+	s.resolvePublicBranding(ctx, org.UID, &response)
 
 	sections, err := s.loadSectionsWithResources(ctx, page.UID)
 	if err != nil {
@@ -2782,6 +2866,8 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		AutoPublishDelaySeconds: page.AutoPublishDelaySeconds,
 		AutoResolve:             page.AutoResolve,
 		CustomCSS:               page.CustomCSS,
+		HideBranding:            page.HideBranding,
+		HasPassword:             page.PasswordHash != nil && *page.PasswordHash != "",
 		LogoURL:                 statuspageassets.PublicURL(page.LogoFileUID),
 		FaviconURL:              statuspageassets.PublicURL(page.FaviconFileUID),
 		CreatedAt:               &page.CreatedAt,

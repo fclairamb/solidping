@@ -64,7 +64,11 @@
       "runaway": "{{count}} Nachricht(en) wurden abgelehnt, weil das SMS-Limit dieser Instanz ({{limit}}/Stunde) erreicht wurde. Instanzweit gehen Alarme verloren — informieren Sie Ihren Betreiber.",
       "country": "{{count}} Nachricht(en) wurden abgelehnt, weil das Zielland nicht auf der Positivliste dieser Instanz steht ({{countries}})."
     },
-    "slos": "Service-Level-Ziele"
+    "slos": "Service-Level-Ziele",
+    "whiteLabel": "White-Labeling",
+    "included": "Enthalten",
+    "notIncluded": "Nicht enthalten",
+    "whiteLabelHint": "Erlaubt einer Statusseite, die Fußzeile „Powered by SolidPing“ auszublenden."
   },
   "ai": {
     "title": "KI-Assistenten",

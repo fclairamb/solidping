@@ -5280,6 +5280,13 @@ export interface EntitlementsLimits {
   maxWhatsappPerMonth?: number | null;
   /** Cap on service-level objectives. null = unlimited. */
   maxSlos?: number | null;
+  /**
+   * The one non-numeric entitlement: whether the org may drop the "powered by
+   * SolidPing" badge from its status pages. Unlike the caps above, null here
+   * does NOT mean unlimited — it means the server sent no value, which the UI
+   * renders as "not included".
+   */
+  whiteLabel?: boolean | null;
 }
 
 /**
