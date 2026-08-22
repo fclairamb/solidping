@@ -680,3 +680,84 @@ func TestTargetSearchTreatsWildcardsAsLiterals(t *testing.T) {
 	// Positive control: an ordinary substring still matches both.
 	r.Len(search("checkout"), 2)
 }
+
+// TestTargetSearchCannotReachAuthEventsForNonAdmins pins the INTERACTION
+// between the admin gate and the free-text target filter.
+//
+// Today's safety is by composition: the auth exclusion is ANDed on outside the
+// target filter's OR group, so it holds. But composition is exactly what a
+// future refactor of applyEventTargetFilters breaks — fold the exclusion into
+// the wrong group and a viewer could confirm that "alice@acme.com" appears in
+// an auth event, which is the fact the whole family is gated on.
+//
+// The shape of the assertion matters as much as the assertion: a matching
+// query and a non-matching one must be INDISTINGUISHABLE to a non-admin, so
+// the filter cannot be used as a probe even by counting rows.
+func TestTargetSearchCannotReachAuthEventsForNonAdmins(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+	// An auth event whose target name is a real, guessable value.
+	f.seedWithPayload(ctx, t, models.EventTypeAuthLoginFailed, base,
+		models.JSONMap{"target_type": "user", "target_uid": "user-7", "target_name": "alice@acme.com"})
+	// And a non-auth event, so "empty" is never the only possible answer.
+	f.seedWithPayload(ctx, t, models.EventTypeCheckCreated, base.Add(time.Minute),
+		models.JSONMap{"target_type": "check", "target_uid": "chk-1", "target_name": "acme api"})
+
+	search := func(caller string, query string) []string {
+		t.Helper()
+
+		resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+			Size:         50,
+			TargetSearch: strPtr(query),
+			Caller:       events.Caller{UserUID: caller},
+		})
+		r.NoError(err)
+
+		return typesOf(resp)
+	}
+
+	// Positive control: the row is really there, really matches by name, and
+	// really matches by UID — for someone allowed to see it.
+	r.Equal([]string{"auth.login_failed"}, search(f.admin.UID, "alice@acme.com"))
+	r.Equal([]string{"auth.login_failed"}, search(f.admin.UID, "ALICE@"))
+	r.Equal([]string{"auth.login_failed"}, search(f.admin.UID, "user-7"))
+
+	// A non-admin gets nothing for a query that WOULD match the auth event —
+	// by name, by substring, and by exact UID.
+	r.Empty(search(f.viewer.UID, "alice@acme.com"))
+	r.Empty(search(f.viewer.UID, "ALICE@"))
+	r.Empty(search(f.viewer.UID, "user-7"))
+
+	// …which is exactly what they get for a query matching nothing at all.
+	// A hit and a miss are indistinguishable, so the filter is not a probe.
+	r.Empty(search(f.viewer.UID, "no-such-target-anywhere"))
+
+	// Positive control on the gate itself: the non-admin filter is not simply
+	// broken — a non-auth target still matches for them.
+	r.Equal([]string{"check.created"}, search(f.viewer.UID, "acme api"))
+
+	// The same composition through the exact-UID filter, which is a separate
+	// predicate and could regress independently.
+	viewerExact, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:      50,
+		TargetUID: strPtr("user-7"),
+		Caller:    events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.Empty(viewerExact.Data)
+
+	// And through targetType, the third way in.
+	viewerType, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:       50,
+		TargetType: strPtr("user"),
+		Caller:     events.Caller{UserUID: f.viewer.UID},
+	})
+	r.NoError(err)
+	r.Empty(viewerType.Data)
+}
