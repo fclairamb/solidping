@@ -201,31 +201,54 @@ func TestStatusSubscriberRoutesDoNotCollide(t *testing.T) {
 	r.Equal(http.StatusUnauthorized, status)
 }
 
-// TestStatusSubscriberRoutePatternsAreUnique walks the REAL route table and
-// fails on any duplicate method+pattern under the status-page subscriber
-// subtree.
+// TestProductionRouteTableHasNoDuplicates walks the REAL route table as the
+// code asked for it, not as chi ended up storing it.
 //
-// The test above proves the two handlers currently coexist; this one explains
-// WHY a future duplicate would be invisible, and catches it at the table level
-// rather than through a behavioral symptom. chi does not panic on a duplicate
-// registration, so nothing else in the build would.
-func TestStatusSubscriberRoutePatternsAreUnique(t *testing.T) {
+// The distinction is the whole point. chi keeps handlers in a map keyed by
+// method and silently OVERWRITES a duplicate, so a uniqueness check over
+// Router.Walk is a tautology — the losing registration is erased before Walk
+// can see it. httpx now records every (method, pattern) at REGISTRATION time
+// and panics on a duplicate, which means:
+//
+//   - newSubRouteEnv itself is the assertion: SetupRoutes would have panicked
+//     on the pre-fix code, where the operator-side subscriber creator and the
+//     public email subscriber shared one pattern;
+//   - RegisteredRoutes below can report a duplicate that Walk cannot.
+//
+// The guard's own failure mode is covered in httpx
+// (TestDuplicateRouteRegistrationPanics); this test covers the production
+// table it is applied to.
+func TestProductionRouteTableHasNoDuplicates(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	env := newSubRouteEnv(t)
 
-	seen := make(map[string]int)
-	r.NoError(env.server.router.Walk(func(method, pattern string) error {
-		seen[method+" "+pattern]++
+	registered := env.server.router.RegisteredRoutes()
+	r.NotEmpty(registered, "the production route table must not be empty")
 
-		return nil
-	}))
+	seen := make(map[string]int, len(registered))
+	for _, route := range registered {
+		seen[route.Method+" "+route.Pattern]++
+	}
 
 	for key, count := range seen {
 		r.Equal(1, count, "duplicate route registration %q — chi silently keeps only the last one", key)
 	}
 
+	// Both subscriber entry points are present as SEPARATE registrations.
 	r.Equal(1, seen["POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers"])
 	r.Equal(1, seen["POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints"])
+
+	// Registration-time and match-time views agree, which is only true while
+	// nothing was overwritten. If they ever diverge, the difference IS the set
+	// of shadowed routes.
+	walked := 0
+	r.NoError(env.server.router.Walk(func(string, string) error {
+		walked++
+
+		return nil
+	}))
+	r.Equal(len(registered), walked,
+		"chi's tree holds fewer routes than were registered — something was silently overwritten")
 }

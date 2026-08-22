@@ -21,8 +21,11 @@
 package httpx
 
 import (
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -74,20 +77,114 @@ func HTTPHandler(h http.Handler) HandlerFunc {
 	}
 }
 
+// Route is one registered (method, resolved chi pattern) pair.
+type Route struct {
+	Method  string
+	Pattern string
+}
+
+// DuplicateRouteError is the panic value raised when the same method+pattern is
+// registered twice on one Router. It is a distinct type so a caller can assert
+// on the failure with errors.As rather than on a message string.
+type DuplicateRouteError struct {
+	Route Route
+}
+
+func (e DuplicateRouteError) Error() string {
+	return fmt.Sprintf(
+		"httpx: duplicate route registration %s %s — chi silently keeps only the LAST handler, "+
+			"so one of the two would be unreachable at runtime",
+		e.Route.Method, e.Route.Pattern)
+}
+
+// routeRegistry records every route registered on one Router, so a duplicate
+// can be caught WHERE THE INFORMATION STILL EXISTS: at registration time.
+//
+// After registration it is gone. chi stores handlers in a
+// map[method]http.Handler per node and `setEndpoint` overwrites that entry, so
+// a duplicate is erased from the tree before chi.Walk can ever see it — a
+// post-hoc uniqueness check over the walked table is a tautology that can never
+// fail. That is not a hypothetical: spec 2026-08-21-07 shipped an operator-side
+// endpoint that a later public registration on the same pattern silently made
+// unreachable, and nothing in the build noticed.
+type routeRegistry struct {
+	mu    sync.Mutex
+	seen  map[Route]struct{}
+	order []Route
+}
+
+func newRouteRegistry() *routeRegistry {
+	return &routeRegistry{seen: make(map[Route]struct{})}
+}
+
+// record registers a route, panicking on a duplicate.
+//
+// A PANIC rather than a returned error, deliberately: every call site is a
+// literal line in the route table that runs once at boot, none of them checks
+// an error today, and a route table with two handlers on one pattern is not a
+// condition to degrade through — it is a build that cannot serve what it
+// claims. Failing at boot turns a silent runtime hole into a startup crash with
+// the offending pattern named.
+func (reg *routeRegistry) record(method, pattern string) {
+	route := Route{Method: method, Pattern: pattern}
+
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+
+	if _, exists := reg.seen[route]; exists {
+		panic(DuplicateRouteError{Route: route})
+	}
+
+	reg.seen[route] = struct{}{}
+	reg.order = append(reg.order, route)
+}
+
+// snapshot returns the recorded routes, sorted for stable comparison.
+func (reg *routeRegistry) snapshot() []Route {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+
+	out := make([]Route, len(reg.order))
+	copy(out, reg.order)
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Pattern != out[j].Pattern {
+			return out[i].Pattern < out[j].Pattern
+		}
+
+		return out[i].Method < out[j].Method
+	})
+
+	return out
+}
+
 // Router is the root of the routing tree, backed by a chi mux. It implements
 // http.Handler, so it drops in wherever the old *bunrouter.Router was used.
 type Router struct {
-	mux *chi.Mux
+	mux      *chi.Mux
+	registry *routeRegistry
 	Group
 }
 
 // New creates a Router backed by a fresh chi mux.
 func New() *Router {
 	mux := chi.NewRouter()
-	r := &Router{mux: mux}
-	r.Group = Group{mux: mux}
+	registry := newRouteRegistry()
+	r := &Router{mux: mux, registry: registry}
+	r.Group = Group{mux: mux, registry: registry}
 
 	return r
+}
+
+// RegisteredRoutes returns every route registered on this Router, in sorted
+// order, INCLUDING any that a later duplicate would have shadowed.
+//
+// This is the honest counterpart to Walk: Walk reports what chi's tree ended up
+// holding, which is already the post-overwrite state. Use this when the
+// question is "what did the code ask for", and Walk when it is "what will the
+// mux actually match".
+func (r *Router) RegisteredRoutes() []Route {
+	return r.registry.snapshot()
 }
 
 // ServeHTTP implements http.Handler.
@@ -112,15 +209,20 @@ type Group struct {
 	mux   *chi.Mux
 	path  string
 	stack []Middleware
+	// registry is shared with the owning Router (and every sibling group), so
+	// duplicate detection spans the whole route table rather than one group.
+	// nil only for a zero-value Group, which cannot register anything anyway.
+	registry *routeRegistry
 }
 
 // NewGroup returns a sub-group with the given path appended to this group's
 // prefix and a copy of this group's middleware stack.
 func (g *Group) NewGroup(path string) *Group {
 	return &Group{
-		mux:   g.mux,
-		path:  joinPath(g.path, path),
-		stack: g.cloneStack(),
+		mux:      g.mux,
+		path:     joinPath(g.path, path),
+		stack:    g.cloneStack(),
+		registry: g.registry,
 	}
 }
 
@@ -152,6 +254,13 @@ func (g *Group) wrap(handler HandlerFunc) HandlerFunc {
 // group's middleware chain applied.
 func (g *Group) Handle(method, path string, handler HandlerFunc) {
 	pattern := convertPattern(g.path + path)
+
+	// Recorded BEFORE handing the route to chi: once chi has it, a duplicate is
+	// indistinguishable from a single registration. See routeRegistry.
+	if g.registry != nil {
+		g.registry.record(method, pattern)
+	}
+
 	g.mux.Method(method, pattern, Wrap(g.wrap(handler)))
 }
 

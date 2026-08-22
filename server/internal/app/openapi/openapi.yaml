@@ -1579,6 +1579,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1607,6 +1609,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1637,6 +1641,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPageSummary"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1689,6 +1695,8 @@ paths:
             image/svg+xml:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1761,6 +1769,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicIncidentListResponse"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1788,8 +1798,119 @@ paths:
             application/atom+xml:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # Unlock a password-protected status page (spec 2026-08-21-07). Public and
+  # unauthenticated by design: the password IS the credential.
+  /api/v1/status-pages/{org}/{slug}/unlock:
+    post:
+      tags: [StatusPages]
+      summary: Unlock a password-protected status page
+      description: >-
+        Verifies the page password and, on success, sets the unlock cookie
+        every gated public read then requires.
+
+
+        The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax,
+        Secure when the request arrived over TLS, and lasts 12 hours. Host-only
+        is what makes it work on a customer's own domain without ever minting a
+        cookie for solidping.io. It is signed with a key derived from the stored
+        password hash, so changing or clearing the password invalidates every
+        outstanding unlock immediately.
+
+
+        Attempts are rate limited per (client IP, page).
+      operationId: unlockStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageUnlockRequest"
+      responses:
+        "204":
+          description: >-
+            Unlocked. The response carries Set-Cookie: sp_unlock_<pageUid>.
+          headers:
+            Set-Cookie:
+              description: The host-only unlock cookie.
+              schema:
+                type: string
+        "401":
+          description: >-
+            Incorrect password. Same STATUS_PAGE_LOCKED code the gated reads
+            use, so a client can keep the visitor on the unlock form with one
+            branch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: >-
+            No live, password-protected page under this slug. A public page
+            answers 404 here too — telling a caller "this page exists but needs
+            no password" would be a needless disclosure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/status-pages/{org}/unlock:
+    post:
+      tags: [StatusPages]
+      summary: Unlock an organization's password-protected default status page
+      description: >-
+        Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the
+        organization's default page — the form a client reaching a default page
+        through /status0/{org} can use, having no slug to send.
+      operationId: unlockDefaultStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageUnlockRequest"
+      responses:
+        "204":
+          description: Unlocked. The response carries the unlock cookie.
+          headers:
+            Set-Cookie:
+              description: The host-only unlock cookie.
+              schema:
+                type: string
+        "401":
+          description: Incorrect password (code STATUS_PAGE_LOCKED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No live, password-protected default page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   # Results APIs
   /api/v1/orgs/{org}/results:
@@ -4481,6 +4602,108 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+    post:
+      tags: [StatusPages]
+      summary: Subscribe an email address to a status page
+      description: >-
+        PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and
+        nothing is delivered until its link is followed, which is the primary
+        anti-abuse control.
+
+
+        Email is the ONLY channel available here. A `channel` of anything else
+        is refused — a visitor pasting a webhook URL has no verification story,
+        and the URL is itself a credential. Webhook and Slack deliveries are
+        registered by an operator through
+        POST .../subscribers/endpoints instead.
+      operationId: subscribeToStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageSubscribeRequest"
+      responses:
+        "202":
+          description: >-
+            Accepted. A confirmation email has been sent; nothing is
+            deliverable until it is confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: pending_confirmation
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints:
+    post:
+      tags: [StatusPages]
+      summary: Register a webhook or Slack delivery for a status page
+      description: >-
+        AUTHENTICATED, operator-side. Creates a subscription that delivers to a
+        URL rather than a mailbox, already confirmed — the operator registering
+        their own endpoint IS the verification.
+
+
+        The URL must be https and must not resolve to a loopback or private
+        host; a `slack` subscription must point at hooks.slack.com. It is stored
+        ENCRYPTED and never returned: list responses carry only a masked
+        `endpoint` hint.
+
+
+        Webhook deliveries are signed with HMAC-SHA256 over
+        `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in
+        X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is
+        returned by THIS CALL ONLY (`data.signingSecret`) and never again — a
+        receiver that loses it needs the subscription re-created.
+
+
+        The path is deliberately distinct from `.../subscribers`, which is the
+        public email-only route: the two cannot share a pattern on the router.
+      operationId: createStatusPageEndpointSubscriber
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageEndpointSubscriberRequest"
+      responses:
+        "201":
+          description: >-
+            The subscription, plus the signing secret — shown once, here.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StatusPageEndpointSubscriber"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/{uid}:
     delete:
@@ -7303,6 +7526,18 @@ components:
 
     Unauthorized:
       description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    StatusPageLocked:
+      description: >-
+        The status page is password protected and the request carried no valid
+        unlock cookie. The error `code` is `STATUS_PAGE_LOCKED`, deliberately
+        distinct from a generic UNAUTHORIZED: it means "unlock me", not "log
+        in" — public status pages have no accounts. Obtain the cookie from
+        POST /api/v1/status-pages/{org}/{slug}/unlock and replay it.
       content:
         application/json:
           schema:
@@ -10640,13 +10875,32 @@ components:
 
     StatusPageSubscriber:
       type: object
-      required: [uid, scope, confirmed, createdAt]
+      required: [uid, channel, scope, confirmed, createdAt]
       properties:
         uid:
           type: string
           format: uuid
         email:
           type: string
+          description: Absent for a webhook/Slack subscription.
+        channel:
+          type: string
+          enum: [email, webhook, slack]
+        endpoint:
+          type: string
+          description: >-
+            MASKED delivery URL, endpoint channels only. The real URL is stored
+            encrypted and is never returned — an incoming-webhook URL is a
+            credential, so a list endpoint that echoed it would turn every read
+            into a credential disclosure.
+        failureCount:
+          type: integer
+          description: Consecutive delivery failures; reset by a success.
+        disabled:
+          type: boolean
+          description: >-
+            True once repeated delivery failures tripped the circuit breaker.
+            A `statuspage.subscriber.disabled` event records why.
         scope:
           type: string
           description: Subscription scope ("page" or "incident")
@@ -10657,6 +10911,74 @@ components:
           type: boolean
         createdAt:
           type: string
+
+    StatusPageUnlockRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          description: The page password, as given to the visitor by the operator.
+
+    StatusPageSubscribeRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        channel:
+          type: string
+          enum: [email]
+          description: >-
+            Accepted only so a client asking for a non-email channel gets a
+            clear refusal. Public self-serve is email-only.
+        scope:
+          type: string
+          enum: [page, incident]
+        incidentUid:
+          type: string
+          format: uuid
+          description: Required when scope is "incident".
+
+    CreateStatusPageEndpointSubscriberRequest:
+      type: object
+      required: [channel, url]
+      properties:
+        channel:
+          type: string
+          enum: [webhook, slack]
+        url:
+          type: string
+          format: uri
+          description: >-
+            https only, and never a loopback/private host. A "slack"
+            subscription must point at hooks.slack.com.
+        signingSecret:
+          type: string
+          description: >-
+            Optional. Supply your own when the receiver already verifies a
+            known secret; omit it and one is generated. WRITE-ONLY — it is
+            echoed once in the create response and never readable again.
+        scope:
+          type: string
+          enum: [page, incident]
+        incidentUid:
+          type: string
+          format: uuid
+
+    StatusPageEndpointSubscriber:
+      allOf:
+        - $ref: "#/components/schemas/StatusPageSubscriber"
+        - type: object
+          required: [signingSecret]
+          properties:
+            signingSecret:
+              type: string
+              description: >-
+                Returned EXACTLY ONCE, on creation. It is stored encrypted and
+                never appears on any other response, so copy it now: without it
+                the HMAC on every delivery is unverifiable.
 
     StatusPageSubscriberListResponse:
       type: object

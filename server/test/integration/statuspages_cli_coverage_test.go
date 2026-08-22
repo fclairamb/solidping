@@ -24,7 +24,9 @@ func TestCLICoverage_StatusPageLifecycle(t *testing.T) {
 
 	apiClient := cliCovAuthedClient(ctx, t, ts)
 
-	visibility := "public"
+	// A typed enum now: the OpenAPI spec constrains visibility to
+	// public|private|password, so oapi-codegen emits a named string type.
+	visibility := client.CreateStatusPageRequestVisibilityPublic
 	createResp, err := apiClient.CreateStatusPageWithResponse(ctx, TestOrgSlug, client.CreateStatusPageJSONRequestBody{
 		Name:       "CLI Coverage Page",
 		Slug:       ptrOf("cli-cov-page"),

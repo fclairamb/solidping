@@ -1310,7 +1310,7 @@ func GetCommands() []*cli.Command {
 						&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName, Required: true},
 						&cli.StringFlag{Name: keySlug, Usage: usageSlug, Required: true},
 						&cli.StringFlag{Name: flagDescription, Usage: "Status page description"},
-						&cli.StringFlag{Name: flagVisibility, Usage: "Visibility: public or private"},
+						&cli.StringFlag{Name: flagVisibility, Usage: "Visibility: public, private or password"},
 						&cli.StringFlag{Name: flagLanguage, Usage: "Page language (e.g. en, fr)"},
 						&cli.StringFlag{Name: flagCustomCSS, Usage: "Custom CSS for the public page (max 64 KB, no @import)"},
 						&cli.StringFlag{Name: flagCustomCSSFile, Usage: "Read the custom CSS from a file"},
@@ -1341,7 +1341,7 @@ func GetCommands() []*cli.Command {
 						&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName},
 						&cli.StringFlag{Name: keySlug, Usage: usageSlug},
 						&cli.StringFlag{Name: flagDescription, Usage: "Status page description"},
-						&cli.StringFlag{Name: flagVisibility, Usage: "Visibility: public or private"},
+						&cli.StringFlag{Name: flagVisibility, Usage: "Visibility: public, private or password"},
 						&cli.StringFlag{
 							Name:  flagCustomCSS,
 							Usage: "Custom CSS for the public page (max 64 KB, no @import; empty string clears it)",

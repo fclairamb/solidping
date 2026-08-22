@@ -63,6 +63,22 @@ func optString(cmd *cli.Command, name string) *string {
 	return &value
 }
 
+// optEnum is optString for a generated enum type. The OpenAPI spec now
+// constrains `visibility` to public|private|password, so oapi-codegen emits a
+// named string type per request shape rather than a plain string — the CLI has
+// to convert, and converting in one helper keeps the three call sites honest
+// about which enum they mean.
+func optEnum[T ~string](cmd *cli.Command, name string) *T {
+	raw := optString(cmd, name)
+	if raw == nil {
+		return nil
+	}
+
+	value := T(*raw)
+
+	return &value
+}
+
 // optInt returns a pointer to the int flag value when the flag was set, else nil.
 func optInt(cmd *cli.Command, name string) *int {
 	if !cmd.IsSet(name) {
@@ -158,7 +174,7 @@ func renderStatusPage(page *client.StatusPage) {
 	output.PrintMessage(os.Stdout, "UID:         "+page.Uid.String())
 	output.PrintMessage(os.Stdout, "Name:        "+page.Name)
 	output.PrintMessage(os.Stdout, "Slug:        "+page.Slug)
-	output.PrintMessage(os.Stdout, "Visibility:  "+page.Visibility)
+	output.PrintMessage(os.Stdout, "Visibility:  "+string(page.Visibility))
 	output.PrintMessage(os.Stdout, "Default:     "+strconv.FormatBool(page.IsDefault))
 	output.PrintMessage(os.Stdout, "Enabled:     "+strconv.FormatBool(page.Enabled))
 	output.PrintMessage(os.Stdout, "History:     "+page.HistoryPeriod)
@@ -268,7 +284,7 @@ func statusPagesCreateAction(ctx context.Context, cmd *cli.Command) error {
 		Name:             name,
 		Slug:             &slug,
 		Description:      optString(cmd, flagDescription),
-		Visibility:       optString(cmd, flagVisibility),
+		Visibility:       optEnum[client.CreateStatusPageRequestVisibility](cmd, flagVisibility),
 		Language:         optString(cmd, flagLanguage),
 		CustomCss:        customCSS,
 		HistoryPeriod:    optString(cmd, flagHistoryPeriod),
@@ -364,7 +380,7 @@ func statusPagesUpdateAction(ctx context.Context, cmd *cli.Command) error {
 		Name:             optString(cmd, flagName),
 		Slug:             optString(cmd, keySlug),
 		Description:      optString(cmd, flagDescription),
-		Visibility:       optString(cmd, flagVisibility),
+		Visibility:       optEnum[client.UpdateStatusPageRequestVisibility](cmd, flagVisibility),
 		Language:         optString(cmd, flagLanguage),
 		CustomCss:        customCSS,
 		HistoryPeriod:    optString(cmd, flagHistoryPeriod),
