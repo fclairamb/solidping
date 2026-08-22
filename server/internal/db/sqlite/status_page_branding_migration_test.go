@@ -414,3 +414,89 @@ func TestStatusPageSectionsParity(t *testing.T) {
 		}
 	}
 }
+
+// TestOrgLogoBackfillGivesExistingLogosTheirTopic executes the org-logo half of
+// the branding section against a populated database.
+//
+// Resolved open question 1 of spec 2026-08-22-03 retires /pub/org-logos/:uid
+// outright, which makes this backfill the difference between "already-uploaded
+// logos keep working" and a regression: without the topic the new route refuses
+// the file, and without the URL rewrite nothing points at the new route.
+func TestOrgLogoBackfillGivesExistingLogosTheirTopic(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := migratedSQLite(t)
+
+	const (
+		logoFile  = "99999999-0000-0000-0000-000000000001"
+		otherFile = "99999999-0000-0000-0000-000000000002"
+	)
+
+	// A file row in the shape the OLD code left behind: no topic at all.
+	insertFile := func(uid string) {
+		t.Helper()
+
+		_, err := svc.DB().ExecContext(ctx, `
+			insert into files (uid, organization_uid, name, mime_type, file_uri, size)
+			values (?, ?, 'logo.png', 'image/png', 'local://x', 10)`, uid, org)
+		r.NoError(err)
+	}
+
+	insertFile(logoFile)
+	insertFile(otherFile)
+
+	_, err := svc.DB().ExecContext(ctx,
+		`update organizations set logo_file_uid = ?, logo_url = ? where uid = ?`,
+		logoFile, "/pub/org-logos/"+logoFile, org)
+	r.NoError(err)
+
+	execMigrationStatements(ctx, t, svc, migrationSection(t, sectionBranding))
+
+	var topic *string
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `select topic from files where uid = ?`, logoFile).Scan(&topic))
+	r.NotNil(topic, "an existing org logo must acquire the topic that authorizes it")
+	r.Equal("organizations/"+org+"/logo", *topic)
+
+	// Negative control: an unrelated file is NOT swept into the allowlist.
+	var otherTopic *string
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `select topic from files where uid = ?`, otherFile).Scan(&otherTopic))
+	r.Nil(otherTopic, "only the org's CURRENT logo may become public")
+
+	var logoURL string
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
+	r.Equal("/pub/assets/"+logoFile, logoURL, "the stored URL must point at the route that now serves it")
+
+	// The section is re-runnable: a replay must not rewrite an already-migrated
+	// URL into nonsense, which is how an interrupted migration turns fatal.
+	execMigrationStatements(ctx, t, svc, migrationSection(t, sectionBranding))
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
+	r.Equal("/pub/assets/"+logoFile, logoURL)
+}
+
+// TestOrgLogoBackfillLeavesExternalURLsAlone is the other negative control: an
+// org whose logo is an external http(s) URL has no file to give a topic to, and
+// its URL must not be rewritten into a local path.
+func TestOrgLogoBackfillLeavesExternalURLsAlone(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := migratedSQLite(t)
+
+	const external = "https://cdn.acme.com/logo.png"
+
+	_, err := svc.DB().ExecContext(ctx,
+		`update organizations set logo_url = ? where uid = ?`, external, org)
+	r.NoError(err)
+
+	execMigrationStatements(ctx, t, svc, migrationSection(t, sectionBranding))
+
+	var logoURL string
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
+	r.Equal(external, logoURL)
+}

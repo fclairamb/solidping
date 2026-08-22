@@ -183,10 +183,45 @@ func TestStatusPageBrandingMigration_Postgres(t *testing.T) {
 		org, page)
 	r.NoError(err)
 
+	// --- The org-logo backfill, in the shape the OLD code left behind. ---
+	// Resolved question 1 of spec 2026-08-22-03 retires /pub/org-logos/:uid, so
+	// this backfill is the difference between "already-uploaded logos keep
+	// working" and a regression.
+	const logoFile = "55555555-0000-0000-0000-000000000001"
+
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into files (uid, organization_uid, name, mime_type, file_uri, size)
+		values (?, ?, 'logo.png', 'image/png', 'local://x', 10)`, logoFile, org)
+	r.NoError(err)
+
+	_, err = svc.DB().ExecContext(ctx,
+		`update organizations set logo_file_uid = ?, logo_url = ? where uid = ?`,
+		logoFile, "/pub/org-logos/"+logoFile, org)
+	r.NoError(err)
+
 	// --- Replay: every section must be re-runnable, and change nothing. ---
 	for _, name := range []string{sectionBrandingPG, sectionPasswordPG, sectionSubChannelPG} {
 		execPGMigrationStatements(ctx, t, svc, migrationSection(t, name))
 	}
+
+	var topic *string
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `select topic from files where uid = ?`, logoFile).Scan(&topic))
+	r.NotNil(topic, "an existing org logo must acquire the topic that authorizes it")
+	r.Equal("organizations/"+org+"/logo", *topic)
+
+	var logoURL string
+
+	r.NoError(svc.DB().QueryRowContext(ctx,
+		`select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
+	r.Equal("/pub/assets/"+logoFile, logoURL)
+
+	// A SECOND replay must be a no-op rather than mangling the migrated URL.
+	execPGMigrationStatements(ctx, t, svc, migrationSection(t, sectionBrandingPG))
+
+	r.NoError(svc.DB().QueryRowContext(ctx,
+		`select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
+	r.Equal("/pub/assets/"+logoFile, logoURL)
 
 	r.Equal(3, count(`select count(*) from status_pages where organization_uid = ?`, org),
 		"replaying the sections must not have dropped a status page")

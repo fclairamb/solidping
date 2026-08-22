@@ -9,6 +9,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 )
 
 // seededOrg bundles everything seedDeletableOrg creates, so callers can pick
@@ -375,4 +376,35 @@ func TestClaimsHasOrgRole(t *testing.T) {
 			require.Equal(t, tc.want, claims.HasOrgRole(tc.minRole))
 		})
 	}
+}
+
+// TestDeleteOrgReapsItsPublicLogo is a reaping obligation of spec 2026-08-22-03,
+// not housekeeping.
+//
+// An org logo is publicly readable on /pub/assets/:uid exactly while its file
+// row is LIVE and carries the `organizations/<uid>/logo` topic. Nothing about
+// the org row deleting is visible to that check, so without this reap a deleted
+// organization's logo stays world-readable forever.
+func TestDeleteOrgReapsItsPublicLogo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbService, ctx := setupAuthTestService(t)
+	seeded := seedDeletableOrg(ctx, t, dbService, "logoed")
+
+	logo := models.NewFile(seeded.org.UID, "logo.png", "image/png", "local://x", 10, nil)
+	topic := files.OrganizationLogoTopic(seeded.org.UID)
+	logo.Topic = &topic
+	r.NoError(dbService.CreateFile(ctx, logo))
+
+	// Positive control: it is live (and therefore public) before the delete.
+	live, err := dbService.GetFileAny(ctx, logo.UID)
+	r.NoError(err)
+	r.True(files.IsPublicTopic(*live.Topic))
+
+	_, err = deleteOrgAsOwner(ctx, t, svc, seeded, seeded.org.Slug)
+	r.NoError(err)
+
+	_, err = dbService.GetFileAny(ctx, logo.UID)
+	r.Error(err, "a deleted org's logo must stop being publicly readable")
 }
