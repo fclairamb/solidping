@@ -42,7 +42,33 @@
     "org.activation.first_check_created": "First Check Created",
     "org.activation.first_result_received": "First Result Received",
     "org.activation.first_notification_configured": "First Notification Configured",
-    "org.activation.first_incident_paged": "First Incident Paged"
+    "org.activation.first_incident_paged": "First Incident Paged",
+    "auth.login_succeeded": "Sign-in Succeeded",
+    "auth.login_failed": "Sign-in Failed",
+    "auth.logout": "Signed Out",
+    "auth.token_created": "API Token Created",
+    "auth.token_revoked": "API Token Revoked",
+    "member.invited": "Member Invited",
+    "member.joined": "Member Joined",
+    "member.removed": "Member Removed",
+    "member.role_changed": "Member Role Changed",
+    "integration.created": "Integration Created",
+    "integration.updated": "Integration Updated",
+    "integration.deleted": "Integration Deleted",
+    "escalation_policy.created": "Escalation Policy Created",
+    "escalation_policy.updated": "Escalation Policy Updated",
+    "escalation_policy.deleted": "Escalation Policy Deleted",
+    "oncall_schedule.created": "On-Call Schedule Created",
+    "oncall_schedule.updated": "On-Call Schedule Updated",
+    "oncall_schedule.deleted": "On-Call Schedule Deleted",
+    "status_page.created": "Status Page Created",
+    "status_page.updated": "Status Page Updated",
+    "status_page.deleted": "Status Page Deleted",
+    "maintenance_window.created": "Maintenance Window Created",
+    "maintenance_window.updated": "Maintenance Window Updated",
+    "maintenance_window.deleted": "Maintenance Window Deleted",
+    "config.applied": "Configuration Applied",
+    "org.settings_updated": "Organization Settings Updated"
   },
   "descriptions": {
     "org.activation.signup_completed": "Your organization is set up and ready to go.",
@@ -58,7 +84,53 @@
   },
   "actorTypes": {
     "user": "user",
-    "system": "system"
+    "system": "system",
+    "api_token": "API token",
+    "service": "service"
   },
-  "unknown": "Unknown"
+  "unknown": "Unknown",
+  "audit": {
+    "title": "Audit log",
+    "subtitle": "Who changed what, when, and from where",
+    "empty": "No audit events match these filters",
+    "filters": {
+      "family": "Category",
+      "allFamilies": "All categories",
+      "actor": "Actor",
+      "allActors": "Anyone",
+      "range": "Period",
+      "clear": "Clear filters"
+    },
+    "ranges": {
+      "24h": "Last 24 hours",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "90d": "Last 90 days",
+      "all": "All time"
+    },
+    "families": {
+      "auth": "Authentication",
+      "member": "Membership",
+      "integration": "Integrations",
+      "escalation_policy": "Escalation policies",
+      "oncall_schedule": "On-call schedules",
+      "status_page": "Status pages",
+      "maintenance_window": "Maintenance windows",
+      "config": "Config as code",
+      "check": "Checks",
+      "incident": "Incidents",
+      "org": "Organization"
+    },
+    "columns": {
+      "time": "Time",
+      "actor": "Actor",
+      "event": "Event",
+      "target": "Target",
+      "ip": "IP address"
+    },
+    "system": "System",
+    "loadMore": "Load more",
+    "changedFields": "Changed",
+    "retentionNote": "Audit events are kept for {{days}} days."
+  }
 }

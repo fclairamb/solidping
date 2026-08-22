@@ -11,6 +11,9 @@ import {
 } from "@/components/dashboard/event-display";
 
 import eventsEn from "@/locales/en/events.json";
+import eventsFr from "@/locales/fr/events.json";
+import eventsDe from "@/locales/de/events.json";
+import eventsEs from "@/locales/es/events.json";
 
 // A REAL i18next instance (not a hand-rolled dotted-key resolver) backed by
 // the actual events.json bundle. This matters because every EventType*
@@ -77,6 +80,33 @@ const INTENTIONALLY_UNMAPPED: Record<string, string> = {
   "org.activation.first_notification_configured":
     "onboarding milestone — family fallback (violet) is enough",
   "org.activation.first_incident_paged": "onboarding milestone — family fallback (violet) is enough",
+  // Security/configuration audit trail (spec 2026-08-21-09). Only the auth
+  // family carries an explicit emoji identity (see EVENT_TYPE_REGISTRY); the
+  // rest ride the family fallbacks getEventTone/getEventIcon gained in the
+  // same change — violet + Users for membership, blue + Settings for every
+  // configuration family. Each still has a translated label in all four
+  // locales, which is what the label guard above enforces.
+  "member.invited": "membership change — violet family fallback is enough",
+  "member.joined": "membership change — violet family fallback is enough",
+  "member.removed": "membership change — violet family fallback is enough",
+  "member.role_changed": "membership change — violet family fallback is enough",
+  "integration.created": "configuration change — blue family fallback is enough",
+  "integration.updated": "configuration change — blue family fallback is enough",
+  "integration.deleted": "configuration change — blue family fallback is enough",
+  "escalation_policy.created": "configuration change — blue family fallback is enough",
+  "escalation_policy.updated": "configuration change — blue family fallback is enough",
+  "escalation_policy.deleted": "configuration change — blue family fallback is enough",
+  "oncall_schedule.created": "configuration change — blue family fallback is enough",
+  "oncall_schedule.updated": "configuration change — blue family fallback is enough",
+  "oncall_schedule.deleted": "configuration change — blue family fallback is enough",
+  "status_page.created": "configuration change — blue family fallback is enough",
+  "status_page.updated": "configuration change — blue family fallback is enough",
+  "status_page.deleted": "configuration change — blue family fallback is enough",
+  "maintenance_window.created": "configuration change — blue family fallback is enough",
+  "maintenance_window.updated": "configuration change — blue family fallback is enough",
+  "maintenance_window.deleted": "configuration change — blue family fallback is enough",
+  "config.applied": "configuration change — blue family fallback is enough",
+  "org.settings_updated": "configuration change — blue family fallback is enough",
 };
 
 describe("parseBackendEventTypes (positive control)", () => {
@@ -161,6 +191,17 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // the three above: no backend chat integration hand-authors a message for
     // this type, so dash0 is the sole owner of the pairing.
     ["statuspage.subscriber.disabled", "🔇"],
+    // Security audit trail (spec 2026-08-21-09). Same ownership story again:
+    // no backend chat integration hand-authors a message for an auth event, so
+    // dash0 owns the pairing outright. The five are pinned because they must
+    // stay distinguishable from each other AND from every emoji above — a
+    // failed login that renders like a resolved incident is worse than one
+    // with no emoji at all.
+    ["auth.login_succeeded", "🔓"],
+    ["auth.login_failed", "⛔"],
+    ["auth.logout", "🚪"],
+    ["auth.token_created", "🔑"],
+    ["auth.token_revoked", "🔒"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {
@@ -184,6 +225,74 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
   it("INTENTIONALLY_UNMAPPED and EVENT_TYPE_REGISTRY never overlap", () => {
     for (const eventType of Object.keys(INTENTIONALLY_UNMAPPED)) {
       expect(EVENT_TYPE_REGISTRY[eventType]).toBeUndefined();
+    }
+  });
+});
+
+describe("the audit families read as their own colour blocks", () => {
+  // The audit page is scanned by colour before it is read, so a security event
+  // and a configuration event must not share a tint. These assert the family
+  // fallbacks the registry does NOT cover.
+  it.each([
+    "member.invited",
+    "member.joined",
+    "member.removed",
+    "member.role_changed",
+  ])("%s reads as a membership change", (eventType) => {
+    expect(getEventTone(eventType)).toContain("violet");
+  });
+
+  it.each([
+    "integration.created",
+    "escalation_policy.updated",
+    "oncall_schedule.deleted",
+    "status_page.created",
+    "maintenance_window.updated",
+    "config.applied",
+    "org.settings_updated",
+  ])("%s reads as a configuration change", (eventType) => {
+    expect(getEventTone(eventType)).toContain("blue");
+  });
+
+  it("a failed login does not read like anything else", () => {
+    // Positive control against a fallback that quietly returned "" for the
+    // whole auth family: the tone must be a real class list.
+    expect(getEventTone("auth.login_failed")).not.toBe("");
+    expect(getEventTone("auth.login_failed")).toContain("destructive");
+    expect(getEventTone("auth.login_succeeded")).toContain("emerald");
+  });
+});
+
+// The guard above resolves labels through the ENGLISH bundle only, which is
+// what getEventLabel sees in an English session — and nowhere else. A type
+// shipped with an English label and three gaps renders its raw code
+// ("member.role_changed") to every French, German and Spanish operator, which
+// is exactly as broken as having no label at all, and is invisible to a suite
+// that only ever loads `en`.
+describe("every backend event type has a label in every locale", () => {
+  const BUNDLES: [string, { types: Record<string, string> }][] = [
+    ["en", eventsEn],
+    ["fr", eventsFr],
+    ["de", eventsDe],
+    ["es", eventsEs],
+  ];
+
+  it.each(BUNDLES)("%s covers every event type", (locale, bundle) => {
+    const missing = BACKEND_EVENT_TYPES.filter(
+      (eventType) => !bundle.types[eventType],
+    );
+
+    expect(
+      missing,
+      `src/locales/${locale}/events.json has no types.<type> entry for ` +
+        `${missing.join(", ")} — getEventLabel would render the raw code to ` +
+        `every ${locale} operator.`,
+    ).toEqual([]);
+  });
+
+  it("the bundles really were loaded (positive control)", () => {
+    for (const [, bundle] of BUNDLES) {
+      expect(Object.keys(bundle.types).length).toBeGreaterThan(15);
     }
   });
 });

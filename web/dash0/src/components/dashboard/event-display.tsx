@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Calendar, Cpu, Rocket } from "lucide-react";
+import { Calendar, Cpu, Rocket, Settings, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -58,7 +58,42 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // says "this channel went quiet" rather than reusing an outage emoji, since
   // the monitored service is fine and the delivery path is not.
   "statuspage.subscriber.disabled": { emoji: "🔇", tone: TONE_DESTRUCTIVE },
+  // Security audit trail (spec 2026-08-21-09). Only the auth family gets an
+  // explicit identity: these are the rows an operator scans a security review
+  // for, and they must be told apart at a glance from the configuration
+  // changes around them. The rest of the new families (member.*,
+  // integration.*, escalation_policy.*, oncall_schedule.*, status_page.*,
+  // maintenance_window.*, config.applied, org.settings_updated) deliberately
+  // ride the family fallbacks below — see INTENTIONALLY_UNMAPPED in
+  // event-display.test.ts.
+  //
+  // Like the statuspage.* set, dash0 is the sole owner of this pairing: no
+  // backend chat integration hand-authors a message for an auth event.
+  "auth.login_succeeded": { emoji: "🔓", tone: TONE_EMERALD },
+  "auth.login_failed": { emoji: "⛔", tone: TONE_DESTRUCTIVE },
+  "auth.logout": { emoji: "🚪", tone: TONE_SLATE },
+  "auth.token_created": { emoji: "🔑", tone: TONE_BLUE },
+  "auth.token_revoked": { emoji: "🔒", tone: TONE_AMBER },
 };
+
+// CONFIG_EVENT_FAMILIES are the audit families that describe a configuration
+// change. They share one tone (blue, the established "configuration" colour of
+// check.* and status_update.*) and one icon, because in an audit table the
+// distinction that matters at a glance is security-vs-configuration, not which
+// of eight resources was edited — the event label already says that.
+const CONFIG_EVENT_FAMILIES = [
+  "integration.",
+  "escalation_policy.",
+  "oncall_schedule.",
+  "status_page.",
+  "maintenance_window.",
+  "config.",
+  "org.settings_updated",
+] as const;
+
+function isConfigEvent(eventType: string): boolean {
+  return CONFIG_EVENT_FAMILIES.some((family) => eventType.startsWith(family));
+}
 
 // getEventEmoji returns the registry emoji for an event type, or undefined
 // for a type with no specific pairing (the family fallback rules have no
@@ -125,6 +160,12 @@ export function getEventIcon(eventType?: string) {
   if (eventType.startsWith("org.activation.")) {
     return <Rocket className="h-4 w-4 text-purple-500" />;
   }
+  if (eventType.startsWith("member.")) {
+    return <Users className="h-4 w-4 text-violet-500" />;
+  }
+  if (isConfigEvent(eventType)) {
+    return <Settings className="h-4 w-4 text-blue-400" />;
+  }
   return <Calendar className="h-4 w-4" />;
 }
 
@@ -164,6 +205,15 @@ export function getEventTone(eventType?: string): string {
   }
   if (eventType.startsWith("org.activation.")) {
     return TONE_VIOLET;
+  }
+  // Membership changes are people-shaped, not configuration-shaped: who is in
+  // the org is the question an access review asks, so they get their own tone
+  // rather than melting into the blue configuration block.
+  if (eventType.startsWith("member.")) {
+    return TONE_VIOLET;
+  }
+  if (isConfigEvent(eventType)) {
+    return TONE_BLUE;
   }
   return "";
 }

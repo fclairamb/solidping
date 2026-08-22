@@ -42,7 +42,33 @@
     "org.activation.first_check_created": "Primera comprobación creada",
     "org.activation.first_result_received": "Primer resultado recibido",
     "org.activation.first_notification_configured": "Primera notificación configurada",
-    "org.activation.first_incident_paged": "Primer incidente notificado"
+    "org.activation.first_incident_paged": "Primer incidente notificado",
+    "auth.login_succeeded": "Inicio de sesión correcto",
+    "auth.login_failed": "Inicio de sesión fallido",
+    "auth.logout": "Sesión cerrada",
+    "auth.token_created": "Token de API creado",
+    "auth.token_revoked": "Token de API revocado",
+    "member.invited": "Miembro invitado",
+    "member.joined": "Miembro incorporado",
+    "member.removed": "Miembro eliminado",
+    "member.role_changed": "Rol de miembro cambiado",
+    "integration.created": "Integración creada",
+    "integration.updated": "Integración actualizada",
+    "integration.deleted": "Integración eliminada",
+    "escalation_policy.created": "Política de escalado creada",
+    "escalation_policy.updated": "Política de escalado actualizada",
+    "escalation_policy.deleted": "Política de escalado eliminada",
+    "oncall_schedule.created": "Turno de guardia creado",
+    "oncall_schedule.updated": "Turno de guardia actualizado",
+    "oncall_schedule.deleted": "Turno de guardia eliminado",
+    "status_page.created": "Página de estado creada",
+    "status_page.updated": "Página de estado actualizada",
+    "status_page.deleted": "Página de estado eliminada",
+    "maintenance_window.created": "Ventana de mantenimiento creada",
+    "maintenance_window.updated": "Ventana de mantenimiento actualizada",
+    "maintenance_window.deleted": "Ventana de mantenimiento eliminada",
+    "config.applied": "Configuración aplicada",
+    "org.settings_updated": "Ajustes de la organización actualizados"
   },
   "descriptions": {
     "org.activation.signup_completed": "Tu organización está configurada y lista para empezar.",
@@ -58,7 +84,53 @@
   },
   "actorTypes": {
     "user": "usuario",
-    "system": "sistema"
+    "system": "sistema",
+    "api_token": "token de API",
+    "service": "servicio"
   },
-  "unknown": "Desconocido"
+  "unknown": "Desconocido",
+  "audit": {
+    "title": "Registro de auditoría",
+    "subtitle": "Quién cambió qué, cuándo y desde dónde",
+    "empty": "Ningún evento de auditoría coincide con estos filtros",
+    "filters": {
+      "family": "Categoría",
+      "allFamilies": "Todas las categorías",
+      "actor": "Autor",
+      "allActors": "Cualquiera",
+      "range": "Periodo",
+      "clear": "Borrar filtros"
+    },
+    "ranges": {
+      "24h": "Últimas 24 horas",
+      "7d": "Últimos 7 días",
+      "30d": "Últimos 30 días",
+      "90d": "Últimos 90 días",
+      "all": "Todo el histórico"
+    },
+    "families": {
+      "auth": "Autenticación",
+      "member": "Miembros",
+      "integration": "Integraciones",
+      "escalation_policy": "Políticas de escalado",
+      "oncall_schedule": "Turnos de guardia",
+      "status_page": "Páginas de estado",
+      "maintenance_window": "Ventanas de mantenimiento",
+      "config": "Configuración como código",
+      "check": "Comprobaciones",
+      "incident": "Incidencias",
+      "org": "Organización"
+    },
+    "columns": {
+      "time": "Fecha",
+      "actor": "Autor",
+      "event": "Evento",
+      "target": "Destino",
+      "ip": "Dirección IP"
+    },
+    "system": "Sistema",
+    "loadMore": "Cargar más",
+    "changedFields": "Modificado",
+    "retentionNote": "Los eventos de auditoría se conservan {{days}} días."
+  }
 }

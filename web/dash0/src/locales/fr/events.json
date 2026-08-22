@@ -42,7 +42,33 @@
     "org.activation.first_check_created": "Premier contrôle créé",
     "org.activation.first_result_received": "Premier résultat reçu",
     "org.activation.first_notification_configured": "Première notification configurée",
-    "org.activation.first_incident_paged": "Premier incident notifié"
+    "org.activation.first_incident_paged": "Premier incident notifié",
+    "auth.login_succeeded": "Connexion réussie",
+    "auth.login_failed": "Échec de connexion",
+    "auth.logout": "Déconnexion",
+    "auth.token_created": "Jeton d'API créé",
+    "auth.token_revoked": "Jeton d'API révoqué",
+    "member.invited": "Membre invité",
+    "member.joined": "Membre ajouté",
+    "member.removed": "Membre retiré",
+    "member.role_changed": "Rôle du membre modifié",
+    "integration.created": "Intégration créée",
+    "integration.updated": "Intégration mise à jour",
+    "integration.deleted": "Intégration supprimée",
+    "escalation_policy.created": "Politique d'escalade créée",
+    "escalation_policy.updated": "Politique d'escalade mise à jour",
+    "escalation_policy.deleted": "Politique d'escalade supprimée",
+    "oncall_schedule.created": "Planning d'astreinte créé",
+    "oncall_schedule.updated": "Planning d'astreinte mis à jour",
+    "oncall_schedule.deleted": "Planning d'astreinte supprimé",
+    "status_page.created": "Page de statut créée",
+    "status_page.updated": "Page de statut mise à jour",
+    "status_page.deleted": "Page de statut supprimée",
+    "maintenance_window.created": "Fenêtre de maintenance créée",
+    "maintenance_window.updated": "Fenêtre de maintenance mise à jour",
+    "maintenance_window.deleted": "Fenêtre de maintenance supprimée",
+    "config.applied": "Configuration appliquée",
+    "org.settings_updated": "Paramètres de l'organisation modifiés"
   },
   "descriptions": {
     "org.activation.signup_completed": "Votre organisation est configurée et prête à l'emploi.",
@@ -58,7 +84,53 @@
   },
   "actorTypes": {
     "user": "utilisateur",
-    "system": "système"
+    "system": "système",
+    "api_token": "jeton d'API",
+    "service": "service"
   },
-  "unknown": "Inconnu"
+  "unknown": "Inconnu",
+  "audit": {
+    "title": "Journal d'audit",
+    "subtitle": "Qui a changé quoi, quand, et depuis où",
+    "empty": "Aucun évènement d'audit ne correspond à ces filtres",
+    "filters": {
+      "family": "Catégorie",
+      "allFamilies": "Toutes les catégories",
+      "actor": "Auteur",
+      "allActors": "Tout le monde",
+      "range": "Période",
+      "clear": "Effacer les filtres"
+    },
+    "ranges": {
+      "24h": "Dernières 24 heures",
+      "7d": "7 derniers jours",
+      "30d": "30 derniers jours",
+      "90d": "90 derniers jours",
+      "all": "Depuis le début"
+    },
+    "families": {
+      "auth": "Authentification",
+      "member": "Membres",
+      "integration": "Intégrations",
+      "escalation_policy": "Politiques d'escalade",
+      "oncall_schedule": "Plannings d'astreinte",
+      "status_page": "Pages de statut",
+      "maintenance_window": "Fenêtres de maintenance",
+      "config": "Configuration as code",
+      "check": "Contrôles",
+      "incident": "Incidents",
+      "org": "Organisation"
+    },
+    "columns": {
+      "time": "Date",
+      "actor": "Auteur",
+      "event": "Évènement",
+      "target": "Cible",
+      "ip": "Adresse IP"
+    },
+    "system": "Système",
+    "loadMore": "Charger plus",
+    "changedFields": "Modifié",
+    "retentionNote": "Les évènements d'audit sont conservés {{days}} jours."
+  }
 }
