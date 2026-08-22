@@ -33,6 +33,8 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"incident-escalated.html":          incidentFixture,
 	"incident-reopened.html":           incidentFixture,
 	"incident-resolved.html":           resolvedIncidentFixture,
+	"incident-burn-created.html":       burnIncidentFixture,
+	"incident-burn-resolved.html":      resolvedBurnIncidentFixture,
 	"escalation.html":                  escalationFixture,
 	"test-email.html":                  testEmailFixture,
 	"paging-nudge.html":                pagingNudgeFixture,
@@ -83,6 +85,40 @@ func incidentFixture() map[string]any {
 		"UnsubscribeURL":       "https://solidping.example/unsubscribe?token=preview-unsub-token",
 		"UnsubscribeCheckName": fixtureCheckName,
 	}
+}
+
+// burnIncidentFixture is the SLO burn-rate alert view-model. It extends the
+// incident fixture rather than replacing it because a burn incident IS an
+// incident — same ack link, same deep links — with the three deciding numbers
+// added: burn rate, budget remaining, projected exhaustion.
+func burnIncidentFixture() map[string]any {
+	fx := incidentFixture()
+	fx["SLOName"] = "Acme API availability"
+	fx["BurnPolicyLabel"] = "Fast burn"
+	fx["BurnSeverity"] = "critical"
+	fx["BurnRate"] = "31.0x"
+	fx["BurnShortRate"] = "44.5x"
+	fx["BurnPeakRate"] = "52.0x"
+	fx["BurnThreshold"] = "14.4x"
+	fx["BurnLongWindow"] = "1h"
+	fx["BurnShortWindow"] = "5m"
+	fx["BurnBudgetRemaining"] = "1h30m"
+	fx["BurnProjectedExhaustion"] = "2026-07-05 14:30:00 UTC"
+	fx["BurnTarget"] = "99.9%"
+
+	return fx
+}
+
+// resolvedBurnIncidentFixture is the cleared-alert half: no ack (there is
+// nothing left to acknowledge) and a rate back under the threshold.
+func resolvedBurnIncidentFixture() map[string]any {
+	fx := burnIncidentFixture()
+	fx["AckURL"] = ""
+	fx["ResolvedAt"] = "2026-07-05 10:15:00"
+	fx["Duration"] = "15m0s"
+	fx["BurnRate"] = "1.2x"
+
+	return fx
 }
 
 // resolvedIncidentFixture extends incidentFixture with the resolved-only
