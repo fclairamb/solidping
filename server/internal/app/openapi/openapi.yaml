@@ -3249,8 +3249,16 @@ paths:
         - name: targetUid
           in: query
           description: >-
-            Filter to the events about one object, matched against the
+            Filter to the events about one object, matched EXACTLY against the
             payload's `target_uid`.
+          schema:
+            type: string
+        - name: target
+          in: query
+          description: >-
+            Free-text target filter: matches an exact `target_uid`, or a
+            case-insensitive substring of the `target_name` captured on the
+            event. This is what the dashboard's "target name or UID" box sends.
           schema:
             type: string
         - name: sourceIp

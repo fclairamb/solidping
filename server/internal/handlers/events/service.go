@@ -67,6 +67,9 @@ type ListEventsOptions struct {
 	// kind of object — the `targetUid` / `targetType` parameters.
 	TargetUID  *string
 	TargetType *string
+	// TargetSearch is the free-text `target` parameter: an exact UID or a
+	// case-insensitive substring of the captured target name.
+	TargetSearch *string
 	// SourceIP filters to one client address — the `sourceIp` parameter.
 	// ADMIN-ONLY: see the note in ListEvents.
 	SourceIP *string
@@ -149,6 +152,7 @@ func (s *Service) ListEvents(
 		ActorUID:          opts.ActorUID,
 		TargetUID:         opts.TargetUID,
 		TargetType:        opts.TargetType,
+		TargetSearch:      opts.TargetSearch,
 		Since:             opts.Since,
 		Until:             opts.Until,
 		Limit:             opts.Size + 1, // Fetch one extra to determine hasMore

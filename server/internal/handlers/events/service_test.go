@@ -579,3 +579,104 @@ func TestSourceIPFilterIsAdminOnly(t *testing.T) {
 }
 
 func strPtr(value string) *string { return &value }
+
+// TestTargetSearchMatchesNameOrUID is the guard on the promise the UI's filter
+// label makes.
+//
+// The box is labeled "Target name or UID" in all four locales. Before this it
+// sent an exact `target_uid` match, so typing a name returned an empty table
+// with no explanation — the worst empty state there is, because the label had
+// just told the user it would work.
+func TestTargetSearchMatchesNameOrUID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+	f.seedWithPayload(ctx, t, models.EventTypeIntegrationUpdated, base,
+		models.JSONMap{"target_type": "integration", "target_uid": "int-1", "target_name": "Acme Webhook"})
+	f.seedWithPayload(ctx, t, models.EventTypeEscalationPolicyCreated, base.Add(time.Minute),
+		models.JSONMap{"target_type": "escalation_policy", "target_uid": "pol-2", "target_name": "Primary rotation"})
+	f.seedWithPayload(ctx, t, models.EventTypeMemberRemoved, base.Add(2*time.Minute),
+		models.JSONMap{"target_type": "member", "target_uid": "user-9", "target_name": "alice@acme.com"})
+
+	search := func(query string) []string {
+		t.Helper()
+
+		resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+			Size:         50,
+			TargetSearch: strPtr(query),
+			Caller:       events.Caller{UserUID: f.admin.UID},
+		})
+		r.NoError(err)
+
+		return typesOf(resp)
+	}
+
+	// The UID half — what the filter always did.
+	r.Equal([]string{"integration.updated"}, search("int-1"))
+
+	// The NAME half — what the label promised and the query did not do.
+	r.Equal([]string{"escalation_policy.created"}, search("Primary rotation"))
+
+	// A substring of the name, and case-insensitively: an operator types what
+	// they remember, not an exact string.
+	r.Equal([]string{"integration.updated"}, search("webhook"))
+	r.Equal([]string{"member.removed"}, search("ALICE@"))
+
+	// A miss is empty rather than everything — the OR group must not degrade
+	// into "no predicate".
+	r.Empty(search("no-such-target"))
+
+	// Positive control: unfiltered, all three come back.
+	all, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+		Size:   50,
+		Caller: events.Caller{UserUID: f.admin.UID},
+	})
+	r.NoError(err)
+	r.Len(all.Data, 3)
+}
+
+// TestTargetSearchTreatsWildcardsAsLiterals — an operator pasting a name with
+// `%` or `_` in it is searching for those characters, not writing a LIKE
+// pattern. Unescaped, `_` matches any character and `%` matches everything,
+// so a stray underscore would quietly widen the filter.
+func TestTargetSearchTreatsWildcardsAsLiterals(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	f := newFixture(t)
+
+	base := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
+
+	f.seedWithPayload(ctx, t, models.EventTypeCheckCreated, base,
+		models.JSONMap{"target_type": "check", "target_uid": "c1", "target_name": "checkout_api"})
+	f.seedWithPayload(ctx, t, models.EventTypeCheckUpdated, base.Add(time.Minute),
+		models.JSONMap{"target_type": "check", "target_uid": "c2", "target_name": "checkoutXapi"})
+
+	search := func(query string) []string {
+		t.Helper()
+
+		resp, err := f.svc.ListEvents(ctx, f.orgSlug, &events.ListEventsOptions{
+			Size:         50,
+			TargetSearch: strPtr(query),
+			Caller:       events.Caller{UserUID: f.admin.UID},
+		})
+		r.NoError(err)
+
+		return typesOf(resp)
+	}
+
+	// The underscore is a literal, so only the row that really contains one.
+	r.Equal([]string{"check.created"}, search("checkout_api"))
+
+	// A bare `%` matches nothing rather than everything.
+	r.Empty(search("%"))
+
+	// Positive control: an ordinary substring still matches both.
+	r.Len(search("checkout"), 2)
+}

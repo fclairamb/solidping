@@ -277,6 +277,15 @@ type ListEventsFilter struct {
 	TargetUID *string
 	// TargetType filters to one kind of object ("integration", "member", …).
 	TargetType *string
+	// TargetSearch is the operator-facing free-text target filter: it matches
+	// an exact target_uid OR a case-insensitive substring of the target_name
+	// captured on the event.
+	//
+	// Both halves, because an operator has one box and two things they might
+	// paste into it — the UID from a URL, or the name they remember. A
+	// UID-only filter behind a box labeled "name or UID" is a promise the
+	// query silently breaks.
+	TargetSearch *string
 	// SourceIP filters to the events that came from one client address.
 	//
 	// ADMIN-ONLY at the service layer, for the same reason the column is
@@ -312,4 +321,14 @@ func EventTypeLikePattern(prefix string) string {
 	escaped := strings.NewReplacer(`\`, `\\`, "_", `\_`, "%", `\%`).Replace(trimmed)
 
 	return escaped + ".%"
+}
+
+// LikeContainsPattern builds the SQL LIKE pattern matching any value that
+// CONTAINS the given text, escaping the LIKE metacharacters so a user typing
+// "100%" or "check_1" searches for those characters rather than for a
+// wildcard. Pair it with EventTypeLikeEscape.
+func LikeContainsPattern(value string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, "_", `\_`, "%", `\%`).Replace(value)
+
+	return "%" + escaped + "%"
 }

@@ -6118,8 +6118,11 @@ type ListEventsParams struct {
 	// TargetType Filter to one kind of acted-on object (`integration`, `member`, `escalation_policy`, …), matched against the payload's `target_type`.
 	TargetType *string `form:"targetType,omitempty" json:"targetType,omitempty"`
 
-	// TargetUid Filter to the events about one object, matched against the payload's `target_uid`.
+	// TargetUid Filter to the events about one object, matched EXACTLY against the payload's `target_uid`.
 	TargetUid *string `form:"targetUid,omitempty" json:"targetUid,omitempty"`
+
+	// Target Free-text target filter: matches an exact `target_uid`, or a case-insensitive substring of the `target_name` captured on the event. This is what the dashboard's "target name or UID" box sends.
+	Target *string `form:"target,omitempty" json:"target,omitempty"`
 
 	// SourceIp Filter to one client address. Honoured for org admins and owners ONLY; for anyone else it is silently ignored rather than rejected, so it cannot be used as an oracle for a column they are not allowed to read.
 	SourceIp *string `form:"sourceIp,omitempty" json:"sourceIp,omitempty"`
@@ -19537,6 +19540,18 @@ func NewListEventsRequest(server string, org OrgPath, params *ListEventsParams) 
 		if params.TargetUid != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "targetUid", *params.TargetUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Target != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "target", *params.Target, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

@@ -1431,8 +1431,13 @@ export function useAuditEvents(
     family?: string;
     actorUserUid?: string;
     targetType?: string;
-    /** Free-text target match — the object's UID or its captured name. */
-    targetUid?: string;
+    /**
+     * Free-text target match: an exact object UID, or a case-insensitive
+     * substring of the target name captured on the event. Sent as `target`,
+     * which is the API's free-text parameter — `targetUid` is the separate,
+     * exact-match one.
+     */
+    target?: string;
     /**
      * Client address. The API honours this for org admins/owners only and
      * silently ignores it otherwise, so a non-admin cannot use it as an
@@ -1457,7 +1462,7 @@ export function useAuditEvents(
       if (options.family) params.set("type", options.family);
       if (options.actorUserUid) params.set("actorUserUid", options.actorUserUid);
       if (options.targetType) params.set("targetType", options.targetType);
-      if (options.targetUid) params.set("targetUid", options.targetUid);
+      if (options.target) params.set("target", options.target);
       if (options.sourceIp) params.set("sourceIp", options.sourceIp);
       if (options.sinceHours) {
         params.set(

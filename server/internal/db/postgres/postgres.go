@@ -3636,13 +3636,6 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 	return events, err
 }
 
-// UpdateEventPayload replaces one event's payload in place.
-//
-// events is otherwise strictly append-only; the single exception is
-// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
-// (org, email, IP) inside a short window bump a counter on the row that is
-// already there instead of writing a new row per attempt. Anything else
-// mutating an audit row would be a bug.
 // applyEventFilters folds the ListEvents predicates onto the query. Split out
 // of ListEvents so that function stays inside the cyclomatic-complexity budget
 // as the audit trail's filter set grows; it is a straight-line list of
@@ -3697,12 +3690,41 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	// The target is polymorphic, so it lives in the payload rather than in a
 	// column of its own. jsonb's ->> is the Postgres half; the SQLite store
 	// spells the identical predicate with json_extract.
+	query = applyEventTargetFilters(query, filter)
+
+	return query
+}
+
+// UpdateEventPayload replaces one event's payload in place.
+//
+// events is otherwise strictly append-only; the single exception is
+// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
+// (org, email, IP) inside a short window bump a counter on the row that is
+// already there instead of writing a new row per attempt. Anything else
+// mutating an audit row would be a bug.
+// applyEventTargetFilters folds the polymorphic target predicates onto the
+// query. Separate from applyEventFilters purely to keep both inside the
+// cyclomatic-complexity budget; these are the ones that reach INTO the
+// payload rather than into a column.
+func applyEventTargetFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
 	if filter.TargetUID != nil {
 		query = query.Where("payload->>'target_uid' = ?", *filter.TargetUID)
 	}
 
 	if filter.TargetType != nil {
 		query = query.Where("payload->>'target_type' = ?", *filter.TargetType)
+	}
+
+	// One box, two things an operator might paste into it: the exact UID from
+	// a URL, or the name they remember. ILIKE on the name half is what makes
+	// the "name or UID" label true.
+	if filter.TargetSearch != nil && *filter.TargetSearch != "" {
+		query = query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+			return group.
+				WhereOr("payload->>'target_uid' = ?", *filter.TargetSearch).
+				WhereOr("payload->>'target_name' ILIKE ? ESCAPE ?",
+					models.LikeContainsPattern(*filter.TargetSearch), models.EventTypeLikeEscape)
+		})
 	}
 
 	if filter.Since != nil {

@@ -3583,13 +3583,6 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 	return events, err
 }
 
-// UpdateEventPayload replaces one event's payload in place.
-//
-// events is otherwise strictly append-only; the single exception is
-// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
-// (org, email, IP) inside a short window bump a counter on the row that is
-// already there instead of writing a new row per attempt. Anything else
-// mutating an audit row would be a bug.
 // applyEventFilters folds the ListEvents predicates onto the query. Split out
 // of ListEvents so that function stays inside the cyclomatic-complexity budget
 // as the audit trail's filter set grows; it is a straight-line list of
@@ -3643,12 +3636,41 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 
 	// The SQLite half of the polymorphic target predicate. `payload` is TEXT
 	// holding JSON here, so json_extract does what Postgres's ->> does.
+	query = applyEventTargetFilters(query, filter)
+
+	return query
+}
+
+// UpdateEventPayload replaces one event's payload in place.
+//
+// events is otherwise strictly append-only; the single exception is
+// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
+// (org, email, IP) inside a short window bump a counter on the row that is
+// already there instead of writing a new row per attempt. Anything else
+// mutating an audit row would be a bug.
+// applyEventTargetFilters folds the polymorphic target predicates onto the
+// query. Separate from applyEventFilters purely to keep both inside the
+// cyclomatic-complexity budget; these are the ones that reach INTO the
+// payload rather than into a column.
+func applyEventTargetFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
 	if filter.TargetUID != nil {
 		query = query.Where("json_extract(payload, '$.target_uid') = ?", *filter.TargetUID)
 	}
 
 	if filter.TargetType != nil {
 		query = query.Where("json_extract(payload, '$.target_type') = ?", *filter.TargetType)
+	}
+
+	// SQLite half of the free-text target filter. SQLite's LIKE is already
+	// case-insensitive for ASCII, but lower() on both sides makes that
+	// explicit rather than dialect trivia the next reader has to know.
+	if filter.TargetSearch != nil && *filter.TargetSearch != "" {
+		query = query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+			return group.
+				WhereOr("json_extract(payload, '$.target_uid') = ?", *filter.TargetSearch).
+				WhereOr("lower(json_extract(payload, '$.target_name')) LIKE lower(?) ESCAPE ?",
+					models.LikeContainsPattern(*filter.TargetSearch), models.EventTypeLikeEscape)
+		})
 	}
 
 	if filter.Since != nil {

@@ -89,7 +89,7 @@ test.describe("Organization audit log", () => {
 
     // The typed filter is debounced into the URL, then into the request.
     const requestPromise = page.waitForRequest((req) =>
-      req.url().includes(`targetUid=${policy.uid}`),
+      req.url().includes(`target=${policy.uid}`),
     );
     await page.getByTestId("audit-target-filter").fill(policy.uid);
     await requestPromise;
@@ -99,6 +99,24 @@ test.describe("Organization audit log", () => {
     const rows = page.getByTestId("audit-row");
     await expect(rows).toHaveCount(1, { timeout: 10000 });
     await expect(rows.first()).toContainText(name);
+
+    // The half the box's own label promises and nothing used to exercise:
+    // typing a NAME. Before the free-text filter existed this sent an exact
+    // targetUid match, so a name returned an empty table while the label said
+    // "Target name or UID".
+    await page.getByTestId("audit-target-filter").fill(name);
+    await expect(rows).toHaveCount(1, { timeout: 10000 });
+    await expect(rows.first()).toContainText(name);
+
+    // And a case-insensitive SUBSTRING of it, which is what an operator
+    // actually types.
+    await page.getByTestId("audit-target-filter").fill(name.slice(6).toUpperCase());
+    await expect(rows).toHaveCount(1, { timeout: 10000 });
+
+    // Negative control: a name that matches nothing empties the table, so the
+    // assertions above are not passing on an unfiltered list.
+    await page.getByTestId("audit-target-filter").fill("no-such-target-xyz");
+    await expect(page.getByTestId("audit-empty")).toBeVisible({ timeout: 10000 });
 
     await page.request.delete(
       `${API_BASE}/api/v1/orgs/test/escalation-policies/${policy.uid}`,

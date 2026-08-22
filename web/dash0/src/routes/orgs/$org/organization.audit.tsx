@@ -198,7 +198,7 @@ function AuditPage() {
     family,
     actorUserUid: actor,
     targetType,
-    targetUid: target,
+    target,
     sourceIp: ip,
     sinceHours: RANGE_HOURS[activeRange] ?? undefined,
     cursor,

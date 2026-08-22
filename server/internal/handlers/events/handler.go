@@ -72,6 +72,13 @@ func (h *Handler) ListEvents(writer http.ResponseWriter, req *http.Request) erro
 		opts.TargetType = &targetType
 	}
 
+	// `target` is the operator-facing free-text box: an exact UID or part of
+	// the target's captured name. `targetUid` above stays exact, for API
+	// consumers that already hold the identifier.
+	if target := strings.TrimSpace(query.Get("target")); target != "" {
+		opts.TargetSearch = &target
+	}
+
 	// Honored for org admins/owners only — the service drops it otherwise,
 	// so the filter cannot be used as an oracle for a column the caller is not
 	// allowed to read.

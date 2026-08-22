@@ -2452,15 +2452,19 @@ func testEventsTargetPayloadFilters(ctx context.Context, t *testing.T, svc db.Se
 	org := models.NewOrganization("evtgt-"+uuid.New().String()[:8], "Acme")
 	r.NoError(svc.CreateOrganization(ctx, org))
 
-	seed := func(eventType models.EventType, targetType, targetUID string) {
+	seed := func(eventType models.EventType, targetType, targetUID, targetName string) {
 		event := models.NewEvent(org.UID, eventType, models.ActorTypeSystem)
-		event.Payload = models.JSONMap{"target_type": targetType, "target_uid": targetUID}
+		event.Payload = models.JSONMap{
+			"target_type": targetType,
+			"target_uid":  targetUID,
+			"target_name": targetName,
+		}
 		r.NoError(svc.CreateEvent(ctx, event))
 	}
 
-	seed(models.EventTypeIntegrationUpdated, "integration", "int-1")
-	seed(models.EventTypeIntegrationDeleted, "integration", "int-2")
-	seed(models.EventTypeMemberRemoved, "member", "user-9")
+	seed(models.EventTypeIntegrationUpdated, "integration", "int-1", "Acme Webhook")
+	seed(models.EventTypeIntegrationDeleted, "integration", "int-2", "Backup Webhook")
+	seed(models.EventTypeMemberRemoved, "member", "user-9", "alice@acme.com")
 
 	targetUID := "int-1"
 	byUID, err := svc.ListEvents(ctx, &models.ListEventsFilter{
@@ -2481,6 +2485,36 @@ func testEventsTargetPayloadFilters(ctx context.Context, t *testing.T, svc db.Se
 	r.NoError(err)
 	r.Len(byType, 2)
 
+	// The free-text half: an exact UID or a case-insensitive substring of the
+	// captured name. Postgres uses ILIKE, SQLite lower()+LIKE — two different
+	// expressions for one contract, so both engines must be exercised.
+	byName, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		TargetSearch:    strPtrTest("ACME WEB"),
+		Limit:           50,
+	})
+	r.NoError(err)
+	r.Len(byName, 1)
+	r.Equal(models.EventTypeIntegrationUpdated, byName[0].EventType)
+
+	byExactUID, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		TargetSearch:    strPtrTest("int-2"),
+		Limit:           50,
+	})
+	r.NoError(err)
+	r.Len(byExactUID, 1)
+	r.Equal(models.EventTypeIntegrationDeleted, byExactUID[0].EventType)
+
+	// A `_` in the query is a literal, not a wildcard.
+	byWildcard, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		TargetSearch:    strPtrTest("acme_web"),
+		Limit:           50,
+	})
+	r.NoError(err)
+	r.Empty(byWildcard)
+
 	// Positive control: unfiltered, all three come back — so the two
 	// assertions above are testing the predicates, not an empty table or a
 	// json function that silently errors into "no rows" on this engine.
@@ -2491,3 +2525,6 @@ func testEventsTargetPayloadFilters(ctx context.Context, t *testing.T, svc db.Se
 	r.NoError(err)
 	r.Len(all, 3)
 }
+
+// strPtrTest is a local pointer helper for the filter structs above.
+func strPtrTest(value string) *string { return &value }
