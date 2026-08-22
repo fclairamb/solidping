@@ -469,3 +469,50 @@ Email `Reply-To` needs its own negatives, because the failure mode is silent:
    before its DMs arrive. Discord's intent change carries no such cost. Splitting
    Slack out would let everything else land without a reinstall campaign — worth
    deciding before implementation starts, not during.
+
+## Resolved open questions
+
+Answered by the repository owner on 2026-08-22. These are decisions, not
+suggestions — implement to them.
+
+**1. Email inbound.** *"No support path exists, but the machinery does… Recommend
+a separate spec."*
+
+**Decision: out of scope here — a separate spec, later.** Do NOT build inbound
+email support capture in this change. Ship v1 with the deliberate asymmetry the
+question describes: **email support is a human mailbox, not a thread in the
+inbox.** Implement the `Reply-To` / `SP_EMAIL_REPLY_TO` behaviour described
+above (it is what makes the future capture tractable) and the
+`X-SolidPing-Support-Mirror` marker, but no JMAP consumption for support.
+Rationale: capture on the JMAP path must not be built until
+`2026-08-22-01-email-check-inbound-dedup` has settled its claim mechanism,
+otherwise support capture inherits the duplicate-minting bug. State the
+asymmetry explicitly in the user-facing docs so it reads as a decision rather
+than a gap.
+
+**2. Does an org-facing view follow later?**
+
+**Decision: not in v1 — instance inbox only.** Keep recording attribution in the
+schema so an org-facing view stays possible later, but build no org-facing
+surface, no org-scoped endpoints, and no org-scoped permissions in this change.
+
+**3. Should Slack DM support ship in this change, or trail it?**
+
+**Decision: ship Slack DM support in this change.** Add the `im:history` scope
+and handle Slack DMs alongside Discord and in-app messages — do not split it
+into a follow-up. The consequence is accepted deliberately: **every
+already-connected Slack workspace must reinstall the app before its DMs
+arrive.** Therefore you must also:
+
+- add `im:history` to the Slack app manifests (`wiki/slack/manifest*.json`) and
+  note the required scope change in the Slack wiki page;
+- make the reinstall requirement explicit in the docs-site Slack page and in the
+  dash0 Slack integration UI, so an operator learns about it in-product rather
+  than from a silently empty inbox;
+- degrade cleanly on a workspace that has not yet reinstalled — missing
+  `im:history` must not error the integration or spam logs; treat it as "DM
+  capture unavailable until reinstall" and surface that state.
+
+**Ordering.** This spec runs LAST in the current batch, after
+`2026-08-22-01-email-check-inbound-dedup` has landed, per its own stated
+dependency.
