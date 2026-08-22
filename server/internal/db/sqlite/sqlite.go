@@ -3641,13 +3641,6 @@ func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) 
 	return query
 }
 
-// UpdateEventPayload replaces one event's payload in place.
-//
-// events is otherwise strictly append-only; the single exception is
-// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
-// (org, email, IP) inside a short window bump a counter on the row that is
-// already there instead of writing a new row per attempt. Anything else
-// mutating an audit row would be a bug.
 // applyEventTargetFilters folds the polymorphic target predicates onto the
 // query. Separate from applyEventFilters purely to keep both inside the
 // cyclomatic-complexity budget; these are the ones that reach INTO the
@@ -3684,6 +3677,13 @@ func applyEventTargetFilters(query *bun.SelectQuery, filter *models.ListEventsFi
 	return query
 }
 
+// UpdateEventPayload replaces one event's payload in place.
+//
+// events is otherwise strictly append-only; the single exception is
+// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
+// (org, email, IP) inside a short window bump a counter on the row that is
+// already there instead of writing a new row per attempt. Anything else
+// mutating an audit row would be a bug.
 func (s *Service) UpdateEventPayload(ctx context.Context, uid string, payload models.JSONMap) error {
 	_, err := s.db.NewUpdate().
 		Model((*models.Event)(nil)).
