@@ -265,3 +265,34 @@ Open question 2.
 3. **Do the subscriber/subscription toggles from `2026-08-21-07` belong in
    `settings` too?** Not re-litigated here — this spec covers branding and the
    public-asset check only.
+
+## Resolved open questions
+
+1. **Does `/pub/org-logos/` fold into the same route?**
+   **Decision: yes — migrate it fully to the new logic; do not keep a legacy
+   path alive.** There is no existing customer holding a `/pub/org-logos/` URL,
+   so the "existing pages hold that URL" caveat in the question does not apply
+   and back-compat is not a constraint here. Concretely:
+   - `IsPublicTopic` allowlists `organizations/<uid>/logo` alongside
+     `status-pages/<uid>/{logo,favicon}`.
+   - Org-logo upload sets the topic, the same way status-page branding does.
+   - Serve org logos through the **same** public file route, and **retire the
+     bespoke `/pub/org-logos/` handler and its access check** rather than
+     leaving a second copy of the pattern in the tree. Update every in-repo
+     reference (dash0, status0, docs, tests) to the new URL.
+   - `organizations.logo_file_uid` is a released column and **stays** — this
+     decision is about the serving route and the access check, not the column.
+   - Backfill the topic for any existing org-logo rows so already-uploaded
+     logos keep resolving through the new route; a logo that 404s after this
+     change is a regression, not an acceptable migration cost.
+
+2. **Does `custom_css` ever move into `settings`?**
+   **Decision: no, not now** — as the spec already states. It is released,
+   behaviourally identical either way, and moving it means a backfill over
+   released rows for zero behaviour change. Leave it as a column.
+
+3. **Do the subscriber/subscription toggles from `2026-08-21-07` belong in
+   `settings` too?**
+   **Decision: out of scope** — as the spec already states. This spec covers
+   branding and the public-asset check only. Do not touch the subscriber
+   toggles.
