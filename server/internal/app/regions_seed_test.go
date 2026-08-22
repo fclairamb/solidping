@@ -67,7 +67,7 @@ func TestSeedRegionsFromEnv(t *testing.T) {
 		r := require.New(t)
 		srv, dbSvc := newRegionsSeedServer(ctx, t)
 
-		// Simulate the k8xp state: a parameter whose name equals the slug.
+		// Simulate the real-deployment state: a parameter whose name equals the slug.
 		r.NoError(dbSvc.SetSystemParameter(ctx, regions.ParamRegions,
 			[]regions.RegionDefinition{{Slug: "default", Emoji: "📍", Name: "default"}}, false))
 

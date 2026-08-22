@@ -641,6 +641,19 @@ func (c *Config) CustomDomainCNAMETarget() string {
 	return ""
 }
 
+// BaseURLHost returns the lowercased hostname of Server.BaseURL, port stripped,
+// or "" when BaseURL is unset or unparseable. It is the instance's own public
+// hostname — use it instead of hardcoding a deployment's host, so a
+// self-hosted install behaves like the SaaS one.
+func (c *Config) BaseURLHost() string {
+	parsed, err := url.Parse(strings.TrimSpace(c.Server.BaseURL))
+	if err != nil {
+		return ""
+	}
+
+	return strings.ToLower(parsed.Hostname())
+}
+
 // CustomDomainCNAMEMode resolves the configured CNAME verification mode,
 // falling back to domainverify.ModeShared for an empty or unrecognized value
 // (Validate rejects unrecognized values at startup, so a bad value never

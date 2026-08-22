@@ -137,8 +137,8 @@ func TestWorkerIdentityValidate_Invalid(t *testing.T) {
 	}{
 		{
 			name:     "override with dots",
-			override: "eu2.k8xp.com",
-			wantIn:   []string{"eu2.k8xp.com", "SP_NODE_NAME"},
+			override: "eu2.example.com",
+			wantIn:   []string{"eu2.example.com", "SP_NODE_NAME"},
 		},
 		{
 			name:     "override too long",
@@ -164,8 +164,8 @@ func TestWorkerIdentityValidate_Invalid(t *testing.T) {
 			// The hostNetwork failure mode: the host UTS namespace hands the
 			// pod a dotted node name.
 			name:     "hostname with dots (kubernetes hostNetwork)",
-			hostname: "eu2.k8xp.com",
-			wantIn:   []string{"eu2.k8xp.com", "SP_NODE_NAME", "hostname"},
+			hostname: "eu2.example.com",
+			wantIn:   []string{"eu2.example.com", "SP_NODE_NAME", "hostname"},
 		},
 	}
 
@@ -274,11 +274,11 @@ func TestValidate_WorkerIdentity(t *testing.T) {
 		nodName string
 		wantErr bool
 	}{
-		{name: "checks role rejects a dotted name", role: NodeRoleChecks, nodName: "eu2.k8xp.com", wantErr: true},
-		{name: "jobs role rejects a dotted name", role: NodeRoleJobs, nodName: "eu2.k8xp.com", wantErr: true},
-		{name: "all role rejects a dotted name", role: NodeRoleAll, nodName: "eu2.k8xp.com", wantErr: true},
+		{name: "checks role rejects a dotted name", role: NodeRoleChecks, nodName: "eu2.example.com", wantErr: true},
+		{name: "jobs role rejects a dotted name", role: NodeRoleJobs, nodName: "eu2.example.com", wantErr: true},
+		{name: "all role rejects a dotted name", role: NodeRoleAll, nodName: "eu2.example.com", wantErr: true},
 		{name: "checks role accepts a valid name", role: NodeRoleChecks, nodName: "solidping-eu2"},
-		{name: "api role never registers a worker", role: NodeRoleAPI, nodName: "eu2.k8xp.com"},
+		{name: "api role never registers a worker", role: NodeRoleAPI, nodName: "eu2.example.com"},
 	}
 
 	for _, tc := range cases {

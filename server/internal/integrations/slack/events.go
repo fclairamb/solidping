@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -97,10 +98,18 @@ func (h *Handler) handleLinkShared(ctx context.Context, event *Event) error {
 
 	unfurls := make(map[string]Unfurl)
 
+	// Only unfurl links pointing at THIS instance. Derived from server.base_url
+	// rather than hardcoded, so a self-hosted install unfurls its own links and
+	// no deployment's hostname is baked into the binary.
+	ownHost := h.cfg.BaseURLHost()
+	if ownHost == "" {
+		return nil
+	}
+
 	for i := range event.Event.Links {
 		link := &event.Event.Links[i]
-		// Only unfurl SolidPing links
-		if link.Domain != "solidping.io" && link.Domain != "solidping.k8xp.com" {
+
+		if !strings.EqualFold(link.Domain, ownHost) {
 			continue
 		}
 

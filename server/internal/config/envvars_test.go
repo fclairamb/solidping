@@ -73,7 +73,7 @@ func TestRecognizedEnvVars(t *testing.T) {
 	r.NotContains(set, "SP_ENCRYPTION_MASTER_KEY")
 	r.NotContains(set, "SP_ENCRYPTION_MASTER_KEY_FILE")
 	r.NotContains(set, "SP_ENCRYPTION_AUTO_MIGRATE")
-	// The k8xp typo must not be recognized (it is the near-miss the check warns on).
+	// The typo must not be recognized (it is the near-miss the check warns on).
 	r.NotContains(set, "SP_RATE_LIMITING_TRUSTED_PROXIES")
 }
 
