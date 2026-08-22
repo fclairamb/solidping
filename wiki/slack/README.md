@@ -3,8 +3,13 @@
 The SolidPing Slack app is configured from these manifests (paste into the
 Slack app config UI, or manage via the App Manifest API):
 
-- [`manifest-prod.json`](manifest-prod.json) — production app (`solidping.io`).
-- [`manifest-dev.json`](manifest-dev.json) — development app (`solidping.k8xp.com`).
+- [`manifest-prod.json`](manifest-prod.json) — production app, on the public
+  `solidping.io` host.
+- [`manifest-dev.json`](manifest-dev.json) — template for a second, development
+  app. Its URLs use the placeholder host `app.dev.example.com`: replace it with
+  wherever your dev instance is reachable before pasting. **A Slack app holds
+  one set of request URLs**, so dev needs its own app — it cannot share the
+  production one.
 
 ## Slash commands
 

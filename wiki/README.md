@@ -80,7 +80,7 @@ Project-wide standards and naming rules.
 Operational procedures for diagnosing the running system.
 
 - [runbooks/memory-profiling.md](runbooks/memory-profiling.md) — Memory profiling & leak detection: pprof heap/alloc/goroutine/block profiles per role, base-diffing, the off-heap (cgo/SQLite) rule, the `/api/mgmt/memory` snapshot + Prometheus surfaces, baseline/soak procedure, GC levers (`GOMEMLIMIT`/`GOGC`).
-- [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the k8xp SNI-passthrough / LoadBalancer prerequisite, the live acceptance checklist, and `tls_storage` handling rules.
+- [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the four edge options (SNI passthrough, dedicated LB, chained instances, external proxy), config reference, acceptance checklist and troubleshooting.
 
 ## Testing
 

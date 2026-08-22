@@ -22,32 +22,32 @@
     "slash_commands": [
       {
         "command": "/solidping",
-        "url": "https://solidping.k8xp.com/api/v1/integrations/slack/command",
+        "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
         "description": "Manage your SolidPing monitoring",
         "usage_hint": "[setup|create|list|config|incidents|ack|help]",
         "should_escape": false
       },
       {
         "command": "/comment",
-        "url": "https://solidping.k8xp.com/api/v1/integrations/slack/command",
+        "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
         "description": "Comment on a SolidPing incident",
         "usage_hint": "[#42] I think the central DNS is down",
         "should_escape": false
       },
       {
         "command": "/check",
-        "url": "https://solidping.k8xp.com/api/v1/integrations/slack/command",
+        "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
         "description": "Quick shortcut to create a check",
         "usage_hint": "https://example.com",
         "should_escape": false
       }
     ],
-    "unfurl_domains": ["solidping.io", "solidping.k8xp.com"]
+    "unfurl_domains": ["app.dev.example.com"]
   },
   "oauth_config": {
     "redirect_urls": [
-      "https://solidping.k8xp.com/api/v1/integrations/slack/oauth",
-      "https://solidping.k8xp.com/api/v1/auth/slack/callback"
+      "https://app.dev.example.com/api/v1/integrations/slack/oauth",
+      "https://app.dev.example.com/api/v1/auth/slack/callback"
     ],
     "scopes": {
       "user": ["openid", "profile", "email"],
@@ -75,7 +75,7 @@
   },
   "settings": {
     "event_subscriptions": {
-      "request_url": "https://solidping.k8xp.com/api/v1/integrations/slack/events",
+      "request_url": "https://app.dev.example.com/api/v1/integrations/slack/events",
       "bot_events": [
         "app_home_opened",
         "app_mention",
@@ -89,7 +89,7 @@
     },
     "interactivity": {
       "is_enabled": true,
-      "request_url": "https://solidping.k8xp.com/api/v1/integrations/slack/interaction"
+      "request_url": "https://app.dev.example.com/api/v1/integrations/slack/interaction"
     },
     "org_deploy_enabled": true,
     "socket_mode_enabled": false,
