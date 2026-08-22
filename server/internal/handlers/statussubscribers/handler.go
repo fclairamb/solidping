@@ -105,7 +105,7 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{result.Subscriber.Email}},
+		Recipients: email.Recipients{To: []string{result.Subscriber.EmailAddress()}},
 		Subject:    subject,
 		HTML:       htmlBody,
 		Text:       textBody,
@@ -154,6 +154,32 @@ func (h *Handler) statusPageURL(orgSlug, pageSlug string) string {
 	}
 
 	return fmt.Sprintf("%s/status0/%s/%s", h.baseURL(), orgSlug, pageSlug)
+}
+
+// CreateEndpointSubscriber handles
+// POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers (AUTHED).
+//
+// The public subscribe endpoint lives at a different path and is email-only.
+// This one is deliberately operator-side: a visitor pasting an incoming-webhook
+// URL has no verification story, and the URL is a credential that would then
+// be accepted from anyone.
+func (h *Handler) CreateEndpointSubscriber(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	statusPageUID := httpx.Param(req, "statusPageUid")
+
+	var body CreateEndpointSubscriberRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: "body", Message: "Invalid JSON format"},
+		})
+	}
+
+	created, err := h.svc.CreateEndpointSubscriber(req.Context(), orgSlug, statusPageUID, &body)
+	if err != nil {
+		return h.handleError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, map[string]any{"data": created})
 }
 
 // ListSubscribers handles GET /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers (authed).
@@ -212,6 +238,27 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	case errors.Is(err, ErrIncidentRequired):
 		return h.WriteValidationError(writer, "Incident required", []base.ValidationErrorField{
 			{Name: "incidentUid", Message: "incidentUid is required when scope is incident"},
+		})
+	case errors.Is(err, ErrInvalidChannel):
+		return h.WriteValidationError(writer, "Invalid channel", []base.ValidationErrorField{
+			{Name: "channel", Message: "Must be one of: webhook, slack"},
+		})
+	case errors.Is(err, ErrPublicChannelNotAllowed):
+		return h.WriteValidationError(writer, "Channel not available", []base.ValidationErrorField{
+			{Name: "channel", Message: "Public subscriptions are email-only. " +
+				"Webhook and Slack deliveries are registered by an operator from the dashboard."},
+		})
+	case errors.Is(err, ErrEndpointRequired):
+		return h.WriteValidationError(writer, "Endpoint required", []base.ValidationErrorField{
+			{Name: "url", Message: "A delivery URL is required"},
+		})
+	case errors.Is(err, ErrSlackWebhookExpected):
+		return h.WriteValidationError(writer, "Slack webhook expected", []base.ValidationErrorField{
+			{Name: "url", Message: "A Slack incoming-webhook URL (https://hooks.slack.com/...) is required"},
+		})
+	case errors.Is(err, ErrInvalidEndpointURL):
+		return h.WriteValidationError(writer, "Invalid endpoint URL", []base.ValidationErrorField{
+			{Name: "url", Message: "Must be an https URL pointing at a publicly reachable host"},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)

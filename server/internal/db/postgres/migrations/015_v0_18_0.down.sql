@@ -6,6 +6,61 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: status-subscriber-channels
+-- Teardown half of the status-subscriber-channels section (spec 2026-08-21-07).
+-- ==========================================================================
+
+-- LOSSY: every webhook and Slack subscription is DELETED, not merely
+-- downgraded. There is nowhere for them to go — the schema below has no column
+-- that can hold a delivery endpoint — and leaving the rows behind with a NULL
+-- email would violate the NOT NULL this restores. Deleting them is also the
+-- honest outcome: after a rollback nothing would deliver to them anyway.
+
+delete from status_page_subscriber where channel <> 'email';
+
+--bun:split
+
+drop index if exists idx_status_page_subscriber_live;
+
+--bun:split
+
+create unique index idx_status_page_subscriber_live
+  on status_page_subscriber (status_page_uid, email, scope, coalesce(incident_uid::text, ''))
+  where deleted_at is null;
+
+--bun:split
+
+alter table status_page_subscriber drop constraint if exists status_page_subscriber_channel_check;
+
+--bun:split
+
+alter table status_page_subscriber drop column if exists disabled_at;
+
+--bun:split
+
+alter table status_page_subscriber drop column if exists failure_count;
+
+--bun:split
+
+alter table status_page_subscriber drop column if exists endpoint_key;
+
+--bun:split
+
+alter table status_page_subscriber drop column if exists endpoint_hint;
+
+--bun:split
+
+alter table status_page_subscriber drop column if exists endpoint_private;
+
+--bun:split
+
+alter table status_page_subscriber drop column if exists channel;
+
+--bun:split
+
+alter table status_page_subscriber alter column email set not null;
+
+-- ==========================================================================
 -- SECTION: status-page-password
 -- Teardown half of the status-page-password section (spec 2026-08-21-07).
 -- ==========================================================================

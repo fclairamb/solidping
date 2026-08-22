@@ -46,7 +46,8 @@
     "submitting": "Subscribing…",
     "checkInbox": "Almost there! Check your inbox to confirm your subscription.",
     "error": "Something went wrong. Please try again.",
-    "feedLink": "Subscribe via RSS"
+    "feedLink": "Subscribe via RSS",
+    "emailOnlyNote": "Webhook and Slack notifications are set up by this page's operator — ask them if you need one."
   },
   "servicesOperational": "{{ok}} of {{total}} services operational",
   "activeIncidents": "Active incidents",

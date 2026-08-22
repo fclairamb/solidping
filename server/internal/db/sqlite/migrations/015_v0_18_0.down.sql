@@ -6,6 +6,80 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: status-subscriber-channels
+-- Teardown half of the status-subscriber-channels section (spec 2026-08-21-07).
+-- ==========================================================================
+
+-- LOSSY the same way the Postgres half is: every webhook and Slack
+-- subscription is deleted rather than downgraded, because nothing in the
+-- restored schema can hold a delivery endpoint.
+--
+-- SQLite needs the rebuild again to restore `email text not null`.
+
+PRAGMA foreign_keys=OFF;
+
+--bun:split
+
+delete from status_page_subscriber where channel <> 'email';
+
+--bun:split
+
+create table status_page_subscriber_old (
+  uid               text primary key,
+  organization_uid  text not null references organizations(uid),
+  status_page_uid   text not null references status_pages(uid),
+  email             text not null,
+  confirmed_at      text,
+  confirm_token     text not null,
+  unsubscribe_token text not null,
+  scope             text not null check (scope in ('page', 'incident')),
+  incident_uid      text references incidents(uid),
+  created_at        text not null default (datetime('now')),
+  deleted_at        text
+);
+
+--bun:split
+
+insert into status_page_subscriber_old (
+  uid, organization_uid, status_page_uid, email, confirmed_at, confirm_token,
+  unsubscribe_token, scope, incident_uid, created_at, deleted_at
+)
+select
+  uid, organization_uid, status_page_uid, coalesce(email, ''), confirmed_at, confirm_token,
+  unsubscribe_token, scope, incident_uid, created_at, deleted_at
+from status_page_subscriber;
+
+--bun:split
+
+drop table status_page_subscriber;
+
+--bun:split
+
+alter table status_page_subscriber_old rename to status_page_subscriber;
+
+--bun:split
+
+create unique index idx_status_page_subscriber_confirm_token on status_page_subscriber (confirm_token);
+
+--bun:split
+
+create unique index idx_status_page_subscriber_unsub_token on status_page_subscriber (unsubscribe_token);
+
+--bun:split
+
+create index idx_status_page_subscriber_page_confirmed on status_page_subscriber (status_page_uid, confirmed_at);
+
+--bun:split
+
+create unique index idx_status_page_subscriber_live
+  on status_page_subscriber (status_page_uid, email, scope, coalesce(incident_uid, ''))
+  where deleted_at is null;
+
+--bun:split
+
+PRAGMA foreign_keys=ON;
+
+-- ==========================================================================
 -- SECTION: status-page-password
 -- Teardown half of the status-page-password section (spec 2026-08-21-07).
 -- ==========================================================================

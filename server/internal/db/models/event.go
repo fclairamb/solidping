@@ -60,6 +60,13 @@ const (
 	// still fires on its own schedule.
 	EventTypeStatusPageIncidentResolved EventType = "statuspage.incident.resolved"
 
+	// EventTypeStatusSubscriberDisabled indicates a webhook/Slack status-page
+	// subscription was disabled after repeated delivery failures (spec
+	// 2026-08-21-07). Without it the only symptom of a broken webhook is
+	// "we stopped getting notifications" — which nobody notices until an
+	// incident.
+	EventTypeStatusSubscriberDisabled EventType = "statuspage.subscriber.disabled"
+
 	// EventTypeStatusUpdateCreated indicates a status update was created.
 	EventTypeStatusUpdateCreated EventType = "status_update.created"
 	// EventTypeStatusUpdateUpdated indicates a status update was modified.

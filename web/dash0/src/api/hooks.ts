@@ -2180,13 +2180,58 @@ export function useVerifyStatusPageDomain(org: string, uid: string) {
 }
 
 // Status page subscriber hooks (read-only admin list + remove).
+/** Where a status-page subscription delivers. */
+export type StatusPageSubscriberChannel = "email" | "webhook" | "slack";
+
 export interface StatusPageSubscriber {
   uid: string;
+  /** Empty for a webhook/Slack subscription. */
   email: string;
+  channel: StatusPageSubscriberChannel;
+  /**
+   * MASKED delivery URL. The API never returns the real one — an
+   * incoming-webhook URL is a credential — so this is only ever enough to
+   * recognise which endpoint a row is.
+   */
+  endpoint?: string;
   scope: string;
   incidentUid?: string;
   confirmed: boolean;
+  /** Consecutive delivery failures; reset by a success. */
+  failureCount?: number;
+  /** True once the circuit breaker disabled the subscription. */
+  disabled?: boolean;
   createdAt: string;
+}
+
+export interface CreateEndpointSubscriberRequest {
+  channel: Exclude<StatusPageSubscriberChannel, "email">;
+  url: string;
+  /** Optional; the server generates one when omitted. Never read back. */
+  signingSecret?: string;
+}
+
+/**
+ * Registers a webhook or Slack delivery for a status page.
+ *
+ * Operator-side by design: the public subscribe endpoint is email-only,
+ * because a visitor pasting an incoming-webhook URL has no verification story.
+ */
+export function useCreateEndpointSubscriber(org: string, statusPageUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateEndpointSubscriberRequest) =>
+      apiFetch<{ data: StatusPageSubscriber }>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers`,
+        { method: "POST", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSubscribers", org, statusPageUid],
+      });
+    },
+  });
 }
 
 export function useStatusPageSubscribers(org: string, statusPageUid: string) {

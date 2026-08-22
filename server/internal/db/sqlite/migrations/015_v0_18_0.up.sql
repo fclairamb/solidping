@@ -9,6 +9,7 @@
 --   SECTION: generic-attachments        files.topic/details attachment link
 --   SECTION: status-page-branding       status_pages logo/favicon/hide_branding
 --   SECTION: status-page-password       status_pages password_hash
+--   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -210,6 +211,95 @@ create index status_pages_logo_file_idx
 create index status_pages_favicon_file_idx
   on status_pages (favicon_file_uid)
   where deleted_at is null and favicon_file_uid is not null;
+
+--bun:split
+
+PRAGMA foreign_keys=ON;
+
+-- ==========================================================================
+-- SECTION: status-subscriber-channels
+-- Webhook and Slack status-page subscriptions (spec 2026-08-21-07).
+-- ==========================================================================
+
+-- SQLite mirror of the status-subscriber-channels section of
+-- postgres/migrations/015_v0_18_0.up.sql. See the Postgres file for why the
+-- endpoint URL never lands in a readable column, what `endpoint_key` is for,
+-- and why the failure counter exists.
+--
+-- Dialect difference: SQLite cannot drop a NOT NULL, so making `email`
+-- nullable needs the *_new rebuild pattern. This table is referenced by
+-- nothing, so the rebuild is simpler than the status_pages one above — but the
+-- foreign_keys PRAGMA is still toggled, because status_page_subscriber itself
+-- references organizations/status_pages/incidents and a rebuild under
+-- foreign_keys=ON would re-validate every one of those on insert.
+
+PRAGMA foreign_keys=OFF;
+
+--bun:split
+
+create table status_page_subscriber_new (
+  uid               text primary key,
+  organization_uid  text not null references organizations(uid),
+  status_page_uid   text not null references status_pages(uid),
+  -- Nullable now: a webhook or Slack subscriber has no email address.
+  email             text,
+  confirmed_at      text,
+  confirm_token     text not null,
+  unsubscribe_token text not null,
+  scope             text not null check (scope in ('page', 'incident')),
+  incident_uid      text references incidents(uid),
+  created_at        text not null default (datetime('now')),
+  deleted_at        text,
+  channel           text not null default 'email' check (channel in ('email', 'webhook', 'slack')),
+  endpoint_private  text,
+  endpoint_hint     text,
+  endpoint_key      text,
+  failure_count     integer not null default 0,
+  disabled_at       text
+);
+
+--bun:split
+
+insert into status_page_subscriber_new (
+  uid, organization_uid, status_page_uid, email, confirmed_at, confirm_token,
+  unsubscribe_token, scope, incident_uid, created_at, deleted_at
+)
+select
+  uid, organization_uid, status_page_uid, email, confirmed_at, confirm_token,
+  unsubscribe_token, scope, incident_uid, created_at, deleted_at
+from status_page_subscriber;
+
+--bun:split
+
+drop table status_page_subscriber;
+
+--bun:split
+
+alter table status_page_subscriber_new rename to status_page_subscriber;
+
+--bun:split
+
+create unique index idx_status_page_subscriber_confirm_token on status_page_subscriber (confirm_token);
+
+--bun:split
+
+create unique index idx_status_page_subscriber_unsub_token on status_page_subscriber (unsubscribe_token);
+
+--bun:split
+
+create index idx_status_page_subscriber_page_confirmed on status_page_subscriber (status_page_uid, confirmed_at);
+
+--bun:split
+
+-- Channel-aware live-uniqueness index: the pre-existing one keyed on
+-- (page, email, scope, incident) and would collide every webhook row against
+-- every other one now that `email` is null for them.
+create unique index idx_status_page_subscriber_live
+  on status_page_subscriber (
+    status_page_uid, channel, coalesce(email, ''), coalesce(endpoint_key, ''),
+    scope, coalesce(incident_uid, '')
+  )
+  where deleted_at is null;
 
 --bun:split
 

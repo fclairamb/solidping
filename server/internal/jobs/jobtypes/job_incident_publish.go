@@ -90,17 +90,18 @@ func (r *IncidentPublishJobRun) Run(ctx context.Context, jctx *jobdef.JobContext
 	if jctx.Services != nil {
 		svc.SetJobsService(jctx.Services.Jobs)
 
-		if jctx.Services.EmailSender != nil && jctx.Services.EmailFormatter != nil {
-			baseURL := ""
-			if jctx.AppConfig != nil {
-				baseURL = jctx.AppConfig.Server.BaseURL
-			}
-
-			svc.SetSubscriberNotifier(statussubscribers.NewNotifier(
-				jctx.DBService, jctx.Services.EmailSender, jctx.Services.EmailFormatter,
-				baseURL, jctx.Logger,
-			))
+		// Unconditional now: webhook/Slack subscriptions deliver even on an
+		// instance with no mailer, and the notifier skips only the email leg
+		// when the sender is nil.
+		baseURL := ""
+		if jctx.AppConfig != nil {
+			baseURL = jctx.AppConfig.Server.BaseURL
 		}
+
+		svc.SetSubscriberNotifier(statussubscribers.NewNotifier(
+			jctx.DBService, jctx.Services.EmailSender, jctx.Services.EmailFormatter,
+			baseURL, jctx.Logger, jctx.Services.Credentials,
+		))
 	}
 
 	if err := svc.AutoPublish(ctx, orgUID, r.config.IncidentUID, r.config.StatusPageUID); err != nil {

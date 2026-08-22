@@ -2323,6 +2323,12 @@ func (m *mockDBService) ResubscribeSubscriber(_ context.Context, _, _, _ string)
 	return nil
 }
 
+func (m *mockDBService) UpdateSubscriberDelivery(
+	_ context.Context, _ string, _ int, _ *time.Time,
+) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) SoftDeleteSubscriber(_ context.Context, _ string) error {
 	return nil
 }

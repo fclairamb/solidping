@@ -10,6 +10,7 @@
 --   SECTION: generic-attachments        files.topic/details attachment link
 --   SECTION: status-page-branding       status_pages logo/favicon/hide_branding
 --   SECTION: status-page-password       status_pages password_hash
+--   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -187,3 +188,91 @@ comment on column status_pages.password_hash is
 
 comment on column status_pages.visibility is
   'Access control: public (anyone), private (hidden entirely, 404), or password (shared with a secret, 401 until unlocked).';
+
+-- ==========================================================================
+-- SECTION: status-subscriber-channels
+-- Webhook and Slack status-page subscriptions (spec 2026-08-21-07).
+-- ==========================================================================
+
+-- A status-page subscriber is no longer necessarily an email address.
+--
+-- `channel` names what the row delivers to. `email` (the only prior kind) is
+-- the DDL default so every existing row keeps its meaning without a backfill.
+--
+-- The endpoint URL is treated with exactly the same opacity as a subscriber
+-- email, and then some: an incoming-webhook URL IS a credential — anyone
+-- holding it can post into the customer's channel. So it never lands in a
+-- readable column. `endpoint_private` holds the AES-256-GCM envelope written by
+-- internal/crypto/credentials (per-org DEK, same machinery as
+-- integration_connections.settings_private), carrying both the URL and the
+-- optional per-subscriber signing secret. `endpoint_hint` is the only part any
+-- API response may echo: a masked remnant, enough for an operator to recognise
+-- which webhook a row is, useless to anyone who steals the response.
+--
+-- `endpoint_key` is a sha256 of the normalized URL. It exists purely so the
+-- live-uniqueness index can dedupe webhook rows the way `email` dedupes mail
+-- rows, WITHOUT putting the URL itself in an index (indexes end up in backups,
+-- query plans and error messages).
+--
+-- `failure_count` / `disabled_at` are the delivery-failure circuit breaker: a
+-- webhook whose endpoint has gone away must stop being retried forever, and
+-- the operator must be able to see that it stopped and why — hence the
+-- accompanying `statuspage.subscriber.disabled` event, not just a silent flag.
+alter table status_page_subscriber alter column email drop not null;
+
+--bun:split
+
+alter table status_page_subscriber
+  add column if not exists channel text not null default 'email';
+
+--bun:split
+
+alter table status_page_subscriber
+  add constraint status_page_subscriber_channel_check
+  check (channel in ('email', 'webhook', 'slack'));
+
+--bun:split
+
+alter table status_page_subscriber add column if not exists endpoint_private text;
+
+--bun:split
+
+alter table status_page_subscriber add column if not exists endpoint_hint text;
+
+--bun:split
+
+alter table status_page_subscriber add column if not exists endpoint_key text;
+
+--bun:split
+
+alter table status_page_subscriber add column if not exists failure_count integer not null default 0;
+
+--bun:split
+
+alter table status_page_subscriber add column if not exists disabled_at timestamptz;
+
+--bun:split
+
+-- The live-uniqueness index has to become channel-aware. The old one keyed on
+-- (page, email, scope, incident) and would collide every webhook row against
+-- every other one now that `email` is null for them.
+drop index if exists idx_status_page_subscriber_live;
+
+--bun:split
+
+create unique index idx_status_page_subscriber_live
+  on status_page_subscriber (
+    status_page_uid, channel, coalesce(email, ''), coalesce(endpoint_key, ''),
+    scope, coalesce(incident_uid::text, '')
+  )
+  where deleted_at is null;
+
+--bun:split
+
+comment on column status_page_subscriber.endpoint_private is
+  'Encrypted envelope holding the delivery URL and optional signing secret. NEVER returned by any endpoint.';
+
+--bun:split
+
+comment on column status_page_subscriber.endpoint_hint is
+  'Masked remnant of the delivery URL — the only part an API response may echo.';

@@ -117,7 +117,21 @@
     "removed": "Abonné retiré",
     "removeError": "Échec du retrait de l'abonné",
     "removeConfirmTitle": "Retirer l'abonné ?",
-    "removeConfirmDescription": "Cet abonné ne recevra plus de notifications. Il pourra se réabonner depuis la page de statut publique."
+    "removeConfirmDescription": "Cet abonné ne recevra plus de notifications. Il pourra se réabonner depuis la page de statut publique.",
+    "destination": "Destination",
+    "channel": "Canal",
+    "disabled": "Désactivé",
+    "channels": {
+      "email": "E-mail",
+      "webhook": "Webhook",
+      "slack": "Slack"
+    },
+    "addEndpoint": "Ajouter une remise webhook ou Slack",
+    "addEndpointHint": "À configurer ici, pas sur la page publique : le formulaire public n’accepte que les e-mails, car on ne peut pas vérifier un visiteur qui colle une URL de webhook. Les remises sont signées et s’arrêtent automatiquement après des échecs répétés.",
+    "url": "URL de remise",
+    "add": "Ajouter",
+    "endpointAdded": "Remise ajoutée",
+    "endpointAddError": "Impossible d’ajouter la remise"
   },
   "customDomain": {
     "title": "Domaine personnalisé",

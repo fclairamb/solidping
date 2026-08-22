@@ -779,6 +779,10 @@ type Service interface {
 	ConfirmSubscriber(ctx context.Context, uid string, confirmedAt time.Time) error
 	ResubscribeSubscriber(ctx context.Context, uid, confirmToken, unsubscribeToken string) error
 	SoftDeleteSubscriber(ctx context.Context, uid string) error
+	// UpdateSubscriberDelivery records a webhook/Slack delivery outcome: the
+	// consecutive-failure counter and the circuit-breaker timestamp (nil
+	// clears it).
+	UpdateSubscriberDelivery(ctx context.Context, uid string, failureCount int, disabledAt *time.Time) error
 	ListConfirmedSubscribers(
 		ctx context.Context, statusPageUID string, incidentUID *string,
 	) ([]*models.StatusPageSubscriber, error)

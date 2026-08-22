@@ -204,10 +204,12 @@ func NewCheckWorker(
 	publicationSvc.SetJobsService(svc.Jobs)
 	publicationSvc.SetScheduler(jobtypes.NewIncidentPublishScheduler(svc.Jobs))
 
-	if svc.EmailSender != nil && svc.EmailFormatter != nil {
-		publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
-			dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL, slog.Default()))
-	}
+	// Unconditional now: the fan-out no longer needs a mailer to be useful —
+	// webhook and Slack subscriptions deliver on an instance with no SMTP at
+	// all, and the notifier skips only the email leg when the sender is nil.
+	publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
+		dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL,
+		slog.Default(), svc.Credentials))
 
 	incidentSvc.SetPublicationHook(publicationSvc)
 

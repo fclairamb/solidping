@@ -1031,7 +1031,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// of them, is the only arrangement where that cannot happen by omission.
 	statusSubscriberNotifier := statussubscribers.NewNotifier(
 		s.dbService, s.services.EmailSender, s.services.EmailFormatter,
-		s.config.Server.BaseURL, slog.Default())
+		s.config.Server.BaseURL, slog.Default(), s.services.Credentials)
 
 	incidentPublicationsService := incidentpublications.NewService(
 		s.dbService, s.services.Clock, s.services.Realtime)
@@ -1567,11 +1567,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status page subscribers (public email/RSS subscriptions). The handler is
 	// shared by the authed admin routes (below) and the public routes (further
 	// down, outside RequireAuth).
-	statusSubscribersService := statussubscribers.NewService(s.dbService)
+	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials)
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
 	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
+	// Operator-side webhook/Slack subscriptions (spec 2026-08-21-07). Note the
+	// deliberate asymmetry with the PUBLIC subscribe route further down: that
+	// one is email-only, this one is the only way to register a delivery URL.
+	orgStatusPages.POST("/:statusPageUid/subscribers", statusSubscribersHandler.CreateEndpointSubscriber)
 	orgStatusPages.DELETE("/:statusPageUid/subscribers/:uid", statusSubscribersHandler.RemoveSubscriber)
 
 	// Maintenance windows routes (authentication required)

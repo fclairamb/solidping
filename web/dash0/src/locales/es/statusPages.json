@@ -117,7 +117,21 @@
     "removed": "Suscriptor eliminado",
     "removeError": "Error al eliminar el suscriptor",
     "removeConfirmTitle": "¿Eliminar suscriptor?",
-    "removeConfirmDescription": "Este suscriptor dejará de recibir notificaciones. Podrá volver a suscribirse desde la página de estado pública."
+    "removeConfirmDescription": "Este suscriptor dejará de recibir notificaciones. Podrá volver a suscribirse desde la página de estado pública.",
+    "destination": "Destino",
+    "channel": "Canal",
+    "disabled": "Desactivada",
+    "channels": {
+      "email": "Correo",
+      "webhook": "Webhook",
+      "slack": "Slack"
+    },
+    "addEndpoint": "Añadir una entrega por webhook o Slack",
+    "addEndpointHint": "Se configura aquí, no en la página pública: el formulario público solo acepta correos, porque no se puede verificar a un visitante que pega una URL de webhook. Las entregas van firmadas y se detienen automáticamente tras fallos repetidos.",
+    "url": "URL de entrega",
+    "add": "Añadir",
+    "endpointAdded": "Entrega añadida",
+    "endpointAddError": "No se ha podido añadir la entrega"
   },
   "customDomain": {
     "title": "Dominio personalizado",

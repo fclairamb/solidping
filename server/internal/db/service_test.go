@@ -1893,7 +1893,7 @@ func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service
 		found, err := svc.FindLiveSubscriber(
 			ctx, page.UID, "a@example.com", models.SubscriberScopePage, nil)
 		r.NoError(err)
-		r.Equal("a@example.com", found.Email)
+		r.Equal("a@example.com", found.EmailAddress())
 	})
 
 	t.Run("ConfirmConsumesToken", func(_ *testing.T) {
@@ -1992,7 +1992,7 @@ func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service
 func subscriberEmails(subs []*models.StatusPageSubscriber) []string {
 	emails := make([]string, 0, len(subs))
 	for _, s := range subs {
-		emails = append(emails, s.Email)
+		emails = append(emails, s.EmailAddress())
 	}
 
 	return emails

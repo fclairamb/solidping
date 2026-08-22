@@ -46,7 +46,8 @@
     "submitting": "Suscribiendo…",
     "checkInbox": "¡Casi listo! Revisa tu bandeja de entrada para confirmar tu suscripción.",
     "error": "Algo salió mal. Inténtalo de nuevo.",
-    "feedLink": "Suscribirse por RSS"
+    "feedLink": "Suscribirse por RSS",
+    "emailOnlyNote": "Las notificaciones por webhook y Slack las configura quien gestiona esta página: pídeselas si las necesitas."
   },
   "servicesOperational": "{{ok}} de {{total}} servicios operativos",
   "activeIncidents": "Incidencias activas",

@@ -46,7 +46,8 @@
     "submitting": "Abonnement…",
     "checkInbox": "Presque terminé ! Consultez votre boîte de réception pour confirmer votre abonnement.",
     "error": "Une erreur s'est produite. Veuillez réessayer.",
-    "feedLink": "S'abonner via RSS"
+    "feedLink": "S'abonner via RSS",
+    "emailOnlyNote": "Les notifications par webhook et Slack sont configurées par l’exploitant de cette page — demandez-lui si vous en avez besoin."
   },
   "servicesOperational": "{{ok}} service(s) opérationnel(s) sur {{total}}",
   "activeIncidents": "Incidents en cours",

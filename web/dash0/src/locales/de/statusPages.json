@@ -117,7 +117,21 @@
     "removed": "Abonnent entfernt",
     "removeError": "Entfernen des Abonnenten fehlgeschlagen",
     "removeConfirmTitle": "Abonnent entfernen?",
-    "removeConfirmDescription": "Dieser Abonnent erhält keine Benachrichtigungen mehr. Er kann sich über die öffentliche Statusseite erneut anmelden."
+    "removeConfirmDescription": "Dieser Abonnent erhält keine Benachrichtigungen mehr. Er kann sich über die öffentliche Statusseite erneut anmelden.",
+    "destination": "Ziel",
+    "channel": "Kanal",
+    "disabled": "Deaktiviert",
+    "channels": {
+      "email": "E-Mail",
+      "webhook": "Webhook",
+      "slack": "Slack"
+    },
+    "addEndpoint": "Webhook- oder Slack-Zustellung hinzufügen",
+    "addEndpointHint": "Wird hier eingerichtet, nicht auf der öffentlichen Seite: das öffentliche Formular akzeptiert nur E-Mail-Adressen, denn eine von Besuchern eingefügte Webhook-URL lässt sich nicht verifizieren. Zustellungen werden signiert und nach wiederholten Fehlern automatisch gestoppt.",
+    "url": "Zustell-URL",
+    "add": "Hinzufügen",
+    "endpointAdded": "Zustellung hinzugefügt",
+    "endpointAddError": "Zustellung konnte nicht hinzugefügt werden"
   },
   "customDomain": {
     "title": "Eigene Domain",

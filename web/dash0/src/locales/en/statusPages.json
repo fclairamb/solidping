@@ -117,7 +117,21 @@
     "removed": "Subscriber removed",
     "removeError": "Failed to remove subscriber",
     "removeConfirmTitle": "Remove subscriber?",
-    "removeConfirmDescription": "This subscriber will stop receiving notifications. They can re-subscribe from the public status page."
+    "removeConfirmDescription": "This subscriber will stop receiving notifications. They can re-subscribe from the public status page.",
+    "destination": "Destination",
+    "channel": "Channel",
+    "disabled": "Disabled",
+    "channels": {
+      "email": "Email",
+      "webhook": "Webhook",
+      "slack": "Slack"
+    },
+    "addEndpoint": "Add a webhook or Slack delivery",
+    "addEndpointHint": "Registered here, not on the public page: the public subscribe form is email-only, because a visitor pasting an incoming-webhook URL cannot be verified. Deliveries are signed and stop automatically after repeated failures.",
+    "url": "Delivery URL",
+    "add": "Add",
+    "endpointAdded": "Delivery added",
+    "endpointAddError": "Could not add the delivery"
   },
   "customDomain": {
     "title": "Custom domain",
