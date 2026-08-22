@@ -65,11 +65,11 @@ const (
 //
 // It is process-global because the alternative — threading an audit config
 // through forty service constructors — buys nothing: there is exactly one
-// setting, for the whole process, for the lifetime of the process.
-// through forty service constructors. Initialized true (the documented default)
-// by newCaptureIPFlag rather than by an init function.
+// setting, for the whole process, for the lifetime of the process. Initialized
+// true (the documented default) by newCaptureIPFlag rather than by an init
+// function.
 //
-//nolint:gochecknoglobals // one process-wide setting, deliberately not threaded
+//nolint:gochecknoglobals // see above.
 var captureIP = newCaptureIPFlag()
 
 func newCaptureIPFlag() *atomic.Bool {

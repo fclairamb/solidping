@@ -678,3 +678,110 @@ func TestFailedLoginFoldsAcrossEphemeralPorts(t *testing.T) {
 		r.NotContains(*event.SourceIP, ":5", "the stored address must carry no port")
 	}
 }
+
+// unknownPayloadValue is a type Redact's switch has never heard of — a stand-in
+// for whatever a future emitter passes.
+type unknownPayloadValue struct {
+	Secret string
+}
+
+// TestRedactFailsClosedOnUnknownValueTypes is the guard on the branch that
+// used to say "return value, true".
+//
+// Redaction that inspects only the shapes it already knows is redaction that
+// stops working the day someone adds a new one — and it fails SILENTLY, with
+// every existing test still green, having written credentials into a table
+// every org admin can read. So the default drops.
+//
+// The positive controls matter as much as the negatives here: a Redact that
+// simply dropped everything would satisfy "the secret is gone" trivially.
+func TestRedactFailsClosedOnUnknownValueTypes(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	out := audit.Redact(models.JSONMap{
+		"mystery": unknownPayloadValue{Secret: "hunter2"},
+		"pointer": &unknownPayloadValue{Secret: "hunter2"},
+		// Positive controls: the scalars an emitter legitimately passes.
+		"name":    "acme",
+		"count":   7,
+		"ratio":   1.5,
+		"enabled": true,
+		"missing": nil,
+		"when":    time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC),
+	})
+
+	_, present := out["mystery"]
+	r.False(present, "an unrecognized value type must be dropped, not stored verbatim")
+	_, present = out["pointer"]
+	r.False(present)
+
+	r.Equal("acme", out["name"])
+	r.Equal(7, out["count"])
+	r.InEpsilon(1.5, out["ratio"], 0.0001)
+	r.Equal(true, out["enabled"])
+	r.Contains(out, "missing")
+	r.NotNil(out["when"])
+}
+
+// TestRedactReachesSecretsInsideSlicesOfMaps — the shape the fail-closed
+// default was hiding. A slice of maps is exactly how a list of integration
+// settings or escalation targets would arrive, and before this the whole slice
+// went through untouched.
+func TestRedactReachesSecretsInsideSlicesOfMaps(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	out := audit.Redact(models.JSONMap{
+		"targets": []map[string]any{
+			{"kind": "webhook", "auth_token": "AC-secret", "nested": map[string]any{"password": "hunter2", "kept": "yes"}},
+			{"kind": "email"},
+		},
+		"jsonmaps":   []models.JSONMap{{"region": "eu-west", "client_secret": "shhh"}},
+		"stringmap":  map[string]string{"region": "eu-west", "api_key": "sk-live-123"},
+		"plain_list": []any{"one", "two"},
+	})
+
+	targets, ok := out["targets"].([]any)
+	r.True(ok, "a slice of maps must survive as a slice")
+	r.Len(targets, 2)
+
+	first, ok := targets[0].(map[string]any)
+	r.True(ok)
+	// Positive control: the non-sensitive keys are still there.
+	r.Equal("webhook", first["kind"])
+
+	_, present := first["auth_token"]
+	r.False(present, "a secret one map deep inside a slice must be redacted")
+
+	// One level further down, the depth bound takes over: the map itself
+	// survives but every value inside it is past maxDepth and dropped. Either
+	// mechanism alone would have kept the password out; asserting the outcome
+	// (not which rule produced it) is what keeps this test honest if the bound
+	// is ever retuned.
+	nested, ok := first["nested"].(map[string]any)
+	r.True(ok)
+	r.Empty(nested, "content past maxDepth is dropped, not walked")
+
+	_, present = nested["password"]
+	r.False(present)
+
+	jsonmaps, ok := out["jsonmaps"].([]any)
+	r.True(ok)
+	firstJSON, ok := jsonmaps[0].(map[string]any)
+	r.True(ok)
+	r.Equal("eu-west", firstJSON["region"])
+	_, present = firstJSON["client_secret"]
+	r.False(present)
+
+	stringmap, ok := out["stringmap"].(map[string]any)
+	r.True(ok)
+	r.Equal("eu-west", stringmap["region"])
+	_, present = stringmap["api_key"]
+	r.False(present)
+
+	// Positive control: an ordinary list is unaffected.
+	r.Equal([]any{"one", "two"}, out["plain_list"])
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -126,18 +127,81 @@ func redactValue(value any, depth int) (any, bool) {
 		return redactMap(typed, depth), true
 	case models.JSONMap:
 		return redactMap(map[string]any(typed), depth), true
+	case map[string]string:
+		return redactStringMap(typed), true
 	case []any:
 		return redactSlice(typed, depth), true
 	case []string:
-		out := make([]any, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, truncate(item, maxValueLen))
+		return redactStringSlice(typed), true
+	case []map[string]any:
+		return redactMapSlice(typed, depth), true
+	case []models.JSONMap:
+		return redactJSONMapSlice(typed, depth), true
+	default:
+		return redactScalar(value)
+	}
+}
+
+// redactScalar handles the leaf types. It FAILS CLOSED: anything not
+// enumerated here is dropped rather than stored verbatim.
+//
+// The alternative — "no current emitter passes one of those, so pass it
+// through" — is how a redaction function stops working. A future emitter
+// handing this an unrecognized container would bypass key filtering entirely
+// and write credentials into a table every org admin can read, silently, with
+// every test still green. The types below are exactly the ones that cannot
+// carry a nested key.
+func redactScalar(value any) (any, bool) {
+	switch value.(type) {
+	case nil, bool,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64, time.Time:
+		return value, true
+	default:
+		return nil, false
+	}
+}
+
+func redactStringMap(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
+
+	for key, item := range in {
+		if IsSensitiveKey(key) {
+			continue
 		}
 
-		return out, true
-	default:
-		return value, true
+		out[key] = truncate(item, maxValueLen)
 	}
+
+	return out
+}
+
+func redactStringSlice(in []string) []any {
+	out := make([]any, 0, len(in))
+	for _, item := range in {
+		out = append(out, truncate(item, maxValueLen))
+	}
+
+	return out
+}
+
+func redactMapSlice(in []map[string]any, depth int) []any {
+	out := make([]any, 0, len(in))
+	for _, item := range in {
+		out = append(out, redactMap(item, depth+1))
+	}
+
+	return out
+}
+
+func redactJSONMapSlice(in []models.JSONMap, depth int) []any {
+	out := make([]any, 0, len(in))
+	for _, item := range in {
+		out = append(out, redactMap(map[string]any(item), depth+1))
+	}
+
+	return out
 }
 
 func redactMap(in map[string]any, depth int) map[string]any {
