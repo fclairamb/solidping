@@ -1,7 +1,6 @@
 package statuspageassets_test
 
 import (
-	"context"
 	"io"
 	"strings"
 	"testing"
@@ -22,7 +21,6 @@ import (
 const pngBytes = "\x89PNG\r\n\x1a\n-not-really-a-png-but-opaque-bytes"
 
 type assetSetup struct {
-	ctx   context.Context
 	dbSvc db.Service
 	svc   *statuspageassets.Service
 	org   *models.Organization
@@ -56,7 +54,6 @@ func newAssetSetup(t *testing.T) *assetSetup {
 	cfg.FileStorage.LocalRoot = t.TempDir()
 
 	return &assetSetup{
-		ctx:   ctx,
 		dbSvc: dbSvc,
 		svc:   statuspageassets.NewService(dbSvc, files.NewService(dbSvc, cfg)),
 		org:   org,
@@ -81,7 +78,7 @@ func TestUploadPointsThePageAtTheFileAndServesIt(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	page, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
 	r.NotNil(page.LogoFileUID)
 	r.Nil(page.FaviconFileUID, "uploading a logo must not touch the favicon slot")
@@ -90,7 +87,7 @@ func TestUploadPointsThePageAtTheFileAndServesIt(t *testing.T) {
 	r.NotNil(url)
 	r.Equal(statuspageassets.PublicPathPrefix+*page.LogoFileUID, *url)
 
-	file, body, err := s.svc.OpenAsset(s.ctx, *page.LogoFileUID)
+	file, body, err := s.svc.OpenAsset(t.Context(), *page.LogoFileUID)
 	r.NoError(err)
 
 	defer func() { _ = body.Close() }()
@@ -109,16 +106,16 @@ func TestFaviconSlotIsIndependent(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	_, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	_, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
 
-	page, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindFavicon, upload("icon"), nil)
+	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindFavicon, upload("icon"), nil)
 	r.NoError(err)
 	r.NotNil(page.LogoFileUID)
 	r.NotNil(page.FaviconFileUID)
 	r.NotEqual(*page.LogoFileUID, *page.FaviconFileUID)
 
-	page, err = s.svc.Clear(s.ctx, "acme", "acme-status", statuspageassets.KindFavicon)
+	page, err = s.svc.Clear(t.Context(), "acme", "acme-status", statuspageassets.KindFavicon)
 	r.NoError(err)
 	r.NotNil(page.LogoFileUID, "clearing the favicon must not clear the logo")
 	r.Nil(page.FaviconFileUID)
@@ -132,18 +129,18 @@ func TestReplacingAnAssetUnpublishesTheOldBlob(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	first, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, upload("one"), nil)
+	first, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload("one"), nil)
 	r.NoError(err)
 	oldUID := *first.LogoFileUID
 
-	second, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, upload("two"), nil)
+	second, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload("two"), nil)
 	r.NoError(err)
 	r.NotEqual(oldUID, *second.LogoFileUID)
 
-	_, _, err = s.svc.OpenAsset(s.ctx, oldUID)
+	_, _, err = s.svc.OpenAsset(t.Context(), oldUID)
 	r.ErrorIs(err, statuspageassets.ErrAssetNotFound, "the replaced blob must stop resolving")
 
-	_, body, err := s.svc.OpenAsset(s.ctx, *second.LogoFileUID)
+	_, body, err := s.svc.OpenAsset(t.Context(), *second.LogoFileUID)
 	r.NoError(err)
 	r.NoError(body.Close())
 }
@@ -155,15 +152,15 @@ func TestClearingAnAssetUnpublishesTheBlob(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	page, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
 	uid := *page.LogoFileUID
 
-	cleared, err := s.svc.Clear(s.ctx, "acme", "acme-status", statuspageassets.KindLogo)
+	cleared, err := s.svc.Clear(t.Context(), "acme", "acme-status", statuspageassets.KindLogo)
 	r.NoError(err)
 	r.Nil(cleared.LogoFileUID)
 
-	_, _, err = s.svc.OpenAsset(s.ctx, uid)
+	_, _, err = s.svc.OpenAsset(t.Context(), uid)
 	r.ErrorIs(err, statuspageassets.ErrAssetNotFound)
 }
 
@@ -176,19 +173,19 @@ func TestDisabledPageStopsServingItsAssets(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	page, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
 	uid := *page.LogoFileUID
 
 	// Positive control first: it resolves while the page is enabled.
-	_, body, err := s.svc.OpenAsset(s.ctx, uid)
+	_, body, err := s.svc.OpenAsset(t.Context(), uid)
 	r.NoError(err)
 	r.NoError(body.Close())
 
 	disabled := false
-	r.NoError(s.dbSvc.UpdateStatusPage(s.ctx, page.UID, &models.StatusPageUpdate{Enabled: &disabled}))
+	r.NoError(s.dbSvc.UpdateStatusPage(t.Context(), page.UID, &models.StatusPageUpdate{Enabled: &disabled}))
 
-	_, _, err = s.svc.OpenAsset(s.ctx, uid)
+	_, _, err = s.svc.OpenAsset(t.Context(), uid)
 	r.ErrorIs(err, statuspageassets.ErrAssetNotFound)
 }
 
@@ -198,13 +195,13 @@ func TestDeletedPageStopsServingItsAssets(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	page, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
 	uid := *page.LogoFileUID
 
-	r.NoError(s.dbSvc.DeleteStatusPage(s.ctx, page.UID))
+	r.NoError(s.dbSvc.DeleteStatusPage(t.Context(), page.UID))
 
-	_, _, err = s.svc.OpenAsset(s.ctx, uid)
+	_, _, err = s.svc.OpenAsset(t.Context(), uid)
 	r.ErrorIs(err, statuspageassets.ErrAssetNotFound)
 }
 
@@ -216,19 +213,19 @@ func TestUploadRejectsOversizeAndEmpty(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	_, err := s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, statuspageassets.Upload{
+	_, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, statuspageassets.Upload{
 		Name: "big.png", MIMEType: "image/png",
 		Size: statuspageassets.MaxLogoSize + 1, Body: strings.NewReader("x"),
 	}, nil)
 	r.ErrorIs(err, statuspageassets.ErrAssetTooLarge)
 
-	_, err = s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindFavicon, statuspageassets.Upload{
+	_, err = s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindFavicon, statuspageassets.Upload{
 		Name: "big.ico", MIMEType: "image/png",
 		Size: statuspageassets.MaxFaviconSize + 1, Body: strings.NewReader("x"),
 	}, nil)
 	r.ErrorIs(err, statuspageassets.ErrAssetTooLarge, "the favicon cap is tighter than the logo cap")
 
-	_, err = s.svc.Upload(s.ctx, "acme", "acme-status", statuspageassets.KindLogo, statuspageassets.Upload{
+	_, err = s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, statuspageassets.Upload{
 		Name: "empty.png", MIMEType: "image/png", Size: 0, Body: strings.NewReader(""),
 	}, nil)
 	r.ErrorIs(err, statuspageassets.ErrEmptyAsset)
@@ -249,15 +246,19 @@ func TestNormalizeMIME(t *testing.T) {
 	}{
 		{"logo png", statuspageassets.KindLogo, "image/png", "image/png", false},
 		{"logo jpeg", statuspageassets.KindLogo, "image/jpeg", "image/jpeg", false},
-		{"logo svg with charset", statuspageassets.KindLogo,
-			"image/svg+xml; charset=utf-8", "image/svg+xml", false},
+		{
+			"logo svg with charset", statuspageassets.KindLogo,
+			"image/svg+xml; charset=utf-8", "image/svg+xml", false,
+		},
 		{"logo uppercase", statuspageassets.KindLogo, "IMAGE/PNG", "image/png", false},
 		{"logo rejects ico", statuspageassets.KindLogo, "image/x-icon", "", true},
 		{"logo rejects html", statuspageassets.KindLogo, "text/html", "", true},
 		{"logo rejects empty", statuspageassets.KindLogo, "  ", "", true},
 		{"favicon ico", statuspageassets.KindFavicon, "image/x-icon", "image/x-icon", false},
-		{"favicon ms ico", statuspageassets.KindFavicon,
-			"image/vnd.microsoft.icon", "image/vnd.microsoft.icon", false},
+		{
+			"favicon ms ico", statuspageassets.KindFavicon,
+			"image/vnd.microsoft.icon", "image/vnd.microsoft.icon", false,
+		},
 		{"favicon rejects jpeg", statuspageassets.KindFavicon, "image/jpeg", "", true},
 		{"unknown kind", statuspageassets.Kind("banner"), "image/png", "", true},
 	}
@@ -298,9 +299,9 @@ func TestUnknownOrgOrPageIsNotFound(t *testing.T) {
 	r := require.New(t)
 	s := newAssetSetup(t)
 
-	_, err := s.svc.Upload(s.ctx, "nope", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	_, err := s.svc.Upload(t.Context(), "nope", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.ErrorIs(err, statuspageassets.ErrOrganizationNotFound)
 
-	_, err = s.svc.Upload(s.ctx, "acme", "no-such-page", statuspageassets.KindLogo, upload(pngBytes), nil)
+	_, err = s.svc.Upload(t.Context(), "acme", "no-such-page", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.ErrorIs(err, statuspageassets.ErrStatusPageNotFound)
 }

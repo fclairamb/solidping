@@ -1,7 +1,8 @@
 # Status Pages
 
-Status pages, their sections and resources, subscribers (double opt-in),
-status updates, and the public read surfaces.
+Status pages, their sections and resources, subscribers (double opt-in for
+email, operator-registered for webhook/Slack), status updates, brand assets,
+and the public read surfaces.
 
 ## Pages
 
@@ -19,6 +20,53 @@ Update a status page. Auth: required
 
 ### DELETE /api/v1/orgs/:org/status-pages/:statusPageUid
 Delete a status page. Auth: required
+
+#### Visibility, password protection and white label (spec 2026-08-21-07)
+
+`visibility` takes three values:
+
+| Value | Public endpoints answer | Meaning |
+|---|---|---|
+| `public` | the page | World-readable. |
+| `private` | `404 STATUS_PAGE_NOT_FOUND` | Hidden entirely — indistinguishable from a page that does not exist. |
+| `password` | `401 STATUS_PAGE_LOCKED` | Shared with a secret; unlockable (see the unlock endpoint below). |
+
+Related fields on create/update:
+
+| Field | Direction | Notes |
+|---|---|---|
+| `password` | write-only | Required when switching to `password` unless one is already stored. Empty string clears it (refused while visibility is still `password`). Minimum 6 characters. Never echoed. |
+| `hasPassword` | read-only | Whether a password is stored. The hash is never serialized. |
+| `hideBranding` | read/write | The page's white-label OPT-IN. On admin payloads this is the raw stored value; on the PUBLIC payload it is already ANDed with the org's `whiteLabel` entitlement. |
+| `whiteLabelAllowed` | read-only, **admin only** | Whether the org holds the `whiteLabel` entitlement. Never present on a public payload — plan state is not public. |
+| `logoUrl` / `faviconUrl` | read-only | Public paths of the uploaded brand assets, or absent. Set by the asset endpoints below, never by PATCH. |
+
+## Brand assets
+
+Per-page logo and favicon (spec 2026-08-21-07). Uploads are `multipart/form-data`
+with a single file part named after the slot. The blobs are served from an
+unsigned public route whose authorization is state-based: a file is public
+exactly while it is the CURRENT logo/favicon of a live, ENABLED status page, so
+replacing, clearing, disabling or deleting takes it offline immediately.
+
+### POST /api/v1/orgs/:org/status-pages/:statusPageUid/logo
+Upload the page logo (part name `logo`). PNG/JPEG/WebP/GIF/SVG, max 1 MB.
+Auth: required
+
+### DELETE /api/v1/orgs/:org/status-pages/:statusPageUid/logo
+Clear the page logo. Auth: required
+
+### POST /api/v1/orgs/:org/status-pages/:statusPageUid/favicon
+Upload the page favicon (part name `favicon`). ICO/PNG/WebP/GIF/SVG, max 256 KB.
+JPEG is deliberately not accepted for a favicon. Auth: required
+
+### DELETE /api/v1/orgs/:org/status-pages/:statusPageUid/favicon
+Clear the page favicon. Auth: required
+
+### GET /pub/status-page-assets/:uid
+Serve an uploaded asset. Auth: **public, unsigned**. `404` once the file stops
+being a live page's current asset. Served with `nosniff`; SVG is served as an
+attachment so it can never execute as a document on the origin.
 
 ## Sections
 
@@ -60,17 +108,47 @@ Remove a resource. Auth: required
 
 ## Subscribers
 
-Subscription is **double opt-in**: anyone can request a subscription from the
+A subscription has a `channel`: `email`, `webhook` or `slack`.
+
+**Email** subscription is **double opt-in**: anyone can request one from the
 public status page, but nothing is delivered until the emailed confirmation
 link is followed. Double opt-in is the primary anti-abuse control, which is why
-`POST …/subscribers` is public while listing and deleting are not.
+the public subscribe route exists at all while listing and deleting are authed.
+
+**Webhook and Slack** subscriptions are **operator-side only** (spec
+2026-08-21-07). A visitor pasting an incoming-webhook URL has no verification
+story, and the URL is itself a credential — so they are registered through the
+authenticated route below and are created already confirmed. Public self-serve
+stays email-only, and the public subscribe form says so.
+
+The endpoint URL is treated with the same opacity as a subscriber email and
+then some: it is stored **encrypted** (per-org DEK, `internal/crypto/credentials`)
+and list responses return only a masked `endpoint` hint — never the real URL.
+
+Webhook deliveries carry the `internal/servicesig` HMAC headers
+(`X-SP-Signature: v1,<b64>`, `X-SP-Timestamp`, `X-SP-Key-Id: status-page-subscriber`)
+signed with the subscription's own secret. After 5 CONSECUTIVE delivery
+failures the subscription is disabled and a `statuspage.subscriber.disabled`
+event is recorded, so an operator can see that deliveries stopped and why. One
+success resets the counter.
 
 ### GET /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers
 List the subscribers of a status page. Auth: required
 
+Each row carries `channel`, the masked `endpoint` (endpoint channels only),
+`failureCount` and `disabled`.
+
 ### POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers
-Request a subscription. Sends a confirmation email; creates nothing deliverable
-until confirmed. Auth: **public**
+Two distinct endpoints share this path, separated by the auth chain:
+
+* **Authenticated** — register a webhook/Slack delivery:
+  `{ "channel": "webhook" | "slack", "url": "https://…", "signingSecret": "…" }`.
+  `signingSecret` is optional (generated when omitted) and write-only. The URL
+  must be `https` and must not resolve to a loopback/private host; a `slack`
+  row must point at `hooks.slack.com`. Returns `201`.
+* **Public** — request an email subscription: `{ "email": "…" }`. Sends a
+  confirmation email; creates nothing deliverable until confirmed. Returns
+  `202`. A `channel` other than `email` is refused with `VALIDATION_ERROR`.
 
 ### DELETE /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/:uid
 Remove a subscriber. Auth: required
@@ -109,8 +187,35 @@ Delete a status update.
 
 ## Public views
 
-A disabled or non-public page, and a page that doesn't exist, all return an
+A disabled page, a `private` page, and a page that doesn't exist all return an
 identical `NOT_FOUND` — none of these routes leak page existence.
+
+A `password` page is different on purpose: it answers `401` with code
+`STATUS_PAGE_LOCKED` on every read below (page, default page, summary, badge,
+incidents, `feed.xml`, and the public subscribe) until the caller presents a
+valid unlock cookie. Being knowable-but-locked is the whole point of the mode;
+`private` remains the option for "pretend it does not exist".
+
+### POST /api/v1/status-pages/:org/:slug/unlock
+### POST /api/v1/status-pages/:org/unlock
+Unlock a password-protected page (the second form targets the org's default
+page). Auth: **public** — the password IS the credential. Body:
+`{ "password": "…" }`.
+
+On success: `204`, plus a `Set-Cookie: sp_unlock_<pageUid>` that is
+**host-only** (no `Domain` attribute), `HttpOnly`, `SameSite=Lax`, `Secure` when
+the request arrived over TLS, and valid for 12 hours. Host-only is what makes
+it work on a custom domain without minting a cookie for `solidping.io`.
+
+Wrong password: `401 STATUS_PAGE_LOCKED`. Attempts are rate-limited per
+(client IP, page) — 10 per 5 minutes, then `429 RATE_LIMITED`.
+
+The cookie is signed with a key derived from the stored password hash, so
+**changing or clearing the password invalidates every outstanding unlock
+immediately**, with no revocation list.
+
+Already-confirmed subscribers of a password page keep receiving notifications:
+only page *views* and the subscribe *form* are gated, never delivery.
 
 ### GET /api/v1/status-pages/:org
 View the default status page for an organization. Auth: public. Same payload

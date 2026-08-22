@@ -330,7 +330,7 @@ func (h *Handler) mergePartial(
 		LastSyncedAt: current.LastSyncedAt,
 	}
 
-	overlayLimits(&out.Limits, input.Limits)
+	overlayLimits(&out.Limits, &input.Limits)
 
 	if input.DisplayName != nil {
 		out.DisplayName = input.DisplayName
@@ -354,7 +354,7 @@ func (h *Handler) mergePartial(
 	return out
 }
 
-func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
+func overlayLimits(dst *entcore.Limits, src *entcore.Limits) {
 	if src.MaxChecks != nil {
 		dst.MaxChecks = src.MaxChecks
 	}
@@ -378,6 +378,12 @@ func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
 	}
 	if src.MaxWhatsappPerMonth != nil {
 		dst.MaxWhatsappPerMonth = src.MaxWhatsappPerMonth
+	}
+	if src.MaxSlos != nil {
+		dst.MaxSlos = src.MaxSlos
+	}
+	if src.WhiteLabel != nil {
+		dst.WhiteLabel = src.WhiteLabel
 	}
 }
 

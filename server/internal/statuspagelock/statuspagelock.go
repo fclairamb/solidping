@@ -200,7 +200,7 @@ func ClearCookie(writer http.ResponseWriter, req *http.Request, pageUID string) 
 	})
 }
 
-// isTLS reports whether the request reached us over HTTPS, honouring the
+// isTLS reports whether the request reached us over HTTPS, honoring the
 // X-Forwarded-Proto header set by the edge proxy that terminates TLS for
 // custom domains.
 func isTLS(req *http.Request) bool {
@@ -239,7 +239,7 @@ func FromRequest(req *http.Request) Grant {
 // The router middleware that mounts this on the public API surface lives in
 // the app package (it has to speak httpx.Middleware); anything reached WITHOUT
 // it — the MCP tools, a background job, a unit test — gets the
-// DENY-BY-DEFAULT behaviour of Allows below, which is the correct answer for a
+// DENY-BY-DEFAULT behavior of Allows below, which is the correct answer for a
 // caller that cannot present a visitor's cookie.
 func WithRequestGrant(req *http.Request) *http.Request {
 	return req.WithContext(WithGrant(req.Context(), FromRequest(req)))

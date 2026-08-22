@@ -38,7 +38,7 @@ func passwordSetup(t *testing.T) (context.Context, db.Service, *Service, *models
 // createProtectedPage builds a live page behind a password, through the public
 // API surface (CreateStatusPage) rather than by writing the row directly, so
 // the test also exercises hashing and validation.
-func createProtectedPage(t *testing.T, ctx context.Context, svc *Service) StatusPageResponse {
+func createProtectedPage(ctx context.Context, t *testing.T, svc *Service) StatusPageResponse {
 	t.Helper()
 
 	visibility := models.StatusPageVisibilityPassword
@@ -68,7 +68,7 @@ func TestPasswordPageIsLockedNotMissing(t *testing.T) {
 	r := require.New(t)
 
 	ctx, dbService, svc, org := passwordSetup(t)
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
 	r.ErrorIs(err, statuspagelock.ErrLocked)
@@ -91,7 +91,7 @@ func TestUnlockedContextSeesThePage(t *testing.T) {
 	r := require.New(t)
 
 	ctx, _, svc, _ := passwordSetup(t)
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	page, err := svc.ViewStatusPage(grantedCtx(ctx), "acme", testPublicSlug)
 	r.NoError(err)
@@ -107,7 +107,7 @@ func TestEveryPublicReadIsGated(t *testing.T) {
 	r := require.New(t)
 
 	ctx, _, svc, _ := passwordSetup(t)
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
 	r.ErrorIs(err, statuspagelock.ErrLocked, "page view")
@@ -146,7 +146,7 @@ func TestUnlockMintsAUsableToken(t *testing.T) {
 	r := require.New(t)
 
 	ctx, dbService, svc, org := passwordSetup(t)
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	_, err := svc.Unlock(ctx, "acme", testPublicSlug, "203.0.113.1", "wrong")
 	r.ErrorIs(err, ErrWrongPassword)
@@ -158,7 +158,7 @@ func TestUnlockMintsAUsableToken(t *testing.T) {
 	page, err := dbService.GetStatusPageBySlug(ctx, org.UID, testPublicSlug)
 	r.NoError(err)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: statuspagelock.CookieName(page.UID), Value: result.Token})
 	r.True(statuspagelock.RequestUnlocks(req, page))
 
@@ -175,7 +175,7 @@ func TestChangingThePasswordInvalidatesOutstandingUnlocks(t *testing.T) {
 	r := require.New(t)
 
 	ctx, dbService, svc, org := passwordSetup(t)
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	result, err := svc.Unlock(ctx, "acme", testPublicSlug, "203.0.113.1", testPagePassword)
 	r.NoError(err)
@@ -183,7 +183,7 @@ func TestChangingThePasswordInvalidatesOutstandingUnlocks(t *testing.T) {
 	page, err := dbService.GetStatusPageBySlug(ctx, org.UID, testPublicSlug)
 	r.NoError(err)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: statuspagelock.CookieName(page.UID), Value: result.Token})
 	r.True(statuspagelock.RequestUnlocks(req, page), "positive control before the rotation")
 
@@ -213,7 +213,7 @@ func TestPasswordVisibilityRequiresAPassword(t *testing.T) {
 	})
 	r.ErrorIs(err, ErrPasswordRequired)
 
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	empty := ""
 	_, err = svc.UpdateStatusPage(ctx, "acme", testPublicSlug, &UpdateStatusPageRequest{Password: &empty})
@@ -238,7 +238,7 @@ func TestSavingAnUnrelatedFieldKeepsThePassword(t *testing.T) {
 	r := require.New(t)
 
 	ctx, _, svc, _ := passwordSetup(t)
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	name := "Renamed"
 	_, err := svc.UpdateStatusPage(ctx, "acme", testPublicSlug, &UpdateStatusPageRequest{Name: &name})
@@ -287,7 +287,7 @@ func TestUnlockIsRateLimited(t *testing.T) {
 	r := require.New(t)
 
 	ctx, _, svc, _ := passwordSetup(t)
-	createProtectedPage(t, ctx, svc)
+	createProtectedPage(ctx, t, svc)
 
 	visibility := models.StatusPageVisibilityPassword
 	password := testPagePassword

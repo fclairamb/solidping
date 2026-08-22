@@ -1694,6 +1694,10 @@ func (s *Service) emitEvent(
 		models.EventTypeStatusPageIncidentPublished,
 		models.EventTypeStatusPageIncidentUpdated,
 		models.EventTypeStatusPageIncidentResolved,
+		// A disabled status-page subscription is likewise the status page's
+		// business, and it is already recorded as its own event — paging
+		// on-call because a customer's webhook receiver broke would be noise.
+		models.EventTypeStatusSubscriberDisabled,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,

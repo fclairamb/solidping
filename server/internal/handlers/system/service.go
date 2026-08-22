@@ -172,7 +172,8 @@ func (s *Service) ListActivationFunnel(ctx context.Context) (*ActivationFunnelRe
 				models.EventTypeStatusUpdateDeleted,
 				models.EventTypeStatusPageIncidentPublished,
 				models.EventTypeStatusPageIncidentUpdated,
-				models.EventTypeStatusPageIncidentResolved:
+				models.EventTypeStatusPageIncidentResolved,
+				models.EventTypeStatusSubscriberDisabled:
 				// Filter only requested activation events; these branches
 				// are unreachable but exhaustive lint requires them.
 			}

@@ -100,7 +100,7 @@ const (
 // White-label defaults. Self-hosted gets it unconditionally — an operator
 // running their own instance should never have to pay to take our badge off
 // their own status page — while the SaaS Free tier does not, which is the
-// point: white labelling is one of the things a paid plan buys.
+// point: white labeling is one of the things a paid plan buys.
 //
 // Keep the SaaS value in sync with solidping-billing's Free SKU, the same rule
 // as every numeric default above.

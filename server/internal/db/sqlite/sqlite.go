@@ -4556,6 +4556,31 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 	return pages, err
 }
 
+// applyStatusPageAccessColumns adds the visibility-adjacent columns (spec
+// 2026-08-21-07) to an UpdateStatusPage query. Split out of UpdateStatusPage
+// purely to keep that already-long one-branch-per-column function under the
+// statement budget.
+func applyStatusPageAccessColumns(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) *bun.UpdateQuery {
+	if update.HideBranding != nil {
+		query = query.Set("hide_branding = ?", *update.HideBranding)
+	}
+
+	if update.PasswordHash == nil {
+		return query
+	}
+
+	// An empty hash means "this page is no longer password protected" and is
+	// stored as NULL, never as '': a '' hash would compare against nothing and
+	// would read back as hasPassword=true.
+	if *update.PasswordHash == "" {
+		return query.Set("password_hash = NULL")
+	}
+
+	return query.Set("password_hash = ?", *update.PasswordHash)
+}
+
 // UpdateStatusPage updates a status page by UID.
 //
 //nolint:cyclop // one branch per optional column; splitting it would only hide the shape.
@@ -4622,20 +4647,7 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("auto_resolve = ?", *update.AutoResolve)
 	}
 
-	if update.HideBranding != nil {
-		query = query.Set("hide_branding = ?", *update.HideBranding)
-	}
-
-	if update.PasswordHash != nil {
-		// An empty hash means "this page is no longer password protected" and
-		// is stored as NULL, never as '': a '' hash would compare against
-		// nothing and would read back as hasPassword=true.
-		if *update.PasswordHash == "" {
-			query = query.Set("password_hash = NULL")
-		} else {
-			query = query.Set("password_hash = ?", *update.PasswordHash)
-		}
-	}
+	query = applyStatusPageAccessColumns(query, update)
 
 	if update.CustomCSS != nil {
 		// An empty stylesheet is stored as NULL, not '': the appearance editor

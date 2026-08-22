@@ -35,6 +35,13 @@ const (
 	// read for the log line. A misconfigured endpoint answering with a 5 MB
 	// HTML error page must not end up in the server log.
 	maxErrorBodyBytes = 512
+	// slackMarkdownType is Slack's block-kit text type.
+	slackMarkdownType = "mrkdwn"
+	// deliveryContentType is the body type for every channel — both the
+	// generic webhook payload and Slack's incoming-webhook shape are JSON.
+	deliveryContentType = "application/json"
+	// eventFieldChannel is the audit-event payload key naming the channel.
+	eventFieldChannel = "channel"
 )
 
 // WebhookPayload is the JSON body a `webhook` subscription receives.
@@ -107,7 +114,7 @@ func (n *Notifier) deliverEndpoint(
 		return
 	}
 
-	body, contentType, err := n.buildDeliveryBody(sub.Channel, event)
+	body, err := buildDeliveryBody(sub.Channel, event)
 	if err != nil {
 		n.logger.ErrorContext(ctx, "status subscriber fan-out: failed to build payload",
 			"subscriberUid", sub.UID, "error", err)
@@ -115,21 +122,18 @@ func (n *Notifier) deliverEndpoint(
 		return
 	}
 
-	err = n.post(ctx, sub, secrets, body, contentType)
+	err = n.post(ctx, secrets, body)
 	n.recordDeliveryOutcome(ctx, sub, err)
 }
 
-// buildDeliveryBody renders the per-channel payload.
-func (n *Notifier) buildDeliveryBody(
-	channel models.SubscriberChannel, event *UpdateEvent,
-) ([]byte, string, error) {
+// buildDeliveryBody renders the per-channel payload. Both channels send JSON,
+// so the content type is a constant rather than a second return value.
+func buildDeliveryBody(channel models.SubscriberChannel, event *UpdateEvent) ([]byte, error) {
 	if channel == models.SubscriberChannelSlack {
-		body, err := json.Marshal(slackPayloadFor(event))
-
-		return body, "application/json", err
+		return json.Marshal(slackPayloadFor(event))
 	}
 
-	body, err := json.Marshal(WebhookPayload{
+	return json.Marshal(WebhookPayload{
 		Event:         "status_update.published",
 		StatusPageUID: event.StatusPageUID,
 		PageName:      event.PageName,
@@ -140,31 +144,29 @@ func (n *Notifier) buildDeliveryBody(
 		LinkURL:       event.LinkURL,
 		PublishedAt:   time.Now().UTC(),
 	})
-
-	return body, "application/json", err
 }
 
 // slackPayloadFor renders the Slack message. Deliberately plain: a status
-// update is operator-authored prose, and wrapping it in attachments/colours
+// update is operator-authored prose, and wrapping it in attachments/colors
 // would be inventing severity the update itself did not state.
 func slackPayloadFor(event *UpdateEvent) slackPayload {
 	headline := event.PageName + ": " + event.Title
 
 	blocks := []slackBlock{
-		{Type: "section", Text: &slackText{Type: "mrkdwn", Text: "*" + headline + "*"}},
+		{Type: "section", Text: &slackText{Type: slackMarkdownType, Text: "*" + headline + "*"}},
 	}
 
 	if event.BodyMarkdown != "" {
 		blocks = append(blocks, slackBlock{
 			Type: "section",
-			Text: &slackText{Type: "mrkdwn", Text: event.BodyMarkdown},
+			Text: &slackText{Type: slackMarkdownType, Text: event.BodyMarkdown},
 		})
 	}
 
 	if event.LinkURL != nil && *event.LinkURL != "" {
 		blocks = append(blocks, slackBlock{
 			Type: "context",
-			Text: &slackText{Type: "mrkdwn", Text: *event.LinkURL},
+			Text: &slackText{Type: slackMarkdownType, Text: *event.LinkURL},
 		})
 	}
 
@@ -177,16 +179,13 @@ func slackPayloadFor(event *UpdateEvent) slackPayload {
 // a receiver that already verifies SolidPing's billing calls needs no second
 // implementation. Slack deliveries carry them too — Slack ignores unknown
 // headers, and sending them unconditionally keeps one code path.
-func (n *Notifier) post(
-	ctx context.Context, sub *models.StatusPageSubscriber,
-	secrets endpointSecrets, body []byte, contentType string,
-) error {
+func (n *Notifier) post(ctx context.Context, secrets endpointSecrets, body []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, secrets.URL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build delivery request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Type", deliveryContentType)
 	req.Header.Set("User-Agent", "SolidPing-StatusPage/1")
 
 	if secrets.SigningSecret != "" {
@@ -270,11 +269,11 @@ func (n *Notifier) recordDisabledEvent(
 ) {
 	event := models.NewEvent(sub.OrganizationUID, models.EventTypeStatusSubscriberDisabled, models.ActorTypeSystem)
 	event.Payload = models.JSONMap{
-		"subscriberUid": sub.UID,
-		"statusPageUid": sub.StatusPageUID,
-		"channel":       string(sub.Channel),
-		"failures":      failures,
-		"lastError":     deliveryErr.Error(),
+		"subscriberUid":   sub.UID,
+		"statusPageUid":   sub.StatusPageUID,
+		eventFieldChannel: string(sub.Channel),
+		"failures":        failures,
+		"lastError":       deliveryErr.Error(),
 	}
 
 	if sub.EndpointHint != nil {

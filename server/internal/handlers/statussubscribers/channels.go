@@ -207,16 +207,17 @@ func openEndpoint(
 		err     error
 	)
 
-	if credentials.IsPlaintextEnvelope(envelope) {
+	switch {
+	case credentials.IsPlaintextEnvelope(envelope):
 		payload, err = credentials.OpenPlaintext(envelope)
-	} else if creds == nil {
+	case creds == nil:
 		// An encrypted envelope with no key on this process. Failing loudly is
 		// the only honest option: silently skipping the delivery would look
 		// exactly like "the endpoint is fine, nothing happened".
 		return endpointSecrets{}, fmt.Errorf(
 			"%w: endpoint is encrypted but no encryption key is configured on this process",
 			ErrInvalidEndpointURL)
-	} else {
+	default:
 		payload, err = creds.DecryptForOrg(ctx, orgUID, envelope)
 	}
 
@@ -267,36 +268,14 @@ func (s *Service) CreateEndpointSubscriber(
 		return nil, err
 	}
 
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	org, page, err := s.resolveOrgAndPage(ctx, orgSlug, statusPageUID, incidentUID)
 	if err != nil {
-		return nil, ErrOrganizationNotFound
+		return nil, err
 	}
 
-	page, err := s.db.GetStatusPage(ctx, org.UID, statusPageUID)
-	if err != nil || page == nil {
-		return nil, ErrStatusPageNotFound
-	}
-
-	if incidentUID != nil {
-		if _, incErr := s.db.GetIncident(ctx, org.UID, *incidentUID); incErr != nil {
-			return nil, ErrIncidentNotFound
-		}
-	}
-
-	secret := ""
-	if req.SigningSecret != nil {
-		secret = strings.TrimSpace(*req.SigningSecret)
-	}
-
-	if secret == "" {
-		if secret, err = generateSigningSecret(); err != nil {
-			return nil, err
-		}
-	}
-
-	envelope, err := sealEndpoint(ctx, s.creds, org.UID, endpointSecrets{URL: normalized, SigningSecret: secret})
+	envelope, err := s.sealFor(ctx, org.UID, normalized, req.SigningSecret)
 	if err != nil {
-		return nil, fmt.Errorf("seal endpoint: %w", err)
+		return nil, err
 	}
 
 	sub := models.NewEndpointSubscriber(org.UID, page.UID, channel, scope)
@@ -329,6 +308,57 @@ func (s *Service) CreateEndpointSubscriber(
 		Confirmed: true,
 		CreatedAt: sub.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	}, nil
+}
+
+// resolveOrgAndPage resolves the org and page for an endpoint subscription and
+// checks the referenced incident when the scope needs one.
+func (s *Service) resolveOrgAndPage(
+	ctx context.Context, orgSlug, statusPageUID string, incidentUID *string,
+) (*models.Organization, *models.StatusPage, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, nil, ErrOrganizationNotFound
+	}
+
+	page, err := s.db.GetStatusPage(ctx, org.UID, statusPageUID)
+	if err != nil || page == nil {
+		return nil, nil, ErrStatusPageNotFound
+	}
+
+	if incidentUID != nil {
+		if _, incErr := s.db.GetIncident(ctx, org.UID, *incidentUID); incErr != nil {
+			return nil, nil, ErrIncidentNotFound
+		}
+	}
+
+	return org, page, nil
+}
+
+// sealFor generates the signing secret when the caller supplied none and
+// returns the encrypted envelope to store.
+func (s *Service) sealFor(
+	ctx context.Context, orgUID, normalizedURL string, suppliedSecret *string,
+) (string, error) {
+	secret := ""
+	if suppliedSecret != nil {
+		secret = strings.TrimSpace(*suppliedSecret)
+	}
+
+	if secret == "" {
+		generated, err := generateSigningSecret()
+		if err != nil {
+			return "", err
+		}
+
+		secret = generated
+	}
+
+	envelope, err := sealEndpoint(ctx, s.creds, orgUID, endpointSecrets{URL: normalizedURL, SigningSecret: secret})
+	if err != nil {
+		return "", fmt.Errorf("seal endpoint: %w", err)
+	}
+
+	return envelope, nil
 }
 
 // resolveScope validates the optional scope/incident pair shared by the public

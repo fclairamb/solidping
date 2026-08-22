@@ -38,7 +38,7 @@ func whiteLabelSetup(
 	return ctx, dbService, NewService(dbService, &config.Config{}, ent), org
 }
 
-func createPublicPage(t *testing.T, ctx context.Context, dbService db.Service, orgUID string) *models.StatusPage {
+func createPublicPage(ctx context.Context, t *testing.T, dbService db.Service, orgUID string) *models.StatusPage {
 	t.Helper()
 
 	page := models.NewStatusPage(orgUID, "Acme Status", testPublicSlug)
@@ -55,7 +55,7 @@ func TestSelfHostedIsEntitledToWhiteLabel(t *testing.T) {
 	r := require.New(t)
 
 	ctx, dbService, svc, org := whiteLabelSetup(t, config.DeploymentModeSelfHosted)
-	page := createPublicPage(t, ctx, dbService, org.UID)
+	page := createPublicPage(ctx, t, dbService, org.UID)
 
 	optIn := true
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{HideBranding: &optIn}))
@@ -68,13 +68,13 @@ func TestSelfHostedIsEntitledToWhiteLabel(t *testing.T) {
 
 // TestSaaSWithoutTheEntitlementKeepsTheBadge is the negative control that
 // makes the feature worth money: the page opted in, and the badge stays,
-// because the SaaS Free defaults do not include white labelling.
+// because the SaaS Free defaults do not include white labeling.
 func TestSaaSWithoutTheEntitlementKeepsTheBadge(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	ctx, dbService, svc, org := whiteLabelSetup(t, config.DeploymentModeSaaS)
-	page := createPublicPage(t, ctx, dbService, org.UID)
+	page := createPublicPage(ctx, t, dbService, org.UID)
 
 	optIn := true
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{HideBranding: &optIn}))
@@ -100,7 +100,7 @@ func TestSaaSGrantedTheEntitlementDropsTheBadge(t *testing.T) {
 	r := require.New(t)
 
 	ctx, dbService, svc, org := whiteLabelSetup(t, config.DeploymentModeSaaS)
-	page := createPublicPage(t, ctx, dbService, org.UID)
+	page := createPublicPage(ctx, t, dbService, org.UID)
 
 	optIn := true
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{HideBranding: &optIn}))
@@ -117,13 +117,13 @@ func TestSaaSGrantedTheEntitlementDropsTheBadge(t *testing.T) {
 }
 
 // TestEntitledButNotOptedInKeepsTheBadge is the other half of the AND: paying
-// for white labelling does not silently unbrand every page an org owns.
+// for white labeling does not silently unbrand every page an org owns.
 func TestEntitledButNotOptedInKeepsTheBadge(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	ctx, dbService, svc, org := whiteLabelSetup(t, config.DeploymentModeSelfHosted)
-	createPublicPage(t, ctx, dbService, org.UID)
+	createPublicPage(ctx, t, dbService, org.UID)
 
 	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
 	r.NoError(err)
@@ -148,7 +148,7 @@ func TestWhiteLabelFailsClosedWithoutAnEntitlementsService(t *testing.T) {
 	org := models.NewOrganization("acme", "Acme")
 	r.NoError(dbService.CreateOrganization(ctx, org))
 
-	page := createPublicPage(t, ctx, dbService, org.UID)
+	page := createPublicPage(ctx, t, dbService, org.UID)
 
 	optIn := true
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{HideBranding: &optIn}))

@@ -85,7 +85,7 @@ func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
 		return fmt.Errorf("resolve entitlements: %w", err)
 	}
 
-	limit := monthlyLimitFor(resolved.Limits, kind)
+	limit := monthlyLimitFor(&resolved.Limits, kind)
 	if limit == nil {
 		return nil // unlimited (self-hosted: the operator's own credentials pay)
 	}
@@ -117,7 +117,7 @@ func (s *Service) runawayCapFor(kind string) int {
 	}
 }
 
-func monthlyLimitFor(limits Limits, kind string) *int {
+func monthlyLimitFor(limits *Limits, kind string) *int {
 	switch kind {
 	case models.UsageCounterKindVoice:
 		return limits.MaxCallsPerMonth

@@ -9792,7 +9792,33 @@ components:
           type: string
         visibility:
           type: string
-          description: Visibility of the page (e.g. "public", "private")
+          enum: [public, private, password]
+          description: >-
+            public = world-readable; private = hidden entirely (public
+            endpoints answer 404); password = shared with a secret (public
+            endpoints answer 401 STATUS_PAGE_LOCKED until unlocked).
+        hasPassword:
+          type: boolean
+          description: >-
+            Whether an unlock password is stored. The hash itself is never
+            serialized.
+        hideBranding:
+          type: boolean
+          description: >-
+            On admin payloads: the page's raw white-label opt-in. On the PUBLIC
+            payload: the RESOLVED decision, already ANDed with the org's
+            whiteLabel entitlement.
+        whiteLabelAllowed:
+          type: boolean
+          description: >-
+            Whether the org holds the whiteLabel entitlement. Admin payloads
+            only — plan state is never disclosed publicly.
+        logoUrl:
+          type: string
+          description: Public path of the page's uploaded logo, if any.
+        faviconUrl:
+          type: string
+          description: Public path of the page's uploaded favicon, if any.
         isDefault:
           type: boolean
         enabled:
@@ -10287,6 +10313,17 @@ components:
           type: string
         visibility:
           type: string
+          enum: [public, private, password]
+        password:
+          type: string
+          description: >-
+            WRITE-ONLY. Required when visibility is "password". Minimum 6
+            characters. Never returned — reads expose hasPassword instead.
+        hideBranding:
+          type: boolean
+          description: >-
+            Page-level white-label opt-in. Stored whether or not the org is
+            entitled, so an upgrade applies without re-saving the page.
         isDefault:
           type: boolean
         showAvailability:
@@ -10357,6 +10394,16 @@ components:
           type: string
         visibility:
           type: string
+          enum: [public, private, password]
+        password:
+          type: string
+          description: >-
+            WRITE-ONLY. A non-empty value sets/replaces the unlock password
+            (invalidating every outstanding unlock cookie); "" clears it
+            (refused while visibility is still "password"); omitting it leaves
+            the stored one untouched.
+        hideBranding:
+          type: boolean
         isDefault:
           type: boolean
         enabled:
@@ -12846,6 +12893,14 @@ components:
           type: integer
           nullable: true
           description: Maximum service-level objectives (null = unlimited)
+        whiteLabel:
+          type: boolean
+          nullable: true
+          description: >-
+            Whether the organization may hide the "powered by SolidPing" badge
+            on its status pages. Unlike the caps above, null does NOT mean
+            unlimited — it means "use the deployment default" (true
+            self-hosted, false on the SaaS).
 
     EntitlementsUsage:
       type: object

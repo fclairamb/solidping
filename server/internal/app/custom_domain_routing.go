@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"io/fs"
 	"net"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 // customDomainCacheTTL bounds how long a host->page resolution (positive OR

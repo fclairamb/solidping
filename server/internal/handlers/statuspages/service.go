@@ -1038,6 +1038,36 @@ func daysForPeriod(period models.StatusPagePeriod) int {
 	}
 }
 
+// validateCreateStatusPage runs every pre-write validation for a create
+// request and returns the password hash to store (nil = none). Bundled into
+// one function so CreateStatusPage itself stays under the
+// cyclomatic-complexity budget, mirroring validateStatusPageUpdate.
+func validateCreateStatusPage(req *CreateStatusPageRequest) (*string, error) {
+	if err := validateHistoryPeriod(req.HistoryPeriod); err != nil {
+		return nil, err
+	}
+
+	if err := validateAutoPublishSettings(req.AutoResolve, req.AutoPublishDelaySeconds); err != nil {
+		return nil, err
+	}
+
+	if err := validateCustomCSS(req.CustomCSS); err != nil {
+		return nil, err
+	}
+
+	if err := validateVisibility(req.Visibility); err != nil {
+		return nil, err
+	}
+
+	if err := validateAvailabilitySettings(createRequestAvailability(req)); err != nil {
+		return nil, err
+	}
+
+	// nil `current` — there is no page yet, so "password visibility needs a
+	// password" has no prior hash to fall back on.
+	return resolvePasswordChange(nil, req.Visibility, req.Password)
+}
+
 // CreateStatusPage creates a new status page.
 func (s *Service) CreateStatusPage(
 	ctx context.Context, orgSlug string, req *CreateStatusPageRequest,
@@ -1047,31 +1077,9 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, ErrOrganizationNotFound
 	}
 
-	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
-		return StatusPageResponse{}, errPeriod
-	}
-
-	if errAuto := validateAutoPublishSettings(req.AutoResolve, req.AutoPublishDelaySeconds); errAuto != nil {
-		return StatusPageResponse{}, errAuto
-	}
-
-	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
-		return StatusPageResponse{}, errCSS
-	}
-
-	if errVis := validateVisibility(req.Visibility); errVis != nil {
-		return StatusPageResponse{}, errVis
-	}
-
-	// nil `current` — there is no page yet, so "password visibility needs a
-	// password" has no prior hash to fall back on.
-	passwordHash, errPwd := resolvePasswordChange(nil, req.Visibility, req.Password)
-	if errPwd != nil {
-		return StatusPageResponse{}, errPwd
-	}
-
-	if errThresholds := validateAvailabilitySettings(createRequestAvailability(req)); errThresholds != nil {
-		return StatusPageResponse{}, errThresholds
+	passwordHash, errValidate := validateCreateStatusPage(req)
+	if errValidate != nil {
+		return StatusPageResponse{}, errValidate
 	}
 
 	taken := func(ctx context.Context, slug string) (bool, error) {
@@ -1803,8 +1811,6 @@ func (s *Service) resolvePublicBranding(ctx context.Context, orgUID string, resp
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
-//
-//nolint:cyclop // a flat sequence of optional enrichment blocks, each independently degradable.
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageResponse, error) {
@@ -1869,39 +1875,53 @@ func (s *Service) ViewStatusPage(
 		}
 	}
 
-	// Populate recent status updates (graceful — empty when table doesn't exist yet)
-	if page.HistoryDays > 0 {
-		updates, updErr := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
-		if updErr != nil {
-			// Don't fail the whole page, but surface the error: a broken
-			// updates query used to silently render an empty timeline, which
-			// masked the Postgres `$1`-placeholder bug for both this page and
-			// the Atom feed. Logging it means it can't hide again.
-			slog.ErrorContext(ctx, "Failed to load public status updates for status page",
-				"error", updErr, "statusPageUID", page.UID, "orgUID", org.UID)
-		}
+	response.RecentUpdates = s.loadRecentUpdates(ctx, org.UID, page)
 
-		if updErr == nil && len(updates) > 0 {
-			recentUpdates := make([]StatusUpdatePublicResponse, len(updates))
-			for i, upd := range updates {
-				recentUpdates[i] = StatusUpdatePublicResponse{
-					UID:          upd.UID,
-					SectionUID:   upd.SectionUID,
-					CheckUID:     upd.CheckUID,
-					IncidentUID:  upd.IncidentUID,
-					Title:        upd.Title,
-					BodyMarkdown: upd.BodyMarkdown,
-					LinkURL:      upd.LinkURL,
-					Kind:         upd.Kind,
-					PublishedAt:  upd.PublishedAt,
-				}
-			}
+	return response, nil
+}
 
-			response.RecentUpdates = recentUpdates
+// loadRecentUpdates fetches the page's public status-update timeline.
+//
+// It never fails the page: a broken updates query used to silently render an
+// empty timeline, which masked the Postgres `$1`-placeholder bug for both this
+// page and the Atom feed, so the error is LOGGED rather than swallowed —
+// it can't hide again, and a status page that cannot render its timeline is
+// still far more useful than a 500.
+func (s *Service) loadRecentUpdates(
+	ctx context.Context, orgUID string, page *models.StatusPage,
+) []StatusUpdatePublicResponse {
+	if page.HistoryDays <= 0 {
+		return nil
+	}
+
+	updates, err := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load public status updates for status page",
+			"error", err, "statusPageUID", page.UID, "orgUID", orgUID)
+
+		return nil
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	recentUpdates := make([]StatusUpdatePublicResponse, len(updates))
+	for i, upd := range updates {
+		recentUpdates[i] = StatusUpdatePublicResponse{
+			UID:          upd.UID,
+			SectionUID:   upd.SectionUID,
+			CheckUID:     upd.CheckUID,
+			IncidentUID:  upd.IncidentUID,
+			Title:        upd.Title,
+			BodyMarkdown: upd.BodyMarkdown,
+			LinkURL:      upd.LinkURL,
+			Kind:         upd.Kind,
+			PublishedAt:  upd.PublishedAt,
 		}
 	}
 
-	return response, nil
+	return recentUpdates
 }
 
 // ViewDefaultStatusPage returns the default status page for an organization.

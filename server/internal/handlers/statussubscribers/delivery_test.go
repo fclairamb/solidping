@@ -44,7 +44,7 @@ func newReceiver(t *testing.T) *receiver {
 
 	rec := &receiver{status: http.StatusOK}
 	// TLS, because a delivery URL must be https — that rule is production
-	// behaviour under test here, not an obstacle to work around.
+	// behavior under test here, not an obstacle to work around.
 	rec.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 
@@ -83,15 +83,20 @@ func (r *receiver) captured() []capturedRequest {
 	return out
 }
 
-// endpointSubscriber registers a webhook/slack subscription pointing at url.
+// endpointSubscriber registers a WEBHOOK subscription pointing at url.
+//
+// Webhook rather than slack on purpose: the create path refuses a `slack` row
+// that does not point at hooks.slack.com, which an httptest server never can.
+// TestSlackDeliveryUsesTheSlackShape flips the channel after creation to reach
+// the slack rendering, and TestEndpointValidation covers the host rule itself.
 func endpointSubscriber(
-	t *testing.T, s *subSetup, channel, url, secret string,
+	t *testing.T, s *subSetup, url, secret string,
 ) *statussubscribers.SubscriberResponse {
 	t.Helper()
 
 	created, err := s.svc.CreateEndpointSubscriber(t.Context(), s.org.Slug, s.page.UID,
 		&statussubscribers.CreateEndpointSubscriberRequest{
-			Channel: channel, URL: url, SigningSecret: &secret,
+			Channel: "webhook", URL: url, SigningSecret: &secret,
 		})
 	require.NoError(t, err)
 
@@ -125,7 +130,7 @@ func TestWebhookDeliveryIsSignedAndCarriesOnlyPublicFields(t *testing.T) {
 
 	const secret = "shared-signing-secret"
 
-	endpointSubscriber(t, s, "webhook", rec.server.URL+"/hooks/abcdef123456", secret)
+	endpointSubscriber(t, s, rec.server.URL+"/hooks/abcdef123456", secret)
 	deliverOnce(t, s, rec)
 
 	got := rec.captured()
@@ -172,7 +177,7 @@ func TestSlackDeliveryUsesTheSlackShape(t *testing.T) {
 	// slack row directly against the local receiver via the webhook channel's
 	// URL rules and then rewrites the channel — see the create-path test below
 	// for the host validation itself.
-	created := endpointSubscriber(t, s, "webhook", rec.server.URL+"/services/T000/B000/xyz", "sec")
+	created := endpointSubscriber(t, s, rec.server.URL+"/services/T000/B000/xyz", "sec")
 
 	sub, err := s.dbSvc.GetSubscriber(t.Context(), s.page.UID, created.UID)
 	r.NoError(err)
@@ -206,7 +211,7 @@ func TestDeliveryFailuresDisableTheSubscriptionAndRecordAnEvent(t *testing.T) {
 	rec := newReceiver(t)
 	rec.setStatus(http.StatusInternalServerError)
 
-	created := endpointSubscriber(t, s, "webhook", rec.server.URL+"/hooks/dead", "sec")
+	created := endpointSubscriber(t, s, rec.server.URL+"/hooks/dead", "sec")
 
 	// Five consecutive failures is the documented threshold.
 	for range 5 {
@@ -242,7 +247,7 @@ func TestOneSuccessResetsTheFailureCounter(t *testing.T) {
 	rec := newReceiver(t)
 	rec.setStatus(http.StatusBadGateway)
 
-	created := endpointSubscriber(t, s, "webhook", rec.server.URL+"/hooks/flaky", "sec")
+	created := endpointSubscriber(t, s, rec.server.URL+"/hooks/flaky", "sec")
 
 	for range 4 {
 		deliverOnce(t, s, rec)
@@ -368,7 +373,7 @@ func TestEndpointSubscribersAreBornConfirmed(t *testing.T) {
 	s := newSubSetup(t)
 	rec := newReceiver(t)
 
-	endpointSubscriber(t, s, "webhook", rec.server.URL+"/hooks/first", "sec")
+	endpointSubscriber(t, s, rec.server.URL+"/hooks/first", "sec")
 	deliverOnce(t, s, rec)
 
 	r.Len(rec.captured(), 1)

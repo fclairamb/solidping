@@ -19,6 +19,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
+// Response/validation field names used more than once.
+const (
+	respKeyData    = "data"
+	fieldURL       = "url"
+	fieldChannel   = "channel"
+	fieldBodyInput = "body"
+)
+
 // Handler provides HTTP handlers for subscriber management + the Atom feed.
 type Handler struct {
 	base.HandlerBase
@@ -62,7 +70,7 @@ func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error
 	var body SubscribeRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: fieldBodyInput, Message: "Invalid JSON format"},
 		})
 	}
 
@@ -74,7 +82,7 @@ func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error
 	h.sendConfirmMail(req.Context(), result)
 
 	return h.WriteJSON(writer, http.StatusAccepted, map[string]any{
-		"data": map[string]any{
+		respKeyData: map[string]any{
 			"status": "pending_confirmation",
 		},
 	})
@@ -170,7 +178,7 @@ func (h *Handler) CreateEndpointSubscriber(writer http.ResponseWriter, req *http
 	var body CreateEndpointSubscriberRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: fieldBodyInput, Message: "Invalid JSON format"},
 		})
 	}
 
@@ -179,7 +187,7 @@ func (h *Handler) CreateEndpointSubscriber(writer http.ResponseWriter, req *http
 		return h.handleError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusCreated, map[string]any{"data": created})
+	return h.WriteJSON(writer, http.StatusCreated, map[string]any{respKeyData: created})
 }
 
 // ListSubscribers handles GET /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers (authed).
@@ -193,8 +201,8 @@ func (h *Handler) ListSubscribers(writer http.ResponseWriter, req *http.Request)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{
-		"data": subs,
-		"meta": map[string]any{"count": len(subs)},
+		respKeyData: subs,
+		"meta":      map[string]any{"count": len(subs)},
 	})
 }
 
@@ -241,24 +249,24 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		})
 	case errors.Is(err, ErrInvalidChannel):
 		return h.WriteValidationError(writer, "Invalid channel", []base.ValidationErrorField{
-			{Name: "channel", Message: "Must be one of: webhook, slack"},
+			{Name: fieldChannel, Message: "Must be one of: webhook, slack"},
 		})
 	case errors.Is(err, ErrPublicChannelNotAllowed):
 		return h.WriteValidationError(writer, "Channel not available", []base.ValidationErrorField{
-			{Name: "channel", Message: "Public subscriptions are email-only. " +
+			{Name: fieldChannel, Message: "Public subscriptions are email-only. " +
 				"Webhook and Slack deliveries are registered by an operator from the dashboard."},
 		})
 	case errors.Is(err, ErrEndpointRequired):
 		return h.WriteValidationError(writer, "Endpoint required", []base.ValidationErrorField{
-			{Name: "url", Message: "A delivery URL is required"},
+			{Name: fieldURL, Message: "A delivery URL is required"},
 		})
 	case errors.Is(err, ErrSlackWebhookExpected):
 		return h.WriteValidationError(writer, "Slack webhook expected", []base.ValidationErrorField{
-			{Name: "url", Message: "A Slack incoming-webhook URL (https://hooks.slack.com/...) is required"},
+			{Name: fieldURL, Message: "A Slack incoming-webhook URL (https://hooks.slack.com/...) is required"},
 		})
 	case errors.Is(err, ErrInvalidEndpointURL):
 		return h.WriteValidationError(writer, "Invalid endpoint URL", []base.ValidationErrorField{
-			{Name: "url", Message: "Must be an https URL pointing at a publicly reachable host"},
+			{Name: fieldURL, Message: "Must be an https URL pointing at a publicly reachable host"},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)
