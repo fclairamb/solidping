@@ -27,6 +27,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
@@ -566,6 +567,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// InitializeSystemConfig, so DB-stored posthog.* parameters are already
 	// overlaid onto cfg. When PostHog is not configured this installs a genuine
 	// no-op: no client, no goroutine, no network.
+	// Apply the audit-trail knobs (spec 2026-08-21-09) before any route
+	// exists, so no request can be served with the default settings while the
+	// operator's `audit.capture_ip: false` is still in flight. Like the
+	// analytics client below, this runs after InitializeSystemConfig so
+	// DB-stored parameters have already been overlaid onto cfg.
+	audit.SetCaptureIP(s.config.Audit.CaptureIP)
+	audit.ConfigureDefaultFolder(
+		time.Duration(s.config.Audit.FailedLoginFoldWindowMinutes)*time.Minute,
+		s.config.Audit.FailedLoginMaxPerOrgPerHour,
+	)
+
 	analytics.SetDefault(analytics.New(s.config.PostHog))
 	if analytics.Default().Enabled() {
 		slog.InfoContext(ctx, "Product analytics enabled", "host", s.config.PostHog.ResolvedHost())

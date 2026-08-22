@@ -134,6 +134,12 @@ func manualReaderServerEnvVars() []string {
 		"SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH",
 		"SP_AUTH_PASSWORD_BCRYPT_COST",
 		"SP_AUTH_PASSWORD_REHASH_ON_LOGIN",
+		// applyAuditEnv — every audit key is snake_case, so koanf's env loader
+		// cannot reach any of them (see AuditConfig).
+		"SP_AUDIT_CAPTURE_IP",
+		"SP_AUDIT_RETENTION_DAYS",
+		"SP_AUDIT_FAILED_LOGIN_FOLD_WINDOW_MINUTES",
+		"SP_AUDIT_FAILED_LOGIN_MAX_PER_ORG_PER_HOUR",
 		// applyJobsEnv
 		"SP_JOBS_STUCK_TIMEOUT",
 		"SP_JOBS_REAPER_INTERVAL",

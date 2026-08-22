@@ -63,6 +63,13 @@ const (
 	// (stage 2), so the jobs table stops growing unbounded. Global, self-
 	// rescheduling daily; its own terminal rows self-clean (spec 2026-07-11-17).
 	JobTypeJobsCleanup JobType = "jobs_cleanup"
+
+	// JobTypeEventsCleanup enforces audit retention on the events table
+	// (spec 2026-08-21-09): a daily, self-rescheduling, batched delete of rows
+	// older than audit.retention_days (default 365). Before this the table had
+	// no retention at all, which stopped being survivable once every login and
+	// config change started landing in it.
+	JobTypeEventsCleanup JobType = "events_cleanup"
 	// JobTypeCustomDomainVerify re-runs the ownership (TXT) check for every
 	// status page with a custom domain, clearing verification after repeated
 	// failures (domain release/takeover protection). Global, self-rescheduling

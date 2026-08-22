@@ -253,9 +253,32 @@ func foldKey(orgUID, email, sourceIP string) string {
 }
 
 // defaultFolder is the process-wide folder used by RecordFailedLogin.
-var defaultFolder = NewFailedLoginFolder(DefaultFoldWindow, DefaultMaxPerOrgPerHour)
+var (
+	defaultFolderMu sync.RWMutex
+	defaultFolder   = NewFailedLoginFolder(DefaultFoldWindow, DefaultMaxPerOrgPerHour)
+)
+
+// ConfigureDefaultFolder re-creates the process-wide folder from config. Called
+// once from app wiring; replacing rather than mutating means the two knobs can
+// never be observed half-applied. Any state accumulated by the previous folder
+// is discarded, which is correct — it is a rate-limiter bucket, not data.
+func ConfigureDefaultFolder(window time.Duration, maxPerOrgPerHour int) {
+	folder := NewFailedLoginFolder(window, maxPerOrgPerHour)
+
+	defaultFolderMu.Lock()
+	defer defaultFolderMu.Unlock()
+	defaultFolder = folder
+}
+
+// DefaultFolder returns the process-wide folder.
+func DefaultFolder() *FailedLoginFolder {
+	defaultFolderMu.RLock()
+	defer defaultFolderMu.RUnlock()
+
+	return defaultFolder
+}
 
 // RecordFailedLogin registers a failed login through the process-wide folder.
 func RecordFailedLogin(ctx context.Context, store EventStore, orgUID, email, reason string) Outcome {
-	return defaultFolder.Record(ctx, store, orgUID, email, reason)
+	return DefaultFolder().Record(ctx, store, orgUID, email, reason)
 }
