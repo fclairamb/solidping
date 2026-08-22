@@ -34,6 +34,7 @@
     "statuspage.incident.published": "Publicado en la página de estado",
     "statuspage.incident.updated": "Incidente de la página de estado actualizado",
     "statuspage.incident.resolved": "Resuelto en la página de estado",
+    "statuspage.subscriber.disabled": "Suscripción a la página de estado desactivada",
     "status_update.created": "Actualización de estado publicada",
     "status_update.updated": "Actualización de estado editada",
     "status_update.deleted": "Actualización de estado eliminada",

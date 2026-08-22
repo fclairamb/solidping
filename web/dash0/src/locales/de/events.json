@@ -34,6 +34,7 @@
     "statuspage.incident.published": "Auf Statusseite veröffentlicht",
     "statuspage.incident.updated": "Statusseiten-Vorfall aktualisiert",
     "statuspage.incident.resolved": "Auf Statusseite behoben",
+    "statuspage.subscriber.disabled": "Statusseiten-Abonnement deaktiviert",
     "status_update.created": "Statusupdate veröffentlicht",
     "status_update.updated": "Statusupdate bearbeitet",
     "status_update.deleted": "Statusupdate entfernt",
