@@ -28,7 +28,9 @@
 # region silently stops probing — with no alert, because the checks simply stop
 # being claimed. Read the block at the end of this file before adding a service.
 
-app = "solidping-agent-cdg"
+# Replace both with your own. Keep the real values in your infrastructure repo,
+# not here — this file is the redistributable example.
+app = "CHANGEME-agent-cdg"
 primary_region = "cdg"
 
 [build]
@@ -39,9 +41,10 @@ primary_region = "cdg"
 [env]
   # The role switch. Everything else about the process follows from it.
   SP_NODE_ROLE = "agent"
-  # Each machine names itself after its fly machine ID, so the agents list maps
-  # 1:1 onto `fly machine list` and a replaced machine is obvious.
-  # (Set at runtime from FLY_MACHINE_ID — see the ENTRYPOINT note in README.md.)
+  # SP_AGENT_NAME is deliberately NOT set: the agent falls back to os.Hostname(),
+  # which on a fly machine is the machine ID, so the agents list maps 1:1 onto
+  # `fly machine list` for free. [env] is app-wide, so setting it here would make
+  # every machine report the same name. See README.md.
   SP_AGENT_KEYS_FILE = "/data/agent-keys.json"
   LOG_LEVEL = "info"
 

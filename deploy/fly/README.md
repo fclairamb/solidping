@@ -1,25 +1,29 @@
-# SolidPing platform agents on fly.io
+# Running SolidPing check agents on fly.io
 
-Running SolidPing's **own** cloud check workers on fly.io, over the deported-agent
-WebSocket transport instead of a direct PostgreSQL connection.
+An **example** of staffing a SolidPing cloud check region with machines outside
+your cluster, using the deported-agent WebSocket transport instead of a direct
+PostgreSQL connection.
 
-> Internal / platform-operator material. System agents are invisible to
-> customers: they serve the *existing* cloud region slugs, so nothing in the
-> dashboard, the docs site or a customer's check configuration changes. See
-> [`wiki/features/deported-agents.md`](../../wiki/features/deported-agents.md).
+This directory is a template, not a deployment. [`fly.toml`](fly.toml) is
+generic on purpose: copy it, fill in your own app name and region, and keep your
+real values (hosts, tokens, app names) in whatever private repo holds your
+infrastructure. See [`wiki/features/deported-agents.md`](../../wiki/features/deported-agents.md)
+for the protocol and `specs/done/2026/07/2026-07-27-01-fly-io-system-agents.md`
+for the design.
 
-## Why
+## Why not just point a worker at the database
 
 The in-cluster cloud worker (`SP_NODE_ROLE=checks`) claims jobs with
 `SELECT … FOR UPDATE SKIP LOCKED` straight against PostgreSQL. Exposing that
-database to fly machines would be both a security regression and a performance
-trap — every claim transaction would carry a cross-continent round trip.
+database to a machine on the public internet would be both a security regression
+and a performance trap — every claim transaction would carry a cross-continent
+round trip.
 
 Deported agent mode already solves exactly this: outbound-only WebSocket,
 Ed25519-signed reconnects, pull-based claiming, results written server-side, and
-**zero** database access. Spec `2026-07-27-01` generalized it from
-tenant-private regions to platform-operated ones, so the same binary in the same
-mode now serves a *shared cloud region across every organization*.
+**zero** database access. Spec `2026-07-27-01` generalized it from tenant-private
+regions to platform-operated ones, so the same binary in the same mode can serve
+a *shared cloud region across every organization*.
 
 ## Region mapping
 
@@ -27,14 +31,14 @@ System agents serve the **existing** SolidPing region slugs — there are no
 `fly-*` slugs and no migration of any check's region set. A fly app is simply
 another way to staff a region you already have.
 
-| fly region code | Location | SolidPing region slug |
+| fly region code | Location | Maps to |
 |---|---|---|
 | `cdg` | Paris, France | the EU slug in your `SP_REGIONS` (e.g. `default` / `eu-west-1`) |
 | `iad` | Ashburn, Virginia | your US-East slug (e.g. `us-east-1`) |
 | `sjc` | San Jose, California | your US-West slug |
 | `lhr` | London, UK | your UK slug, if you define one |
 | `fra` | Frankfurt, Germany | your EU-Central slug, if you define one |
-| `nrt` | Tokyo, Japan | `jp-1` on the k8xp dev deployment — see [`fly.nrt.toml`](fly.nrt.toml) |
+| `nrt` | Tokyo, Japan | your Japan slug |
 | `sin` | Singapore | your APAC slug |
 | `syd` | Sydney, Australia | your AU slug |
 | `gru` | São Paulo, Brazil | your South-America slug |
@@ -82,13 +86,13 @@ SP_SYSTEM_AGENT_ENROLLMENT_TOKENS="eu-west-1=spe_…,us-east-1=spe_…"
 
 ```bash
 cd deploy/fly
-cp fly.toml fly.cdg.toml     # set app = "solidping-agent-cdg", primary_region = "cdg"
+cp fly.toml fly.cdg.toml     # set app and primary_region to your own values
 
-fly apps create solidping-agent-cdg
+fly apps create <your-app>
 fly volumes create agent_data --region cdg --size 1   # per machine
 
-fly secrets set -a solidping-agent-cdg \
-  SP_AGENT_SERVER_URL="https://app.solidping.io" \
+fly secrets set -a <your-app> \
+  SP_AGENT_SERVER_URL="https://<your-api-host>" \
   SP_AGENT_ENROLLMENT_TOKEN="spe_…"                  # the region's system token
 
 fly deploy -c fly.cdg.toml
@@ -119,42 +123,40 @@ fly deploy -c fly.cdg.toml
 | `SP_AGENT_KEYS` | **unset — do not set it** | fly secrets are app-wide; one identity shared by every machine is not usable for a multi-machine agent app |
 | `SP_AGENT_PRINT_KEYS` | **unset** | opt-in printing of **private key material** to stdout — and fly aggregates stdout, so anything printed lands in `fly logs` |
 
-**Never set `SP_AGENT_KEYS` on a fly agent app.** fly secrets are app-wide, so
-every machine would boot with the same identity; each machine enrolls itself and
-keeps its own keys on its own volume instead (see
-`specs/done/2026/07/2026-07-27-01-fly-io-system-agents.md`).
+**Never set `SP_AGENT_KEYS` on a multi-machine fly agent app.** fly secrets are
+app-wide, so every machine would boot with the same identity; each machine
+enrolls itself and keeps its own keys on its own volume instead. (Pinning
+`SP_AGENT_KEYS` *is* a reasonable trade at `count=1`, where it keeps the agent
+row stable across `fly deploy` machine recreations — but going above one machine
+then requires switching back to the volume model first.)
 
 There is no working way to extract that volume's `agent-keys.json` from
 outside the machine: the image ships no shell and no `base64` (`FROM
-gcr.io/distroless/base-debian13:nonroot`, see below), and `fly ssh console`
-additionally needs `hallpass` baked into the image, which this one doesn't
-carry — so a `-C "base64 -w0 …"` one-liner fails before it even gets to the
-missing binary. If you ever genuinely need the base64 for a single-machine
-app, there is no in-machine extraction path: start it once with
-`SP_AGENT_PRINT_KEYS=true` instead (prints the private key material to
+gcr.io/distroless/base-debian13:nonroot`), and `fly ssh console` additionally
+needs `hallpass` baked into the image, which this one doesn't carry — so a
+`-C "base64 -w0 …"` one-liner fails before it even gets to the missing binary.
+If you ever genuinely need the base64 for a single-machine app, start it once
+with `SP_AGENT_PRINT_KEYS=true` instead (prints the private key material to
 stdout, i.e. into `fly logs`; unset it and restart afterwards, and treat the
 machine as compromised if that log line was retained by a log drain).
 
 **Leave `SP_AGENT_NAME` unset.** The agent already defaults its name to
 `os.Hostname()` ([`agentmode.go`](../../server/internal/agentmode/agentmode.go)),
 which on a fly machine is the machine ID — so the agents list lines up with
-`fly machine list` with no configuration at all. (The default is verified in
-code; the resulting name is not directly observable — system agents are
-`organization_uid = NULL` and the only listing route is the org-scoped
-`/orgs/:org/agents`. Confirm platform-side if it matters.)
+`fly machine list` with no configuration at all.
 
 Setting it in `fly.toml` `[env]` (or as a secret) would actively make things
 worse: both are **app-wide**, so every machine in the region would report the
-same name. And the wrapper-entrypoint trick this README used to recommend
-cannot work against the published image — it is built `FROM
-gcr.io/distroless/base-debian13:nonroot`, which ships no `/bin/sh`.
+same name. And a wrapper-entrypoint trick cannot work against the published
+image — it is built `FROM gcr.io/distroless/base-debian13:nonroot`, which ships
+no `/bin/sh`.
 
 The name is cosmetic in any case: identity is the keypair, not the name.
 
 ## The multi-machine story
 
 ```bash
-fly scale count 3 -a solidping-agent-cdg --region cdg
+fly scale count 3 -a <your-app> --region cdg
 ```
 
 Each machine:
@@ -196,32 +198,16 @@ credentials, and never silently skipped.
 ## Verifying a region
 
 ```bash
-fly logs -a solidping-agent-cdg           # expect "enrolled" then claim/result traffic
+fly status -a <your-app>    # what is ACTUALLY running — editing the pin is not the deploy
+fly logs   -a <your-app>    # expect "enrolled" then claim/result traffic
 ```
 
 The logs must show `Agent identity persisted path=/data/agent-keys.json` and
 **no base64 blob**: an agent never prints its own private keys unless
 `SP_AGENT_PRINT_KEYS` is set. If you do see one, that identity is exposed in
-fly's log stream — follow the rotation checklist below.
-
-### Rotating an exposed agent identity
-
-> **Operator action (not automated).** Required for any agent that ran a build
-> before this fix — notably `solidping-agent-nrt` (region `jp-1`), whose
-> identity was published to fly's log stream on 2026-08-04.
-
-1. Revoke the agent from the dashboard (Private locations → agents → revoke) so
-   its Ed25519 public key can no longer authenticate.
-2. Destroy the machine **and its volume** (`fly volumes destroy …`) — the volume
-   carries `/data/agent-keys.json`, so a machine-only rebuild would re-enroll
-   with the leaked keypair.
-3. Mint a fresh enrollment token, redeploy, and confirm the new agent enrolls
-   and that its logs contain the path line and no base64.
-4. **Rotate the credentials themselves.** Every check credential sealed to the
-   old X25519 identity must be treated as exposed: anyone holding the leaked
-   identity could have decrypted it. Re-sealing to the new agent happens
-   automatically on the next claim, but that only protects future traffic — the
-   underlying secrets must be rotated by their owner.
+fly's log stream — revoke the agent, destroy the machine *and its volume*,
+re-enroll with a fresh token, and rotate every check credential that was sealed
+to the old X25519 identity.
 
 Server side, the region's jobs should show `worker_uid` values belonging to
 `ag-…`-slugged workers, and results should keep arriving with the normal
