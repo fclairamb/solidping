@@ -162,6 +162,10 @@ func (c *TCPChecker) executeDirect(
 	result.Output[checkerdef.OutputKeyIPVersion] = ipVersion
 	result.Output["tls_enabled"] = cfg.TLS
 
+	// The connect helper knows the failure CLASS but not what it was dialing;
+	// only this path resolved an address, so only this path can name it.
+	checkerdef.LocateNetworkFailure(&result, cfg.Host, targetIP.String(), cfg.Port)
+
 	return &result
 }
 
@@ -190,20 +194,28 @@ func (c *TCPChecker) connect(
 	if err != nil {
 		// Determine if this is a timeout or connection refused
 		if ctxWithTimeout.Err() != nil {
-			return checkerdef.Result{
+			out := checkerdef.Result{
 				Status: checkerdef.StatusTimeout,
 				Output: map[string]any{
 					checkerdef.OutputKeyError: "connection timeout",
 				},
 			}
+			out.SetNetworkFailure(checkerdef.NewNetworkFailure(
+				checkerdef.ClassifyDialError(err, true), "", "", 0))
+
+			return out
 		}
 
-		return checkerdef.Result{
+		out := checkerdef.Result{
 			Status: checkerdef.StatusDown,
 			Output: map[string]any{
 				checkerdef.OutputKeyError: fmt.Sprintf("connection refused: %v", err),
 			},
 		}
+		out.SetNetworkFailure(checkerdef.NewNetworkFailure(
+			checkerdef.ClassifyDialError(err, false), "", "", 0))
+
+		return out
 	}
 
 	defer func() { _ = conn.Close() }()
@@ -235,13 +247,17 @@ func (c *TCPChecker) connect(
 		tlsConn := tls.Client(conn, tlsConfig)
 
 		if err := tlsConn.HandshakeContext(ctxWithTimeout); err != nil {
-			return checkerdef.Result{
+			out := checkerdef.Result{
 				Status:  checkerdef.StatusDown,
 				Metrics: metrics,
 				Output: map[string]any{
 					checkerdef.OutputKeyError: fmt.Sprintf("TLS handshake failed: %v", err),
 				},
 			}
+			out.SetNetworkFailure(checkerdef.NewNetworkFailure(
+				checkerdef.ClassifyTLSHandshakeError(err, ctxWithTimeout.Err() != nil), "", "", 0))
+
+			return out
 		}
 
 		tlsHandshakeTime = time.Since(tlsStart)
@@ -382,6 +398,11 @@ func (c *TCPChecker) executeTunneled(
 	result.Output[checkerdef.OutputKeyPort] = cfg.Port
 	result.Output["tunneled"] = true
 	result.Output["tls_enabled"] = cfg.TLS
+
+	// A tunneled probe failed on the FAR side of an SSH bastion. Tracing the
+	// path from this worker would describe a route the probe never took, so the
+	// class the connect helper recorded is dropped rather than published.
+	checkerdef.DropNetworkFailure(&result)
 
 	return &result
 }

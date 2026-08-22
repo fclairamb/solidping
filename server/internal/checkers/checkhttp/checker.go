@@ -225,7 +225,40 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		result.Diagnostics.FailureResponse.RemoteAddr = tracker.remoteAddr()
 	}
 
+	// Same reason for the path-trace marker: executeRequest knows the failure
+	// CLASS, only the httptrace observer knows which address was dialed.
+	locateHTTPNetworkFailure(result, tracker.dialedAddr())
+
 	return result, nil
+}
+
+// locateHTTPNetworkFailure fills the endpoint on a marker executeRequest
+// classified, splitting the observed `ip:port` back into its parts.
+//
+// A marker whose address could not be observed is DROPPED rather than kept with
+// an empty address: there is nothing to trace to, and a trace to a re-resolved
+// name could point at a different machine than the one that failed.
+func locateHTTPNetworkFailure(result *checkerdef.Result, dialed string) {
+	if result == nil || result.Diagnostics == nil || result.Diagnostics.NetworkFailure == nil {
+		return
+	}
+
+	host, portText, err := net.SplitHostPort(dialed)
+	if err != nil || host == "" {
+		checkerdef.DropNetworkFailure(result)
+
+		return
+	}
+
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		checkerdef.DropNetworkFailure(result)
+
+		return
+	}
+
+	result.Diagnostics.NetworkFailure.Address = host
+	result.Diagnostics.NetworkFailure.Port = port
 }
 
 // executeRequest is the HTTP probe proper.
@@ -332,27 +365,35 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	if err != nil {
 		// Check if context was canceled or timed out
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return &checkerdef.Result{
+			out := &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
 				Output: withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: "request timed out",
 					checkerdef.OutputKeyURL:   cfg.URL,
 				}, skipTLSVerify),
-			}, nil
+			}
+			out.SetNetworkFailure(checkerdef.NewNetworkFailure(
+				checkerdef.ClassifyDialError(err, true), hostFromURL(cfg.URL), "", 0))
+
+			return out, nil
 		}
 
 		// An address-family failure is cataloged, not a generic dial error:
 		// "the host has no AAAA record" and "this worker has no IPv6 egress"
 		// must not read the same as "your service is down".
-		return &checkerdef.Result{
+		out := &checkerdef.Result{
 			Status:   checkerdef.IPVersionFailureStatus(err),
 			Duration: duration,
 			Output: withTLSVerifySkipped(map[string]any{
 				checkerdef.OutputKeyError: err.Error(),
 				checkerdef.OutputKeyURL:   cfg.URL,
 			}, skipTLSVerify),
-		}, nil
+		}
+		out.SetNetworkFailure(checkerdef.NewNetworkFailure(
+			checkerdef.ClassifyDialError(err, false), hostFromURL(cfg.URL), "", 0))
+
+		return out, nil
 	}
 
 	defer func() {
@@ -647,6 +688,13 @@ type connFamilyTracker struct {
 	// annotate a failure capture ("which of the CDN's edges served me this
 	// challenge page?"). Empty when no connection was established.
 	addr string
+	// dialed is the address the transport last ATTEMPTED, recorded by
+	// ConnectDone whether or not the connect succeeded.
+	//
+	// This is the one the path trace needs, and GotConn cannot supply it: a
+	// connect timeout or a refusal never produces a connection, so `addr` stays
+	// empty in precisely the cases worth tracing.
+	dialed string
 }
 
 // clientTrace returns the httptrace hooks to attach to the request context.
@@ -669,6 +717,12 @@ func (t *connFamilyTracker) clientTrace() *httptrace.ClientTrace {
 
 			t.family = checkerdef.IPVersionOf(addr.IP)
 			t.addr = remote.String()
+		},
+		ConnectDone: func(_, addr string, _ error) {
+			t.mu.Lock()
+			defer t.mu.Unlock()
+
+			t.dialed = addr
 		},
 	}
 }
@@ -694,4 +748,25 @@ func (t *connFamilyTracker) remoteAddr() string {
 	defer t.mu.Unlock()
 
 	return t.addr
+}
+
+// dialedAddr reports the last `ip:port` the transport tried to connect to,
+// established or not, or "" when it never got as far as a connect.
+func (t *connFamilyTracker) dialedAddr() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.dialed
+}
+
+// hostFromURL is the display hostname for a path-trace marker. Best-effort: an
+// unparseable URL never reaches here (Validate rejects it), and an empty result
+// only costs the marker its label, never its address.
+func hostFromURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+
+	return parsed.Hostname()
 }

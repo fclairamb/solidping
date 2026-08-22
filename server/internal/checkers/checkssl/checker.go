@@ -258,7 +258,15 @@ func (c *SSLChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	result, err := tlsConnect(ctx, dialer, target, params.serverName)
 	if err != nil {
-		return c.handleConnectError(ctx, err, result, hostLabel, params.port, start), nil
+		out := c.handleConnectError(ctx, err, result, hostLabel, params.port, start)
+
+		// A tunneled failure happened on the far side of the bastion, so no
+		// marker: a trace from this worker would describe the wrong route.
+		if !tunneled {
+			out.SetNetworkFailure(networkFailureFor(err, result, ctx.Err() != nil, params.host, hostLabel, params.port))
+		}
+
+		return out, nil
 	}
 
 	defer func() { _ = result.conn.Close() }()
@@ -380,4 +388,23 @@ func tlsVersionString(version uint16) string {
 	default:
 		return fmt.Sprintf("Unknown (0x%04x)", version)
 	}
+}
+
+// networkFailureFor classifies an SSL check's connect/handshake failure.
+//
+// The two halves are DIFFERENT classes and the split is load-bearing: a nil
+// tlsConnResult means the TCP connection never came up (a path problem), while
+// a non-nil one means the connection came up and the handshake stalled (a
+// middlebox or a server that accepts and never speaks). Everything else a TLS
+// handshake can fail on — expired, self-signed, wrong name — is the target
+// ANSWERING, and ClassifyTLSHandshakeError deliberately returns "" for it so no
+// trace is taken.
+func networkFailureFor(
+	err error, result *tlsConnResult, timedOut bool, host, address string, port int,
+) *checkerdef.NetworkFailure {
+	if result == nil {
+		return checkerdef.NewNetworkFailure(checkerdef.ClassifyDialError(err, timedOut), host, address, port)
+	}
+
+	return checkerdef.NewNetworkFailure(checkerdef.ClassifyTLSHandshakeError(err, timedOut), host, address, port)
 }

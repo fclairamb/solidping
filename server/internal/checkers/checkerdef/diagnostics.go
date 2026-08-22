@@ -33,6 +33,18 @@ type Diagnostics struct {
 	// See Screenshot's own doc comment for why its bytes never cross the agent
 	// WS control channel.
 	Screenshot *Screenshot `json:"screenshot,omitempty"`
+
+	// NetworkFailure states that this probe failed to REACH its target, and
+	// names the endpoint it was dialing (spec 2026-08-21-10). It is set at
+	// transport-error sites only, which is what makes "an application-level
+	// failure never triggers a path trace" a property of where the field is
+	// written rather than of a string match on an error message.
+	//
+	// It is the only member of Diagnostics that is not opt-in per check: it
+	// costs a few dozen bytes and only ever exists on a failing probe. The
+	// opt-in is on the ACTION it enables (`tracerouteOnFailure`), decided
+	// server-side at the incident transition — see NetworkFailure's doc.
+	NetworkFailure *NetworkFailure `json:"networkFailure,omitempty"`
 }
 
 // Screenshot is a PNG capture of the page a failing browser check was looking
