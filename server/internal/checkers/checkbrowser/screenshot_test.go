@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/chromedp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
@@ -168,10 +169,16 @@ func TestScreenshotFailureNeverChangesOutcome(t *testing.T) {
 	})
 }
 
-// TestScreenshotCaptureSurvivesAnExpiredCheckContext proves the WithoutCancel
-// detachment is load-bearing: the capture-worthy failure IS the timeout, and by
-// then the check's own context is already Done. A capture inheriting it would
-// never run.
+// TestScreenshotCaptureSurvivesAnExpiredCheckContext proves the two-budget
+// split in Execute is load-bearing: the capture-worthy failure IS the timeout,
+// and by then the PROBE's context is already Done. A capture inheriting that
+// would never run; it runs on the SESSION context, which outlives the probe by
+// exactly the screenshot budget.
+//
+// This used to be achieved with context.WithoutCancel, which also detached the
+// capture from the lifecycle chromedp manages and panicked the whole process.
+// See TestScreenshotStaysBoundToCallerCancellation for the guard against that
+// returning.
 //
 //nolint:paralleltest // mutates the process-wide settings
 func TestScreenshotCaptureSurvivesAnExpiredCheckContext(t *testing.T) {
@@ -287,4 +294,97 @@ func TestScreenshotConfigRoundTrip(t *testing.T) {
 
 	bad := &BrowserConfig{}
 	r.Error(bad.FromMap(map[string]any{cfgKeyURL: testPageURL, "screenshot": "yes"}))
+}
+
+// TestScreenshotStaysBoundToCallerCancellation is the regression guard for a
+// crash this capture path caused in CI.
+//
+// The capture context must remain a DESCENDANT of the context the worker hands
+// in. An earlier version reached for context.WithoutCancel to survive a spent
+// probe deadline, which also detached it from shutdown and — far worse — from
+// the lifecycle chromedp was managing, letting the capture race the allocator's
+// teardown and panic the process with "close of closed channel".
+//
+// Canceling the caller must still reach the capture. If this ever fails,
+// something has been detached again.
+//
+//nolint:paralleltest // mutates the process-wide settings
+func TestScreenshotStaysBoundToCallerCancellation(t *testing.T) {
+	server := fakeCDPServer(t)
+	withSettings(t, Settings{CDPURL: server.URL})
+
+	r := require.New(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	var captureErr error
+
+	checker := &BrowserChecker{
+		session: func(
+			_ context.Context, _ *BrowserConfig, start time.Time, metrics, output map[string]any,
+		) *checkerdef.Result {
+			// The worker goes away mid-execution (a shutdown).
+			cancel()
+
+			return &checkerdef.Result{
+				Status: checkerdef.StatusDown, Duration: time.Since(start),
+				Metrics: metrics, Output: output,
+			}
+		},
+		screenshot: func(shotCtx context.Context) ([]byte, error) {
+			captureErr = shotCtx.Err()
+
+			return fakePNG(), captureErr
+		},
+	}
+
+	result, err := checker.Execute(ctx, screenshotSpec(true))
+	r.NoError(err)
+
+	r.ErrorIs(captureErr, context.Canceled,
+		"the capture context must still be canceled by the caller's cancellation")
+	r.Nil(result.Diagnostics, "and a canceled capture is dropped, not stored")
+	r.Equal(checkerdef.StatusDown, result.Status, "the verdict is untouched either way")
+}
+
+// TestBrowserWasAllocatedGatesTheCapture pins the guard that stops the capture
+// allocating a SECOND browser — the mechanism that actually panicked the
+// process.
+//
+// chromedp's Run allocates whenever c.Browser == nil, and ExecAllocator.Allocate
+// arms a goroutine that closes c.allocated when Chrome exits. A probe whose Run
+// fails after that goroutine is armed but before c.Browser is set leaves a nil
+// Browser and an already-closing channel; a second Run closes it twice. That
+// panic is raised on a goroutine chromedp owns, so no recover() can contain it
+// — it has to be prevented.
+//
+// Browser-free on purpose: the exact chromedp state is not provokable on
+// demand, but the rule the guard encodes is assertable everywhere.
+func TestBrowserWasAllocatedGatesTheCapture(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// A plain context is not a chromedp context at all.
+	r.False(browserWasAllocated(t.Context()))
+
+	// A real chromedp context that has never run anything has an Allocator but
+	// no Browser — precisely the state in which a capture must not call Run,
+	// because Run would allocate one.
+	allocCtx, allocCancel := chromedp.NewExecAllocator(
+		t.Context(), chromedp.DefaultExecAllocatorOptions[:]...,
+	)
+	t.Cleanup(allocCancel)
+
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	t.Cleanup(browserCancel)
+
+	r.NotNil(chromedp.FromContext(browserCtx), "positive control: a real chromedp context")
+	r.False(browserWasAllocated(browserCtx), "no browser has been allocated yet")
+
+	// And the production capture refuses rather than calling Run.
+	png, err := fullScreenshot(browserCtx)
+	r.ErrorIs(err, errNoBrowserAllocated)
+	r.Nil(png)
 }

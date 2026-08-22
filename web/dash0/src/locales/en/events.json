@@ -34,6 +34,7 @@
     "statuspage.incident.published": "Published to Status Page",
     "statuspage.incident.updated": "Status Page Incident Updated",
     "statuspage.incident.resolved": "Resolved on Status Page",
+    "statuspage.subscriber.disabled": "Status Page Subscription Disabled",
     "status_update.created": "Status Update Posted",
     "status_update.updated": "Status Update Edited",
     "status_update.deleted": "Status Update Removed",

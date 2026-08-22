@@ -51,6 +51,13 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "statuspage.incident.published": { emoji: "📣", tone: TONE_DESTRUCTIVE },
   "statuspage.incident.updated": { emoji: "📝", tone: TONE_BLUE },
   "statuspage.incident.resolved": { emoji: "📗", tone: TONE_EMERALD },
+  // A webhook/Slack subscription that tripped the delivery circuit breaker
+  // (spec 2026-08-21-07). Destructive rather than amber on purpose: the only
+  // other symptom is notifications silently stopping, which nobody notices
+  // until the next incident — so this must read as broken, not as noise. 🔇
+  // says "this channel went quiet" rather than reusing an outage emoji, since
+  // the monitored service is fine and the delivery path is not.
+  "statuspage.subscriber.disabled": { emoji: "🔇", tone: TONE_DESTRUCTIVE },
 };
 
 // getEventEmoji returns the registry emoji for an event type, or undefined

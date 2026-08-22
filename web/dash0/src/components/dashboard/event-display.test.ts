@@ -157,6 +157,10 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["statuspage.incident.published", "📣"],
     ["statuspage.incident.updated", "📝"],
     ["statuspage.incident.resolved", "📗"],
+    // Delivery circuit breaker (spec 2026-08-21-07). Same ownership story as
+    // the three above: no backend chat integration hand-authors a message for
+    // this type, so dash0 is the sole owner of the pairing.
+    ["statuspage.subscriber.disabled", "🔇"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {
