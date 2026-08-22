@@ -92,7 +92,18 @@ func TestStatusPageBrandingMigration_Postgres(t *testing.T) {
 	}
 
 	// --- Schema landed. ---
-	for _, name := range []string{"logo_file_uid", "favicon_file_uid", "hide_branding", "password_hash"} {
+	r.Equal(1, column("status_pages", "password_hash"), "status_pages.password_hash must exist")
+
+	// ...and the SCHEMA GUARD (spec 2026-08-22-03): branding lives in
+	// `status_pages.settings`, so a fresh database must have NONE of the three
+	// columns. Written as an assertion because a column is what the next
+	// branding knob will reach for by reflex.
+	for _, name := range []string{"logo_file_uid", "favicon_file_uid", "hide_branding"} {
+		r.Zero(column("status_pages", name), "status_pages.%s belongs in settings, not a column", name)
+	}
+
+	// Positive controls for the Zero()s: the columns that DO stay.
+	for _, name := range []string{"uid", "settings", "custom_css", "custom_domain"} {
 		r.Equal(1, column("status_pages", name), "status_pages.%s must exist", name)
 	}
 
@@ -106,14 +117,15 @@ func TestStatusPageBrandingMigration_Postgres(t *testing.T) {
 	                  where table_name = 'status_page_subscriber'
 	                    and column_name = 'email' and is_nullable = 'YES'`))
 
-	// The two brand-asset indexes are PARTIAL: almost every row has NULL there.
+	// The two brand-asset indexes existed ONLY to make the state-based public
+	// route check cheap. Nothing authorizes by state any more, so they are gone.
 	for _, index := range []string{"status_pages_logo_file_idx", "status_pages_favicon_file_idx"} {
-		var def string
-
-		r.NoError(svc.DB().QueryRowContext(ctx,
-			`select indexdef from pg_indexes where indexname = ?`, index).Scan(&def))
-		r.Contains(def, "WHERE", "%s must be partial", index)
+		r.Zero(count(`select count(*) from pg_indexes where indexname = ?`, index),
+			"%s exists only to authorize by state", index)
 	}
+
+	// Positive control for the Zero()s above.
+	r.Equal(1, count(`select count(*) from pg_indexes where indexname = 'status_pages_custom_domain_idx'`))
 
 	// --- Behavior: the widened visibility CHECK. ---
 	org := "11111111-1111-1111-1111-111111111111"
@@ -247,8 +259,9 @@ func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
 	// halves document as lossy, so the "safe direction" claims get executed.
 	page := "66666666-0000-0000-0000-000000000001"
 	_, err = svc.DB().ExecContext(ctx, `
-		insert into status_pages (uid, organization_uid, name, slug, visibility, password_hash, hide_branding)
-		values (?, ?, 'Locked', 'locked-page', 'password', '$argon2id$x', true)`, page, org)
+		insert into status_pages (uid, organization_uid, name, slug, visibility, password_hash, settings)
+		values (?, ?, 'Locked', 'locked-page', 'password', '$argon2id$x', '{"branding":{"hideBranding":true}}')`,
+		page, org)
 	r.NoError(err)
 
 	_, err = svc.DB().ExecContext(ctx, `
@@ -276,15 +289,11 @@ func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
 	}
 
 	// Every added column is gone.
-	for _, name := range []string{"logo_file_uid", "favicon_file_uid", "hide_branding", "password_hash"} {
-		r.Zero(column("status_pages", name), "status_pages.%s must be dropped", name)
-	}
+	r.Zero(column("status_pages", "password_hash"), "status_pages.password_hash must be dropped")
 
 	for _, name := range subscriberEndpointColumns {
 		r.Zero(column("status_page_subscriber", name), "status_page_subscriber.%s must be dropped", name)
 	}
-
-	r.Zero(count(`select count(*) from pg_indexes where indexname = 'status_pages_logo_file_idx'`))
 
 	// The documented lossy outcomes, executed rather than asserted in prose:
 	// the password page is back to `private` (never `public` — a page shared
@@ -294,6 +303,12 @@ func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
 	r.Equal(1, count(`select count(*) from status_page_subscriber where organization_uid = ?`, org))
 	r.Equal(1, count(`select count(*) from status_page_subscriber
 	                  where organization_uid = ? and email = 'keeper@example.com'`, org))
+
+	// The branding teardown leaves settings alone on purpose — the rolled-back
+	// binary simply ignores the `branding` key rather than losing the page's
+	// availability thresholds with it.
+	r.Equal(1, count(`select count(*) from status_pages
+	                  where uid = ? and settings::text like '%hideBranding%'`, page))
 
 	// The tables themselves survived with their identity intact.
 	r.Equal(1, column("status_pages", "uid"))

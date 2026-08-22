@@ -154,6 +154,44 @@ func (s *Service) GetFileByUID(ctx context.Context, fileUID string) (*models.Fil
 	return file, nil
 }
 
+// PublicAssetPathPrefix is the canonical unsigned public-attachment route.
+//
+// /pub/files/:uid cannot serve these: it requires a signed, expiring URL, and a
+// brand asset needs a stable one — it is referenced from a <link rel="icon">
+// and an <img> on a page that anyone may load, including on a custom domain.
+// Access is authorized by the file's own TOPIC instead (IsPublicTopic), which
+// is one rule for every publicly-served asset kind rather than one state query
+// per kind (spec 2026-08-22-03).
+const PublicAssetPathPrefix = "/pub/assets/"
+
+// GetPublicFile returns a LIVE file by UID with no organization scope, and only
+// when its topic is on the public allowlist. It is the read behind the unsigned
+// public asset route, where the caller has a file UID and no org at all — which
+// is why GetFile, which needs an org UID, could not be used.
+//
+// Live rows only is load-bearing, not incidental: soft-deleting the replaced
+// blob is now the ENTIRE un-publish mechanism for replacing or clearing an
+// asset. A version of this that read deleted rows would keep every superseded
+// logo public forever.
+func (s *Service) GetPublicFile(ctx context.Context, fileUID string) (*models.File, error) {
+	file, err := s.db.GetFileAny(ctx, fileUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrFileNotFound
+		}
+
+		return nil, err
+	}
+
+	if file.Topic == nil || !IsPublicTopic(*file.Topic) {
+		// Deliberately the same error as "no such file": the public route must
+		// not distinguish "exists but private" from "does not exist".
+		return nil, ErrFileNotFound
+	}
+
+	return file, nil
+}
+
 // OpenContent opens the bytes for a file (used by the public handler too).
 func (s *Service) OpenContent(ctx context.Context, file *models.File) (io.ReadCloser, error) {
 	return s.openContent(ctx, file)

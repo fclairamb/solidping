@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -977,7 +978,10 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 	}
 
 	if req.HideBranding != nil {
-		page.HideBranding = *req.HideBranding
+		// The white-label opt-in lives in settings -> branding, alongside the
+		// two brand-asset UIDs (spec 2026-08-22-03). A brand-new page has no
+		// branding section yet, so it is created here rather than merged.
+		page.Settings.Branding = &models.BrandingSettings{HideBranding: *req.HideBranding}
 	}
 
 	if req.AutoPublish != nil {
@@ -1341,7 +1345,29 @@ func (s *Service) DeleteStatusPage(ctx context.Context, orgSlug, identifier stri
 		return ErrStatusPageNotFound
 	}
 
-	return s.db.DeleteStatusPage(ctx, page.UID)
+	if delErr := s.db.DeleteStatusPage(ctx, page.UID); delErr != nil {
+		return delErr
+	}
+
+	// Reap the page's brand assets. This is NOT housekeeping: a status-page
+	// logo is public exactly while its file row is live, so without this the
+	// deleted page's logo stays readable on /pub/assets/:uid forever. Before
+	// spec 2026-08-22-03 the page row disappearing handled it implicitly,
+	// because the access check went through the page; now nothing does.
+	//
+	// db.DeleteFilesByTopicPrefix is the same primitive files.DeleteAttachments
+	// wraps — used directly because this service holds no files.Service and
+	// injecting one to reach the identical query would be ceremony.
+	if _, reapErr := s.db.DeleteFilesByTopicPrefix(
+		ctx, org.UID, files.StatusPageTopicPrefix(page.UID),
+	); reapErr != nil {
+		// Best-effort: the page is already gone. Surfacing the error would turn
+		// a successful delete into a 500 the caller cannot act on.
+		slog.WarnContext(ctx, "failed to reap status page attachments",
+			"error", reapErr, "orgUID", org.UID, "statusPageUID", page.UID)
+	}
+
+	return nil
 }
 
 // --- Section CRUD ---
@@ -2924,10 +2950,10 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		AutoPublishDelaySeconds: page.AutoPublishDelaySeconds,
 		AutoResolve:             page.AutoResolve,
 		CustomCSS:               page.CustomCSS,
-		HideBranding:            page.HideBranding,
+		HideBranding:            page.Settings.HideBranding(),
 		HasPassword:             page.PasswordHash != nil && *page.PasswordHash != "",
-		LogoURL:                 statuspageassets.PublicURL(page.LogoFileUID),
-		FaviconURL:              statuspageassets.PublicURL(page.FaviconFileUID),
+		LogoURL:                 statuspageassets.PublicURL(page.Settings.LogoFileUID()),
+		FaviconURL:              statuspageassets.PublicURL(page.Settings.FaviconFileUID()),
 		CreatedAt:               &page.CreatedAt,
 		Settings:                convertSettingsToResponse(page.Settings),
 		AvailabilityThresholds: AvailabilityThresholdsResponse{

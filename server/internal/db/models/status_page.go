@@ -1,6 +1,9 @@
 package models
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -126,18 +129,6 @@ type StatusPage struct {
 	// CustomDomainFailures counts consecutive re-verification failures. At 3 the
 	// verification is cleared (domain release/takeover protection).
 	CustomDomainFailures int `bun:"custom_domain_failures,notnull,default:0"`
-	// LogoFileUID / FaviconFileUID are the `files.uid` of the page's own brand
-	// assets (spec 2026-08-21-07). nil = wear the SolidPing logo / the default
-	// favicon. They hold a file UID rather than a URL because the public route
-	// that serves them is unsigned and authorized purely by state: a blob is
-	// public exactly while it is the CURRENT asset of a live, enabled page.
-	LogoFileUID    *string `bun:"logo_file_uid"`
-	FaviconFileUID *string `bun:"favicon_file_uid"`
-	// HideBranding is the page's half of the white-label decision: the
-	// "powered by SolidPing" footer disappears only when this is true AND the
-	// org holds the `whiteLabel` entitlement. Keeping the two halves separate
-	// means a downgrade silently restores the badge without rewriting the page.
-	HideBranding bool `bun:"hide_branding,notnull,default:false"`
 	// PasswordHash is the password hash gating a `visibility = password` page.
 	// It is produced by internal/utils/passwords, whose active policy is
 	// argon2id by default (bcrypt is selectable) — the same policy user
@@ -145,9 +136,14 @@ type StatusPage struct {
 	// It is NEVER serialized onto any response — reads expose `hasPassword`
 	// only. nil on public/private pages.
 	PasswordHash *string `bun:"password_hash"`
-	// Settings holds per-page display customization (e.g. availability color
-	// thresholds), typed rather than a free-form map so keys stay
-	// discoverable (spec 2026-08-03-01). Column is NOT NULL DEFAULT '{}'.
+	// Settings holds per-page display customization — availability color
+	// thresholds and the page's brand identity (logo, favicon, white-label
+	// opt-in) — typed rather than a free-form map so keys stay discoverable
+	// (specs 2026-08-03-01, 2026-08-22-03). Column is NOT NULL DEFAULT '{}'.
+	//
+	// Read the branding keys through the Settings accessors
+	// (Settings.LogoFileUID(), .FaviconFileUID(), .HideBranding()) rather than
+	// reaching into .Branding, which is nil on a page that never set one.
 	Settings  StatusPageSettings `bun:"settings,type:jsonb,notnull"`
 	CreatedAt time.Time          `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
@@ -201,7 +197,11 @@ type StatusPageUpdate struct {
 	// string clears the column (the appearance editor's "empty textarea"), a
 	// nil pointer leaves it untouched.
 	CustomCSS *string
-	// HideBranding flips the page-level white-label opt-in. nil leaves it.
+	// HideBranding flips the page-level white-label opt-in, stored in
+	// `settings -> branding -> hideBranding`. nil leaves it. The DB layer
+	// merges it into the JSON rather than overwriting the column — and folds
+	// it into Settings when that is set in the same call, since two
+	// `SET settings = ...` clauses in one UPDATE is a Postgres error.
 	HideBranding *bool
 	// PasswordHash writes the password hash gating a password page. A pointer to
 	// the empty string CLEARS the column (the page stopped being password
@@ -229,14 +229,85 @@ type StatusPageCustomDomainUpdate struct {
 	Failures   int
 }
 
-// StatusPageBrandingUpdate is the whole-column writer for a status page's two
-// brand-asset columns. Both fields are written verbatim on every call (nil
-// clears the column to NULL), mirroring StatusPageCustomDomainUpdate: one
-// shape expresses set, replace and clear, so no caller can accidentally leave
+// StatusPageBrandingUpdate is the whole-SECTION writer for a status page's
+// branding: it replaces `settings -> branding` in full on every call, so one
+// shape expresses set, replace and clear and no caller can accidentally leave
 // a stale file UID behind and keep a retired blob publicly reachable.
+//
+// "In full" stops at the branding section. The write is a two-level JSON merge
+// in SQL (see UpdateStatusPageBranding in each dialect), never a
+// read-modify-write of the whole settings column in Go — that would clobber a
+// concurrent `availability` change, which is the single most likely regression
+// this storage move could introduce.
 type StatusPageBrandingUpdate struct {
 	LogoFileUID    *string
 	FaviconFileUID *string
+	HideBranding   bool
+}
+
+// brandingPatch is the JSON merge patch a StatusPageBrandingUpdate becomes.
+//
+// It exists instead of reusing BrandingSettings because BrandingSettings has
+// `omitempty` on the file UIDs: a cleared slot would be OMITTED from the patch
+// and the previous value would survive the merge — a retired blob staying
+// publicly reachable, which is exactly the failure the whole-section write
+// shape exists to prevent. Here a nil pointer travels as an explicit JSON
+// null, which Postgres stores as null and SQLite's json_patch removes; both
+// decode back to a nil *string.
+type brandingPatch struct {
+	LogoFileUID    *string `json:"logoFileUid"`
+	FaviconFileUID *string `json:"faviconFileUid"`
+	HideBranding   bool    `json:"hideBranding"`
+}
+
+// settingsPatch wraps a branding patch at the `settings` level, which is the
+// shape SQLite's json_patch (RFC 7386, recursive) takes directly.
+type settingsPatch struct {
+	Branding brandingPatch `json:"branding"`
+}
+
+// BrandingPatchJSON returns the merge patch for the `branding` SECTION alone —
+// what Postgres concatenates onto `settings->'branding'`.
+func (u *StatusPageBrandingUpdate) BrandingPatchJSON() (string, error) {
+	data, err := json.Marshal(u.patch())
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal branding patch: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// SettingsPatchJSON returns the merge patch rooted at `settings` — what SQLite
+// hands to json_patch.
+func (u *StatusPageBrandingUpdate) SettingsPatchJSON() (string, error) {
+	data, err := json.Marshal(settingsPatch{Branding: u.patch()})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal branding patch: %w", err)
+	}
+
+	return string(data), nil
+}
+
+func (u *StatusPageBrandingUpdate) patch() brandingPatch {
+	return brandingPatch{
+		LogoFileUID:    u.LogoFileUID,
+		FaviconFileUID: u.FaviconFileUID,
+		HideBranding:   u.HideBranding,
+	}
+}
+
+// HideBrandingSectionPatch returns the `branding`-rooted merge patch that flips
+// ONLY the white-label opt-in, leaving the two asset keys alone — what Postgres
+// concatenates onto `settings->'branding'`. It is the generic PATCH path's
+// write (StatusPageUpdate.HideBranding).
+func HideBrandingSectionPatch(hide bool) string {
+	return `{"hideBranding":` + strconv.FormatBool(hide) + `}`
+}
+
+// HideBrandingSettingsPatch returns the same patch rooted at `settings` — what
+// SQLite hands to json_patch.
+func HideBrandingSettingsPatch(hide bool) string {
+	return `{"branding":` + HideBrandingSectionPatch(hide) + `}`
 }
 
 // StatusPageSection represents a section within a status page.

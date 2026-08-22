@@ -62,29 +62,48 @@ func tableColumns(ctx context.Context, t *testing.T, svc *Service, table string)
 	return out
 }
 
-// TestStatusPageBrandingColumnsPresent proves the branding section ran: a fresh
-// database has the three columns and the two partial indexes.
-func TestStatusPageBrandingColumnsPresent(t *testing.T) {
+// TestStatusPageBrandingIsNotColumns is the schema guard (spec 2026-08-22-03):
+// branding lives in `status_pages.settings`, so a FRESH database must have NONE
+// of the three columns and neither partial index.
+//
+// It is written as an assertion rather than left to code review because the
+// columns are what a future branding knob will reach for by reflex — this is
+// what makes that reflex fail loudly.
+func TestStatusPageBrandingIsNotColumns(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	ctx, svc, _ := migratedSQLite(t)
 
 	columns := tableColumns(ctx, t, svc, "status_pages")
-	r.True(columns["logo_file_uid"])
-	r.True(columns["favicon_file_uid"])
-	r.True(columns["hide_branding"])
-	r.True(columns["password_hash"])
-	// Positive control: the pragma really enumerated the table.
+	r.False(columns["logo_file_uid"], "branding belongs in settings, not a column")
+	r.False(columns["favicon_file_uid"], "branding belongs in settings, not a column")
+	r.False(columns["hide_branding"], "branding belongs in settings, not a column")
+
+	// Positive controls: the pragma really enumerated the table, and the
+	// columns that DO stay are still there (see the spec's "What stays a
+	// column" — a credential and the settings home itself).
 	r.True(columns["uid"])
+	r.True(columns["settings"])
+	r.True(columns["password_hash"])
+	r.True(columns["custom_css"])
+	r.True(columns["custom_domain"])
 
 	for _, index := range []string{"status_pages_logo_file_idx", "status_pages_favicon_file_idx"} {
 		var count int
 
 		r.NoError(svc.DB().QueryRowContext(ctx,
 			`select count(*) from sqlite_master where type = 'index' and name = ?`, index).Scan(&count))
-		r.Equal(1, count, "%s must survive the status_pages rebuild in the password section", index)
+		r.Zero(count, "%s exists only to authorize by state; nothing does that any more", index)
 	}
+
+	// Positive control for the Zero() above: an index that IS expected.
+	var domainIdx int
+
+	r.NoError(svc.DB().QueryRowContext(ctx,
+		`select count(*) from sqlite_master where type = 'index' and name = 'status_pages_custom_domain_idx'`).
+		Scan(&domainIdx))
+	r.Equal(1, domainIdx)
 }
 
 // TestStatusPagePasswordRebuildPreservesRows is the load-bearing one.
@@ -118,15 +137,14 @@ func TestStatusPagePasswordRebuildPreservesRows(t *testing.T) {
 			show_availability, show_response_time, history_days, language,
 			history_period, custom_domain, custom_domain_token, custom_domain_verified_at,
 			custom_domain_checked_at, custom_domain_failures, custom_css, settings,
-			auto_publish, auto_publish_delay_seconds, auto_resolve,
-			logo_file_uid, favicon_file_uid, hide_branding
+			auto_publish, auto_publish_delay_seconds, auto_resolve
 		) values (
 			?, ?, 'Acme Status', 'acme-status', 'All our things', 'private', 1, 0,
 			0, 0, 30, 'fr',
 			'30d', 'status.acme.com', 'tok3n', '2026-08-01T00:00:00Z',
-			'2026-08-02T00:00:00Z', 2, 'body{color:red}', '{"availability":{"thresholdUp":99.5}}',
-			1, 120, 'never',
-			'logo-file-uid', 'favicon-file-uid', 1
+			'2026-08-02T00:00:00Z', 2, 'body{color:red}',
+			'{"availability":{"thresholdUp":99.5},"branding":{"logoFileUid":"logo-file-uid","hideBranding":true}}',
+			1, 120, 'never'
 		)`, page, org)
 	r.NoError(err)
 
@@ -157,9 +175,6 @@ func TestStatusPagePasswordRebuildPreservesRows(t *testing.T) {
 		AutoPublish int     `bun:"auto_publish"`
 		Delay       int     `bun:"auto_publish_delay_seconds"`
 		AutoResolve string  `bun:"auto_resolve"`
-		Logo        *string `bun:"logo_file_uid"`
-		Favicon     *string `bun:"favicon_file_uid"`
-		Hide        int     `bun:"hide_branding"`
 	}
 
 	// An explicit column list, not `select *`: bun refuses to scan a column the
@@ -168,8 +183,7 @@ func TestStatusPagePasswordRebuildPreservesRows(t *testing.T) {
 	r.NoError(svc.DB().NewRaw(`
 		select name, slug, description, visibility, is_default, enabled, history_days, language,
 		       history_period, custom_domain, custom_domain_token, custom_domain_failures,
-		       custom_css, settings, auto_publish, auto_publish_delay_seconds, auto_resolve,
-		       logo_file_uid, favicon_file_uid, hide_branding
+		       custom_css, settings, auto_publish, auto_publish_delay_seconds, auto_resolve
 		from status_pages where uid = ?`, page).Scan(ctx, &got))
 
 	r.Equal("Acme Status", got.Name)
@@ -186,12 +200,13 @@ func TestStatusPagePasswordRebuildPreservesRows(t *testing.T) {
 	r.Equal(2, got.Failures)
 	r.Equal("body{color:red}", *got.CustomCSS)
 	r.Contains(got.Settings, "thresholdUp")
+	// Branding rides along INSIDE settings now, so the rebuild carrying that
+	// one column is what carries the page's logo and white-label opt-in.
+	r.Contains(got.Settings, "logo-file-uid")
+	r.Contains(got.Settings, `"hideBranding":true`)
 	r.Equal(1, got.AutoPublish)
 	r.Equal(120, got.Delay)
 	r.Equal("never", got.AutoResolve)
-	r.Equal("logo-file-uid", *got.Logo)
-	r.Equal("favicon-file-uid", *got.Favicon)
-	r.Equal(1, got.Hide)
 
 	// The child row survived the parent's DROP TABLE — which it only does
 	// because the section turns foreign_keys off around the swap.

@@ -134,31 +134,31 @@ alter table status_pages drop column if exists password_hash;
 
 -- ==========================================================================
 -- SECTION: status-page-branding
--- Teardown half of the status-page-branding section (spec 2026-08-21-07).
+-- Teardown half of the status-page-branding section
+-- (specs 2026-08-21-07, 2026-08-22-03).
 -- ==========================================================================
 
--- LOSSY: dropping these columns forgets which blob was a page's logo/favicon
--- and every white-label opt-in. The `files` rows and their blobs survive, but
--- nothing points at them any more, so they stop being publicly reachable —
--- which is the safe direction to fail in.
+-- There are no columns to drop: branding lives in `status_pages.settings`,
+-- a column this migration did not create. What the up half changed is the
+-- org-logo serving route, so that is what is reversed here.
+--
+-- LOSSY in one direction only: a logo uploaded AFTER this migration ran gets
+-- its `logo_url` rewritten back to /pub/org-logos/<uid>, a route the rolled-back
+-- binary does serve. Page branding written into `settings` is left alone — the
+-- older binary simply ignores the `branding` key.
 
-drop index if exists status_pages_favicon_file_idx;
-
---bun:split
-
-drop index if exists status_pages_logo_file_idx;
-
---bun:split
-
-alter table status_pages drop column if exists hide_branding;
-
---bun:split
-
-alter table status_pages drop column if exists favicon_file_uid;
+update organizations
+   set logo_url = '/pub/org-logos/' || logo_file_uid
+ where logo_file_uid is not null
+   and logo_url like '/pub/assets/%';
 
 --bun:split
 
-alter table status_pages drop column if exists logo_file_uid;
+-- Drop the topic again: the rolled-back binary authorizes org logos by state,
+-- not by topic, and a stray attachment key would only confuse the reaper.
+update files
+   set topic = null
+ where topic like 'organizations/%/logo';
 
 -- ==========================================================================
 -- SECTION: generic-attachments

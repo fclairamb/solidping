@@ -468,26 +468,6 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 	return err
 }
 
-// GetOrganizationByLogoFileUID returns the live organization whose current logo
-// is the given file. This is the authorization rule behind the unsigned
-// /pub/org-logos/:uid route: only a file that is some live org's CURRENT logo
-// is public, so retiring a logo (replacing or clearing it) immediately
-// un-publishes the old blob.
-func (s *Service) GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error) {
-	org := new(models.Organization)
-
-	err := s.db.NewSelect().
-		Model(org).
-		Where("logo_file_uid = ?", fileUID).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return org, nil
-}
-
 // AddOrganizationPreviousSlug records a slug an organization has just renamed
 // away from. Any live alias already holding that slug is released first: the
 // partial unique index allows a single live alias per slug, and the newest
@@ -4578,10 +4558,6 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 func applyStatusPageAccessColumns(
 	query *bun.UpdateQuery, update *models.StatusPageUpdate,
 ) *bun.UpdateQuery {
-	if update.HideBranding != nil {
-		query = query.Set("hide_branding = ?", *update.HideBranding)
-	}
-
 	if update.PasswordHash == nil {
 		return query
 	}
@@ -4675,60 +4651,90 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		}
 	}
 
-	if update.Settings != nil {
-		// The service layer has already applied the no-deep-merge
-		// section-replace-or-reset semantics; this is a whole-column overwrite.
-		query = query.Set("settings = ?", *update.Settings)
+	query, err := applyStatusPageSettings(query, update)
+	if err != nil {
+		return err
 	}
 
-	_, err := query.Exec(ctx)
+	_, err = query.Exec(ctx)
 
 	return err
 }
 
-// UpdateStatusPageBranding overwrites both brand-asset columns in one write.
-// Every transition (upload, replace, clear) goes through here, so a nil
-// pointer writes SQL NULL verbatim rather than "leave alone" — that is what
-// guarantees a cleared asset stops being publicly reachable immediately.
+// applyStatusPageSettings writes the `settings` column for an update.
+//
+// HideBranding lives in `settings -> branding -> hideBranding`, so it and a
+// whole-column Settings overwrite target the SAME column. Assigning a column
+// twice in one UPDATE is an error on Postgres and last-write-wins on SQLite —
+// neither is a behaviour to rely on, so when both are present the flag is
+// folded into the value in Go and written once.
+func applyStatusPageSettings(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) (*bun.UpdateQuery, error) {
+	if update.Settings != nil {
+		// The service layer has already applied the no-deep-merge
+		// section-replace-or-reset semantics; this is a whole-column overwrite.
+		return query.Set("settings = ?", foldHideBranding(*update.Settings, update.HideBranding)), nil
+	}
+
+	if update.HideBranding == nil {
+		return query, nil
+	}
+
+	return query.Set(brandingSettingsMergeSQLite, models.HideBrandingSettingsPatch(*update.HideBranding)), nil
+}
+
+// foldHideBranding applies a pending white-label opt-in onto a whole-column
+// settings value, so the two never become two assignments to one column.
+func foldHideBranding(settings models.StatusPageSettings, hide *bool) models.StatusPageSettings {
+	if hide == nil {
+		return settings
+	}
+
+	branding := models.BrandingSettings{}
+	if settings.Branding != nil {
+		branding = *settings.Branding
+	}
+
+	branding.HideBranding = *hide
+	settings.Branding = &branding
+
+	return settings
+}
+
+// brandingSettingsMergeSQLite writes a `settings`-rooted RFC 7386 merge patch.
+// json_patch is already recursive, so unlike the Postgres `||` no explicit
+// second level is needed — but the two DISAGREE physically on a null: json_patch
+// REMOVES the key, `||` STORES null. Both decode to a nil *string, which is
+// pinned by a parity test rather than trusted.
+const brandingSettingsMergeSQLite = "settings = json_patch(settings, ?)"
+
+// UpdateStatusPageBranding replaces the `branding` section of settings in one
+// write. Every transition (upload, replace, clear, white-label opt-in) goes
+// through here, and the section is written WHOLE — a nil file UID travels as an
+// explicit JSON null rather than being omitted, which is what guarantees a
+// cleared asset stops being publicly reachable immediately.
+//
+// The merge happens in SQL, never as a read-modify-write in Go: reading
+// StatusPageSettings, mutating .Branding and writing the struct back would
+// clobber a concurrent `availability` threshold change.
 func (s *Service) UpdateStatusPageBranding(
 	ctx context.Context, uid string, update *models.StatusPageBrandingUpdate,
 ) error {
-	_, err := s.db.NewUpdate().
+	patch, err := update.SettingsPatchJSON()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.NewUpdate().
 		Model((*models.StatusPage)(nil)).
-		Set("logo_file_uid = ?", update.LogoFileUID).
-		Set("favicon_file_uid = ?", update.FaviconFileUID).
+		Set(brandingSettingsMergeSQLite, patch).
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
 		Exec(ctx)
 
 	return err
-}
-
-// GetStatusPageByAssetFileUID returns the live, enabled status page whose
-// current logo or favicon is the given file. Disabled pages are excluded on
-// purpose: turning a page off must take its brand assets offline with it,
-// exactly as it takes the page itself offline.
-func (s *Service) GetStatusPageByAssetFileUID(
-	ctx context.Context, fileUID string,
-) (*models.StatusPage, error) {
-	page := new(models.StatusPage)
-
-	err := s.db.NewSelect().
-		Model(page).
-		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.
-				Where("logo_file_uid = ?", fileUID).
-				WhereOr("favicon_file_uid = ?", fileUID)
-		}).
-		Where("enabled = ?", true).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return page, nil
 }
 
 // UpdateStatusPageCustomDomain overwrites every custom-domain column in one

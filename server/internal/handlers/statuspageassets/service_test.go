@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 )
 
 // pngBytes is a one-pixel PNG. Content is irrelevant to this package (it never
@@ -23,8 +24,38 @@ const pngBytes = "\x89PNG\r\n\x1a\n-not-really-a-png-but-opaque-bytes"
 type assetSetup struct {
 	dbSvc db.Service
 	svc   *statuspageassets.Service
+	files *files.Service
 	org   *models.Organization
 	page  *models.StatusPage
+}
+
+// openPublic exercises the REAL public read path: the org-agnostic, live-rows
+// only lookup gated by the topic allowlist. It is what /pub/assets/:uid calls,
+// so a test asserting "this blob is (not) public" asserts the shipped rule and
+// not a paraphrase of it.
+func (s *assetSetup) openPublic(t *testing.T, fileUID string) (*models.File, io.ReadCloser, error) {
+	t.Helper()
+
+	file, err := s.files.GetPublicFile(t.Context(), fileUID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	body, err := s.files.OpenContent(t.Context(), file)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return file, body, nil
+}
+
+// logoUID reads the page's logo slot out of settings, failing the test when
+// it is unset.
+func logoUID(t *testing.T, page *models.StatusPage) string {
+	t.Helper()
+	require.NotNil(t, page.Settings.LogoFileUID())
+
+	return *page.Settings.LogoFileUID()
 }
 
 func newAssetSetup(t *testing.T) *assetSetup {
@@ -53,9 +84,12 @@ func newAssetSetup(t *testing.T) *assetSetup {
 	cfg.FileStorage.Type = "local"
 	cfg.FileStorage.LocalRoot = t.TempDir()
 
+	filesSvc := files.NewService(dbSvc, cfg)
+
 	return &assetSetup{
 		dbSvc: dbSvc,
-		svc:   statuspageassets.NewService(dbSvc, files.NewService(dbSvc, cfg)),
+		svc:   statuspageassets.NewService(dbSvc, filesSvc),
+		files: filesSvc,
 		org:   org,
 		page:  page,
 	}
@@ -71,8 +105,9 @@ func upload(body string) statuspageassets.Upload {
 }
 
 // TestUploadPointsThePageAtTheFileAndServesIt is the happy path for both slots:
-// the column gets the file UID, the public URL is derived from it, and the
-// unsigned public route resolves the blob back.
+// the settings section gets the file UID, the public URL is derived from it,
+// the file carries the topic that authorizes it, and the unsigned public route
+// resolves the blob back.
 func TestUploadPointsThePageAtTheFileAndServesIt(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -80,14 +115,24 @@ func TestUploadPointsThePageAtTheFileAndServesIt(t *testing.T) {
 
 	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
-	r.NotNil(page.LogoFileUID)
-	r.Nil(page.FaviconFileUID, "uploading a logo must not touch the favicon slot")
+	r.NotNil(page.Settings.LogoFileUID())
+	r.Nil(page.Settings.FaviconFileUID(), "uploading a logo must not touch the favicon slot")
 
-	url := statuspageassets.PublicURL(page.LogoFileUID)
+	uid := logoUID(t, page)
+
+	url := statuspageassets.PublicURL(page.Settings.LogoFileUID())
 	r.NotNil(url)
-	r.Equal(statuspageassets.PublicPathPrefix+*page.LogoFileUID, *url)
+	r.Equal(statuspageassets.PublicPathPrefix+uid, *url)
 
-	file, body, err := s.svc.OpenAsset(t.Context(), *page.LogoFileUID)
+	// The topic IS the authorization — assert it explicitly, since a missing
+	// topic would make the blob private and 404 the page's own logo.
+	stored, err := s.dbSvc.GetFile(t.Context(), s.org.UID, uid)
+	r.NoError(err)
+	r.NotNil(stored.Topic)
+	r.Equal(files.StatusPageAssetTopic(page.UID, "logo"), *stored.Topic)
+	r.True(files.IsPublicTopic(*stored.Topic))
+
+	file, body, err := s.openPublic(t, uid)
 	r.NoError(err)
 
 	defer func() { _ = body.Close() }()
@@ -99,8 +144,10 @@ func TestUploadPointsThePageAtTheFileAndServesIt(t *testing.T) {
 	r.Equal(pngBytes, string(got))
 }
 
-// TestFaviconSlotIsIndependent proves the two columns really are separate
-// slots: writing one leaves the other alone, in both directions.
+// TestFaviconSlotIsIndependent proves the two keys really are separate slots:
+// writing one leaves the other alone, in both directions. It is the section-level
+// half of the clobber property — the whole-section write has to RESTATE the
+// slot it is not touching.
 func TestFaviconSlotIsIndependent(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -111,19 +158,20 @@ func TestFaviconSlotIsIndependent(t *testing.T) {
 
 	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindFavicon, upload("icon"), nil)
 	r.NoError(err)
-	r.NotNil(page.LogoFileUID)
-	r.NotNil(page.FaviconFileUID)
-	r.NotEqual(*page.LogoFileUID, *page.FaviconFileUID)
+	r.NotNil(page.Settings.LogoFileUID())
+	r.NotNil(page.Settings.FaviconFileUID())
+	r.NotEqual(*page.Settings.LogoFileUID(), *page.Settings.FaviconFileUID())
 
 	page, err = s.svc.Clear(t.Context(), "acme", "acme-status", statuspageassets.KindFavicon)
 	r.NoError(err)
-	r.NotNil(page.LogoFileUID, "clearing the favicon must not clear the logo")
-	r.Nil(page.FaviconFileUID)
+	r.NotNil(page.Settings.LogoFileUID(), "clearing the favicon must not clear the logo")
+	r.Nil(page.Settings.FaviconFileUID())
 }
 
 // TestReplacingAnAssetUnpublishesTheOldBlob is the security property of the
-// unsigned public route: authorization is state, so the moment the page stops
-// pointing at a file, that file stops being served.
+// unsigned public route: the replaced file row is soft-deleted, and the public
+// read is live-rows-only, so the old blob stops being served in the same write.
+// That soft delete is now the ENTIRE un-publish mechanism for a replace.
 func TestReplacingAnAssetUnpublishesTheOldBlob(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -131,16 +179,16 @@ func TestReplacingAnAssetUnpublishesTheOldBlob(t *testing.T) {
 
 	first, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload("one"), nil)
 	r.NoError(err)
-	oldUID := *first.LogoFileUID
+	oldUID := logoUID(t, first)
 
 	second, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload("two"), nil)
 	r.NoError(err)
-	r.NotEqual(oldUID, *second.LogoFileUID)
+	r.NotEqual(oldUID, logoUID(t, second))
 
-	_, _, err = s.svc.OpenAsset(t.Context(), oldUID)
-	r.ErrorIs(err, statuspageassets.ErrAssetNotFound, "the replaced blob must stop resolving")
+	_, _, err = s.openPublic(t, oldUID)
+	r.ErrorIs(err, files.ErrFileNotFound, "the replaced blob must stop resolving")
 
-	_, body, err := s.svc.OpenAsset(t.Context(), *second.LogoFileUID)
+	_, body, err := s.openPublic(t, logoUID(t, second))
 	r.NoError(err)
 	r.NoError(body.Close())
 }
@@ -154,42 +202,89 @@ func TestClearingAnAssetUnpublishesTheBlob(t *testing.T) {
 
 	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
-	uid := *page.LogoFileUID
+	uid := logoUID(t, page)
 
 	cleared, err := s.svc.Clear(t.Context(), "acme", "acme-status", statuspageassets.KindLogo)
 	r.NoError(err)
-	r.Nil(cleared.LogoFileUID)
+	r.Nil(cleared.Settings.LogoFileUID())
 
-	_, _, err = s.svc.OpenAsset(t.Context(), uid)
-	r.ErrorIs(err, statuspageassets.ErrAssetNotFound)
+	_, _, err = s.openPublic(t, uid)
+	r.ErrorIs(err, files.ErrFileNotFound)
 }
 
-// TestDisabledPageStopsServingItsAssets: turning a page off must take its
-// brand assets offline with it, exactly as it takes the page offline. This is
-// the negative control the "current asset of a LIVE, ENABLED page" rule exists
-// for — without the enabled check the blob would still be world-readable.
-func TestDisabledPageStopsServingItsAssets(t *testing.T) {
+// TestDisabledPageStillServesItsAssets records a DELIBERATE loosening
+// (spec 2026-08-22-03), rather than leaving it to be discovered later as a leak.
+//
+// Under the old state-based check, disabling a page took its logo offline with
+// it. Authorization now comes from the file's own topic, so it does not. That
+// is accepted because the URL embeds an unguessable UUIDv4 (capability-like,
+// not enumerable) and a brand logo is not a secret. The operator-facing
+// consequence — "disable" is not "un-publish the logo" — is stated in the
+// docs-site status-page page.
+func TestDisabledPageStillServesItsAssets(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	s := newAssetSetup(t)
 
 	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
-	uid := *page.LogoFileUID
-
-	// Positive control first: it resolves while the page is enabled.
-	_, body, err := s.svc.OpenAsset(t.Context(), uid)
-	r.NoError(err)
-	r.NoError(body.Close())
+	uid := logoUID(t, page)
 
 	disabled := false
 	r.NoError(s.dbSvc.UpdateStatusPage(t.Context(), page.UID, &models.StatusPageUpdate{Enabled: &disabled}))
 
-	_, _, err = s.svc.OpenAsset(t.Context(), uid)
-	r.ErrorIs(err, statuspageassets.ErrAssetNotFound)
+	_, body, err := s.openPublic(t, uid)
+	r.NoError(err, "disabling a page no longer un-publishes its logo — see the spec's table")
+	r.NoError(body.Close())
+
+	// ...and clearing the asset, which IS the un-publish mechanism, still works
+	// on a disabled page. Without this the loosening would leave an operator no
+	// way to take the blob down.
+	_, err = s.svc.Clear(t.Context(), "acme", "acme-status", statuspageassets.KindLogo)
+	r.NoError(err)
+
+	_, _, err = s.openPublic(t, uid)
+	r.ErrorIs(err, files.ErrFileNotFound)
 }
 
-// TestDeletedPageStopsServingItsAssets is the same for a soft-deleted page.
+// TestPasswordPageStillServesItsAssets is the same recorded decision for a
+// page shared behind a secret: the logo is the image shown ABOVE the password
+// prompt, so serving it leaks nothing the prompt does not already show.
+func TestPasswordPageStillServesItsAssets(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newAssetSetup(t)
+
+	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	r.NoError(err)
+	uid := logoUID(t, page)
+
+	visibility := models.StatusPageVisibilityPassword
+	hash := "$argon2id$fake"
+	r.NoError(s.dbSvc.UpdateStatusPage(t.Context(), page.UID, &models.StatusPageUpdate{
+		Visibility: &visibility, PasswordHash: &hash,
+	}))
+
+	_, body, err := s.openPublic(t, uid)
+	r.NoError(err)
+	r.NoError(body.Close())
+
+	// The same for a fully private page.
+	visibility = models.StatusPageVisibilityPrivate
+	r.NoError(s.dbSvc.UpdateStatusPage(t.Context(), page.UID, &models.StatusPageUpdate{Visibility: &visibility}))
+
+	_, body, err = s.openPublic(t, uid)
+	r.NoError(err)
+	r.NoError(body.Close())
+}
+
+// TestDeletedPageStopsServingItsAssets is the REAP assertion.
+//
+// Deleting a page must take its logo offline, and after this refactor nothing
+// makes that happen implicitly — the page row disappearing is invisible to a
+// topic-based check. It only works because statuspages.Service.DeleteStatusPage
+// reaps `status-pages/<uid>/`, which is exactly why this test drives the real
+// delete path instead of db.DeleteStatusPage.
 func TestDeletedPageStopsServingItsAssets(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -197,12 +292,37 @@ func TestDeletedPageStopsServingItsAssets(t *testing.T) {
 
 	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
 	r.NoError(err)
-	uid := *page.LogoFileUID
+	uid := logoUID(t, page)
+
+	// Positive control: it resolves right up until the delete.
+	_, body, err := s.openPublic(t, uid)
+	r.NoError(err)
+	r.NoError(body.Close())
+
+	pagesSvc := statuspages.NewService(s.dbSvc, &config.Config{}, nil)
+	r.NoError(pagesSvc.DeleteStatusPage(t.Context(), "acme", page.UID))
+
+	_, _, err = s.openPublic(t, uid)
+	r.ErrorIs(err, files.ErrFileNotFound, "deleting a page must reap its brand assets")
+}
+
+// TestSoftDeletingThePageRowAloneIsNotEnough is the negative control for the
+// test above: it pins WHY the reap exists. Take the reap away and the page row
+// vanishing leaves the blob world-readable.
+func TestSoftDeletingThePageRowAloneIsNotEnough(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newAssetSetup(t)
+
+	page, err := s.svc.Upload(t.Context(), "acme", "acme-status", statuspageassets.KindLogo, upload(pngBytes), nil)
+	r.NoError(err)
+	uid := logoUID(t, page)
 
 	r.NoError(s.dbSvc.DeleteStatusPage(t.Context(), page.UID))
 
-	_, _, err = s.svc.OpenAsset(t.Context(), uid)
-	r.ErrorIs(err, statuspageassets.ErrAssetNotFound)
+	_, body, err := s.openPublic(t, uid)
+	r.NoError(err, "the page row is invisible to a topic check — only the reap un-publishes")
+	r.NoError(body.Close())
 }
 
 // TestUploadRejectsOversizeAndEmpty pins the two size guards. The handler

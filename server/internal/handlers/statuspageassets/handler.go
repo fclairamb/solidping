@@ -7,13 +7,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
-	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Error codes for status-page asset operations.
 const (
-	errCodeAssetNotFound base.ErrorCode = "STATUS_PAGE_ASSET_NOT_FOUND"
 	errCodeAssetTooLarge base.ErrorCode = "STATUS_PAGE_ASSET_TOO_LARGE"
 )
 
@@ -51,8 +49,8 @@ func newResponse(page *models.StatusPage) Response {
 		Slug:        page.Slug,
 		Name:        page.Name,
 		Description: page.Description,
-		LogoURL:     PublicURL(page.LogoFileUID),
-		FaviconURL:  PublicURL(page.FaviconFileUID),
+		LogoURL:     PublicURL(page.Settings.LogoFileUID()),
+		FaviconURL:  PublicURL(page.Settings.FaviconFileUID()),
 	}
 }
 
@@ -136,34 +134,6 @@ func (h *Handler) clear(writer http.ResponseWriter, req *http.Request, kind Kind
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, newResponse(page))
-}
-
-// PublicGet handles GET /pub/status-page-assets/:uid — unsigned and
-// unauthenticated.
-//
-// There is no signature to check because the authorization is state-based: the
-// service only opens a file that is the current logo or favicon of a live,
-// enabled status page. An asset that has been replaced, cleared, or whose page
-// was disabled or deleted stops resolving here immediately.
-func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error {
-	file, body, err := h.svc.OpenAsset(req.Context(), httpx.Param(req, "uid"))
-	if err != nil {
-		if errors.Is(err, ErrAssetNotFound) {
-			return h.WriteError(writer, http.StatusNotFound, errCodeAssetNotFound, "Status page asset not found")
-		}
-
-		return h.WriteInternalError(writer, req, err)
-	}
-
-	defer func() { _ = body.Close() }()
-
-	// Short cache: the URL changes on every upload (it embeds the file UID), so
-	// this only bounds staleness for an asset cleared without replacement.
-	writer.Header().Set("Cache-Control", "public, max-age=300")
-
-	// files.WriteContent is the single place that sets nosniff and refuses to
-	// serve anything but a raster image inline — the SVG-XSS guard.
-	return files.WriteContent(writer, file.MimeType, file.Name, body)
 }
 
 // uploaderUID returns the authenticated user's UID for the file's createdBy

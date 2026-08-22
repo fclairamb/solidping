@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 )
 
 // Organization-deletion errors.
@@ -97,6 +98,18 @@ func (s *Service) DeleteOrg(
 
 	if delErr := s.db.DeleteOrganization(ctx, org.UID); delErr != nil {
 		return nil, fmt.Errorf("failed to delete organization: %w", delErr)
+	}
+
+	// Reap the org's public attachments — today just its logo. A logo blob is
+	// public exactly while its file row is live (spec 2026-08-22-03), so
+	// without this the deleted org's logo stays readable on /pub/assets/:uid
+	// forever. Best-effort: the org is already gone, and failing the whole
+	// deletion over a leftover file row would be worse.
+	if _, reapErr := s.db.DeleteFilesByTopicPrefix(
+		ctx, org.UID, files.OrganizationTopicPrefix(org.UID),
+	); reapErr != nil {
+		slog.WarnContext(ctx, "failed to reap organization attachments",
+			"error", reapErr, "orgUID", org.UID)
 	}
 
 	slog.InfoContext(ctx, "organization deleted",

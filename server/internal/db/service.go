@@ -103,11 +103,6 @@ type Service interface {
 	ListOrganizations(ctx context.Context) ([]*models.Organization, error)
 	UpdateOrganization(ctx context.Context, uid string, update models.OrganizationUpdate) error
 	DeleteOrganization(ctx context.Context, uid string) error
-	// GetOrganizationByLogoFileUID resolves the live organization whose current
-	// logo is the given file. It is the authorization rule behind the unsigned
-	// /pub/org-logos/:uid route: a file that is not some org's current logo is
-	// simply not served there.
-	GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error)
 
 	// Organization previous-slug (rename alias) operations. See
 	// models.OrganizationPreviousSlug for the semantics; the invariant is that
@@ -808,15 +803,11 @@ type Service interface {
 	// UpdateStatusPageCustomDomain overwrites all custom-domain columns in one
 	// write (set/clear/verify/re-verify all go through here).
 	UpdateStatusPageCustomDomain(ctx context.Context, uid string, update *models.StatusPageCustomDomainUpdate) error
-	// UpdateStatusPageBranding overwrites BOTH brand-asset columns in one
-	// write, so set/replace/clear share a single shape (spec 2026-08-21-07).
+	// UpdateStatusPageBranding replaces the whole `branding` SECTION of
+	// status_pages.settings in one write, so set/replace/clear share a single
+	// shape (specs 2026-08-21-07, 2026-08-22-03). The write is a JSON merge in
+	// SQL, so a concurrent `availability` change is not clobbered.
 	UpdateStatusPageBranding(ctx context.Context, uid string, update *models.StatusPageBrandingUpdate) error
-	// GetStatusPageByAssetFileUID resolves the live, ENABLED status page whose
-	// current logo or favicon is the given file. This is the whole
-	// authorization rule behind the unsigned /pub/status-page-assets/:uid
-	// route: replacing, clearing or disabling a page un-publishes the blob in
-	// the same write.
-	GetStatusPageByAssetFileUID(ctx context.Context, fileUID string) (*models.StatusPage, error)
 	DeleteStatusPage(ctx context.Context, uid string) error
 
 	// StatusPageSection operations

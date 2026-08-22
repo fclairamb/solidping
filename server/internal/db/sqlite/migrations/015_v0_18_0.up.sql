@@ -7,7 +7,7 @@
 -- one for one, each one preserving that section's own rationale:
 --
 --   SECTION: generic-attachments        files.topic/details attachment link
---   SECTION: status-page-branding       status_pages logo/favicon/hide_branding
+--   SECTION: status-page-branding       org-logo topic + public-route backfill
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
@@ -53,37 +53,31 @@ create index if not exists files_org_topic_idx
 
 -- ==========================================================================
 -- SECTION: status-page-branding
--- Status-page brand assets and the white-label opt-in (spec 2026-08-21-07).
+-- Brand assets: where they are stored, and how they are authorized
+-- (specs 2026-08-21-07, 2026-08-22-03).
 -- ==========================================================================
 
 -- SQLite mirror of the status-page-branding section of
 -- postgres/migrations/015_v0_18_0.up.sql. See the Postgres file for why the
--- asset columns hold a files.uid rather than a URL, and why hide_branding is
--- only half of the white-label decision.
+-- three branding knobs are NOT columns (they live in `status_pages.settings`
+-- under a `branding` key) and why the two partial indexes went with them.
 --
--- Dialect difference: SQLite has no `ADD COLUMN IF NOT EXISTS`, so these
--- statements are not re-runnable — same as every other section in this set.
-alter table status_pages add column logo_file_uid text;
+-- Dialect difference: SQLite has no `UPDATE ... FROM`, so the org-logo topic
+-- backfill uses a correlated subquery.
+
+update files
+   set topic = 'organizations/'
+            || (select o.uid from organizations o where o.logo_file_uid = files.uid)
+            || '/logo'
+ where topic is null
+   and exists (select 1 from organizations o where o.logo_file_uid = files.uid);
 
 --bun:split
 
-alter table status_pages add column favicon_file_uid text;
-
---bun:split
-
-alter table status_pages add column hide_branding boolean not null default 0;
-
---bun:split
-
-create index if not exists status_pages_logo_file_idx
-  on status_pages (logo_file_uid)
-  where deleted_at is null and logo_file_uid is not null;
-
---bun:split
-
-create index if not exists status_pages_favicon_file_idx
-  on status_pages (favicon_file_uid)
-  where deleted_at is null and favicon_file_uid is not null;
+update organizations
+   set logo_url = '/pub/assets/' || logo_file_uid
+ where logo_file_uid is not null
+   and logo_url like '/pub/org-logos/%';
 
 -- ==========================================================================
 -- SECTION: status-page-password
@@ -151,9 +145,6 @@ create table status_pages_new (
     check (auto_publish_delay_seconds >= 0 and auto_publish_delay_seconds <= 86400),
   auto_resolve               text not null default 'if_untouched'
     check (auto_resolve in ('always', 'if_untouched', 'never')),
-  logo_file_uid              text,
-  favicon_file_uid           text,
-  hide_branding              boolean not null default 0,
   password_hash              text
 );
 
@@ -164,16 +155,14 @@ insert into status_pages_new (
   show_availability, show_response_time, history_days, language, created_at, updated_at,
   deleted_at, history_period, custom_domain, custom_domain_token, custom_domain_verified_at,
   custom_domain_checked_at, custom_domain_failures, custom_css, settings,
-  auto_publish, auto_publish_delay_seconds, auto_resolve,
-  logo_file_uid, favicon_file_uid, hide_branding
+  auto_publish, auto_publish_delay_seconds, auto_resolve
 )
 select
   uid, organization_uid, name, slug, description, visibility, is_default, enabled,
   show_availability, show_response_time, history_days, language, created_at, updated_at,
   deleted_at, history_period, custom_domain, custom_domain_token, custom_domain_verified_at,
   custom_domain_checked_at, custom_domain_failures, custom_css, settings,
-  auto_publish, auto_publish_delay_seconds, auto_resolve,
-  logo_file_uid, favicon_file_uid, hide_branding
+  auto_publish, auto_publish_delay_seconds, auto_resolve
 from status_pages;
 
 --bun:split
@@ -186,9 +175,7 @@ alter table status_pages_new rename to status_pages;
 
 --bun:split
 
--- Every index the dropped table carried, recreated verbatim — including the
--- two the status-page-branding section above had just added, which the DROP
--- took with it.
+-- Every index the dropped table carried, recreated verbatim.
 create unique index status_pages_org_slug_idx on status_pages (organization_uid, slug) where deleted_at is null;
 
 --bun:split
@@ -200,18 +187,6 @@ create unique index status_pages_org_default_idx on status_pages (organization_u
 create unique index status_pages_custom_domain_idx
   on status_pages (custom_domain)
   where custom_domain is not null and deleted_at is null;
-
---bun:split
-
-create index status_pages_logo_file_idx
-  on status_pages (logo_file_uid)
-  where deleted_at is null and logo_file_uid is not null;
-
---bun:split
-
-create index status_pages_favicon_file_idx
-  on status_pages (favicon_file_uid)
-  where deleted_at is null and favicon_file_uid is not null;
 
 --bun:split
 

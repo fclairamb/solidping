@@ -1299,16 +1299,27 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	pubFiles := mainGroup.NewGroup("/pub/files")
 	pubFiles.GET("/:uid", filesHandler.PublicGet)
 
-	// Organization logo (spec 2026-08-08-12). Upload/clear are owner-gated; the
-	// public route is unsigned on purpose — a logo URL has to be stable enough
-	// to paste into a status page — and is authorized by state instead: the
-	// file must be the CURRENT logo of a live organization.
+	// The ONE unsigned public-asset route (spec 2026-08-22-03). It serves any
+	// file whose attachment topic is on files.IsPublicTopic's closed allowlist
+	// — status-page logos and favicons, organization logos — instead of one
+	// bespoke handler with its own state query per asset kind.
+	//
+	// `/pub/status-page-assets/:uid` is the same handler on a second path: the
+	// status-page payload pins that exact string in `logoUrl`/`faviconUrl`, and
+	// this change is a storage-and-authorization refactor, not a URL change.
+	pubAssets := mainGroup.NewGroup(strings.TrimSuffix(files.PublicAssetPathPrefix, "/"))
+	pubAssets.GET("/:uid", filesHandler.PublicAssetGet)
+	pubStatusPageAssets := mainGroup.NewGroup(strings.TrimSuffix(statuspageassets.PublicPathPrefix, "/"))
+	pubStatusPageAssets.GET("/:uid", filesHandler.PublicAssetGet)
+
+	// Organization logo (spec 2026-08-08-12). Upload/clear are owner-gated. The
+	// uploaded blob is served by the generic public-asset route registered
+	// above — this package has no public route of its own since the bespoke
+	// /pub/org-logos/:uid handler was retired (spec 2026-08-22-03).
 	orgLogoService := orglogo.NewService(s.dbService, filesService)
 	orgLogoHandler := orglogo.NewHandler(orgLogoService, s.config)
 	orgOwnerGroup.POST("/logo", orgLogoHandler.Upload)
 	orgOwnerGroup.DELETE("/logo", orgLogoHandler.Delete)
-	pubOrgLogos := mainGroup.NewGroup("/pub/org-logos")
-	pubOrgLogos.GET("/:uid", orgLogoHandler.PublicGet)
 
 	// Bug report (public POST under /api/mgmt) and features endpoint (auth)
 	feedbackService := feedback.NewService(s.dbService, filesService, s.config, nil)
@@ -1526,18 +1537,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.POST("/:statusPageUid/custom-domain/verify", statusPagesHandler.VerifyCustomDomain)
 
 	// Per-page brand assets (spec 2026-08-21-07). Upload/clear are admin-gated
-	// by the org group's own chain; the public route below is unsigned on
-	// purpose — a favicon URL has to be stable enough to sit in a <link> tag on
-	// a custom domain — and is authorized by state instead: the file must be
-	// the CURRENT logo/favicon of a live, enabled status page.
+	// by the org group's own chain; the uploaded blob is served by the generic
+	// public-asset route registered further up, authorized by the file's topic
+	// (spec 2026-08-22-03).
 	statusPageAssetsService := statuspageassets.NewService(s.dbService, filesService)
 	statusPageAssetsHandler := statuspageassets.NewHandler(statusPageAssetsService, s.config)
 	orgStatusPages.POST("/:statusPageUid/logo", statusPageAssetsHandler.UploadLogo)
 	orgStatusPages.DELETE("/:statusPageUid/logo", statusPageAssetsHandler.DeleteLogo)
 	orgStatusPages.POST("/:statusPageUid/favicon", statusPageAssetsHandler.UploadFavicon)
 	orgStatusPages.DELETE("/:statusPageUid/favicon", statusPageAssetsHandler.DeleteFavicon)
-	pubStatusPageAssets := mainGroup.NewGroup("/pub/status-page-assets")
-	pubStatusPageAssets.GET("/:uid", statusPageAssetsHandler.PublicGet)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
 	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)

@@ -2,11 +2,14 @@
 // uploaded logo and favicon (spec 2026-08-21-07) — as an admin-gated upload
 // endpoint plus the unsigned public route that serves the stored image.
 //
-// It sits between the status page (which owns the two `*_file_uid` columns)
-// and the generic files subsystem (which owns the bytes), so neither has to
-// know about the other. The shape deliberately mirrors `handlers/orglogo`:
-// same public-path-prefix + file-UID addressing, same size/type validation,
-// same retire-the-replaced-file step, same state-based authorization.
+// It sits between the status page (which stores the two file UIDs in its
+// `settings -> branding` section) and the generic files subsystem (which owns
+// the bytes and, through the file's TOPIC, the public-access rule), so neither
+// has to know about the other.
+//
+// Since spec 2026-08-22-03 this package no longer serves anything: the unsigned
+// public route is files.Handler.PublicAssetGet, authorized by
+// files.IsPublicTopic for every asset kind at once.
 package statuspageassets
 
 import (
@@ -44,8 +47,6 @@ var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	// ErrStatusPageNotFound is returned when the page UID/slug does not resolve.
 	ErrStatusPageNotFound = errors.New("status page not found")
-	// ErrAssetNotFound is returned when no file backs the requested asset.
-	ErrAssetNotFound = errors.New("status page asset not found")
 	// ErrUnsupportedAssetType is returned for a content type outside the allowlist.
 	ErrUnsupportedAssetType = errors.New("unsupported asset content type")
 	// ErrAssetTooLarge is returned when the upload exceeds the kind's cap.
@@ -68,16 +69,22 @@ const (
 	MaxFaviconSize int64 = 256 << 10 // 256 KB
 )
 
-// PublicPathPrefix is the unsigned public route serving uploaded status-page
-// assets.
+// PublicPathPrefix is the public URL prefix a status-page asset is addressed
+// by. It is an ALIAS of files.PublicAssetPathPrefix: the same generic handler
+// and the same allowlist check answer on both paths.
 //
-// /pub/files/:uid cannot be used: it requires a signed, expiring URL, and a
-// brand asset needs a stable one — it is referenced from a <link rel="icon">
-// and an <img> on a page that anyone may load, including on a custom domain.
-// Access is authorized by STATE instead of by signature: the file must be the
-// CURRENT logo or favicon of a live, enabled status page, so replacing,
-// clearing or disabling un-publishes the old blob immediately.
+// It survives the move to topic-based authorization because the status-page
+// payload contract pins this exact string in `logoUrl` / `faviconUrl`, and this
+// change is a storage-and-authorization refactor — not a URL change. It is NOT
+// a second implementation: there is exactly one public-asset handler.
 const PublicPathPrefix = "/pub/status-page-assets/"
+
+// Topic returns the attachment topic a page's asset is stored under. It is
+// what makes the blob publicly readable — files.IsPublicTopic allowlists
+// exactly `status-pages/<uid>/{logo,favicon}`.
+func Topic(pageUID string, kind Kind) string {
+	return files.StatusPageAssetTopic(pageUID, string(kind))
+}
 
 // MaxSizeFor returns the upload cap for an asset kind. An unknown kind gets
 // the smaller of the two — failing closed on a size limit is free.
@@ -174,6 +181,9 @@ func (s *Service) Upload(
 	file, err := s.files.CreateFile(
 		ctx, orgUUID, filestorage.GroupTypeStatusPageAssets,
 		upload.Name, mimeType, uploadedBy, upload.Body, upload.Size,
+		// The topic is the authorization: without it the blob is private and
+		// the public asset route 404s it.
+		files.WithTopic(Topic(page.UID, kind)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store status page asset: %w", err)
@@ -214,29 +224,6 @@ func (s *Service) Clear(
 	s.retireFile(ctx, org.UID, previous, "")
 
 	return s.db.GetStatusPage(ctx, org.UID, page.UID)
-}
-
-// OpenAsset resolves a public asset request. The file must be the current logo
-// or favicon of a LIVE, ENABLED status page — that state check is the entire
-// authorization story for the unsigned route, and it is why a retired, cleared
-// or disabled asset stops being served the moment the page row changes.
-func (s *Service) OpenAsset(ctx context.Context, fileUID string) (*models.File, io.ReadCloser, error) {
-	page, err := s.db.GetStatusPageByAssetFileUID(ctx, fileUID)
-	if err != nil || page == nil {
-		return nil, nil, ErrAssetNotFound
-	}
-
-	file, err := s.db.GetFile(ctx, page.OrganizationUID, fileUID)
-	if err != nil {
-		return nil, nil, ErrAssetNotFound
-	}
-
-	body, err := s.files.OpenContent(ctx, file)
-	if err != nil {
-		return nil, nil, fmt.Errorf("open status page asset content: %w", err)
-	}
-
-	return file, body, nil
 }
 
 // resolve looks up the org and the page, mapping "no rows" to the package's
@@ -285,9 +272,9 @@ func currentFileUID(page *models.StatusPage, kind Kind) string {
 	var current *string
 
 	if kind == KindLogo {
-		current = page.LogoFileUID
+		current = page.Settings.LogoFileUID()
 	} else {
-		current = page.FaviconFileUID
+		current = page.Settings.FaviconFileUID()
 	}
 
 	if current == nil {
@@ -297,15 +284,17 @@ func currentFileUID(page *models.StatusPage, kind Kind) string {
 	return *current
 }
 
-// brandingUpdateFor builds the whole-column write for one slot, carrying the
-// OTHER slot's current value through unchanged. models.StatusPageBrandingUpdate
-// writes both columns verbatim on purpose (nil clears), so the untouched slot
-// has to be restated here — that is the cost of never leaving a stale, still
-// publicly-reachable file UID behind.
+// brandingUpdateFor builds the whole-section write for one slot, carrying the
+// OTHER slot's current value — and the white-label opt-in — through unchanged.
+// models.StatusPageBrandingUpdate replaces `settings -> branding` verbatim on
+// purpose (nil clears), so everything the section holds has to be restated
+// here; that is the cost of never leaving a stale, still publicly-reachable
+// file UID behind.
 func brandingUpdateFor(page *models.StatusPage, kind Kind, value *string) *models.StatusPageBrandingUpdate {
 	update := &models.StatusPageBrandingUpdate{
-		LogoFileUID:    page.LogoFileUID,
-		FaviconFileUID: page.FaviconFileUID,
+		LogoFileUID:    page.Settings.LogoFileUID(),
+		FaviconFileUID: page.Settings.FaviconFileUID(),
+		HideBranding:   page.Settings.HideBranding(),
 	}
 
 	if kind == KindLogo {

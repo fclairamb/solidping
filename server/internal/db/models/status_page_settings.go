@@ -25,11 +25,59 @@ const (
 
 // StatusPageSettings is the typed decode target for status_pages.settings
 // (Postgres jsonb / SQLite text). It is the home for per-page display
-// customization knobs — today just availability thresholds — added without a
-// two-dialect migration each time. Keep it a typed struct, not a free-form
+// customization knobs — availability thresholds and brand identity — added
+// without a two-dialect migration each time. Keep it a typed struct, not a free-form
 // map, so keys stay discoverable and validation lives in one place.
 type StatusPageSettings struct {
 	Availability *AvailabilitySettings `json:"availability,omitempty"`
+	// Branding is the page's brand identity — logo, favicon, white-label
+	// opt-in (spec 2026-08-22-03). It lives here rather than in three columns
+	// of its own because it is read only while RENDERING the page: nothing
+	// filters, joins or uniquely constrains on it, which is the rule written
+	// down in wiki/conventions/database.md.
+	Branding *BrandingSettings `json:"branding,omitempty"`
+}
+
+// BrandingSettings is the page's brand identity. File UIDs, not URLs — the
+// public URL is derived (statuspageassets.PublicURL), so the stored value stays
+// valid when the route changes.
+type BrandingSettings struct {
+	// LogoFileUID is the `files.uid` of the page's own logo. nil = wear the
+	// SolidPing logo.
+	LogoFileUID *string `json:"logoFileUid,omitempty"`
+	// FaviconFileUID is the `files.uid` of the page's own favicon. nil = the
+	// default favicon.
+	FaviconFileUID *string `json:"faviconFileUid,omitempty"`
+	// HideBranding is the page's HALF of the white-label decision: the
+	// "powered by SolidPing" footer disappears only when this is true AND the
+	// org holds the `whiteLabel` entitlement. Keeping the two halves separate
+	// means a downgrade silently restores the badge without rewriting the page.
+	HideBranding bool `json:"hideBranding,omitempty"`
+}
+
+// LogoFileUID returns the page's logo file UID, nil when unset. Nil-safe on the
+// section so no caller has to check it.
+func (s StatusPageSettings) LogoFileUID() *string {
+	if s.Branding == nil {
+		return nil
+	}
+
+	return s.Branding.LogoFileUID
+}
+
+// FaviconFileUID returns the page's favicon file UID, nil when unset.
+func (s StatusPageSettings) FaviconFileUID() *string {
+	if s.Branding == nil {
+		return nil
+	}
+
+	return s.Branding.FaviconFileUID
+}
+
+// HideBranding reports the page's stored white-label opt-in (false when the
+// section is absent). It is only half of the decision — see BrandingSettings.
+func (s StatusPageSettings) HideBranding() bool {
+	return s.Branding != nil && s.Branding.HideBranding
 }
 
 // AvailabilitySettings customizes the green/amber/red availability

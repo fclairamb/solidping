@@ -1,9 +1,15 @@
 // Package orglogo implements the organization logo: an owner-only upload
-// endpoint and the unsigned public route that serves the stored image.
+// endpoint.
 //
 // It sits between the org profile (which owns `organizations.logo_url`) and the
-// generic files subsystem (which owns the bytes), so neither has to know about
-// the other.
+// generic files subsystem (which owns the bytes and, through the file's TOPIC,
+// the public-access rule), so neither has to know about the other.
+//
+// Since spec 2026-08-22-03 this package no longer serves anything. The bespoke
+// `/pub/org-logos/:uid` route and its "is this some live org's current logo"
+// state query are gone; an uploaded logo is served by the one generic public
+// asset route (files.Handler.PublicAssetGet), authorized by the file's topic
+// `organizations/<uid>/logo`.
 package orglogo
 
 import (
@@ -28,8 +34,6 @@ import (
 var (
 	// ErrOrganizationNotFound is returned when the org slug does not resolve.
 	ErrOrganizationNotFound = errors.New("organization not found")
-	// ErrLogoNotFound is returned when no file backs the requested logo.
-	ErrLogoNotFound = errors.New("organization logo not found")
 	// ErrUnsupportedLogoType is returned for a content type outside the allowlist.
 	ErrUnsupportedLogoType = errors.New("unsupported logo content type")
 	// ErrLogoTooLarge is returned when the upload exceeds MaxLogoSize.
@@ -43,14 +47,10 @@ var (
 // backend, and it keeps the whole file comfortably bufferable by the S3 backend.
 const MaxLogoSize int64 = 1 << 20 // 1 MB
 
-// LogoPublicPathPrefix is the unsigned public route serving uploaded logos.
-//
-// /pub/files/:uid cannot be used: it requires a signed, expiring URL, and a
-// logo needs a stable one that can be pasted into a status page or an email.
-// Access is authorized by state instead of by signature — the file must be the
-// CURRENT logo of a live organization — so replacing or clearing a logo
-// un-publishes the old blob immediately.
-const LogoPublicPathPrefix = "/pub/org-logos/"
+// LogoPublicPathPrefix is the public URL prefix an uploaded org logo is
+// addressed by. It is files.PublicAssetPathPrefix — the same route, the same
+// handler and the same allowlist check that serve status-page assets.
+const LogoPublicPathPrefix = files.PublicAssetPathPrefix
 
 // allowedLogoType is the upload allowlist. SVG is accepted because logos are
 // commonly vector, but it is served with Content-Disposition: attachment and
@@ -79,9 +79,9 @@ func NewService(dbService db.Service, filesService *files.Service) *Service {
 // Upload stores a new logo for the organization and points logo_url at it.
 //
 // A previously uploaded logo is retired in the same step: its file row is
-// soft-deleted, which also removes it from the public logo route (that route
-// only serves an org's CURRENT logo). An external-URL logo has no file to
-// retire and is simply overwritten.
+// soft-deleted, which also removes it from the public asset route (that route
+// only serves LIVE file rows). An external-URL logo has no file to retire and
+// is simply overwritten.
 func (s *Service) Upload(
 	ctx context.Context, orgSlug string, upload Upload, uploadedBy *string,
 ) (*models.Organization, error) {
@@ -115,6 +115,9 @@ func (s *Service) Upload(
 	file, err := s.files.CreateFile(
 		ctx, orgUUID, filestorage.GroupTypeOrgLogos,
 		upload.Name, mimeType, uploadedBy, upload.Body, upload.Size,
+		// The topic is the authorization: without it the blob is private and
+		// the public asset route 404s it.
+		files.WithTopic(files.OrganizationLogoTopic(org.UID)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store logo: %w", err)
@@ -153,32 +156,11 @@ func (s *Service) Clear(ctx context.Context, orgSlug string) (*models.Organizati
 	return s.db.GetOrganization(ctx, org.UID)
 }
 
-// OpenLogo resolves a public logo request. The file must be the current logo of
-// a LIVE organization — that state check is the entire authorization story for
-// the unsigned route, and it is why a retired or cleared logo stops being
-// served the moment the org row changes.
-func (s *Service) OpenLogo(ctx context.Context, fileUID string) (*models.File, io.ReadCloser, error) {
-	org, err := s.db.GetOrganizationByLogoFileUID(ctx, fileUID)
-	if err != nil || org == nil {
-		return nil, nil, ErrLogoNotFound
-	}
-
-	file, err := s.db.GetFile(ctx, org.UID, fileUID)
-	if err != nil {
-		return nil, nil, ErrLogoNotFound
-	}
-
-	body, err := s.files.OpenContent(ctx, file)
-	if err != nil {
-		return nil, nil, fmt.Errorf("open logo content: %w", err)
-	}
-
-	return file, body, nil
-}
-
 // retireFile soft-deletes the org's previous logo file, unless it is the one
 // that just replaced it. Failures are logged, never fatal: the org already
-// points at the new logo and a stale row is only wasted storage.
+// points at the new logo and a stale row is only wasted storage — though it IS
+// also what un-publishes the old blob, so a failure here leaves a superseded
+// logo readable until the GC sweep.
 func (s *Service) retireFile(ctx context.Context, org *models.Organization, keepUID string) {
 	if org.LogoFileUID == nil || *org.LogoFileUID == "" || *org.LogoFileUID == keepUID {
 		return

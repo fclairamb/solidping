@@ -8,7 +8,7 @@
 -- verbatim:
 --
 --   SECTION: generic-attachments        files.topic/details attachment link
---   SECTION: status-page-branding       status_pages logo/favicon/hide_branding
+--   SECTION: status-page-branding       org-logo topic + public-route backfill
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
@@ -91,67 +91,48 @@ comment on column files.details is
 
 -- ==========================================================================
 -- SECTION: status-page-branding
--- Status-page brand assets and the white-label opt-in (spec 2026-08-21-07).
+-- Brand assets: where they are stored, and how they are authorized
+-- (specs 2026-08-21-07, 2026-08-22-03).
 -- ==========================================================================
 
--- A status page can now carry its OWN logo and favicon instead of wearing
+-- A status page can carry its OWN logo and favicon instead of wearing
 -- SolidPing's, and can opt out of the "powered by SolidPing" footer.
 --
--- The two asset columns hold a `files.uid`, not a URL. That is deliberate and
--- mirrors `organizations.logo_file_uid`: the public route
--- /pub/status-page-assets/:uid is unsigned, and its ENTIRE authorization story
--- is "this file is the current logo or favicon of a live, enabled status page".
--- Storing the file UID is what makes that a single indexed lookup, and it is
--- what makes replacing or clearing an asset un-publish the old blob in the
--- same write. A URL column would have made the route either unauthorizable or
--- permanently public.
+-- None of that is a column. All three knobs live in `status_pages.settings`
+-- under a `branding` key, next to `availability`, because a per-page knob read
+-- only while RENDERING the page belongs in settings — see the rule in
+-- wiki/conventions/database.md. Spec 2026-08-21-07 originally added
+-- `logo_file_uid`, `favicon_file_uid`, `hide_branding` and two partial indexes
+-- here; 2026-08-22-03 removed them from THIS file rather than adding a `016`
+-- that drops them, since 015 is unreleased and shipping add-then-drop in one
+-- release is noise in the permanent record.
 --
--- `hide_branding` is only the page's HALF of the white-label decision. The
--- other half is the org's `whiteLabel` entitlement, and the footer disappears
--- only when both are true — which is why this column is a plain opt-in with a
--- FALSE default and carries no entitlement state of its own. An org that
--- downgrades keeps the flag set and simply gets the badge back; nothing has to
--- be rewritten on the billing side.
-alter table status_pages add column if not exists logo_file_uid text;
+-- The indexes went with the columns because nothing looks a page up by its
+-- asset UID any more: a blob is public when the FILE's own `topic` is on the
+-- allowlist in internal/handlers/files/publictopics.go, which is one rule for
+-- every publicly-served asset kind instead of one state query per kind.
+--
+-- What is left in this section is the migration that move requires: existing
+-- organization logos have to acquire that topic, or they stop resolving.
+
+-- Give every uploaded org logo the topic that authorizes it. Without this an
+-- already-uploaded logo 404s after the deploy, which spec 2026-08-22-03 calls
+-- a regression rather than an acceptable migration cost.
+update files
+   set topic = 'organizations/' || o.uid || '/logo'
+  from organizations o
+ where o.logo_file_uid = files.uid
+   and files.topic is null;
 
 --bun:split
 
-alter table status_pages add column if not exists favicon_file_uid text;
-
---bun:split
-
-alter table status_pages add column if not exists hide_branding boolean not null default false;
-
---bun:split
-
--- Partial indexes: the columns are NULL on the overwhelming majority of rows
--- (a page with no uploaded asset), and every lookup that uses them is the
--- public-route authorization check, which is by definition non-NULL and
--- live-rows-only.
-create index if not exists status_pages_logo_file_idx
-  on status_pages (logo_file_uid)
-  where deleted_at is null and logo_file_uid is not null;
-
---bun:split
-
-create index if not exists status_pages_favicon_file_idx
-  on status_pages (favicon_file_uid)
-  where deleted_at is null and favicon_file_uid is not null;
-
---bun:split
-
-comment on column status_pages.logo_file_uid is
-  'files.uid of the page''s uploaded logo (spec 2026-08-21-07). NULL = wear the SolidPing logo.';
-
---bun:split
-
-comment on column status_pages.favicon_file_uid is
-  'files.uid of the page''s uploaded favicon (spec 2026-08-21-07). NULL = the default favicon.';
-
---bun:split
-
-comment on column status_pages.hide_branding is
-  'Page-level white-label opt-in. Effective only when the org also holds the whiteLabel entitlement.';
+-- ...and point the stored URL at the route that now serves it. The bespoke
+-- /pub/org-logos/:uid handler and its "is this some live org's current logo"
+-- state query are retired; there is one public asset route.
+update organizations
+   set logo_url = '/pub/assets/' || logo_file_uid
+ where logo_file_uid is not null
+   and logo_url like '/pub/org-logos/%';
 
 -- ==========================================================================
 -- SECTION: status-page-password
