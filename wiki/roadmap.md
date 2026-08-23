@@ -74,11 +74,45 @@ incident, so ack, severity routing, and escalation all reuse).
 Still open from the SLA work, not blocked by it: rolling windows, per-region
 objectives, public SLA sections on status pages, CSV/PDF report attachments.
 
-### 2.2 Traceroute/MTR failure diagnostics — spec filed
+### 2.2 Traceroute/MTR failure diagnostics — SHIPPED
 `../specs/todos/2026-08-21-10-traceroute-failure-diagnostics.md`. The
 screenshots work built the whole attachment pipeline (capture LRU, agent
-upload frames, incident display); an MTR-style trace on transition-to-down is
+upload frames, incident display); an MTR-style trace on transition-to-down was
 the natural second payload, and BetterStack's other diagnostics bullet.
+
+A check that goes down on a *network-reachability* failure — connect timeout,
+refusal, ICMP loss, stalled TLS handshake — now gets a pure-Go MTR sweep from
+the probing vantage point, attached to the incident as a `traceroute` JSON
+attachment and rendered as a hop table on the incident and onset-result pages.
+Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry)
+deliberately trigger nothing: the target answered, so the path is fine. The
+probe mode is detected per host and recorded in every capture, because the
+unprivileged TCP fallback cannot see intermediate routers at all and a hop
+table read without that context is a hop table read wrong. Per-check toggle,
+per-org default, per-org rate limit; the trace runs after the failing result is
+already reported and can never delay or fail an incident. Docs:
+`web/docs/docs/features/traceroute-diagnostics.md`.
+
+**Follow-up 1, deliberately NOT built: a comparison trace on recovery.** The
+obvious next question after "where did the path break?" is "what changed when
+it came back?", and a second sweep at resolve-time would answer it with a
+before/after hop diff. It was left out because the two captures are only
+comparable if they were taken the same way, and nothing guarantees that: the
+resolve may be handled by a different agent, in a different region, on a host
+with a different privilege tier — so the diff would frequently be comparing an
+ICMP hop list against a TCP reachability ladder and calling the difference a
+route change. Worth its own spec, whose real work is the comparability rules
+(same vantage point, same mode, or refuse to diff) rather than the second
+sweep, plus a retention answer for keeping two captures per incident.
+
+**Follow-up 2, deliberately NOT built: DNS-failure diagnostics.** A name that
+does not resolve is the one common failure this feature is structurally unable
+to help with — there is no address to trace to, so the classifier returns no
+marker at all and no capture is taken. The equivalent evidence is a resolution
+trace (which resolvers were asked, what each answered, NXDOMAIN vs SERVFAIL vs
+timeout, whether the negative was cached), which is a different capture with a
+different shape and its own privacy question: a resolver chain can name
+internal DNS infrastructure. Same attachment rail, new kind.
 
 ---
 

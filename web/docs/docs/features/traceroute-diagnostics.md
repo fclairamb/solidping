@@ -80,9 +80,19 @@ incident, the notification and the status page are identical either way.
 
 Traceroute needs to send packets with a lowered TTL and read the ICMP replies
 that come back. How much of that a host is allowed to do depends on its
-privileges, so SolidPing detects what it can actually open at startup and picks
-the best available mode. **The mode is recorded in every capture and labelled in
-the UI**, because the three see genuinely different things.
+privileges, so SolidPing finds out by *actually opening the sockets* — not by
+inspecting the uid or guessing from the container runtime, both of which are
+wrong often enough to matter.
+
+The probe runs **once per process, the first time a trace is needed**, and the
+answer is cached for the lifetime of that process. Two practical consequences:
+nothing is attempted at boot, so a deployment that never traces never opens a
+socket; and **a privilege granted to a running process is not picked up until it
+restarts** — after a `setcap` or a `sysctl` change, restart SolidPing (or the
+agent) before expecting the mode to change.
+
+**The mode is recorded in every capture and labelled in the UI**, because the
+three see genuinely different things.
 
 | Mode | Requires | Sees |
 |---|---|---|
@@ -168,6 +178,11 @@ result over the same signed attachment endpoint it uses for screenshots.
 If the agent's connection has dropped in the meantime, the capture is simply
 lost — the server will not substitute a trace from its own vantage point, because
 that trace would be confidently wrong.
+
+The region shown on the hop table is stamped by the **server**, from the agent's
+enrolled record, not from anything the agent puts in the capture. An agent
+cannot be the authority on where it ran, and "which vantage point produced this
+path?" is the first thing you need to know when two locations disagree.
 
 Privileges are per-agent: an agent in a container with no `NET_RAW` falls back to
 TCP mode exactly as the server would, and its captures are labelled accordingly.
