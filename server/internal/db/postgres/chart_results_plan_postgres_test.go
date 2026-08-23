@@ -119,10 +119,13 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 	monthStart := time.Now().UTC().AddDate(0, 0, -30)
 	weekStart := time.Now().UTC().AddDate(0, 0, -7)
 
-	// Exactly the tier lists chartFetchParams can emit, paired with the range
-	// that emits them. Guarded on the TypeScript side by
-	// web/dash0/src/components/checks/chart-fetch-params.test.ts, which asserts
-	// no emitted entry ever mixes raw with a rollup tier.
+	// Exactly the tier lists chartFetchParams can emit
+	// (web/dash0/src/components/checks/response-time-chart.tsx). They are
+	// transcribed, not derived — nothing but this comment and the one on
+	// chartFetchParams links the two languages, so ADDING A TIER LIST THERE
+	// MEANS ADDING IT HERE, or its plan goes unverified. The TypeScript side
+	// guards separately that no emitted list ever mixes raw with a rollup tier
+	// (web/dash0/src/components/checks/chart-fetch-params.test.ts).
 	chartTiers := []struct {
 		name        string
 		periodTypes []string

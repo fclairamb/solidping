@@ -178,7 +178,16 @@ function rangeForSpan(spanMs: number): TimeRange {
  * aggregator deletes source rows after rollup, so raw + hour + day stay
  * disjoint in time; merging the tiers client-side yields exactly the rows the
  * single mixed query returned. Both entries span the full window — narrowing
- * the raw one is spec 2026-08-22-07, which builds on this split. */
+ * the raw one is spec 2026-08-22-07, which builds on this split.
+ *
+ * **If you change the tier lists this can emit, update the Go plan tests too.**
+ * They enumerate these exact lists and EXPLAIN each one against a production-
+ * sized fixture; nothing but this comment links the two languages, so a new
+ * tier list added here is a query nobody has ever seen a plan for:
+ *   - server/internal/db/postgres/chart_results_plan_postgres_test.go
+ *   - server/internal/db/sqlite/chart_results_plan_test.go
+ * The local guard that the lists never re-mix raw with a rollup tier lives in
+ * ./chart-fetch-params.test.ts. */
 export function chartFetchParams(
   timeRange: TimeRange,
   periodMs: number | undefined,
