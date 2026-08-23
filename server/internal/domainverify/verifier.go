@@ -260,12 +260,75 @@ func (v *Verifier) CheckCNAME(ctx context.Context, domain, expected string) (boo
 // target. Lookup errors count as "not verified". There is deliberately no
 // dual-accept: in token mode the plain shared target does NOT verify.
 func (v *Verifier) Verify(ctx context.Context, domain, token, cnameTarget string, mode Mode) bool {
-	expected := ExpectedTarget(mode, token, cnameTarget)
+	return v.Diagnose(ctx, domain, token, cnameTarget, mode).OK
+}
+
+// Diagnosis is everything one verification attempt saw. It exists because
+// "verification failed" is not an actionable statement: the same false has
+// meant a wrong CNAME, an NXDOMAIN, an installation with no CNAME target
+// configured at all, and a page verified in the wrong mode. Telling those apart
+// used to require correlating server logs with manual dig runs from inside the
+// same network namespace.
+type Diagnosis struct {
+	// Domain is the hostname that was looked up.
+	Domain string
+	// Mode is the verification mode in force.
+	Mode Mode
+	// Expected is the CNAME value the domain had to resolve to. Empty means
+	// the installation could not build one (no configured CNAME target, or an
+	// unusable token in token mode) — in which case nothing could have
+	// verified and the DNS was never consulted.
+	Expected string
+	// Resolved is the canonical name DNS actually returned, normalized the
+	// same way Expected is. Empty when the lookup failed.
+	Resolved string
+	// Err is the lookup transport error (including NXDOMAIN), if any.
+	Err error
+	// OK is the verdict.
+	OK bool
+}
+
+// String renders the diagnosis as one log/DB-friendly line.
+func (d Diagnosis) String() string {
+	expected := d.Expected
 	if expected == "" {
-		return false
+		expected = "<none: no CNAME target configured for this mode>"
 	}
 
-	ok, _ := v.CheckCNAME(ctx, domain, expected)
+	resolved := d.Resolved
+	if resolved == "" {
+		resolved = "<none>"
+	}
 
-	return ok
+	line := fmt.Sprintf("mode=%s expected=%s resolved=%s ok=%t", d.Mode, expected, resolved, d.OK)
+	if d.Err != nil {
+		line += " error=" + d.Err.Error()
+	}
+
+	return line
+}
+
+// Diagnose runs the same check as Verify and reports everything it saw.
+func (v *Verifier) Diagnose(ctx context.Context, domain, token, cnameTarget string, mode Mode) Diagnosis {
+	diag := Diagnosis{
+		Domain:   domain,
+		Mode:     mode,
+		Expected: ExpectedTarget(mode, token, cnameTarget),
+	}
+
+	if diag.Expected == "" {
+		return diag
+	}
+
+	cname, err := v.LookupCNAME(ctx, domain)
+	if err != nil {
+		diag.Err = err
+
+		return diag
+	}
+
+	diag.Resolved = normalizeTarget(cname)
+	diag.OK = diag.Resolved == normalizeTarget(diag.Expected)
+
+	return diag
 }

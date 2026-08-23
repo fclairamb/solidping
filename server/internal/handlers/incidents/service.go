@@ -1871,6 +1871,12 @@ func (s *Service) queueLifecycleNotifications(
 		// business, and it is already recorded as its own event — paging
 		// on-call because a customer's webhook receiver broke would be noise.
 		models.EventTypeStatusSubscriberDisabled,
+		// A demoted custom domain is likewise the status page's business. It
+		// already alerts the organization's admins by email from the sweep
+		// (jobtypes.alertCustomDomainDemoted) and there is no anchor check to
+		// hang an incident on — incidents.check_uid is NOT NULL — so routing
+		// it through the on-call fan-out would mean inventing a fake one.
+		models.EventTypeStatusPageCustomDomainDemoted,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,

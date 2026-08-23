@@ -583,6 +583,18 @@ type StatusPageResponse struct {
 	// attempt failed — see the server log for the reason). Empty when
 	// in-server TLS is disabled or the domain is not verified yet.
 	CustomDomainCertStatus string `json:"customDomainCertStatus,omitempty"`
+	// CustomDomainState is the lifecycle state (spec 2026-08-23-03):
+	// none | pending | active | grace | demoted. `grace` is the one that
+	// customDomainStatus cannot express — the page is still being served, but
+	// its DNS re-checks are failing and it will go dark if nothing is done.
+	CustomDomainState string `json:"customDomainState,omitempty"`
+	// CustomDomainDegradedSince is when the domain entered `grace`. Nil
+	// otherwise.
+	CustomDomainDegradedSince *time.Time `json:"customDomainDegradedSince,omitempty"`
+	// CustomDomainLastCheck is the diagnostic from the last re-verification:
+	// the mode used, the target expected, what DNS returned. Admin-only, like
+	// the domain itself.
+	CustomDomainLastCheck *string `json:"customDomainLastCheck,omitempty"`
 	// Settings mirrors the status_pages.settings storage shape: nil
 	// sub-fields mean "using the default". Present on both admin and public
 	// payloads (spec 2026-08-03-01).

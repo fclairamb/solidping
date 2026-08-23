@@ -1,0 +1,42 @@
+{{define "subject"}}Your status page stopped serving on {{.Domain}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{.Domain}} is no longer serving your status page</h1>
+    <p>Hi,</p>
+    <p>
+      The custom domain <strong>{{.Domain}}</strong> on the status page
+      <strong>{{.StatusPageName}}</strong> ({{.OrgName}}) failed its DNS
+      re-verification for several days in a row, so SolidPing has stopped
+      serving the page on it. Visitors now get an error page instead of your
+      status page.
+    </p>
+    <p>The last check reported:</p>
+    <p class="meta"><code>{{.Diagnostic}}</code></p>
+    <p>
+      To fix it: confirm the domain's CNAME record still points at the target
+      shown on the status page's settings, then click <strong>Verify</strong>.
+      If DNS starts resolving correctly again on its own, SolidPing will also
+      restore the domain by itself after several consecutive successful checks.
+    </p>
+    {{if .SettingsURL}}<p><a href="{{.SettingsURL}}">Open the status page settings</a></p>{{end}}
+{{end}}
+{{define "text"}}{{.Domain}} is no longer serving your status page
+
+Hi,
+
+The custom domain {{.Domain}} on the status page {{.StatusPageName}} ({{.OrgName}})
+failed its DNS re-verification for several days in a row, so SolidPing has
+stopped serving the page on it. Visitors now get an error page instead of your
+status page.
+
+The last check reported:
+
+  {{.Diagnostic}}
+
+To fix it: confirm the domain's CNAME record still points at the target shown on
+the status page's settings, then click Verify. If DNS starts resolving correctly
+again on its own, SolidPing will also restore the domain by itself after several
+consecutive successful checks.
+{{if .SettingsURL}}
+{{.SettingsURL}}
+{{end}}{{end}}

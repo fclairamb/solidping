@@ -68,6 +68,15 @@ const (
 	// incident.
 	EventTypeStatusSubscriberDisabled EventType = "statuspage.subscriber.disabled"
 
+	// EventTypeStatusPageCustomDomainDemoted indicates a status page's custom
+	// domain stayed unreachable well past its grace window and stopped being
+	// served (spec 2026-08-23-03). Until this existed the only symptom was a
+	// customer's status page going dark, discovered — during an outage — by
+	// the people the page exists to inform. Entering `grace` does NOT emit
+	// this: the page is still serving there and paging for it would teach
+	// operators to ignore the one that matters.
+	EventTypeStatusPageCustomDomainDemoted EventType = "statuspage.custom_domain.demoted"
+
 	// EventTypeStatusUpdateCreated indicates a status update was created.
 	EventTypeStatusUpdateCreated EventType = "status_update.created"
 	// EventTypeStatusUpdateUpdated indicates a status update was modified.
