@@ -314,16 +314,16 @@ func (f *fakeMailbox) handleSet(w http.ResponseWriter, rawArgs json.RawMessage) 
 	f.mu.Lock()
 
 	for id, patch := range args.Update {
-		to, from := parsePatch(patch)
+		move := parsePatch(patch)
 
 		email, ok := f.emails[id]
-		if reject || !ok || email.mailbox != from {
+		if reject || !ok || email.mailbox != move.from {
 			notUpdated[id] = map[string]any{"type": "notFound"}
 
 			continue
 		}
 
-		email.mailbox = to
+		email.mailbox = move.to
 		updated[id] = nil
 	}
 
@@ -334,10 +334,18 @@ func (f *fakeMailbox) handleSet(w http.ResponseWriter, rawArgs json.RawMessage) 
 	})
 }
 
-// parsePatch reads the RFC 8621 §4.6 mailboxIds patch back into a
-// (target, source) pair.
-func parsePatch(patch map[string]any) (to, from string) {
+// mailboxMove is the (target, source) pair encoded in an RFC 8621 §4.6
+// mailboxIds patch.
+type mailboxMove struct {
+	to   string
+	from string
+}
+
+// parsePatch reads the patch back into the move it expresses.
+func parsePatch(patch map[string]any) mailboxMove {
 	const prefix = "mailboxIds/"
+
+	var move mailboxMove
 
 	for key, value := range patch {
 		if len(key) <= len(prefix) || key[:len(prefix)] != prefix {
@@ -345,15 +353,15 @@ func parsePatch(patch map[string]any) (to, from string) {
 		}
 
 		if value == nil {
-			from = key[len(prefix):]
+			move.from = key[len(prefix):]
 
 			continue
 		}
 
-		to = key[len(prefix):]
+		move.to = key[len(prefix):]
 	}
 
-	return to, from
+	return move
 }
 
 // recordingHandler stands in for emailcheck: it claims token-shaped mail and
@@ -388,8 +396,8 @@ func (h *recordingHandler) HandleEmail(
 	return jmap.OutcomeProcessed, nil
 }
 
-func seedInboxMessage(f *fakeMailbox, id, messageID string) {
-	f.put(id, &fakeEmail{
+func seedInboxMessage(f *fakeMailbox, messageID string) {
+	f.put("e1", &fakeEmail{
 		mailbox:    fakeInboxID,
 		to:         "token@inbox.example.com",
 		messageID:  messageID,
@@ -407,7 +415,7 @@ func TestLoneConsumerRecordsExactlyOne(t *testing.T) {
 	r := require.New(t)
 
 	fake := newFakeMailbox(t)
-	seedInboxMessage(fake, "e1", "<solo@example.com>")
+	seedInboxMessage(fake, "<solo@example.com>")
 
 	var recorded atomic.Int32
 
@@ -432,7 +440,7 @@ func TestTwoConsumersRecordExactlyOnce(t *testing.T) {
 
 	fake := newFakeMailbox(t)
 	fake.setBarrier = newBarrier(2)
-	seedInboxMessage(fake, "e1", "<race@example.com>")
+	seedInboxMessage(fake, "<race@example.com>")
 
 	var recorded atomic.Int32
 
@@ -482,7 +490,7 @@ func TestRejectedMoveRecordsNothingAndLeavesMessageForRetry(t *testing.T) {
 
 	fake := newFakeMailbox(t)
 	fake.rejectMoves.Store(true)
-	seedInboxMessage(fake, "e1", "<reject@example.com>")
+	seedInboxMessage(fake, "<reject@example.com>")
 
 	var recorded atomic.Int32
 
@@ -512,7 +520,7 @@ func TestClaimIsReleasedWhenTheHandlerFails(t *testing.T) {
 	r := require.New(t)
 
 	fake := newFakeMailbox(t)
-	seedInboxMessage(fake, "e1", "<boom@example.com>")
+	seedInboxMessage(fake, "<boom@example.com>")
 
 	var recorded atomic.Int32
 

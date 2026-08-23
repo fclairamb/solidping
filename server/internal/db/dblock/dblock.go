@@ -60,23 +60,23 @@ const livenessInterval = 10 * time.Second
 // ErrNilDB is returned when RunExclusive is handed no database handle.
 var ErrNilDB = errors.New("dblock: nil database")
 
-// RunExclusive runs fn while this process holds the advisory lock for key,
+// RunExclusive runs work while this process holds the advisory lock for key,
 // and blocks until ctx is canceled.
 //
-// On SQLite it simply runs fn: a SQLite deployment is one process by
+// On SQLite it simply runs work: a SQLite deployment is one process by
 // construction, so there is nothing to exclude and no shared lock manager to
 // do it with.
 //
 // On Postgres it acquires the lock on a DEDICATED connection — session
 // advisory locks live and die with the connection that took them, so the lock
 // must never be taken through the pool where a recycled connection would drop
-// it invisibly — then runs fn on a context derived from ctx. When the lock is
+// it invisibly — then runs work on a context derived from ctx. When the lock is
 // unavailable it retries every retryInterval; that same loop is the failover
-// path when a holder dies. If the holding connection breaks, fn's context is
+// path when a holder dies. If the holding connection breaks, work's context is
 // canceled and the loop goes back to contending. The lock is released on
 // graceful shutdown.
 //
-// fn returning an error is not fatal to the loop's ownership: the error is
+// work returning an error is not fatal to the loop's ownership: the error is
 // logged, the lock released, and the loop re-contends after retryInterval, so
 // a crashing supervisor hands the work to another replica instead of sitting
 // on the lock.
@@ -86,7 +86,7 @@ func RunExclusive(
 	key int64,
 	retryInterval time.Duration,
 	logger *slog.Logger,
-	fn func(context.Context) error,
+	work func(context.Context) error,
 ) error {
 	if database == nil {
 		return ErrNilDB
@@ -104,10 +104,10 @@ func RunExclusive(
 		logger.InfoContext(ctx, "advisory lock skipped on non-Postgres backend; running exclusively by construction",
 			"key", key)
 
-		return fn(ctx)
+		return work(ctx)
 	}
 
-	return contend(ctx, database, key, retryInterval, logger, fn)
+	return contend(ctx, database, key, retryInterval, logger, work)
 }
 
 // contend is the Postgres acquire → run → release → retry loop.
@@ -117,7 +117,7 @@ func contend(
 	key int64,
 	retryInterval time.Duration,
 	logger *slog.Logger,
-	fn func(context.Context) error,
+	work func(context.Context) error,
 ) error {
 	for {
 		if err := ctx.Err(); err != nil {
@@ -139,8 +139,11 @@ func contend(
 
 		logger.InfoContext(ctx, "advisory lock acquired; running exclusive work", "key", key)
 
-		runErr := runHolding(ctx, conn, key, logger, fn)
+		runErr := runHolding(ctx, conn, key, logger, work)
 
+		// release deliberately builds its own context: on shutdown the
+		// caller's is already canceled, and the unlock would be skipped.
+		//nolint:contextcheck // see above
 		release(conn, key, logger)
 
 		if ctx.Err() != nil {
@@ -158,7 +161,7 @@ func contend(
 	}
 }
 
-// runHolding runs fn with a context that is canceled if the lock connection
+// runHolding runs work with a context that is canceled if the lock connection
 // dies, so the work stops instead of continuing without the lock it believes
 // it holds.
 func runHolding(
@@ -166,7 +169,7 @@ func runHolding(
 	conn bun.Conn,
 	key int64,
 	logger *slog.Logger,
-	fn func(context.Context) error,
+	work func(context.Context) error,
 ) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -179,7 +182,7 @@ func runHolding(
 		watchConnection(runCtx, conn, key, logger, cancel)
 	}()
 
-	err := fn(runCtx)
+	err := work(runCtx)
 
 	cancel()
 	<-watchDone

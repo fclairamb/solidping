@@ -13,7 +13,7 @@ import (
 // given period_start.
 func seedMessageIDResult(
 	t *testing.T, s *Service, orgUID, checkUID, messageID string, at time.Time,
-) *models.Result {
+) {
 	t.Helper()
 
 	result := models.NewResult(orgUID, checkUID, models.ResultStatusUp, 0)
@@ -21,8 +21,6 @@ func seedMessageIDResult(
 	result.Output = models.JSONMap{"messageId": messageID, "message": "Email received"}
 
 	require.NoError(t, s.CreateResult(t.Context(), result))
-
-	return result
 }
 
 // TestHasRawResultWithMessageID is the SQLite half of the dedup backstop that

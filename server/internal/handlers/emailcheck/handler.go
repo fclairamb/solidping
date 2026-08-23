@@ -321,6 +321,40 @@ func defaultMessage(s string) string {
 // Callers shouldn't hit this — it's a defensive guard for tests.
 var ErrCheckMissing = errors.New("check is required")
 
+// alreadyRecorded is the idempotency backstop (spec 2026-08-22-01, layer 3).
+// The mailbox claim (layer 1) and the single-consumer lock (layer 2) already
+// make a duplicate unlikely; this is what makes "exactly one result per email"
+// true rather than likely, and it is what licenses the crash-recovery re-scan
+// to replay recently-processed messages at all.
+//
+// Two deliberate non-suppressions: an email with no Message-ID (rare) is never
+// deduped, because every such mail would otherwise collapse onto one row; and
+// a lookup FAILURE records anyway, because losing the signal from a genuine
+// inbound email is worse than a duplicate — a broken dedup query degrades to
+// the old behavior instead of dropping results on the floor.
+func (h *Handler) alreadyRecorded(ctx context.Context, checkUID, messageID string) bool {
+	if messageID == "" {
+		return false
+	}
+
+	seen, err := h.db.HasRawResultWithMessageID(
+		ctx, checkUID, messageID, time.Now().Add(-resultDedupWindow),
+	)
+	if err != nil {
+		h.logger.WarnContext(ctx, "email dedup lookup failed; recording anyway",
+			"check_uid", checkUID, "messageId", messageID, "error", err)
+
+		return false
+	}
+
+	if seen {
+		h.logger.DebugContext(ctx, "duplicate inbound email ignored",
+			"check_uid", checkUID, "messageId", messageID)
+	}
+
+	return seen
+}
+
 func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *jmap.Email, status string) error {
 	if check == nil {
 		return ErrCheckMissing
@@ -345,30 +379,8 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 		messageID = email.MessageID[0]
 	}
 
-	// Idempotency backstop (spec 2026-08-22-01, layer 3). The mailbox claim
-	// (layer 1) and the single-consumer lock (layer 2) already make a duplicate
-	// unlikely; this is what makes "exactly one result per email" true rather
-	// than likely, and it is what licenses the crash-recovery re-scan to replay
-	// recently-processed messages at all.
-	//
-	// A lookup failure is deliberately NOT fatal: losing the signal from a
-	// genuine inbound email is worse than recording a duplicate, so a broken
-	// dedup query degrades to today's behavior instead of dropping the result.
-	if messageID != "" {
-		seen, dupErr := h.db.HasRawResultWithMessageID(
-			ctx, check.UID, messageID, time.Now().Add(-resultDedupWindow),
-		)
-
-		switch {
-		case dupErr != nil:
-			h.logger.WarnContext(ctx, "email dedup lookup failed; recording anyway",
-				"check_uid", check.UID, "messageId", messageID, "error", dupErr)
-		case seen:
-			h.logger.DebugContext(ctx, "duplicate inbound email ignored",
-				"check_uid", check.UID, "messageId", messageID)
-
-			return nil
-		}
+	if h.alreadyRecorded(ctx, check.UID, messageID) {
+		return nil
 	}
 
 	output := models.JSONMap{
