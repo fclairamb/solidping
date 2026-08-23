@@ -738,15 +738,16 @@ type connFamilyTracker struct {
 	// connect timeout or a refusal never produces a connection, so `addr` stays
 	// empty in precisely the cases worth tracing.
 	dialed string
-	// phase records how far the request got before the deadline fired. It is
-	// what separates a genuine reachability failure from an application STALL,
-	// and the distinction is not cosmetic: a target that completes the
-	// handshake and then hangs has a perfectly good path, so tracing it
-	// produces noise labeled `connect-timeout`, which is simply false.
+	// phase records how far the CURRENT connection attempt got. It is what
+	// separates a genuine reachability failure from an application STALL, and
+	// the distinction is not cosmetic: a target that completes the handshake
+	// and then hangs has a perfectly good path, so tracing it produces noise
+	// labeled `connect-timeout`, which is simply false.
 	//
-	// The LAST attempt wins, not the first: a redirect chain can connect
-	// successfully to one host and then time out connecting to the next, and
-	// that second failure is a real one.
+	// The LAST attempt wins, not the first — enforced by ConnectStart resetting
+	// this to phaseNone, not merely intended. A redirect chain can connect
+	// successfully to one host and then fail to reach the next, and that second
+	// failure is a real one.
 	phase requestPhase
 }
 
@@ -754,8 +755,10 @@ type connFamilyTracker struct {
 type requestPhase int
 
 const (
-	// phaseNone means no connect was ever completed — the deadline fired
-	// before the transport finished dialing anything.
+	// phaseNone means the current dial attempt has not completed: either the
+	// transport never got as far as one, or a dial is in flight and the
+	// deadline fired first. Set at every ConnectStart, so it also means "forget
+	// what the previous hop of a redirect chain achieved".
 	phaseNone requestPhase = iota
 	// phaseConnectFailed means the last connect attempt returned an error:
 	// refused, unreachable, or timed out en route. A real path failure.
@@ -794,13 +797,31 @@ func (t *connFamilyTracker) clientTrace() *httptrace.ClientTrace {
 			t.mu.Lock()
 			defer t.mu.Unlock()
 
-			// Recorded at dial START, not only at ConnectDone, and that is
-			// load-bearing: when the request deadline fires mid-dial the
-			// transport abandons the attempt and ConnectDone never runs, so a
-			// black-holed connect — the single case this whole feature exists
-			// for — would otherwise reach the marker with no address and be
-			// dropped for having nothing to trace to.
+			// BOTH assignments here are load-bearing, and for the same reason:
+			// ConnectDone is not guaranteed to have run by the time we read
+			// this.
+			//
+			// It is not that ConnectDone never fires — net.sysDialer.dialSingle
+			// defers it before dialing, so it does fire even on a failure. The
+			// problem is a RACE: http.Transport.getConn returns the instant the
+			// request context is done, without waiting for the abandoned dial
+			// goroutine, so the deferred ConnectDone may land after Execute has
+			// already read the tracker. Recording at dial start removes the
+			// race in both directions.
+			//
+			// `dialed`: without this, a black-holed connect — the single case
+			// this whole feature exists for — would intermittently reach the
+			// marker with no address and be dropped for having nothing to trace
+			// to.
+			//
+			// `phase`: a new dial has begun and nothing about it has completed,
+			// so whatever an EARLIER hop achieved is no longer true of the
+			// current attempt. Without the reset, a redirect chain whose first
+			// hop connects and whose second hop black-holes would still read
+			// phaseConnected and have its marker dropped as an application
+			// stall — the everyday http→https upgrade with 443 filtered.
 			t.dialed = addr
+			t.phase = phaseNone
 		},
 		ConnectDone: func(_, addr string, err error) {
 			t.mu.Lock()
