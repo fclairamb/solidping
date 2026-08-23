@@ -1854,6 +1854,111 @@ func (e StatusPageSummaryStatus) Valid() bool {
 	}
 }
 
+// Defines values for SupportMessageDirection.
+const (
+	SupportMessageDirectionInbound  SupportMessageDirection = "inbound"
+	SupportMessageDirectionOutbound SupportMessageDirection = "outbound"
+)
+
+// Valid indicates whether the value is a known member of the SupportMessageDirection enum.
+func (e SupportMessageDirection) Valid() bool {
+	switch e {
+	case SupportMessageDirectionInbound:
+		return true
+	case SupportMessageDirectionOutbound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportMessageRawType.
+const (
+	SupportMessageRawTypeAudio       SupportMessageRawType = "audio"
+	SupportMessageRawTypeDocument    SupportMessageRawType = "document"
+	SupportMessageRawTypeImage       SupportMessageRawType = "image"
+	SupportMessageRawTypeLocation    SupportMessageRawType = "location"
+	SupportMessageRawTypeSticker     SupportMessageRawType = "sticker"
+	SupportMessageRawTypeText        SupportMessageRawType = "text"
+	SupportMessageRawTypeUnsupported SupportMessageRawType = "unsupported"
+	SupportMessageRawTypeVideo       SupportMessageRawType = "video"
+)
+
+// Valid indicates whether the value is a known member of the SupportMessageRawType enum.
+func (e SupportMessageRawType) Valid() bool {
+	switch e {
+	case SupportMessageRawTypeAudio:
+		return true
+	case SupportMessageRawTypeDocument:
+		return true
+	case SupportMessageRawTypeImage:
+		return true
+	case SupportMessageRawTypeLocation:
+		return true
+	case SupportMessageRawTypeSticker:
+		return true
+	case SupportMessageRawTypeText:
+		return true
+	case SupportMessageRawTypeUnsupported:
+		return true
+	case SupportMessageRawTypeVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportThreadChannel.
+const (
+	SupportThreadChannelDiscord  SupportThreadChannel = "discord"
+	SupportThreadChannelEmail    SupportThreadChannel = "email"
+	SupportThreadChannelSlack    SupportThreadChannel = "slack"
+	SupportThreadChannelSms      SupportThreadChannel = "sms"
+	SupportThreadChannelTelegram SupportThreadChannel = "telegram"
+	SupportThreadChannelWhatsapp SupportThreadChannel = "whatsapp"
+)
+
+// Valid indicates whether the value is a known member of the SupportThreadChannel enum.
+func (e SupportThreadChannel) Valid() bool {
+	switch e {
+	case SupportThreadChannelDiscord:
+		return true
+	case SupportThreadChannelEmail:
+		return true
+	case SupportThreadChannelSlack:
+		return true
+	case SupportThreadChannelSms:
+		return true
+	case SupportThreadChannelTelegram:
+		return true
+	case SupportThreadChannelWhatsapp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportThreadStatus.
+const (
+	SupportThreadStatusClosed  SupportThreadStatus = "closed"
+	SupportThreadStatusOpen    SupportThreadStatus = "open"
+	SupportThreadStatusPending SupportThreadStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the SupportThreadStatus enum.
+func (e SupportThreadStatus) Valid() bool {
+	switch e {
+	case SupportThreadStatusClosed:
+		return true
+	case SupportThreadStatusOpen:
+		return true
+	case SupportThreadStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateCheckRequestTracerouteOnFailure.
 const (
 	UpdateCheckRequestTracerouteOnFailureInherit UpdateCheckRequestTracerouteOnFailure = "inherit"
@@ -1995,6 +2100,27 @@ func (e UpdateStatusPageRequestVisibility) Valid() bool {
 	case UpdateStatusPageRequestVisibilityPrivate:
 		return true
 	case UpdateStatusPageRequestVisibilityPublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateSupportThreadRequestStatus.
+const (
+	UpdateSupportThreadRequestStatusClosed  UpdateSupportThreadRequestStatus = "closed"
+	UpdateSupportThreadRequestStatusOpen    UpdateSupportThreadRequestStatus = "open"
+	UpdateSupportThreadRequestStatusPending UpdateSupportThreadRequestStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the UpdateSupportThreadRequestStatus enum.
+func (e UpdateSupportThreadRequestStatus) Valid() bool {
+	switch e {
+	case UpdateSupportThreadRequestStatusClosed:
+		return true
+	case UpdateSupportThreadRequestStatusOpen:
+		return true
+	case UpdateSupportThreadRequestStatusPending:
 		return true
 	default:
 		return false
@@ -2217,6 +2343,57 @@ func (e GetStatusPageBadgeParamsStyle) Valid() bool {
 	case GetStatusPageBadgeParamsStyleFlat:
 		return true
 	case GetStatusPageBadgeParamsStyleFlatSquare:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSupportThreadsParamsStatus.
+const (
+	ListSupportThreadsParamsStatusClosed  ListSupportThreadsParamsStatus = "closed"
+	ListSupportThreadsParamsStatusOpen    ListSupportThreadsParamsStatus = "open"
+	ListSupportThreadsParamsStatusPending ListSupportThreadsParamsStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ListSupportThreadsParamsStatus enum.
+func (e ListSupportThreadsParamsStatus) Valid() bool {
+	switch e {
+	case ListSupportThreadsParamsStatusClosed:
+		return true
+	case ListSupportThreadsParamsStatusOpen:
+		return true
+	case ListSupportThreadsParamsStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSupportThreadsParamsChannel.
+const (
+	ListSupportThreadsParamsChannelDiscord  ListSupportThreadsParamsChannel = "discord"
+	ListSupportThreadsParamsChannelEmail    ListSupportThreadsParamsChannel = "email"
+	ListSupportThreadsParamsChannelSlack    ListSupportThreadsParamsChannel = "slack"
+	ListSupportThreadsParamsChannelSms      ListSupportThreadsParamsChannel = "sms"
+	ListSupportThreadsParamsChannelTelegram ListSupportThreadsParamsChannel = "telegram"
+	ListSupportThreadsParamsChannelWhatsapp ListSupportThreadsParamsChannel = "whatsapp"
+)
+
+// Valid indicates whether the value is a known member of the ListSupportThreadsParamsChannel enum.
+func (e ListSupportThreadsParamsChannel) Valid() bool {
+	switch e {
+	case ListSupportThreadsParamsChannelDiscord:
+		return true
+	case ListSupportThreadsParamsChannelEmail:
+		return true
+	case ListSupportThreadsParamsChannelSlack:
+		return true
+	case ListSupportThreadsParamsChannelSms:
+		return true
+	case ListSupportThreadsParamsChannelTelegram:
+		return true
+	case ListSupportThreadsParamsChannelWhatsapp:
 		return true
 	default:
 		return false
@@ -3195,6 +3372,11 @@ type CreateStatusUpdateRequest struct {
 	SectionUid    *openapi_types.UUID `json:"sectionUid,omitempty"`
 	StatusPageUid openapi_types.UUID  `json:"statusPageUid"`
 	Title         string              `json:"title"`
+}
+
+// CreateSupportMessageRequest defines model for CreateSupportMessageRequest.
+type CreateSupportMessageRequest struct {
+	Body string `json:"body"`
 }
 
 // CreateTokenRequest defines model for CreateTokenRequest.
@@ -5507,6 +5689,89 @@ type StatusUpdatePublic struct {
 	Uid          openapi_types.UUID  `json:"uid"`
 }
 
+// SupportMessage defines model for SupportMessage.
+type SupportMessage struct {
+	// AuthorUid The super admin who sent an outbound reply.
+	AuthorUid *string `json:"authorUid,omitempty"`
+
+	// Body Attacker-influenced free text. Never render it as HTML.
+	Body       string                  `json:"body"`
+	Channel    string                  `json:"channel"`
+	CreatedAt  time.Time               `json:"createdAt"`
+	Delivery   *map[string]interface{} `json:"delivery,omitempty"`
+	Direction  SupportMessageDirection `json:"direction"`
+	ExternalId *string                 `json:"externalId,omitempty"`
+	RawType    SupportMessageRawType   `json:"rawType"`
+	ThreadUid  string                  `json:"threadUid"`
+
+	// Truncated True when the body exceeded the stored-body cap and was cut.
+	Truncated *bool  `json:"truncated,omitempty"`
+	Uid       string `json:"uid"`
+}
+
+// SupportMessageDirection defines model for SupportMessage.Direction.
+type SupportMessageDirection string
+
+// SupportMessageRawType defines model for SupportMessage.RawType.
+type SupportMessageRawType string
+
+// SupportMessageListResponse defines model for SupportMessageListResponse.
+type SupportMessageListResponse struct {
+	Data []SupportMessage `json:"data"`
+}
+
+// SupportReplyWindow Whether a free-form reply can be sent RIGHT NOW. Derived from the last inbound message's timestamp and the channel's rule at read time, never stored — so it cannot go stale. This is a different axis from `status`: a thread can be open (unanswered) and yet expired (WhatsApp will no longer accept a free-form reply), which is exactly the state an operator most needs to see.
+type SupportReplyWindow struct {
+	// CostsMoney True for channels billed per reply (SMS).
+	CostsMoney bool `json:"costsMoney"`
+
+	// Expires Whether this channel has a window at all. Only WhatsApp does.
+	Expires   bool       `json:"expires"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	Open      bool       `json:"open"`
+
+	// Reason Operator-facing explanation of a closed window.
+	Reason *string `json:"reason,omitempty"`
+}
+
+// SupportThread defines model for SupportThread.
+type SupportThread struct {
+	// CanReply Whether an outbound adapter exists for this channel at all.
+	CanReply *bool                `json:"canReply,omitempty"`
+	Channel  SupportThreadChannel `json:"channel"`
+
+	// ChannelIdentity E.164 number, Telegram chat id, Slack/Discord user id.
+	ChannelIdentity string     `json:"channelIdentity"`
+	CreatedAt       *time.Time `json:"createdAt,omitempty"`
+	LastInboundAt   *time.Time `json:"lastInboundAt,omitempty"`
+	LastMessageAt   time.Time  `json:"lastMessageAt"`
+
+	// OrganizationUid Attribution only. Recorded when the sender resolves to a verified user contact; it does NOT grant that organization visibility of the thread.
+	OrganizationUid *string `json:"organizationUid,omitempty"`
+
+	// ReplyWindow Whether a free-form reply can be sent RIGHT NOW. Derived from the last inbound message's timestamp and the channel's rule at read time, never stored — so it cannot go stale. This is a different axis from `status`: a thread can be open (unanswered) and yet expired (WhatsApp will no longer accept a free-form reply), which is exactly the state an operator most needs to see.
+	ReplyWindow *SupportReplyWindow `json:"replyWindow,omitempty"`
+
+	// Status Set by the operator, deliberately. Not the reply window.
+	Status      SupportThreadStatus `json:"status"`
+	Subject     string              `json:"subject"`
+	Uid         string              `json:"uid"`
+	UnreadCount int                 `json:"unreadCount"`
+	UpdatedAt   *time.Time          `json:"updatedAt,omitempty"`
+	UserUid     *string             `json:"userUid,omitempty"`
+}
+
+// SupportThreadChannel defines model for SupportThread.Channel.
+type SupportThreadChannel string
+
+// SupportThreadStatus Set by the operator, deliberately. Not the reply window.
+type SupportThreadStatus string
+
+// SupportThreadListResponse defines model for SupportThreadListResponse.
+type SupportThreadListResponse struct {
+	Data []SupportThread `json:"data"`
+}
+
 // SwitchOrgRequest defines model for SwitchOrgRequest.
 type SwitchOrgRequest struct {
 	// Org Target organization slug
@@ -5848,6 +6113,15 @@ type UpdateStatusUpdateRequest struct {
 	SectionUid *openapi_types.UUID `json:"sectionUid,omitempty"`
 	Title      *string             `json:"title,omitempty"`
 }
+
+// UpdateSupportThreadRequest defines model for UpdateSupportThreadRequest.
+type UpdateSupportThreadRequest struct {
+	Status  *UpdateSupportThreadRequestStatus `json:"status,omitempty"`
+	Subject *string                           `json:"subject,omitempty"`
+}
+
+// UpdateSupportThreadRequestStatus defines model for UpdateSupportThreadRequest.Status.
+type UpdateSupportThreadRequestStatus string
 
 // UpsertCheckRequest defines model for UpsertCheckRequest.
 type UpsertCheckRequest struct {
@@ -6597,6 +6871,27 @@ type ViewPublicStatusPageIncidentsParams struct {
 	Active *bool `form:"active,omitempty" json:"active,omitempty"`
 }
 
+// ListSupportThreadsParams defines parameters for ListSupportThreads.
+type ListSupportThreadsParams struct {
+	Status  *ListSupportThreadsParamsStatus  `form:"status,omitempty" json:"status,omitempty"`
+	Channel *ListSupportThreadsParamsChannel `form:"channel,omitempty" json:"channel,omitempty"`
+
+	// Q Case-insensitive substring match on subject or channel identity
+	Q     *string `form:"q,omitempty" json:"q,omitempty"`
+	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListSupportThreadsParamsStatus defines parameters for ListSupportThreads.
+type ListSupportThreadsParamsStatus string
+
+// ListSupportThreadsParamsChannel defines parameters for ListSupportThreads.
+type ListSupportThreadsParamsChannel string
+
+// ListSupportMessagesParams defines parameters for ListSupportMessages.
+type ListSupportMessagesParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListSystemCheckJobsParams defines parameters for ListSystemCheckJobs.
 type ListSystemCheckJobsParams struct {
 	// Limit Maximum number of rows to return (1-200)
@@ -6878,6 +7173,12 @@ type UnlockDefaultStatusPageJSONRequestBody = StatusPageUnlockRequest
 
 // UnlockStatusPageJSONRequestBody defines body for UnlockStatusPage for application/json ContentType.
 type UnlockStatusPageJSONRequestBody = StatusPageUnlockRequest
+
+// UpdateSupportThreadJSONRequestBody defines body for UpdateSupportThread for application/json ContentType.
+type UpdateSupportThreadJSONRequestBody = UpdateSupportThreadRequest
+
+// CreateSupportMessageJSONRequestBody defines body for CreateSupportMessage for application/json ContentType.
+type CreateSupportMessageJSONRequestBody = CreateSupportMessageRequest
 
 // SetSystemParameterJSONRequestBody defines body for SetSystemParameter for application/json ContentType.
 type SetSystemParameterJSONRequestBody = SetSystemParameterRequest
@@ -9226,6 +9527,63 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
 	UnlockStatusPage(ctx context.Context, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSupportThreads List support threads
+	//
+	// Returns captured support conversations, most recent activity first. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+	ListSupportThreads(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSupportThread Get one support thread
+	//
+	// Returns the thread, marking it read. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+	GetSupportThread(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSupportThreadWithBody Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThreadWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSupportThread Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThread(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSupportMessages List a thread's messages
+	//
+	// Chronological order, oldest first. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+	ListSupportMessages(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSupportMessageWithBody Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessageWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSupportMessage Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetActivationFunnel Organization activation funnel
 	//
@@ -14858,6 +15216,133 @@ func (c *Client) UnlockStatusPageWithBody(ctx context.Context, org OrgPath, slug
 // Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
 func (c *Client) UnlockStatusPage(ctx context.Context, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUnlockStatusPageRequest(c.Server, org, slug, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSupportThreads List support threads
+//
+// Returns captured support conversations, most recent activity first. Super-admin only.
+//
+// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+func (c *Client) ListSupportThreads(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSupportThreadsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSupportThread Get one support thread
+//
+// Returns the thread, marking it read. Super-admin only.
+//
+// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+func (c *Client) GetSupportThread(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSupportThreadRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSupportThreadWithBody Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *Client) UpdateSupportThreadWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSupportThreadRequestWithBody(c.Server, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSupportThread Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *Client) UpdateSupportThread(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSupportThreadRequest(c.Server, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSupportMessages List a thread's messages
+//
+// Chronological order, oldest first. Super-admin only.
+//
+// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+func (c *Client) ListSupportMessages(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSupportMessagesRequest(c.Server, uid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSupportMessageWithBody Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *Client) CreateSupportMessageWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSupportMessageRequestWithBody(c.Server, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSupportMessage Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *Client) CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSupportMessageRequest(c.Server, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -27301,6 +27786,285 @@ func NewUnlockStatusPageRequestWithBody(server string, org OrgPath, slug string,
 	return req, nil
 }
 
+// NewListSupportThreadsRequest constructs an http.Request for the ListSupportThreads method
+func NewListSupportThreadsRequest(server string, params *ListSupportThreadsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Channel != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "channel", *params.Channel, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSupportThreadRequest constructs an http.Request for the GetSupportThread method
+func NewGetSupportThreadRequest(server string, uid string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSupportThreadRequest calls the generic UpdateSupportThread builder with application/json body
+func NewUpdateSupportThreadRequest(server string, uid string, body UpdateSupportThreadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSupportThreadRequestWithBody(server, uid, "application/json", bodyReader)
+}
+
+// NewUpdateSupportThreadRequestWithBody constructs an http.Request for the UpdateSupportThread method, with any body, and a specified content type
+func NewUpdateSupportThreadRequestWithBody(server string, uid string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSupportMessagesRequest constructs an http.Request for the ListSupportMessages method
+func NewListSupportMessagesRequest(server string, uid string, params *ListSupportMessagesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSupportMessageRequest calls the generic CreateSupportMessage builder with application/json body
+func NewCreateSupportMessageRequest(server string, uid string, body CreateSupportMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSupportMessageRequestWithBody(server, uid, "application/json", bodyReader)
+}
+
+// NewCreateSupportMessageRequestWithBody constructs an http.Request for the CreateSupportMessage method, with any body, and a specified content type
+func NewCreateSupportMessageRequestWithBody(server string, uid string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetActivationFunnelRequest constructs an http.Request for the GetActivationFunnel method
 func NewGetActivationFunnelRequest(server string) (*http.Request, error) {
 	var err error
@@ -30572,6 +31336,69 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
 	UnlockStatusPageWithResponse(ctx context.Context, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UnlockStatusPageResult, error)
+
+	// ListSupportThreadsWithResponse List support threads
+	//
+	// Returns captured support conversations, most recent activity first. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+	ListSupportThreadsWithResponse(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*ListSupportThreadsResult, error)
+
+	// GetSupportThreadWithResponse Get one support thread
+	//
+	// Returns the thread, marking it read. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+	GetSupportThreadWithResponse(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*GetSupportThreadResult, error)
+
+	// UpdateSupportThreadWithBodyWithResponse Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThreadWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error)
+
+	// UpdateSupportThreadWithResponse Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThreadWithResponse(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error)
+
+	// ListSupportMessagesWithResponse List a thread's messages
+	//
+	// Chronological order, oldest first. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+	ListSupportMessagesWithResponse(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*ListSupportMessagesResult, error)
+
+	// CreateSupportMessageWithBodyWithResponse Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessageWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error)
+
+	// CreateSupportMessageWithResponse Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessageWithResponse(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error)
 
 	// GetActivationFunnelWithResponse Organization activation funnel
 	//
@@ -44004,6 +44831,344 @@ func (r UnlockStatusPageResult) ContentType() string {
 	return ""
 }
 
+type ListSupportThreadsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportThreadListResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSupportThreadsResult) GetJSON200() *SupportThreadListResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListSupportThreadsResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSupportThreadsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSupportThreadsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSupportThreadsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSupportThreadsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSupportThreadsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSupportThreadsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSupportThreadResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportThread
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSupportThreadResult) GetJSON200() *SupportThread {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSupportThreadResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetSupportThreadResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSupportThreadResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSupportThreadResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSupportThreadResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSupportThreadResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSupportThreadResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateSupportThreadResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportThread
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON200() *SupportThread {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSupportThreadResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSupportThreadResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSupportThreadResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSupportThreadResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSupportMessagesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportMessageListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSupportMessagesResult) GetJSON200() *SupportMessageListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSupportMessagesResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSupportMessagesResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSupportMessagesResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSupportMessagesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSupportMessagesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSupportMessagesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSupportMessagesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateSupportMessageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SupportMessage
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *SupportMessage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSupportMessageResult) GetJSON201() *SupportMessage {
+	return r.JSON201
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r CreateSupportMessageResult) GetJSON202() *SupportMessage {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateSupportMessageResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateSupportMessageResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateSupportMessageResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateSupportMessageResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateSupportMessageResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSupportMessageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSupportMessageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSupportMessageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSupportMessageResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetActivationFunnelResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -49474,6 +50639,111 @@ func (c *ClientWithResponses) UnlockStatusPageWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUnlockStatusPageResult(rsp)
+}
+
+// ListSupportThreadsWithResponse List support threads
+//
+// Returns captured support conversations, most recent activity first. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+func (c *ClientWithResponses) ListSupportThreadsWithResponse(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*ListSupportThreadsResult, error) {
+	rsp, err := c.ListSupportThreads(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSupportThreadsResult(rsp)
+}
+
+// GetSupportThreadWithResponse Get one support thread
+//
+// Returns the thread, marking it read. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+func (c *ClientWithResponses) GetSupportThreadWithResponse(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*GetSupportThreadResult, error) {
+	rsp, err := c.GetSupportThread(ctx, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSupportThreadResult(rsp)
+}
+
+// UpdateSupportThreadWithBodyWithResponse Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *ClientWithResponses) UpdateSupportThreadWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error) {
+	rsp, err := c.UpdateSupportThreadWithBody(ctx, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSupportThreadResult(rsp)
+}
+
+// UpdateSupportThreadWithResponse Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *ClientWithResponses) UpdateSupportThreadWithResponse(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error) {
+	rsp, err := c.UpdateSupportThread(ctx, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSupportThreadResult(rsp)
+}
+
+// ListSupportMessagesWithResponse List a thread's messages
+//
+// Chronological order, oldest first. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+func (c *ClientWithResponses) ListSupportMessagesWithResponse(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*ListSupportMessagesResult, error) {
+	rsp, err := c.ListSupportMessages(ctx, uid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSupportMessagesResult(rsp)
+}
+
+// CreateSupportMessageWithBodyWithResponse Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *ClientWithResponses) CreateSupportMessageWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error) {
+	rsp, err := c.CreateSupportMessageWithBody(ctx, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSupportMessageResult(rsp)
+}
+
+// CreateSupportMessageWithResponse Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *ClientWithResponses) CreateSupportMessageWithResponse(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error) {
+	rsp, err := c.CreateSupportMessage(ctx, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSupportMessageResult(rsp)
 }
 
 // GetActivationFunnelWithResponse Organization activation funnel
@@ -59598,6 +60868,269 @@ func ParseUnlockStatusPageResult(rsp *http.Response) (*UnlockStatusPageResult, e
 			headers.SetCookie = &value
 		}
 		response.Headers204 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListSupportThreadsResult parses an HTTP response from a ListSupportThreadsWithResponse call
+func ParseListSupportThreadsResult(rsp *http.Response) (*ListSupportThreadsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSupportThreadsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportThreadListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSupportThreadResult parses an HTTP response from a GetSupportThreadWithResponse call
+func ParseGetSupportThreadResult(rsp *http.Response) (*GetSupportThreadResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSupportThreadResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportThread
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSupportThreadResult parses an HTTP response from a UpdateSupportThreadWithResponse call
+func ParseUpdateSupportThreadResult(rsp *http.Response) (*UpdateSupportThreadResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSupportThreadResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportThread
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSupportMessagesResult parses an HTTP response from a ListSupportMessagesWithResponse call
+func ParseListSupportMessagesResult(rsp *http.Response) (*ListSupportMessagesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSupportMessagesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportMessageListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSupportMessageResult parses an HTTP response from a CreateSupportMessageWithResponse call
+func ParseCreateSupportMessageResult(rsp *http.Response) (*CreateSupportMessageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSupportMessageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	}
 
 	return response, nil

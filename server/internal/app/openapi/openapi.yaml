@@ -39,6 +39,14 @@ tags:
     description: Network discovery scans and suggested checks
   - name: System
     description: System-wide configuration (super admin only)
+  - name: Support
+    description: >
+      Instance support inbox — inbound human messages captured from the bot
+      channels, and replies back through them. Super admin only. Threads belong
+      to the INSTANCE, not to an organization: the sender is frequently a phone
+      number with no org to attribute it to, and a message from a stranger must
+      not be dropped for lack of one. organizationUid/userUid on a thread are
+      attribution hints for the operator, never an access boundary.
   - name: MaintenanceWindows
     description: Scheduled maintenance windows and their check coverage
   - name: SLOs
@@ -456,6 +464,199 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # Support inbox (Super Admin Only)
+  /api/v1/support/threads:
+    get:
+      tags: [Support]
+      summary: List support threads
+      description: >
+        Returns captured support conversations, most recent activity first.
+        Super-admin only.
+      operationId: listSupportThreads
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, pending, closed]
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [whatsapp, telegram, sms, slack, discord, email]
+        - name: q
+          in: query
+          description: Case-insensitive substring match on subject or channel identity
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+      responses:
+        "200":
+          description: Support threads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThreadListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/support/threads/{uid}:
+    get:
+      tags: [Support]
+      summary: Get one support thread
+      description: >
+        Returns the thread, marking it read. Super-admin only.
+      operationId: getSupportThread
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Support thread
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThread"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Support]
+      summary: Update a support thread
+      description: Change the operator-set status or the subject. Super-admin only.
+      operationId: updateSupportThread
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSupportThreadRequest"
+      responses:
+        "200":
+          description: Updated thread
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThread"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/support/threads/{uid}/messages:
+    get:
+      tags: [Support]
+      summary: List a thread's messages
+      description: Chronological order, oldest first. Super-admin only.
+      operationId: listSupportMessages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+            maximum: 1000
+      responses:
+        "200":
+          description: Support messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessageListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Support]
+      summary: Reply to a support thread
+      description: >
+        Sends the reply through the channel the thread arrived on AND records it.
+        Returns 409 when the channel will not accept a free-form reply right now
+        — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter —
+        which is a refusal we make deliberately rather than a provider error
+        surfaced after the fact. Returns 202 when the row was recorded but the
+        provider send failed, so an operator is never left unsure whether the
+        attempt happened. Super-admin only.
+      operationId: createSupportMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupportMessageRequest"
+      responses:
+        "201":
+          description: Reply sent and recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+        "202":
+          description: Reply recorded but the provider send failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   # Authentication APIs (root-level)
   /api/v1/auth/login:
@@ -7729,6 +7930,154 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    SupportReplyWindow:
+      type: object
+      description: >
+        Whether a free-form reply can be sent RIGHT NOW. Derived from the last
+        inbound message's timestamp and the channel's rule at read time, never
+        stored — so it cannot go stale. This is a different axis from `status`:
+        a thread can be open (unanswered) and yet expired (WhatsApp will no
+        longer accept a free-form reply), which is exactly the state an operator
+        most needs to see.
+      required: [expires, open, costsMoney]
+      properties:
+        expires:
+          type: boolean
+          description: Whether this channel has a window at all. Only WhatsApp does.
+        open:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        reason:
+          type: string
+          description: Operator-facing explanation of a closed window.
+        costsMoney:
+          type: boolean
+          description: True for channels billed per reply (SMS).
+
+    SupportThread:
+      type: object
+      required: [uid, channel, channelIdentity, subject, status, lastMessageAt, unreadCount]
+      properties:
+        uid:
+          type: string
+        channel:
+          type: string
+          enum: [whatsapp, telegram, sms, slack, discord, email]
+        channelIdentity:
+          type: string
+          description: E.164 number, Telegram chat id, Slack/Discord user id.
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [open, pending, closed]
+          description: Set by the operator, deliberately. Not the reply window.
+        organizationUid:
+          type: string
+          nullable: true
+          description: >
+            Attribution only. Recorded when the sender resolves to a verified
+            user contact; it does NOT grant that organization visibility of the
+            thread.
+        userUid:
+          type: string
+          nullable: true
+        lastMessageAt:
+          type: string
+          format: date-time
+        lastInboundAt:
+          type: string
+          format: date-time
+          nullable: true
+        unreadCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        replyWindow:
+          $ref: "#/components/schemas/SupportReplyWindow"
+        canReply:
+          type: boolean
+          description: Whether an outbound adapter exists for this channel at all.
+
+    SupportThreadListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportThread"
+
+    SupportMessage:
+      type: object
+      required: [uid, threadUid, channel, direction, body, rawType, createdAt]
+      properties:
+        uid:
+          type: string
+        threadUid:
+          type: string
+        channel:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        body:
+          type: string
+          description: >
+            Attacker-influenced free text. Never render it as HTML.
+        truncated:
+          type: boolean
+          description: True when the body exceeded the stored-body cap and was cut.
+        rawType:
+          type: string
+          enum: [text, image, audio, video, document, location, sticker, unsupported]
+        externalId:
+          type: string
+          nullable: true
+        authorUid:
+          type: string
+          nullable: true
+          description: The super admin who sent an outbound reply.
+        delivery:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SupportMessageListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportMessage"
+
+    UpdateSupportThreadRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, pending, closed]
+        subject:
+          type: string
+
+    CreateSupportMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+
     Error:
       type: object
       required: [title, code]
