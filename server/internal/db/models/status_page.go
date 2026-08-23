@@ -126,9 +126,32 @@ type StatusPage struct {
 	// CustomDomainCheckedAt is when the periodic re-verification job last
 	// checked this domain.
 	CustomDomainCheckedAt *time.Time `bun:"custom_domain_checked_at"`
-	// CustomDomainFailures counts consecutive re-verification failures. At 3 the
-	// verification is cleared (domain release/takeover protection).
+	// CustomDomainFailures counts consecutive re-verification failures. At
+	// CustomDomainGraceAfterFailures the domain enters `grace` (still served);
+	// only at CustomDomainHardDemoteAfterFailures is the verification cleared
+	// (domain release/takeover protection).
 	CustomDomainFailures int `bun:"custom_domain_failures,notnull,default:0"`
+	// CustomDomainState is the explicit lifecycle state — one of the
+	// CustomDomainState* constants. It exists because a single failure counter
+	// was doing two jobs ("flaky right now" and "gone for good"), which made a
+	// DNS blip indistinguishable from a domain transfer and took status pages
+	// dark permanently (spec 2026-08-23-03).
+	CustomDomainState string `bun:"custom_domain_state,notnull,default:'none'"`
+	// CustomDomainSuccesses counts consecutive SUCCESSFUL re-verifications. It
+	// is the counter re-promotion is earned with: a demoted domain needs
+	// CustomDomainRepromoteSuccesses of them in a row (plus a still-valid
+	// certificate) before the sweep trusts it again.
+	CustomDomainSuccesses int `bun:"custom_domain_successes,notnull,default:0"`
+	// CustomDomainGraceSince is when the domain last entered `grace`. nil
+	// outside grace. Makes "how long has this been degrading" readable instead
+	// of inferred from a counter times a job interval.
+	CustomDomainGraceSince *time.Time `bun:"custom_domain_grace_since"`
+	// CustomDomainLastCheck is a human-readable diagnostic from the last
+	// re-verification: the mode used, the expected CNAME target, what DNS
+	// actually returned, and the lookup error if any. Without it, "verification
+	// fails but dig says the record is right" is only investigable by
+	// correlating server logs with manual dig runs.
+	CustomDomainLastCheck *string `bun:"custom_domain_last_check"`
 	// PasswordHash is the password hash gating a `visibility = password` page.
 	// It is produced by internal/utils/passwords, whose active policy is
 	// argon2id by default (bcrypt is selectable) — the same policy user
@@ -227,6 +250,57 @@ type StatusPageCustomDomainUpdate struct {
 	VerifiedAt *time.Time
 	CheckedAt  *time.Time
 	Failures   int
+	// State is the lifecycle state to write. The zero value is deliberately
+	// NOT a legal state: every caller states its intent, and the DB layer
+	// normalizes "" to CustomDomainStateNone so a forgotten field clears the
+	// domain rather than silently keeping a stale `active`.
+	State string
+	// Successes is the consecutive-success counter (see the model field).
+	Successes int
+	// GraceSince is when the domain entered grace; nil clears it.
+	GraceSince *time.Time
+	// LastCheck is the diagnostic string from the last re-verification; nil
+	// clears it.
+	LastCheck *string
+}
+
+// Custom-domain lifecycle states. Stored in status_pages.custom_domain_state.
+//
+// The states are ordered by trust: none -> pending -> active, with grace as the
+// "still serving but the re-checks are failing" holding pen and demoted as the
+// terminal-until-recovered state. ONLY `demoted` has
+// custom_domain_verified_at = NULL; `grace` keeps it set, and that is precisely
+// what makes a DNS blip invisible to the page's visitors.
+const (
+	// CustomDomainStateNone means no custom domain is configured.
+	CustomDomainStateNone = "none"
+	// CustomDomainStatePending means a domain is configured but has never
+	// verified. The sweep NEVER auto-promotes out of this state — a first
+	// verification is an operator action, so a hostname someone else parked a
+	// CNAME on cannot bootstrap itself into being served.
+	CustomDomainStatePending = "pending"
+	// CustomDomainStateActive means verified and serving.
+	CustomDomainStateActive = "active"
+	// CustomDomainStateGrace means still verified and STILL SERVING, but
+	// re-verification is currently failing. The common case (a transient DNS
+	// fault) lives and dies here without a visitor ever noticing.
+	CustomDomainStateGrace = "grace"
+	// CustomDomainStateDemoted means the domain stayed unreachable well past
+	// the grace window and verification was cleared. Recoverable: the sweep
+	// re-promotes it after CustomDomainRepromoteSuccesses consecutive
+	// successes while a valid certificate is still held.
+	CustomDomainStateDemoted = "demoted"
+)
+
+// ValidCustomDomainState reports whether s is one of the lifecycle states.
+func ValidCustomDomainState(s string) bool {
+	switch s {
+	case CustomDomainStateNone, CustomDomainStatePending, CustomDomainStateActive,
+		CustomDomainStateGrace, CustomDomainStateDemoted:
+		return true
+	default:
+		return false
+	}
 }
 
 // StatusPageBrandingUpdate is the whole-SECTION writer for a status page's

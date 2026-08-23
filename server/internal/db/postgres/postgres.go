@@ -4990,10 +4990,26 @@ func (s *Service) UpdateStatusPageCustomDomain(
 		Set("custom_domain_verified_at = ?", update.VerifiedAt).
 		Set("custom_domain_checked_at = ?", update.CheckedAt).
 		Set("custom_domain_failures = ?", update.Failures).
+		Set("custom_domain_state = ?", customDomainState(update)).
+		Set("custom_domain_successes = ?", update.Successes).
+		Set("custom_domain_grace_since = ?", update.GraceSince).
+		Set("custom_domain_last_check = ?", update.LastCheck).
 		Set("updated_at = ?", time.Now()).
 		Exec(ctx)
 
 	return err
+}
+
+// customDomainState normalizes the lifecycle state an update carries. The zero
+// value ("") is not a legal state: a caller that forgot the field means "no
+// domain", never "keep whatever was there" — this is a whole-row overwrite and
+// silently preserving a stale `active` would keep a cleared domain servable.
+func customDomainState(update *models.StatusPageCustomDomainUpdate) string {
+	if models.ValidCustomDomainState(update.State) {
+		return update.State
+	}
+
+	return models.CustomDomainStateNone
 }
 
 // DeleteStatusPage soft-deletes a status page.

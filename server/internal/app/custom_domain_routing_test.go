@@ -132,17 +132,28 @@ func newCustomHostTestServer(t *testing.T) *Server {
 
 	// status.acme.com resolves to a servable page; unknown.example.com is
 	// negative-cached (not a custom domain).
-	server.customDomainCache.set("status.acme.com", &resolvedCustomDomain{
-		OrgSlug: "acme", Slug: "main", Name: "Acme Status",
-		Visibility: models.StatusPageVisibilityPublic,
+	server.customDomainCache.set("status.acme.com", customDomainResolution{
+		page: &resolvedCustomDomain{
+			OrgSlug: "acme", Slug: "main", Name: "Acme Status",
+			Visibility: models.StatusPageVisibilityPublic,
+		},
 	})
-	server.customDomainCache.set("unknown.example.com", nil)
+	server.customDomainCache.set("unknown.example.com", customDomainResolution{})
 
 	// A password-protected page IS routed on its custom domain (the unlock
 	// form has to appear somewhere) — its shell must not be shared-cacheable.
-	server.customDomainCache.set("locked.acme.com", &resolvedCustomDomain{
-		OrgSlug: "acme", Slug: "locked", Name: "Acme Internal",
-		Visibility: models.StatusPageVisibilityPassword,
+	server.customDomainCache.set("locked.acme.com", customDomainResolution{
+		page: &resolvedCustomDomain{
+			OrgSlug: "acme", Slug: "locked", Name: "Acme Internal",
+			Visibility: models.StatusPageVisibilityPassword,
+		},
+	})
+
+	// demoted.acme.com is OURS but not currently servable — the state the
+	// re-verification sweep leaves behind. It must get a legible error page,
+	// never the instance's own-host routing.
+	server.customDomainCache.set("demoted.acme.com", customDomainResolution{
+		known: true, reason: reasonUnverified,
 	})
 
 	return server
@@ -355,11 +366,14 @@ func TestLookupCustomDomainCarriesVisibility(t *testing.T) {
 
 		r.NoError(dbSvc.CreateStatusPage(ctx, page))
 		r.NoError(dbSvc.UpdateStatusPageCustomDomain(ctx, page.UID,
-			&models.StatusPageCustomDomainUpdate{Domain: &testCase.domain, VerifiedAt: &verifiedAt}))
+			&models.StatusPageCustomDomainUpdate{
+				Domain: &testCase.domain, VerifiedAt: &verifiedAt,
+				State: models.CustomDomainStateActive,
+			}))
 
 		resolved := server.lookupCustomDomain(ctx, testCase.domain)
-		r.NotNil(resolved, testCase.name)
-		r.Equal(testCase.visibility, resolved.Visibility, testCase.name)
+		r.NotNil(resolved.page, testCase.name)
+		r.Equal(testCase.visibility, resolved.page.Visibility, testCase.name)
 	}
 }
 
