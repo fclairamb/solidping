@@ -310,6 +310,7 @@ edge into the job context would close it.
 | Chained setup: the downstream's domain gets no certificate | Check `solidping_tlsedge_connections_total{outcome="dial_failed"}` and the `cannot reach the fallback upstream` log line on the upstream. If forwarding works but issuance still fails, `SP_ACME_FALLBACK_UPSTREAM_HTTP` is probably unset, so HTTP-01 never reaches the downstream. |
 | Chained setup: `the fallback chain loops back here` in the log | The next hop forwards back here. Fix the topology: exactly one instance may point at another, and the last hop must have no upstream. |
 | Chained setup: the downstream sees the upstream's IP as every client | The downstream is not trusting the upstream — set `SP_ACME_PROXY_PROTOCOL=true` and list the upstream's egress IPs in `SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS` **on the downstream**. |
+| Re-verification flips between pass and fail while `dig` always succeeds | A **transient resolver/transport fault**, not a mismatch. Read `custom_domain_last_check`: a transport fault carries `error=`, a mismatch carries a `resolved=` that differs from `expected=`. See [§7](#7-investigation--intermittent-re-verification-failure-while-dig-succeeds-2026-08-23). |
 
 ## 6. Security notes
 
@@ -319,3 +320,111 @@ edge into the job context would close it.
 - Issuance is gated exclusively by the decision func (instance hosts ∪ verified
   custom domains). There is no configuration that widens it.
 - Re-verification failure (3 consecutive) stops both serving and renewal.
+
+---
+
+## 7. Investigation — intermittent re-verification failure while `dig` succeeds (2026-08-23)
+
+Recorded from spec `2026-08-23-05`. Unlike the rest of this runbook this section
+is **not** deployment-agnostic: it is the write-up of one concrete investigation
+on the project's own dev instance (`solidping.k8xp.com`, k3s namespace
+`solidping-dev`), kept because the *shape* of the failure generalizes.
+
+### The report
+
+A status page's custom domain carried `custom_domain_failures > 0` while its
+`CNAME` resolved correctly to the instance's shared target from inside a pod
+using the app's own `dnsConfig`. The re-verification sweep and a manual `dig`
+from the same network namespace appeared to disagree.
+
+### What the data actually said
+
+1. **The row is not on the production namespace.** `solidping-prod` holds
+   **zero** `status_pages` rows. The affected row lives in `solidping_dev`
+   (`status_pages.slug = 'webingenia'`, domain `status.webingenia.com`).
+
+2. **The diagnostic the spec tells you to read did not exist yet.**
+   `custom_domain_last_check` ships in migration `017_v0_18_0`; the instance was
+   running **v0.17.0**, so the column was absent from the deployed schema and the
+   `mode=… expected=… resolved=… ok=… error=…` line was never written. All that
+   the deployed schema records is `custom_domain_failures` and
+   `custom_domain_checked_at`. **This is the single biggest lesson: the fix from
+   `2026-08-23-03` only helps once it is deployed.**
+
+3. **Expected target and mode were correct.** The deployment sets
+   `SP_CUSTOM_DOMAIN_CNAME_TARGET=solidping.k8xp.com` and no
+   `SP_CUSTOM_DOMAIN_CNAME_MODE`, i.e. `shared`. `Config.CustomDomainCNAMETarget()`
+   also falls back to the `SP_BASE_URL` host, which is the same value — so
+   neither the "mode mismatch" nor the "unconfigured installation" class applies.
+
+4. **CNAME-chain flattening is ruled out.** The published chain has an
+   intermediate hop:
+
+   ```
+   status.webingenia.com.  3600  IN  CNAME  solidping.k8xp.com.
+   solidping.k8xp.com.        5  IN  CNAME  k8xp.com.
+   k8xp.com.                  5  IN  A      193.70.42.217
+   ```
+
+   `net.Resolver.LookupCNAME` does **not** return the flattened tail here.
+   `goLookupCNAME` delegates to `goLookupIPCNAMEOrder(ctx, "CNAME", …)`, which
+   fires `A`, `AAAA` and `CNAME` queries and keeps the **first** `CNAME` record
+   it parses (`if cname.Length == 0 && c.CNAME.Length > 0`). Every one of the
+   three responses starts its answer section with
+   `status.webingenia.com CNAME solidping.k8xp.com`, so Go returns the first hop
+   — which is exactly the expected target. Verified twice: against the Go source,
+   and by raw DNS probes issued from inside the cluster against both
+   `10.43.0.11` (node-local CoreDNS) and `10.43.0.10` (kube-dns).
+
+5. **The failure is intermittent.** Forcing the sweep to run again (moving the
+   pending `custom_domain_verify` job's `scheduled_at` to now) made the check
+   **pass**: `custom_domain_failures` went `2 → 0` and `custom_domain_checked_at`
+   advanced. The counter history tells the same story — it had been reset to `0`
+   by a successful run a few hours before the two failures.
+
+### Classification
+
+**Class 3 — resolver/transport fault.** Not a mode mismatch, not an
+unconfigured installation, not a genuine mismatch, not chain flattening. The
+cause is **infra-side**; there is no product-code defect behind this report.
+
+### Why the resolver path is fragile here
+
+- The whole chain is served with a **4–5 s TTL** (and TTL `0` from public
+  recursors), so every 6-hourly sweep is a **cold, fully recursive** lookup —
+  the cache never helps.
+- The pods run `dnsPolicy: None` with
+  `options ndots:1 timeout:1 attempts:3` — a **1-second per-attempt budget**.
+  Measured cold lookups from inside the cluster took **up to 448 ms** against
+  `10.43.0.10` and ~90 ms against `10.43.0.11`; that is the same order of
+  magnitude as the budget, so an occasional attempt exhausting it is expected
+  rather than surprising.
+- One node-local CoreDNS replica (`coredns-local-*` on node `home1`) has been
+  stuck in `ContainerCreating` for 19 days. `10.43.0.11` is the `kube-dns-local`
+  ClusterIP, so a pod scheduled on that node has **no local endpoint** for its
+  primary nameserver and pays the full timeout before falling back to
+  `10.43.0.10`. The affected pod happened to run on a healthy node, but any
+  reschedule onto `home1` would make this systematic.
+
+### Next actions (infrastructure owner)
+
+1. **Deploy ≥ v0.18.0 to the instance** so `custom_domain_last_check` exists.
+   Every future report of this shape is then answerable from the dashboard in
+   one look, with no cluster access at all.
+2. **Fix or remove the stuck `coredns-local` pod** on `home1`, or give
+   `kube-dns-local` a fallback so a missing node-local replica does not cost a
+   full DNS timeout.
+3. **Raise `timeout` from `1` to `2`** in the pods' `dnsConfig` (or lower
+   `attempts` and add a second resolver) — a 1-second budget for a cold,
+   fully recursive external lookup is the actual trigger. Note the trade-off:
+   `timeout:1` was chosen to keep in-cluster lookups snappy.
+4. **Consider raising the TTL of the instance's own CNAME target** so the chain
+   can be cached at all.
+
+### What was deliberately NOT changed
+
+The verification contract stays as it is: one `CNAME`, no dual-accept in token
+mode. Nothing here justifies widening what verifies — the record published by
+the customer is correct and Go reads it correctly. The demotion state machine
+already absorbs transient failures (grace after 3 consecutive failures, hard
+demotion only after ~12), which is precisely why this never took the page dark.
