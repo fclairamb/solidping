@@ -413,11 +413,12 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 
 // registerWorker registers or updates the worker in the database.
 func (r *CheckWorker) registerWorker(ctx context.Context) error {
-	// Identity is SP_NODE_NAME when set, otherwise the lowercased OS hostname
-	// truncated to config.WorkerHostnameMaxLen. Config.Validate() has already
-	// rejected a slug the database CHECK constraint would refuse.
+	// Identity is SP_NODE_NAME when set, otherwise the lowercased, sanitized OS
+	// hostname truncated to config.WorkerHostnameMaxLen. Config.Validate() has
+	// already rejected a slug the database CHECK constraint would refuse.
 	identity := r.config.WorkerIdentity()
 	identity.WarnIfTruncated(ctx, r.logger)
+	identity.WarnIfSanitized(ctx, r.logger)
 
 	region := "default"
 	if r.config.Server.CheckWorker.Region != "" {
