@@ -363,6 +363,20 @@ curl -s -H "Authorization: Bearer eyJhbGci..." 'http://localhost:4000/api/v1/org
 - **Password**: `solidpass`
 - **Organization**: `default`
 
+On a **fresh database** this account is seeded with `must_change_password`, so
+the login above succeeds but every other endpoint answers `403` /
+`PASSWORD_CHANGE_REQUIRED` until you rotate:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"currentPassword":"solidpass","newPassword":"something-else"}' \
+  'http://localhost:4000/api/v1/auth/change-password'
+```
+
+The flag is a general user-level capability (`internal/handlers/auth/password_rotation.go`),
+enforced in `RequireAuth`, `RequireMCPAuth` and the realtime WebSocket handshake —
+not a special case for the seeded admin. Test mode (`test@test.com`) is not flagged.
+
 ### Troubleshooting
 - If token expires, re-run the login command to get a fresh token
 - Check server is running: `curl -s http://localhost:4000/api/mgmt/health`

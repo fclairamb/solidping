@@ -40,6 +40,19 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 | Normal | `admin@solidping.io` | `solidpass` | `default` |
 | Test (`SP_RUNMODE=test`) | `test@test.com` | `test` | `test` |
 
+**The normal seeded admin lands on a forced password rotation.** On a fresh
+database the seeded `admin@solidping.io` carries `users.must_change_password`,
+so the first successful login yields a session that can reach only
+`POST /auth/change-password`, `GET /auth/me` and `POST /auth/logout` —
+everything else answers `403 PASSWORD_CHANGE_REQUIRED` and dash0 lands on
+`/dash0/change-password`. This is unconditional: `make dev` against a fresh
+database prompts for a new password too. Pick one, and every example below
+works with it in place of `solidpass`.
+
+The test-mode user (`test@test.com`) is deliberately **not** flagged — it is
+created by a different path (`server/test/testdata/testdata.go`) and the
+Playwright suites sign in with those fixed credentials.
+
 ## SaaS mode & entitlements
 
 `SP_DEPLOYMENT_MODE=saas` switches per-org defaults to the SaaS tier and lets a

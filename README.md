@@ -56,6 +56,13 @@ make dev-test   # Backend + frontend with hot reload
 - Password: `solidpass`
 - Organization: `default`
 
+Both halves of that pair are published here, so the first login on a fresh
+database **must set a new password** before the account can do anything else.
+The dashboard takes you straight to the form; over the API the login succeeds
+and every endpoint except `POST /api/v1/auth/change-password`,
+`GET /api/v1/auth/me` and `POST /api/v1/auth/logout` answers `403` with code
+`PASSWORD_CHANGE_REQUIRED` until you rotate it.
+
 ### API Example
 ```bash
 # Get a JWT token
