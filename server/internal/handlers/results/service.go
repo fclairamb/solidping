@@ -203,6 +203,66 @@ func (s *Service) clampRawWindow(ctx context.Context, filter *models.ListResults
 	return true
 }
 
+// buildListFilter turns the parsed query options into the DB-layer filter,
+// resolving the identifiers (check UID-or-slug, region spelling, status names)
+// that only the service knows how to normalize.
+func (s *Service) buildListFilter(
+	ctx context.Context, orgUID string, opts *ListResultsOptions,
+) (*models.ListResultsFilter, error) {
+	filter := &models.ListResultsFilter{
+		OrganizationUID: orgUID,
+		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
+		CheckTypes:      opts.CheckTypes,
+		PeriodTypes:     opts.PeriodTypes,
+
+		PeriodStartAfter: opts.PeriodStartAfter,
+		PeriodEndBefore:  opts.PeriodEndBefore,
+
+		// Determine if we need check info for response
+		IncludeCheckInfo: s.needsCheckInfo(opts.With),
+
+		// `metrics` and `output` are by far the widest columns on a results row.
+		// Unless this request actually asked for one of them, drop both from the
+		// projection so a 1 000-row chart page stops shipping and jsonb-decoding
+		// two blobs per row that convertResultToResponse would immediately
+		// discard (spec 2026-08-22-04 §3). Derived from the SAME lowercased
+		// `with`-set the response conversion uses, so the projection and the
+		// serialization can never disagree: a blob that was asked for is never
+		// dropped by the projection.
+		SkipBlobs: !needsBlobs(opts.With),
+	}
+
+	// Resolve check identifiers to UIDs
+	if len(opts.Checks) > 0 {
+		filter.CheckUIDs = s.resolveCheckIdentifiers(ctx, orgUID, opts.Checks)
+	}
+
+	// Map status strings to integers
+	if len(opts.Statuses) > 0 {
+		filter.Statuses = s.mapStatusStringsToInts(opts.Statuses)
+	}
+
+	normalizedRegions, err := s.normalizeRegionFilter(ctx, orgUID, opts.Regions)
+	if err != nil {
+		return nil, err
+	}
+
+	filter.Regions = normalizedRegions
+
+	// Parse cursor
+	if opts.Cursor != "" {
+		ts, uid, errCursor := s.decodeCursor(opts.Cursor)
+		if errCursor != nil {
+			return nil, ErrInvalidCursor
+		}
+
+		filter.CursorTimestamp = &ts
+		filter.CursorUID = &uid
+	}
+
+	return filter, nil
+}
+
 // ListResults lists results for an organization with filtering and pagination.
 func (s *Service) ListResults(
 	ctx context.Context, orgSlug string, opts *ListResultsOptions,
@@ -213,64 +273,17 @@ func (s *Service) ListResults(
 		return nil, ErrOrganizationNotFound
 	}
 
-	// Build filter
-	filter := models.ListResultsFilter{
-		OrganizationUID: org.UID,
-		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
-	}
-
-	// Resolve check identifiers to UIDs
-	if len(opts.Checks) > 0 {
-		checkUIDs := s.resolveCheckIdentifiers(ctx, org.UID, opts.Checks)
-		filter.CheckUIDs = checkUIDs
-	}
-
-	// Map status strings to integers
-	if len(opts.Statuses) > 0 {
-		filter.Statuses = s.mapStatusStringsToInts(opts.Statuses)
-	}
-
-	normalizedRegions, err := s.normalizeRegionFilter(ctx, org.UID, opts.Regions)
+	filter, err := s.buildListFilter(ctx, org.UID, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set other filters
-	filter.CheckTypes = opts.CheckTypes
-	filter.Regions = normalizedRegions
-	filter.PeriodTypes = opts.PeriodTypes
-	filter.PeriodStartAfter = opts.PeriodStartAfter
-	filter.PeriodEndBefore = opts.PeriodEndBefore
-
-	// Parse cursor
-	if opts.Cursor != "" {
-		ts, uid, errCursor := s.decodeCursor(opts.Cursor)
-		if errCursor != nil {
-			return nil, ErrInvalidCursor
-		}
-		filter.CursorTimestamp = &ts
-		filter.CursorUID = &uid
-	}
-
-	// Determine if we need check info for response
-	filter.IncludeCheckInfo = s.needsCheckInfo(opts.With)
-
-	// `metrics` and `output` are by far the widest columns on a results row.
-	// Unless this request actually asked for one of them, drop both from the
-	// projection so a 1 000-row chart page stops shipping and jsonb-decoding
-	// two blobs per row that convertResultToResponse would immediately
-	// discard (spec 2026-08-22-04 §3). Derived from the SAME lowercased
-	// `with`-set the response conversion uses, so the projection and the
-	// serialization can never disagree: a blob that was asked for is never
-	// dropped by the projection.
-	filter.SkipBlobs = !needsBlobs(opts.With)
-
 	// Bound a raw-only request to the raw-retention band before the query is
 	// built, so the reported window is the one that actually ran.
-	clamped := s.clampRawWindow(ctx, &filter)
+	clamped := s.clampRawWindow(ctx, filter)
 
 	// Execute query
-	dbResults, err := s.db.ListResults(sloghook.WithCallsite(ctx, "results.list"), &filter)
+	dbResults, err := s.db.ListResults(sloghook.WithCallsite(ctx, "results.list"), filter)
 	if err != nil {
 		return nil, err
 	}
