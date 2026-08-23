@@ -716,6 +716,16 @@ type EmailConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecureskipverify"` // Skip TLS certificate verification
 	AuthType           string `koanf:"authtype"`           // SMTP auth type: plain, login, cram-md5 (default: login)
 	Protocol           string `koanf:"protocol"`           // SMTP encryption: none, starttls, ssl (default: starttls)
+	// ReplyTo is the instance support mailbox (env SP_EMAIL_REPLY_TO, system
+	// parameter email.reply_to). Empty by default — unset means no Reply-To
+	// header, no "you can reply" notice, and no inbound-message mirror, so
+	// nothing changes for an installation that does not want this.
+	//
+	// It is applied ONLY to messages that explicitly opted in via
+	// email.Message.SupportReplyable; security mail (password reset, password
+	// changed, registration, invitation, subscriber confirm) never carries it.
+	// See email.SupportReplyable and spec 2026-08-22-02.
+	ReplyTo string `koanf:"replyto"`
 }
 
 // FileStorageConfig controls where File blobs are persisted. The bytes live

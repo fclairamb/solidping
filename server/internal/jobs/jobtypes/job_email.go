@@ -178,6 +178,12 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 		// One-click POST is only meaningful when there is a URL to post to.
 		ListUnsubscribeURL:          r.config.ListUnsubscribeURL,
 		ListUnsubscribePostOneClick: r.config.ListUnsubscribeURL != "",
+		// Classification is derived from the template, centrally and fail
+		// closed: the raw-HTML branch below has no template name at all and
+		// therefore never carries a support Reply-To. Every auth mail
+		// (password-reset, password-changed, registration, invitation) travels
+		// this path, which is exactly why the default must be "no".
+		SupportReplyable: email.SupportReplyable(r.config.Template),
 	}
 
 	// Use template if specified

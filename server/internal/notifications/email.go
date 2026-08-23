@@ -314,10 +314,11 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: emailAddresses},
-		Subject:    content.subject,
-		HTML:       content.htmlBody,
-		Text:       content.textBody,
+		Recipients:       email.Recipients{To: emailAddresses},
+		Subject:          content.subject,
+		HTML:             content.htmlBody,
+		Text:             content.textBody,
+		SupportReplyable: email.SupportReplyable(content.template),
 	}
 
 	res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
@@ -388,6 +389,7 @@ func (s *EmailSender) sendPerRecipient(
 			Text:                        content.textBody,
 			ListUnsubscribeURL:          unsubURL,
 			ListUnsubscribePostOneClick: unsubURL != "",
+			SupportReplyable:            email.SupportReplyable(content.template),
 		}
 
 		res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
@@ -456,6 +458,10 @@ type emailContent struct {
 	subject  string
 	htmlBody string
 	textBody string
+	// template is the rendered template's file name, carried out so the caller
+	// can ask email.SupportReplyable about it. Empty on the ad-hoc fallback
+	// body below, which therefore fails closed — see spec 2026-08-22-02.
+	template string
 }
 
 // buildEmailContent assembles the view-model for one recipient and renders it
@@ -502,7 +508,7 @@ func (s *EmailSender) buildEmailContent(
 		return emailContent{}, fmt.Errorf("formatting template %s: %w", templateName, err)
 	}
 
-	return emailContent{subject: subject, htmlBody: html, textBody: text}, nil
+	return emailContent{subject: subject, htmlBody: html, textBody: text, template: templateName}, nil
 }
 
 // buildIncidentViewModel builds the data map passed to the incident-*.html

@@ -371,10 +371,11 @@ func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailRe
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{recipient}},
-		Subject:    subject,
-		Text:       textBody,
-		HTML:       htmlBody,
+		Recipients:       email.Recipients{To: []string{recipient}},
+		Subject:          subject,
+		Text:             textBody,
+		HTML:             htmlBody,
+		SupportReplyable: email.SupportReplyable("test-email.html"),
 	}
 
 	result, err := sender.Send(ctx, msg)
@@ -444,6 +445,13 @@ func (s *Service) buildEmailConfig(ctx context.Context) (*config.EmailConfig, er
 
 	if v, ok := paramMap["email.protocol"].(string); ok {
 		cfg.Protocol = v
+	}
+
+	// The support mailbox travels with the rest of the SMTP settings so the
+	// "send a test email" button exercises the real Reply-To an operator has
+	// configured, rather than a silently different one (spec 2026-08-22-02).
+	if v, ok := paramMap["email.reply_to"].(string); ok {
+		cfg.ReplyTo = v
 	}
 
 	if v, ok := paramMap["email.insecure_skip_verify"].(bool); ok {

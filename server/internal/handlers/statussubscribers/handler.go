@@ -112,11 +112,14 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 		return
 	}
 
+	// Deliberately NOT support-replyable: the confirm mail is the double-opt-in
+	// proof, and it must keep the "this is automated" framing.
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{result.Subscriber.EmailAddress()}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{result.Subscriber.EmailAddress()}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("status-subscriber-confirm.html"),
 	}
 
 	if _, err := h.sender.Send(ctx, msg); err != nil {

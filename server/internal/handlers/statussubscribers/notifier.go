@@ -193,10 +193,11 @@ func (n *Notifier) sendOne(
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{sub.EmailAddress()}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{sub.EmailAddress()}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("status-subscriber-update.html"),
 	}
 
 	if _, err := n.sender.Send(ctx, msg); err != nil {

@@ -1301,10 +1301,11 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{recipient}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{recipient}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("escalation.html"),
 	}
 
 	result, err := jctx.Services.EmailSender.Send(ctx, msg)

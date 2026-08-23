@@ -43,6 +43,10 @@ const (
 	KeyEmailInsecure            ParameterKey = "email.insecure_skip_verify"
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
 	KeyEmailProtocol            ParameterKey = "email.protocol"
+	// KeyEmailReplyTo is the instance support mailbox (spec 2026-08-22-02).
+	// Empty means the whole support-reply feature is off: no Reply-To header,
+	// no "you can reply" notice, no inbound-message mirror.
+	KeyEmailReplyTo ParameterKey = "email.reply_to"
 
 	// KeySessionMaxDuration is the global (system-wide) hard cap on session
 	// lifetime in seconds, measured from login (spec
@@ -485,6 +489,16 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Email.Protocol = v
+				}
+			},
+		},
+		{
+			Key:    KeyEmailReplyTo,
+			EnvVar: "SP_EMAIL_REPLY_TO",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Email.ReplyTo = v
 				}
 			},
 		},
