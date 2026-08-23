@@ -2,7 +2,7 @@
 
 ## Overview
 
-Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021. It has become the most popular open-source uptime monitoring solution with **~89,900 GitHub stars** (verified 2026-08-05; latest release **v2.5.0**, 2026-08-01), making it the clear community favorite for self-hosted monitoring.
+Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021. It has become the most popular open-source uptime monitoring solution with **~90,500 GitHub stars** (verified 2026-08-23; latest release **v2.5.3**, 2026-08-22), making it the clear community favorite for self-hosted monitoring.
 
 **GitHub**: https://github.com/louislam/uptime-kuma
 
@@ -12,12 +12,12 @@ Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021
 
 **Database**: SQLite (primary), with official MariaDB support (v2.0+)
 
-**Current Version**: 2.1.3 (as of March 2026)
+**Current Version**: 2.5.3 (2026-08-22)
 
 ## Key Statistics
 
-- **GitHub Stars**: 83,000+ (Mar 2026)
-- **Forks**: 7,100+
+- **GitHub Stars**: 90,490 (verified 2026-08-23 via the GitHub API)
+- **Forks**: 8,276 (2026-08-23)
 - **Releases**: 120+ versions
 - **Contributors**: 300+ community members
 - **Language Support**: 20+ languages
@@ -52,11 +52,25 @@ Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021
   picker for the system-service monitor (#7114), new notification providers
   (Plivo SMS + voice, Ooredoo Maldives, WxPusher, Flowtriq DDoS), extra SMTP
   headers, rybbit analytics on status pages
+- **v2.5.1** (2026-08-19): 7 further notification providers (SMS Gateway,
+  ClickUp, TurboSMTP among them) plus bug fixes. **Broke the non-Docker
+  install.**
+- **v2.5.2** (2026-08-20): fixes the bare-metal installation that 2.5.1 broke
+- **v2.5.3** (2026-08-22, current): version-numbering fix
 
-> **Cadence note (2026-08-05):** the monitor-type count moved 12 → 13 on
-> 2026-08-01. Any comparison asset that hard-codes this number must be
-> re-verified at publish time, not at authoring time — marketing drafts carried
-> "12" for three months and would have shipped it.
+> **Cadence note (2026-08-05, extended 2026-08-23):** the monitor-type count
+> moved 12 → 13 on 2026-08-01. Any comparison asset that hard-codes this number
+> must be re-verified at publish time, not at authoring time — marketing drafts
+> carried "12" for three months and would have shipped it.
+>
+> **The 2026-08-23 check is the counter-example that makes the rule usable.**
+> Three releases landed in the window (2.5.1 → 2.5.3) and the count did **not**
+> move: all three are notification providers, a packaging regression, and its
+> fix. Kuma holds at **13**. Re-verify every time; do not assume that release
+> activity implies capability change, in either direction. Over the same period
+> solidping's own count was re-derived from source at **40** (41 `CheckType`
+> constants minus the synthetic `sleep`), so the ratio widened from 38:13 to
+> 40:13 entirely on our side of the fraction.
 
 ### Monitoring Features
 
@@ -368,7 +382,7 @@ curl https://your-kuma.com/api/push/your_push_key?status=up&msg=OK&ping=100
 
 ### Features
 7. ✅ **90+ notifications**: Extensive notification support via Apprise
-8. ✅ **11 monitor types**: Comprehensive protocol coverage
+8. ✅ **13 monitor types**: Comprehensive protocol coverage (corrected 2026-08-23; this line read "11", stale since v2.5.0)
 9. ✅ **20-second intervals**: Fast check frequency
 10. ✅ **Status pages**: Multiple public status pages
 11. ✅ **Certificate monitoring**: SSL expiration tracking
@@ -436,7 +450,7 @@ Both are:
 2. **Beautiful UI**: Modern Vue 3 reactive interface
 3. **90+ notifications**: Extensive Apprise integration
 4. **20-second intervals**: Faster than typical 1-minute
-5. **11 monitor types**: Docker, Steam, WebSocket support
+5. **13 monitor types**: Docker, Steam, WebSocket, NTP support (corrected 2026-08-23)
 6. **Multi-language**: 20+ language translations
 7. **Status pages**: Multiple public status pages
 8. **Easy setup**: One-line Docker deployment
@@ -753,3 +767,20 @@ Uptime Kuma demonstrates that **user experience matters enormously**—its 80k s
 - [Uptime Kuma vs Gatus (Cloudpap)](https://cloudpap.com/blog/gatus-vs-uptime-kuma/)
 - [Top Uptime Kuma Alternatives (Better Stack)](https://betterstack.com/community/comparisons/uptime-kuma-alternative/)
 - [Uptime Kuma vs Gatus (Slashdot)](https://slashdot.org/software/comparison/Gatus-vs-Uptime-Kuma/)
+
+## Open feature requests that solidping already covers
+
+Recorded 2026-08-23 from the issue tracker. Both are open and unanswered; both
+are capabilities present in solidping's checker registry today. They are listed
+here as *facts about Kuma's gaps*, not as an outreach list — replying to a
+competitor's tracker to advertise is out of bounds.
+
+| Kuma issue | Asks for | solidping equivalent |
+|---|---|---|
+| [#5777](https://github.com/louislam/uptime-kuma/issues/5777) | UDP port monitoring | `checkudp` (`udp` check type) |
+| [#7688](https://github.com/louislam/uptime-kuma/issues/7688) | first-party status-page monitor | status-page monitoring in the same registry |
+
+Why record them: the protocol-breadth *number* has moved three times in four
+months and needs re-deriving before every use, whereas a dated, linkable,
+unanswered request on the market-leading OSS tool stays true. It is the more
+durable form of the same claim.

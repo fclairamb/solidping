@@ -22,6 +22,34 @@ community demand.
 
 ## Refresh log
 
+### 2026-08-23 — routine poll (52 sources, since=11d)
+
+Thin on entrants, useful on facts. No net-new competitor: everything the scorer
+flagged was a re-detection (URLGuardian, PostHog/marketing#69) or dev.to SEO
+filler, and every name in the hand-scanned `low` pile — Vigilmon, Watchpost,
+LitePing, Crontinel — was already registered.
+
+Facts recorded this round:
+
+- **Uptime Kuma 2.5.1 → 2.5.3** (latest 2026-08-22). Three releases, **no new
+  monitor types**: notification providers, a broken bare-metal install in 2.5.1,
+  and two patch releases to fix it. Kuma holds at **13**. Stars 90,490, forks
+  8,276 (GitHub API, 2026-08-23). Details in `uptime-kuma.md`.
+- **SolidPing's own count re-derived from source: 40**, not the 38 this wiki and
+  the marketing drafts were carrying. So the breadth ratio moved 38:13 → 40:13
+  purely on our side. Derivation command is now pinned in
+  `comparison/monitor-types.md`.
+- **Two open, unanswered Kuma requests for things SolidPing ships** — UDP
+  monitoring (#5777) and a first-party status-page monitor (#7688). Tabled in
+  `uptime-kuma.md`. Recorded as evidence of gaps, not as an outreach list.
+
+Method note worth keeping: for the third consecutive poll the scorer's flags
+produced nothing and every real find came out of the hand-scanned `low` pile.
+The flags are not wrong so much as tuned for buying intent, which this market
+does not emit; the finds are release notes and issue trackers. Worth considering
+whether release/issue sources deserve their own scoring path rather than being
+graded on intent they will never show.
+
 ### 2026-07-12 — web re-verification of the tracked set
 
 Facts re-checked against live pricing/product pages (sources inline in each
@@ -74,7 +102,7 @@ active through 2026-05). Markets verbatim as "the best uptime kuma alternative"
 for professional DevOps teams. Websites/APIs, status pages, alerts; storage on
 SQLite / PostgreSQL / MongoDB. Homepage + live demo + docs + community Terraform
 provider; self-described beta. **The closest kind of rival — same lane as Uptime
-Kuma itself.** SolidPing counters on 38 check types + distributed multi-region
+Kuma itself.** SolidPing counters on 40 check types + distributed multi-region
 workers + built-in on-call, none of which Peekaping matches yet; Peekaping's edge
 is 1.1k★ of momentum, a polished site/demo, and pluggable storage backends.
 *Watch:* whether it ships distributed probing or a hosted/paid tier. Surfaced
@@ -145,7 +173,7 @@ The DNS-drift behaviour is worth noting on its own — *notify without alerting*
 a distinct alert class, not just a check type. **Still single-node:** nothing in
 4.2.0 touches remote or multi-node probing, so our structural gap holds.
 
-**Where SolidPing holds:** 38 check types vs 6; distributed multi-region workers
+**Where SolidPing holds:** 40 check types vs 6; distributed multi-region workers
 and private/deported locations (Kuvasz probes only from the single node it runs
 on — no cross-region confirmation); built-in on-call schedules and multi-step
 escalation (Kuvasz hands off to PagerDuty).
@@ -255,7 +283,7 @@ SolidPing's distributed workers). HTTP/TCP/UDP/SSL/DNS + cron; Email/Slack/
 Telegram/Webhook. Free ($0, 5 monitors, 1 Lighthouse, 5-min, HTTP/TCP/UDP only) /
 Starter (**$10/mo**, 1-min, +SSL/DNS) / Pro (**$24/mo**, 25 monitors, 3 Lighthouses,
 6 members). SolidPing counters:
-self-hosted/OSS, 38 check types vs ~6, 10 channels vs 4. Surfaced 2026-05-25 via
+self-hosted/OSS, 40 check types vs ~6, 10 channels vs 4. Surfaced 2026-05-25 via
 an r/selfhosted self-promo that was heavily downvoted ("AI slop advertisement") —
 community mood is hostile to promo posts here. *Update 2026-07-12:* paid prices
 **roughly doubled** (Starter $5→$10, Pro $12→$24); Lighthouse agents now also stream
@@ -349,7 +377,7 @@ Pricing verified 2026-08-10 (annual billing):
 Heartbeat interval floors at 10 s on Business. Full API access on every tier
 including Free.
 
-**Where SolidPing wins, on verifiable facts:** protocol breadth (38 check types
+**Where SolidPing wins, on verifiable facts:** protocol breadth (40 check types
 vs 4 + synthetic); self-hosting (Larm has none); and check interval — Larm's
 floor is 30 s *and* paywalled at $588/yr, against SolidPing's 10 s self-hosted,
 unlimited and not tier-gated. See the Axis 5 confirmation in `positioning.md`:
@@ -462,7 +490,7 @@ projects, content-farm SEO, and paid templates. Not head-to-head rivals.
   — **no email**. Surfaced 2026-07-21 (Show HN 48919840, 3 pts / 0 comments,
   author `luciandan`). Significance: first rival built MCP-FIRST (not a bolt-on
   MCP endpoint like Tickstem/Uptime.com/exit1.dev) — confirms MCP is now contested
-  table-stakes. SolidPing's edge holds on 38 check types (vs HTTP-only), OSS
+  table-stakes. SolidPing's edge holds on 40 check types (vs HTTP-only), OSS
   self-host (vs SaaS-only + hosted MCP), and built-in on-call. Watch: paid pricing
   and whether it adds non-HTTP check types.
 - **Watchpost** (github.com/brod-dev/watchpost) — "Tiny self-hosted uptime monitor
