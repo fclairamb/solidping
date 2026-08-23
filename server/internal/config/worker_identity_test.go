@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -205,6 +206,104 @@ func TestResolveWorkerIdentity_HostnameSanitization(t *testing.T) {
 			r.NoError(id.Validate())
 		})
 	}
+}
+
+// TestResolveWorkerIdentity_AlreadyValidHostnameIsFixedPoint proves the "no
+// existing deployment changes slug" property by construction rather than by a
+// hand-picked sample that happens not to exercise it: WorkerSlugPattern
+// permits trailing dashes and internal dash runs, so a hostname whose
+// (lowercased, truncated) form already matches the pattern must come out of
+// sanitizeHostnameSlug byte-identical — collapsing/trimming must never touch
+// a slug that already validates today, or an upgrade silently orphans the
+// existing `workers` row under a new slug.
+func TestResolveWorkerIdentity_AlreadyValidHostnameIsFixedPoint(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		hostname string
+	}{
+		{
+			// 15-char truncation landing mid-word, leaving a trailing dash —
+			// WorkerSlugPattern allows it, so it must survive untouched.
+			name:     "truncation lands on a trailing dash",
+			hostname: "my-worker-node-01",
+		},
+		{
+			name:     "truncation lands on a trailing dash (2)",
+			hostname: "eu-west-prod-1-a",
+		},
+		{
+			name:     "truncation lands on a trailing dash (3)",
+			hostname: "worker-alpha-1-b",
+		},
+		{
+			// A genuinely double-dashed hostname — unusual, but the CHECK
+			// constraint allows it and it may already be registered.
+			name:     "consecutive internal dashes, already valid",
+			hostname: "db--primary--x1",
+		},
+		{
+			name:     "already-clean short hostname",
+			hostname: "worker-eu2",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			truncated := tc.hostname
+			if len(truncated) > WorkerHostnameMaxLen {
+				truncated = truncated[:WorkerHostnameMaxLen]
+			}
+
+			todaySlug := strings.ToLower(truncated)
+			r.Regexp(workerSlugRegexp, todaySlug, "test setup: case must already be valid today")
+
+			id := resolveWorkerIdentity("", staticHostname(tc.hostname))
+
+			r.Equal(todaySlug, id.Slug, "an already-valid slug must be byte-identical after sanitization")
+			r.False(id.Sanitized, "no rewrite happened, so Sanitized must stay false — no WARN for a host that works today")
+		})
+	}
+}
+
+// TestSanitizeHostnameSlug_FixedPointProperty states the spec's fixed-point
+// property directly: for any lowercased, truncated hostname that already
+// matches WorkerSlugPattern, sanitizeHostnameSlug must return it unchanged.
+// It also keeps a positive control (a hostname that genuinely needs
+// sanitizing) in the same table, so the assertion below would fail if the
+// early-return swallowed everything instead of only the already-valid cases.
+func TestSanitizeHostnameSlug_FixedPointProperty(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	candidates := []string{
+		"my-worker-node-", // trailing dash, valid today
+		"db--primary--x1", // internal dash run, valid today
+		"worker-eu2",      // plain, valid today
+		"host-002.lan",    // needs substitution — the positive control
+	}
+
+	sawAlreadyValid := false
+	sawNeedsSanitizing := false
+
+	for _, hostname := range candidates {
+		got := sanitizeHostnameSlug(hostname)
+
+		if workerSlugRegexp.MatchString(hostname) {
+			sawAlreadyValid = true
+			r.Equal(hostname, got, "fixed point: %q already matches WorkerSlugPattern", hostname)
+		} else {
+			sawNeedsSanitizing = true
+			r.NotEqual(hostname, got, "positive control: %q must actually be rewritten", hostname)
+		}
+	}
+
+	r.True(sawAlreadyValid, "test setup: must exercise the fixed-point branch")
+	r.True(sawNeedsSanitizing, "test setup: must exercise the positive control")
 }
 
 // TestResolveWorkerIdentity_OverrideNeverSanitized proves sanitization only

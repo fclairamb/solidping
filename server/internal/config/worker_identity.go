@@ -123,13 +123,25 @@ func resolveWorkerIdentity(override string, hostnameFn func() (string, error)) W
 // are collapsed and the result is trimmed of leading/trailing dashes (avoids
 // "host--002" and dangling dashes left by truncation).
 //
-// Any hostname that already matches WorkerSlugPattern is a fixed point of
-// this function: it is already lowercase, contains only [a-z0-9-], and has no
-// leading/trailing dash, so both substitution and trimming are no-ops. The
-// pathological residue (starts with a digit, shorter than 3 chars, or empty
-// after collapsing) is left for Validate() to reject with its existing
-// actionable error — sanitizing is not a promise that the result is valid.
+// A hostname that already matches WorkerSlugPattern short-circuits and is
+// returned untouched. This is not just an optimization: WorkerSlugPattern
+// permits trailing dashes and internal dash runs (e.g. a 15-char truncation
+// landing mid-word as "my-worker-node-", or a genuine "db--primary--x1"),
+// so collapsing/trimming unconditionally would rewrite slugs that already
+// validate and are already registered today — silently moving an existing
+// deployment's `workers` row. The collapse/trim steps below exist only to
+// clean up residue *introduced by substitution* (a run of illegal characters
+// becoming a run of dashes, or truncation landing right after one), so they
+// must never run on a hostname that never needed substitution in the first
+// place. The pathological residue that remains after substitution (starts
+// with a digit, shorter than 3 chars, or empty after collapsing) is left for
+// Validate() to reject with its existing actionable error — sanitizing is
+// not a promise that the result is valid.
 func sanitizeHostnameSlug(hostname string) string {
+	if workerSlugRegexp.MatchString(hostname) {
+		return hostname
+	}
+
 	sanitized := nonSlugCharRegexp.ReplaceAllString(hostname, "-")
 	sanitized = dashRunRegexp.ReplaceAllString(sanitized, "-")
 
