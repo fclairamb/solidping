@@ -125,3 +125,53 @@ product repo. The infrastructure side is recorded in
 `k8xp/k8s/solidping/overlays/prod/README.md`; the business-side record is in
 `solidping-business/memory/decisions.md` (2026-08-23 c). No product code was
 changed.
+
+## Resolved open questions
+
+Answered by the maintainer on 2026-08-23. The "Suggested direction" section
+above opens with "Not prescriptive"; this section makes it prescriptive.
+
+### Q: How much of the four-item "Suggested direction" should be implemented?
+
+**Decision: all four.** Items 1–4 are in scope for this spec and none may be
+deferred. Restated as requirements:
+
+1. **The sweep may re-promote.** A demoted domain that starts resolving to us
+   again must recover on its own, without a human clicking Verify. Re-promotion
+   is deliberately harder to earn than the demotion was: require N consecutive
+   successful checks (not a single one), and re-promote only while the stored
+   certificate is still present and unexpired and the CNAME still points at us.
+   A domain that is demoted, still ours by DNS, and still holding a valid cert
+   is not a takeover — treat it as a blip that ended.
+2. **Split "temporarily failing" from "gone."** The single `custom_domain_failures`
+   counter is doing two jobs; give the domain an explicit intermediate state
+   (grace) that **keeps serving** while re-checks fail, and reserve hard demotion
+   (clearing `custom_domain_verified_at`) for domains that have stayed
+   unreachable well past the grace window. The common case — a blip — must
+   become invisible to the page's visitors.
+3. **Never fail at the TLS handshake for a domain we hold a certificate for.**
+   If an unexpired cert for the SNI host is in `tls_storage`, complete the
+   handshake and answer at the HTTP layer with a legible error page. The edge's
+   current "refusing to serve a host we do not own" path must stop being reachable
+   whenever we actually have the cert. This is what makes the existing acceptance
+   criterion from spec `2026-07-26-01` ("unverified / removed / expired domain
+   degrades to a clear message, not a TLS error page") satisfiable at all — treat
+   that criterion as binding and cover it with a test.
+4. **Alert the operator on hard demotion.** A custom domain going dark must
+   notify, through the org's existing notification routing, rather than being
+   discovered by a customer during an outage. Grace-state entry need not page;
+   the hard demotion must.
+
+### Q: the "Also worth checking" item (`failures = 1` while DNS resolves correctly)
+
+**Out of scope for this spec.** The spec itself calls it "a separate question
+from the two defects above". Investigating why re-verification fails against the
+pod's own resolver is an infrastructure/diagnostic question about the
+`solidping-prod` k8xp bring-up, not a product-code defect, and the four
+requirements above are all implementable and testable without resolving it.
+
+It should not be lost, though: the implementer should make the verification
+failure **diagnosable** — when a check fails, record enough about *why* (what was
+resolved, by which mode, what was expected) that this question can be answered
+from the data next time instead of by correlating pod logs with manual `dig`
+runs. File the residual investigation as its own spec.
