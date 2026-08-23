@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -282,4 +283,55 @@ func TestNoTraceRequesterIsSafe(t *testing.T) {
 	inc, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
 	r.NotNil(inc, "the incident must open with no trace dispatcher present")
+}
+
+// TestReopenAlwaysDropsTheStalePathTrace pins the asymmetry between the two
+// capture kinds on a relapse, which is the subtlest decision in this feature.
+//
+// A screenshot arrives WITH the failing result, so "did this relapse bring one?"
+// is answerable at the reopen. A trace is only REQUESTED at the reopen and may
+// never complete — no capability, rate-limited, agent gone, budget blown — so
+// the only way to guarantee the incident never shows the ORIGINAL outage's path
+// next to a relapse it does not describe is to retire it unconditionally and
+// let the new one land if it can.
+func TestReopenAlwaysDropsTheStalePathTrace(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := context.Background()
+	s := newFailureSnapshotSetup(t)
+
+	store := &fakeAttachmentStore{}
+	s.svc.SetAttachmentStore(store)
+
+	traces := &fakeTraceRequester{}
+	s.svc.SetTraceRequester(traces)
+
+	r.NoError(s.svc.CreateIncidentForTest(ctx, s.check,
+		netDownResult(s.org.UID, s.check.UID, checkerdef.NetFailureConnectTimeout)))
+
+	inc, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
+	r.NoError(err)
+
+	resolved := models.IncidentStateResolved
+	resolvedAt := time.Now().UTC()
+	r.NoError(s.dbSvc.UpdateIncident(ctx, inc.UID, &models.IncidentUpdate{
+		State: &resolved, ResolvedAt: &resolvedAt,
+	}))
+
+	// The relapse is an APPLICATION-level failure: nothing about the path is
+	// wrong this time, so no new trace is requested.
+	relapse := downResult(s.org.UID, s.check.UID, "unexpected status code: 500")
+	r.NoError(s.svc.CreateOrReopenIncidentForTest(ctx, s.check, relapse))
+
+	reopened, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
+	r.NoError(err)
+	r.Equal(inc.UID, reopened.UID, "the same incident must have been reopened")
+
+	r.Len(traces.snapshot(), 1, "the relapse carried no reachability marker, so no new trace")
+
+	// The stale trace was retired anyway — otherwise the incident would show a
+	// path capture describing an outage that is no longer the current onset.
+	r.Contains(store.kindDeletes, inc.UID+"/"+attachments.KindTraceroute,
+		"the previous onset's path capture must be retired on every reopen")
 }

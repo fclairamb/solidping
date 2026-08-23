@@ -482,3 +482,60 @@ func TestCaptureOptionsCarryTheConfiguredBudget(t *testing.T) {
 		t.Fatalf("address = %v, want the failing probe's", seen.Address)
 	}
 }
+
+// TestConfigDefaultsMatchTheProber pins the one duplication in this feature.
+//
+// config is a leaf package that nothing else may depend on, so
+// CheckersConfig.TraceroutePolicy() carries its OWN copies of the prober's
+// default rounds / hops / budget rather than importing them. That is a real
+// risk of drift — an operator who never sets the env vars would silently get
+// different settings from a self-hoster who set them to "the default" — and
+// this is the test that makes the drift impossible to land unnoticed.
+func TestConfigDefaultsMatchTheProber(t *testing.T) {
+	t.Parallel()
+
+	var checkers config.CheckersConfig
+
+	policy := checkers.TraceroutePolicy()
+
+	if policy.Rounds != nettrace.DefaultRounds {
+		t.Fatalf("config default rounds = %d, prober default = %d", policy.Rounds, nettrace.DefaultRounds)
+	}
+
+	if policy.Hops != nettrace.DefaultMaxHops {
+		t.Fatalf("config default hops = %d, prober default = %d", policy.Hops, nettrace.DefaultMaxHops)
+	}
+
+	if policy.Budget != nettrace.DefaultBudget {
+		t.Fatalf("config default budget = %s, prober default = %s", policy.Budget, nettrace.DefaultBudget)
+	}
+}
+
+// TestLoadedConfigDefaultsAreTheSame closes the other half: the values baked
+// into config.Load()'s defaults block, which an operator gets with no env vars
+// set at all.
+//
+//nolint:paralleltest // config.Load reads process environment; keep it serial
+func TestLoadedConfigDefaultsAreTheSame(t *testing.T) {
+	// Deliberately NOT parallel: config.Load reads process environment.
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	policy := loaded.Checkers.TraceroutePolicy()
+
+	if !policy.Enabled {
+		t.Fatal("traceroute must be ON by deployment default (the spec's org-level default is on)")
+	}
+
+	if policy.Rounds != nettrace.DefaultRounds ||
+		policy.Hops != nettrace.DefaultMaxHops ||
+		policy.Budget != nettrace.DefaultBudget {
+		t.Fatalf("loaded defaults drifted from the prober: %+v", policy)
+	}
+
+	if policy.Limit <= 0 {
+		t.Fatal("the per-organization rate limit must have a real default: 0 disables the mass-outage guard")
+	}
+}
