@@ -20,13 +20,22 @@ import (
 // db/sqlite/recent_results_plan_test.go), because no assertion on returned rows
 // can tell an index seek from a sequential scan.
 
+// seedRegion is the single region every fixture below writes its rows to. The
+// per-REGION budget is pinned separately by
+// TestFetchRecentResults_PerRegionBudgetNotStarved; these tests are about the
+// per-CHECK and per-TIER behavior, so one region keeps their arithmetic
+// readable.
+const seedRegion = "eu2"
+
 // seedRawSeries writes `count` raw rows for a check at the given cadence,
 // newest at `now`, in one region.
 func seedRawSeries(
-	ctx context.Context, t *testing.T, svc *Service, orgUID, checkUID, region string,
+	ctx context.Context, t *testing.T, svc *Service, orgUID, checkUID string,
 	now time.Time, cadence time.Duration, count int,
 ) {
 	t.Helper()
+
+	region := seedRegion
 
 	for i := range count {
 		row := models.NewResult(orgUID, checkUID, models.ResultStatusUp, float32(40+i%9))
@@ -40,10 +49,12 @@ func seedRawSeries(
 // containing `now`, in one region. duration_p95 is what the response-time chart
 // reads off an aggregated row.
 func seedHourRollups(
-	ctx context.Context, t *testing.T, svc *Service, orgUID, checkUID, region string,
+	ctx context.Context, t *testing.T, svc *Service, orgUID, checkUID string,
 	now time.Time, count int,
 ) {
 	t.Helper()
+
+	region := seedRegion
 
 	for i := range count {
 		row := models.NewResult(orgUID, checkUID, models.ResultStatusUp, 0)
@@ -62,38 +73,13 @@ func seedHourRollups(
 	}
 }
 
-// pageWithChecks builds a public page with one single-check resource per check.
-func pageWithChecks(
-	ctx context.Context, t *testing.T, svc *Service, org *models.Organization, checks []*models.Check,
-) StatusPageResponse {
-	t.Helper()
-
-	r := require.New(t)
-
-	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
-		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("7d"),
-	})
-	r.NoError(err)
-
-	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
-	r.NoError(err)
-
-	for _, check := range checks {
-		_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID,
-			CreateResourceRequest{CheckUID: check.UID})
-		r.NoError(err)
-	}
-
-	return page
-}
-
 // legacyFetchRecentResults reproduces EXACTLY what fetchRecentResults did
 // before this spec: every requested check, any period type, no time bound, one
 // GLOBAL row limit of responseTimeLimit x regionFanoutCap x len(checkUIDs),
 // then keep the first responseTimeLimit rows per (check, region) in arrival
 // order.
 //
-// It exists so the parity test can compare against the real previous behaviour
+// It exists so the parity test can compare against the real previous behavior
 // rather than against a hand-written expectation of it.
 func legacyFetchRecentResults(
 	ctx context.Context, t *testing.T, svc *Service, orgUID string, checkUIDs []string,
@@ -169,13 +155,13 @@ func TestFetchRecentResults_ParityWithGlobalLimitFetch(t *testing.T) {
 	r.NoError(svc.db.CreateCheck(ctx, slow))
 
 	// The 1-minute check: 150 raw rows, well inside the 24 h raw retention.
-	seedRawSeries(ctx, t, svc, org.UID, fast.UID, "eu2", now, time.Minute, 150)
+	seedRawSeries(ctx, t, svc, org.UID, fast.UID, now, time.Minute, 150)
 
 	// The 1-hour check: only the last 20 h exist as raw (retention), the rest —
 	// 130 more hours — only as hour rollups. Exactly the shape the spec
 	// describes.
-	seedRawSeries(ctx, t, svc, org.UID, slow.UID, "eu2", now, time.Hour, 20)
-	seedHourRollups(ctx, t, svc, org.UID, slow.UID, "eu2", now.Add(-20*time.Hour), 130)
+	seedRawSeries(ctx, t, svc, org.UID, slow.UID, now, time.Hour, 20)
+	seedHourRollups(ctx, t, svc, org.UID, slow.UID, now.Add(-20*time.Hour), 130)
 
 	checkUIDs := []string{fast.UID, slow.UID}
 
@@ -196,7 +182,7 @@ func TestFetchRecentResults_ParityWithGlobalLimitFetch(t *testing.T) {
 
 	// The fixture must actually exercise the rollup branch, or this proves
 	// nothing about the 1-hour check.
-	r.Equal(responseTimeLimit, len(got[slow.UID]["eu2"]),
+	r.Len(got[slow.UID]["eu2"], responseTimeLimit,
 		"the 1-hour check must fill its full budget")
 
 	rollups := 0
@@ -223,7 +209,7 @@ func regionKeys(byRegion map[string][]*models.Result) []string {
 
 // TestFetchRecentResults_DenseCheckCannotStarveSparseOne pins per-check
 // isolation. Under the old GLOBAL limit, one very dense check could consume the
-// whole row budget ordered by period_start and leave a sparser neighbour with
+// whole row budget ordered by period_start and leave a sparser neighbor with
 // nothing — the reason the old limit had to be so absurdly wide in the first
 // place. The per-check budget makes that structurally impossible: the test
 // drives the budget down to a value the old shape provably fails at, and shows
@@ -246,15 +232,15 @@ func TestFetchRecentResults_DenseCheckCannotStarveSparseOne(t *testing.T) {
 	// one probes every 10 min and its newest row is already 6 h old. Ordered
 	// globally by period_start, every one of the dense check's rows sorts ahead
 	// of every one of the sparse check's.
-	seedRawSeries(ctx, t, svc, org.UID, dense.UID, "eu2", now, 10*time.Second, 1_800)
-	seedRawSeries(ctx, t, svc, org.UID, sparse.UID, "eu2", now.Add(-6*time.Hour), 10*time.Minute, 120)
+	seedRawSeries(ctx, t, svc, org.UID, dense.UID, now, 10*time.Second, 1_800)
+	seedRawSeries(ctx, t, svc, org.UID, sparse.UID, now.Add(-6*time.Hour), 10*time.Minute, 120)
 
 	checkUIDs := []string{dense.UID, sparse.UID}
 
 	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, uptimebar.Hints{})
 
-	r.Equal(responseTimeLimit, len(got[dense.UID]["eu2"]), "the dense check fills its budget")
-	r.Equal(responseTimeLimit, len(got[sparse.UID]["eu2"]),
+	r.Len(got[dense.UID]["eu2"], responseTimeLimit, "the dense check fills its budget")
+	r.Len(got[sparse.UID]["eu2"], responseTimeLimit,
 		"the sparse check must ALSO fill its budget — a per-check budget cannot be starved")
 
 	// Positive control: the same data through a global limit sized to the same
@@ -310,7 +296,7 @@ func TestFetchRecentResults_RawBoundFollowsLiveRetention(t *testing.T) {
 	// 30 min offset keeps every row a clear half hour away from the 26 h clamp,
 	// so the expected count below does not depend on how long the test took to
 	// get here.
-	seedRawSeries(ctx, t, svc, org.UID, check.UID, "eu2",
+	seedRawSeries(ctx, t, svc, org.UID, check.UID,
 		now.Add(-30*time.Minute), time.Hour, 100)
 
 	checkUIDs := []string{check.UID}
@@ -345,7 +331,7 @@ func TestFetchRecentResults_DisabledChartIssuesNothing(t *testing.T) {
 
 	check := models.NewCheck(org.UID, "api", "http")
 	r.NoError(svc.db.CreateCheck(ctx, check))
-	seedRawSeries(ctx, t, svc, org.UID, check.UID, "eu2", time.Now().UTC(), time.Minute, 10)
+	seedRawSeries(ctx, t, svc, org.UID, check.UID, time.Now().UTC(), time.Minute, 10)
 
 	r.Empty(svc.fetchRecentResults(ctx, org.UID, []string{check.UID}, false, uptimebar.Hints{}))
 	r.Empty(svc.fetchRecentResults(ctx, org.UID, nil, true, uptimebar.Hints{}))

@@ -14,7 +14,7 @@ import (
 // seedRecentResultsFixture builds an org with `checks` checks, each carrying
 // raw rows at a 1-minute cadence plus hourly and daily rollups, in two regions.
 // Enough shape and enough noise that EXPLAIN QUERY PLAN's index choice is a
-// real decision rather than an artefact of a table too small to bother with.
+// real decision rather than an artifact of a table too small to bother with.
 func seedRecentResultsFixture(t *testing.T, checkCount int) (*Service, *models.Organization, []*models.Check) {
 	t.Helper()
 
@@ -242,7 +242,7 @@ func bindSQLiteArgs(t *testing.T, s *Service, sql string, args []any) string {
 }
 
 // TestRecentResultsPerCheck_Semantics pins WHAT the query returns, alongside the
-// plan test that pins how it gets there: the per-check budget is honoured per
+// plan test that pins how it gets there: the per-check budget is honored per
 // check (a dense check cannot eat a sparse one's rows), each tier is bounded by
 // its own `since`, and the blobs are never projected.
 func TestRecentResultsPerCheck_Semantics(t *testing.T) {
@@ -271,8 +271,8 @@ func TestRecentResultsPerCheck_Semantics(t *testing.T) {
 	// Two branches each: the explicit budget for checks[0], the default for the
 	// other two. Every branch has more matching rows than its budget, so these
 	// are exact.
-	r.Equal(2*10, perCheck[checks[0].UID], "an explicit per-check budget is honoured exactly")
-	r.Equal(2*50, perCheck[checks[1].UID], "a dense neighbour cannot starve another check's budget")
+	r.Equal(2*10, perCheck[checks[0].UID], "an explicit per-check budget is honored exactly")
+	r.Equal(2*50, perCheck[checks[1].UID], "a dense neighbor cannot starve another check's budget")
 	r.Equal(2*50, perCheck[checks[2].UID])
 
 	// Each tier is bounded by ITS OWN since: the raw branch's 26 h bound must

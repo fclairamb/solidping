@@ -116,10 +116,13 @@ func (f *RecentResultsPerCheckFilter) Validate() error {
 	return nil
 }
 
-// resultBlobColumns are the two JSON columns RecentResultsPerCheck never
-// projects: the response-time chart plots duration/status only, and these are
-// by far the widest part of a results row (spec 2026-07-24-02 §5).
-var resultBlobColumns = map[string]struct{}{"metrics": {}, "output": {}}
+// isResultBlobColumn reports whether a column is one of the two JSON blobs
+// RecentResultsPerCheck never projects: the response-time chart plots
+// duration/status only, and these are by far the widest part of a results row
+// (spec 2026-07-24-02 §5).
+func isResultBlobColumn(name string) bool {
+	return name == "metrics" || name == "output"
+}
 
 // ResultColumnsWithoutBlobs returns every persisted column of Result except the
 // two blobs, in struct-field order, qualified with the given table alias
@@ -137,13 +140,9 @@ func ResultColumnsWithoutBlobs(alias string) []string {
 		prefix = alias + "."
 	}
 
-	for _, field := range fields {
-		name, ok := resultColumnName(field)
-		if !ok {
-			continue
-		}
-
-		if _, blob := resultBlobColumns[name]; blob {
+	for i := range fields {
+		name, ok := resultColumnName(&fields[i])
+		if !ok || isResultBlobColumn(name) {
 			continue
 		}
 
@@ -156,7 +155,7 @@ func ResultColumnsWithoutBlobs(alias string) []string {
 // resultColumnName extracts the persisted column name from a Result field's bun
 // tag, reporting false for transient (`bun:"-"`) and scan-only fields (those
 // with a `scanonly` option, which no INSERT/SELECT of the base table produces).
-func resultColumnName(field reflect.StructField) (string, bool) {
+func resultColumnName(field *reflect.StructField) (string, bool) {
 	tag, ok := field.Tag.Lookup("bun")
 	if !ok || tag == "-" {
 		return "", false

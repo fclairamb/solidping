@@ -2473,7 +2473,7 @@ func (s *Service) fetchRecentResults(
 // bucket and deletes its source raw rows in one transaction — so in practice
 // raw simply occupies the recent end and rollups fill the older tail. The
 // raw-wins tie-break only matters while the aggregation job is mid-rollup, and
-// it resolves that window in favour of the more precise row.
+// it resolves that window in favor of the more precise row.
 func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result) {
 	for _, byRegion := range recentByCheck {
 		for regionKey, rows := range byRegion {

@@ -22,7 +22,7 @@ const portRecentResultsPlan = 15494
 // seedRecentResultsChecks creates `count` checks, each with a day of raw at a
 // 10 s cadence plus 45 days of hour+day rollups — production retention shape.
 // The checks NOT on the page under test are the noise that makes an index scan
-// the planner's genuine choice rather than an artefact of a one-check table.
+// the planner's genuine choice rather than an artifact of a one-check table.
 func seedRecentResultsChecks(
 	ctx context.Context, t *testing.T, s *Service, orgUID, prefix string, count int,
 ) []string {
@@ -125,7 +125,7 @@ func TestRecentResultsPerCheckUsesIndexes_Postgres(t *testing.T) {
 	// recentResultsPerCheckSQL makes the 1-check assertion fail with
 	// "Seq Scan on results ... Rows Removed by Filter: 242554" per branch.
 	//
-	// Note which half of the predicate Postgres needs. It DOES derive
+	// Which half of the predicate Postgres needs: it DOES derive
 	// results_raw_idx's own `period_type = 'raw'` from `period_type IN
 	// ('raw')`, so removing only the restated side leaves this plan unchanged;
 	// the restatement is there for SQLite, which does not (spec 2026-08-22-04,

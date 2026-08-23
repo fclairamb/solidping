@@ -40,10 +40,11 @@ import (
 func recentResultsPerCheckSQL(filter *models.RecentResultsPerCheckFilter) (string, []any) {
 	columns := strings.Join(models.ResultColumnsWithoutBlobs("res"), ", ")
 
-	args := []any{
+	args := make([]any, 0, 2+3*len(filter.Tiers))
+	args = append(args,
 		pgdialect.Array(filter.CheckUIDs),
 		pgdialect.Array(recentResultsLimits(filter)),
-	}
+	)
 
 	branches := make([]string, 0, len(filter.Tiers))
 
