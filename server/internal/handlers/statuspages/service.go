@@ -2492,6 +2492,15 @@ func (s *Service) fetchRecentResults(
 // raw simply occupies the recent end and rollups fill the older tail. The
 // raw-wins tie-break only matters while the aggregation job is mid-rollup, and
 // it resolves that window in favor of the more precise row.
+//
+// A third, final rung breaks ties between two ROLLUP points that share a
+// period_start — e.g. the hour bucket at midnight and the day bucket for that
+// same day, which happens daily (all three tiers collide at a month
+// boundary). Without it, sort.SliceStable falls back to whatever order the DB
+// happened to return, which is nondeterministic. uid DESC restores the
+// determinism the pre-2026-08-22-05 query guaranteed
+// (ORDER BY period_start DESC, uid DESC), so it stays total (UIDs are unique)
+// without disturbing the raw-wins rung above it.
 func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result) {
 	for _, byRegion := range recentByCheck {
 		for regionKey, rows := range byRegion {
@@ -2500,8 +2509,14 @@ func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result
 					return rows[i].PeriodStart.After(rows[j].PeriodStart)
 				}
 
-				return rows[i].PeriodType == models.PeriodTypeRaw &&
-					rows[j].PeriodType != models.PeriodTypeRaw
+				iRaw := rows[i].PeriodType == models.PeriodTypeRaw
+				jRaw := rows[j].PeriodType == models.PeriodTypeRaw
+
+				if iRaw != jRaw {
+					return iRaw
+				}
+
+				return rows[i].UID > rows[j].UID // uid DESC — matches the pre-2026-08-22-05 query
 			})
 
 			if len(rows) > responseTimeLimit {
