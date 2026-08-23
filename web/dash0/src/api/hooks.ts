@@ -1331,7 +1331,16 @@ async function fetchAllResultPages(
   return allData;
 }
 
-/** Fetches all result pages by following cursors until exhausted. */
+/**
+ * Fetches all result pages by following cursors until exhausted, as ONE query.
+ *
+ * @deprecated Retained deliberately, with no in-repo callers. Every caller moved
+ * to `useResultTiers` when spec 2026-08-22-04 split the chart fetch at the
+ * raw/rollup boundary; a single query naming both sides matches neither partial
+ * index on `results` and sequentially scans the largest table in the system. Use
+ * this only for a genuinely single-tier window (or none at all) — if you are
+ * about to pass `periodType: "raw,hour"`, you want `useResultTiers` instead.
+ */
 export function useAllResults(
   org: string,
   options?: ResultsQueryOptions & { refetchInterval?: number },
@@ -1380,9 +1389,23 @@ export function useResultTiers(
   // A single string dependency, not a spread array: the tier count changes when
   // the user switches range (a month view has a rollup tier, an hour view does
   // not) and a variable-length deps array is a hook-rules violation.
+  //
+  // The signature must name EVERY input that changes which rows belong in the
+  // merge — org and checkUid included. Navigating from one check to another
+  // while this component stays mounted swaps the query keys but, until either
+  // tier resolves, leaves `dataUpdatedAt` at 0 on both; with an identical window
+  // a signature built from the window alone would be unchanged and the memo
+  // would hand back the PREVIOUS check's rows. The chart hides that behind its
+  // own isLoading, but the check-detail route feeds this straight into
+  // observedRegions with no such guard, so the region chips would briefly show
+  // the wrong check's regions.
   const signature = [
+    org,
     ...tiers.map(
-      (t) => `${t.periodType}@${t.periodStartAfter}~${t.periodEndBefore ?? ""}`,
+      (t) =>
+        `${t.checkUid ?? ""}#${t.periodType}@${t.periodStartAfter}~${
+          t.periodEndBefore ?? ""
+        }+${t.with ?? ""}:${t.size ?? ""}`,
     ),
     ...queries.map((q) => q.dataUpdatedAt),
   ].join("|");

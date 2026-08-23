@@ -37,14 +37,39 @@ const TIERS = [
   },
 ];
 
-function Consumer({ label }: { label: string }) {
-  const { data, isLoading } = useResultTiers("acme", TIERS);
+function Consumer({
+  label,
+  tiers = TIERS,
+}: {
+  label: string;
+  tiers?: typeof TIERS;
+}) {
+  const { data, isLoading } = useResultTiers("acme", tiers);
 
   return (
     <div data-testid={label}>
       {isLoading ? "loading" : data.data.map((r) => r.uid).join(",")}
     </div>
   );
+}
+
+/** Mirrors the check-detail route, which feeds `chartWindowResults` straight
+ * into observedRegions with NO loading guard — so a stale merge is visible to
+ * the user there even while the new check's tiers are still in flight. */
+function UnguardedConsumer({
+  label,
+  tiers,
+}: {
+  label: string;
+  tiers: typeof TIERS;
+}) {
+  const { data } = useResultTiers("acme", tiers);
+
+  return <div data-testid={label}>{data.data.map((r) => r.uid).join(",")}</div>;
+}
+
+function tiersFor(checkUid: string): typeof TIERS {
+  return TIERS.map((t) => ({ ...t, checkUid }));
 }
 
 function wrapper(client: QueryClient) {
@@ -155,6 +180,119 @@ describe("useResultTiers", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("chart").textContent).toBe("r-2,r-1"),
+    );
+  });
+
+  // The merged array is produced by a useMemo whose dependency is a string
+  // signature, because a variable-length deps array is a hook-rules violation
+  // (the tier count changes with the range). That signature has to name every
+  // input that changes which rows belong in the merge — org and checkUid
+  // included. Two checks visited close together can hold cache entries with the
+  // same `dataUpdatedAt` millisecond; if the signature only covered the window,
+  // navigating between them would return the PREVIOUS check's rows.
+  it("does not surface the previous check's rows when only checkUid changes", async () => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity, refetchOnMount: false },
+      },
+    });
+
+    // Identical updatedAt across BOTH checks — the collision the signature has
+    // to survive without leaning on dataUpdatedAt.
+    const updatedAt = 1_700_000_000_000;
+    for (const checkUid of ["check-1", "check-2"]) {
+      for (const tier of tiersFor(checkUid)) {
+        client.setQueryData(
+          ["allResults", "acme", tier],
+          {
+            data: [
+              {
+                uid: `${checkUid}-${tier.periodType === "raw" ? "raw" : "roll"}`,
+                periodStart:
+                  tier.periodType === "raw"
+                    ? "2026-08-22T11:59:00.000Z"
+                    : "2026-08-22T11:00:00.000Z",
+              },
+            ],
+          },
+          { updatedAt },
+        );
+      }
+    }
+
+    const { rerender } = render(
+      <UnguardedConsumer label="stats" tiers={tiersFor("check-1")} />,
+      { wrapper: wrapper(client) },
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("stats").textContent).toBe(
+        "check-1-raw,check-1-roll",
+      ),
+    );
+
+    rerender(<UnguardedConsumer label="stats" tiers={tiersFor("check-2")} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("stats").textContent).toBe(
+        "check-2-raw,check-2-roll",
+      ),
+    );
+    expect(screen.getByTestId("stats").textContent).not.toContain("check-1");
+  });
+
+  // Same argument for the org: an org switch that keeps the window and the
+  // check identifier must not re-serve the previous org's rows.
+  it("does not surface another org's rows when only org changes", async () => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity, refetchOnMount: false },
+      },
+    });
+
+    const updatedAt = 1_700_000_000_000;
+    for (const org of ["acme", "other"]) {
+      for (const tier of TIERS) {
+        client.setQueryData(
+          ["allResults", org, tier],
+          {
+            data: [
+              {
+                uid: `${org}-${tier.periodType === "raw" ? "raw" : "roll"}`,
+                periodStart:
+                  tier.periodType === "raw"
+                    ? "2026-08-22T11:59:00.000Z"
+                    : "2026-08-22T11:00:00.000Z",
+              },
+            ],
+          },
+          { updatedAt },
+        );
+      }
+    }
+
+    function OrgConsumer({ org }: { org: string }) {
+      const { data } = useResultTiers(org, TIERS);
+
+      return (
+        <div data-testid="org">{data.data.map((r) => r.uid).join(",")}</div>
+      );
+    }
+
+    const { rerender } = render(<OrgConsumer org="acme" />, {
+      wrapper: wrapper(client),
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("org").textContent).toBe("acme-raw,acme-roll"),
+    );
+
+    rerender(<OrgConsumer org="other" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("org").textContent).toBe(
+        "other-raw,other-roll",
+      ),
     );
   });
 });
