@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/nettrace"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -108,6 +109,13 @@ func CreateTestData(ctx context.Context, dbService db.Service, cfg *config.Confi
 	// (spec 2026-08-21-01), so the incident screenshot card has deterministic
 	// data — bytes included, so the <img> actually loads.
 	if err := createTestIncidentScreenshot(ctx, dbService, cfg, testOrg.UID, now); err != nil {
+		return err
+	}
+
+	// A down TCP check whose incident carries a REAL path capture (spec
+	// 2026-08-21-10), written through the normal attachment path so the signed
+	// download URL serves JSON the dashboard can actually parse.
+	if err := createTestIncidentTraceroute(ctx, dbService, cfg, testOrg.UID, now); err != nil {
 		return err
 	}
 
@@ -668,6 +676,117 @@ const (
 // indistinguishable from the card being broken.
 const shotFixturePNG = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAF0lEQVR4nGP8z8Dwn4" +
 	"GBgYmBgYGBgQEAGgcCAV3wQOsAAAAASUVORK5CYII="
+
+// Fixture UIDs for the incident path-capture attachment (spec 2026-08-21-10).
+const (
+	traceCheckUID    = "00000000-0000-0000-0000-000000000027"
+	traceIncidentUID = "00000000-0000-0000-0000-000000000028"
+)
+
+// createTestIncidentTraceroute seeds a down TCP check whose active incident
+// carries a real MTR-style path capture.
+//
+// The capture is built with the SAME nettrace types the prober produces and
+// written through the SAME attachment service the dispatcher uses, so the
+// fixture cannot drift from the shape the dashboard has to render — a
+// hand-rolled JSON blob would happily keep passing after a schema change.
+//
+// The hop list is deliberately shaped like a real failing path: a local gateway
+// that answers, a silent hop in the middle, and a final hop that IS the target.
+func createTestIncidentTraceroute(
+	ctx context.Context, dbService db.Service, cfg *config.Config, orgUID string, now time.Time,
+) error {
+	if cfg == nil {
+		slog.InfoContext(ctx, "Skipping incident traceroute fixture: no configuration")
+
+		return nil
+	}
+
+	check := models.NewCheck(orgUID, "trace-check", "tcp")
+	check.UID = traceCheckUID
+	name := "Traceroute Check"
+	check.Name = &name
+	check.Config = models.JSONMap{"host": "acme.com", "port": 443}
+	check.Status = models.CheckStatusDown
+	check.StatusChangedAt = &now
+	check.CreatedAt = now
+	check.UpdatedAt = now
+
+	if err := dbService.CreateCheck(ctx, check); err != nil {
+		return fmt.Errorf("failed to create traceroute test check: %w", err)
+	}
+
+	incident := models.NewIncident(orgUID, traceCheckUID, now, "Traceroute Check is down")
+	incident.UID = traceIncidentUID
+	incident.CreatedAt = now
+	incident.UpdatedAt = now
+	incident.Details = models.JSONMap{
+		"failure_reason": "connection refused",
+		"first_result": models.JSONMap{
+			"resultUid":   traceIncidentUID,
+			"status":      "DOWN",
+			"region":      "eu-west",
+			"duration":    float32(5),
+			"periodStart": now,
+			"output":      models.JSONMap{"error": "connection refused"},
+		},
+	}
+
+	if err := dbService.CreateIncident(ctx, incident); err != nil {
+		return fmt.Errorf("failed to create traceroute test incident: %w", err)
+	}
+
+	capture := &nettrace.Capture{
+		Mode:                nettrace.ModeICMPRaw,
+		HopAddressesVisible: true,
+		Host:                "acme.com",
+		Address:             "192.0.2.10",
+		Family:              "ipv4",
+		Port:                443,
+		Region:              "eu-west",
+		Trigger:             attachments.TriggerIncidentOpen,
+		Rounds:              3,
+		MaxHops:             30,
+		StartedAt:           now.UTC(),
+		DurationMs:          4210,
+		Complete:            true,
+		Hops: []nettrace.Hop{
+			{
+				TTL: 1, Address: "10.0.0.1", Hostname: "gw.acme.com",
+				Sent: 3, Received: 3, LossPct: 0,
+				RTTMinMs: 1.1, RTTAvgMs: 1.5, RTTMaxMs: 2.0,
+			},
+			{TTL: 2, Sent: 3, Received: 0, LossPct: 100},
+			{
+				TTL: 3, Address: "192.0.2.10",
+				Sent: 3, Received: 3, LossPct: 0,
+				RTTMinMs: 17.4, RTTAvgMs: 18.2, RTTMaxMs: 19.9, Final: true,
+			},
+		},
+	}
+
+	body, err := capture.Marshal()
+	if err != nil {
+		return fmt.Errorf("failed to marshal traceroute fixture: %w", err)
+	}
+
+	svc := attachments.NewService(files.NewService(dbService, cfg), dbService, cfg)
+
+	fileUID, err := svc.PutIncidentTraceroute(ctx, orgUID, traceIncidentUID, body, models.JSONMap{
+		attachments.DetailKeyCapturedAt: now.UTC().Format(time.RFC3339),
+		attachments.DetailKeyRegion:     "eu-west",
+		attachments.DetailKeyCheckUID:   traceCheckUID,
+		attachments.DetailKeyTrigger:    attachments.TriggerIncidentOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write traceroute test attachment: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test incident traceroute",
+		"incidentUID", traceIncidentUID, "fileUID", fileUID)
+
+	return nil
+}
 
 // createTestIncidentScreenshot seeds a down browser check with an active
 // incident and a real screenshot attachment written through the normal
