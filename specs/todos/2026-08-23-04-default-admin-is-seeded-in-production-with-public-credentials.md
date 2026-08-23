@@ -160,3 +160,81 @@ Directives for the implementer:
   fails with an actionable message naming the rotation, not an opaque error.
 - Options 1, 3 and 4 from "Suggested direction" (generated password, skipping
   the seed, failing the readiness probe, bannerizing) are **out of scope**.
+
+## Implementation Plan
+
+One entry per directive in `## Resolved open questions`, so the plan maps 1:1 onto
+the decisions.
+
+### D1 — Keep seeding `admin@solidping.io` / `solidpass`, add `must_change_password`
+
+- `defaults.Email` / `defaults.Password` are untouched. No generated password, nothing
+  printed to stdout.
+- `ensureDefaultOrganization` (`internal/jobs/jobtypes/job_startup.go`) sets
+  `adminUser.MustChangePassword = true` on the seeded admin — one field assignment
+  next to `SuperAdmin = true`.
+
+### D2 — Model it as a general, user-level capability
+
+- Migration `018_v0_18_0` (postgres **and** sqlite, `.up.sql` **and** `.down.sql`):
+  `alter table users add column must_change_password boolean not null default false`.
+- `models.User.MustChangePassword bool` + `models.UserUpdate.MustChangePassword *bool`,
+  wired into `UpdateUser` in both `internal/db/postgres` and `internal/db/sqlite`.
+- Nothing anywhere keys on "is this the seeded admin": every consumer reads the column.
+- Default `false` — so OAuth/SSO/LDAP users (who may carry a nil `PasswordHash`) are
+  never locked out by the column's mere existence.
+
+### D3 — Block centrally in the auth layer, not in the dashboard login form
+
+- New predicate + allowlist in `internal/handlers/auth/password_rotation.go`
+  (`PasswordRotationRequired`, `IsPasswordRotationExempt`), shared by every surface so
+  the rule cannot diverge — the same shape `AuthorizeOrgAccess` already uses.
+- Honored in `AuthMiddleware.RequireAuth` (covers the whole REST API, dash0, the CLI,
+  and PAT creation — `POST /orgs/:org/tokens` sits behind it), in
+  `AuthMiddleware.RequireMCPAuth`, and in the realtime WebSocket handshake
+  (`internal/handlers/realtimews/handshake.go`), which authenticates in-band rather
+  than through the middleware.
+- Allowlist, deliberately minimal and explicit (method + exact path):
+  `POST /api/v1/auth/change-password` (the rotation itself),
+  `GET /api/v1/auth/me` (how a client discovers it must rotate), and
+  `POST /api/v1/auth/logout` (never trap a user in a session they cannot leave).
+- The flag is cleared by `Service.ChangePassword` and by `Service.ResetPassword` —
+  both are "the user just proved themselves and set a new password".
+
+### D4 — Machine-readable signal, not a generic 403
+
+- New error code `base.ErrorCodePasswordChangeRequired = "PASSWORD_CHANGE_REQUIRED"`,
+  returned with HTTP 403 by the central gate.
+- `LoginResponse.MustChangePassword` and `MeResponse.MustChangePassword` (`json:
+  "mustChangePassword"`) so a client routes to the rotation screen proactively,
+  before it trips the gate.
+
+### D5 — dash0 gets a screen it cannot navigate away from
+
+- New root route `/change-password` (`web/dash0/src/routes/change-password.tsx`),
+  built from the shipped design-reference primitives (`AuthSplitLayout`, `Card`,
+  `PasswordInput`, `Alert`, `Button`, `Logo`), mobile-first, no nav chrome.
+- Two independent paths land there, so it is inescapable:
+  1. proactive — `AuthContext.applyLoginResponse` reads `mustChangePassword` from the
+     login response and redirects;
+  2. backstop — `api/client.ts` `handleResponse` turns any `403 /
+     PASSWORD_CHANGE_REQUIRED` into `redirectToPasswordChange()`, so navigating
+     anywhere else bounces straight back.
+- Playwright spec under `web/dash0/e2e/` covering the forced-rotation screen.
+
+### D6 — Seeding stays unconditional
+
+- No `SP_ENVIRONMENT`. No branch on `SP_RUNMODE` / `SP_DEPLOYMENT_MODE`. The seeding
+  code path is byte-for-byte identical in dev and production; `make dev` against a
+  fresh database prompts for a rotation too.
+
+### Scope notes
+
+- **Test-mode seed untouched.** `createTestUser` in `server/test/testdata/testdata.go`
+  does not set the flag; a regression test asserts `test@test.com` is
+  `MustChangePassword == false` so the dash0/status0 Playwright suites keep working.
+- **Docs.** Root `CLAUDE.md`, `server/CLAUDE.md` and `web/docs/` note that the first
+  login on a fresh database now requires setting a new password.
+- **CLI.** `pkg/client` grows `ErrPasswordChangeRequired` and a response-inspecting
+  round tripper, so any CLI command hitting the gate fails with a message naming the
+  rotation and the command to fix it — not an opaque `unexpected response status: 403`.
