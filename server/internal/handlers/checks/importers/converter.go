@@ -1,5 +1,5 @@
 // Package importers converts third-party monitoring configurations (Gatus,
-// Better Stack, Uptime Kuma) into SolidPing's portable ExportDocument, which is
+// Better Stack, Uptime Kuma, UptimeRobot) into SolidPing's portable ExportDocument, which is
 // then fed through the existing apply/import pipeline.
 //
 // Converters are pure functions: bytes in, ExportDocument + warnings out. They

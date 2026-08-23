@@ -190,3 +190,48 @@ pointing at a different host aborts the fetch.
 
 A document-level warning always reminds the operator that SolidPing issues its
 own ping URLs, so every cron job or agent must be repointed after the import.
+
+## UptimeRobot (API v2 `getMonitors` JSON)
+
+Users fetch the JSON themselves with a read-only API key (see the migration
+guide for the exact `curl`) and paste or upload it — there is no outbound
+fetch here, unlike Better Stack. Three input shapes are accepted so users can
+paste whatever their export produced: the raw response object
+(`{"stat":"ok","pagination":{...},"monitors":[...]}`), a bare `monitors`
+array, or an array of page objects (concatenated paginated responses,
+disambiguated from a bare monitors array by checking whether the first
+element carries a `monitors` key).
+
+### Monitor types
+
+| UptimeRobot `type` | SolidPing |
+|---|---|
+| `1` HTTP(s) | `http` |
+| `2` Keyword | `http` + content assertion (`keyword_type: 1` exists → `body_expect`, `2` not-exists → `body_reject`, using `keyword_value`) |
+| `3` Ping | `icmp` |
+| `4` Port | `tcp` (`sub_type` well-known 1-6 → HTTP/HTTPS/FTP/SMTP/POP3/IMAP's standard port; `99` or unset → the `port` field; any other value falls back to `port` with a warning) |
+| `5` Heartbeat | `heartbeat` + warning (the ping URL changes, same as Kuma's `push`) |
+| anything else | *skipped* + warning |
+
+### Fields
+
+| UptimeRobot | SolidPing |
+|---|---|
+| `friendly_name` (falls back to `url`) | `name` (+ derived `slug`) |
+| `interval` | `period` |
+| `timeout` | checker `timeout` |
+| `status: 0` (paused) | `enabled: false` |
+| `http_auth_type: 1` (basic) + `http_username`/`http_password` | `basicAuth` — **imported**, unlike every other converter's credential policy (see below) |
+| `alert_contacts`, `mwindows` | warning (once per document) |
+| `custom_http_statuses`, `custom_http_headers`, `psp` | warning (per monitor, when non-empty) |
+
+UptimeRobot's `sub_type` and `port` fields are decoded through a small
+`robotFlexInt` type because the API renders them inconsistently as either a
+JSON number or a numeric string.
+
+**Credential policy exception.** Every other converter in this package
+deliberately drops credentials (see the shared rules above). UptimeRobot is
+the one exception: a **basic** HTTP auth credential (`http_auth_type: 1`) is
+carried into the check's encrypted `basicAuth` field, per this converter's
+spec. Digest auth (`http_auth_type: 2`) and any other scheme are *not*
+imported and warn instead.
