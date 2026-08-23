@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, disableHttpCache, type Page } from "./fixtures";
 
 // End-to-end proof that spec 2026-08-22-03 is a refactor and not a regression.
 //
@@ -68,6 +68,10 @@ test.describe("Status page branding", () => {
 
     // --- Control: no logo yet, so the public page wears the SolidPing mark. --
     const publicPage = await page.context().newPage();
+    // This tab re-reads the public page after each dashboard save; the
+    // endpoint's public, max-age=60 directive would otherwise pin it to the
+    // pre-upload body for the whole test. See disableHttpCache.
+    await disableHttpCache(publicPage);
     await publicPage.goto(`${API_BASE}/status0/test/${slug}`);
     await expect(publicPage.locator(".sp-logo").first()).toBeVisible({
       timeout: 30000,
