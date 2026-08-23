@@ -239,7 +239,7 @@ func (s *Service) Capture(
 
 	thread, created, err := s.resolveThread(ctx, inbound, occurredAt)
 	if err != nil {
-		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeFailed).Inc()
+		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, captureOutcomeFor(err)).Inc()
 
 		return nil, nil, err
 	}
@@ -293,6 +293,19 @@ func (s *Service) Capture(
 	s.mirror(ctx, thread, msg, created)
 
 	return thread, msg, nil
+}
+
+// captureOutcomeFor classifies a capture error for the metric label.
+//
+// An abuse ceiling is a THROTTLE, not a fault. Counting it as `failed` would
+// make a flood of new identities look like a capture outage and hide a real one
+// behind the noise.
+func captureOutcomeFor(err error) string {
+	if errors.Is(err, ErrTooManyThreads) {
+		return outcomeThrottled
+	}
+
+	return outcomeFailed
 }
 
 // alreadyCaptured is the idempotency pre-check. The unique index is the real

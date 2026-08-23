@@ -3,6 +3,7 @@ package support_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -658,4 +659,45 @@ func TestRecordDelivery_UpdatesAnOutboundReply(t *testing.T) {
 	r.NotPanics(func() {
 		h.svc.RecordDelivery(ctx, models.SupportChannelWhatsApp, "wamid.NOTOURS", "delivered")
 	})
+}
+
+// TestCapture_AbuseCeilingsAreEnforced pins the two abuse caps. These endpoints
+// are fed by publicly reachable phone numbers, so the tables are
+// attacker-influenced and the ceilings are hard bounds, not niceties.
+func TestCapture_AbuseCeilingsAreEnforced(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	// One identity may not open unlimited NEW threads in a day: open, close,
+	// repeat is legitimate; doing it fifty times is not.
+	var lastErr error
+
+	for i := range support.DefaultThreadsPerIdentityPerDay + 2 {
+		thread, _, err := h.svc.Capture(ctx, &support.Inbound{
+			Channel: models.SupportChannelSMS, Identity: "+33699999999",
+			ExternalID: "SM-flood-" + strconv.Itoa(i), Body: "hi",
+		})
+		if err != nil {
+			lastErr = err
+
+			break
+		}
+
+		closed := models.SupportStatusClosed
+		_, err = h.svc.UpdateThread(ctx, thread.UID, &closed, nil)
+		r.NoError(err)
+	}
+
+	r.ErrorIs(lastErr, support.ErrTooManyThreads)
+
+	// The ceiling is per identity: a different sender is unaffected, so a flood
+	// from one number cannot lock everybody else out.
+	_, _, err := h.svc.Capture(ctx, &support.Inbound{
+		Channel: models.SupportChannelSMS, Identity: "+33688888888",
+		ExternalID: "SM-other", Body: "hi",
+	})
+	r.NoError(err)
 }
