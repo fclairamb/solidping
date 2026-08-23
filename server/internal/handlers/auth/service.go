@@ -1325,7 +1325,7 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: newUserInfo(user, role),
+		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -1555,7 +1555,7 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
 
 	return &MeResponse{
-		User: newUserInfo(user, role),
+		User:                      newUserInfo(user, role),
 		Organization:              newOrganizationInfo(org),
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
@@ -1600,7 +1600,7 @@ func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResp
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
 
 	return &MeResponse{
-		User: newUserInfo(user, role),
+		User:                      newUserInfo(user, role),
 		Organization:              nil,
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
@@ -1992,7 +1992,7 @@ func (s *Service) SwitchOrg(
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: newUserInfo(user, role),
+		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -2401,7 +2401,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		// No org to login to - return minimal response
 		return &LoginResponse{
 			TokenType: tokenTypeBearer,
-			User: newUserInfo(user, ""),
+			User:      newUserInfo(user, ""),
 		}, nil
 	}
 
@@ -2443,7 +2443,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: newUserInfo(user, role),
+		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -3413,11 +3413,11 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	}
 
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenValue,
-		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    tokenTypeBearer,
-		User: newUserInfo(user, role),
+		AccessToken:   accessToken,
+		RefreshToken:  refreshTokenValue,
+		ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
+		TokenType:     tokenTypeBearer,
+		User:          newUserInfo(user, role),
 		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil

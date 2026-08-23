@@ -81,8 +81,8 @@ type User struct {
 	MustChangePassword bool       `bun:"must_change_password,notnull,default:false"`
 	LastActiveAt       *time.Time `bun:"last_active_at"`
 	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt         time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt         *time.Time `bun:"deleted_at"`
+	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt          *time.Time `bun:"deleted_at"`
 }
 
 // NewUser creates a new user with generated UID.

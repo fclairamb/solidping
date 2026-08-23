@@ -102,7 +102,7 @@ const (
 	// surface returns while the caller's account carries
 	// users.must_change_password (spec 2026-08-23-04). It is deliberately NOT
 	// ErrorCodeForbidden: a client that cannot tell the two apart shows a dead
-	// "Permission denied" screen, when the correct behaviour is to route the
+	// "Permission denied" screen, when the correct behavior is to route the
 	// user to the password-rotation form — which is still reachable and is the
 	// one action that clears the condition.
 	ErrorCodePasswordChangeRequired ErrorCode = "PASSWORD_CHANGE_REQUIRED"

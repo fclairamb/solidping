@@ -77,12 +77,17 @@ func (r *rotationGateRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 	}
 
 	body, readErr := io.ReadAll(resp.Body)
-	_ = resp.Body.Close() //nolint:errcheck // best effort; the bytes are already read
+	_ = resp.Body.Close()
 
+	// A body we could not read is not a rotation refusal we can recognize, and
+	// the status is still a legitimate 403 — hand it back with an empty body and
+	// let the caller report the status. Swallowing readErr here is deliberate:
+	// turning a transport-level read hiccup into a hard error would be a worse
+	// diagnostic than the 403 the server actually sent.
 	if readErr != nil {
 		resp.Body = io.NopCloser(bytes.NewReader(nil))
 
-		return resp, nil
+		return resp, nil //nolint:nilerr // see above: the 403 is the useful signal, not readErr
 	}
 
 	resp.Body = io.NopCloser(bytes.NewReader(body))
@@ -247,9 +252,11 @@ func New(cfg Config) (*SolidPingClient, error) {
 		}
 	}
 
-	inner := http.RoundTripper(http.DefaultTransport)
+	var inner http.RoundTripper
 	if client.loggingTransport != nil {
 		inner = client.loggingTransport
+	} else {
+		inner = http.DefaultTransport
 	}
 
 	client.transport = &rotationGateRoundTripper{transport: inner}
