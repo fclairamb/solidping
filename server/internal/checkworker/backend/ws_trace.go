@@ -1,14 +1,8 @@
 package backend
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 	"net"
-	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
@@ -89,7 +83,7 @@ func (b *WSBackend) handleTraceRequest(ctx context.Context, frame *agents.Server
 	uploadCtx, uploadCancel := context.WithTimeout(ctx, traceUploadTimeout)
 	defer uploadCancel()
 
-	if err := b.uploadTraceCapture(uploadCtx, frame.Topic, body); err != nil {
+	if err := b.uploadAttachment(uploadCtx, frame.Topic, mimeTraceCapture, body); err != nil {
 		b.logger.WarnContext(ctx, "path trace upload failed",
 			"topic", frame.Topic, "bytes", len(body), "error", err)
 
@@ -98,57 +92,4 @@ func (b *WSBackend) handleTraceRequest(ctx context.Context, frame *agents.Server
 
 	b.logger.DebugContext(ctx, "path trace uploaded",
 		"topic", frame.Topic, "mode", capture.Mode, "hops", len(capture.Hops))
-}
-
-// uploadTraceCapture POSTs a capture to the agent attachment endpoint with the
-// agent's normal signed headers — the same endpoint and the same credential a
-// screenshot upload uses, which is the point of the generic attachment rail.
-func (b *WSBackend) uploadTraceCapture(ctx context.Context, topic string, body []byte) error {
-	b.mu.Lock()
-	identity := *b.identity
-	b.mu.Unlock()
-
-	if identity.AgentUID == "" {
-		return ErrNotEnrolled
-	}
-
-	timestamp := time.Now().UTC().Format(time.RFC3339)
-
-	nonce, err := randomID()
-	if err != nil {
-		return err
-	}
-
-	signature, err := identity.Sign(http.MethodPost, attachmentsPath, timestamp, nonce)
-	if err != nil {
-		return fmt.Errorf("sign trace upload: %w", err)
-	}
-
-	endpoint := httpBaseURL(b.serverURL) + attachmentsPath + "?topic=" + url.QueryEscape(topic)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("build trace upload: %w", err)
-	}
-
-	req.Header.Set("Content-Type", mimeTraceCapture)
-	req.Header.Set("X-Sp-Agent-Uid", identity.AgentUID)
-	req.Header.Set("X-Sp-Timestamp", timestamp)
-	req.Header.Set("X-Sp-Nonce", nonce)
-	req.Header.Set("X-Sp-Signature", signature)
-
-	resp, err := b.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("post trace capture: %w", err)
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("%w: status %d: %s", ErrUploadRejected, resp.StatusCode, strings.TrimSpace(string(detail)))
-	}
-
-	return nil
 }

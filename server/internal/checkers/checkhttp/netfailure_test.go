@@ -82,12 +82,14 @@ func TestHTTPKeywordMismatchCarriesNoNetworkFailureMarker(t *testing.T) {
 func TestHTTPRefusedConnectionCarriesANetworkFailureMarker(t *testing.T) {
 	t.Parallel()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+
+	listener, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 
-	port := listener.Addr().(*net.TCPAddr).Port
+	port := tcpPort(t, listener)
 
 	if closeErr := listener.Close(); closeErr != nil {
 		t.Fatalf("close: %v", closeErr)
@@ -148,4 +150,16 @@ func TestHTTPUnresolvableHostCarriesNoNetworkFailureMarker(t *testing.T) {
 	if result.Diagnostics != nil && result.Diagnostics.NetworkFailure != nil {
 		t.Fatalf("a DNS failure minted a marker: %+v", result.Diagnostics.NetworkFailure)
 	}
+}
+
+// tcpPort reads a listener's bound port, checked rather than asserted.
+func tcpPort(t *testing.T, listener net.Listener) int {
+	t.Helper()
+
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("listener address is not TCP: %T", listener.Addr())
+	}
+
+	return addr.Port
 }

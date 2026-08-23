@@ -38,7 +38,7 @@ type AttachmentWriter interface {
 type AgentTraceSender interface {
 	// SendTraceRequest queues a trace-request frame for a worker's live agent
 	// connection. False means there was none, and the request is dropped.
-	SendTraceRequest(ctx context.Context, workerUID string, req incidents.TraceRequest) bool
+	SendTraceRequest(ctx context.Context, workerUID string, req *incidents.TraceRequest) bool
 }
 
 // LocalWorkerResolver answers "is this worker one THIS process runs?".
@@ -70,7 +70,7 @@ type Dispatcher struct {
 
 	// run is the trace itself, swapped in tests. Production is nettrace.Run.
 	run func(ctx context.Context, opts *nettrace.Options) (*nettrace.Capture, error)
-	// started, when non-nil, is signalled after each dispatched trace finishes.
+	// started, when non-nil, is signaled after each dispatched trace finishes.
 	// Tests only — production leaves it nil and never waits for anything.
 	done chan struct{}
 }
@@ -103,7 +103,7 @@ func (d *Dispatcher) SetLocalWorkerResolver(resolver LocalWorkerResolver) { d.lo
 // IT RETURNS IMMEDIATELY, ALWAYS. The failing result has already been written
 // and the incident has already opened by the time this is called; a trace takes
 // up to the whole budget, and nothing about the incident may wait on it.
-func (d *Dispatcher) RequestTrace(ctx context.Context, req incidents.TraceRequest) {
+func (d *Dispatcher) RequestTrace(ctx context.Context, req *incidents.TraceRequest) {
 	if !d.cfg.Enabled {
 		return
 	}
@@ -142,11 +142,12 @@ func (d *Dispatcher) RequestTrace(ctx context.Context, req incidents.TraceReques
 		return
 	}
 
+	//nolint:contextcheck // detaching from the caller context is the point (see dispatchLocal)
 	d.dispatchLocal(req, address)
 }
 
 // dispatchLocal runs the capture on this host, off the caller's goroutine.
-func (d *Dispatcher) dispatchLocal(req incidents.TraceRequest, address net.IP) {
+func (d *Dispatcher) dispatchLocal(req *incidents.TraceRequest, address net.IP) {
 	go func() {
 		// A FRESH CONTEXT, deliberately detached from the caller's. The
 		// incident pipeline's context belongs to the result submission that is
@@ -168,7 +169,7 @@ func (d *Dispatcher) dispatchLocal(req incidents.TraceRequest, address net.IP) {
 //
 // EVERY failure here is logged at debug/warn and swallowed. The incident is
 // already open and correct; a missing path capture is a papercut.
-func (d *Dispatcher) runAndStore(ctx context.Context, req incidents.TraceRequest, address net.IP) {
+func (d *Dispatcher) runAndStore(ctx context.Context, req *incidents.TraceRequest, address net.IP) {
 	capture, err := d.run(ctx, &nettrace.Options{
 		Host:    req.Failure.Host,
 		Address: address,

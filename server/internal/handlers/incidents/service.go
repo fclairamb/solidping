@@ -196,7 +196,7 @@ type TraceRequest struct {
 type TraceRequester interface {
 	// RequestTrace starts (or routes) one path capture. Never blocks on the
 	// trace itself.
-	RequestTrace(ctx context.Context, req TraceRequest)
+	RequestTrace(ctx context.Context, req *TraceRequest)
 }
 
 // PublicationHook is the status-page publication side of the incident
@@ -330,7 +330,7 @@ func (s *Service) requestTraceroute(
 		return
 	}
 
-	req := TraceRequest{
+	req := &TraceRequest{
 		OrgUID:      check.OrganizationUID,
 		IncidentUID: incident.UID,
 		CheckUID:    check.UID,

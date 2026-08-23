@@ -16,12 +16,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fclairamb/solidping/server/internal/nettrace"
-
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/nettrace"
 )
 
 const uploadPath = "/api/v1/agent/attachments"

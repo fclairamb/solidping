@@ -96,7 +96,7 @@ func (b *WSBackend) handleUploadRequest(ctx context.Context, frame *agents.Serve
 	uploadCtx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	defer cancel()
 
-	if err := b.uploadAttachment(uploadCtx, frame.Topic, png); err != nil {
+	if err := b.uploadAttachment(uploadCtx, frame.Topic, mimePNG, png); err != nil {
 		// ONE attempt. The bytes are already out of the cache, so there is
 		// nothing to retry with even if we wanted to — see capturecache.Take.
 		b.logger.WarnContext(ctx, "capture upload failed",
@@ -110,7 +110,13 @@ func (b *WSBackend) handleUploadRequest(ctx context.Context, frame *agents.Serve
 
 // uploadAttachment POSTs a capture to the agent attachment endpoint with the
 // agent's normal signed headers.
-func (b *WSBackend) uploadAttachment(ctx context.Context, topic string, body []byte) error {
+//
+// SHARED BY EVERY CAPTURE KIND (screenshots and path traces today). The content
+// type is a parameter rather than a constant because the SERVER sniffs the
+// bytes anyway and refuses anything that does not match the topic's kind — this
+// header is a courtesy, and a per-kind copy of the whole signing dance would be
+// a second place for the signature scheme to drift.
+func (b *WSBackend) uploadAttachment(ctx context.Context, topic, contentType string, body []byte) error {
 	b.mu.Lock()
 	identity := *b.identity
 	b.mu.Unlock()
@@ -138,7 +144,7 @@ func (b *WSBackend) uploadAttachment(ctx context.Context, topic string, body []b
 		return fmt.Errorf("build attachment upload: %w", err)
 	}
 
-	req.Header.Set("Content-Type", mimePNG)
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("X-Sp-Agent-Uid", identity.AgentUID)
 	req.Header.Set("X-Sp-Timestamp", timestamp)
 	req.Header.Set("X-Sp-Nonce", nonce)

@@ -1804,7 +1804,7 @@ func (s *Service) ListChecks(
 	return checks, int64(total), err
 }
 
-//nolint:cyclop // long but flat: one branch per optional column
+//nolint:cyclop,gocognit // long but flat: one branch per optional column
 func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optional fields
 	ctx context.Context, uid string, update *models.CheckUpdate,
 ) error {

@@ -148,7 +148,7 @@ func (h *Handler) RequestScreenshotUpload(ctx context.Context, workerUID, captur
 // may only do when the worker is one of its own, because a trace from the wrong
 // host describes a route the probe never took.
 func (h *Handler) SendTraceRequest(
-	ctx context.Context, workerUID string, req incidents.TraceRequest,
+	ctx context.Context, workerUID string, req *incidents.TraceRequest,
 ) bool {
 	if workerUID == "" || req.Topic == "" || req.Failure.Address == "" {
 		return false

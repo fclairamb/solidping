@@ -137,6 +137,13 @@ func TestCaptureOnlyWhenFailingAndOptedIn(t *testing.T) {
 // TestCaptureNeverOnPreResponseFailure pins the "no response existed" rule:
 // a timeout, a DNS failure and a TLS failure all return before any response,
 // so the capture must be absent even though the check opted in.
+//
+// The assertions are on Diagnostics.FailureResponse rather than on Diagnostics
+// itself. Since spec 2026-08-21-10 the block legitimately carries a SECOND
+// member — the network-reachability marker that decides whether a path trace is
+// taken — and two of the three cases here (the timeout and the TLS failure) are
+// exactly the failures that marker exists for. Asserting the whole block is nil
+// would make this test forbid an unrelated, correct capture.
 func TestCaptureNeverOnPreResponseFailure(t *testing.T) {
 	t.Parallel()
 
@@ -159,7 +166,7 @@ func TestCaptureNeverOnPreResponseFailure(t *testing.T) {
 		r.NoError(err)
 		r.NotNil(result)
 		r.NotEqual(checkerdef.StatusUp, result.Status)
-		r.Nil(result.Diagnostics, "a timed-out probe never saw a response, so there is nothing to capture")
+		r.Nil(failureResponseOf(result), "a timed-out probe never saw a response, so there is nothing to capture")
 	})
 
 	t.Run("dns failure", func(t *testing.T) {
@@ -168,7 +175,7 @@ func TestCaptureNeverOnPreResponseFailure(t *testing.T) {
 		r := require.New(t)
 		result := runCheck(t, captureConfig("http://this-host-does-not-exist.acme.invalid/"))
 		r.NotEqual(checkerdef.StatusUp, result.Status)
-		r.Nil(result.Diagnostics)
+		r.Nil(failureResponseOf(result))
 	})
 
 	t.Run("tls failure", func(t *testing.T) {
@@ -184,7 +191,7 @@ func TestCaptureNeverOnPreResponseFailure(t *testing.T) {
 		// so the handshake fails before any response exists.
 		result := runCheck(t, captureConfig(tlsServer.URL))
 		r.NotEqual(checkerdef.StatusUp, result.Status)
-		r.Nil(result.Diagnostics)
+		r.Nil(failureResponseOf(result))
 	})
 }
 
@@ -725,4 +732,16 @@ func TestCaptureIsVerdictInertAcrossConfigurations(t *testing.T) {
 			r.Equal(len(body), on.Diagnostics.FailureResponse.BodyBytes)
 		})
 	}
+}
+
+// failureResponseOf reads the response capture off a result, nil-safe. It
+// exists so "there is no captured RESPONSE" can be asserted without also
+// asserting "there is nothing in Diagnostics at all", which is a different and
+// much broader claim.
+func failureResponseOf(result *checkerdef.Result) *checkerdef.FailureResponse {
+	if result == nil || result.Diagnostics == nil {
+		return nil
+	}
+
+	return result.Diagnostics.FailureResponse
 }

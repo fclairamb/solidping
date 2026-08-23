@@ -207,14 +207,14 @@ func (r *Result) SetNetworkFailure(failure *NetworkFailure) {
 // dial helper sees the error, and only the caller that did the name resolution
 // knows which address it handed that helper. A result with no marker is left
 // alone — this never invents one.
-func LocateNetworkFailure(r *Result, host, address string, port int) {
-	if r == nil || r.Diagnostics == nil || r.Diagnostics.NetworkFailure == nil {
+func LocateNetworkFailure(result *Result, host, address string, port int) {
+	if result == nil || result.Diagnostics == nil || result.Diagnostics.NetworkFailure == nil {
 		return
 	}
 
-	r.Diagnostics.NetworkFailure.Host = host
-	r.Diagnostics.NetworkFailure.Address = address
-	r.Diagnostics.NetworkFailure.Port = port
+	result.Diagnostics.NetworkFailure.Host = host
+	result.Diagnostics.NetworkFailure.Address = address
+	result.Diagnostics.NetworkFailure.Port = port
 }
 
 // DropNetworkFailure removes a marker a lower layer recorded.

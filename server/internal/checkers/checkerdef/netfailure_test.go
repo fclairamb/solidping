@@ -22,11 +22,19 @@ func dialErr(errno syscall.Errno) error {
 	}
 }
 
-type fakeTimeout struct{}
+// Static errors: the linter forbids inline errors.New in tests, and naming them
+// also makes the table read as a catalog of failure shapes.
+var (
+	errRefusedText  = errors.New("dial tcp 10.0.0.1:443: connect: connection refused")
+	errApplication  = errors.New("unexpected status code 500")
+	errHandshakeEOF = errors.New("handshake: eof")
+)
 
-func (fakeTimeout) Error() string   { return "i/o timeout" }
-func (fakeTimeout) Timeout() bool   { return true }
-func (fakeTimeout) Temporary() bool { return true }
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "i/o timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
 
 func TestClassifyDialError(t *testing.T) {
 	t.Parallel()
@@ -42,10 +50,10 @@ func TestClassifyDialError(t *testing.T) {
 		{"host unreachable", dialErr(syscall.EHOSTUNREACH), false, checkerdef.NetFailureHostUnreachable},
 		{"errno timeout", dialErr(syscall.ETIMEDOUT), false, checkerdef.NetFailureConnectTimeout},
 		{"context deadline", context.DeadlineExceeded, true, checkerdef.NetFailureConnectTimeout},
-		{"net.Error timeout", fakeTimeout{}, false, checkerdef.NetFailureConnectTimeout},
+		{"net.Error timeout", timeoutError{}, false, checkerdef.NetFailureConnectTimeout},
 		{
 			"text fallback keeps classifying a stripped errno",
-			errors.New("dial tcp 10.0.0.1:443: connect: connection refused"),
+			errRefusedText,
 			false,
 			checkerdef.NetFailureConnectionRefused,
 		},
@@ -71,7 +79,7 @@ func TestClassifyDialError(t *testing.T) {
 			false,
 			"",
 		},
-		{"opaque application error", errors.New("unexpected status code 500"), false, ""},
+		{"opaque application error", errApplication, false, ""},
 	}
 
 	for _, test := range tests {
@@ -98,7 +106,7 @@ func TestClassifyDialErrorDNSTimeoutIsNotAConnectTimeout(t *testing.T) {
 	}
 
 	// Positive control: identical text, not a DNSError.
-	plain := fmt.Errorf("dial tcp 10.0.0.1:443: %w", fakeTimeout{})
+	plain := fmt.Errorf("dial tcp 10.0.0.1:443: %w", timeoutError{})
 	if got := checkerdef.ClassifyDialError(plain, false); got != checkerdef.NetFailureConnectTimeout {
 		t.Fatalf("a plain dial timeout classified as %q, want %q", got, checkerdef.NetFailureConnectTimeout)
 	}
@@ -114,8 +122,8 @@ func TestClassifyTLSHandshakeError(t *testing.T) {
 		want     string
 	}{
 		{"stalled handshake", context.DeadlineExceeded, false, checkerdef.NetFailureTLSHandshakeTimeout},
-		{"caller deadline fired", errors.New("handshake: eof"), true, checkerdef.NetFailureTLSHandshakeTimeout},
-		{"net timeout", fakeTimeout{}, false, checkerdef.NetFailureTLSHandshakeTimeout},
+		{"caller deadline fired", errHandshakeEOF, true, checkerdef.NetFailureTLSHandshakeTimeout},
+		{"net timeout", timeoutError{}, false, checkerdef.NetFailureTLSHandshakeTimeout},
 
 		// The whole reason this is a separate function: a certificate verdict
 		// is the server ANSWERING. Tracing the path would be noise.
