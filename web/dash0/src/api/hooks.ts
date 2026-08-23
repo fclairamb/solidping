@@ -2208,6 +2208,17 @@ export type CustomDomainStatus = "unverified" | "verified";
 // external proxy) or the domain is not verified yet.
 export type CustomDomainCertStatus = "none" | "issued" | "error";
 
+// CustomDomainState is the domain's lifecycle state (spec 2026-08-23-03).
+// `grace` is the one customDomainStatus cannot express: the page is STILL being
+// served, but its periodic DNS re-checks are failing and it will go dark if
+// nothing is done. `demoted` means it already has.
+export type CustomDomainState =
+  | "none"
+  | "pending"
+  | "active"
+  | "grace"
+  | "demoted";
+
 // AvailabilitySettings customizes a status page's green/amber/red
 // availability thresholds. A nil/omitted field means "use the platform
 // default" (99.9 / 99.0) — see AvailabilityThresholds for the resolved
@@ -2287,6 +2298,14 @@ export interface StatusPage {
   customDomainStatus?: CustomDomainStatus;
   customDomainCertStatus?: CustomDomainCertStatus;
   customDomainRecords?: DnsRecord[];
+  customDomainState?: CustomDomainState;
+  /** When the domain entered `grace`. Only set while degrading. */
+  customDomainDegradedSince?: string;
+  /**
+   * One-line diagnostic from the last DNS re-check: the mode used, the target
+   * expected, what DNS actually returned. Admin-only.
+   */
+  customDomainLastCheck?: string;
   // Settings mirrors the storage shape (an unset section means "using the
   // default"); AvailabilityThresholds is always the resolved, non-nil pair.
   settings?: StatusPageSettings;

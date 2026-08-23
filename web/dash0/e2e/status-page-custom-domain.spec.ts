@@ -9,7 +9,7 @@ const MOCKED_DOMAIN = "status-cert-chip.example.com";
 
 async function mockCertStatus(
   page: Page,
-  certStatus: "issued" | "error" | "none"
+  certStatus: "issued" | "error" | "none",
 ) {
   await page.route(
     /\/api\/v1\/orgs\/[^/]+\/status-pages\/[^/?]+(\?|$)/,
@@ -52,7 +52,55 @@ async function mockCertStatus(
           ],
         }),
       });
-    }
+    },
+  );
+}
+
+// One status-page GET response, rewritten so the custom-domain card renders a
+// chosen lifecycle state (spec 2026-08-23-03). The state is produced by the
+// periodic DNS sweep, which cannot be driven from an E2E run, so the field the
+// server would compute is mocked and everything below the API boundary is the
+// real UI.
+async function mockDomainState(
+  page: Page,
+  state: "grace" | "demoted",
+  lastCheck: string,
+) {
+  await page.route(
+    /\/api\/v1\/orgs\/[^/]+\/status-pages\/[^/?]+(\?|$)/,
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+
+      const response = await route.fetch();
+      let body: Record<string, unknown>;
+      try {
+        body = await response.json();
+      } catch {
+        await route.fulfill({ response });
+        return;
+      }
+
+      if (!body || typeof body !== "object" || !("uid" in body)) {
+        await route.fulfill({ response });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...body,
+          customDomain: MOCKED_DOMAIN,
+          // `grace` is STILL verified — that is the whole point of the state.
+          customDomainStatus: state === "grace" ? "verified" : "unverified",
+          customDomainState: state,
+          customDomainLastCheck: lastCheck,
+        }),
+      });
+    },
   );
 }
 
@@ -119,7 +167,7 @@ test.describe("Status page custom domain", () => {
 
     // The value carries a copy-to-clipboard button.
     await expect(
-      records.getByRole("button", { name: /copy record value/i })
+      records.getByRole("button", { name: /copy record value/i }),
     ).toBeVisible();
 
     // Verify button and the unverified chip.
@@ -226,5 +274,52 @@ test.describe("Status page custom domain", () => {
     // A verified domain with nothing issued yet explains why: issuance is
     // on-demand, on the first HTTPS request.
     await expect(card).toContainText(/first HTTPS request/i);
+  });
+
+  test("a degrading domain reads as a warning, not as Verified", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDomainState(
+      page,
+      "grace",
+      "mode=shared expected=cname.solidping.io resolved=elsewhere.example.net ok=false",
+    );
+    await openFirstStatusPageEditor(page);
+
+    const card = page.getByTestId("status-page-custom-domain");
+    await expect(card).toBeVisible({ timeout: 10000 });
+
+    // The page is still being served, but showing a plain green "Verified"
+    // here would hide the only warning the operator gets before it goes dark.
+    await expect(card.getByTestId("custom-domain-degraded")).toBeVisible();
+    await expect(card).not.toContainText(/^Verified$/);
+
+    const alert = card.getByTestId("custom-domain-health-alert");
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText(/still being served/i);
+    // The diagnostic is on screen, so the fix does not need a log search.
+    await expect(alert).toContainText("resolved=elsewhere.example.net");
+  });
+
+  test("a demoted domain says the page has stopped being served", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDomainState(
+      page,
+      "demoted",
+      "mode=shared expected=cname.solidping.io resolved=<none> ok=false error=no such host",
+    );
+    await openFirstStatusPageEditor(page);
+
+    const card = page.getByTestId("status-page-custom-domain");
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await expect(card.getByTestId("custom-domain-degraded")).toHaveCount(0);
+
+    const alert = card.getByTestId("custom-domain-health-alert");
+    await expect(alert).toBeVisible();
+    await expect(alert).toContainText(/no longer serving/i);
+    await expect(alert).toContainText("error=no such host");
   });
 });

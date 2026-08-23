@@ -10765,6 +10765,33 @@ components:
             a certificate is in storage, "error" = the last issuance attempt
             failed (see the server log). Omitted when in-server TLS is disabled
             or the domain is not verified yet. Authenticated endpoints only.
+        customDomainState:
+          type: string
+          enum: [none, pending, active, grace, demoted]
+          description: >-
+            Custom-domain lifecycle state (spec 2026-08-23-03). "grace" is the
+            one customDomainStatus cannot express: the page is STILL served,
+            but its periodic DNS re-checks are failing and it will stop being
+            served if nothing is done. "demoted" means it already has, and is
+            recoverable — the sweep re-promotes after several consecutive
+            successful checks while a valid certificate is still held.
+            Authenticated endpoints only.
+        customDomainDegradedSince:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the domain entered "grace". Absent otherwise. Authenticated
+            endpoints only.
+        customDomainLastCheck:
+          type: string
+          nullable: true
+          description: >-
+            One-line diagnostic from the last DNS re-check: the verification
+            mode used, the CNAME target expected, what DNS actually returned,
+            and the lookup error if any. Exists so a failing verification is
+            diagnosable from the API instead of by correlating server logs with
+            manual dig runs. Authenticated endpoints only.
         customDomainRecords:
           type: array
           description: >-
