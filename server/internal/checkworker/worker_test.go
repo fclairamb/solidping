@@ -210,7 +210,7 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 		// boundary-immune) plus a within-one-period distance bound.
 		phaseOf := func(tt time.Time) int64 { return tt.Unix() % int64(jobPeriod/time.Second) }
 		assert.Equal(t, phaseOf(want), phaseOf(got), "method must land on the pure function's phase")
-		assert.LessOrEqual(t, (got.Sub(want)).Abs(), jobPeriod,
+		assert.LessOrEqual(t, got.Sub(want).Abs(), jobPeriod,
 			"method and pure function may differ by at most one period (boundary tick between clock reads)")
 		assert.True(t, got.After(now))
 		assert.LessOrEqual(t, got.Sub(after), jobPeriod, "next tick is at most one job period out")
@@ -307,7 +307,7 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 		// after nextA1 and a small WithinDuration tolerance would flake.
 		phaseOf := func(tt time.Time) int64 { return tt.Unix() % int64(basePeriod/time.Second) }
 		assert.Equal(t, phaseOf(nextA1), phaseOf(nextA2), "same check must land on the same phase across calls")
-		assert.LessOrEqual(t, (nextA2.Sub(nextA1)).Abs(), basePeriod,
+		assert.LessOrEqual(t, nextA2.Sub(nextA1).Abs(), basePeriod,
 			"adjacent calls may differ by at most one period (boundary tick between clock reads)")
 		_ = nextB // different UID may or may not collide; determinism (not spread) is what's load-bearing here
 	})

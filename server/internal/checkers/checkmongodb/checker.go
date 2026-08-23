@@ -101,6 +101,11 @@ func (c *MongoDBChecker) Execute(
 	return c.ping(ctx, client, cfg, tunneled, start)
 }
 
+// ping runs the MongoDB probe and builds the result.
+//
+// The error return is always nil today. It is kept so this matches the shape
+// every other checker's ping helper has, and so a future failure path does not
+// have to change the signature at every call site.
 func (c *MongoDBChecker) ping(
 	ctx context.Context,
 	client *mongo.Client,
