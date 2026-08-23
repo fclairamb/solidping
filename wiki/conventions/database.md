@@ -214,3 +214,36 @@ During a release cycle developers add scratch migrations as needed (e.g., `002_a
 5. Run `make test` to confirm both backends pass.
 
 See `.claude/skills/database.md` for the full SQL style guide.
+
+## Advisory-lock keys
+
+Postgres session advisory locks are how SolidPing makes a supervisor run on at
+most one replica (the JMAP inbox consumer is the first — spec 2026-08-22-01).
+The helper is `server/internal/db/dblock`, and **that package's doc comment is
+the authoritative key registry** — this section only points at it and states
+the rules.
+
+- Keys are **hand-allocated**, never hashed from a string. A hash collision
+  between two unrelated features would show up as one of them mysteriously
+  never running; a hand-allocated number cannot collide, and `grep 0x5001…`
+  finds every user of it.
+- Numbering is `0x5001_0000 + <sequence>`. `0x5001` reads as "SP 01" and
+  namespaces our keys away from anything else sharing the database.
+- Always the **single-argument bigint** form of `pg_advisory_lock`, so the
+  whole key space is one flat registry rather than two overlapping ones.
+- **Never reuse a retired number.** During a rolling deploy an old pod may
+  still hold the key its version assigned to a removed feature; a new pod
+  reusing it for something else would be excluded by a lock that has nothing
+  to do with it.
+- Take the lock on a **dedicated, long-lived connection**. Session advisory
+  locks are released the instant their connection closes, so a lock taken
+  through the pool is dropped invisibly the moment that connection is recycled.
+  `dblock` pins a `bun.Conn` for the lifetime of the work and pings it, which
+  costs one pool slot on the holder — budget for it (see
+  `project_solidping_dev_pg_pool_budget`-style pool sizing).
+- **A lock is never the correctness mechanism.** Holders lose locks (dead
+  connection, paused process) before they notice, so two copies of the work can
+  briefly overlap. Whatever runs under `dblock.RunExclusive` must still be safe
+  when it does.
+- On SQLite there is one process by construction: `dblock` skips the lock and
+  runs the work directly.

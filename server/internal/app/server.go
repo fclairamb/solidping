@@ -39,6 +39,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
+	"github.com/fclairamb/solidping/server/internal/db/dblock"
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
@@ -2845,6 +2846,14 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start JMAP inbox supervisor (idle when email_inbox not configured).
 	// runnerCtx is intentionally separate from request context.
+	//
+	// Deliberately NOT gated on s.config.Node.Role, unlike the job worker and
+	// check worker below: a static role assignment picks a leader that cannot
+	// fail over, so the one pod configured to consume the mailbox taking a
+	// crash-loop would silently stop all inbound email. runJMAPManager holds a
+	// Postgres advisory lock instead — same "one consumer" outcome, but the
+	// lock is released when its holder dies and the next replica picks the
+	// mailbox up within the retry interval (spec 2026-08-22-01, layer 2).
 	if s.jmapManager != nil {
 		s.workersWg.Add(1)
 
@@ -2976,11 +2985,28 @@ func (s *Server) waitForRunners(ctx context.Context) {
 }
 
 // startJobWorker starts the job worker with internal runner goroutines.
-// runJMAPManager wraps jmap.Manager.Run for the goroutine launched in Start.
+// runJMAPManager wraps jmap.Manager.Run for the goroutine launched in Start,
+// under a Postgres advisory lock so that only one replica holds a JMAP session
+// against the shared mailbox at a time (spec 2026-08-22-01, layer 2).
+//
+// The lock is an optimization — fewer JMAP sessions, less load on the mail
+// provider — not the correctness mechanism. Even a single leader replays a
+// message when its own claim-move fails, so the claim-by-archive ordering in
+// jmap.Manager and the Message-ID dedup in emailcheck remain load-bearing.
+//
+// Cost to be aware of: while this process is the holder it pins one connection
+// out of the Postgres pool for the process's lifetime. That is one slot, not
+// one per sync, and it is the price of a session-scoped lock — see
+// internal/db/dblock.
 func (s *Server) runJMAPManager(ctx context.Context) {
 	defer s.workersWg.Done()
 
-	if err := s.jmapManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+	err := dblock.RunExclusive(
+		ctx, s.dbService.DB(), dblock.KeyJMAPInbox, dblock.DefaultRetryInterval,
+		slog.Default().With("component", "jmap.lock"),
+		s.jmapManager.Run,
+	)
+	if err != nil && !errors.Is(err, context.Canceled) {
 		slog.WarnContext(ctx, "JMAP inbox manager exited", "error", err)
 	}
 }
