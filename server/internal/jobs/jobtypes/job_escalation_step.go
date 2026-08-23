@@ -580,10 +580,14 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 		return 0
 	}
 
-	text := fmt.Sprintf(
-		"[escalation] incident %s requires your attention. Open the dashboard to acknowledge or resolve.",
-		incident.UID,
-	)
+	checkName := escalationUnknownCheckName
+	if check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); checkErr == nil {
+		checkName = escalationCheckName(check)
+	}
+
+	baseURL := appBaseURL(jctx)
+	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
+	text := escalationSlackDMMessage(incident, checkName, orgSlug, baseURL)
 
 	if err := postSlackDM(ctx, settings.AccessToken, route.Contact.Value, text); err != nil {
 		log.WarnContext(ctx, "failed to send escalation Slack DM",
@@ -595,6 +599,30 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 	}
 
 	return 1
+}
+
+// escalationSlackDMMessage builds the Slack DM text for a per-user escalation
+// notification. The incident is addressed by its short #N reference and check
+// name — never the UID, which must never appear in visible text — mirroring
+// escalationWebPushMessage. When baseURL and orgSlug resolve to a full
+// incident URL, the dashboard mention is hyperlinked with Slack's <url|text>
+// syntax; otherwise it degrades to plain text with no link, as the phone/SMS
+// path already does.
+func escalationSlackDMMessage(incident *models.Incident, checkName, orgSlug, baseURL string) string {
+	ref := "Incident"
+	if incident.Number > 0 {
+		ref = fmt.Sprintf("Incident #%d", incident.Number)
+	}
+
+	dashboard := "Open the dashboard"
+	if url := escalationIncidentURL(baseURL, orgSlug, incident); url != "" {
+		dashboard = fmt.Sprintf("<%s|%s>", url, dashboard)
+	}
+
+	return fmt.Sprintf(
+		"[escalation] %s for %s requires your attention. %s to acknowledge or resolve.",
+		ref, checkName, dashboard,
+	)
 }
 
 // sendWebPush delivers a Web Push notification for a per-user webpush contact.
