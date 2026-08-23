@@ -26,6 +26,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -380,6 +381,17 @@ type Service struct {
 	// nil = the feature is not wired (tests, or a build without status-page
 	// publications), in which case the field is simply omitted.
 	publicIncidents PublicIncidentProvider
+	// jobs queues the operator email sent when a custom domain is hard-demoted
+	// by the synchronous Verify button. nil (the MCP handler, most tests) still
+	// records the audit event — only the mail is skipped.
+	jobs jobsvc.Service
+}
+
+// SetJobsService wires the job queue used to deliver the custom-domain
+// demotion alert. Optional: without it the demotion is still recorded as an
+// audit event, it simply reaches nobody's inbox.
+func (s *Service) SetJobsService(jobs jobsvc.Service) {
+	s.jobs = jobs
 }
 
 // SetPublicIncidentProvider wires the incident-publication projection into the

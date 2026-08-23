@@ -169,6 +169,24 @@ func (r *CustomDomainVerifyJobRun) holdsValidCertificate(
 	return tlsedge.HasValidStoredCertificate(ctx, jctx.DBService, domain, now)
 }
 
+// customDomainAlertDeps adapts the job context to the alert's explicit
+// dependencies. The alert lives in internal/customdomain because the dashboard's
+// synchronous Verify button reaches the same hard demotion and must notify
+// identically — a job context is not something a handler can produce.
+func customDomainAlertDeps(jctx *jobdef.JobContext) customdomain.AlertDeps {
+	deps := customdomain.AlertDeps{DB: jctx.DBService, Logger: jctx.Logger} //nolint:exhaustruct // filled below
+
+	if jctx.Services != nil {
+		deps.Jobs = jctx.Services.Jobs
+	}
+
+	if jctx.AppConfig != nil {
+		deps.BaseURL = jctx.AppConfig.Server.BaseURL
+	}
+
+	return deps
+}
+
 // announce logs every lifecycle transition and, for a HARD DEMOTION only,
 // alerts the organization. Entering grace is deliberately quiet: the page is
 // still serving, nobody outside can tell, and paging for it would train
@@ -185,7 +203,7 @@ func (r *CustomDomainVerifyJobRun) announce(
 		log.ErrorContext(ctx, "Custom domain demoted — the status page is no longer served on it",
 			"status_page_uid", page.UID, "domain", domain,
 			"failures", outcome.Failures, "diagnostic", summary)
-		alertCustomDomainDemoted(ctx, jctx, page, outcome.Failures, summary)
+		customdomain.AlertDemoted(ctx, customDomainAlertDeps(jctx), page, outcome.Failures, summary)
 	case outcome.EnteredGrace:
 		log.WarnContext(ctx, "Custom domain re-verification is failing — entering grace, still serving",
 			"status_page_uid", page.UID, "domain", domain,

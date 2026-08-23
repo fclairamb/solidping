@@ -66,10 +66,72 @@ func TestEnteredGraceFiresOnceOnTheTransition(t *testing.T) {
 	first := customdomain.Next(state, customdomain.Observation{Now: testNow()})
 	r.True(first.EnteredGrace)
 	r.False(first.HardDemoted)
+	r.NotNil(first.GraceSince, "entering grace must stamp when degradation started")
+	r.Equal(testNow(), *first.GraceSince)
 
 	second := customdomain.Next(first.State, customdomain.Observation{Now: testNow()})
 	r.False(second.EnteredGrace, "already in grace — the edge fires once")
 	r.Equal(first.GraceSince, second.GraceSince, "grace_since must not be pushed forward")
+}
+
+// TestGraceSinceIsSetOnEntryAndClearedOnEveryExit covers the field surfaced to
+// the dashboard as customDomainDegradedSince. It is the operator's answer to
+// "how long has this been broken", so a stale value left behind after recovery
+// would be worse than no value at all — it would report a healthy domain as
+// degrading since some date in the past.
+func TestGraceSinceIsSetOnEntryAndClearedOnEveryExit(t *testing.T) {
+	t.Parallel()
+
+	graced := func() customdomain.State {
+		t.Helper()
+
+		state := customdomain.State{
+			Lifecycle:  models.CustomDomainStateActive,
+			VerifiedAt: verifiedAt(-24 * time.Hour),
+			Failures:   customdomain.GraceAfterFailures - 1,
+		}
+		out := customdomain.Next(state, customdomain.Observation{Now: testNow()})
+		require.NotNil(t, out.GraceSince)
+
+		return out.State
+	}
+
+	t.Run("healthy states carry no degraded-since", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		state := customdomain.State{
+			Lifecycle:  models.CustomDomainStateActive,
+			VerifiedAt: verifiedAt(-24 * time.Hour),
+		}
+
+		out := customdomain.Next(state, customdomain.Observation{OK: true, Now: testNow()})
+		r.Nil(out.GraceSince)
+
+		belowThreshold := customdomain.Next(state, customdomain.Observation{Now: testNow()})
+		r.Nil(belowThreshold.GraceSince, "a single failure is not yet degradation")
+	})
+
+	t.Run("recovering from grace clears it", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		out := customdomain.Next(graced(), customdomain.Observation{OK: true, Now: testNow()})
+		r.True(out.Recovered)
+		r.Nil(out.GraceSince, "a recovered domain must not still report a degraded-since")
+	})
+
+	t.Run("hard demotion clears it too", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		state := graced()
+		state.Failures = customdomain.HardDemoteAfterFailures - 1
+
+		out := customdomain.Next(state, customdomain.Observation{Now: testNow()})
+		r.True(out.HardDemoted)
+		r.Nil(out.GraceSince, "the domain is dark now, not degrading")
+	})
 }
 
 // TestHardDemotionOnlyAtTheFarThreshold pins that going dark takes days of

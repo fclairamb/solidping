@@ -318,10 +318,19 @@ func (s *Service) VerifyCustomDomain(
 	diag := s.verifier.Diagnose(ctx, *page.CustomDomain, token, s.cnameTarget(), s.cnameMode())
 
 	now := time.Now()
-	update := customDomainVerifyUpdate(page, &diag, now)
+	update, hardDemoted := customDomainVerifyUpdate(page, &diag, now)
 
 	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
 		return StatusPageResponse{}, writeErr
+	}
+
+	// A hard demotion reached by clicking Verify takes the page just as dark as
+	// one the sweep reaches on its own, so it alerts identically. Requirement 4
+	// of spec 2026-08-23-03 says "alert the operator on hard demotion" without
+	// qualifying the path — and the admin who clicked is not necessarily the
+	// only person who needs to know.
+	if hardDemoted {
+		customdomain.AlertDemoted(ctx, s.demotionAlertDeps(), page, update.Failures, diag.String())
 	}
 
 	updated, err := s.db.GetStatusPage(ctx, org.UID, page.UID)
@@ -351,7 +360,7 @@ func (s *Service) VerifyCustomDomain(
 // reason nobody can reconstruct afterwards.
 func customDomainVerifyUpdate(
 	page *models.StatusPage, diag *domainverify.Diagnosis, now time.Time,
-) *models.StatusPageCustomDomainUpdate {
+) (*models.StatusPageCustomDomainUpdate, bool) {
 	summary := diag.String()
 
 	update := &models.StatusPageCustomDomainUpdate{
@@ -367,7 +376,7 @@ func customDomainVerifyUpdate(
 		update.Successes = 0
 		update.State = models.CustomDomainStateActive
 
-		return update
+		return update, false
 	}
 
 	current := customdomain.Normalize(
@@ -389,7 +398,21 @@ func customDomainVerifyUpdate(
 	update.State = outcome.Lifecycle
 	update.GraceSince = outcome.GraceSince
 
-	return update
+	return update, outcome.HardDemoted
+}
+
+// demotionAlertDeps builds the alert's dependencies from the service's own
+// wiring. A Service with no job service (the MCP handler, most tests) still
+// records the audit event — the fact is never lost just because mail is not
+// wired.
+func (s *Service) demotionAlertDeps() customdomain.AlertDeps {
+	deps := customdomain.AlertDeps{DB: s.db, Jobs: s.jobs} //nolint:exhaustruct // logger defaults
+
+	if s.cfg != nil {
+		deps.BaseURL = s.cfg.Server.BaseURL
+	}
+
+	return deps
 }
 
 // CustomDomainServable reports whether a domain currently resolves to a

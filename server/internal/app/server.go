@@ -1559,6 +1559,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
 	statusPagesService.SetPublicIncidentProvider(publicIncidentAdapter{svc: incidentPublicationsService})
+	// A hard demotion reached through the synchronous Verify button alerts the
+	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
+	statusPagesService.SetJobsService(s.services.Jobs)
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService

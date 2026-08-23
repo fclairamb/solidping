@@ -5,10 +5,12 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/customdomain"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
@@ -566,3 +568,151 @@ func TestVerifyCustomDomain_FailureOnAPendingPageStaysUnverified(t *testing.T) {
 
 // errStubLookup is a static stub error for the manual-verify failure cases.
 var errStubLookup = errors.New("stub lookup failure")
+
+// TestCustomDomainDegradedSinceIsExposedAndCleared covers the API field
+// `customDomainDegradedSince`. It is the dashboard's answer to "how long has
+// this been broken", so a value left behind after recovery would report a
+// healthy domain as degrading since some date in the past.
+func TestCustomDomainDegradedSinceIsExposedAndCleared(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	passing := &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "cname.solidping.io.", nil
+		},
+	}
+	failing := &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "elsewhere.example.net.", nil
+		},
+	}
+
+	svc.verifier = passing
+
+	healthy, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal(models.CustomDomainStateActive, healthy.CustomDomainState)
+	r.Nil(healthy.CustomDomainDegradedSince, "a healthy domain reports no degraded-since")
+
+	// Drive the page into grace the way the sweep would.
+	svc.verifier = failing
+
+	var degraded StatusPageResponse
+
+	for range customdomain.GraceAfterFailures {
+		degraded, err = svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+		r.NoError(err)
+	}
+
+	r.Equal(models.CustomDomainStateGrace, degraded.CustomDomainState)
+	r.NotNil(degraded.CustomDomainDegradedSince, "grace must expose when degradation started")
+	r.True(svc.CustomDomainServable(ctx, "status.acme.com"), "grace still serves")
+
+	// And it is cleared the moment the domain recovers.
+	svc.verifier = passing
+
+	recovered, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal(models.CustomDomainStateActive, recovered.CustomDomainState)
+	r.Nil(recovered.CustomDomainDegradedSince,
+		"a recovered domain must not still report a degraded-since")
+}
+
+// TestVerifyCustomDomain_HardDemotionAlertsTheOrg pins that the alert is
+// attached to the TRANSITION, not to the sweep. An admin clicking Verify at
+// failure 11 takes the page just as dark as the sweep would, and their
+// co-admins have to hear about it the same way.
+func TestVerifyCustomDomain_HardDemotionAlertsTheOrg(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	// One failure short of the hard-demotion threshold, and still serving.
+	verifiedAt := time.Now().Add(-72 * time.Hour)
+	graceSince := time.Now().Add(-48 * time.Hour)
+	domain := "status.acme.com"
+
+	stored, err := svc.db.GetStatusPage(ctx, org.UID, page.UID)
+	r.NoError(err)
+	r.NoError(svc.db.UpdateStatusPageCustomDomain(ctx, page.UID,
+		&models.StatusPageCustomDomainUpdate{
+			Domain:     &domain,
+			Token:      stored.CustomDomainToken,
+			VerifiedAt: &verifiedAt,
+			CheckedAt:  &verifiedAt,
+			GraceSince: &graceSince,
+			Failures:   customdomain.HardDemoteAfterFailures - 1,
+			State:      models.CustomDomainStateGrace,
+		}))
+
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "elsewhere.example.net.", nil
+		},
+	}
+
+	resp, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal(models.CustomDomainStateDemoted, resp.CustomDomainState)
+	r.False(svc.CustomDomainServable(ctx, domain))
+
+	events, err := svc.db.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		EventTypes:      []models.EventType{models.EventTypeStatusPageCustomDomainDemoted},
+		Limit:           10,
+	})
+	r.NoError(err)
+	r.Len(events, 1, "a demotion reached by clicking Verify must still be recorded")
+	r.Equal(domain, events[0].Payload["domain"])
+}
+
+// TestVerifyCustomDomain_NonDemotingFailureIsSilent is the negative control:
+// the ordinary case — an admin clicking Verify while DNS is briefly broken —
+// must not write a demotion event, or the audit trail stops meaning anything.
+func TestVerifyCustomDomain_NonDemotingFailureIsSilent(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "elsewhere.example.net.", nil
+		},
+	}
+
+	for range customdomain.GraceAfterFailures + 1 {
+		_, verifyErr := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+		r.NoError(verifyErr)
+	}
+
+	events, err := svc.db.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: org.UID,
+		EventTypes:      []models.EventType{models.EventTypeStatusPageCustomDomainDemoted},
+		Limit:           10,
+	})
+	r.NoError(err)
+	r.Empty(events, "failures short of the hard-demotion threshold are not a demotion")
+}
