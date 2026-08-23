@@ -147,3 +147,48 @@ a hostname a customer may still be pointing at us, which is what
 Split out of `2026-08-23-03` during its completeness audit (2026-08-23), which
 assessed the implementer's self-flagged residual and concluded it is a genuine
 gap requiring a design decision rather than a patch.
+
+## Resolved open questions
+
+**Maintainer decision, 2026-08-23: this spec is CLOSED — retention is declined.**
+Do not implement it. The file is archived under `specs/cancelled/` for the record.
+
+> 1. **Do we accept holding a private key for a hostname that may have been
+>    transferred away?**
+
+**No.** Today's property — *no live private key exists for a hostname we no
+longer serve* — is clean and absolute, and we keep it. `ForgetDomain` continues
+to delete the certificate and private key at removal or re-point. The bounded
+retention window and the tombstone record are both dropped; neither part is to
+be built, since the spec itself states that either one alone is a regression.
+
+> 2. **If yes, how long is the retention window?**
+> 3. **Does an explicit removal differ from a re-point?**
+> 4. **Should retention be operator-controllable?**
+
+**Moot.** All three are conditional on question 1, which was answered no.
+
+### Consequence for `2026-07-26-01`'s inherited criterion
+
+The criterion *"unverified / removed / expired domain degrades to a clear
+message, not a TLS error page"* is deliberately **not met for the "removed"
+clause**, and that is now the recorded position rather than an outstanding gap:
+
+- **unverified** — met by `2026-08-23-03`: the handshake completes with the
+  certificate still held and the visitor gets a legible `503`.
+- **expired** — unachievable by physics; pinned by
+  `server/internal/tlsedge/demoted_host_test.go`.
+- **removed** — **out of scope by decision.** A removed domain holds no
+  certificate, so the handshake is refused and a visitor whose DNS still points
+  at the installation sees a browser TLS warning until they re-point it. This is
+  the accepted cost of not retaining private keys for hostnames we no longer
+  serve.
+
+Note on where to record this: the quoted criterion does not appear verbatim in
+`specs/done/2026/07/2026-07-26-01-custom-domain-cname-only-internal-acme.md` —
+it is a paraphrase introduced by `2026-08-23-03`, which declared it binding.
+There is therefore no criterion line to strike; this closure record is the
+amendment. The user-facing behaviour is already documented accurately in
+`web/docs/docs/features/custom-domains.md` (clearing or changing a domain
+deletes its certificate and private key; a hostname we hold no certificate for
+is refused outright at the handshake), so no documentation change is required.
