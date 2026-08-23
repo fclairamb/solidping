@@ -8972,6 +8972,13 @@ components:
       type: object
       required: [config]
       properties:
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy (see the Check schema). Sent
+            explicitly by import/apply so a manifest that says `inherit` moves
+            a check back off an explicit override rather than leaving it.
         name:
           type: string
           description: Check name (auto-generated from URL if not provided)

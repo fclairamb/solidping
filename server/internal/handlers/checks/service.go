@@ -1617,6 +1617,10 @@ type UpsertCheckRequest struct {
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
 
+	// TracerouteOnFailure is the per-check path-trace policy: `inherit`, `on`
+	// or `off`. nil leaves it unchanged.
+	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+
 	// Adaptive resolution / flapping settings. nil leaves the value untouched
 	// (create → system default; update → unchanged).
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
@@ -1948,6 +1952,7 @@ func (s *Service) UpsertCheck(
 			Labels:                    &req.Labels,
 			ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 			RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+			TracerouteOnFailure:       req.TracerouteOnFailure,
 			ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     req.FlappingWindowSeconds,
 			FlapBackoffFactor:         req.FlapBackoffFactor,
@@ -1984,6 +1989,7 @@ func (s *Service) UpsertCheck(
 		Labels:                    req.Labels,
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+		TracerouteOnFailure:       req.TracerouteOnFailure,
 		ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
@@ -2989,24 +2995,33 @@ type ExportCheck struct {
 	// PreviousSlug, when set on an apply manifest, makes a slug rename
 	// reconcile in place (rather than delete+create). Ignored by export and
 	// import; only the apply reconcile path consults it.
-	PreviousSlug              string               `json:"previousSlug,omitempty"`
-	Description               string               `json:"description,omitempty"`
-	Type                      string               `json:"type"`
-	Config                    map[string]any       `json:"config"`
-	Regions                   []string             `json:"regions,omitempty"`
-	Labels                    map[string]string    `json:"labels,omitempty"`
-	Enabled                   bool                 `json:"enabled"`
-	Internal                  bool                 `json:"internal,omitempty"`
-	Period                    string               `json:"period,omitempty"`
-	Group                     string               `json:"group,omitempty"`
-	ConfirmationPeriodSeconds *int                 `json:"confirmationPeriodSeconds,omitempty"`
-	EscalationThreshold       *int                 `json:"escalationThreshold,omitempty"`
-	RecoveryPeriodSeconds     *int                 `json:"recoveryPeriodSeconds,omitempty"`
-	ReopenCooldownMultiplier  *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindowSeconds     *int                 `json:"flappingWindowSeconds,omitempty"`
-	FlapBackoffFactor         *int                 `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier     *int                 `json:"maxRecoveryMultiplier,omitempty"`
-	DependsOn                 []ExportedDependency `json:"dependsOn,omitempty"`
+	PreviousSlug              string            `json:"previousSlug,omitempty"`
+	Description               string            `json:"description,omitempty"`
+	Type                      string            `json:"type"`
+	Config                    map[string]any    `json:"config"`
+	Regions                   []string          `json:"regions,omitempty"`
+	Labels                    map[string]string `json:"labels,omitempty"`
+	Enabled                   bool              `json:"enabled"`
+	Internal                  bool              `json:"internal,omitempty"`
+	Period                    string            `json:"period,omitempty"`
+	Group                     string            `json:"group,omitempty"`
+	ConfirmationPeriodSeconds *int              `json:"confirmationPeriodSeconds,omitempty"`
+	EscalationThreshold       *int              `json:"escalationThreshold,omitempty"`
+	RecoveryPeriodSeconds     *int              `json:"recoveryPeriodSeconds,omitempty"`
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`, absent meaning `inherit`.
+	//
+	// IT MUST TRAVEL. An operator who set `off` on a check probing somebody
+	// else's network is expressing a POLICY, and a round-trip that silently
+	// dropped it would resolve back to the org default — which is ON. An
+	// explicit opt-out quietly becoming an opt-in on restore, with no diff to
+	// notice, is the worst direction this field could fail in.
+	TracerouteOnFailure      string               `json:"tracerouteOnFailure,omitempty"`
+	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindowSeconds    *int                 `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int                 `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int                 `json:"maxRecoveryMultiplier,omitempty"`
+	DependsOn                []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // ExportedDependency mirrors an edge in slug-keyed form. Slug-keyed because
@@ -3131,6 +3146,7 @@ func (s *Service) ExportChecks(
 			ConfirmationPeriodSeconds: intPtr(check.ConfirmationPeriodSeconds),
 			EscalationThreshold:       intPtr(check.EscalationThreshold),
 			RecoveryPeriodSeconds:     intPtr(check.RecoveryPeriodSeconds),
+			TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
 			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     intPtr(check.FlappingWindowSeconds),
 			FlapBackoffFactor:         intPtr(check.FlapBackoffFactor),
@@ -3612,12 +3628,32 @@ func (s *Service) importSingleCheck(
 		upsertReq.Period = &exportedCheck.Period
 	}
 
+	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
+
 	_, _, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
 	if upsertErr != nil {
 		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: upsertErr.Error()}
 	}
 
 	return created, nil
+}
+
+// importedTraceroutePolicy resolves a document's path-trace field to something
+// always sent on the upsert.
+//
+// Absent means `inherit`, which is what an omitted field would resolve to
+// anyway — but sending it EXPLICITLY is what makes a re-import idempotent for a
+// check that had been moved off `inherit` and is now being moved back. An
+// import that "leaves it unchanged" would make the applied state depend on
+// whatever the check happened to be before, which is the opposite of what
+// applying a manifest means.
+func importedTraceroutePolicy(value string) *string {
+	policy := value
+	if policy == "" {
+		policy = TraceroutePolicyInherit
+	}
+
+	return &policy
 }
 
 // CloneCheckRequest carries the optional overrides for the clone endpoint.
@@ -3758,6 +3794,7 @@ func (s *Service) cloneBuildCheck(
 	clone.ConfirmationPeriodSeconds = source.ConfirmationPeriodSeconds
 	clone.EscalationThreshold = source.EscalationThreshold
 	clone.RecoveryPeriodSeconds = source.RecoveryPeriodSeconds
+	clone.TracerouteOnFailure = source.TracerouteOnFailure
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.FlappingWindowSeconds = source.FlappingWindowSeconds
 	clone.FlapBackoffFactor = source.FlapBackoffFactor

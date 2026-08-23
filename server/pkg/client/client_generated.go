@@ -2001,6 +2001,27 @@ func (e UpdateStatusPageRequestVisibility) Valid() bool {
 	}
 }
 
+// Defines values for UpsertCheckRequestTracerouteOnFailure.
+const (
+	UpsertCheckRequestTracerouteOnFailureInherit UpsertCheckRequestTracerouteOnFailure = "inherit"
+	UpsertCheckRequestTracerouteOnFailureOff     UpsertCheckRequestTracerouteOnFailure = "off"
+	UpsertCheckRequestTracerouteOnFailureOn      UpsertCheckRequestTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the UpsertCheckRequestTracerouteOnFailure enum.
+func (e UpsertCheckRequestTracerouteOnFailure) Valid() bool {
+	switch e {
+	case UpsertCheckRequestTracerouteOnFailureInherit:
+		return true
+	case UpsertCheckRequestTracerouteOnFailureOff:
+		return true
+	case UpsertCheckRequestTracerouteOnFailureOn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpsertCheckRequestType.
 const (
 	UpsertCheckRequestTypeDns    UpsertCheckRequestType = "dns"
@@ -5856,9 +5877,15 @@ type UpsertCheckRequest struct {
 	Name   *string `json:"name,omitempty"`
 	Period *string `json:"period,omitempty"`
 
+	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
+	TracerouteOnFailure *UpsertCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *UpsertCheckRequestType `json:"type,omitempty"`
 }
+
+// UpsertCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
+type UpsertCheckRequestTracerouteOnFailure string
 
 // UpsertCheckRequestType Check type (auto-inferred from URL if not provided)
 type UpsertCheckRequestType string
