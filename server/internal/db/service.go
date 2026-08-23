@@ -413,6 +413,20 @@ type Service interface {
 	// also maintained the now-removed last_for_status flag; the name is kept to
 	// avoid churn across its callers.)
 	SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error
+	// HasRawResultWithMessageID reports whether a raw result already exists for
+	// checkUID whose output.messageId equals messageID, restricted to rows with
+	// period_start >= since.
+	//
+	// This is the migration-free idempotency backstop for the inbound-email
+	// path (spec 2026-08-22-01): one inbound email must mint exactly one raw
+	// result no matter how many server replicas raced for it, how a JMAP move
+	// failed, or how often a crash-recovery re-scan replays it. There is no
+	// unique index to lean on — the `since` bound is what keeps the JSON scan
+	// inside the check's recent-results range instead of its whole history, so
+	// callers must always pass a bounded window (emailcheck uses 7 days).
+	HasRawResultWithMessageID(
+		ctx context.Context, checkUID, messageID string, since time.Time,
+	) (bool, error)
 
 	// Incident operations
 	CreateIncident(ctx context.Context, incident *models.Incident) error

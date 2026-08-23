@@ -1003,6 +1003,12 @@ func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *model
 	panic("not implemented")
 }
 
+func (m *mockDBService) HasRawResultWithMessageID(
+	_ context.Context, _, _ string, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateCheckStatusAndClocks(
 	_ context.Context, _ string, _ models.CheckStatus, _ int, _ *time.Time, _ models.IncidentClockUpdate,
 ) error {

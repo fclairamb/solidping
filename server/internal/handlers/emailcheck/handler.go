@@ -62,6 +62,19 @@ const (
 // charted as if it were real.
 const maxSaneDeliveryLatency = 24 * time.Hour
 
+// resultDedupWindow bounds the idempotency lookup that keeps one inbound email
+// from minting several raw results (spec 2026-08-22-01, layer 3). There is no
+// unique index to lean on — no migration was allowed — so the guard is a query
+// over `output.messageId`, and the window is what keeps that query inside the
+// check's recent-results range instead of its whole history.
+//
+// Seven days is far longer than any plausible duplicate delivery (replicas
+// racing the same mailbox are milliseconds apart; a crash-recovery re-scan
+// looks back 24 h) and still short enough that the scan stays bounded. A
+// Message-ID older than this reappearing is not a duplicate of a live signal —
+// it is a replayed mail, and recording it is the right answer.
+const resultDedupWindow = 7 * 24 * time.Hour
+
 // recipientPattern captures the 48-hex token and an optional +status suffix
 // from the local part of the recipient address.
 var recipientPattern = regexp.MustCompile(`^([0-9a-f]{48})(?:\+(up|down|error|running))?@`)
@@ -100,6 +113,24 @@ func NewHandler(
 		incidentSvc: incidentSvc,
 		logger:      logger,
 	}
+}
+
+// ClaimsEmail reports whether this handler would act on the email, with no
+// side effects — the manager calls it to decide which inbox messages to claim
+// (move to Processed) *before* any handler runs (spec 2026-08-22-01, layer 1).
+//
+// The predicate is deliberately the cheap, purely syntactic half of
+// HandleEmail: a recipient whose local part is a 48-hex token. It does not hit
+// the database to confirm the token resolves to a live check, because
+// HandleEmail's answer for an unresolvable token is OutcomeRejected — "claim
+// it and file it away" — not "leave it in the inbox". Claiming and then
+// rejecting is exactly the intended path for those.
+//
+//nolint:gocritic // jmap.Handler interface passes Email by value
+func (h *Handler) ClaimsEmail(email jmap.Email) bool {
+	token, _, _ := h.extractTokenAndStatus(&email)
+
+	return token != ""
 }
 
 // HandleEmail tries to resolve the email to a configured check. Returns
@@ -312,6 +343,32 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 	messageID := ""
 	if len(email.MessageID) > 0 {
 		messageID = email.MessageID[0]
+	}
+
+	// Idempotency backstop (spec 2026-08-22-01, layer 3). The mailbox claim
+	// (layer 1) and the single-consumer lock (layer 2) already make a duplicate
+	// unlikely; this is what makes "exactly one result per email" true rather
+	// than likely, and it is what licenses the crash-recovery re-scan to replay
+	// recently-processed messages at all.
+	//
+	// A lookup failure is deliberately NOT fatal: losing the signal from a
+	// genuine inbound email is worse than recording a duplicate, so a broken
+	// dedup query degrades to today's behavior instead of dropping the result.
+	if messageID != "" {
+		seen, dupErr := h.db.HasRawResultWithMessageID(
+			ctx, check.UID, messageID, time.Now().Add(-resultDedupWindow),
+		)
+
+		switch {
+		case dupErr != nil:
+			h.logger.WarnContext(ctx, "email dedup lookup failed; recording anyway",
+				"check_uid", check.UID, "messageId", messageID, "error", dupErr)
+		case seen:
+			h.logger.DebugContext(ctx, "duplicate inbound email ignored",
+				"check_uid", check.UID, "messageId", messageID)
+
+			return nil
+		}
 	}
 
 	output := models.JSONMap{
