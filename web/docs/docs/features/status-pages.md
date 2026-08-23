@@ -168,6 +168,20 @@ Two things worth knowing:
 Wrong-password attempts are rate-limited, so the password does not have to be
 long enough to survive a brute-force script on its own.
 
+## Caching
+
+A **public** page is served with `Cache-Control: public, max-age=60` (the Atom
+feed gets 300 s), so browsers, CDNs and corporate proxies can absorb the traffic
+spike that arrives exactly when your infrastructure is already having a bad day.
+A status change still surfaces within a minute.
+
+A **private** or **password-protected** page is served with `Cache-Control:
+private, no-store` instead, on every one of its public URLs — the page, the
+summary, the badge, the feed — so no shared cache anywhere retains its body.
+That stays true after a visitor unlocks it: the unlock belongs to that visitor,
+not to the proxy in front of them. The "not found" answers are `no-store` too,
+so a cache cannot be probed for which pages exist.
+
 ## Incidents
 
 A status page shows two different things, and it is worth keeping them apart:
@@ -535,7 +549,7 @@ For integrators who just want "is this service up right now?" without the full p
 }
 ```
 
-It's public (no authentication), sets `Cache-Control: public, max-age=60`, and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
+It's public (no authentication), caches like the page it summarizes (see [Caching](#caching)), and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
 
 ## Badge
 
@@ -545,7 +559,7 @@ It's public (no authentication), sets `Cache-Control: public, max-age=60`, and c
 ![Status](https://your-solidping-instance/api/v1/status-pages/default/main/badge)
 ```
 
-It's public, sets `Cache-Control: public, max-age=60`, and applies the same visibility gate and rollup as the summary endpoint above, so the badge can never disagree with the status page. Colors follow the rollup status: green (operational), yellow (degraded), red (down), blue (maintenance), gray (unknown). Customize with `label`, `style` (`flat` or `flat-square`), `minWidth`, and `width` query parameters, matching the per-check badges.
+It's public, caches like the page it reflects (see [Caching](#caching)), and applies the same visibility gate and rollup as the summary endpoint above, so the badge can never disagree with the status page. Colors follow the rollup status: green (operational), yellow (degraded), red (down), blue (maintenance), gray (unknown). Customize with `label`, `style` (`flat` or `flat-square`), `minWidth`, and `width` query parameters, matching the per-check badges.
 
 ## Embeddable Live Widget
 

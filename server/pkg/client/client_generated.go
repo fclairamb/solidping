@@ -9467,21 +9467,21 @@ type ClientInterface interface {
 
 	// ViewStatusPage View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 	ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStatusPageBadge SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 	GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StatusPageFeed Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 	StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -9497,7 +9497,7 @@ type ClientInterface interface {
 
 	// ViewStatusPageSummary Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 	ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -15095,7 +15095,7 @@ func (c *Client) UnlockDefaultStatusPage(ctx context.Context, org OrgPath, body 
 
 // ViewStatusPage View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -15112,7 +15112,7 @@ func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, r
 
 // GetStatusPageBadge SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -15129,7 +15129,7 @@ func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug strin
 
 // StatusPageFeed Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -15165,7 +15165,7 @@ func (c *Client) ViewPublicStatusPageIncidents(ctx context.Context, org OrgPath,
 
 // ViewStatusPageSummary Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 func (c *Client) ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -31266,7 +31266,7 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageWithResponse View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -31275,7 +31275,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -31284,7 +31284,7 @@ type ClientWithResponsesInterface interface {
 
 	// StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -31304,7 +31304,7 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -50528,7 +50528,7 @@ func (c *ClientWithResponses) UnlockDefaultStatusPageWithResponse(ctx context.Co
 
 // ViewStatusPageWithResponse View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -50543,7 +50543,7 @@ func (c *ClientWithResponses) ViewStatusPageWithResponse(ctx context.Context, or
 
 // GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -50558,7 +50558,7 @@ func (c *ClientWithResponses) GetStatusPageBadgeWithResponse(ctx context.Context
 
 // StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -50590,7 +50590,7 @@ func (c *ClientWithResponses) ViewPublicStatusPageIncidentsWithResponse(ctx cont
 
 // ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //

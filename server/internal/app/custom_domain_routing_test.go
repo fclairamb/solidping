@@ -5,10 +5,13 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
@@ -131,8 +134,16 @@ func newCustomHostTestServer(t *testing.T) *Server {
 	// negative-cached (not a custom domain).
 	server.customDomainCache.set("status.acme.com", &resolvedCustomDomain{
 		OrgSlug: "acme", Slug: "main", Name: "Acme Status",
+		Visibility: models.StatusPageVisibilityPublic,
 	})
 	server.customDomainCache.set("unknown.example.com", nil)
+
+	// A password-protected page IS routed on its custom domain (the unlock
+	// form has to appear somewhere) — its shell must not be shared-cacheable.
+	server.customDomainCache.set("locked.acme.com", &resolvedCustomDomain{
+		OrgSlug: "acme", Slug: "locked", Name: "Acme Internal",
+		Visibility: models.StatusPageVisibilityPassword,
+	})
 
 	return server
 }
@@ -255,5 +266,94 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 				r.NotContains(rec.Body.String(), tc.wantNotBody)
 			}
 		})
+	}
+}
+
+// TestCustomHostShellCacheControl covers the SPA shell served on a custom
+// domain, which embeds the page's name and description as OG metadata. It used
+// to send `public, max-age=60` for every resolved host, including the
+// password-protected ones — so a shared cache in front of a customer's status
+// domain could hand a gated page's identity to anyone who asked
+// (spec 2026-08-22-06).
+func TestCustomHostShellCacheControl(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	server := newCustomHostTestServer(t)
+
+	handler := server.handlerWithCustomDomains(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	openRec := httptest.NewRecorder()
+	openReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	openReq.Host = "status.acme.com"
+	handler.ServeHTTP(openRec, openReq)
+
+	r.Equal(http.StatusOK, openRec.Code)
+	r.Equal("public, max-age=60", openRec.Header().Get("Cache-Control"))
+	r.Equal("Cookie, X-Forwarded-Proto", openRec.Header().Get("Vary"))
+
+	lockedRec := httptest.NewRecorder()
+	lockedReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	lockedReq.Host = "locked.acme.com"
+	handler.ServeHTTP(lockedRec, lockedReq)
+
+	// Still served — the visitor needs the unlock form — but never stored.
+	r.Equal(http.StatusOK, lockedRec.Code)
+	r.Equal("private, no-store", lockedRec.Header().Get("Cache-Control"))
+	r.NotContains(lockedRec.Header().Get("Cache-Control"), "public")
+}
+
+// TestLookupCustomDomainCarriesVisibility closes the gap the test above cannot
+// see: it seeds its own cache entries, so a resolver that forgot to copy the
+// page's visibility would still look right there. This one goes through the DB
+// resolution path, where a missing copy would silently mark every custom
+// domain as gated (or, if the default ever flipped, every gated one as public).
+func TestLookupCustomDomainCarriesVisibility(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("acme", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	server := &Server{dbService: dbSvc}
+	verifiedAt := time.Now().UTC()
+
+	testCases := []struct {
+		name       string
+		slug       string
+		domain     string
+		visibility string
+	}{
+		{name: "public page", slug: "open", domain: "status.acme.com",
+			visibility: models.StatusPageVisibilityPublic},
+		{name: "password page", slug: "locked", domain: "locked.acme.com",
+			visibility: models.StatusPageVisibilityPassword},
+	}
+
+	for _, testCase := range testCases {
+		page := models.NewStatusPage(org.UID, testCase.name, testCase.slug)
+		page.Visibility = testCase.visibility
+
+		if testCase.visibility == models.StatusPageVisibilityPassword {
+			hash := "not-a-real-hash-but-non-empty"
+			page.PasswordHash = &hash
+		}
+
+		r.NoError(dbSvc.CreateStatusPage(ctx, page))
+		r.NoError(dbSvc.UpdateStatusPageCustomDomain(ctx, page.UID,
+			&models.StatusPageCustomDomainUpdate{Domain: &testCase.domain, VerifiedAt: &verifiedAt}))
+
+		resolved := server.lookupCustomDomain(ctx, testCase.domain)
+		r.NotNil(resolved, testCase.name)
+		r.Equal(testCase.visibility, resolved.Visibility, testCase.name)
 	}
 }

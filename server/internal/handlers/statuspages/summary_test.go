@@ -73,8 +73,9 @@ func TestViewStatusPageSummary_ResponseShapeAndCounts(t *testing.T) {
 	r.Equal(*view.StatusCounts, resp.Counts)
 }
 
-// TestViewStatusPageSummary_CacheControl pins the 60s public cache header the
-// full page view deliberately does not set.
+// TestViewStatusPageSummary_CacheControl pins the 60s public cache header for
+// a world-readable page. The full page view now sends the same one; the
+// per-visibility rule the three endpoints share lives in cache_control_test.go.
 func TestViewStatusPageSummary_CacheControl(t *testing.T) {
 	t.Parallel()
 

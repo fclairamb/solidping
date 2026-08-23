@@ -1793,7 +1793,13 @@ paths:
         Full public rendering of a status page: sections, per-resource live
         status, and (when enabled) availability/response-time history. A
         disabled or non-public page returns 404, identical to a page that
-        doesn't exist. No authentication required.
+        doesn't exist. No authentication required. Caching follows the page's
+        visibility: a `public` page carries Cache-Control: public, max-age=60,
+        while a `password` or `private` page — and every 401/404 answer —
+        carries Cache-Control: private, no-store, so a shared cache can never
+        retain a gated page's body. Holding a valid unlock cookie does not
+        change that: it authorizes the visitor, not the CDN in front of them.
+        Responses carry Vary: Cookie, X-Forwarded-Proto.
       operationId: viewStatusPage
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1822,10 +1828,12 @@ paths:
       description: >-
         Cheap "is it up?" companion to the full page view: overall status,
         per-category counts, page identity, and the canonical public URL —
-        no sections, no per-resource history. Response carries
-        Cache-Control: public, max-age=60. Same visibility gate as the full
-        view: a disabled or non-public page returns 404, identical to a page
-        that doesn't exist. No authentication required.
+        no sections, no per-resource history. Same visibility gate AND the
+        same caching rule as the full page view: Cache-Control: public,
+        max-age=60 for a `public` page, private, no-store for a `password` or
+        `private` one (unlocked or not) and for every 401/404 answer. A
+        disabled or non-public page returns 404, identical to a page that
+        doesn't exist. No authentication required.
       operationId: viewStatusPageSummary
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1857,8 +1865,10 @@ paths:
         contexts like GitHub READMEs where scripts can't run. Same visibility
         gate as the full view and the summary endpoint: a disabled or
         non-public page returns 404, identical to a page that doesn't exist.
-        Response carries Cache-Control: public, max-age=60. No authentication
-        required.
+        Same caching rule too: Cache-Control: public, max-age=60 for a
+        `public` page, private, no-store for a `password` or `private` one —
+        the badge renders the rollup status of a page the requester may not be
+        entitled to see. No authentication required.
       operationId: getStatusPageBadge
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1982,7 +1992,10 @@ paths:
       description: >-
         Public Atom/RSS feed of the page's recent status updates (incident
         posts and manual updates). Same visibility gate as the full page
-        view. No authentication required.
+        view, and the same visibility-driven caching: Cache-Control: public,
+        max-age=300 for a `public` page, private, no-store for a `password` or
+        `private` one — the feed quotes update titles and bodies verbatim. No
+        authentication required.
       operationId: statusPageFeed
       parameters:
         - $ref: "#/components/parameters/OrgPath"

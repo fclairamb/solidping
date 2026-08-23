@@ -255,13 +255,15 @@ page.
 View a specific status page by slug. Auth: public. Full payload: sections,
 per-resource live status, and (when enabled) availability/response-time
 history. Also carries `overallStatus` and `statusCounts` — the page-level
-rollup computed server-side (see below) — but sets no `Cache-Control` header.
+rollup computed server-side (see below). Sets `Cache-Control` per the shared
+visibility rule described in **Caching on the public surface** below.
 
 ### GET /api/v1/status-pages/:org/:slug/summary
 Lightweight "is it up?" companion to the full view above. Auth: public. Same
 visibility gate, and the rollup comes from the exact same live data via the
 shared `RollupPageStatus` helper, so it can never disagree with the full view
-or the SVG badge. Sets `Cache-Control: public, max-age=60`.
+or the SVG badge. Sets `Cache-Control` per the shared visibility rule
+(**Caching on the public surface**, below).
 
 ```json
 {
@@ -277,14 +279,44 @@ or the SVG badge. Sets `Cache-Control: public, max-age=60`.
 active, otherwise the absolute `/status0/{org}/{slug}` URL derived from the
 request host.
 
+### Caching on the public surface
+
+Every public read of a status page — the page view, the summary, the SVG
+badge, the Atom feed and the status0 SPA shell served on a custom domain —
+derives its `Cache-Control` from one helper, `internal/statuspagecache`:
+
+| page visibility | `Cache-Control` |
+|---|---|
+| `public` | `public, max-age=60` (`max-age=300` on the feed) |
+| `password` | `private, no-store` |
+| `private` | `private, no-store` |
+| 401 / 404 answers | `private, no-store` |
+
+Anything that is not exactly `public` is gated, so a visibility added later
+arrives locked rather than world-cacheable. **An unlock cookie does not make a
+page cacheable**: it authorizes that visitor, not the CDN or corporate proxy in
+front of them, so an unlocked `password` page is still `private, no-store`.
+The gated 401/404 stops a shared cache from turning the public surface's error
+replies into a map of which pages exist.
+
+All of these responses also carry `Vary: Cookie, X-Forwarded-Proto` — the
+unlock cookie, and the header the summary's absolute `page.url` derives its
+scheme from. `Accept-Language` is deliberately absent: a page renders in the
+language stored on the page row, not the one the browser asks for.
+
+Deliberately out of scope: `ETag`/conditional requests (revalidation would
+still have to compute the body to hash it), server-side response caching and
+`stale-while-revalidate`.
+
 ### GET /api/v1/status-pages/:org/:slug/badge
 SVG badge (shields.io style) for the page's overall status — the static,
 script-free sibling of the JS embed widget, for contexts like GitHub READMEs
 where scripts can't run. Auth: public. Same visibility gate as the summary
 above, and reuses the same `RollupPageStatus` rollup, so it can never disagree
 with the summary or the full view. Reuses the per-check badges' SVG renderer
-(`internal/handlers/badges`). Sets `Cache-Control: public, max-age=60` and
-`Content-Type: image/svg+xml`.
+(`internal/handlers/badges`). Sets `Content-Type: image/svg+xml` and
+`Cache-Control` per the shared visibility rule (**Caching on the public
+surface**, below).
 
 Query params (same bounds as the per-check badge endpoint):
 - `label` — left-side text, default the page name.
