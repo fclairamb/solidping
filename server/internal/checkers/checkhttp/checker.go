@@ -3,6 +3,7 @@ package checkhttp
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -226,10 +227,52 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	}
 
 	// Same reason for the path-trace marker: executeRequest knows the failure
-	// CLASS, only the httptrace observer knows which address was dialed.
+	// CLASS, only the httptrace observer knows which address was dialed — and
+	// how far the request got before the clock ran out.
+	refineHTTPNetworkFailure(result, tracker.lastPhase())
 	locateHTTPNetworkFailure(result, tracker.dialedAddr())
 
 	return result, nil
+}
+
+// refineHTTPNetworkFailure corrects the timeout class using what the httptrace
+// observer saw, and DROPS the marker when the deadline fired after the target
+// had already answered the network.
+//
+// executeRequest cannot make this call: from where it stands, `ctx.Err() ==
+// DeadlineExceeded` is the only fact available, and it is the same fact for a
+// SYN that vanished into a black hole and for a server that completed the
+// handshake and then sat on the request for fifteen seconds. Those are opposite
+// diagnoses. The first is a path problem worth tracing; the second is an
+// application stall whose path is provably fine, and tracing it would attach a
+// hop list labeled `connect-timeout` that is simply false.
+//
+// Only the timeout class is touched. A refusal or an unreachable is already
+// unambiguous — the transport told us what happened — so this never
+// second-guesses one.
+func refineHTTPNetworkFailure(result *checkerdef.Result, phase requestPhase) {
+	if result == nil || result.Diagnostics == nil || result.Diagnostics.NetworkFailure == nil {
+		return
+	}
+
+	failure := result.Diagnostics.NetworkFailure
+	if failure.Class != checkerdef.NetFailureConnectTimeout {
+		return
+	}
+
+	switch phase {
+	case phaseNone, phaseConnectFailed:
+		// Nothing ever came up, or the last attempt failed outright. A genuine
+		// connect timeout: keep it as classified.
+	case phaseTLSHandshaking:
+		// The connection came up and the handshake never finished — still a
+		// reachability class, and one the spec names, but a different one.
+		failure.Class = checkerdef.NetFailureTLSHandshakeTimeout
+	case phaseConnected:
+		// The target answered the network and then stopped answering the
+		// request. Its path is fine; there is nothing for a trace to say.
+		checkerdef.DropNetworkFailure(result)
+	}
 }
 
 // locateHTTPNetworkFailure fills the endpoint on a marker executeRequest
@@ -688,14 +731,43 @@ type connFamilyTracker struct {
 	// annotate a failure capture ("which of the CDN's edges served me this
 	// challenge page?"). Empty when no connection was established.
 	addr string
-	// dialed is the address the transport last ATTEMPTED, recorded by
-	// ConnectDone whether or not the connect succeeded.
+	// dialed is the address the transport last ATTEMPTED, recorded at dial
+	// START and refreshed on completion.
 	//
 	// This is the one the path trace needs, and GotConn cannot supply it: a
 	// connect timeout or a refusal never produces a connection, so `addr` stays
 	// empty in precisely the cases worth tracing.
 	dialed string
+	// phase records how far the request got before the deadline fired. It is
+	// what separates a genuine reachability failure from an application STALL,
+	// and the distinction is not cosmetic: a target that completes the
+	// handshake and then hangs has a perfectly good path, so tracing it
+	// produces noise labeled `connect-timeout`, which is simply false.
+	//
+	// The LAST attempt wins, not the first: a redirect chain can connect
+	// successfully to one host and then time out connecting to the next, and
+	// that second failure is a real one.
+	phase requestPhase
 }
+
+// requestPhase is how far the last connection attempt got.
+type requestPhase int
+
+const (
+	// phaseNone means no connect was ever completed — the deadline fired
+	// before the transport finished dialing anything.
+	phaseNone requestPhase = iota
+	// phaseConnectFailed means the last connect attempt returned an error:
+	// refused, unreachable, or timed out en route. A real path failure.
+	phaseConnectFailed
+	// phaseConnected means the last TCP connection came up. Anything that
+	// fails after this is the target answering (or refusing to), not the path.
+	phaseConnected
+	// phaseTLSHandshaking means the connection came up and the TLS handshake
+	// started but never finished — a middlebox, an MTU black hole, or a server
+	// that accepts and never speaks. Still a reachability class.
+	phaseTLSHandshaking
+)
 
 // clientTrace returns the httptrace hooks to attach to the request context.
 func (t *connFamilyTracker) clientTrace() *httptrace.ClientTrace {
@@ -718,11 +790,49 @@ func (t *connFamilyTracker) clientTrace() *httptrace.ClientTrace {
 			t.family = checkerdef.IPVersionOf(addr.IP)
 			t.addr = remote.String()
 		},
-		ConnectDone: func(_, addr string, _ error) {
+		ConnectStart: func(_, addr string) {
+			t.mu.Lock()
+			defer t.mu.Unlock()
+
+			// Recorded at dial START, not only at ConnectDone, and that is
+			// load-bearing: when the request deadline fires mid-dial the
+			// transport abandons the attempt and ConnectDone never runs, so a
+			// black-holed connect — the single case this whole feature exists
+			// for — would otherwise reach the marker with no address and be
+			// dropped for having nothing to trace to.
+			t.dialed = addr
+		},
+		ConnectDone: func(_, addr string, err error) {
 			t.mu.Lock()
 			defer t.mu.Unlock()
 
 			t.dialed = addr
+
+			if err != nil {
+				t.phase = phaseConnectFailed
+
+				return
+			}
+
+			t.phase = phaseConnected
+		},
+		TLSHandshakeStart: func() {
+			t.mu.Lock()
+			defer t.mu.Unlock()
+
+			if t.phase == phaseConnected {
+				t.phase = phaseTLSHandshaking
+			}
+		},
+		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
+			t.mu.Lock()
+			defer t.mu.Unlock()
+
+			if err != nil {
+				return
+			}
+
+			t.phase = phaseConnected
 		},
 	}
 }
@@ -757,6 +867,14 @@ func (t *connFamilyTracker) dialedAddr() string {
 	defer t.mu.Unlock()
 
 	return t.dialed
+}
+
+// lastPhase reports how far the last connection attempt got.
+func (t *connFamilyTracker) lastPhase() requestPhase {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.phase
 }
 
 // hostFromURL is the display hostname for a path-trace marker. Best-effort: an
