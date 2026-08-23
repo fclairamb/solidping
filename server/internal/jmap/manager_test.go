@@ -291,3 +291,8 @@ func TestJSONMapToConfigUnwrapsParameterEnvelope(t *testing.T) {
 	r.Equal("https://bare.example.com/.well-known/jmap", cfg.SessionURL)
 	r.Equal("bare@example.com", cfg.Username)
 }
+
+// errHandlerBoom is the failure a handler test double returns when it is asked
+// to blow up. Declared here (not in claim_test.go) so both files share one
+// sentinel and err113 stays happy.
+var errHandlerBoom = errors.New("handler boom")
