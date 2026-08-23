@@ -622,7 +622,7 @@ func TestAgentUploadStampsTheProbingRegion(t *testing.T) {
 
 	// And the stored BYTES carry it, because that is where the dashboard reads
 	// the region from — an attachment-only stamp would still render a blank.
-	stored, err := f.svc.ReadAttachment(f.ctx(), f.org.UID, live[0].UID)
+	stored, err := readStoredAttachment(f, live[0].UID)
 	r.NoError(err)
 
 	capture, err := nettrace.ParseCapture(stored)
@@ -649,4 +649,28 @@ func TestStampTracerouteRegionLeavesUnparseableBytesAlone(t *testing.T) {
 	// And an empty region is a no-op rather than an erasure.
 	valid := tracerouteBytes(t)
 	r.Equal(valid, StampTracerouteRegion(valid, ""))
+}
+
+// readStoredAttachment reads an attachment's bytes back out of storage.
+//
+// A TEST HELPER RATHER THAN A SERVICE METHOD, deliberately: production never
+// needs the bytes — every consumer gets a signed URL and fetches them itself —
+// so an exported reader with no caller would be API surface maintained for the
+// benefit of one assertion. It lives here because the assertion it serves is
+// the important one: that the region is stamped into the STORED artifact, not
+// merely into the metadata beside it.
+func readStoredAttachment(f *uploadFixture, fileUID string) ([]byte, error) {
+	file, err := f.db.GetFile(f.ctx(), f.org.UID, fileUID)
+	if err != nil {
+		return nil, err
+	}
+
+	reader, err := f.svc.files.OpenContent(f.ctx(), file)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = reader.Close() }()
+
+	return ReadCapped(reader)
 }

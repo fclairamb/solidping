@@ -285,25 +285,6 @@ func sniffMime(topic string, body []byte) (string, error) {
 	}
 }
 
-// ReadAttachment returns an attachment's stored bytes, capped like every other
-// read on this rail. Used by tests and by any caller that needs the artifact
-// itself rather than a signed URL to it.
-func (s *Service) ReadAttachment(ctx context.Context, orgUID, fileUID string) ([]byte, error) {
-	file, err := s.dbSvc.GetFile(ctx, orgUID, fileUID)
-	if err != nil {
-		return nil, fmt.Errorf("look up attachment: %w", err)
-	}
-
-	reader, err := s.files.OpenContent(ctx, file)
-	if err != nil {
-		return nil, fmt.Errorf("open attachment: %w", err)
-	}
-
-	defer func() { _ = reader.Close() }()
-
-	return ReadCapped(reader)
-}
-
 // StampTracerouteRegion rewrites an agent-uploaded path capture so it names the
 // region the SERVER knows the uploading agent serves.
 //
