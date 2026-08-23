@@ -44,7 +44,7 @@ func TestControlIsPublicOnlyForPublicPages(t *testing.T) {
 	}
 }
 
-// TestMaxAgeIsRenderedInSeconds covers the feed's longer budget travelling
+// TestMaxAgeIsRenderedInSeconds covers the feed's longer budget traveling
 // through the same helper, so a second surface cannot end up with a directive
 // the first one never sees.
 func TestMaxAgeIsRenderedInSeconds(t *testing.T) {

@@ -333,10 +333,14 @@ func TestLookupCustomDomainCarriesVisibility(t *testing.T) {
 		domain     string
 		visibility string
 	}{
-		{name: "public page", slug: "open", domain: "status.acme.com",
-			visibility: models.StatusPageVisibilityPublic},
-		{name: "password page", slug: "locked", domain: "locked.acme.com",
-			visibility: models.StatusPageVisibilityPassword},
+		{
+			name: "public page", slug: "open", domain: "status.acme.com",
+			visibility: models.StatusPageVisibilityPublic,
+		},
+		{
+			name: "password page", slug: "locked", domain: "locked.acme.com",
+			visibility: models.StatusPageVisibilityPassword,
+		},
 	}
 
 	for _, testCase := range testCases {
