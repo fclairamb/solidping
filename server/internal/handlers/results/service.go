@@ -183,6 +183,16 @@ func (s *Service) ListResults(
 	// Determine if we need check info for response
 	filter.IncludeCheckInfo = s.needsCheckInfo(opts.With)
 
+	// `metrics` and `output` are by far the widest columns on a results row.
+	// Unless this request actually asked for one of them, drop both from the
+	// projection so a 1 000-row chart page stops shipping and jsonb-decoding
+	// two blobs per row that convertResultToResponse would immediately
+	// discard (spec 2026-08-22-04 §3). Derived from the SAME lowercased
+	// `with`-set the response conversion uses, so the projection and the
+	// serialization can never disagree: a blob that was asked for is never
+	// dropped by the projection.
+	filter.SkipBlobs = !needsBlobs(opts.With)
+
 	// Execute query
 	dbResults, err := s.db.ListResults(sloghook.WithCallsite(ctx, "results.list"), &filter)
 	if err != nil {
@@ -299,6 +309,16 @@ func (s *Service) needsCheckInfo(with []string) bool {
 	}
 
 	return false
+}
+
+// needsBlobs reports whether `with` names a field backed by one of the two
+// JSON blob columns (metrics, output). It builds the same set
+// convertResultToResponse builds, so the projection decision in ListResults and
+// the serialization decision in applyDetailFields are driven by one rule.
+func needsBlobs(with []string) bool {
+	withSet := buildWithSet(with)
+
+	return withSet[withMetrics] || withSet[withOutput]
 }
 
 func (s *Service) convertResultToResponse(result *models.Result, with []string) ResultResponse {

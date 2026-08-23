@@ -2427,11 +2427,16 @@ func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter
 		query = query.Where("result.period_start < ?", *filter.PeriodEndBefore)
 	}
 
-	// Cursor-based pagination
+	// Cursor-based pagination, as a row-value comparison rather than the
+	// equivalent `(period_start < ?) OR (period_start = ? AND uid < ?)`. The OR
+	// form is semantically identical but plans as a BitmapOr plus a full sort of
+	// everything before the cursor; the row-value form is a single index range
+	// scan whose start point is the cursor itself, so page N costs the same as
+	// page 1 (spec 2026-08-22-04 §4). Row-value comparison follows the ORDER BY
+	// (period_start DESC, uid DESC) exactly, which is what makes it seekable.
 	if filter.CursorTimestamp != nil && filter.CursorUID != nil {
-		// Results with period_start < cursor_timestamp OR (period_start = cursor_timestamp AND uid < cursor_uid)
-		query = query.Where("(result.period_start < ?) OR (result.period_start = ? AND result.uid < ?)",
-			*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
+		query = query.Where("(result.period_start, result.uid) < (?, ?)",
+			*filter.CursorTimestamp, *filter.CursorUID)
 	}
 
 	// Only join `checks` when the caller explicitly asked for check info via

@@ -2363,11 +2363,15 @@ func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter
 		query = query.Where("result.period_start < ?", *filter.PeriodEndBefore)
 	}
 
-	// Cursor-based pagination
+	// Cursor-based pagination, as a row-value comparison rather than the
+	// equivalent `(period_start < ?) OR (period_start = ? AND uid < ?)`. The OR
+	// form is semantically identical but forces SQLite to union two index ranges
+	// and re-sort; the row-value form matches the ORDER BY
+	// (period_start DESC, uid DESC) exactly and plans as one index range scan
+	// starting at the cursor (spec 2026-08-22-04 §4).
 	if filter.CursorTimestamp != nil && filter.CursorUID != nil {
-		// Results with period_start < cursor_timestamp OR (period_start = cursor_timestamp AND uid < cursor_uid)
-		query = query.Where("(result.period_start < ?) OR (result.period_start = ? AND result.uid < ?)",
-			*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
+		query = query.Where("(result.period_start, result.uid) < (?, ?)",
+			*filter.CursorTimestamp, *filter.CursorUID)
 	}
 
 	// Only join `checks` when the caller explicitly asked for check info via
