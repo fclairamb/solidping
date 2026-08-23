@@ -106,13 +106,22 @@ func (c *MongoDBChecker) Execute(
 // The error return is always nil today. It is kept so this matches the shape
 // every other checker's ping helper has, and so a future failure path does not
 // have to change the signature at every call site.
+//
+// Do NOT re-add a `//nolint:unparam` waiver here. golangci-lint v2.13.1 — the
+// version CI pins (.github/workflows/ci.yml) — no longer reports unparam for
+// this signature, so the waiver becomes an unused directive and nolintlint
+// fails the build. Older local installs (v2.12.0 and earlier) DO still report
+// unparam, so `make lint-back` can disagree with CI here: that means the local
+// golangci-lint is stale, not that the waiver is missing. Upgrade it to match
+// the pinned version rather than restoring the directive — commit dbbe08e93
+// restored it for exactly this reason and broke CI.
 func (c *MongoDBChecker) ping(
 	ctx context.Context,
 	client *mongo.Client,
 	cfg *MongoDBConfig,
 	tunneled bool,
 	start time.Time,
-) (*checkerdef.Result, error) { //nolint:unparam // error kept for interface consistency
+) (*checkerdef.Result, error) {
 	port := cfg.Port
 	if port == 0 {
 		port = defaultPort
