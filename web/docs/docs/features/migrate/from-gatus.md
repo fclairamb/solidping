@@ -1,6 +1,5 @@
 ---
 sidebar_position: 1
-slug: /features/migrate-from-gatus
 title: Migrate from Gatus
 description: Import your Gatus config.yaml endpoints into SolidPing as checks, in one paste.
 ---
