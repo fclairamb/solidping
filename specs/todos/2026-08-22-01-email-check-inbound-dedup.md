@@ -130,3 +130,88 @@ layer (rare; layers 1–2 still cover them).
 One inbound email = exactly one raw result for the matching check, regardless
 of replica count, move failures, or event/poll overlap. At most one replica
 holds an active JMAP session at a time (PG deployments).
+
+## Implementation Plan
+
+All three layers, no DB migration.
+
+### Layer 1 — claim-by-archive (`server/internal/jmap`)
+
+1. `Handler` gains a side-effect-free predicate `ClaimsEmail(email Email) bool`.
+   The manager needs to know *which* inbox messages are worth claiming before
+   any handler runs; without it, claiming would move unrelated mail (spam,
+   bounces) out of the inbox and silently change the `FailedRetentionDays`
+   cleanup path. `emailcheck.Handler` implements it as "the recipient carries a
+   48-hex token" — the same predicate `HandleEmail` already applies internally.
+2. `Client.EmailSetMailboxPartial` returns the per-id `updated` / `notUpdated`
+   split from `Email/set` instead of collapsing it into one error.
+   `EmailSetMailbox` stays as the strict wrapper the cleanup paths use.
+   Compatibility: a response that carries neither `updated` nor `notUpdated`
+   is read as full success (exactly what the old code inferred), so a terse
+   server behaves as before.
+3. `syncEmails` is restructured into three phases:
+   - **select** — pure predicate over the fetched emails, no side effects;
+   - **claim** — one `Email/set` move of every candidate inbox→Processed. Ids
+     that come back `notUpdated` were claimed by another consumer; they are
+     skipped with a debug "lost claim" log (today's WARN);
+   - **process** — the handler chain runs *only* over the ids this consumer
+     successfully moved. If the chain then ignores the email or errors, the
+     claim is released (moved back to the inbox) so the message is retried
+     rather than stranded in Processed.
+4. **Crash-safety re-scan** — `rescanProcessed` runs once per connect cycle
+   (startup and each reconnect), before the first sync. It reads the newest
+   `rescanLimit` (50) messages of the Processed mailbox that arrived within
+   `rescanWindow` (24 h) and re-runs the handler chain over them, recovering
+   emails whose claimer died between the move and the insert. It moves
+   nothing. Safe only because layer 3 makes the insert idempotent.
+   `EmailQueryFilter` gains `After` and `Limit` to keep the scan bounded
+   server-side.
+
+### Layer 2 — single active consumer (`server/internal/db/dblock`)
+
+New package holding the advisory-lock **key registry** (there was no existing
+convention — this establishes one; also written down in
+`wiki/conventions/database.md`). Keys are hand-allocated from the
+`0x5001_0000` namespace, never hashed from a string, so collisions are
+impossible by construction and `grep` finds every user.
+
+`dblock.RunExclusive(ctx, bunDB, key, retry, logger, fn)`:
+
+- On SQLite: runs `fn` directly — one process by construction.
+- On Postgres: pins a **dedicated `*sql.Conn`** (session advisory locks die
+  with their connection, so it must not be taken through the pool and
+  recycled), `pg_try_advisory_lock(key)`, runs `fn` on a derived context, and
+  watches the connection with a periodic ping so a dead leader's context is
+  canceled. Non-holders retry every `retry` (30 s), which is the failover
+  path. Releases with `pg_advisory_unlock` on graceful shutdown.
+
+`server.go`'s `runJMAPManager` wraps `jmapManager.Run` in it, with a comment
+at the call site explaining why this supersedes a `Node.Role` gate.
+
+### Layer 3 — dedup backstop (`db.Service`)
+
+`HasRawResultWithMessageID(ctx, checkUID, messageID string, since time.Time)`:
+Postgres `output->>'messageId' = ?`, SQLite `json_extract(output, '$.messageId')`,
+both scoped to `period_type = 'raw'` and `period_start >= since` so the JSON
+scan stays inside the check's recent-results range.
+`emailcheck.recordResult` consults it before inserting (window:
+`resultDedupWindow` = 7 days) and skips the insert on a hit, logging at debug.
+Emails with no `Message-ID` skip the layer.
+
+### Tests
+
+- `jmap`: two managers, one fake inbox → exactly 1 processed email, loser sees
+  `notUpdated` and records nothing (+ positive control: a lone manager records
+  exactly 1, so "0" cannot pass).
+- `jmap`: `Email/set` rejects the move → that consumer records nothing and the
+  message stays in the inbox for a later retry.
+- `jmap`: re-scan over a Processed message with no result → handled once; run
+  twice → the second pass is absorbed by layer 3.
+- `dblock` (embedded PG): two lockers, one wins; close the winner's connection
+  → the loser acquires within the retry interval. Plus a SQLite pass-through
+  test.
+- `db`: dedup query on both PG and SQLite — same messageId twice → 1 row,
+  different messageId → 2 rows.
+- `emailcheck`: end-to-end over SQLite — the same email handled twice yields
+  one result; a different Message-ID yields two; a blank Message-ID is not
+  deduped.
