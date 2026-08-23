@@ -611,6 +611,19 @@ func (h *Handler) runAgentConnection(
 	outbound := h.conns.add(workerUID)
 	defer h.conns.remove(workerUID, outbound)
 
+	// Subscribe BEFORE announcing the connection with the hello frame below.
+	// An agent that has seen hello is, from the client's point of view, live —
+	// so a check created the instant after must reach it. Subscribing after
+	// the announcement left a window in which check.created fired against no
+	// listener and the express hint was lost for good, dropping that agent to
+	// poll latency (and making TestJobsAvailableHintFansOutAcrossOrgs flake
+	// under load: it timed out rather than running slow, the signature of a
+	// dropped notification rather than a late one). Listen's channel is
+	// buffered and Notify's send is non-blocking, so subscribing this early
+	// costs nothing while the loop below is not yet draining.
+	hints := h.events.Listen("check.created")
+	defer h.events.Unlisten("check.created", hints)
+
 	// Reconnects have not seen a hello-with-identity yet; enrollment
 	// connections got theirs in the enrolled frame — a second hello echoing
 	// the identity is harmless and keeps the protocol uniform.
@@ -649,9 +662,6 @@ func (h *Handler) runAgentConnection(
 			}
 		}
 	}()
-
-	hints := h.events.Listen("check.created")
-	defer h.events.Unlisten("check.created", hints)
 
 	h.serveConnEvents(loopCtx, conn, state, &connChannels{
 		frames:   frames,
