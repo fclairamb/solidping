@@ -481,3 +481,109 @@ func tracerouteBytes(t *testing.T) []byte {
 
 	return body
 }
+
+// TestAgentUploadAcceptsAPathCaptureUnderTheTracerouteKind is the traceroute
+// kind's end of the agent upload path (spec 2026-08-21-10): the SAME endpoint,
+// the SAME signature, a different kind — which is exactly what the generic
+// attachment rail was built for.
+func TestAgentUploadAcceptsAPathCaptureUnderTheTracerouteKind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentTracerouteTopic(f.incident.UID)
+
+	rec := f.serve(t, agent.signedRequest(f.ctx(), t, topic, tracerouteBytes(t)))
+	r.Equal(http.StatusCreated, rec.Code)
+
+	var resp UploadResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.NotEmpty(resp.FileUID)
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 1)
+	r.Equal(KindTraceroute, live[0].Kind)
+	// The media type is SNIFFED from the bytes, never taken from the header.
+	r.Equal("application/json", live[0].MimeType)
+	r.Equal(TriggerAgentUpload, live[0].Trigger)
+}
+
+// TestAgentUploadRefusesJunkUnderTheTracerouteKind: for this kind "is it JSON"
+// is not a good enough sniff. The bytes come off the wire from an agent, and a
+// blob the dashboard cannot render is worse stored than refused.
+func TestAgentUploadRefusesJunkUnderTheTracerouteKind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentTracerouteTopic(f.incident.UID)
+
+	for name, body := range map[string][]byte{
+		"a png":             pngBytes("not-a-trace"),
+		"arbitrary json":    []byte(`{"hello":"world"}`),
+		"a json array":      []byte(`[]`),
+		"json with extras":  []byte(`{"version":1,"mode":"icmp","address":"1.2.3.4","family":"ipv4","hops":[],"exec":"rm"}`),
+		"a truncated blob":  []byte(`{"version":1,"mode":"icmp",`),
+		"an unknown schema": []byte(`{"version":99,"mode":"icmp","address":"1.2.3.4","family":"ipv4","hops":[]}`),
+	} {
+		rec := f.serve(t, agent.signedRequest(f.ctx(), t, topic, body))
+		r.Equal(http.StatusUnsupportedMediaType, rec.Code, "%s must be refused", name)
+	}
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Empty(live, "a refused upload must write no row at all")
+
+	// Positive control: the same agent, the same topic, real capture bytes.
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, tracerouteBytes(t))).Code)
+}
+
+// TestTheKindDecidesTheMediaType is the containment property of a per-kind
+// sniff: adding JSON as an accepted type for traceroutes must NOT make JSON
+// acceptable as a screenshot, and PNG must not become acceptable as a trace.
+func TestTheKindDecidesTheMediaType(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+
+	r.Equal(http.StatusUnsupportedMediaType,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentScreenshotTopic(f.incident.UID), tracerouteBytes(t))).Code,
+		"a path capture must not be accepted as a screenshot")
+
+	r.Equal(http.StatusUnsupportedMediaType,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentTracerouteTopic(f.incident.UID), pngBytes("shot"))).Code,
+		"a PNG must not be accepted as a path capture")
+
+	// Positive control: each kind accepts its own bytes.
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentScreenshotTopic(f.incident.UID), pngBytes("shot"))).Code)
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentTracerouteTopic(f.incident.UID), tracerouteBytes(t))).Code)
+
+	// And both survive side by side: the incident listing is by PREFIX, so a
+	// second kind on the same incident surfaces rather than replacing the first.
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 2)
+
+	kinds := map[string]bool{}
+	for _, row := range live {
+		kinds[row.Kind] = true
+	}
+
+	r.True(kinds[KindScreenshot])
+	r.True(kinds[KindTraceroute])
+}

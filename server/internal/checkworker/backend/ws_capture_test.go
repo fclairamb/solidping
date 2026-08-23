@@ -83,6 +83,10 @@ type captureServer struct {
 	// to prove the agent serves a capture at most once.
 	askTwice bool
 	uploaded chan struct{}
+	// traceAsk, when set, makes the server follow each acked result with a
+	// trace-request frame (spec 2026-08-21-10) under traceTopic.
+	traceAsk   *agents.TraceRequestFrame
+	traceTopic string
 }
 
 func newCaptureServer(t *testing.T) *captureServer {
@@ -190,9 +194,19 @@ func (f *captureServer) readLoop(ctx context.Context, conn *websocket.Conn) {
 		f.mu.Lock()
 		f.rawResults = append(f.rawResults, raw)
 		askTwice := f.askTwice
+		traceAsk := f.traceAsk
+		traceTopic := f.traceTopic
 		f.mu.Unlock()
 
 		_ = wsjson.Write(ctx, conn, agents.ServerFrame{Type: agents.MsgTypeAck, ID: frame.ID})
+
+		if traceAsk != nil {
+			_ = wsjson.Write(ctx, conn, agents.ServerFrame{
+				Type:  agents.MsgTypeTraceRequest,
+				Topic: traceTopic,
+				Trace: traceAsk,
+			})
+		}
 
 		if frame.Diagnostics == nil || frame.Diagnostics.Screenshot == nil ||
 			!frame.Diagnostics.Screenshot.Available {

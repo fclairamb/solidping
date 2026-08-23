@@ -61,6 +61,9 @@ const (
 	TriggerIncidentOpen = "incident-open"
 	// TriggerIncidentReopen marks the capture of a relapse's onset.
 	TriggerIncidentReopen = "incident-reopen"
+	// TriggerAgentUpload marks an artifact that arrived through the agent
+	// upload endpoint rather than being written in-process.
+	TriggerAgentUpload = "agent-upload"
 )
 
 // Errors returned by the service.

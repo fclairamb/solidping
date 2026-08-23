@@ -147,7 +147,7 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 
 	fileUID, err := h.svc.Put(req.Context(), orgUID, rawTopic(topic), attachmentName(topic), body,
 		models.JSONMap{
-			DetailKeyTrigger: "agent-upload",
+			DetailKeyTrigger: TriggerAgentUpload,
 		})
 	if err != nil {
 		return h.writePutError(writer, req, err)
