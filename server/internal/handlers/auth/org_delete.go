@@ -9,6 +9,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // Organization-deletion errors.
@@ -110,6 +111,22 @@ func (s *Service) DeleteOrg(
 	); reapErr != nil {
 		slog.WarnContext(ctx, "failed to reap organization attachments",
 			"error", reapErr, "orgUID", org.UID)
+	}
+
+	// Strip support-thread attribution pointing at the deleted org. The THREADS
+	// SURVIVE: a support conversation belongs to the instance, and attribution
+	// only records who we thought the sender was — deleting an org must not
+	// delete a stranger's conversation, and must not leave a dangling reference
+	// either (spec 2026-08-22-02). Best-effort, same reasoning as the
+	// attachment reap above.
+	if s.support != nil {
+		if detached, detachErr := s.support.DetachOrganization(ctx, org.UID); detachErr != nil {
+			slog.WarnContext(ctx, "failed to detach support thread attribution",
+				"error", detachErr, "orgUID", org.UID)
+		} else if detached > 0 {
+			slog.InfoContext(ctx, "detached support thread attribution",
+				"orgUID", org.UID, "threads", detached)
+		}
 	}
 
 	slog.InfoContext(ctx, "organization deleted",
@@ -243,4 +260,11 @@ func (s *Service) deleteOrgMemberships(ctx context.Context, orgUID string) error
 	}
 
 	return nil
+}
+
+// SetSupportInbox wires the support inbox used to detach attribution on org
+// deletion. Late injection: the support service is built after auth, and
+// integrations that own it already import this package.
+func (s *Service) SetSupportInbox(svc *support.Service) {
+	s.support = svc
 }

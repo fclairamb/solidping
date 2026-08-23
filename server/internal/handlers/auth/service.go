@@ -29,6 +29,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
+	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
@@ -139,7 +140,10 @@ type Service struct {
 	// fullCfg is the LIVE shared *config.Config pointer. The systemconfig
 	// overlay and ensureJWTSecret mutate fullCfg.Auth after NewService, so
 	// reads through it see the post-overlay values.
-	fullCfg      *config.Config
+	fullCfg *config.Config
+	// support is the instance support inbox. Only used to detach attribution
+	// when an org is deleted; nil-guarded (see SetSupportInbox).
+	support      *support.Service
 	jobsSvc      jobsvc.Service
 	entitlements EntitlementsChecker
 	patCache     map[string]*cachedPATClaims

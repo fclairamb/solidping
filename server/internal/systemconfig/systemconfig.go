@@ -47,6 +47,10 @@ const (
 	// Empty means the whole support-reply feature is off: no Reply-To header,
 	// no "you can reply" notice, no inbound-message mirror.
 	KeyEmailReplyTo ParameterKey = "email.reply_to"
+	// KeySupportRetentionDays is how long a CLOSED support thread is kept
+	// before the retention sweep purges it and its messages. 0 or negative
+	// means keep forever, a supported choice for an operator under legal hold.
+	KeySupportRetentionDays ParameterKey = "support.retention_days"
 
 	// KeySessionMaxDuration is the global (system-wide) hard cap on session
 	// lifetime in seconds, measured from login (spec

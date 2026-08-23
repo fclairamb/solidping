@@ -76,6 +76,10 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	// Ensure stuck-job reaper exists (global, not per-org). Running it at
 	// startup gives an immediate first sweep after a deploy — exactly when
 	// orphaned 'running' jobs appear.
+	if err := r.ensureSupportCleanupJob(ctx, jctx); err != nil {
+		return err
+	}
+
 	if err := r.ensureEventsCleanupJob(ctx, jctx); err != nil {
 		return err
 	}
@@ -626,6 +630,30 @@ func (r *StartupJobRun) ensureAbandonedResultReaperJob(ctx context.Context, jctx
 		log.InfoContext(ctx, "Failed to create abandoned-result reaper job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured abandoned-result reaper exists")
+	}
+
+	return nil
+}
+
+// ensureSupportCleanupJob provisions the global support-retention sweeper. The
+// job reschedules itself daily; this just makes sure the very first one exists.
+// CreateJob dedupes on type+config+org+pending, so a restart does not stack
+// duplicates.
+func (r *StartupJobRun) ensureSupportCleanupJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping support cleanup provisioning (services not available)")
+
+		return nil
+	}
+
+	if _, err := jctx.Services.Jobs.CreateJob(
+		ctx, "", string(jobdef.JobTypeSupportCleanup), nil, nil,
+	); err != nil {
+		log.InfoContext(ctx, "Failed to create support cleanup job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured support cleanup job exists")
 	}
 
 	return nil

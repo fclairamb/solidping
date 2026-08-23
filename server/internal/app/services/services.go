@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
@@ -64,6 +65,11 @@ type Registry struct {
 	// instance-level provider (server-provided, the default). Nil only in
 	// tests that never page a phone.
 	SMS *sms.Resolver
+
+	// Support is the instance support inbox (spec 2026-08-22-02): capture of
+	// inbound human messages our bots cannot parse, and the retention sweep
+	// over them. Nil-guarded by every consumer.
+	Support *support.Service
 }
 
 // NewRegistry creates a new services registry.

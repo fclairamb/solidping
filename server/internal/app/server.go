@@ -97,6 +97,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
+	"github.com/fclairamb/solidping/server/internal/handlers/supportinbox"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
@@ -128,6 +129,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
+	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
@@ -1719,8 +1721,42 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	publicSubscribers.GET("/confirm", statusSubscribersHandler.Confirm)
 	publicSubscribers.GET("/unsubscribe", statusSubscribersHandler.Unsubscribe)
 
+	// The instance support inbox (spec 2026-08-22-02). Built BEFORE the channel
+	// integrations because each of them captures into it.
+	//
+	// The mailer is the shared instance sender. The support mailbox
+	// (SP_EMAIL_REPLY_TO / email.reply_to) is what the whole feature hangs off:
+	// unset, capture still happens but no mirror notification is sent, which is
+	// the documented "off" state rather than a half-configured one.
+	supportService := support.NewService(s.dbService, support.Options{
+		Mailer:  s.services.EmailSender,
+		Logger:  slog.Default(),
+		BaseURL: s.config.Server.BaseURL,
+		ReplyTo: s.config.Email.ReplyTo,
+	})
+	s.services.Support = supportService
+	s.authService.SetSupportInbox(supportService)
+
+	supportHandler := supportinbox.NewHandler(supportService, s.config)
+	// SuperAdmin on EVERY endpoint. The dash0 route that consumes this is
+	// unlinked, but a hidden route is not an access control — the URL is public
+	// knowledge and this group is the boundary.
+	supportGroup := api.NewGroup("/support").
+		Use(authMiddleware.RequireAuth).
+		Use(authMiddleware.RequireSuperAdmin)
+	supportGroup.GET("/threads", supportHandler.ListThreads)
+	supportGroup.GET("/threads/:uid", supportHandler.GetThread)
+	supportGroup.PATCH("/threads/:uid", supportHandler.UpdateThread)
+	supportGroup.GET("/threads/:uid/messages", supportHandler.ListMessages)
+	supportGroup.POST("/threads/:uid/messages", supportHandler.CreateMessage)
+
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
+	slackService.SetSupport(supportService)
+	// One line at boot naming how many workspaces still owe a reinstall before
+	// their DMs arrive. Slack does not grant new scopes to existing installs, so
+	// the only other symptom is an inbox that stays quiet.
+	slackService.ReportDMCapability(ctx)
 	// Auto-match members to workspace users right after an install so the first
 	// alert can already mention the on-call person (spec 2026-08-12-03). The
 	// dependency can only point this way — handlers/integrations imports the
@@ -1754,7 +1790,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// signature check in VerifyMiddleware, which Discord probes and which it
 	// DEACTIVATES the endpoint over if it ever fails).
 	discordService := discord.NewService(s.dbService, s.config, checksService, incidentsService)
+	discordService.SetSupport(supportService)
 	discordHandler := discord.NewHandler(discordService, s.config)
+
+	s.registerSupportRepliers(supportService, slackService, discordService)
 
 	// Build the Gateway supervisor up-front when enabled so its status is
 	// readable even before Start(). The Run() goroutine is launched from
@@ -1794,11 +1833,22 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// param. Voice and status get DIFFERENT middlewares: a server-credential
 	// status callback is validated with the instance credentials of the
 	// capability it belongs to (SMS or voice), which are configured separately.
-	twilioHandler := twiliocb.NewHandler(s.dbService, s.services.Credentials, s.config, incidentsService)
+	twilioHandler := twiliocb.NewHandler(
+		s.dbService, s.services.Credentials, s.config, incidentsService,
+		twiliocb.WithSupport(supportService),
+	)
 	twilioIntegration := api.NewGroup("/integrations/twilio")
 	twilioIntegration.POST("/voice", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleVoice))
 	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleGather))
 	twilioIntegration.POST("/status", twilioHandler.VerifyStatusMiddleware(twilioHandler.HandleStatus))
+	// Inbound SMS. Until spec 2026-08-22-02 there was NO such route: the
+	// Messaging Service had use_inbound_webhook_on_number: true and SolidPing
+	// exposed nothing, so a reply died at Twilio. Carrier keywords
+	// (STOP/START/HELP) are answered and NOT captured — Twilio's Advanced
+	// Opt-Out owns those, and filing them as support tickets would bury real
+	// opt-outs.
+	twilioIntegration.POST(twiliocb.MessagePath,
+		twilioHandler.VerifyMessageMiddleware(twilioHandler.HandleMessage))
 
 	// OVH SMS delivery receipts. OVH does not sign its callbacks and offers no
 	// per-job callback field, so the route authenticates by construction with a
@@ -1817,7 +1867,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// with the app secret before parsing. Registered only when the instance has
 	// WhatsApp configured — an unconfigured deployment exposes no route at all.
 	if s.config.WhatsApp.Active() {
-		whatsAppHandler := whatsappcb.NewHandler(s.dbService, s.config)
+		whatsAppHandler := whatsappcb.NewHandler(s.dbService, s.config,
+			whatsappcb.WithSupport(supportService))
 		whatsAppIntegration := api.NewGroup("/integrations/whatsapp")
 		whatsAppIntegration.GET("/webhook", whatsAppHandler.HandleVerify)
 		whatsAppIntegration.POST("/webhook", whatsAppHandler.HandleEvent)
@@ -1837,7 +1888,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	if s.config.Telegram.Configured() {
 		telegramHandler := telegramcb.NewHandler(s.dbService, s.config,
 			telegramcb.WithAcknowledger(incidentsService),
-			telegramcb.WithCommenter(incidentsService))
+			telegramcb.WithCommenter(incidentsService),
+			telegramcb.WithSupport(supportService))
 		telegramIntegration := api.NewGroup("/integrations/telegram")
 		// Path kept in sync with TelegramWebhookPath, which the boot-time
 		// self-registration uses.

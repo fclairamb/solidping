@@ -70,6 +70,9 @@ const (
 	// no retention at all, which stopped being survivable once every login and
 	// config change started landing in it.
 	JobTypeEventsCleanup JobType = "events_cleanup"
+	// JobTypeSupportCleanup purges closed support threads past the retention
+	// window (spec 2026-08-22-02). Message bodies are personal data.
+	JobTypeSupportCleanup JobType = "support_cleanup"
 	// JobTypeCustomDomainVerify re-runs the ownership (TXT) check for every
 	// status page with a custom domain, clearing verification after repeated
 	// failures (domain release/takeover protection). Global, self-rescheduling
