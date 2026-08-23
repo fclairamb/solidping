@@ -157,11 +157,25 @@ func (d *Dispatcher) dispatchLocal(req *incidents.TraceRequest, address net.IP) 
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), d.cfg.Budget)
 		defer cancel()
 
-		d.runAndStore(ctx, req, address)
+		// A PANIC HERE MUST NOT TAKE THE PROCESS DOWN. The whole contract of
+		// this feature is that a trace failure never affects the incident, and
+		// an unrecovered panic on a goroutine is the one failure mode that
+		// breaks that contract absolutely — it kills the worker, and with it
+		// every check it was running. The prober parses ICMP bytes chosen by
+		// whatever is on the path, so "carefully bounds-checked" is a reason to
+		// expect no panic, not a reason to be unable to survive one.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				d.logger.DebugContext(ctx, "path trace panicked",
+					"incident_uid", req.IncidentUID, "panic", recovered)
+			}
 
-		if d.done != nil {
-			d.done <- struct{}{}
-		}
+			if d.done != nil {
+				d.done <- struct{}{}
+			}
+		}()
+
+		d.runAndStore(ctx, req, address)
 	}()
 }
 

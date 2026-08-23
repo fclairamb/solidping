@@ -539,3 +539,38 @@ func TestLoadedConfigDefaultsAreTheSame(t *testing.T) {
 		t.Fatal("the per-organization rate limit must have a real default: 0 disables the mass-outage guard")
 	}
 }
+
+// TestDispatcherSurvivesAPanickingProber is the hardest form of "a trace
+// failure never affects the incident".
+//
+// Errors on this path are already swallowed everywhere — RequestTrace returns
+// nothing, every store and prober error is logged and dropped — but a panic on
+// a detached goroutine is not an error: unrecovered, it takes the whole process
+// down, and with it every check the worker was running. A best-effort
+// diagnostic must not be able to do that, and the prober parses ICMP bytes
+// chosen by whatever sits on the path.
+func TestDispatcherSurvivesAPanickingProber(t *testing.T) {
+	t.Parallel()
+
+	store := &recordingStore{}
+	dispatcher, done := newLocalDispatcher(t, store,
+		func(context.Context, *nettrace.Options) (*nettrace.Capture, error) {
+			panic("a malformed ICMP reply blew up the parser")
+		})
+
+	dispatcher.RequestTrace(t.Context(), testRequest())
+	waitFor(t, done)
+
+	if got := store.snapshot(); len(got) != 0 {
+		t.Fatalf("a panicking trace stored something: %+v", got)
+	}
+
+	// The dispatcher is still usable afterwards: a panic must not poison it.
+	dispatcher.run = stubCapture
+	dispatcher.RequestTrace(t.Context(), testRequest())
+	waitFor(t, done)
+
+	if got := store.snapshot(); len(got) != 1 {
+		t.Fatalf("the dispatcher stopped working after a panic: %d stored", len(got))
+	}
+}
