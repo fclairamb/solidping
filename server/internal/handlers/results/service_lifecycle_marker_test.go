@@ -19,7 +19,7 @@ func TestGetResult_LifecycleMarkerRowNoFallback(t *testing.T) {
 
 	dbSvc, ctx := newNeighborsTestDB(t)
 	r := require.New(t)
-	svc := NewService(dbSvc)
+	svc := NewService(dbSvc, nil)
 
 	org := models.NewOrganization("lifecycle-marker-org", "")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

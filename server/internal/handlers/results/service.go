@@ -11,10 +11,13 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
+	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
 var (
@@ -47,15 +50,20 @@ const (
 // Service provides business logic for results.
 type Service struct {
 	db db.Service
+	// cfg is only read for the legacy koanf retention fallback when resolving
+	// the raw-tier clamp; it may be nil (see NewService).
+	cfg *config.Config
 	// regions normalizes the `?region=` filter. A read filter is an input path
 	// like any other, so it accepts the legacy `@<org>/<slug>` spelling for this
 	// org and rejects a foreign one (spec 2026-08-13-01).
 	regions *regions.Service
 }
 
-// NewService creates a new results service.
-func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService, regions: regions.NewService(dbService)}
+// NewService creates a new results service. cfg may be nil (the MCP surface and
+// isolated tests have none) — the raw-tier clamp then resolves retention from
+// the live performance.* parameters and, failing those, the documented defaults.
+func NewService(dbService db.Service, cfg *config.Config) *Service {
+	return &Service{db: dbService, cfg: cfg, regions: regions.NewService(dbService)}
 }
 
 // normalizeRegionFilter canonicalizes a caller-supplied `?region=` list.
@@ -125,10 +133,74 @@ type PaginationResponse struct {
 	Size   int    `json:"size"`
 }
 
+// WindowResponse reports the time window the server actually queried, which is
+// not always the one the caller asked for: a raw-tier request is clamped to the
+// raw-retention band (see clampRawWindow). It is emitted on every response —
+// including when nothing was clamped — so `clamped: false` is an answer a
+// client can act on rather than an absent key it has to guess about. Additive
+// and optional: no pre-existing consumer reads it.
+type WindowResponse struct {
+	// PeriodStartAfter is the effective `period_start >=` bound, absent when the
+	// query has no lower bound at all.
+	PeriodStartAfter *time.Time `json:"periodStartAfter,omitempty"`
+	// PeriodEndBefore is the effective `period_start <` bound (NOT period_end —
+	// see the openapi description), absent when the query has no upper bound.
+	PeriodEndBefore *time.Time `json:"periodEndBefore,omitempty"`
+	// Clamped reports whether the server moved PeriodStartAfter forward from
+	// what the caller requested.
+	Clamped bool `json:"clamped"`
+}
+
 // ListResultsResponse is the response for listing results.
 type ListResultsResponse struct {
 	Data       []ResultResponse   `json:"data"`
 	Pagination PaginationResponse `json:"pagination"`
+	Window     WindowResponse     `json:"window"`
+}
+
+// clampRawWindow bounds a raw-only request to the raw-retention band and reports
+// whether it moved the caller's lower bound.
+//
+// This endpoint is public API — dash0, the MCP tools and third-party scripts all
+// reach it — so a `periodType=raw` request spanning a year is otherwise planned
+// and executed against the largest table in the system with nothing to stop it.
+// Rows older than the band do not exist: the aggregation job compacts a bucket
+// and deletes its source raw rows in one transaction, so this removes work
+// without removing results.
+//
+// It deliberately fires ONLY for a raw-only request, not for every request whose
+// period types "include" raw. A mixed (or unfiltered) request also selects
+// rollup rows, whose retention is months rather than hours; clamping those to
+// the raw band would delete real results from the answer instead of removing
+// dead work. Mixed is separately the shape spec 2026-08-22-04 forbids clients
+// from sending, because neither partial index on `results` can serve it.
+//
+// Retention is resolved through systemconfig, never from cfg.Aggregation
+// directly: the server "Aggregation" settings tab writes performance.*
+// parameters that never reach the koanf struct, and a reader clamping to 24 h
+// while the job keeps 168 h would silently drop six days of raw that no rollup
+// covers. uptimebar.RawTierStart is the one raw bound in the system — reused,
+// not reimplemented, so the two cannot drift.
+func (s *Service) clampRawWindow(ctx context.Context, filter *models.ListResultsFilter) bool {
+	if models.PeriodTypesTierSide(filter.PeriodTypes) != models.PeriodTierRaw {
+		return false
+	}
+
+	rawHours, _ := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
+
+	var requested time.Time
+	if filter.PeriodStartAfter != nil {
+		requested = *filter.PeriodStartAfter
+	}
+
+	bound := uptimebar.RawTierStart(requested, time.Now().UTC(), rawHours)
+	if filter.PeriodStartAfter != nil && !bound.After(requested) {
+		return false
+	}
+
+	filter.PeriodStartAfter = &bound
+
+	return true
 }
 
 // ListResults lists results for an organization with filtering and pagination.
@@ -193,6 +265,10 @@ func (s *Service) ListResults(
 	// dropped by the projection.
 	filter.SkipBlobs = !needsBlobs(opts.With)
 
+	// Bound a raw-only request to the raw-retention band before the query is
+	// built, so the reported window is the one that actually ran.
+	clamped := s.clampRawWindow(ctx, &filter)
+
 	// Execute query
 	dbResults, err := s.db.ListResults(sloghook.WithCallsite(ctx, "results.list"), &filter)
 	if err != nil {
@@ -224,6 +300,11 @@ func (s *Service) ListResults(
 		Pagination: PaginationResponse{
 			Cursor: nextCursor,
 			Size:   len(responses),
+		},
+		Window: WindowResponse{
+			PeriodStartAfter: filter.PeriodStartAfter,
+			PeriodEndBefore:  filter.PeriodEndBefore,
+			Clamped:          clamped,
 		},
 	}, nil
 }

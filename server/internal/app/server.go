@@ -1164,7 +1164,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	agentWorkerIncidents.SetTraceRequester(agentTraces)
 
 	// Results routes (authentication required)
-	resultsService := results.NewService(s.dbService)
+	resultsService := results.NewService(s.dbService, s.config)
 	resultsHandler := results.NewHandler(resultsService, s.config)
 	orgResults := orgGroup("/orgs/:org/results")
 	orgResults.GET("", resultsHandler.ListResults)

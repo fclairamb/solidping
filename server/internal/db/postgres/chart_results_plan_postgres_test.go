@@ -61,7 +61,7 @@ func captureChartFilter(
 	t.Helper()
 
 	rec := &recordingResultsDB{Service: s}
-	_, err := results.NewService(rec).ListResults(ctx, orgSlug, opts)
+	_, err := results.NewService(rec, nil).ListResults(ctx, orgSlug, opts)
 	require.NoError(t, err)
 	require.Len(t, rec.filters, 1, "one API request must issue exactly one DB query")
 
@@ -235,7 +235,7 @@ func TestResultsCursorSeeksByRowValue_Postgres(t *testing.T) {
 	const pageSize = 1000
 
 	windowStart := time.Now().UTC().AddDate(0, 0, -1)
-	page1, err := results.NewService(s).ListResults(ctx, org.Slug, &results.ListResultsOptions{
+	page1, err := results.NewService(s, nil).ListResults(ctx, org.Slug, &results.ListResultsOptions{
 		Checks:           []string{target.UID},
 		PeriodTypes:      []string{models.PeriodTypeRaw},
 		PeriodStartAfter: &windowStart,

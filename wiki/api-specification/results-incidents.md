@@ -14,11 +14,41 @@ Query parameters:
 - `status` - comma-separated: `up`, `down`, `unknown`
 - `region` - comma-separated regions
 - `periodType` - comma-separated period types
-- `periodStartAfter` - RFC3339 timestamp
-- `periodEndBefore` - RFC3339 timestamp
+- `periodStartAfter` - RFC3339 timestamp, filters on `period_start >= value`
+- `periodEndBefore` - RFC3339 timestamp. **Despite the name it filters on
+  `period_start < value`, not on `period_end`** — an aggregated bucket that
+  starts inside the window and ends outside it IS returned. That is deliberate
+  and charting depends on it: a partially visible bucket should still be drawn.
+  For raw rows the distinction is immaterial (their period is a single probe).
 - `with` - comma-separated optional fields
 - `cursor` - pagination cursor
 - `limit` - page size (default 100, max 1000). Also accepts `?size=` as a deprecated alias.
+
+### The raw-tier clamp and the `window` object
+
+Both useful indexes on `results` are partial and split on
+`period_type = 'raw'`, so ask for one side of that split per request — a single
+request naming raw *and* a rollup tier is served by neither index and
+sequentially scans the largest table in the system.
+
+A **raw-only** request (`periodType=raw`) is additionally clamped server-side:
+`periodStartAfter` is moved forward to the raw-retention boundary
+(`performance.aggregation_retention_raw_hours`, plus a small lag margin) when
+the caller asked for more. Nothing is lost — the aggregation job compacts a
+bucket and deletes its source raw rows in the same transaction, so raw older
+than the boundary does not exist. A mixed or unfiltered request is **not**
+clamped: it also selects rollup rows, whose retention is months.
+
+Every response carries a top-level `window` object alongside `data` and
+`pagination`, reporting the window that actually ran:
+
+```json
+{ "data": [], "pagination": { "size": 0 },
+  "window": { "periodStartAfter": "2026-08-21T10:00:00Z", "clamped": true } }
+```
+
+`clamped: false` is emitted too, so a client can tell a clamp from a genuinely
+empty range and size a follow-up request instead of guessing.
 
 `pagination` on this endpoint carries only `cursor` and `size` — **no `total`**.
 `results` is the largest table in the system; an unbounded `COUNT(*)` scoped to

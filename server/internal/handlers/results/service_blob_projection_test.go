@@ -96,7 +96,7 @@ func TestListResults_SkipsBlobsUnlessRequested(t *testing.T) {
 			rr := require.New(t)
 			rec := &blobProjectionRecorder{Service: dbSvc}
 
-			resp, listErr := NewService(rec).ListResults(t.Context(), org.Slug, &ListResultsOptions{
+			resp, listErr := NewService(rec, nil).ListResults(t.Context(), org.Slug, &ListResultsOptions{
 				Checks: []string{check.UID},
 				Size:   100,
 				With:   tc.with,

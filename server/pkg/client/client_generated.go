@@ -4820,6 +4820,9 @@ type OrgResultListResponse struct {
 
 	// Pagination Cursor pagination for the results endpoint only — deliberately no `total`. `results` is the largest table in the system, and an unbounded COUNT(*) on every page load is too expensive to compute (see the Results section of the API wiki). Page forward with `cursor` until it comes back empty.
 	Pagination *ResultsCursorPagination `json:"pagination,omitempty"`
+
+	// Window The time window the server actually queried. A raw-only request is clamped to the raw-retention band, so this is not always the window that was asked for. Always present — `clamped: false` is an answer, letting a client tell a clamp from a genuinely empty range and size a follow-up request. Additive and optional to read.
+	Window *ResultsWindow `json:"window,omitempty"`
 }
 
 // OrgSettingsResponse defines model for OrgSettingsResponse.
@@ -5157,6 +5160,18 @@ type ResultsCursorPagination struct {
 	// Cursor Cursor for next page (empty if no more results)
 	Cursor *string `json:"cursor,omitempty"`
 	Size   *int    `json:"size,omitempty"`
+}
+
+// ResultsWindow The time window the server actually queried. A raw-only request is clamped to the raw-retention band, so this is not always the window that was asked for. Always present — `clamped: false` is an answer, letting a client tell a clamp from a genuinely empty range and size a follow-up request. Additive and optional to read.
+type ResultsWindow struct {
+	// Clamped True when the server moved `periodStartAfter` forward from the requested value.
+	Clamped *bool `json:"clamped,omitempty"`
+
+	// PeriodEndBefore Effective `period_start <` bound (not `period_end` — see the query parameter description); absent when unbounded.
+	PeriodEndBefore *time.Time `json:"periodEndBefore,omitempty"`
+
+	// PeriodStartAfter Effective `period_start >=` bound; absent when unbounded.
+	PeriodStartAfter *time.Time `json:"periodStartAfter,omitempty"`
 }
 
 // SLO defines model for SLO.
@@ -6744,13 +6759,23 @@ type ListOrgResultsParams struct {
 	// Region Filter by region (comma-separated for multiple)
 	Region *string `form:"region,omitempty" json:"region,omitempty"`
 
-	// PeriodType Filter by period type (comma-separated for multiple)
+	// PeriodType Filter by period type (comma-separated for multiple). Both useful indexes on `results` are partial and split on `period_type = 'raw'`, so a single request naming raw AND a rollup tier is served by neither and sequentially scans the table — ask for one side per request. A raw-only request is additionally clamped server-side to the raw-retention band (see the `window` object on the response); rows older than that were deleted by the aggregation job, so nothing is lost.
 	PeriodType *string `form:"periodType,omitempty" json:"periodType,omitempty"`
+
+	// PeriodStartAfter RFC3339 timestamp. Filters on `period_start >= value`. For a raw-only request the server may move this forward to the raw-retention boundary; the effective value is echoed in the response's `window` object.
+	PeriodStartAfter *time.Time `form:"periodStartAfter,omitempty" json:"periodStartAfter,omitempty"`
+
+	// PeriodEndBefore RFC3339 timestamp. Despite the name it filters on `period_start < value`, NOT on `period_end` — an aggregated bucket that starts inside the window and ends outside it IS returned. That is deliberate and charting depends on it: a partially visible bucket should still be drawn.
+	PeriodEndBefore *time.Time `form:"periodEndBefore,omitempty" json:"periodEndBefore,omitempty"`
 
 	// Cursor Cursor for pagination
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Size Results per page (default 20, max 100)
+	// Limit Results per page (default 100, max 1000)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Size Deprecated alias for `limit`.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 
 	// With Comma-separated optional fields to include. durationAvgMs and durationP95Ms are populated on aggregated rollup rows (hour/day/ month) from the stored duration_avg/duration_p95 columns; both are absent on raw rows, which don't store them.
@@ -24131,9 +24156,45 @@ func NewListOrgResultsRequest(server string, org OrgPath, params *ListOrgResults
 
 		}
 
+		if params.PeriodStartAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "periodStartAfter", *params.PeriodStartAfter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PeriodEndBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "periodEndBefore", *params.PeriodEndBefore, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

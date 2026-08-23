@@ -46,7 +46,7 @@ func TestListResults_PaginationHasNoTotal(t *testing.T) {
 		r.NoError(dbSvc.CreateResult(ctx, res))
 	}
 
-	svc := NewService(dbSvc)
+	svc := NewService(dbSvc, nil)
 
 	resp, err := svc.ListResults(ctx, org.Slug, &ListResultsOptions{Size: 100})
 	r.NoError(err)

@@ -2165,22 +2165,57 @@ paths:
             type: string
         - name: periodType
           in: query
-          description: Filter by period type (comma-separated for multiple)
+          description: >
+            Filter by period type (comma-separated for multiple). Both useful
+            indexes on `results` are partial and split on
+            `period_type = 'raw'`, so a single request naming raw AND a rollup
+            tier is served by neither and sequentially scans the table — ask
+            for one side per request. A raw-only request is additionally
+            clamped server-side to the raw-retention band (see the `window`
+            object on the response); rows older than that were deleted by the
+            aggregation job, so nothing is lost.
           schema:
             type: string
-          example: "raw,hour"
+          example: "raw"
+        - name: periodStartAfter
+          in: query
+          description: >
+            RFC3339 timestamp. Filters on `period_start >= value`. For a
+            raw-only request the server may move this forward to the
+            raw-retention boundary; the effective value is echoed in the
+            response's `window` object.
+          schema:
+            type: string
+            format: date-time
+        - name: periodEndBefore
+          in: query
+          description: >
+            RFC3339 timestamp. Despite the name it filters on
+            `period_start < value`, NOT on `period_end` — an aggregated bucket
+            that starts inside the window and ends outside it IS returned.
+            That is deliberate and charting depends on it: a partially visible
+            bucket should still be drawn.
+          schema:
+            type: string
+            format: date-time
         - name: cursor
           in: query
           description: Cursor for pagination
           schema:
             type: string
-        - name: size
+        - name: limit
           in: query
-          description: Results per page (default 20, max 100)
+          description: Results per page (default 100, max 1000)
           schema:
             type: integer
-            default: 20
-            maximum: 100
+            default: 100
+            maximum: 1000
+        - name: size
+          in: query
+          description: Deprecated alias for `limit`.
+          deprecated: true
+          schema:
+            type: integer
         - name: with
           in: query
           description: >
@@ -9582,6 +9617,33 @@ components:
             $ref: "#/components/schemas/OrgResult"
         pagination:
           $ref: "#/components/schemas/ResultsCursorPagination"
+        window:
+          $ref: "#/components/schemas/ResultsWindow"
+
+    ResultsWindow:
+      type: object
+      description: >-
+        The time window the server actually queried. A raw-only request is
+        clamped to the raw-retention band, so this is not always the window
+        that was asked for. Always present — `clamped: false` is an answer,
+        letting a client tell a clamp from a genuinely empty range and size a
+        follow-up request. Additive and optional to read.
+      properties:
+        periodStartAfter:
+          type: string
+          format: date-time
+          description: Effective `period_start >=` bound; absent when unbounded.
+        periodEndBefore:
+          type: string
+          format: date-time
+          description: >-
+            Effective `period_start <` bound (not `period_end` — see the query
+            parameter description); absent when unbounded.
+        clamped:
+          type: boolean
+          description: >-
+            True when the server moved `periodStartAfter` forward from the
+            requested value.
 
     CheckAvailabilityResponse:
       type: object

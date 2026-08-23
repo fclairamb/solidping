@@ -57,7 +57,7 @@ func TestListResultsNormalizesLegacyRegionFilter(t *testing.T) {
 	seed(time.Minute, "@aws-paris")
 	seed(2*time.Minute, "eu-west-1")
 
-	svc := NewService(dbSvc)
+	svc := NewService(dbSvc, nil)
 
 	countFor := func(regionFilter []string) int {
 		t.Helper()
@@ -126,7 +126,7 @@ func TestGetResultNormalizesLegacyRegionFilter(t *testing.T) {
 		uids = append(uids, row.UID)
 	}
 
-	svc := NewService(dbSvc)
+	svc := NewService(dbSvc, nil)
 	middle := uids[1]
 
 	neighbors := func(regionFilter []string) (string, string) {
