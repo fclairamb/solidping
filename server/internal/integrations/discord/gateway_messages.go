@@ -3,8 +3,10 @@ package discord
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // GatewayMessage is the subset of a MESSAGE_CREATE payload we act on.
@@ -56,7 +58,19 @@ func (g *GatewaySupervisor) handleMessageCreate(ctx context.Context, data json.R
 		return
 	}
 
-	if msg.GuildID == "" || !msg.IsHumanMessage() {
+	// IsHumanMessage already drops our own posts (Author.Bot) and webhook
+	// posts, which is what stops an outbound reply from coming back in as a new
+	// inbound message and making the thread talk to itself.
+	if !msg.IsHumanMessage() {
+		return
+	}
+
+	// A DM has no guild. It is a person talking to us, so it goes to the
+	// support inbox rather than through the guild command/comment paths, both
+	// of which key off GuildID and would do nothing useful with it.
+	if msg.GuildID == "" {
+		g.captureDirectMessage(ctx, &msg)
+
 		return
 	}
 
@@ -210,4 +224,45 @@ func (g *GatewaySupervisor) ingestsAllThreadReplies(ctx context.Context, guildID
 	}
 
 	return settings.IngestsAllThreadReplies()
+}
+
+// captureDirectMessage records a Discord DM in the support inbox.
+//
+// Discord only delivers a DM if the user could open one with the bot in the
+// first place (a shared guild, or a prior interaction), so this is a
+// best-effort contact path rather than a guaranteed one.
+func (g *GatewaySupervisor) captureDirectMessage(ctx context.Context, msg *GatewayMessage) {
+	if g.svc == nil || g.svc.support == nil {
+		g.log.DebugContext(ctx, "Discord DM ignored: support inbox not configured")
+
+		return
+	}
+
+	if msg.Author == nil || msg.Author.ID == "" {
+		return
+	}
+
+	// Redundant with IsHumanMessage's Author.Bot check, and kept anyway: this
+	// is the one comparison that cannot be fooled by a payload that omits the
+	// bot flag.
+	if botID := g.BotUserID(); botID != "" && msg.Author.ID == botID {
+		return
+	}
+
+	body := msg.Content
+	if strings.TrimSpace(body) == "" {
+		// An empty body here means the MESSAGE_CONTENT intent is not actually
+		// granted. Record the fact rather than a blank line, so the cause is
+		// legible in the inbox instead of looking like an empty message.
+		body = "(empty Discord message — the bot may be missing the MESSAGE_CONTENT intent)"
+	}
+
+	g.svc.support.CaptureSafe(ctx, &support.Inbound{
+		Channel:     models.SupportChannelDiscord,
+		Identity:    msg.Author.ID,
+		ExternalID:  msg.ID,
+		Body:        body,
+		SenderLabel: msg.Author.DisplayName(),
+		Context:     map[string]any{"channelId": msg.ChannelID},
+	})
 }

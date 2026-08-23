@@ -20,11 +20,15 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/whatsapp"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // maxWebhookBody caps how much we will read from an unauthenticated caller
@@ -34,14 +38,30 @@ const maxWebhookBody = 1 << 20
 
 // Handler serves the inbound WhatsApp webhook.
 type Handler struct {
-	db  db.Service
-	cfg *config.Config
-	log *slog.Logger
+	db      db.Service
+	cfg     *config.Config
+	log     *slog.Logger
+	support *support.Service
+}
+
+// Option customizes the handler.
+type Option func(*Handler)
+
+// WithSupport wires the support inbox so inbound human messages are captured
+// instead of logged and dropped. Optional: a nil support service leaves the
+// webhook working exactly as before.
+func WithSupport(svc *support.Service) Option {
+	return func(h *Handler) { h.support = svc }
 }
 
 // NewHandler builds a WhatsApp webhook handler.
-func NewHandler(dbSvc db.Service, cfg *config.Config) *Handler {
-	return &Handler{db: dbSvc, cfg: cfg, log: slog.Default()}
+func NewHandler(dbSvc db.Service, cfg *config.Config, opts ...Option) *Handler {
+	h := &Handler{db: dbSvc, cfg: cfg, log: slog.Default()}
+	for _, opt := range opts {
+		opt(h)
+	}
+
+	return h
 }
 
 // whatsappConfig returns the instance WhatsApp config, or the zero value.
@@ -113,7 +133,7 @@ func (h *Handler) HandleEvent(writer http.ResponseWriter, req *http.Request) err
 	}
 
 	h.applyStatuses(req, payload)
-	h.logInbound(req, payload)
+	h.captureInbound(req, payload)
 
 	writer.WriteHeader(http.StatusNoContent)
 
@@ -146,14 +166,85 @@ func (h *Handler) applyStatuses(req *http.Request, payload *whatsapp.WebhookPayl
 	}
 }
 
-// logInbound records user replies. v1 accepts them (they open the free 24-hour
-// session window) but implements no command handling.
-func (h *Handler) logInbound(req *http.Request, payload *whatsapp.WebhookPayload) {
+// captureInbound records every user reply in the support inbox.
+//
+// Until spec 2026-08-22-02 this function logged the message id and the type and
+// threw away the body and the sender — the two things a human actually sent.
+// Every inbound message is now captured: an inbound WhatsApp message also opens
+// the free 24-hour customer-service window in which we may answer with ordinary
+// text, and that window used to open and close without anyone knowing it existed.
+//
+// Capture is best-effort for the request. CaptureSafe never returns an error and
+// never panics, so the webhook still answers 204 and Meta never retries — a
+// non-2xx here would eventually get the subscription disabled, which costs the
+// channel rather than one message.
+func (h *Handler) captureInbound(req *http.Request, payload *whatsapp.WebhookPayload) {
 	messages := payload.InboundMessages()
 	for i := range messages {
-		h.log.InfoContext(req.Context(), "inbound whatsapp message received (no command handling in v1)",
-			"messageId", messages[i].ID, "type", messages[i].Type)
+		msg := &messages[i]
+
+		h.log.InfoContext(req.Context(), "inbound whatsapp message received",
+			"messageId", msg.ID, "type", msg.Type)
+
+		if h.support == nil {
+			continue
+		}
+
+		body, rawType := whatsAppBody(msg)
+
+		h.support.CaptureSafe(req.Context(), &support.Inbound{
+			Channel: models.SupportChannelWhatsApp,
+			// Meta delivers `from` as digits with no leading '+'. Normalised to
+			// E.164 here so the thread identity matches what an operator sees
+			// everywhere else and what a stored contact looks like.
+			Identity:   normalizeWhatsAppNumber(msg.From),
+			ExternalID: msg.ID,
+			Body:       body,
+			RawType:    rawType,
+			At:         whatsAppTimestamp(msg.Timestamp),
+		})
 	}
+}
+
+// whatsAppBody returns a storable body and raw type for an inbound message.
+// A non-text message records a placeholder rather than an empty body: "someone
+// sent a photo" is information, "" is not.
+func whatsAppBody(msg *whatsapp.InboundMessage) (string, string) {
+	switch msg.Type {
+	case "text", "":
+		if msg.Text.Body != "" {
+			return msg.Text.Body, models.SupportRawTypeText
+		}
+
+		return "(empty message)", models.SupportRawTypeText
+	case models.SupportRawTypeImage, models.SupportRawTypeAudio, models.SupportRawTypeVideo,
+		models.SupportRawTypeDocument, models.SupportRawTypeLocation, models.SupportRawTypeSticker:
+		return "(" + msg.Type + " message — open WhatsApp to view it)", msg.Type
+	default:
+		return "(unsupported message type: " + msg.Type + ")", models.SupportRawTypeUnsupported
+	}
+}
+
+// normalizeWhatsAppNumber puts the sender back into E.164.
+func normalizeWhatsAppNumber(from string) string {
+	from = strings.TrimSpace(from)
+	if from == "" || strings.HasPrefix(from, "+") {
+		return from
+	}
+
+	return "+" + from
+}
+
+// whatsAppTimestamp parses Meta's unix-seconds-as-a-string timestamp. An
+// unparseable value yields the zero time, which the support service reads as
+// "now" — a slightly wrong timestamp is better than a dropped message.
+func whatsAppTimestamp(raw string) time.Time {
+	seconds, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || seconds <= 0 {
+		return time.Time{}
+	}
+
+	return time.Unix(seconds, 0).UTC()
 }
 
 func forbidden(writer http.ResponseWriter) error {

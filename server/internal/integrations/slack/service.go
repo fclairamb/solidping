@@ -20,6 +20,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/oauthstate"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // IncidentService defines the interface for incident operations needed by Slack integration.
@@ -130,6 +132,17 @@ var (
 		"app_mentions:read",
 		"reactions:write",
 		"links:read",
+		// im:history is what makes Slack deliver `message.im` — a DM to the
+		// bot. Without it a DM is not ignored, it never arrives (spec
+		// 2026-08-22-02).
+		//
+		// SLACK DOES NOT GRANT NEW SCOPES TO EXISTING INSTALLS. Every workspace
+		// connected before this line existed must re-run the install before its
+		// DMs reach the support inbox. That is a user-visible migration, not a
+		// deploy: models.SlackSettings.DMCaptureAvailable reports the state, the
+		// integration UI shows a reinstall prompt, and
+		// solidping_support_dm_unavailable counts the workspaces still owing one.
+		models.SlackScopeIMHistory,
 	}
 	slackUserScopes = []string{
 		"openid",
@@ -160,6 +173,57 @@ type Service struct {
 	// identitySync auto-matches org members to workspace users after an
 	// install. Nil until wired (see SetIdentitySync).
 	identitySync IdentitySyncFn
+
+	// support is the instance support inbox that captures DMs to the bot. Nil
+	// disables DM capture entirely, which is exactly the behaviour that
+	// predates the feature (see SetSupport).
+	support *support.Service
+}
+
+// SetSupport wires the support inbox after construction, mirroring
+// SetIdentitySync. Late injection because the support service is built from the
+// same registry that owns the mailer, and this package must stay importable by
+// it without a cycle.
+func (s *Service) SetSupport(svc *support.Service) {
+	s.support = svc
+}
+
+// ReportDMCapability logs, once at startup, how many connected Slack workspaces
+// still cannot deliver DMs because they were installed before im:history was
+// requested, and publishes the same number as a gauge.
+//
+// This is the "degrade cleanly and observably" half of the decision to ship
+// Slack DM support: such a workspace never delivers message.im at all, so the
+// only symptom is an inbox that stays empty. One log line and one gauge turn
+// that into something an operator can see.
+func (s *Service) ReportDMCapability(ctx context.Context) {
+	slackType := models.ConnectionTypeSlack
+
+	connections, err := s.db.ListChannels(ctx, &models.ListIntegrationsFilter{Type: &slackType})
+	if err != nil {
+		return
+	}
+
+	stale := 0
+
+	for _, conn := range connections {
+		settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+		if err != nil || settings == nil || settings.TeamID == "" {
+			continue
+		}
+
+		if !settings.DMCaptureAvailable() {
+			stale++
+		}
+	}
+
+	prommetrics.SupportDMUnavailable.WithLabelValues(models.SupportChannelSlack).Set(float64(stale))
+
+	if stale > 0 {
+		slog.WarnContext(ctx,
+			"Slack workspaces must reinstall the app before their direct messages reach the support inbox",
+			"workspaces", stale, "scope", models.SlackScopeIMHistory)
+	}
 }
 
 // NewService creates a new Slack integration service.

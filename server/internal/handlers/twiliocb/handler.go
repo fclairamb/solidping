@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilioconn"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 const xmlHeader = `<?xml version="1.0" encoding="UTF-8"?>`
@@ -57,15 +58,46 @@ type callbackTarget struct {
 
 // Handler serves the inbound Twilio callbacks.
 type Handler struct {
-	db    db.Service
-	creds credentials.Service
-	cfg   *config.Config
-	acker IncidentAcker
+	db      db.Service
+	creds   credentials.Service
+	cfg     *config.Config
+	acker   IncidentAcker
+	support *support.Service
+}
+
+// Option customizes the handler.
+type Option func(*Handler)
+
+// WithSupport wires the support inbox used by the inbound-SMS route. Without
+// it the route still authenticates and answers, and records nothing.
+func WithSupport(svc *support.Service) Option {
+	return func(h *Handler) { h.support = svc }
 }
 
 // NewHandler builds a Twilio callback handler.
-func NewHandler(dbSvc db.Service, creds credentials.Service, cfg *config.Config, acker IncidentAcker) *Handler {
-	return &Handler{db: dbSvc, creds: creds, cfg: cfg, acker: acker}
+func NewHandler(
+	dbSvc db.Service, creds credentials.Service, cfg *config.Config,
+	acker IncidentAcker, opts ...Option,
+) *Handler {
+	h := &Handler{db: dbSvc, creds: creds, cfg: cfg, acker: acker}
+	for _, opt := range opts {
+		opt(h)
+	}
+
+	return h
+}
+
+// validSignature checks Twilio's X-Twilio-Signature over the exact request URL
+// and POST params. Shared by every verify middleware so they cannot drift.
+func (h *Handler) validSignature(req *http.Request, authToken string) bool {
+	fullURL := strings.TrimRight(h.cfg.Server.BaseURL, "/") + req.URL.RequestURI()
+
+	signature := req.Header.Get("X-Twilio-Signature")
+	if signature == "" {
+		return false
+	}
+
+	return twilio.ValidateSignature(authToken, fullURL, req.PostForm, signature)
 }
 
 // capability says which SolidPing capability an inbound callback belongs to,
@@ -120,9 +152,7 @@ func (h *Handler) verify(next httpx.HandlerFunc, capa capability) httpx.HandlerF
 			return forbidden(writer)
 		}
 
-		fullURL := strings.TrimRight(h.cfg.Server.BaseURL, "/") + req.URL.RequestURI()
-		signature := req.Header.Get("X-Twilio-Signature")
-		if signature == "" || !twilio.ValidateSignature(authToken, fullURL, req.PostForm, signature) {
+		if !h.validSignature(req, authToken) {
 			return forbidden(writer)
 		}
 

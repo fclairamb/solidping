@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/oauthstate"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // IncidentService is the subset of the incidents service the Discord
@@ -129,6 +130,16 @@ type Service struct {
 	oauthTokenURL string
 	// apiBaseURL is where identity lookups during the install go.
 	apiBaseURL string
+
+	// support is the instance support inbox that captures DMs to the bot. Nil
+	// disables DM capture, which is the behaviour that predates the feature.
+	support *support.Service
+}
+
+// SetSupport wires the support inbox after construction. Late injection so this
+// package stays importable by the support wiring without an import cycle.
+func (s *Service) SetSupport(svc *support.Service) {
+	s.support = svc
 }
 
 // NewService creates a new Discord integration service.

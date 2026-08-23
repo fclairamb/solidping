@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,6 +181,33 @@ type SlackSettings struct {
 	// this field existed decodes to "" and therefore stops over-capturing,
 	// which is the whole point of the change.
 	CommentIngestion string `json:"comment_ingestion,omitempty"`
+}
+
+// SlackScopeIMHistory is the bot scope Slack requires before it will deliver
+// `message.im` — a direct message to the bot. Without it a DM is not merely
+// ignored, it never arrives.
+const SlackScopeIMHistory = "im:history"
+
+// DMCaptureAvailable reports whether this workspace's install granted the scope
+// needed to receive direct messages.
+//
+// Slack DOES NOT GRANT NEW SCOPES TO EXISTING INSTALLS: a workspace that
+// connected before im:history was requested keeps its old grant until someone
+// re-runs the install. That is a user-visible migration, not a deploy, so the
+// state is surfaced (in the integration UI, in the docs, and as a gauge) rather
+// than left to look like an empty inbox.
+func (s *SlackSettings) DMCaptureAvailable() bool {
+	if s == nil {
+		return false
+	}
+
+	for _, scope := range s.Scopes {
+		if strings.TrimSpace(scope) == SlackScopeIMHistory {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Slack comment-ingestion modes. See SlackSettings.CommentIngestion.

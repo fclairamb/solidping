@@ -500,14 +500,19 @@ var (
 		[]string{labelOutcome},
 	)
 
-	// SupportDMUnavailable counts inbound-DM opportunities dropped because the
-	// workspace has not re-authorised the app since im:history was added. It is
-	// the observable half of "degrade cleanly": a workspace that never
-	// reinstalls shows up here instead of looking like an empty inbox.
-	SupportDMUnavailable = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "solidping_support_dm_unavailable_total",
-			Help: "Inbound DMs skipped because the integration lacks the required scope",
+	// SupportDMUnavailable reports how many connected integrations cannot
+	// deliver direct messages because they were installed before the DM scope
+	// existed and have not been re-authorised.
+	//
+	// It is the observable half of "degrade cleanly". Slack does not grant new
+	// scopes to an existing install, so such a workspace simply never delivers
+	// message.im — which from the inbox looks exactly like nobody writing in. A
+	// gauge rather than a counter because this is a STATE (how many workspaces
+	// still owe a reinstall), not an event stream.
+	SupportDMUnavailable = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_support_dm_unavailable",
+			Help: "Connected integrations whose DM capture needs a reinstall to work",
 		},
 		[]string{labelChannel},
 	)

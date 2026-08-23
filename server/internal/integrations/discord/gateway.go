@@ -36,12 +36,20 @@ const (
 // silently do nothing — the failure mode is a bot that connects, looks healthy,
 // and ignores everything anyone types at it. Discord grants it freely below 100
 // guilds and gates it behind review above that; see wiki/discord/README.md.
+//
+// DIRECT_MESSAGES is what makes Discord deliver a DM to the bot at all (spec
+// 2026-08-22-02). Unlike Slack's im:history it is NOT privileged and requires no
+// user re-authorisation — it is a constant plus a gateway reconnect. Note that
+// MESSAGE_CONTENT above is what keeps DM bodies from arriving empty; without it
+// DM capture would record a stream of blank messages, the same silent failure
+// the comment above documents for guild messages.
 const (
 	intentGuilds         = 1 << 0
 	intentGuildMessages  = 1 << 9
+	intentDirectMessages = 1 << 12
 	intentMessageContent = 1 << 15
 
-	gatewayIntents = intentGuilds | intentGuildMessages | intentMessageContent
+	gatewayIntents = intentGuilds | intentGuildMessages | intentDirectMessages | intentMessageContent
 )
 
 // DefaultGatewayURL is Discord's public Gateway entry point.

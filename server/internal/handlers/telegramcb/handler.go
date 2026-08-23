@@ -22,6 +22,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -29,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // maxWebhookBody caps how much we will read from an unauthenticated caller
@@ -129,6 +132,7 @@ type Handler struct {
 	sender    Sender
 	acker     Acknowledger
 	commenter Commenter
+	support   *support.Service
 }
 
 // Option customizes a Handler at construction.
@@ -152,6 +156,12 @@ func WithAcknowledger(acker Acknowledger) Option {
 // the note was saved.
 func WithCommenter(commenter Commenter) Option {
 	return func(h *Handler) { h.commenter = commenter }
+}
+
+// WithSupport wires the support inbox. Without it, prose and mistyped commands
+// go back to being logged and dropped.
+func WithSupport(svc *support.Service) Option {
+	return func(h *Handler) { h.support = svc }
 }
 
 // NewHandler builds a Telegram webhook handler.
@@ -252,10 +262,16 @@ func (h *Handler) handleMessage(ctx context.Context, msg *telegram.IncomingMessa
 	case "comment":
 		h.handleComment(ctx, msg, chatID, arg)
 	case "":
-		h.log.InfoContext(ctx, "ignoring non-command telegram message", "chatId", chatID)
+		// Prose. This is a person talking to us, and until spec 2026-08-22-02
+		// it was logged and dropped.
+		h.captureSupport(ctx, msg, chatID, "")
 	default:
-		h.log.InfoContext(ctx, "ignoring unknown telegram command", "chatId", chatID, "command", command)
+		h.log.InfoContext(ctx, "unknown telegram command", "chatId", chatID, "command", command)
+		// The "unknown command" answer is KEPT — a user who mistyped needs to
+		// know — and the message is captured as well, because a mistyped
+		// command is very often a person trying to talk rather than to invoke.
 		h.reply(ctx, chatID, telegram.BuildUnknownCommandHTML())
+		h.captureSupport(ctx, msg, chatID, command)
 	}
 }
 
@@ -498,4 +514,72 @@ func ok(writer http.ResponseWriter) error {
 	writer.WriteHeader(http.StatusOK)
 
 	return nil
+}
+
+// captureSupport records a Telegram message the command router could not act on.
+//
+// Known commands never reach here: a parseable command executes and is not a
+// support message. Only prose (command == "") and unrecognised verbs are
+// captured.
+func (h *Handler) captureSupport(
+	ctx context.Context, msg *telegram.IncomingMessage, chatID, unknownCommand string,
+) {
+	if h.support == nil {
+		h.log.InfoContext(ctx, "ignoring unhandled telegram message", "chatId", chatID)
+
+		return
+	}
+
+	// Our own posts must never be captured, or an outbound reply comes straight
+	// back in as a new inbound message and the thread talks to itself.
+	if msg.From != nil && msg.From.IsBot {
+		return
+	}
+
+	body := msg.Text
+	rawType := models.SupportRawTypeText
+
+	if strings.TrimSpace(body) == "" {
+		// Photos, stickers and service messages arrive with no text at all.
+		body = "(non-text telegram message)"
+		rawType = models.SupportRawTypeUnsupported
+	}
+
+	if unknownCommand != "" {
+		body = "/" + unknownCommand + " — " + body
+	}
+
+	h.support.CaptureSafe(ctx, &support.Inbound{
+		Channel:     models.SupportChannelTelegram,
+		Identity:    chatID,
+		ExternalID:  telegramExternalID(chatID, msg.MessageID),
+		Body:        body,
+		RawType:     rawType,
+		SenderLabel: telegramSenderLabel(msg),
+	})
+}
+
+// telegramExternalID builds an idempotency key. Telegram message ids are unique
+// only within a chat, so the chat id is part of the key.
+func telegramExternalID(chatID string, messageID int64) string {
+	if messageID == 0 {
+		return ""
+	}
+
+	return chatID + ":" + strconv.FormatInt(messageID, 10)
+}
+
+// telegramSenderLabel gives the thread a human name when Telegram supplies one.
+func telegramSenderLabel(msg *telegram.IncomingMessage) string {
+	if msg.From == nil {
+		return ""
+	}
+
+	if msg.From.Username != "" {
+		return "@" + msg.From.Username
+	}
+
+	name := strings.TrimSpace(msg.From.FirstName + " " + msg.From.LastName)
+
+	return name
 }

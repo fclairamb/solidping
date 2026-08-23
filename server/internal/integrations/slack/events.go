@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // handleEvent routes events to their specific handlers (HTTP transport entry point).
@@ -255,7 +256,23 @@ func (h *Handler) handleMessage(ctx context.Context, event *Event) error {
 	// Ignore message subtypes (message_changed, message_deleted, bot_message,
 	// channel_join, …) and any bot-authored post — including our own
 	// resolve/reopen thread replies, which carry a bot_id.
+	//
+	// This gate is also what keeps a DM thread from talking to itself: our own
+	// reply comes back as a message.im event carrying a bot_id, and is dropped
+	// here before any capture happens.
 	if msg.Subtype != "" || msg.BotID != "" {
+		return nil
+	}
+
+	// A DIRECT MESSAGE is a person talking to us, not incident chatter. It is
+	// captured in the support inbox and never treated as a comment (spec
+	// 2026-08-22-02). Channel and group messages below are untouched.
+	//
+	// This branch sits ABOVE the thread-reply gate deliberately: a DM's first
+	// message has no thread_ts, so the gate below would drop every DM.
+	if msg.ChannelType == slackChannelTypeIM {
+		h.captureDirectMessage(ctx, event)
+
 		return nil
 	}
 
@@ -448,4 +465,69 @@ func (h *Handler) handleMemberJoinedChannel(ctx context.Context, event *Event) e
 
 	// Auto-configure this channel as default and send welcome message
 	return h.svc.SetDefaultChannel(ctx, event.TeamID, event.Event.Channel, true)
+}
+
+// slackChannelTypeIM is the channel_type Slack stamps on a direct message.
+const slackChannelTypeIM = "im"
+
+// captureDirectMessage records a Slack DM in the support inbox.
+//
+// Best-effort and non-fatal by construction: a capture problem must not turn
+// into a non-2xx on the Events API, which Slack answers by retrying and then by
+// disabling the subscription. CaptureSafe never returns an error.
+func (h *Handler) captureDirectMessage(ctx context.Context, event *Event) {
+	msg := &event.Event
+
+	if h.svc == nil || h.svc.support == nil {
+		slog.DebugContext(ctx, "Slack DM ignored: support inbox not configured",
+			"team_id", event.TeamID)
+
+		return
+	}
+
+	if msg.User == "" {
+		return
+	}
+
+	// Belt and braces on top of the BotID check in handleMessage: compare the
+	// author against the workspace's own bot user id too. A message we posted
+	// through a path that did not stamp a bot_id would otherwise be captured as
+	// an inbound support message and answered by us, forever.
+	if botUserID := h.botUserID(ctx, event.TeamID); botUserID != "" && msg.User == botUserID {
+		return
+	}
+
+	body := msg.Text
+	if strings.TrimSpace(body) == "" {
+		body = "(empty Slack message)"
+	}
+
+	h.svc.support.CaptureSafe(ctx, &support.Inbound{
+		Channel:  models.SupportChannelSlack,
+		Identity: msg.User,
+		// (team, channel, ts) is unique per message; ts alone is not.
+		ExternalID: event.TeamID + ":" + msg.Channel + ":" + msg.Ts,
+		Body:       body,
+		Context: map[string]any{
+			"teamId":    event.TeamID,
+			"channelId": msg.Channel,
+		},
+	})
+}
+
+// botUserID reads the workspace's stored bot user id. Returns "" when the
+// connection or settings cannot be read — the BotID check has already done the
+// primary job, so an unreadable setting must not block capture.
+func (h *Handler) botUserID(ctx context.Context, teamID string) string {
+	conn, err := h.svc.GetConnectionByTeamID(ctx, teamID)
+	if err != nil || conn == nil {
+		return ""
+	}
+
+	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	if err != nil || settings == nil {
+		return ""
+	}
+
+	return settings.BotUserID
 }
