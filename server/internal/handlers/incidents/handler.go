@@ -278,7 +278,8 @@ func (h *Handler) AcknowledgeIncident(writer http.ResponseWriter, req *http.Requ
 		return h.handleError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, incidentToResponse(incident))
+	return h.WriteJSON(writer, http.StatusOK,
+		h.svc.IncidentResponseWithAckActor(req.Context(), orgSlug, incident))
 }
 
 // UnacknowledgeIncident handles POST /api/v1/orgs/:org/incidents/:uid/unack.

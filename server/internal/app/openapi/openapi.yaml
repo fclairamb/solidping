@@ -9920,6 +9920,32 @@ components:
         acknowledgedAt:
           type: string
           format: date-time
+        acknowledgedBy:
+          type: string
+          format: uuid
+          description: >-
+            UID of the SolidPing user credited with the acknowledgment.
+
+
+            **Present only when the acker maps to a platform account** — the
+            dashboard, a magic link whose recipient address matches a user, or
+            a linked Telegram chat. A Slack, Discord or phone acknowledgment
+            leaves this null, because those people have no `users` row. Read
+            `acknowledgedByActor` to render an attribution; this field alone
+            says "nobody" for the majority of real acknowledgments.
+        acknowledgedByActor:
+          allOf:
+            - $ref: "#/components/schemas/IncidentActor"
+          description: >-
+            Resolved, display-ready identity of the acker: a name to render
+            and the channel it came from. Derived from the `users` row when
+            `acknowledgedBy` is set, and from the `incident.acknowledged`
+            event payload otherwise.
+
+
+            **Returned by the DETAIL endpoint and by `POST .../ack` only.**
+            The list endpoint omits it — resolving it costs a user lookup and
+            an event lookup per incident, which a 100-row page cannot afford.
         failureCount:
           type: integer
         title:
@@ -9965,6 +9991,32 @@ components:
             status page or a subscriber payload.
           items:
             $ref: "#/components/schemas/IncidentAttachment"
+
+    IncidentActor:
+      type: object
+      description: >-
+        Display identity of whoever performed an incident action, for the
+        surfaces that must name a human rather than a UUID.
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: >-
+            Human label to render — the SolidPing user's name or email, or the
+            chat username / email address / phone number recorded on the event.
+            Never empty; falls back to `Unknown` when nothing is recoverable.
+        via:
+          type: string
+          description: >-
+            Channel the action came from. Absent for actions recorded before
+            the channel was captured.
+          enum: [web, slack, discord, telegram, email, phone, manual, auto]
+        userUid:
+          type: string
+          format: uuid
+          description: >-
+            SolidPing user the action is credited to. Absent for chat and
+            phone actors with no platform account.
 
     IncidentAttachment:
       type: object

@@ -2145,18 +2145,26 @@ type IncidentResponse struct {
 	UID string `json:"uid"`
 	// Number is the short per-org reference rendered as `#42`. Every human-facing
 	// surface (dashboard, Slack, Telegram) addresses the incident by this.
-	Number              int64                    `json:"number"`
-	CheckUID            string                   `json:"checkUid"`
-	CheckSlug           *string                  `json:"checkSlug,omitempty"`
-	CheckName           *string                  `json:"checkName,omitempty"`
-	State               string                   `json:"state"`
-	StartedAt           time.Time                `json:"startedAt"`
-	ResolvedAt          *time.Time               `json:"resolvedAt,omitempty"`
-	ResolvedBy          *string                  `json:"resolvedBy,omitempty"`
-	ResolutionType      *string                  `json:"resolutionType,omitempty"`
-	EscalatedAt         *time.Time               `json:"escalatedAt,omitempty"`
-	AcknowledgedAt      *time.Time               `json:"acknowledgedAt,omitempty"`
-	AcknowledgedBy      *string                  `json:"acknowledgedBy,omitempty"`
+	Number         int64      `json:"number"`
+	CheckUID       string     `json:"checkUid"`
+	CheckSlug      *string    `json:"checkSlug,omitempty"`
+	CheckName      *string    `json:"checkName,omitempty"`
+	State          string     `json:"state"`
+	StartedAt      time.Time  `json:"startedAt"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
+	ResolvedBy     *string    `json:"resolvedBy,omitempty"`
+	ResolutionType *string    `json:"resolutionType,omitempty"`
+	EscalatedAt    *time.Time `json:"escalatedAt,omitempty"`
+	AcknowledgedAt *time.Time `json:"acknowledgedAt,omitempty"`
+	AcknowledgedBy *string    `json:"acknowledgedBy,omitempty"`
+	// AcknowledgedByActor is the RESOLVED identity of the acker — a name to
+	// render plus the channel it came from. Populated by the DETAIL endpoint
+	// only: resolving it costs a user lookup and an event lookup per incident,
+	// which the list endpoint's bounded query budget (spec 2026-08-18-01) does
+	// not have, and the surfaces that show an attribution are on the detail
+	// page. `acknowledgedBy` alone is NOT a substitute — it is NULL for every
+	// Slack, Discord and phone ack.
+	AcknowledgedByActor *IncidentActorResponse   `json:"acknowledgedByActor,omitempty"`
 	SnoozedUntil        *time.Time               `json:"snoozedUntil,omitempty"`
 	SnoozedBy           *string                  `json:"snoozedBy,omitempty"`
 	SnoozeReason        *string                  `json:"snoozeReason,omitempty"`
@@ -2647,6 +2655,8 @@ func (s *Service) GetIncident(
 		s.loadIncidentMembers(ctx, org.UID, incident, &response)
 	}
 
+	response.AcknowledgedByActor = s.resolveAckActor(ctx, org.UID, incident)
+
 	s.loadIncidentAttachments(ctx, org.UID, incident, &response)
 
 	return &response, nil
@@ -2838,11 +2848,11 @@ func (s *Service) buildAcknowledgmentEvent(
 	event.IncidentUID = &incident.UID
 	event.CheckUID = &incident.CheckUID
 	event.Payload = models.JSONMap{
-		payloadKeyVia:    req.Via,
-		"slack_user_id":  req.SlackUserID,
-		"slack_username": req.SlackUsername,
-		"note":           req.Note,
-		keyCheckUID:      incident.CheckUID,
+		payloadKeyVia:              req.Via,
+		payloadKeyAckSlackUserID:   req.SlackUserID,
+		payloadKeyAckSlackUsername: req.SlackUsername,
+		payloadKeyAckNote:          req.Note,
+		keyCheckUID:                incident.CheckUID,
 	}
 
 	// Best-effort: the check may have been deleted since the incident opened;
@@ -2856,27 +2866,27 @@ func (s *Service) buildAcknowledgmentEvent(
 	// recipient is not a known platform user — record it on the payload so
 	// the audit trail names the acker even when actor_uid is NULL.
 	if req.AcknowledgedByEmail != "" {
-		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
+		event.Payload[payloadKeyAckEmail] = req.AcknowledgedByEmail
 	}
 
 	// Phone (DTMF) acks record the caller's number, mirroring the email
 	// attribution above.
 	if req.PhoneNumber != "" {
-		event.Payload["acknowledged_by_phone"] = req.PhoneNumber
+		event.Payload[payloadKeyAckPhone] = req.PhoneNumber
 	}
 
 	// Telegram acks: the credited user is the chat's linked account, so without
 	// this the timeline could not tell "the on-call person acked from their DM"
 	// apart from "a colleague pressed the button in the team group".
 	if req.TelegramActor != "" {
-		event.Payload["acknowledged_by_telegram"] = req.TelegramActor
+		event.Payload[payloadKeyAckTelegram] = req.TelegramActor
 	}
 
 	// Discord acks: same shape as the Slack pair, kept under their own keys so
 	// a timeline entry says which chat platform the button lived on.
 	if req.DiscordUserID != "" {
-		event.Payload["discord_user_id"] = req.DiscordUserID
-		event.Payload["discord_username"] = req.DiscordUsername
+		event.Payload[payloadKeyAckDiscordUserID] = req.DiscordUserID
+		event.Payload[payloadKeyAckDiscordUser] = req.DiscordUsername
 	}
 
 	if req.AcknowledgedBy != "" {
