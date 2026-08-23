@@ -3,6 +3,7 @@
   "position": 99,
   "link": {
     "type": "generated-index",
+    "slug": "/api",
     "title": "API Reference",
     "description": "REST API reference, generated from the canonical OpenAPI spec (server/internal/app/openapi/openapi.yaml)."
   }
