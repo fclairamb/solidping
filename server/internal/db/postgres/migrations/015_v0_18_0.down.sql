@@ -6,6 +6,53 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: must-change-password
+-- Teardown half of the forced-rotation flag (spec 2026-08-23-04).
+-- ==========================================================================
+
+-- LOSSY, and lossy in the unsafe direction: dropping the column silently
+-- un-forces every pending rotation, including the seeded bootstrap admin's.
+-- A downgraded installation is back to a standing exposure.
+alter table users drop column if exists must_change_password;
+
+-- ==========================================================================
+-- SECTION: custom-domain-state
+-- Teardown half of the custom-domain lifecycle columns (spec 2026-08-23-03).
+-- ==========================================================================
+
+-- LOSSY: the grace/demoted distinction and the last diagnostic are dropped. The
+-- pre-existing custom_domain_verified_at / custom_domain_failures columns still
+-- describe the domain, so a downgraded installation degrades to the old one-way
+-- behaviour rather than to a broken one.
+alter table status_pages drop column if exists custom_domain_last_check;
+
+--bun:split
+
+alter table status_pages drop column if exists custom_domain_grace_since;
+
+--bun:split
+
+alter table status_pages drop column if exists custom_domain_successes;
+
+--bun:split
+
+alter table status_pages drop column if exists custom_domain_state;
+
+-- ==========================================================================
+-- SECTION: support-inbox
+-- Teardown half of the support-inbox section (spec 2026-08-22-02).
+-- ==========================================================================
+
+-- LOSSY, and unusually so: this drops every captured human message. There is no
+-- downgrade that keeps them — the whole point of the feature is that these rows
+-- exist nowhere else.
+drop table if exists support_messages;
+
+--bun:split
+
+drop table if exists support_threads;
+
+-- ==========================================================================
 -- SECTION: traceroute-diagnostics
 -- Teardown half of the traceroute-diagnostics section (spec 2026-08-21-10).
 -- ==========================================================================

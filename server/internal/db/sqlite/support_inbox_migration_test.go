@@ -46,32 +46,34 @@ func TestSupportInboxMigrationParity(t *testing.T) {
 	r.Contains(down, "drop table if exists support_messages")
 	r.Contains(down, "drop table if exists support_threads")
 
-	// It is a SECOND file for the same unreleased release, never an append to
-	// 015. Bun keys applied migrations on the numeric prefix alone, so an
-	// append is silently skipped by any database that already recorded 015 and
-	// then fails at runtime on a missing table.
+	// Consolidated into 015 (2026-08-24): v0.18.0 is unreleased, so it carries
+	// exactly ONE migration file per dialect, per wiki/conventions/database.md.
+	// The support section lives in 015 in BOTH directions.
 	for _, file := range []string{
-		"migrations/014_v0_17_0.up.sql",
 		"migrations/015_v0_18_0.up.sql",
-		"migrations/014_v0_17_0.down.sql",
 		"migrations/015_v0_18_0.down.sql",
 	} {
 		body, err := migrationsFS.ReadFile(file)
 		r.NoError(err)
-		r.NotContains(string(body), "-- SECTION: support-inbox\n",
-			"%s already exists on developer databases; the support section must not be appended to it", file)
+		r.Contains(string(body), "-- SECTION: support-inbox\n",
+			"%s must carry the support section after the v0.18.0 consolidation", file)
 	}
 
-	// Positive control for the loop above: the banner IS present in 016, in
-	// both directions, so those NotContains assertions test a real string.
+	// Negative control: 016 must not come back. A second file for an unreleased
+	// release is what the consolidation removed, and the released 014 must never
+	// acquire the section either.
 	for _, file := range []string{
 		"migrations/016_v0_18_0.up.sql",
 		"migrations/016_v0_18_0.down.sql",
 	} {
-		body, err := migrationsFS.ReadFile(file)
-		r.NoError(err)
-		r.Contains(string(body), "-- SECTION: support-inbox\n")
+		_, err := migrationsFS.ReadFile(file)
+		r.Error(err, "%s must not exist; v0.18.0 is one consolidated migration", file)
 	}
+
+	body, err := migrationsFS.ReadFile("migrations/014_v0_17_0.up.sql")
+	r.NoError(err)
+	r.NotContains(string(body), "-- SECTION: support-inbox\n",
+		"014 is RELEASED and frozen; it must never acquire a new section")
 }
 
 // TestSupportThreadsLiveIdentityIndexIsEnforced proves the partial unique index

@@ -10,9 +10,23 @@
 --   SECTION: status-page-branding       org-logo topic + public-route backfill
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
---   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
---   SECTION: audit-actor-metadata      events source_ip/user_agent + wider actor_type
---   SECTION: traceroute-diagnostics    checks.traceroute_on_failure per-check override
+--   SECTION: slo-burn-alerts            slo_alert_policies + incidents.kind/slo binding
+--   SECTION: audit-actor-metadata       events source_ip/user_agent + wider actor_type
+--   SECTION: traceroute-diagnostics     checks.traceroute_on_failure per-check override
+--   SECTION: support-inbox              support_threads + support_messages
+--   SECTION: custom-domain-state        status_pages lifecycle columns
+--   SECTION: must-change-password       users.must_change_password
+--
+-- CONSOLIDATION NOTE (2026-08-24): the support-inbox, custom-domain-state and
+-- must-change-password sections were folded in from what were briefly separate
+-- 016/017/018 files for this same unreleased release. Nothing in the wild had
+-- run them - v0.17.0 is the last tag, so every deployed database sits at 014 -
+-- but a DEVELOPER database that already recorded 015 will NOT replay the folded
+-- sections, because Bun keys applied migrations on the numeric prefix alone.
+-- internal/db/migrationguard turns that into a loud checksum failure at boot
+-- rather than a silent skip. The fix is to RESET the dev database; do NOT run
+-- `solidping migrate repair`, which would re-record the checksum without ever
+-- running the folded SQL and bake the missing tables in permanently.
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -497,3 +511,116 @@ PRAGMA foreign_keys=ON;
 -- forces the trace on, false forces it off. A NOT NULL DEFAULT would collapse
 -- "not decided" into "yes" for every check that already exists.
 alter table checks add column traceroute_on_failure boolean;
+
+-- ==========================================================================
+-- SECTION: support-inbox
+-- Instance-level capture of human messages our bots cannot parse
+-- (spec 2026-08-22-02).
+-- ==========================================================================
+
+create table if not exists support_threads (
+  uid               text primary key,
+  channel           text not null,
+  channel_identity  text not null,
+  channel_context   text,
+  subject           text not null default '',
+  status            text not null default 'open',
+  organization_uid  text references organizations(uid),
+  user_uid          text references users(uid),
+  last_message_at   text not null default (datetime('now')),
+  last_inbound_at   text,
+  unread_count      integer not null default 0,
+  last_mirror_at    text,
+  pending_mirrors   integer not null default 0,
+  created_at        text not null default (datetime('now')),
+  updated_at        text not null default (datetime('now')),
+  deleted_at        text,
+  constraint support_threads_channel_check
+    check (channel in ('whatsapp', 'telegram', 'sms', 'slack', 'discord', 'email')),
+  constraint support_threads_status_check
+    check (status in ('open', 'pending', 'closed'))
+);
+
+--bun:split
+
+create unique index if not exists uq_support_threads_live_identity
+  on support_threads (channel, channel_identity)
+  where status <> 'closed' and deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_support_threads_last_message
+  on support_threads (last_message_at desc)
+  where deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_support_threads_status_updated
+  on support_threads (status, updated_at)
+  where deleted_at is null;
+
+--bun:split
+
+create table if not exists support_messages (
+  uid          text primary key,
+  thread_uid   text not null references support_threads(uid) on delete cascade,
+  channel      text not null,
+  direction    text not null,
+  body         text not null,
+  truncated    integer not null default 0,
+  raw_type     text not null default 'text',
+  external_id  text,
+  author_uid   text references users(uid),
+  delivery     text,
+  created_at   text not null default (datetime('now')),
+  updated_at   text not null default (datetime('now')),
+  constraint support_messages_direction_check
+    check (direction in ('inbound', 'outbound'))
+);
+
+--bun:split
+
+create index if not exists idx_support_messages_thread_created
+  on support_messages (thread_uid, created_at);
+
+--bun:split
+
+create unique index if not exists uq_support_messages_external
+  on support_messages (channel, external_id)
+  where external_id is not null;
+
+-- ==========================================================================
+-- SECTION: custom-domain-state
+-- Split "temporarily failing" from "gone", and make recovery possible.
+-- ==========================================================================
+
+alter table status_pages add column custom_domain_state text not null default 'none';
+
+--bun:split
+
+alter table status_pages add column custom_domain_successes integer not null default 0;
+
+--bun:split
+
+alter table status_pages add column custom_domain_grace_since text;
+
+--bun:split
+
+alter table status_pages add column custom_domain_last_check text;
+
+--bun:split
+
+update status_pages
+   set custom_domain_state = case
+         when custom_domain is null then 'none'
+         when custom_domain_verified_at is not null then 'active'
+         when custom_domain_checked_at is not null then 'demoted'
+         else 'pending'
+       end
+ where custom_domain_state = 'none';
+
+-- ==========================================================================
+-- SECTION: must-change-password
+-- ==========================================================================
+
+alter table users add column must_change_password integer not null default 0;

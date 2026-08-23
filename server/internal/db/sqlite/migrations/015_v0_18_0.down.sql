@@ -6,6 +6,50 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: must-change-password
+-- Teardown half of the forced-rotation flag (spec 2026-08-23-04).
+-- ==========================================================================
+
+-- LOSSY, and lossy in the unsafe direction: dropping the column silently
+-- un-forces every pending rotation, including the seeded bootstrap admin's.
+-- A downgraded installation is back to a standing exposure.
+alter table users drop column must_change_password;
+
+-- ==========================================================================
+-- SECTION: custom-domain-state
+-- Teardown half of the custom-domain lifecycle columns (spec 2026-08-23-03).
+-- ==========================================================================
+
+-- SQLite has supported ALTER TABLE DROP COLUMN since 3.35; the driver in use is
+-- newer, so this is a genuine mirror of the Postgres teardown rather than a
+-- table rebuild.
+alter table status_pages drop column custom_domain_last_check;
+
+--bun:split
+
+alter table status_pages drop column custom_domain_grace_since;
+
+--bun:split
+
+alter table status_pages drop column custom_domain_successes;
+
+--bun:split
+
+alter table status_pages drop column custom_domain_state;
+
+-- ==========================================================================
+-- SECTION: support-inbox
+-- Teardown half of the support-inbox section (spec 2026-08-22-02).
+-- ==========================================================================
+
+-- LOSSY: drops every captured human message. See the Postgres file.
+drop table if exists support_messages;
+
+--bun:split
+
+drop table if exists support_threads;
+
+-- ==========================================================================
 -- SECTION: traceroute-diagnostics
 -- Teardown half of the traceroute-diagnostics section (spec 2026-08-21-10).
 -- ==========================================================================

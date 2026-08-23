@@ -46,19 +46,14 @@ func TestSupportInboxMigrationPostgresParity(t *testing.T) {
 	r.Contains(down, "drop table if exists support_messages")
 	r.Contains(down, "drop table if exists support_threads")
 
-	// A SECOND file for the same unreleased release, never an append to 015 —
-	// bun keys applied migrations on the numeric prefix alone.
-	for _, file := range []string{
-		"migrations/014_v0_17_0.up.sql",
-		"migrations/015_v0_18_0.up.sql",
-	} {
-		body, err := migrationsFS.ReadFile(file)
-		r.NoError(err)
-		r.NotContains(string(body), "-- SECTION: support-inbox\n",
-			"%s already exists on developer databases; the support section must not be appended to it", file)
-	}
-
-	body, err := migrationsFS.ReadFile("migrations/016_v0_18_0.up.sql")
+	// Consolidated into 015 (2026-08-24): v0.18.0 is unreleased, so it carries
+	// exactly ONE migration file per dialect, per wiki/conventions/database.md.
+	// The support section therefore lives in 015 and 016 must not exist — a
+	// reappearing 016 means someone added a second file for this release again.
+	body, err := migrationsFS.ReadFile("migrations/015_v0_18_0.up.sql")
 	r.NoError(err)
 	r.Contains(string(body), "-- SECTION: support-inbox\n")
+
+	_, err = migrationsFS.ReadFile("migrations/016_v0_18_0.up.sql")
+	r.Error(err, "v0.18.0 must remain a single consolidated migration per dialect")
 }

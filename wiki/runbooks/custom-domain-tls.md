@@ -344,7 +344,8 @@ from the same network namespace appeared to disagree.
    (`status_pages.slug = 'webingenia'`, domain `status.webingenia.com`).
 
 2. **The diagnostic the spec tells you to read did not exist yet.**
-   `custom_domain_last_check` ships in migration `017_v0_18_0`; the instance was
+   `custom_domain_last_check` ships in migration `015_v0_18_0` (it was `017`
+   until the v0.18.0 migrations were consolidated); the instance was
    running **v0.17.0**, so the column was absent from the deployed schema and the
    `mode=… expected=… resolved=… ok=… error=…` line was never written. All that
    the deployed schema records is `custom_domain_failures` and

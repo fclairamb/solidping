@@ -11,9 +11,23 @@
 --   SECTION: status-page-branding       org-logo topic + public-route backfill
 --   SECTION: status-page-password       status_pages password_hash
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
---   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
---   SECTION: audit-actor-metadata      events source_ip/user_agent + wider actor_type
---   SECTION: traceroute-diagnostics    checks.traceroute_on_failure per-check override
+--   SECTION: slo-burn-alerts            slo_alert_policies + incidents.kind/slo binding
+--   SECTION: audit-actor-metadata       events source_ip/user_agent + wider actor_type
+--   SECTION: traceroute-diagnostics     checks.traceroute_on_failure per-check override
+--   SECTION: support-inbox              support_threads + support_messages
+--   SECTION: custom-domain-state        status_pages lifecycle columns
+--   SECTION: must-change-password       users.must_change_password
+--
+-- CONSOLIDATION NOTE (2026-08-24): the support-inbox, custom-domain-state and
+-- must-change-password sections were folded in from what were briefly separate
+-- 016/017/018 files for this same unreleased release. Nothing in the wild had
+-- run them - v0.17.0 is the last tag, so every deployed database sits at 014 -
+-- but a DEVELOPER database that already recorded 015 will NOT replay the folded
+-- sections, because Bun keys applied migrations on the numeric prefix alone.
+-- internal/db/migrationguard turns that into a loud checksum failure at boot
+-- rather than a silent skip. The fix is to RESET the dev database; do NOT run
+-- `solidping migrate repair`, which would re-record the checksum without ever
+-- running the folded SQL and bake the missing tables in permanently.
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -510,3 +524,224 @@ alter table checks add column if not exists traceroute_on_failure boolean;
 
 comment on column checks.traceroute_on_failure is
   'Per-check path-trace-on-failure override. NULL inherits the org default (spec 2026-08-21-10).';
+
+-- ==========================================================================
+-- SECTION: support-inbox
+-- Instance-level capture of human messages our bots cannot parse
+-- (spec 2026-08-22-02).
+-- ==========================================================================
+
+-- Every inbound channel SolidPing owns used to drop anything that was not a
+-- recognised command. A person replying to an alert was talking to a black
+-- hole. These two tables are where that traffic lands instead.
+--
+-- THREADS BELONG TO THE INSTANCE, NOT TO AN ORGANIZATION. The sender of an
+-- inbound WhatsApp message is a phone number; frequently there is no org to
+-- attribute it to at all, and a message from a stranger must not be dropped for
+-- lack of one. Org-scoping would force a catch-all org and make the
+-- unattributable case the broken case. `organization_uid` / `user_uid` are
+-- therefore NULLABLE ATTRIBUTION — a hint for the operator, never an
+-- access-control boundary. Visibility is SuperAdmin, enforced in the API.
+create table if not exists support_threads (
+  uid               uuid primary key default gen_random_uuid(),
+  -- whatsapp | telegram | sms | slack | discord | email
+  channel           text not null,
+  -- E.164 number, telegram chat id, slack user id, discord user id, email addr.
+  channel_identity  text not null,
+  -- Everything the reply adapter needs to answer that is NOT the identity:
+  -- the Slack connection uid + IM channel id, the Discord DM channel id, the
+  -- Telegram chat id when it differs from the identity. Opaque to the schema on
+  -- purpose — each adapter owns its own keys and a new channel needs no
+  -- migration.
+  channel_context   jsonb,
+  subject           text not null default '',
+  -- open | pending | closed. Set by the OPERATOR, deliberately. This is NOT the
+  -- reply-window axis: a thread can be open (unanswered) and yet expired
+  -- (WhatsApp will no longer accept a free-form reply). The window is DERIVED
+  -- from last_inbound_at at read time and never stored as truth, so it cannot
+  -- go stale.
+  status            text not null default 'open',
+  organization_uid  uuid references organizations(uid),
+  user_uid          uuid references users(uid),
+  last_message_at   timestamptz not null default now(),
+  -- Anchor of the derived reply window (WhatsApp's free 24h customer-service
+  -- window). A timestamp, not a verdict.
+  last_inbound_at   timestamptz,
+  unread_count      integer not null default 0,
+  -- Mirror-notification throttle state. These are publicly reachable numbers:
+  -- someone texting a hundred times must not produce a hundred emails.
+  last_mirror_at    timestamptz,
+  pending_mirrors   integer not null default 0,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  deleted_at        timestamptz,
+  constraint support_threads_channel_check
+    check (channel in ('whatsapp', 'telegram', 'sms', 'slack', 'discord', 'email')),
+  constraint support_threads_status_check
+    check (status in ('open', 'pending', 'closed'))
+);
+
+--bun:split
+
+-- One LIVE thread per (channel, identity) — but only while it is not closed.
+-- The partial predicate is what makes a reply continue an existing conversation
+-- while a new message after closure opens a fresh thread. Without it a number
+-- could never come back a second time.
+create unique index if not exists uq_support_threads_live_identity
+  on support_threads (channel, channel_identity)
+  where status <> 'closed' and deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_support_threads_last_message
+  on support_threads (last_message_at desc)
+  where deleted_at is null;
+
+--bun:split
+
+-- Retention sweep: "closed for longer than the retention period". Narrow on
+-- purpose — the purge job is the only reader.
+create index if not exists idx_support_threads_status_updated
+  on support_threads (status, updated_at)
+  where deleted_at is null;
+
+--bun:split
+
+comment on table support_threads is
+  'Instance-level support conversations captured from inbound bot channels. organization_uid/user_uid are attribution hints, never an access boundary.';
+
+--bun:split
+
+create table if not exists support_messages (
+  uid          uuid primary key default gen_random_uuid(),
+  thread_uid   uuid not null references support_threads(uid) on delete cascade,
+  -- Denormalised from the thread so the idempotency index below is a plain
+  -- two-column unique instead of a join.
+  channel      text not null,
+  direction    text not null,
+  body         text not null,
+  -- Bodies are attacker-influenced. Over the cap the body is stored truncated
+  -- and flagged, rather than rejected — a truncated record still beats a lost
+  -- one.
+  truncated    boolean not null default false,
+  -- text | image | audio | video | document | location | sticker | unsupported
+  raw_type     text not null default 'text',
+  -- Provider message id. Meta and Twilio BOTH retry on any non-2xx, so a
+  -- webhook replay is a guaranteed occurrence, not an edge case.
+  external_id  text,
+  -- The SuperAdmin who sent an outbound reply. NULL for inbound.
+  author_uid   uuid references users(uid),
+  -- Delivery status of an outbound reply, same shape the notification path uses.
+  delivery     jsonb,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  constraint support_messages_direction_check
+    check (direction in ('inbound', 'outbound'))
+);
+
+--bun:split
+
+create index if not exists idx_support_messages_thread_created
+  on support_messages (thread_uid, created_at);
+
+--bun:split
+
+-- Idempotency. Scoped per channel because provider ids are only unique within
+-- a provider. Partial so outbound rows (which have no provider id until the
+-- send returns, and may have none at all) do not collide on NULL.
+create unique index if not exists uq_support_messages_external
+  on support_messages (channel, external_id)
+  where external_id is not null;
+
+--bun:split
+
+comment on table support_messages is
+  'Messages within a support thread. (channel, external_id) is unique so a provider webhook retry cannot double-insert.';
+
+-- ==========================================================================
+-- SECTION: custom-domain-state
+-- Split "temporarily failing" from "gone", and make recovery possible.
+-- ==========================================================================
+
+-- Until now a custom domain had exactly one counter (custom_domain_failures)
+-- doing two jobs: "this is flaky right now" and "this domain has been taken
+-- away from us". At three consecutive failures the page's verification was
+-- cleared and it went dark — permanently, because the sweep only ever demoted.
+-- A DNS blip spanning three six-hourly cycles took a customer's status page
+-- offline until a human noticed and clicked Verify.
+--
+-- These columns make the lifecycle explicit and reversible:
+--
+--   none     no domain configured
+--   pending  a domain is set but has never verified (only an operator promotes)
+--   active   verified and serving
+--   grace    verified, serving, but re-checks are currently failing
+--   demoted  hard demotion: verification cleared, not served
+--
+-- grace KEEPS custom_domain_verified_at set, which is what keeps the page
+-- serving through a blip. Hard demotion is what clears it.
+alter table status_pages add column if not exists custom_domain_state text not null default 'none';
+
+--bun:split
+
+-- Consecutive SUCCESSFUL re-checks. The mirror image of custom_domain_failures,
+-- and the counter re-promotion is earned with: a demoted domain needs several
+-- consecutive successes (not one) before it is trusted again.
+alter table status_pages add column if not exists custom_domain_successes integer not null default 0;
+
+--bun:split
+
+-- When the domain last entered `grace`. Makes "has stayed unreachable well past
+-- the grace window" a readable fact instead of an inference from a counter and
+-- a job interval.
+alter table status_pages add column if not exists custom_domain_grace_since timestamptz;
+
+--bun:split
+
+-- Human-readable diagnostic from the last re-check: which mode was used, what
+-- target was expected, what DNS actually returned, and the lookup error if any.
+-- Without it, "verification fails but dig says the CNAME is right" can only be
+-- investigated by correlating pod logs with manual dig runs.
+alter table status_pages add column if not exists custom_domain_last_check text;
+
+--bun:split
+
+-- Backfill the state of existing rows from the columns that already encode it,
+-- so an upgraded installation does not start every configured domain at 'none'.
+update status_pages
+   set custom_domain_state = case
+         when custom_domain is null then 'none'
+         when custom_domain_verified_at is not null then 'active'
+         when custom_domain_checked_at is not null then 'demoted'
+         else 'pending'
+       end
+ where custom_domain_state = 'none';
+
+--bun:split
+
+comment on column status_pages.custom_domain_state is
+  'Custom-domain lifecycle: none | pending | active | grace | demoted. grace keeps serving; only demoted clears custom_domain_verified_at.';
+
+-- ==========================================================================
+-- SECTION: must-change-password
+-- ==========================================================================
+
+-- The seeded bootstrap admin ships with credentials published in a public
+-- repository (admin@solidping.io / solidpass). Rather than make the seed
+-- mode-dependent — a security posture that can be mis-detected — the account is
+-- seeded exactly as before and marked here: a session authenticated as a flagged
+-- user can reach the password-rotation endpoint and nothing else.
+--
+-- Deliberately NOT a column about the seeded admin. It is a general user-level
+-- capability, reused for operator-initiated resets, invited users, and
+-- compromised-credential response. Every consumer reads the column; nothing
+-- keys on "is this the seeded admin".
+--
+-- Default false, so existing rows — including OAuth/SSO/LDAP users who have no
+-- password at all and could not satisfy a rotation — are untouched.
+alter table users add column if not exists must_change_password boolean not null default false;
+
+--bun:split
+
+comment on column users.must_change_password is
+  'When true, an authenticated session for this user may reach only POST /auth/change-password, GET /auth/me and POST /auth/logout until the password is rotated.';
