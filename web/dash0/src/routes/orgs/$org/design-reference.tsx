@@ -73,6 +73,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
+import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
 import {
   formatBudgetSeconds,
@@ -171,6 +172,11 @@ import { cn, slugify } from "@/lib/utils";
 export const Route = createFileRoute("/orgs/$org/design-reference")({
   component: DesignReferencePage,
 });
+
+// Frozen at module load: calling Date.now() inside the render would be an
+// impure read, and these are decorative sample timestamps either way.
+const SUPPORT_BUBBLE_INBOUND_AT = new Date(Date.now() - 300_000).toISOString();
+const SUPPORT_BUBBLE_OUTBOUND_AT = new Date(Date.now() - 120_000).toISOString();
 
 // Computed once at module scope (not inside a component render) so the
 // "N ago" showcase below stays a pure render — see the LiveDurationAgo
@@ -1465,6 +1471,56 @@ function ButtonsBadgesSection() {
             </Button>
           }
           importLine={`import { Button } from "@/components/ui/button";\nimport { Badge } from "@/components/ui/badge";\n\n<Button variant="outline" className="w-full">\n  <KeyRound className="mr-2 h-4 w-4" />\n  Sign in with passkey\n  <Badge variant="secondary" className="ml-2">Last used</Badge>\n</Button>`}
+        />
+
+        <h3 className="text-sm font-medium">Support message bubble</h3>
+        <p className="text-sm text-muted-foreground">
+          One message in a support-inbox thread. Inbound sits left in{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            bg-muted
+          </code>
+          , our own replies sit right in{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            bg-primary
+          </code>
+          , so the thread reads like the WhatsApp/Telegram/SMS conversation the
+          person is actually sitting in. The body is rendered as{" "}
+          <strong>text, never as markup</strong> — these bodies arrive from
+          publicly reachable phone numbers and are attacker-influenced by
+          definition. A body stored over the cap shows the truncation note; a
+          reply whose provider send failed shows the delivery warning, because a
+          failed reply that left no trace is how an operator answers the same
+          person twice.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-2">
+              <SupportMessageBubble
+                message={{
+                  uid: "m1",
+                  threadUid: "t1",
+                  channel: "whatsapp",
+                  direction: "inbound",
+                  body: "is the api down for you too?",
+                  rawType: "text",
+                  createdAt: SUPPORT_BUBBLE_INBOUND_AT,
+                }}
+              />
+              <SupportMessageBubble
+                message={{
+                  uid: "m2",
+                  threadUid: "t1",
+                  channel: "whatsapp",
+                  direction: "outbound",
+                  body: "looking into it now",
+                  rawType: "text",
+                  delivery: { status: "failed" },
+                  createdAt: SUPPORT_BUBBLE_OUTBOUND_AT,
+                }}
+              />
+            </div>
+          }
+          importLine={`import { SupportMessageBubble } from "@/components/support/message-bubble";\n\n<SupportMessageBubble message={message} />`}
         />
 
         <h3 className="text-sm font-medium">Status dot</h3>

@@ -7,7 +7,6 @@ import { toast } from "sonner";
 
 import {
   SUPPORT_CHANNEL_LABELS,
-  type SupportMessage,
   type SupportThread,
   useSendSupportReply,
   useSupportMessages,
@@ -16,6 +15,7 @@ import {
 } from "@/api/support";
 import { ApiError } from "@/api/client";
 import { SupportGate } from "@/components/support/support-gate";
+import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -23,9 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { TimeAgo } from "@/components/ui/time-ago";
 import { useAuth } from "@/contexts/AuthContext";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/support/$threadUid")({
   component: SupportThreadPage,
@@ -84,7 +82,7 @@ function SupportThreadView() {
             <p className="text-sm text-muted-foreground">{t("thread.noMessages")}</p>
           ) : (
             (messages.data ?? []).map((message) => (
-              <MessageBubble key={message.uid} message={message} />
+              <SupportMessageBubble key={message.uid} message={message} />
             ))
           )}
         </CardContent>
@@ -142,43 +140,6 @@ function ThreadHeader({ thread }: { thread: SupportThread }) {
           t("thread.noAttribution")
         )}
       </p>
-    </div>
-  );
-}
-
-function MessageBubble({ message }: { message: SupportMessage }) {
-  const { t } = useTranslation("support");
-  const outbound = message.direction === "outbound";
-  const failed = (message.delivery?.status as string | undefined) === "failed";
-
-  return (
-    <div className={cn("flex", outbound ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[85%] rounded-lg px-3 py-2 text-sm",
-          outbound ? "bg-primary text-primary-foreground" : "bg-muted",
-        )}
-        data-testid={outbound ? "support-message-outbound" : "support-message-inbound"}
-      >
-        <div className="mb-1 flex items-center gap-2 text-xs opacity-80">
-          <span>{outbound ? t("thread.outbound") : t("thread.inbound")}</span>
-          <TimeAgo date={message.createdAt} />
-        </div>
-        {/*
-          NEVER dangerouslySetInnerHTML here. These bodies arrive from publicly
-          reachable phone numbers and are attacker-influenced by definition;
-          React escapes text children, and that is the whole protection.
-        */}
-        <p className="whitespace-pre-wrap break-words">{message.body}</p>
-        {message.truncated ? (
-          <p className="mt-1 text-xs italic opacity-80">{t("thread.truncated")}</p>
-        ) : null}
-        {failed ? (
-          <p className="mt-1 text-xs font-medium text-destructive">
-            {t("thread.deliveryFailed")}
-          </p>
-        ) : null}
-      </div>
     </div>
   );
 }
