@@ -175,3 +175,86 @@ failure **diagnosable** — when a check fails, record enough about *why* (what 
 resolved, by which mode, what was expected) that this question can be answered
 from the data next time instead of by correlating pod logs with manual `dig`
 runs. File the residual investigation as its own spec.
+
+## Implementation Plan
+
+One entry per numbered requirement in `## Resolved open questions`, plus the
+diagnosability directive. Mechanism is chosen here; the shape follows the spec.
+
+### R1 — The sweep may re-promote
+
+- Add an explicit `custom_domain_state` column (`none` | `pending` | `active` |
+  `grace` | `demoted`) plus `custom_domain_successes` to `status_pages`, in a new
+  `017_v0_18_0` migration for **both** dialects and both directions (016 is already
+  applied on dev databases; `migrationguard` checksums forbid editing it).
+- The sweep, on a successful check of a page in state `demoted`, increments
+  `custom_domain_successes`. At `customDomainRepromoteSuccesses` (3) consecutive
+  successes it re-promotes: `custom_domain_verified_at = now`, state `active`.
+- Re-promotion is gated on **still holding an unexpired certificate** for the host in
+  `tls_storage` (`tlsedge.HasValidStoredCertificate`, reached from the job through
+  `jctx.DBService`). No cert ⇒ no re-promotion; the operator's Verify button is
+  still the way in.
+- A page in state `pending` (never verified) is NEVER auto-promoted — re-promotion
+  applies to a domain that *was* ours, which is what makes it a blip and not a
+  land-grab.
+- Tests: `job_custom_domain_verify_test.go` — re-promotes after 3 successes with a
+  stored cert; does NOT re-promote after 2; does NOT re-promote without a valid
+  cert; never promotes a `pending` page.
+
+### R2 — Split "temporarily failing" from "gone"
+
+- Make the state machine explicit and pure: `customDomainTransition(input) outcome`
+  in `job_custom_domain_verify.go`, unit-tested on its own, with named states.
+- Two thresholds replace the single one:
+  `customDomainGraceAfterFailures = 3` → enter `grace` (**keeps** `verified_at`, so
+  the page keeps serving and the blip is invisible to visitors), and
+  `customDomainHardDemoteAfterFailures = 12` (~3 days at the 6h cadence) → hard
+  demotion, `verified_at = NULL`, state `demoted`.
+- `custom_domain_grace_since` records when degradation started, so "well past the
+  grace window" is visible rather than inferred.
+- Tests: 3 failures ⇒ grace and STILL serving (`verified_at` non-nil); 12 ⇒ hard
+  demotion; a success anywhere in grace returns to `active` and clears
+  `grace_since`.
+
+### R3 — Never fail at the TLS handshake for a domain we hold a certificate for
+
+- `tlsedge`: new `storedcert.go` loads the certificate + key for an SNI host out of
+  `tls_storage` and reports whether it is present and unexpired.
+- `Edge.TLSConfig`'s `GetCertificate`: when `hostIsLocal` is false but a valid stored
+  certificate exists, **complete the handshake with that certificate** instead of
+  returning `ErrHostNotAllowed`. The refusal path stays for hosts we hold nothing
+  for — it is still the only thing gating issuance.
+- HTTP layer (`internal/app/custom_domain_routing.go`): a host that IS a known
+  custom domain but is not currently servable no longer falls through to the
+  instance's own-host routing (which served the dashboard SPA on a customer
+  hostname). It gets a legible `503` page naming the domain and the reason.
+- Tests: a **real TLS handshake** against a demoted-but-certificated host over a
+  live listener, asserting an HTTP status + body rather than a handshake error
+  (this is the binding acceptance criterion from spec `2026-07-26-01`); plus
+  routing tests for the 503 page and for "unknown host still falls through".
+
+### R4 — Alert the operator on hard demotion
+
+- New audit event `statuspage.custom_domain.demoted` (`models.EventType`), written
+  by the sweep on hard demotion only — grace entry does not page. Mirrors the
+  `statuspage.subscriber.disabled` precedent, so it lands in the org's events feed
+  and its webhook fan-out.
+- Delivery: an email to the org's owners/admins through the existing
+  `JobTypeEmail` job + a new `custom-domain-demoted.html` template. The incident
+  fan-out is deliberately not used: `incidents.check_uid` is NOT NULL and a status
+  page has no anchor check, so riding it would mean inventing a fake one.
+- Tests: hard demotion writes exactly one event and enqueues the email job; grace
+  entry writes neither.
+
+### Diagnosability (the out-of-scope "Also worth checking" item)
+
+- The verifier gains `Diagnose`, returning what was resolved, the expected target,
+  the mode, and the lookup error.
+- The sweep stores that as `custom_domain_last_check` on the page and logs it, so
+  "why did verification fail while `dig` says it is fine" is answerable from the
+  row instead of by correlating pod logs.
+- Exposed read-only on the authenticated status-page response
+  (`customDomainLastCheck`, `customDomainState`, `customDomainDegradedSince`) and
+  rendered in the dash0 custom-domain card alongside a new `grace` badge.
+- Tests: a failing check records a diagnostic naming the resolved and expected
+  targets and the mode.
