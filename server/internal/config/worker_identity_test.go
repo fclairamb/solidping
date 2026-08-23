@@ -61,7 +61,11 @@ func TestResolveWorkerIdentity_Override(t *testing.T) {
 
 // TestResolveWorkerIdentity_HostnameFallback: with no override, the historic
 // behavior is preserved byte-for-byte — 15-char truncation, lowercased slug,
-// raw-case name, and "unknown" when os.Hostname() errors.
+// raw-case name, and "unknown" when os.Hostname() errors. It also asserts the
+// spec's "fixed point" property: every hostname here already matches
+// WorkerSlugPattern once lowercased/truncated, so sanitization must be a
+// no-op (Sanitized false, slug unchanged) — no existing deployment's slug
+// moves because of this change.
 func TestResolveWorkerIdentity_HostnameFallback(t *testing.T) {
 	t.Parallel()
 
@@ -117,9 +121,107 @@ func TestResolveWorkerIdentity_HostnameFallback(t *testing.T) {
 			r.Equal(tc.wantWorkName, id.Name)
 			r.False(id.Overridden)
 			r.Equal(tc.wantTruncated, id.Truncated)
+			r.False(id.Sanitized, "an already-valid hostname must be a fixed point of sanitization")
 			r.NoError(id.Validate())
 		})
 	}
+}
+
+// TestResolveWorkerIdentity_HostnameSanitization covers the bug this spec
+// fixes: a hostname-derived slug with characters outside [a-z0-9-] (dots
+// being the killer case — .lan/.local/.home suffixes are the default on
+// macOS/LAN machines) is sanitized into a valid slug instead of making the
+// worker refuse to start. Name stays the human-readable, original-case,
+// truncated hostname — only Slug is sanitized.
+func TestResolveWorkerIdentity_HostnameSanitization(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		hostname     string
+		wantSlug     string
+		wantWorkName string
+	}{
+		{
+			name:         "dots substituted with dashes, not stripped",
+			hostname:     "Host-002.lan",
+			wantSlug:     "host-002-lan",
+			wantWorkName: "Host-002.lan",
+		},
+		{
+			name:         ".local suffix",
+			hostname:     "my-mac.local",
+			wantSlug:     "my-mac-local",
+			wantWorkName: "my-mac.local",
+		},
+		{
+			name:         ".home suffix",
+			hostname:     "router.home",
+			wantSlug:     "router-home",
+			wantWorkName: "router.home",
+		},
+		{
+			name:         "consecutive illegal characters collapse to one dash",
+			hostname:     "host..lan",
+			wantSlug:     "host-lan",
+			wantWorkName: "host..lan",
+		},
+		{
+			name:         "underscore substituted",
+			hostname:     "my_host",
+			wantSlug:     "my-host",
+			wantWorkName: "my_host",
+		},
+		{
+			name:         "leading dot trimmed after substitution",
+			hostname:     ".hidden-host",
+			wantSlug:     "hidden-host",
+			wantWorkName: ".hidden-host",
+		},
+		{
+			// The hostNetwork failure mode this spec fixes: the host UTS
+			// namespace hands the pod a dotted node name, and it used to be a
+			// hard startup failure — see TestWorkerIdentityValidate_Invalid
+			// for the still-pathological residue cases (e.g. a leading digit).
+			name:         "kubernetes hostNetwork dotted hostname now boots",
+			hostname:     "eu2.example.com",
+			wantSlug:     "eu2-example-com",
+			wantWorkName: "eu2.example.com",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			id := resolveWorkerIdentity("", staticHostname(tc.hostname))
+
+			r.Equal(tc.wantSlug, id.Slug)
+			r.Equal(tc.wantWorkName, id.Name, "Name must stay the original-case hostname, unsanitized")
+			r.Equal(tc.hostname, id.Hostname)
+			r.False(id.Overridden)
+			r.True(id.Sanitized)
+			r.NoError(id.Validate())
+		})
+	}
+}
+
+// TestResolveWorkerIdentity_OverrideNeverSanitized proves sanitization only
+// ever applies to the hostname-derived path: an explicit SP_NODE_NAME with
+// illegal characters is passed through verbatim (Sanitized stays false) and
+// still fails hard on Validate — operator intent must not be silently
+// rewritten.
+func TestResolveWorkerIdentity_OverrideNeverSanitized(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	id := resolveWorkerIdentity("eu2.example.com", hostnameNeverCalled(t))
+
+	r.Equal("eu2.example.com", id.Slug)
+	r.True(id.Overridden)
+	r.False(id.Sanitized)
+	r.ErrorIs(id.Validate(), ErrInvalidWorkerSlug)
 }
 
 // TestWorkerIdentityValidate_Invalid: every slug the database CHECK constraint
@@ -161,11 +263,19 @@ func TestWorkerIdentityValidate_Invalid(t *testing.T) {
 			wantIn:   []string{"SP_NODE_NAME"},
 		},
 		{
-			// The hostNetwork failure mode: the host UTS namespace hands the
-			// pod a dotted node name.
-			name:     "hostname with dots (kubernetes hostNetwork)",
-			hostname: "eu2.example.com",
-			wantIn:   []string{"eu2.example.com", "SP_NODE_NAME", "hostname"},
+			// Pathological residue: sanitization substitutes the dots but the
+			// result still starts with a digit, which the CHECK constraint
+			// (and WorkerSlugPattern) rejects regardless of origin.
+			name:     "hostname sanitizes to a leading digit",
+			hostname: "10.0.0.1",
+			wantIn:   []string{"10.0.0.1", "SP_NODE_NAME", "hostname"},
+		},
+		{
+			// Pathological residue: nothing survives collapsing/trimming, so
+			// the derived slug is empty.
+			name:     "hostname sanitizes to empty",
+			hostname: "...",
+			wantIn:   []string{"...", "SP_NODE_NAME", "hostname"},
 		},
 	}
 
@@ -235,6 +345,57 @@ func TestWorkerIdentityWarnIfTruncated(t *testing.T) {
 
 			r.Contains(out, "level=WARN")
 			r.Contains(out, "slug=solidping-check")
+			r.Contains(out, "SP_NODE_NAME")
+		})
+	}
+}
+
+// TestWorkerIdentityWarnIfSanitized proves a hostname whose illegal
+// characters had to be substituted produces a WARN naming the resulting slug
+// (in the spirit of WarnIfTruncated), and that a hostname needing no
+// substitution or an overridden identity stays quiet.
+func TestWorkerIdentityWarnIfSanitized(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		identity WorkerIdentity
+		wantWarn bool
+	}{
+		{
+			name:     "dotted hostname warns",
+			identity: resolveWorkerIdentity("", staticHostname("host-002.lan")),
+			wantWarn: true,
+		},
+		{
+			name:     "already-clean hostname stays quiet",
+			identity: resolveWorkerIdentity("", staticHostname("worker-eu2")),
+		},
+		{
+			name:     "override stays quiet even with illegal characters",
+			identity: resolveWorkerIdentity("eu2.example.com", func() (string, error) { return "", nil }),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+			tc.identity.WarnIfSanitized(context.Background(), logger)
+
+			out := buf.String()
+			if !tc.wantWarn {
+				r.Empty(out)
+
+				return
+			}
+
+			r.Contains(out, "level=WARN")
+			r.Contains(out, "slug=host-002-lan")
 			r.Contains(out, "SP_NODE_NAME")
 		})
 	}
