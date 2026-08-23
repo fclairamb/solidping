@@ -233,6 +233,42 @@ type UserInfo struct {
 	Name      string `json:"name,omitempty"`
 	AvatarURL string `json:"avatarUrl,omitempty"`
 	Role      string `json:"role"`
+	// MustChangePassword is the machine-readable signal that this session may
+	// do nothing but rotate its password (spec 2026-08-23-04). It rides on every
+	// login-shaped response and on /auth/me, so a client routes to its
+	// "set a new password" screen PROACTIVELY instead of discovering the state
+	// by tripping a 403 it would otherwise render as a dead "Permission denied".
+	//
+	// omitempty on purpose: the field is only ever meaningful when true, and
+	// UserInfo is also used to describe OTHER people (the membership-request
+	// admin view), where a user's pending-rotation state is none of the
+	// viewer's business — see newUserInfo's doc.
+	MustChangePassword bool `json:"mustChangePassword,omitempty"`
+}
+
+// newUserInfo builds the user payload every login-shaped response and /auth/me
+// carries. Funneling the construction through one function is what keeps a new
+// user field (mustChangePassword being the first) from reaching some responses
+// and not others — the same reason newOrganizationInfo exists, and the same
+// class of bug that let avatarUrl silently miss two of the login paths.
+//
+// Use it ONLY for the caller describing themselves. UserInfo also appears in
+// the membership-request admin view, which describes a DIFFERENT user to an
+// org admin; that site deliberately keeps a literal so a third party's
+// forced-rotation state is never disclosed.
+func newUserInfo(user *models.User, role string) *UserInfo {
+	if user == nil {
+		return nil
+	}
+
+	return &UserInfo{
+		UID:                user.UID,
+		Email:              user.Email,
+		Name:               user.Name,
+		AvatarURL:          user.AvatarURL,
+		Role:               role,
+		MustChangePassword: user.MustChangePassword,
+	}
 }
 
 // OrganizationInfo represents organization information.
@@ -634,13 +670,7 @@ func (s *Service) completeLogin(
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
 
-	userInfo := &UserInfo{
-		UID:       user.UID,
-		Email:     user.Email,
-		Name:      user.Name,
-		AvatarURL: user.AvatarURL,
-		Role:      role,
-	}
+	userInfo := newUserInfo(user, role)
 
 	if resolvedOrg == nil {
 		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "")
@@ -1295,13 +1325,7 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User: newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -1531,13 +1555,7 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
 
 	return &MeResponse{
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User: newUserInfo(user, role),
 		Organization:              newOrganizationInfo(org),
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
@@ -1582,13 +1600,7 @@ func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResp
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
 
 	return &MeResponse{
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User: newUserInfo(user, role),
 		Organization:              nil,
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
@@ -1980,13 +1992,7 @@ func (s *Service) SwitchOrg(
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User: newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -2395,11 +2401,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		// No org to login to - return minimal response
 		return &LoginResponse{
 			TokenType: tokenTypeBearer,
-			User: &UserInfo{
-				UID:   user.UID,
-				Email: user.Email,
-				Name:  user.Name,
-			},
+			User: newUserInfo(user, ""),
 		}, nil
 	}
 
@@ -2441,12 +2443,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:   user.UID,
-			Email: user.Email,
-			Name:  user.Name,
-			Role:  role,
-		},
+		User: newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -2713,7 +2710,17 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &hash}); err != nil {
+	// Clearing must_change_password here is what makes the flag a general
+	// capability rather than an admin-seed special case: the emailed reset link
+	// is a legitimate way to satisfy a forced rotation (it is the ONLY way, for
+	// a user who has forgotten the password they are being forced to change),
+	// so it must clear the flag exactly like the authenticated rotation does.
+	rotationCleared := false
+
+	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{
+		PasswordHash:       &hash,
+		MustChangePassword: &rotationCleared,
+	}); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -2827,7 +2834,15 @@ func (s *Service) ChangePassword(
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &hash}); err != nil {
+	// Satisfying a forced rotation is the whole point of the flag: clear it in
+	// the same UPDATE as the hash, so a crash between the two can never leave
+	// an account with a new password and a stale block on it.
+	rotationCleared := false
+
+	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{
+		PasswordHash:       &hash,
+		MustChangePassword: &rotationCleared,
+	}); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -3402,12 +3417,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:   user.UID,
-			Email: user.Email,
-			Name:  user.Name,
-			Role:  role,
-		},
+		User: newUserInfo(user, role),
 		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil
@@ -3998,13 +4008,7 @@ func (s *Service) completeLoginAfter2FA(
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
 
-	userInfo := &UserInfo{
-		UID:       user.UID,
-		Email:     user.Email,
-		Name:      user.Name,
-		AvatarURL: user.AvatarURL,
-		Role:      role,
-	}
+	userInfo := newUserInfo(user, role)
 
 	// No org case
 	if orgSlug == "" {

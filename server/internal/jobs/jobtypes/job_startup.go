@@ -210,6 +210,13 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	adminUser := models.NewUser(adminEmail)
 	adminUser.PasswordHash = &passwordHash
 	adminUser.SuperAdmin = true
+	// Both halves of this credential pair are published in a public repository,
+	// and the account is a superadmin. The seed itself stays unconditional and
+	// identical in dev and production — a mode-dependent security posture is
+	// one more thing that can be mis-detected — so the exposure is closed at
+	// the other end instead: the first successful login can do nothing but
+	// rotate the password (spec 2026-08-23-04).
+	adminUser.MustChangePassword = true
 
 	// Deliberately NOT captured as a user_signed_up product event (spec
 	// 2026-08-02-08): this is the install-bootstrap admin seeded on every

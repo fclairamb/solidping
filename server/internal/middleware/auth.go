@@ -81,6 +81,18 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 				writer, req, http.StatusUnauthorized, base.ErrorCodeUserNotFound, "User not found", err)
 		}
 
+		// Forced password rotation (spec 2026-08-23-04). This is THE choke
+		// point: every authenticated REST surface — the dashboard, the CLI,
+		// PAT creation, every org route — runs through RequireAuth, so one
+		// check here covers them all rather than each login form growing its
+		// own. The credential is valid; what is denied is using it for
+		// anything but the rotation.
+		if auth.PasswordRotationRequired(user) &&
+			!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
+		}
+
 		// Add claims and user to context
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
@@ -167,6 +179,17 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
 		if err != nil {
 			return m.writeMCPChallenge(writer, meta, base.ErrorCodeUserNotFound, "User not found")
+		}
+
+		// A pending rotation blocks the MCP resource server too. No route
+		// under /mcp is on the allowlist, so this is an unconditional deny —
+		// but it is written through the same predicate as RequireAuth so the
+		// two can never disagree about what "flagged" means. 403, not the 401
+		// challenge: re-authenticating changes nothing, only rotating does.
+		if auth.PasswordRotationRequired(user) &&
+			!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
 		}
 
 		ctx := req.Context()

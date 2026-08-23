@@ -114,6 +114,16 @@ func (h *Handler) authenticateToken(
 		return nil, nil, base.ErrorCodeUserNotFound, "User not found"
 	}
 
+	// Forced password rotation (spec 2026-08-23-04). This handler authenticates
+	// in-band rather than behind RequireAuth — browsers cannot present a bearer
+	// at WebSocket-upgrade time — so the central gate has to be repeated here,
+	// through the same shared predicate, or the live socket would be a hole in
+	// it. Denied pre-upgrade, so an explicit-auth client reads a real HTTP
+	// status with the machine-readable code.
+	if auth.PasswordRotationRequired(user) {
+		return nil, nil, base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage
+	}
+
 	return claims, user, "", ""
 }
 

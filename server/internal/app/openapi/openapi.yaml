@@ -8639,6 +8639,14 @@ components:
         role:
           type: string
           enum: [owner, admin, user, viewer]
+        mustChangePassword:
+          type: boolean
+          description: >
+            True when this account must rotate its password before it can do
+            anything else. The session returned alongside this flag reaches only
+            POST /auth/change-password, GET /auth/me and POST /auth/logout;
+            every other endpoint answers 403 with code PASSWORD_CHANGE_REQUIRED.
+            Omitted when false.
 
     CreateTokenRequest:
       type: object

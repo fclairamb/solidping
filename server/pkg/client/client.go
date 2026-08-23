@@ -28,7 +28,22 @@ var (
 	ErrUnexpectedStatus = errors.New("unexpected response status")
 	// ErrTokenNotFound is returned when a token is not found.
 	ErrTokenNotFound = errors.New("token not found")
+	// ErrPasswordChangeRequired is returned when the server refuses a request
+	// because the account must rotate its password first (HTTP 403 with code
+	// PASSWORD_CHANGE_REQUIRED — spec 2026-08-23-04). Surfaced as its own
+	// sentinel so the CLI can print what to do instead of an opaque
+	// "unexpected response status: 403".
+	ErrPasswordChangeRequired = errors.New(
+		"password change required: this account must set a new password before it can be used\n" +
+			"  Sign in to the dashboard and complete the \"set a new password\" screen,\n" +
+			"  or POST /api/v1/auth/change-password with {\"currentPassword\":\"…\",\"newPassword\":\"…\"}.\n" +
+			"  A freshly installed server seeds its admin with a published default password " +
+			"and forces this rotation on first login")
 )
+
+// passwordChangeRequiredCode is the machine-readable error code the server
+// returns while an account carries must_change_password.
+const passwordChangeRequiredCode = "PASSWORD_CHANGE_REQUIRED"
 
 const (
 	httpStatusNoContent = 204
@@ -39,6 +54,49 @@ const (
 //
 //nolint:gochecknoglobals // Intentional global variable to share request counter across all client instances
 var globalRequestCounter atomic.Int64
+
+// rotationGateRoundTripper turns the server's forced-password-rotation refusal
+// into a typed Go error, at the one place every API call in this package passes
+// through — the generated OpenAPI methods, the hand-written wrappers and
+// rawRequest alike.
+//
+// Doing it here rather than per call site is what makes the CLI failure
+// actionable everywhere at once: without it, `solidping checks list` against a
+// flagged account reports "unexpected response status: 403", which reads as a
+// permissions problem and sends the operator looking for a role to grant.
+type rotationGateRoundTripper struct {
+	transport http.RoundTripper
+}
+
+// RoundTrip inspects only 403 responses, and restores the body it read so an
+// ordinary FORBIDDEN still decodes normally in the caller.
+func (r *rotationGateRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := r.transport.RoundTrip(req)
+	if err != nil || resp.StatusCode != http.StatusForbidden {
+		return resp, err //nolint:wrapcheck // transparent pass-through of the inner transport's error
+	}
+
+	body, readErr := io.ReadAll(resp.Body)
+	_ = resp.Body.Close() //nolint:errcheck // best effort; the bytes are already read
+
+	if readErr != nil {
+		resp.Body = io.NopCloser(bytes.NewReader(nil))
+
+		return resp, nil
+	}
+
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+
+	if json.Unmarshal(body, &apiErr) == nil && apiErr.Code == passwordChangeRequiredCode {
+		return nil, ErrPasswordChangeRequired
+	}
+
+	return resp, nil
+}
 
 // loggingRoundTripper wraps an http.RoundTripper to log requests and responses.
 type loggingRoundTripper struct {
@@ -167,6 +225,12 @@ type SolidPingClient struct {
 	config           Config
 	token            string
 	loggingTransport *loggingRoundTripper
+	// transport is what every request in this package actually goes out on:
+	// the optional logging tripper, wrapped by the forced-rotation gate. Held
+	// on the struct (rather than rebuilt per call site) so the generated
+	// client and the three hand-written raw paths cannot drift apart and leave
+	// one of them ungated.
+	transport http.RoundTripper
 }
 
 // New creates a new SolidPing API client.
@@ -183,6 +247,13 @@ func New(cfg Config) (*SolidPingClient, error) {
 		}
 	}
 
+	inner := http.RoundTripper(http.DefaultTransport)
+	if client.loggingTransport != nil {
+		inner = client.loggingTransport
+	}
+
+	client.transport = &rotationGateRoundTripper{transport: inner}
+
 	if err := client.recreateClient(); err != nil {
 		return nil, err
 	}
@@ -190,17 +261,18 @@ func New(cfg Config) (*SolidPingClient, error) {
 	return client, nil
 }
 
+// httpClient returns the http.Client every request in this package must use.
+func (c *SolidPingClient) httpClient() *http.Client {
+	if c.transport == nil {
+		return http.DefaultClient
+	}
+
+	return &http.Client{Transport: c.transport}
+}
+
 // recreateClient creates a new underlying client with current token.
 func (c *SolidPingClient) recreateClient() error {
-	var opts []ClientOption
-
-	// Use the existing logging transport if enabled
-	if c.loggingTransport != nil {
-		httpClient := &http.Client{
-			Transport: c.loggingTransport,
-		}
-		opts = append(opts, WithHTTPClient(httpClient))
-	}
+	opts := []ClientOption{WithHTTPClient(c.httpClient())}
 
 	if c.token != "" {
 		token := c.token // capture for closure
@@ -284,6 +356,29 @@ func (c *SolidPingClient) Me(ctx context.Context) (*MeResponse, error) {
 	}
 
 	return resp.JSON200, nil
+}
+
+// SessionRequiresPasswordChange reports whether the account behind the client's
+// current token must rotate its password before it can be used.
+//
+// It reads GET /api/v1/auth/me — deliberately, because that is one of the three
+// endpoints a flagged session can still reach, so this probe never trips the
+// gate it is asking about. Hand-written against rawRequest rather than the
+// generated Me(): pkg/client/client_generated.go is regenerated once per
+// batch (wiki/conventions/generated-client.md), so a typed field added to
+// openapi.yaml today is not available to compile against today.
+func (c *SolidPingClient) SessionRequiresPasswordChange(ctx context.Context) (bool, error) {
+	var resp struct {
+		User struct {
+			MustChangePassword bool `json:"mustChangePassword"`
+		} `json:"user"`
+	}
+
+	if _, err := c.rawRequest(ctx, http.MethodGet, "/api/v1/auth/me", nil, &resp); err != nil {
+		return false, err
+	}
+
+	return resp.User.MustChangePassword, nil
 }
 
 // Refresh refreshes the access token using a refresh token.
@@ -463,12 +558,7 @@ func (c *SolidPingClient) rawRequest(
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 
-	httpClient := http.DefaultClient
-	if c.loggingTransport != nil {
-		httpClient = &http.Client{Transport: c.loggingTransport}
-	}
-
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("do request: %w", err)
 	}
@@ -596,12 +686,7 @@ func (c *SolidPingClient) rawRequestBytes(
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 
-	httpClient := http.DefaultClient
-	if c.loggingTransport != nil {
-		httpClient = &http.Client{Transport: c.loggingTransport}
-	}
-
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
@@ -747,12 +832,7 @@ func (c *SolidPingClient) GetOnCallICalFeed(ctx context.Context, secret string) 
 		return "", fmt.Errorf("build request: %w", err)
 	}
 
-	httpClient := http.DefaultClient
-	if c.loggingTransport != nil {
-		httpClient = &http.Client{Transport: c.loggingTransport}
-	}
-
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("do request: %w", err)
 	}
