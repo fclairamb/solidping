@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -104,8 +105,10 @@ var (
 	ErrNoAgentsToSealTo = errors.New("no active agent to seal credentials to")
 	// ErrSlugConflict is returned when a slug already exists.
 	ErrSlugConflict = errors.New("slug already exists")
-	// ErrSlugGenerationFailed is returned when a unique slug cannot be generated.
-	ErrSlugGenerationFailed = errors.New("could not generate unique slug after 99 attempts")
+	// ErrSlugGenerationFailed is returned when a unique slug cannot be
+	// generated — after the readable "-2".."-99" ladder AND the random
+	// discriminator fallback have all come back taken.
+	ErrSlugGenerationFailed = errors.New("could not generate a unique slug")
 	// ErrInvalidSlugFormat is returned when a slug has an invalid format (e.g., looks like a UUID).
 	ErrInvalidSlugFormat = errors.New("invalid slug format")
 	// ErrInvalidCursor is returned when the cursor parameter is malformed.
@@ -2353,7 +2356,7 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 
 		// Slug was auto-generated, find a unique one by appending numbers
 		baseSlug := slug
-		for i := 2; i <= 99; i++ { // Try up to 99 (fits in 2 chars)
+		for i := 2; i <= maxNumericSlugSuffix; i++ { // Try up to 99 (fits in 2 chars)
 			suffix := fmt.Sprintf("-%d", i)
 			// Ensure base + suffix doesn't exceed max length
 			maxBaseLen := maxSlugLength - len(suffix)
@@ -2379,11 +2382,91 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 			}
 		}
 
-		// Couldn't find unique slug after 99 attempts
-		return "", ErrSlugGenerationFailed
+		// The readable numeric ladder is exhausted: this org already has 99
+		// checks sharing this base slug. That is a perfectly ordinary shape —
+		// an auto-generated slug derives from the check's TARGET, not its
+		// name, so 100 checks on `api.acme.com` all want `http-api-acme-com` —
+		// and it used to end in a 500. Fall back to a short random
+		// discriminator rather than refusing the write: the slug stops being
+		// pretty, but creating the 100th check on a host is a legitimate
+		// operation and must succeed.
+		return s.randomSuffixedSlug(ctx, orgUID, slug)
 	}
 
 	return slug, nil
+}
+
+// maxNumericSlugSuffix is the last readable "-N" suffix ensureUniqueSlug will
+// try before switching to a random discriminator. Two digits keeps the slug
+// short and the ladder scannable; it is a formatting choice, not a ceiling on
+// how many checks may share a base slug (randomSuffixedSlug carries past it).
+const maxNumericSlugSuffix = 99
+
+// slugRandomSuffixAttempts bounds the random-discriminator fallback. Each try
+// draws slugRandomSuffixLen base36 characters (~2.2 billion values), so a
+// single collision is already implausible; the retries exist so that a
+// pathological run of collisions degrades into another attempt instead of an
+// error, and the bound exists so the loop cannot hold a request open forever
+// if the lookup itself keeps reporting "taken".
+const slugRandomSuffixAttempts = 8
+
+// slugRandomSuffixLen is the number of base36 characters in the random
+// discriminator. 6 is short enough to stay readable and wide enough that the
+// birthday bound is irrelevant at any plausible per-org check count.
+const slugRandomSuffixLen = 6
+
+// slugRandomAlphabet is deliberately [a-z0-9] only, so a suffixed slug still
+// satisfies slugRegex.
+const slugRandomAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+// randomSuffix draws a slugRandomSuffixLen-character base36 string from the
+// crypto RNG. crypto/rand rather than math/rand so concurrent creations in the
+// same process cannot be handed correlated suffixes from a shared seed — the
+// collision this fallback exists to break is precisely the concurrent one.
+func randomSuffix() (string, error) {
+	buf := make([]byte, slugRandomSuffixLen)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+
+	out := make([]byte, slugRandomSuffixLen)
+	for i, b := range buf {
+		out[i] = slugRandomAlphabet[int(b)%len(slugRandomAlphabet)]
+	}
+
+	return string(out), nil
+}
+
+// randomSuffixedSlug appends a random discriminator to baseSlug until it finds
+// one no check in the org holds. Used only once the numeric ladder in
+// ensureUniqueSlug is exhausted.
+func (s *Service) randomSuffixedSlug(ctx context.Context, orgUID, baseSlug string) (string, error) {
+	const maxSlugLength = 50
+
+	// Reserve room for "-" + the suffix.
+	trimmed := strings.TrimRight(baseSlug, "-")
+	if maxBaseLen := maxSlugLength - slugRandomSuffixLen - 1; len(trimmed) > maxBaseLen {
+		trimmed = strings.TrimRight(trimmed[:maxBaseLen], "-")
+	}
+
+	for range slugRandomSuffixAttempts {
+		suffix, err := randomSuffix()
+		if err != nil {
+			return "", err
+		}
+
+		candidateSlug := trimmed + "-" + suffix
+
+		existing, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, candidateSlug)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		if existing == nil {
+			return candidateSlug, nil
+		}
+	}
+
+	return "", ErrSlugGenerationFailed
 }
 
 // checkSlugStallAttempts bounds how many CONSECUTIVE inserts the slug loop may
@@ -2401,9 +2484,10 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 //
 // A stall is the genuinely pathological case: the re-read handed back the very
 // slug that just failed, so retrying it can only fail identically. Termination
-// does not rest on this constant alone — ensureUniqueSlug itself gives up after
-// the "-99" suffix — but a bounded stall keeps a spinning loop from holding a
-// request open while it re-reads the same answer forever.
+// does not rest on this constant alone — ensureUniqueSlug itself is bounded
+// (the numeric ladder, then slugRandomSuffixAttempts draws) — but a bounded
+// stall keeps a spinning loop from holding a request open while it re-reads
+// the same answer forever.
 const checkSlugStallAttempts = 8
 
 // insertCheckResolvingSlugRace inserts a check, re-resolving an auto-generated
