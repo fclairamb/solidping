@@ -610,11 +610,13 @@ func (r *EscalationStepJobRun) sendWebPush(
 		return 0
 	}
 
-	msg := webpush.Message{
-		Title: fmt.Sprintf("[escalation] incident %s requires attention", incident.UID),
-		Body:  "An incident requires your attention. Open the dashboard to acknowledge or resolve.",
-		URL:   "",
+	checkName := escalationUnknownCheckName
+	if check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); checkErr == nil {
+		checkName = escalationCheckName(check)
 	}
+
+	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
+	msg := escalationWebPushMessage(incident, checkName, orgSlug)
 
 	err := webpush.Send(ctx, jctx.Services.WebPushOptions, route.Contact.Value, msg)
 	if errors.Is(err, webpush.ErrSubscriptionGone) {
@@ -651,6 +653,29 @@ func (r *EscalationStepJobRun) sendWebPush(
 	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), "")
 
 	return 1
+}
+
+// escalationWebPushMessage builds the push content for a per-user escalation
+// notification. The incident is addressed by its short #N reference, never the
+// UID, and the URL is the in-app incident page (relative, like the org-channel
+// webpush sender — the service worker resolves it against its own origin) so a
+// click lands on the incident rather than the generic dashboard.
+func escalationWebPushMessage(incident *models.Incident, checkName, orgSlug string) webpush.Message {
+	ref := "Incident"
+	if incident.Number > 0 {
+		ref = fmt.Sprintf("Incident #%d", incident.Number)
+	}
+
+	url := ""
+	if orgSlug != "" && incident.UID != "" {
+		url = "/dash0/orgs/" + orgSlug + "/incidents/" + incident.UID
+	}
+
+	return webpush.Message{
+		Title: "[ESCALATED] " + checkName,
+		Body:  fmt.Sprintf("%s for %s requires your attention.", ref, checkName),
+		URL:   url,
+	}
 }
 
 // pagePhone delivers to a per-user verified phone contact: an SMS when the
