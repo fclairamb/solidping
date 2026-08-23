@@ -121,3 +121,79 @@ They are directives, not suggestions — implement exactly this.
   exactly one notice per destination, none when already acked (idempotency), and
   the notice survives `cancelPendingNotifications`.
 - Playwright: incident detail shows "Acknowledged by …" after acking in dash0.
+
+## Implementation Plan
+
+### A. Attribution
+
+1. **`incidents.IncidentActorResponse`** — `{ name, via, userUid? }`, exposed on
+   `IncidentResponse.AcknowledgedByActor` (`acknowledgedByActor`). Populated by
+   `resolveAckActor` on the **detail** path (`GetIncident`) only: the list path
+   keeps its bounded query budget (spec 2026-08-18-01 / `enrichment_query_count_test.go`),
+   and the header/badge/timeline the spec asks for all live on the detail page.
+2. `resolveAckActor(ctx, orgUID, incident)`:
+   - nil when `AcknowledgedAt` is nil;
+   - reads the latest `incident.acknowledged` event for the incident
+     (`ListEvents` + `IncidentUID` + `EventTypes`) for `via` and the
+     per-transport display keys;
+   - name precedence: user record (when `acknowledged_by` is set) →
+     `slack_username` → `discord_username` → `acknowledged_by_telegram` →
+     `acknowledged_by_email` → `acknowledged_by_phone` → "".
+3. **OpenAPI**: document `acknowledgedBy` (missing today) and
+   `acknowledgedByActor` on `IncidentDetail`.
+4. **dash0**: `acknowledgedByActor` on the `IncidentDetail` type in
+   `src/api/hooks.ts`; ack badge becomes "Acked by {name}"; the timeline
+   `Acknowledged` entry gains a "by {name} via {channel}" detail line; the raw
+   event-log Actor column resolves the ack actor. New
+   `getAckActor(event)` / `getEventActorLabel(event)` helpers in
+   `event-display.tsx` read the **snake_case** payload keys the ack event
+   really writes. New i18n keys in all four locales (`de`, `en`, `es`, `fr`).
+
+### B. Ack notification
+
+5. **Channel fan-out** — `queueAckNotifications` mirrors
+   `queueCommentNotifications`: the same connection set the incident's alerts
+   reached (`commentFanoutConnections`), filtered by
+   `notifications.AcceptsEventType` and by the origin-channel skip.
+   Called from `acknowledgeIncidentByOrgUID` **after**
+   `cancelPendingNotifications`, and only past the idempotent early return.
+6. **Per-channel formatting** — new `internal/notifications/ack.go` with
+   `AckInfo{ActorName, Via}` (carried on `Payload.Acknowledgment` and in
+   `NotificationJobConfig.Acknowledgment`, exactly like `CommentInfo`), plus
+   shared `ackTitle` / `ackPlainBody` / `ackActor` / `ackViaLabel`. Every
+   sender that switches on the event type gets an explicit
+   `incident.acknowledged` case. PagerDuty maps it to the native
+   `event_action: acknowledge` — its `default:` branch is `trigger`, which
+   would otherwise re-open a resolved incident.
+7. **Telegram people fan-out** — new job type `incident_ack_notice`
+   (`job_incident_ack_notice.go`), modeled on
+   `job_incident_resolution_notice.go`: every chat that was paged for the
+   incident gets one threaded "✅ Acknowledged" notice, guarded by a
+   `telegram_acked:` per-chat marker. It **reads** the thread anchors instead
+   of consuming them — the incident is still open and the resolution notice
+   still needs them. New `telegram.StateAcknowledged`.
+8. **Ordering / idempotency (B.4)** — the notice is queued after the
+   cancellation sweep; the already-acked early return queues nothing;
+   `unacknowledgeIncidentByOrgUID` calls `cancelPendingNotifications` so a
+   still-pending ack notice cannot fire after the ack was withdrawn.
+   `CancelPendingForIncident` exempts `incident_ack_notice` the same way it
+   exempts `incident_resolution_notice`, so the ack's own sweep cannot eat it.
+9. **Origin-channel decision (B.5)** — **skip the originating channel.** The
+   Slack/Discord message whose button was pressed is rewritten in place with
+   "Acknowledged by …", so a second message in the same workspace/guild is
+   pure noise. `AcknowledgeIncidentRequest` gains `EchoOriginTeamID` /
+   `EchoOriginGuildID`, matched workspace/guild-wide by `isAckEchoOrigin`,
+   mirroring `isCommentEchoOrigin`. Covered by a dedicated test.
+
+### Testing
+
+- `ack_actor_test.go` — table-driven, one row per ack origin (web, magic link,
+  Slack, Discord, Telegram, phone) asserting the resolved
+  `acknowledgedByActor` on the API response.
+- `ack_notice_test.go` — exactly one notice job per destination; none on a
+  second (idempotent) ack; the notice survives `cancelPendingNotifications`
+  (ordering); unack cancels a still-pending notice; the originating
+  workspace/guild is skipped while other connections still receive it.
+- sender tests for the new `incident.acknowledged` rendering.
+- dash0 unit test for the snake_case ack-actor extraction.
+- Playwright `incident-ack-actor.spec.ts` — "Acknowledged by …" after acking.
