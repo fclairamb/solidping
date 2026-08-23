@@ -205,9 +205,19 @@ the decisions.
 
 - New error code `base.ErrorCodePasswordChangeRequired = "PASSWORD_CHANGE_REQUIRED"`,
   returned with HTTP 403 by the central gate.
-- `LoginResponse.MustChangePassword` and `MeResponse.MustChangePassword` (`json:
-  "mustChangePassword"`) so a client routes to the rotation screen proactively,
-  before it trips the gate.
+- The signal itself lives on `UserInfo.MustChangePassword`
+  (`json:"mustChangePassword,omitempty"`), i.e. `response.user.mustChangePassword`.
+  That is the payload every login-shaped response **and** `/auth/me` share, so one
+  field covers both — routed through a new `newUserInfo` funnel (mirroring the
+  existing `newOrganizationInfo`) rather than the nine hand-written literals, which
+  is what guarantees it cannot reach some login paths and miss others. The
+  membership-request admin view deliberately keeps its literal: it describes a
+  *different* user, whose rotation state is not the viewer's business.
+- A client therefore routes to the rotation screen proactively, before it trips
+  the gate; the 403 remains the backstop.
+- The test-only `POST /api/v1/test/users` accepts `mustChangePassword` so the
+  Playwright spec can reach this state without booting against a fresh database
+  (which would destroy the shared E2E fixture).
 
 ### D5 — dash0 gets a screen it cannot navigate away from
 
