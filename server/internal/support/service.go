@@ -48,6 +48,17 @@ var (
 	ErrNoReplier = errors.New("this channel cannot be replied to from the support inbox")
 	// ErrEmptyReply is returned for a blank reply body.
 	ErrEmptyReply = errors.New("reply body is empty")
+	// ErrUnknownChannel is returned for an inbound message on a channel the
+	// support inbox does not model.
+	ErrUnknownChannel = errors.New("unknown support channel")
+	// ErrNoIdentity is returned when an inbound message carries nothing to
+	// thread the conversation on.
+	ErrNoIdentity = errors.New("inbound message has no channel identity")
+	// ErrTooManyThreads is returned when one identity has opened more new
+	// threads today than the abuse ceiling allows.
+	ErrTooManyThreads = errors.New("identity opened too many support threads today")
+	// ErrInvalidStatus is returned for a status outside open/pending/closed.
+	ErrInvalidStatus = errors.New("invalid support status")
 )
 
 // Inbound is one captured message, in channel-neutral terms.
@@ -172,22 +183,22 @@ func (s *Service) CanReply(channel string) bool {
 // non-2xx on a provider webhook, which would make the provider retry, which
 // would eventually make the provider disable the subscription. Losing one
 // message is bad; losing the channel is worse.
-func (s *Service) CaptureSafe(ctx context.Context, in *Inbound) {
-	if s == nil || in == nil {
+func (s *Service) CaptureSafe(ctx context.Context, inbound *Inbound) {
+	if s == nil || inbound == nil {
 		return
 	}
 
 	defer func() {
 		if rec := recover(); rec != nil {
-			prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeFailed).Inc()
+			prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeFailed).Inc()
 			s.log.WarnContext(ctx, "support capture panicked",
-				"channel", in.Channel, "panic", fmt.Sprint(rec))
+				"channel", inbound.Channel, "panic", fmt.Sprint(rec))
 		}
 	}()
 
-	if _, _, err := s.Capture(ctx, in); err != nil {
+	if _, _, err := s.Capture(ctx, inbound); err != nil {
 		s.log.WarnContext(ctx, "support capture failed",
-			"channel", in.Channel, "error", err)
+			"channel", inbound.Channel, "error", err)
 	}
 }
 
@@ -197,96 +208,80 @@ func (s *Service) CaptureSafe(ctx context.Context, in *Inbound) {
 // returns the existing rows and no error — a webhook retry is a normal event,
 // not a fault.
 func (s *Service) Capture(
-	ctx context.Context, in *Inbound,
+	ctx context.Context, inbound *Inbound,
 ) (*models.SupportThread, *models.SupportMessage, error) {
-	if !models.ValidSupportChannel(in.Channel) {
-		prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeFailed).Inc()
+	if !models.ValidSupportChannel(inbound.Channel) {
+		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeFailed).Inc()
 
-		return nil, nil, fmt.Errorf("unknown support channel %q", in.Channel)
+		return nil, nil, fmt.Errorf("%w: %q", ErrUnknownChannel, inbound.Channel)
 	}
 
-	if in.Identity == "" {
-		prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeFailed).Inc()
+	if inbound.Identity == "" {
+		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeFailed).Inc()
 
-		return nil, nil, errors.New("inbound message has no channel identity")
+		return nil, nil, ErrNoIdentity
 	}
 
-	at := in.At
-	if at.IsZero() {
-		at = s.now()
+	occurredAt := inbound.At
+	if occurredAt.IsZero() {
+		occurredAt = s.now()
 	}
 
-	// Idempotency, first pass. The unique index is the real guarantee; this
-	// check just avoids the round trip in the common case.
-	if in.ExternalID != "" {
-		existing, err := s.findMessageByExternalID(ctx, in.Channel, in.ExternalID)
-		if err != nil {
-			prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeFailed).Inc()
-
-			return nil, nil, err
-		}
-
-		if existing != nil {
-			prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeDeduplicate).Inc()
-
-			thread, terr := s.GetThread(ctx, existing.ThreadUID)
-			if terr != nil {
-				return nil, existing, nil //nolint:nilerr // dedup path: the message is what matters
-			}
-
-			return thread, existing, nil
-		}
+	if thread, existing, seen, err := s.alreadyCaptured(ctx, inbound); err != nil {
+		return nil, nil, err
+	} else if seen {
+		return thread, existing, nil
 	}
 
-	thread, created, err := s.resolveThread(ctx, in, at)
+	thread, created, err := s.resolveThread(ctx, inbound, occurredAt)
 	if err != nil {
-		prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeFailed).Inc()
+		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeFailed).Inc()
 
 		return nil, nil, err
 	}
 
-	if !s.messagesPerThread.allow(thread.UID, at) {
-		prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeThrottled).Inc()
+	if !s.messagesPerThread.allow(thread.UID, occurredAt) {
+		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeThrottled).Inc()
 		s.log.WarnContext(ctx, "support thread exceeded its hourly message ceiling; message dropped",
-			"channel", in.Channel, "threadUid", thread.UID, "ceiling", DefaultMessagesPerThreadPerHour)
+			"channel", inbound.Channel, "threadUid", thread.UID, "ceiling", DefaultMessagesPerThreadPerHour)
 
 		return thread, nil, nil
 	}
 
-	msg := models.NewSupportMessage(thread.UID, in.Channel, models.SupportDirectionInbound, in.Body, at)
-	if in.RawType != "" {
-		msg.RawType = in.RawType
+	msg := models.NewSupportMessage(thread.UID, inbound.Channel, models.SupportDirectionInbound, inbound.Body, occurredAt)
+	if inbound.RawType != "" {
+		msg.RawType = inbound.RawType
 	}
 
-	if in.ExternalID != "" {
-		externalID := in.ExternalID
+	if inbound.ExternalID != "" {
+		externalID := inbound.ExternalID
 		msg.ExternalID = &externalID
 	}
 
 	if err := s.insertMessage(ctx, msg); err != nil {
 		// A unique violation here means a concurrent replica captured the same
 		// retry. That is the index doing its job, not a failure.
-		if in.ExternalID != "" {
-			if existing, lookupErr := s.findMessageByExternalID(ctx, in.Channel, in.ExternalID); lookupErr == nil &&
+		if inbound.ExternalID != "" {
+			if existing, lookupErr := s.findMessageByExternalID(ctx, inbound.Channel, inbound.ExternalID); lookupErr == nil &&
 				existing != nil {
-				prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeDeduplicate).Inc()
+				prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeDeduplicate).Inc()
 
 				return thread, existing, nil
 			}
 		}
 
-		prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeFailed).Inc()
+		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeFailed).Inc()
 
 		return nil, nil, err
 	}
 
-	if err := s.touchThreadInbound(ctx, thread, at); err != nil {
+	if err := s.touchThreadInbound(ctx, thread, occurredAt); err != nil {
 		// The message is stored. A stale counter is not worth losing it over.
 		s.log.WarnContext(ctx, "failed to update support thread after capture",
 			"threadUid", thread.UID, "error", err)
 	}
 
-	prommetrics.SupportCapture.WithLabelValues(in.Channel, outcomeCaptured).Inc()
+	prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeCaptured).Inc()
 
 	// Notification is best-effort by construction: the message is already
 	// stored, and a bounced notification is a smaller problem than a lost
@@ -296,11 +291,46 @@ func (s *Service) Capture(
 	return thread, msg, nil
 }
 
+// alreadyCaptured is the idempotency pre-check. The unique index is the real
+// guarantee; this only avoids the insert round trip in the common case, which
+// IS the common case — Meta and Twilio both retry on any non-2xx.
+//
+// Returns seen=true when this provider message id has been recorded before.
+func (s *Service) alreadyCaptured(
+	ctx context.Context, inbound *Inbound,
+) (*models.SupportThread, *models.SupportMessage, bool, error) {
+	if inbound.ExternalID == "" {
+		return nil, nil, false, nil
+	}
+
+	existing, err := s.findMessageByExternalID(ctx, inbound.Channel, inbound.ExternalID)
+	if err != nil {
+		prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeFailed).Inc()
+
+		return nil, nil, false, err
+	}
+
+	if existing == nil {
+		return nil, nil, false, nil
+	}
+
+	prommetrics.SupportCapture.WithLabelValues(inbound.Channel, outcomeDeduplicate).Inc()
+
+	thread, err := s.GetThread(ctx, existing.ThreadUID)
+	if err != nil {
+		// The message is what matters; a thread we cannot re-read does not make
+		// this a failure.
+		return nil, existing, true, nil //nolint:nilerr // see above
+	}
+
+	return thread, existing, true, nil
+}
+
 // resolveThread finds the live thread for this identity or opens a new one.
 func (s *Service) resolveThread(
-	ctx context.Context, in *Inbound, at time.Time,
+	ctx context.Context, inbound *Inbound, occurredAt time.Time,
 ) (*models.SupportThread, bool, error) {
-	thread, err := s.findLiveThread(ctx, in.Channel, in.Identity)
+	thread, err := s.findLiveThread(ctx, inbound.Channel, inbound.Identity)
 	if err != nil {
 		return nil, false, err
 	}
@@ -309,8 +339,8 @@ func (s *Service) resolveThread(
 		// Reply-routing context can change between messages (a Slack IM channel
 		// is stable, a WhatsApp phone number id is not necessarily). Keep the
 		// freshest one so a reply is never sent through stale routing.
-		if len(in.Context) > 0 {
-			thread.ChannelContext = models.JSONMap(in.Context)
+		if len(inbound.Context) > 0 {
+			thread.ChannelContext = models.JSONMap(inbound.Context)
 			if uerr := s.updateThreadContext(ctx, thread); uerr != nil {
 				s.log.WarnContext(ctx, "failed to refresh support thread context",
 					"threadUid", thread.UID, "error", uerr)
@@ -320,16 +350,16 @@ func (s *Service) resolveThread(
 		return thread, false, nil
 	}
 
-	if !s.threadsPerIdentity.allow(in.Channel+"\x00"+in.Identity, at) {
+	if !s.threadsPerIdentity.allow(inbound.Channel+"\x00"+inbound.Identity, occurredAt) {
 		return nil, false, fmt.Errorf(
-			"identity opened more than %d threads today", DefaultThreadsPerIdentityPerDay)
+			"%w: ceiling is %d per day", ErrTooManyThreads, DefaultThreadsPerIdentityPerDay)
 	}
 
-	thread = models.NewSupportThread(in.Channel, in.Identity, at)
-	thread.Subject = buildSubject(in)
+	thread = models.NewSupportThread(inbound.Channel, inbound.Identity, occurredAt)
+	thread.Subject = buildSubject(inbound)
 
-	if len(in.Context) > 0 {
-		thread.ChannelContext = models.JSONMap(in.Context)
+	if len(inbound.Context) > 0 {
+		thread.ChannelContext = models.JSONMap(inbound.Context)
 	}
 
 	s.attribute(ctx, thread)
@@ -337,7 +367,7 @@ func (s *Service) resolveThread(
 	if err := s.insertThread(ctx, thread); err != nil {
 		// Lost the race against another replica opening the same thread. Use
 		// theirs — the partial unique index guarantees there is exactly one.
-		if existing, lookupErr := s.findLiveThread(ctx, in.Channel, in.Identity); lookupErr == nil &&
+		if existing, lookupErr := s.findLiveThread(ctx, inbound.Channel, inbound.Identity); lookupErr == nil &&
 			existing != nil {
 			return existing, false, nil
 		}
@@ -423,13 +453,13 @@ func identityCandidates(channel, identity string) []string {
 // buildSubject gives the thread a readable title. Kept short and derived from
 // the first message, because an operator scanning a list needs to tell threads
 // apart, not read them.
-func buildSubject(in *Inbound) string {
-	label := strings.TrimSpace(in.SenderLabel)
+func buildSubject(inbound *Inbound) string {
+	label := strings.TrimSpace(inbound.SenderLabel)
 	if label == "" {
-		label = in.Identity
+		label = inbound.Identity
 	}
 
-	body := strings.TrimSpace(in.Body)
+	body := strings.TrimSpace(inbound.Body)
 	body = strings.ReplaceAll(body, "\n", " ")
 
 	if body == "" {
@@ -473,8 +503,8 @@ func (s *Service) Reply(
 
 	externalID, sendErr := replier(ctx, thread, body)
 
-	at := s.now()
-	msg := models.NewSupportMessage(thread.UID, thread.Channel, models.SupportDirectionOutbound, body, at)
+	occurredAt := s.now()
+	msg := models.NewSupportMessage(thread.UID, thread.Channel, models.SupportDirectionOutbound, body, occurredAt)
 
 	if authorUID != "" {
 		author := authorUID
@@ -499,7 +529,7 @@ func (s *Service) Reply(
 		return nil, err
 	}
 
-	if err := s.touchThreadOutbound(ctx, thread, at); err != nil {
+	if err := s.touchThreadOutbound(ctx, thread, occurredAt); err != nil {
 		s.log.WarnContext(ctx, "failed to update support thread after reply",
 			"threadUid", thread.UID, "error", err)
 	}
@@ -530,7 +560,7 @@ func (s *Service) findLiveThread(
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
-		if errors.Is(err, sqlNoRows) {
+		if errors.Is(err, errNoRows) {
 			return nil, nil //nolint:nilnil // "no live thread" is a normal answer
 		}
 
@@ -551,7 +581,7 @@ func (s *Service) findMessageByExternalID(
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
-		if errors.Is(err, sqlNoRows) {
+		if errors.Is(err, errNoRows) {
 			return nil, nil //nolint:nilnil // "not seen before" is a normal answer
 		}
 
@@ -584,12 +614,12 @@ func (s *Service) insertMessage(ctx context.Context, msg *models.SupportMessage)
 }
 
 func (s *Service) touchThreadInbound(
-	ctx context.Context, thread *models.SupportThread, at time.Time,
+	ctx context.Context, thread *models.SupportThread, occurredAt time.Time,
 ) error {
-	thread.LastMessageAt = at
-	thread.LastInboundAt = &at
+	thread.LastMessageAt = occurredAt
+	thread.LastInboundAt = &occurredAt
 	thread.UnreadCount++
-	thread.UpdatedAt = at
+	thread.UpdatedAt = occurredAt
 
 	// A closed thread that receives a message is reopened: the partial unique
 	// index only covers live threads, so a closed one can only be found here by
@@ -607,10 +637,10 @@ func (s *Service) touchThreadInbound(
 }
 
 func (s *Service) touchThreadOutbound(
-	ctx context.Context, thread *models.SupportThread, at time.Time,
+	ctx context.Context, thread *models.SupportThread, occurredAt time.Time,
 ) error {
-	thread.LastMessageAt = at
-	thread.UpdatedAt = at
+	thread.LastMessageAt = occurredAt
+	thread.UpdatedAt = occurredAt
 	thread.UnreadCount = 0
 
 	// Answering moves the thread to "pending" (waiting on them), never to
@@ -637,7 +667,7 @@ func (s *Service) GetThread(ctx context.Context, uid string) (*models.SupportThr
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
-		if errors.Is(err, sqlNoRows) {
+		if errors.Is(err, errNoRows) {
 			return nil, ErrThreadNotFound
 		}
 
@@ -727,7 +757,7 @@ func (s *Service) UpdateThread(
 
 	if status != nil {
 		if !models.ValidSupportStatus(*status) {
-			return nil, fmt.Errorf("invalid support status %q", *status)
+			return nil, fmt.Errorf("%w: %q", ErrInvalidStatus, *status)
 		}
 
 		thread.Status = *status
@@ -778,7 +808,7 @@ func (s *Service) PurgeClosedBefore(ctx context.Context, before time.Time, batch
 	}
 
 	// Messages first and explicitly: `on delete cascade` is declared, but
-	// SQLite only honours it with foreign_keys=ON, and a purge that silently
+	// SQLite only honors it with foreign_keys=ON, and a purge that silently
 	// leaves the bodies behind would be the one failure mode that matters here.
 	uids := make([]string, 0, batch)
 
@@ -797,14 +827,14 @@ func (s *Service) PurgeClosedBefore(ctx context.Context, before time.Time, batch
 		return 0, nil
 	}
 
-	if _, err := s.bun().NewDelete().Model((*models.SupportMessage)(nil)).
-		Where("thread_uid IN (?)", bun.In(uids)).
-		Exec(ctx); err != nil {
-		return 0, err
+	if _, delErr := s.bun().NewDelete().Model((*models.SupportMessage)(nil)).
+		Where("thread_uid IN (?)", bun.List(uids)).
+		Exec(ctx); delErr != nil {
+		return 0, delErr
 	}
 
 	res, err := s.bun().NewDelete().Model((*models.SupportThread)(nil)).
-		Where("uid IN (?)", bun.In(uids)).
+		Where("uid IN (?)", bun.List(uids)).
 		Exec(ctx)
 	if err != nil {
 		return 0, err

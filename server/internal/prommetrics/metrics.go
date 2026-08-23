@@ -502,7 +502,7 @@ var (
 
 	// SupportDMUnavailable reports how many connected integrations cannot
 	// deliver direct messages because they were installed before the DM scope
-	// existed and have not been re-authorised.
+	// existed and have not been re-authorized.
 	//
 	// It is the observable half of "degrade cleanly". Slack does not grant new
 	// scopes to an existing install, so such a workspace simply never delivers

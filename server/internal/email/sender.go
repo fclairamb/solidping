@@ -108,7 +108,7 @@ const headerAutoSubmitted = "Auto-Submitted"
 
 // HeaderSupportMirror is the private marker stamped on support-inbox mirror
 // notifications (spec 2026-08-22-02). It exists so a future inbound-email
-// capture can recognise our own mail and skip it instead of re-capturing it,
+// capture can recognize our own mail and skip it instead of re-capturing it,
 // mirroring it again, and looping forever. Exported because the skip lives in a
 // different package than the stamp.
 const HeaderSupportMirror = "X-SolidPing-Support-Mirror"

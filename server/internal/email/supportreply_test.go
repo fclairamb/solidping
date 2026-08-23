@@ -189,7 +189,7 @@ func TestSupportReply_NoticeInBothBodies(t *testing.T) {
 	r.Contains(msg.Text, SupportReplyNoticeText)
 	r.Contains(msg.HTML, "You can reply directly to this email")
 	// It landed inside the document, not after </body>.
-	r.True(strings.Index(msg.HTML, "You can reply directly") < strings.Index(msg.HTML, "</body>"))
+	r.Less(strings.Index(msg.HTML, "You can reply directly"), strings.Index(msg.HTML, "</body>"))
 }
 
 func TestSupportReply_IsIdempotent(t *testing.T) {

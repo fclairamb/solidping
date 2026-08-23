@@ -48,7 +48,7 @@ func directMessage(ts, user, text string) *Event {
 
 // TestDirectMessageIsCapturedAndChannelTrafficIsNot pins the split the spec
 // asks for: only channel_type == "im" is captured; channel messages and
-// app_mentions keep their previous behaviour exactly.
+// app_mentions keep their previous behavior exactly.
 func TestDirectMessageIsCapturedAndChannelTrafficIsNot(t *testing.T) {
 	t.Parallel()
 
@@ -77,7 +77,7 @@ func TestDirectMessageIsCapturedAndChannelTrafficIsNot(t *testing.T) {
 	r.Equal("hi, quick question", messages[0].Body)
 
 	// A channel THREAD REPLY still becomes an incident comment and is NOT
-	// captured — the pre-existing behaviour, unchanged.
+	// captured — the pre-existing behavior, unchanged.
 	r.NoError(DispatchEvent(ctx, svc, threadReply("1700000000.000901", "U-ALICE", "restarting the pod")))
 	r.Len(fake.comments, 1)
 	r.Equal(orgUID, fake.comments[0].orgUID)
@@ -105,7 +105,7 @@ func TestDirectMessageIsCapturedAndChannelTrafficIsNot(t *testing.T) {
 		},
 	}
 	// It fails to POST its answer here (no fake Slack API is wired), which is
-	// exactly the pre-existing behaviour — what matters is that it does not
+	// exactly the pre-existing behavior — what matters is that it does not
 	// route through the support inbox.
 	_ = DispatchEvent(ctx, svc, mention)
 	r.Len(supportThreads(t, inbox), 1, "an app_mention must not become a support thread")

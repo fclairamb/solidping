@@ -39,7 +39,7 @@ func DispatchEvent(ctx context.Context, svc *Service, event *Event) error {
 		return dispatcher.handleLinkShared(ctx, event)
 	case "member_joined_channel":
 		return dispatcher.handleMemberJoinedChannel(ctx, event)
-	case "message":
+	case eventTypeMessage:
 		return dispatcher.handleMessage(ctx, event)
 	default:
 		slog.DebugContext(ctx, "Unhandled event type", "type", event.Event.Type)
@@ -469,6 +469,9 @@ func (h *Handler) handleMemberJoinedChannel(ctx context.Context, event *Event) e
 
 // slackChannelTypeIM is the channel_type Slack stamps on a direct message.
 const slackChannelTypeIM = "im"
+
+// eventTypeMessage is the Slack `message` event type.
+const eventTypeMessage = "message"
 
 // captureDirectMessage records a Slack DM in the support inbox.
 //

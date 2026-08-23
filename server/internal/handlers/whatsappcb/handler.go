@@ -194,7 +194,7 @@ func (h *Handler) captureInbound(req *http.Request, payload *whatsapp.WebhookPay
 
 		h.support.CaptureSafe(req.Context(), &support.Inbound{
 			Channel: models.SupportChannelWhatsApp,
-			// Meta delivers `from` as digits with no leading '+'. Normalised to
+			// Meta delivers `from` as digits with no leading '+'. Normalized to
 			// E.164 here so the thread identity matches what an operator sees
 			// everywhere else and what a stored contact looks like.
 			Identity:   normalizeWhatsAppNumber(msg.From),

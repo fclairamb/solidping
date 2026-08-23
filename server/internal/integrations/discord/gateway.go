@@ -39,7 +39,7 @@ const (
 //
 // DIRECT_MESSAGES is what makes Discord deliver a DM to the bot at all (spec
 // 2026-08-22-02). Unlike Slack's im:history it is NOT privileged and requires no
-// user re-authorisation — it is a constant plus a gateway reconnect. Note that
+// user re-authorization — it is a constant plus a gateway reconnect. Note that
 // MESSAGE_CONTENT above is what keeps DM bodies from arriving empty; without it
 // DM capture would record a stream of blank messages, the same silent failure
 // the comment above documents for guild messages.

@@ -118,10 +118,13 @@ const (
 // Bot scopes drive the integration's runtime; user scopes drive the OpenID
 // Connect lookup that identifies the installing user.
 //
+// scopeChatWrite is the base posting scope, referenced from more than one place.
+const scopeChatWrite = "chat:write"
+
 //nolint:gochecknoglobals // package-level constant scope lists
 var (
 	slackBotScopes = []string{
-		"chat:write",
+		scopeChatWrite,
 		"chat:write.public",
 		"channels:read",
 		"groups:read",
@@ -175,7 +178,7 @@ type Service struct {
 	identitySync IdentitySyncFn
 
 	// support is the instance support inbox that captures DMs to the bot. Nil
-	// disables DM capture entirely, which is exactly the behaviour that
+	// disables DM capture entirely, which is exactly the behavior that
 	// predates the feature (see SetSupport).
 	support *support.Service
 }

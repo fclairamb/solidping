@@ -62,7 +62,7 @@ func (h *dmHarness) threads(t *testing.T) []*models.SupportThread {
 }
 
 // TestGatewayIntentsIncludeDirectMessages guards the constant that makes DMs
-// arrive at all. Unlike Slack's im:history this needs no re-authorisation — but
+// arrive at all. Unlike Slack's im:history this needs no re-authorization — but
 // without it the whole feature is dead on this channel.
 func TestGatewayIntentsIncludeDirectMessages(t *testing.T) {
 	t.Parallel()
@@ -103,7 +103,7 @@ func TestDirectMessageIsCaptured(t *testing.T) {
 }
 
 // TestGuildMessagesAreNotCaptured is the positive control for the split: guild
-// traffic keeps its previous behaviour and never becomes a support thread.
+// traffic keeps its previous behavior and never becomes a support thread.
 func TestGuildMessagesAreNotCaptured(t *testing.T) {
 	t.Parallel()
 

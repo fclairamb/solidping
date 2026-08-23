@@ -37,10 +37,14 @@ func setupInboundSMSEnv(t *testing.T) (*cbEnv, *support.Service) {
 	return env, inbox
 }
 
-func postInboundSMS(t *testing.T, env *cbEnv, from, body, sid string) *httptest.ResponseRecorder {
+// testInboundNumber is the sender every inbound-SMS test writes from — a single
+// identity keeps the threads it opens comparable across cases.
+const testInboundNumber = "+33612345678"
+
+func postInboundSMS(t *testing.T, env *cbEnv, body, sid string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	form := url.Values{"From": {from}, "Body": {body}, "MessageSid": {sid}}
+	form := url.Values{"From": {testInboundNumber}, "Body": {body}, "MessageSid": {sid}}
 	req := env.buildRequest(t, "/api/v1/integrations/twilio"+MessagePath, url.Values{}, form, true, false)
 
 	rec := httptest.NewRecorder()
@@ -66,14 +70,14 @@ func TestInboundSMSIsCaptured(t *testing.T) {
 	r := require.New(t)
 	env, inbox := setupInboundSMSEnv(t)
 
-	rec := postInboundSMS(t, env, "+33612345678", "the alert was a false alarm", "SM1")
+	rec := postInboundSMS(t, env, "the alert was a false alarm", "SM1")
 	r.Equal(http.StatusOK, rec.Code)
 	r.Contains(rec.Body.String(), "<Response></Response>")
 
 	threads := inboundThreads(t, inbox)
 	r.Len(threads, 1)
 	r.Equal(models.SupportChannelSMS, threads[0].Channel)
-	r.Equal("+33612345678", threads[0].ChannelIdentity)
+	r.Equal(testInboundNumber, threads[0].ChannelIdentity)
 
 	messages, err := inbox.ListMessages(context.Background(), threads[0].UID, 0)
 	r.NoError(err)
@@ -97,7 +101,7 @@ func TestCarrierKeywordsAreNotCaptured(t *testing.T) {
 		"STOP", "stop", " Stop ", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT",
 		"START", "UNSTOP", "YES", "HELP", "help", "INFO",
 	} {
-		rec := postInboundSMS(t, env, "+33612345678", keyword, "SM-KW-"+string(rune('a'+i)))
+		rec := postInboundSMS(t, env, keyword, "SM-KW-"+string(rune('a'+i)))
 		r.Equal(http.StatusOK, rec.Code, "%q must still be answered normally", keyword)
 	}
 
@@ -107,7 +111,7 @@ func TestCarrierKeywordsAreNotCaptured(t *testing.T) {
 	// POSITIVE CONTROL, on the same handler and the same sender: a message that
 	// merely CONTAINS a keyword is a support message, not an opt-out. Without
 	// this the assertions above would pass on a handler that captures nothing.
-	rec := postInboundSMS(t, env, "+33612345678", "please stop paging me at 3am", "SM-REAL")
+	rec := postInboundSMS(t, env, "please stop paging me at 3am", "SM-REAL")
 	r.Equal(http.StatusOK, rec.Code)
 
 	threads := inboundThreads(t, inbox)
@@ -145,7 +149,7 @@ func TestInboundSMSRejectsUnsignedRequests(t *testing.T) {
 	r := require.New(t)
 	env, inbox := setupInboundSMSEnv(t)
 
-	form := url.Values{"From": {"+33612345678"}, "Body": {"hi"}, "MessageSid": {"SM-BAD"}}
+	form := url.Values{"From": {testInboundNumber}, "Body": {"hi"}, "MessageSid": {"SM-BAD"}}
 
 	unsigned := env.buildRequest(t, "/api/v1/integrations/twilio"+MessagePath, url.Values{}, form, false, false)
 	rec := httptest.NewRecorder()
@@ -170,6 +174,6 @@ func TestInboundSMSRejectedWhenInstanceDoesNotSendTwilioSMS(t *testing.T) {
 	env, _ := setupInboundSMSEnv(t)
 	env.cfg.SMS.Provider = config.SMSProviderOVH
 
-	rec := postInboundSMS(t, env, "+33612345678", "hi", "SM-OVH")
+	rec := postInboundSMS(t, env, "hi", "SM-OVH")
 	r.Equal(http.StatusForbidden, rec.Code)
 }

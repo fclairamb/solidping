@@ -132,7 +132,7 @@ type Service struct {
 	apiBaseURL string
 
 	// support is the instance support inbox that captures DMs to the bot. Nil
-	// disables DM capture, which is the behaviour that predates the feature.
+	// disables DM capture, which is the behavior that predates the feature.
 	support *support.Service
 }
 

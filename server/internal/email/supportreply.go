@@ -23,6 +23,36 @@ const supportReplyNoticeHTML = `<div style="margin:16px auto 0;max-width:600px;p
 	`&#8505;&#65039; You can reply directly to this email to reach a human — we read every reply.` +
 	`</div>`
 
+// Template file names. Constants because several of them are referenced from
+// more than one call site, and a typo in a classification key would silently
+// mean "unclassified" — which fails closed to "no Reply-To" and would be
+// invisible without the enumerating test.
+const (
+	TemplateEscalation              = "escalation.html"
+	TemplateIncidentBurnCreated     = "incident-burn-created.html"
+	TemplateIncidentBurnResolved    = "incident-burn-resolved.html"
+	TemplateIncidentComment         = "incident-comment.html"
+	TemplateIncidentCreated         = "incident-created.html"
+	TemplateIncidentEscalated       = "incident-escalated.html"
+	TemplateIncidentReopened        = "incident-reopened.html"
+	TemplateIncidentResolved        = "incident-resolved.html"
+	TemplateInvitation              = "invitation.html"
+	TemplateMembershipReqDecision   = "membership_request_decision.html"
+	TemplateMembershipReqNew        = "membership_request_new.html"
+	TemplatePagingNudge             = "paging-nudge.html"
+	TemplatePasswordChanged         = "password-changed.html"
+	TemplatePasswordReset           = "password-reset.html"
+	TemplateRegistration            = "registration.html"
+	TemplateStatusSubscriberConfirm = "status-subscriber-confirm.html"
+	TemplateStatusSubscriberUpdate  = "status-subscriber-update.html"
+	TemplateTestEmail               = "test-email.html"
+	TemplateUptimeReport            = "uptime-report.html"
+	TemplateWelcome                 = "welcome.html"
+	// TemplateBase is the shared wrapper. It is never rendered on its own and
+	// therefore carries no classification.
+	TemplateBase = "base.html"
+)
+
 // supportReplyableTemplates is the EXPLICIT classification of every shipped
 // email template: may it carry the instance support Reply-To and the "you can
 // reply" notice?
@@ -45,28 +75,28 @@ const supportReplyNoticeHTML = `<div style="margin:16px auto 0;max-width:600px;p
 //nolint:gochecknoglobals // package-level classification table
 var supportReplyableTemplates = map[string]bool{
 	// Alerts and notifications — a human replying to these is the whole point.
-	"escalation.html":                  true,
-	"incident-burn-created.html":       true,
-	"incident-burn-resolved.html":      true,
-	"incident-comment.html":            true,
-	"incident-created.html":            true,
-	"incident-escalated.html":          true,
-	"incident-reopened.html":           true,
-	"incident-resolved.html":           true,
-	"membership_request_decision.html": true,
-	"membership_request_new.html":      true,
-	"paging-nudge.html":                true,
-	"status-subscriber-update.html":    true,
-	"test-email.html":                  true,
-	"uptime-report.html":               true,
-	"welcome.html":                     true,
+	TemplateEscalation:             true,
+	TemplateIncidentBurnCreated:    true,
+	TemplateIncidentBurnResolved:   true,
+	TemplateIncidentComment:        true,
+	TemplateIncidentCreated:        true,
+	TemplateIncidentEscalated:      true,
+	TemplateIncidentReopened:       true,
+	TemplateIncidentResolved:       true,
+	TemplateMembershipReqDecision:  true,
+	TemplateMembershipReqNew:       true,
+	TemplatePagingNudge:            true,
+	TemplateStatusSubscriberUpdate: true,
+	TemplateTestEmail:              true,
+	TemplateUptimeReport:           true,
+	TemplateWelcome:                true,
 
 	// Security-critical / identity mail — never carries a reply path.
-	"invitation.html":                false,
-	"password-changed.html":          false,
-	"password-reset.html":            false,
-	"registration.html":              false,
-	"status-subscriber-confirm.html": false,
+	TemplateInvitation:              false,
+	TemplatePasswordChanged:         false,
+	TemplatePasswordReset:           false,
+	TemplateRegistration:            false,
+	TemplateStatusSubscriberConfirm: false,
 }
 
 // SupportReplyable reports whether a rendered template may carry the instance
@@ -100,7 +130,7 @@ func shippedTemplateNames() ([]string, error) {
 	names := make([]string, 0, len(entries))
 
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == "base.html" {
+		if entry.IsDir() || entry.Name() == TemplateBase {
 			continue
 		}
 

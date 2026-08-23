@@ -22,16 +22,20 @@ const MessagePath = "/message"
 // handled something we did not. Twilio still processes them exactly as before;
 // we simply answer 200 and record nothing.
 //
+// keywordStop is the opt-out keyword, spelled once because it also appears in
+// the outbound disclosure footer.
+const keywordStop = "stop"
+
 //nolint:gochecknoglobals // immutable lookup table, effectively a constant
 var carrierKeywords = map[string]bool{
-	"stop": true, "stopall": true, "unsubscribe": true, "cancel": true,
+	keywordStop: true, "stopall": true, "unsubscribe": true, "cancel": true,
 	"end": true, "quit": true,
 	"start": true, "unstop": true, "yes": true,
 	"help": true, "info": true,
 }
 
 // IsCarrierKeyword reports whether an inbound SMS body is a carrier opt-out /
-// opt-in / help keyword. Exported so the behaviour is directly testable.
+// opt-in / help keyword. Exported so the behavior is directly testable.
 func IsCarrierKeyword(body string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(body))
 	// Carriers match the keyword alone, not a sentence containing it: "please

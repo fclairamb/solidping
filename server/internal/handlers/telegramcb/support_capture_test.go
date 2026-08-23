@@ -80,7 +80,7 @@ func TestSupportCapture_ProseIsCapturedAndCommandsAreNot(t *testing.T) {
 }
 
 // TestSupportCapture_UnknownCommandBothAnswersAndCaptures pins the deliberate
-// double behaviour: a mistyped command is very often a person trying to talk,
+// double behavior: a mistyped command is very often a person trying to talk,
 // so the "unknown command" answer is kept AND the message is recorded.
 func TestSupportCapture_UnknownCommandBothAnswersAndCaptures(t *testing.T) {
 	t.Parallel()

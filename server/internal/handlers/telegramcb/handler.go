@@ -519,7 +519,7 @@ func ok(writer http.ResponseWriter) error {
 // captureSupport records a Telegram message the command router could not act on.
 //
 // Known commands never reach here: a parseable command executes and is not a
-// support message. Only prose (command == "") and unrecognised verbs are
+// support message. Only prose (command == "") and unrecognized verbs are
 // captured.
 func (h *Handler) captureSupport(
 	ctx context.Context, msg *telegram.IncomingMessage, chatID, unknownCommand string,

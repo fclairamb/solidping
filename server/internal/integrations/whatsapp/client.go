@@ -260,6 +260,9 @@ type textContent struct {
 	PreviewURL bool `json:"preview_url"`
 }
 
+// messageTypeText is the Cloud API message type for a free-form text message.
+const messageTypeText = "text"
+
 // ErrEmptyText is returned when a free-form send has nothing to say.
 var ErrEmptyText = errors.New("whatsapp: message body is empty")
 
@@ -284,7 +287,7 @@ func (c *Client) SendText(ctx context.Context, to, body string) (string, error) 
 		MessagingProduct: "whatsapp",
 		RecipientType:    "individual",
 		To:               normalizeRecipient(recipient),
-		Type:             "text",
+		Type:             messageTypeText,
 		Text:             textContent{Body: body, PreviewURL: false},
 	})
 }

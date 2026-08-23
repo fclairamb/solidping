@@ -16,6 +16,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/support"
 )
 
+// Static test errors — err113 forbids inline dynamic errors, including in tests.
+var (
+	errProviderExploded = errors.New("provider exploded")
+	errSMTPDown         = errors.New("smtp is down")
+)
+
 // fakeMailer captures what the mirror notification would have sent, and can be
 // made to fail on demand.
 type fakeMailer struct {
@@ -302,11 +308,11 @@ func TestCaptureSafe_SurvivesADeadDatabase(t *testing.T) {
 
 	// Positive control that the database really is unusable — otherwise the
 	// assertion above proves nothing.
-	_, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+	_, _, captureErr := h.svc.Capture(t.Context(), &support.Inbound{
 		Channel: models.SupportChannelWhatsApp, Identity: "+33600000000",
 		ExternalID: "wamid.DEAD2", Body: "hello",
 	})
-	r.Error(err)
+	r.Error(captureErr)
 }
 
 func TestReplyWindow_WhatsAppExpiresAndOthersDoNot(t *testing.T) {
@@ -395,7 +401,7 @@ func TestReply_RecordsAFailedSend(t *testing.T) {
 	r := require.New(t)
 	h := newHarness(t, "")
 
-	sendErr := errors.New("provider exploded")
+	sendErr := errProviderExploded
 	h.svc.RegisterReplier(models.SupportChannelTelegram,
 		func(_ context.Context, _ *models.SupportThread, _ string) (string, error) {
 			return "", sendErr
@@ -458,11 +464,11 @@ func TestMirror_MarkersThrottleAndFailureIsolation(t *testing.T) {
 
 	// A burst folds into the first mail rather than producing one per message.
 	for i := range 5 {
-		_, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		_, _, burstErr := h.svc.Capture(t.Context(), &support.Inbound{
 			Channel: models.SupportChannelWhatsApp, Identity: "+33600000000",
 			ExternalID: "wamid.burst" + string(rune('a'+i)), Body: "again",
 		})
-		r.NoError(err)
+		r.NoError(burstErr)
 	}
 
 	r.Equal(1, h.mailer.count(), "a burst must collapse into one mirror")
@@ -484,7 +490,7 @@ func TestMirror_FailureLeavesTheMessageCaptured(t *testing.T) {
 
 	r := require.New(t)
 	h := newHarness(t, "support@acme.com")
-	h.mailer.failWith = errors.New("smtp is down")
+	h.mailer.failWith = errSMTPDown
 
 	thread, msg, err := h.svc.Capture(t.Context(), &support.Inbound{
 		Channel: models.SupportChannelSMS, Identity: "+33600000002",

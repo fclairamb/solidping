@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
@@ -101,7 +101,7 @@ func (s *Server) telegramReplier(
 		return "", err
 	}
 
-	return fmt.Sprintf("%d", messageID), nil
+	return strconv.FormatInt(messageID, 10), nil
 }
 
 // smsReplier sends an SMS reply.
@@ -134,10 +134,12 @@ func (s *Server) smsReplier(
 	// Guards apply to server-credential sends only, exactly as on the alerting
 	// path: an org paying with its own Twilio account is not spending ours.
 	if resolution.InstanceCredentialsForSMS() && s.services.Entitlements != nil {
-		if err := s.services.Entitlements.ReserveInstanceSMS(ctx, orgUID, thread.ChannelIdentity); err != nil {
-			s.services.Entitlements.LogInstanceSMSBreach(ctx, slog.Default(), orgUID, err)
+		if guardErr := s.services.Entitlements.ReserveInstanceSMS(
+			ctx, orgUID, thread.ChannelIdentity,
+		); guardErr != nil {
+			s.services.Entitlements.LogInstanceSMSBreach(ctx, slog.Default(), orgUID, guardErr)
 
-			return "", err
+			return "", guardErr
 		}
 	}
 

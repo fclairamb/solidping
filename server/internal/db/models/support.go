@@ -112,15 +112,15 @@ type SupportThread struct {
 }
 
 // NewSupportThread builds a live thread for a channel identity.
-func NewSupportThread(channel, identity string, at time.Time) *SupportThread {
+func NewSupportThread(channel, identity string, createdAt time.Time) *SupportThread {
 	return &SupportThread{
 		UID:             uuid.New().String(),
 		Channel:         channel,
 		ChannelIdentity: identity,
 		Status:          SupportStatusOpen,
-		LastMessageAt:   at,
-		CreatedAt:       at,
-		UpdatedAt:       at,
+		LastMessageAt:   createdAt,
+		CreatedAt:       createdAt,
+		UpdatedAt:       createdAt,
 	}
 }
 
@@ -209,7 +209,7 @@ type SupportMessage struct {
 }
 
 // NewSupportMessage builds a message row, applying the body cap.
-func NewSupportMessage(threadUID, channel, direction, body string, at time.Time) *SupportMessage {
+func NewSupportMessage(threadUID, channel, direction, body string, createdAt time.Time) *SupportMessage {
 	body, truncated := TruncateSupportBody(body)
 
 	return &SupportMessage{
@@ -220,8 +220,8 @@ func NewSupportMessage(threadUID, channel, direction, body string, at time.Time)
 		Body:      body,
 		Truncated: truncated,
 		RawType:   SupportRawTypeText,
-		CreatedAt: at,
-		UpdatedAt: at,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
 	}
 }
 
