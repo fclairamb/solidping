@@ -58,6 +58,14 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // says "this channel went quiet" rather than reusing an outage emoji, since
   // the monitored service is fine and the delivery path is not.
   "statuspage.subscriber.disabled": { emoji: "🔇", tone: TONE_DESTRUCTIVE },
+  // A custom domain that stayed unreachable past its grace window and stopped
+  // serving the status page (spec 2026-08-23-03). Destructive for the same
+  // reason as the row above it: the page is DARK on the hostname a customer
+  // publishes to their own customers, and the only other symptom is discovering
+  // it during an outage. 🌐 mirrors the Globe icon the custom-domain card uses,
+  // so the row is recognisable as "your domain" rather than as another
+  // publication event — the tone, not the emoji, carries the severity.
+  "statuspage.custom_domain.demoted": { emoji: "🌐", tone: TONE_DESTRUCTIVE },
   // Security audit trail (spec 2026-08-21-09). Only the auth family gets an
   // explicit identity: these are the rows an operator scans a security review
   // for, and they must be told apart at a glance from the configuration

@@ -191,6 +191,10 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // the three above: no backend chat integration hand-authors a message for
     // this type, so dash0 is the sole owner of the pairing.
     ["statuspage.subscriber.disabled", "🔇"],
+    // Custom-domain hard demotion (spec 2026-08-23-03). Same ownership story:
+    // the demotion alert is delivered as an audit event plus operator email,
+    // not through a chat integration, so dash0 owns the pairing outright.
+    ["statuspage.custom_domain.demoted", "🌐"],
     // Security audit trail (spec 2026-08-21-09). Same ownership story again:
     // no backend chat integration hand-authors a message for an auth event, so
     // dash0 owns the pairing outright. The five are pinned because they must

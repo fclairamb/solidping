@@ -35,6 +35,7 @@
     "statuspage.incident.updated": "Statusseiten-Vorfall aktualisiert",
     "statuspage.incident.resolved": "Auf Statusseite behoben",
     "statuspage.subscriber.disabled": "Statusseiten-Abonnement deaktiviert",
+    "statuspage.custom_domain.demoted": "Eigene Domain deaktiviert",
     "status_update.created": "Statusupdate veröffentlicht",
     "status_update.updated": "Statusupdate bearbeitet",
     "status_update.deleted": "Statusupdate entfernt",
