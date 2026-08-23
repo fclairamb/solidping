@@ -239,7 +239,9 @@ func TestPublicResponsesPinTheVaryHeader(t *testing.T) {
 
 		r.NoError(endpoint.call(h, rec, req), endpoint.name)
 		r.Equal(http.StatusOK, rec.Code, endpoint.name)
-		r.Equal("Cookie, X-Forwarded-Proto", rec.Header().Get("Vary"), endpoint.name)
+		r.Equal("X-Forwarded-Proto", rec.Header().Get("Vary"), endpoint.name)
+		r.NotContains(rec.Header().Get("Vary"), "Cookie",
+			"%s: Vary: Cookie on a public page is what stops CDNs caching it at all", endpoint.name)
 	}
 }
 
@@ -286,5 +288,6 @@ func TestGatedDirectiveIsWhatTheHelperSays(t *testing.T) {
 	r.Equal("private, no-store", statuspagecache.Gated)
 	r.Equal("public, max-age=60",
 		statuspagecache.Control(models.StatusPageVisibilityPublic, statuspagecache.PageMaxAge))
-	r.Equal("Cookie, X-Forwarded-Proto", statuspagecache.Vary)
+	r.Equal("X-Forwarded-Proto", statuspagecache.VaryPublic)
+	r.Equal("Cookie, X-Forwarded-Proto", statuspagecache.VaryGated)
 }

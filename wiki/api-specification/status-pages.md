@@ -282,8 +282,9 @@ request host.
 ### Caching on the public surface
 
 Every public read of a status page — the page view, the summary, the SVG
-badge, the Atom feed and the status0 SPA shell served on a custom domain —
-derives its `Cache-Control` from one helper, `internal/statuspagecache`:
+badge, the public incident history, the Atom feed and both status0 SPA shells
+(path-based and custom-domain) — derives its `Cache-Control` from one helper,
+`internal/statuspagecache`:
 
 | page visibility | `Cache-Control` |
 |---|---|
@@ -299,10 +300,30 @@ front of them, so an unlocked `password` page is still `private, no-store`.
 The gated 401/404 stops a shared cache from turning the public surface's error
 replies into a map of which pages exist.
 
-All of these responses also carry `Vary: Cookie, X-Forwarded-Proto` — the
-unlock cookie, and the header the summary's absolute `page.url` derives its
-scheme from. `Accept-Language` is deliberately absent: a page renders in the
-language stored on the page row, not the one the browser asks for.
+`Vary` differs between the two branches, on purpose:
+
+- **public** → `Vary: X-Forwarded-Proto` only. That header genuinely changes the
+  body (the summary's absolute `page.url` and the shell's `og:url` take their
+  scheme from it). `Cookie` is deliberately **not** listed: a public page's body
+  does not depend on any cookie, and Cloudflare, Fastly and Varnish all refuse
+  to cache a response carrying `Vary: Cookie` — listing it would quietly undo
+  the shared-cache win this change exists to buy. `Vary` is also the wrong tool
+  for a `public → password` flip: it does not invalidate anything at the origin,
+  so what bounds that window is `max-age`, not `Vary`.
+- **gated** → `Vary: Cookie, X-Forwarded-Proto`, where the unlock cookie really
+  does decide whether the page renders or 401s. Belt and braces next to
+  `no-store`, but the two travel together so relaxing the directive later cannot
+  silently drop it.
+
+`Accept-Language` is absent from both: a page renders in the language stored on
+the page row, not the one the browser asks for.
+
+The path-based shell (`/status0/...`) is the one surface that stays
+unconditionally `public, max-age=60`, and it is safe: `status0MetaForPath`
+resolves the page **without** installing the request's unlock grant, so
+`statuspagelock.Allows` denies by default and a gated page's name or
+description is never injected into it. Its custom-domain twin injects
+unconditionally — there the host *is* the page — so that one follows visibility.
 
 Deliberately out of scope: `ETag`/conditional requests (revalidation would
 still have to compute the body to hash it), server-side response caching and

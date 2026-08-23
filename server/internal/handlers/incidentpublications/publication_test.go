@@ -837,7 +837,8 @@ func TestPrivatePagePublicationsAreInvisible(t *testing.T) {
 	// Positive control first: while the page is public, the incident IS served.
 	visible, err := s.pubs.ViewPublicIncidents(t.Context(), s.org.Slug, s.page.Slug, true)
 	r.NoError(err)
-	r.Len(visible, 1)
+	r.Len(visible.Incidents, 1)
+	r.Equal("public", visible.Visibility)
 
 	private := "private"
 	r.NoError(s.dbSvc.UpdateStatusPage(t.Context(), s.page.UID,

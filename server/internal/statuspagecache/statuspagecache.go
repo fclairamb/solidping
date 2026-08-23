@@ -2,10 +2,11 @@
 // public status-page surfaces (spec 2026-08-22-06).
 //
 // One helper, one answer. The page view, its summary rollup, its SVG badge,
-// its Atom feed and the SPA shell served on a custom domain all read the same
-// status_page row through the same visibility gate, so they must agree on who
-// is allowed to store the response. Deriving the directive in a single place
-// is what stops a sixth surface from quietly picking a different one.
+// its public incident history, its Atom feed and the two status0 SPA shells
+// (path-based and custom-domain) all read the same status_page row through the
+// same visibility gate, so they must agree on who is allowed to store the
+// response. Deriving the directive in a single place is what stops the next
+// surface from quietly picking a different one.
 //
 // # The rule
 //
@@ -43,23 +44,38 @@ import (
 // existence oracle a shared cache would happily re-serve.
 const Gated = "private, no-store"
 
-// Vary enumerates the request headers a public status-page response depends
-// on. Both entries are real, and the list is deliberately exhaustive so that
-// adding a request-derived field to any of these payloads without extending it
-// fails the pinning test rather than shipping a cross-visitor leak:
+// VaryPublic is the Vary header on a world-readable status-page response.
 //
-//   - Cookie — the host-only unlock cookie decides what a visitor of a
-//     `password` page may see. Those responses are `no-store` today, so this is
-//     belt-and-braces; it stays listed because a page's visibility can change
-//     under a cache that already holds an entry for the URL.
-//   - X-Forwarded-Proto — the summary payload embeds an absolute page URL whose
-//     scheme comes from this header (see statuspages.requestScheme). The Host
-//     half of that URL needs no Vary: it is part of every cache key already.
+// Exactly one request header changes such a body: X-Forwarded-Proto. The
+// summary payload embeds an absolute page URL whose scheme comes from it (see
+// statuspages.requestScheme), and the SPA shell injects the same origin into
+// its og:url. The Host half of those URLs needs no Vary — it is part of every
+// cache key already.
 //
-// Notably absent: Accept-Language. A status page renders in the language
-// stored on the page row, not the one the browser asks for, so the response
-// does not vary by it.
-const Vary = "Cookie, X-Forwarded-Proto"
+// Notably ABSENT, and deliberately so:
+//
+//   - Cookie. A public page's body does not depend on any cookie, and listing
+//     it would be actively harmful: Cloudflare, Fastly and Varnish all refuse
+//     to cache (or key uselessly on) a response carrying Vary: Cookie, which
+//     would leave this spec's whole point — shared caches absorbing the spike
+//     that arrives while the infrastructure is already unhealthy — unbuilt.
+//     Vary is also the wrong tool for the visibility-flip worry: it does not
+//     invalidate anything when the origin changes, so a same-cookie request
+//     would still be served the stale public copy. What bounds that window is
+//     max-age, not Vary.
+//   - Accept-Language. A status page renders in the language stored on the
+//     page row, not the one the browser asks for.
+//
+// Extending this list is what a new request-derived field in any of these
+// payloads requires; the pinning tests fail loudly if one lands without it.
+const VaryPublic = "X-Forwarded-Proto"
+
+// VaryGated is the Vary header on a gated response. It adds Cookie, where the
+// header is genuinely correct: the host-only unlock cookie is what decides
+// whether a `password` page renders or 401s. Belt and braces next to
+// `no-store` — nothing should be storing these at all — but the two travel
+// together so a future relaxation of the directive cannot silently drop it.
+const VaryGated = "Cookie, " + VaryPublic
 
 // PageMaxAge is the freshness budget for the page, summary and badge. Sixty
 // seconds is what the summary and badge already promised, and it matches the
@@ -85,8 +101,14 @@ func Control(visibility string, maxAge time.Duration) string {
 
 // Apply writes Cache-Control and Vary onto a public status-page response.
 func Apply(header http.Header, visibility string, maxAge time.Duration) {
+	if visibility != models.StatusPageVisibilityPublic {
+		ApplyGated(header)
+
+		return
+	}
+
 	header.Set("Cache-Control", Control(visibility, maxAge))
-	header.Set("Vary", Vary)
+	header.Set("Vary", VaryPublic)
 }
 
 // ApplyGated writes the never-shared directive. Used where no page is in hand
@@ -94,5 +116,5 @@ func Apply(header http.Header, visibility string, maxAge time.Duration) {
 // error replies into a map of which pages exist.
 func ApplyGated(header http.Header) {
 	header.Set("Cache-Control", Gated)
-	header.Set("Vary", Vary)
+	header.Set("Vary", VaryGated)
 }

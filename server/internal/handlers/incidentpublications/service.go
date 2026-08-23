@@ -1193,33 +1193,52 @@ func (s *Service) templatedTitle(
 	return fmt.Sprintf(tpl.OpenedTitle, name)
 }
 
+// PublicIncidentsView is the public incident history plus the visibility of
+// the page it belongs to.
+//
+// The visibility never reaches the wire. It is here because this payload
+// quotes incident titles and update bodies verbatim — the same text that made
+// the Atom feed a leak — so the handler has to know who may cache the response
+// (spec 2026-08-22-06). Deciding that from the page rather than from whether
+// this caller was let in is the whole point: an unlocked visitor is authorized,
+// the CDN in front of them is not.
+type PublicIncidentsView struct {
+	Incidents  []PublicIncident
+	Visibility string
+}
+
 // ViewPublicIncidents is the PUBLIC projection entry point: it resolves the
 // page by org+slug and applies the same visibility gate as every other public
 // status-page endpoint, so a private or disabled page's incidents are as
 // invisible as the page itself.
 func (s *Service) ViewPublicIncidents(
 	ctx context.Context, orgSlug, slug string, activeOnly bool,
-) ([]PublicIncident, error) {
+) (PublicIncidentsView, error) {
 	org, err := s.resolveOrg(ctx, orgSlug)
 	if err != nil {
-		return nil, err
+		return PublicIncidentsView{}, err
 	}
 
 	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
 	if err != nil || page == nil {
-		return nil, ErrStatusPageNotFound
+		return PublicIncidentsView{}, ErrStatusPageNotFound
 	}
 
 	// Identical gate to statuspages.ViewStatusPage: not enabled, or private,
 	// is indistinguishable from not existing.
 	if !statuspagelock.Visible(page) {
-		return nil, ErrStatusPageNotFound
+		return PublicIncidentsView{}, ErrStatusPageNotFound
 	}
 
 	// A password page's incident history is part of what the password buys.
 	if !statuspagelock.Allows(ctx, page) {
-		return nil, statuspagelock.ErrLocked
+		return PublicIncidentsView{}, statuspagelock.ErrLocked
 	}
 
-	return s.ListPublicIncidents(ctx, page, activeOnly)
+	incidents, err := s.ListPublicIncidents(ctx, page, activeOnly)
+	if err != nil {
+		return PublicIncidentsView{}, err
+	}
+
+	return PublicIncidentsView{Incidents: incidents, Visibility: page.Visibility}, nil
 }

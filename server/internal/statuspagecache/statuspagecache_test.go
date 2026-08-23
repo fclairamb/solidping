@@ -64,7 +64,10 @@ func TestMaxAgeIsRenderedInSeconds(t *testing.T) {
 }
 
 // TestApplySetsBothHeaders pins that every surface routed through the helper
-// gets Vary alongside Cache-Control, on the gated path too.
+// gets Vary alongside Cache-Control — and that the two branches list DIFFERENT
+// headers. `Cookie` must not appear on a public response: Cloudflare, Fastly
+// and Varnish all decline to cache one that carries it, which would quietly
+// undo the shared-cache win this whole change exists to buy.
 func TestApplySetsBothHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -73,10 +76,18 @@ func TestApplySetsBothHeaders(t *testing.T) {
 	public := http.Header{}
 	statuspagecache.Apply(public, models.StatusPageVisibilityPublic, statuspagecache.PageMaxAge)
 	r.Equal("public, max-age=60", public.Get("Cache-Control"))
-	r.Equal("Cookie, X-Forwarded-Proto", public.Get("Vary"))
+	r.Equal("X-Forwarded-Proto", public.Get("Vary"))
+	r.NotContains(public.Get("Vary"), "Cookie")
+
+	// Apply on a gated page must land on exactly the ApplyGated answer, so the
+	// two entry points cannot drift.
+	viaApply := http.Header{}
+	statuspagecache.Apply(viaApply, models.StatusPageVisibilityPassword, statuspagecache.PageMaxAge)
 
 	gated := http.Header{}
 	statuspagecache.ApplyGated(gated)
+
 	r.Equal("private, no-store", gated.Get("Cache-Control"))
 	r.Equal("Cookie, X-Forwarded-Proto", gated.Get("Vary"))
+	r.Equal(gated, viaApply)
 }

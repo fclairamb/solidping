@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
@@ -198,16 +199,30 @@ func (h *Handler) Unpublish(writer http.ResponseWriter, req *http.Request) error
 // ViewPublicIncidents handles GET /api/v1/status-pages/:org/:slug/incidents —
 // the PUBLIC history feed. It applies the identical visibility gate the rest of
 // the public status-page surface uses, so a private page's incidents are as
-// invisible as the page itself.
+// invisible as the page itself, and it caches by the same rule: this body
+// quotes incident titles and update bodies verbatim, and the route is on the
+// custom-host allowlist, so a gated page's narrative must never be retained by
+// the CDN sitting in front of that host (spec 2026-08-22-06).
 func (h *Handler) ViewPublicIncidents(writer http.ResponseWriter, req *http.Request) error {
-	incidents, err := h.svc.ViewPublicIncidents(
+	view, err := h.svc.ViewPublicIncidents(
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, "slug"),
 		req.URL.Query().Get("active") == "true")
 	if err != nil {
-		return h.handleError(writer, req, err)
+		return h.handlePublicError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: incidents})
+	statuspagecache.Apply(writer.Header(), view.Visibility, statuspagecache.PageMaxAge)
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: view.Incidents})
+}
+
+// handlePublicError is handleError with the never-shared cache directive
+// applied first: a cacheable 404 on the public surface is an existence oracle,
+// and a cacheable 401 is worse — it is the gated page's own URL, cached.
+func (h *Handler) handlePublicError(writer http.ResponseWriter, req *http.Request, err error) error {
+	statuspagecache.ApplyGated(writer.Header())
+
+	return h.handleError(writer, req, err)
 }
 
 func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {

@@ -177,7 +177,8 @@ A status change still surfaces within a minute.
 
 A **private** or **password-protected** page is served with `Cache-Control:
 private, no-store` instead, on every one of its public URLs — the page, the
-summary, the badge, the feed — so no shared cache anywhere retains its body.
+summary, the badge, the incident history, the feed — so no shared cache
+anywhere retains its body.
 That stays true after a visitor unlocks it: the unlock belongs to that visitor,
 not to the proxy in front of them. The "not found" answers are `no-store` too,
 so a cache cannot be probed for which pages exist.

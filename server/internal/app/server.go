@@ -128,6 +128,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -2727,6 +2728,15 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// per-page Open Graph / Twitter Card metadata so shared links get a rich
 	// preview. Non-status-page paths and missing/disabled/private pages keep
 	// the generic head (no page-existence leak).
+	//
+	// A `password` page keeps the generic head too, and that is not an
+	// oversight to be fixed: status0MetaForPath resolves the page WITHOUT
+	// installing the request's unlock grant, so statuspagelock.Allows denies by
+	// default and no gated page's name or description is ever injected here.
+	// That is why this shell stays safe to serve as a single shared-cacheable
+	// artifact, unlike its custom-domain twin — there, the host IS the page, so
+	// the meta is injected unconditionally and the directive has to follow the
+	// page's visibility (serveStatus0IndexForCustomHost, spec 2026-08-22-06).
 	if servingIndexFallback {
 		if meta, ok := s.status0MetaForPath(req, reqPath); ok {
 			data = []byte(injectStatus0Meta(string(data), &meta))
@@ -2751,6 +2761,14 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	}
 
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+
+	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
+	// shell varies on it exactly like the custom-domain one. Hashed assets do
+	// not, so they keep their unqualified year-long entry.
+	if servingIndexFallback {
+		writer.Header().Set("Vary", statuspagecache.VaryPublic)
+	}
+
 	writer.Header().Set("Content-Type", contentType)
 
 	if _, err := writer.Write(data); err != nil {

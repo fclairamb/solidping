@@ -9467,7 +9467,7 @@ type ClientInterface interface {
 
 	// ViewStatusPage View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 	ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -9489,7 +9489,7 @@ type ClientInterface interface {
 	// ViewPublicStatusPageIncidents Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -15095,7 +15095,7 @@ func (c *Client) UnlockDefaultStatusPage(ctx context.Context, org OrgPath, body 
 
 // ViewStatusPage View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -15147,7 +15147,7 @@ func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, r
 // ViewPublicStatusPageIncidents Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -31266,7 +31266,7 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageWithResponse View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -31294,7 +31294,7 @@ type ClientWithResponsesInterface interface {
 	// ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -50528,7 +50528,7 @@ func (c *ClientWithResponses) UnlockDefaultStatusPageWithResponse(ctx context.Co
 
 // ViewStatusPageWithResponse View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Responses carry Vary: Cookie, X-Forwarded-Proto.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -50574,7 +50574,7 @@ func (c *ClientWithResponses) StatusPageFeedWithResponse(ctx context.Context, or
 // ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Returns a wrapper object for the known response body format(s).

@@ -1799,7 +1799,9 @@ paths:
         carries Cache-Control: private, no-store, so a shared cache can never
         retain a gated page's body. Holding a valid unlock cookie does not
         change that: it authorizes the visitor, not the CDN in front of them.
-        Responses carry Vary: Cookie, X-Forwarded-Proto.
+        Public responses carry Vary: X-Forwarded-Proto (the header the
+        absolute URLs in these payloads derive their scheme from); gated ones
+        add Cookie.
       operationId: viewStatusPage
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1953,8 +1955,11 @@ paths:
         set the full page view embeds as `activeIncidents[]`.
 
         Same visibility gate as the full page view: a disabled or non-public
-        page returns 404, identical to a page that doesn't exist. No
-        authentication required.
+        page returns 404, identical to a page that doesn't exist. Same caching
+        rule too — Cache-Control: public, max-age=60 for a `public` page,
+        private, no-store for a `password` or `private` one (unlocked or not),
+        since this payload quotes incident titles and update bodies verbatim.
+        No authentication required.
 
         Every field is operator-authored or templated from the page's own
         public resource names. Probe output, error strings and internal

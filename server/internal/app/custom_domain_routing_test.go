@@ -292,7 +292,7 @@ func TestCustomHostShellCacheControl(t *testing.T) {
 
 	r.Equal(http.StatusOK, openRec.Code)
 	r.Equal("public, max-age=60", openRec.Header().Get("Cache-Control"))
-	r.Equal("Cookie, X-Forwarded-Proto", openRec.Header().Get("Vary"))
+	r.Equal("X-Forwarded-Proto", openRec.Header().Get("Vary"))
 
 	lockedRec := httptest.NewRecorder()
 	lockedReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
@@ -303,6 +303,7 @@ func TestCustomHostShellCacheControl(t *testing.T) {
 	r.Equal(http.StatusOK, lockedRec.Code)
 	r.Equal("private, no-store", lockedRec.Header().Get("Cache-Control"))
 	r.NotContains(lockedRec.Header().Get("Cache-Control"), "public")
+	r.Equal("Cookie, X-Forwarded-Proto", lockedRec.Header().Get("Vary"))
 }
 
 // TestLookupCustomDomainCarriesVisibility closes the gap the test above cannot
@@ -360,4 +361,43 @@ func TestLookupCustomDomainCarriesVisibility(t *testing.T) {
 		r.NotNil(resolved, testCase.name)
 		r.Equal(testCase.visibility, resolved.Visibility, testCase.name)
 	}
+}
+
+// TestPathBasedShellVaryMatchesCustomHost keeps the two status0 shells in
+// agreement. The path-based one injects an og:url whose scheme comes from
+// X-Forwarded-Proto, exactly like its custom-domain twin, so it varies on the
+// same header — while hashed assets, which depend on nothing about the request,
+// keep their unqualified year-long entry.
+func TestPathBasedShellVaryMatchesCustomHost(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	server := &Server{config: &config.Config{}, status0FS: newTestStatus0FS()}
+
+	serve := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		r.NoError(server.serveStatus0Static(rec, req))
+
+		return rec
+	}
+
+	shell := serve("/status0/acme/main")
+	r.Equal("public, max-age=60", shell.Header().Get("Cache-Control"))
+	r.Equal("X-Forwarded-Proto", shell.Header().Get("Vary"))
+
+	// The same value the custom-domain shell sends for a public page.
+	custom := newCustomHostTestServer(t)
+	customRec := httptest.NewRecorder()
+	customReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	customReq.Host = "status.acme.com"
+	custom.handlerWithCustomDomains(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).
+		ServeHTTP(customRec, customReq)
+
+	r.Equal(customRec.Header().Get("Vary"), shell.Header().Get("Vary"))
+	r.Equal(customRec.Header().Get("Cache-Control"), shell.Header().Get("Cache-Control"))
+
+	asset := serve("/status0/assets/app-abc123.js")
+	r.Equal("public, max-age=31536000", asset.Header().Get("Cache-Control"))
+	r.Empty(asset.Header().Get("Vary"), "an immutable asset varies on nothing")
 }
