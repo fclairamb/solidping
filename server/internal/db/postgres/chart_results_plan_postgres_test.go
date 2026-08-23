@@ -26,9 +26,11 @@ const (
 // web/dash0/src/components/checks/response-time-chart.tsx — the `with` list the
 // chart actually sends. It names no blob-backed field, which is what must make
 // the service drop metrics/output from the projection.
-var chartWithFields = []string{
-	"durationMs", "region", "durationMinMs", "durationMaxMs",
-	"durationAvgMs", "durationP95Ms", "totalChecks",
+func chartWithFields() []string {
+	return []string{
+		"durationMs", "region", "durationMinMs", "durationMaxMs",
+		"durationAvgMs", "durationP95Ms", "totalChecks",
+	}
 }
 
 // recordingResultsDB wraps the real Postgres service so the filter the results
@@ -97,8 +99,8 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 
 	// A day of raw at a 10 s cadence plus 30 days of rollups — production
 	// retention shape, for the check the chart is looking at.
-	seedPlanRaw(ctx, t, s, org.UID, target.UID, 8_640)
-	seedPlanRollups(ctx, t, s, org.UID, target.UID, 30)
+	seedPlanRaw(ctx, t, s, org.UID, target.UID, 7_200)
+	seedPlanRollups(ctx, t, s, org.UID, target.UID, 45)
 
 	// Noise: nine other checks with the same volume. Without them a
 	// single-check table is trivially covered by any plan; with them the
@@ -107,8 +109,8 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 	for i := range 9 {
 		noise := models.NewCheck(org.UID, fmt.Sprintf("chart-plan-noise-%d", i), "http")
 		r.NoError(s.CreateCheck(ctx, noise))
-		seedPlanRaw(ctx, t, s, org.UID, noise.UID, 8_640)
-		seedPlanRollups(ctx, t, s, org.UID, noise.UID, 30)
+		seedPlanRaw(ctx, t, s, org.UID, noise.UID, 7_200)
+		seedPlanRollups(ctx, t, s, org.UID, noise.UID, 45)
 	}
 
 	_, err := s.db.ExecContext(ctx, "ANALYZE results")
@@ -126,10 +128,10 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 		periodTypes []string
 		startAfter  time.Time
 	}{
-		{"month rollups", []string{"hour", "day"}, monthStart},
-		{"week rollups", []string{"hour"}, weekStart},
-		{"month raw", []string{"raw"}, monthStart},
-		{"week raw", []string{"raw"}, weekStart},
+		{"month rollups", []string{models.PeriodTypeHour, models.PeriodTypeDay}, monthStart},
+		{"week rollups", []string{models.PeriodTypeHour}, weekStart},
+		{"month raw", []string{models.PeriodTypeRaw}, monthStart},
+		{"week raw", []string{models.PeriodTypeRaw}, weekStart},
 	}
 
 	for _, tier := range chartTiers {
@@ -139,7 +141,7 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 			PeriodTypes:      tier.periodTypes,
 			PeriodStartAfter: &startAfter,
 			Size:             1000,
-			With:             chartWithFields,
+			With:             chartWithFields(),
 		})
 
 		r.True(filter.SkipBlobs,
@@ -166,8 +168,12 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 		periodTypes []string
 		startAfter  time.Time
 	}{
-		{"pre-fix week (raw,hour)", []string{"raw", "hour"}, weekStart},
-		{"pre-fix month (raw,hour,day)", []string{"raw", "hour", "day"}, monthStart},
+		{"pre-fix week (raw,hour)", []string{models.PeriodTypeRaw, models.PeriodTypeHour}, weekStart},
+		{
+			"pre-fix month (raw,hour,day)",
+			[]string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
+			monthStart,
+		},
 	}
 
 	for _, control := range mixed {
@@ -177,7 +183,7 @@ func TestChartQueriesUseIndexes_Postgres(t *testing.T) {
 			PeriodTypes:      control.periodTypes,
 			PeriodStartAfter: &startAfter,
 			Size:             1000,
-			With:             chartWithFields,
+			With:             chartWithFields(),
 		})
 
 		plan := explainListResults(ctx, t, s, filter)
@@ -211,12 +217,12 @@ func TestResultsCursorSeeksByRowValue_Postgres(t *testing.T) {
 
 	target := models.NewCheck(org.UID, "cursor-plan-target", "http")
 	r.NoError(s.CreateCheck(ctx, target))
-	seedPlanRaw(ctx, t, s, org.UID, target.UID, 8_640)
+	seedPlanRaw(ctx, t, s, org.UID, target.UID, 9_000)
 
 	for i := range 9 {
 		noise := models.NewCheck(org.UID, fmt.Sprintf("cursor-plan-noise-%d", i), "http")
 		r.NoError(s.CreateCheck(ctx, noise))
-		seedPlanRaw(ctx, t, s, org.UID, noise.UID, 8_640)
+		seedPlanRaw(ctx, t, s, org.UID, noise.UID, 9_000)
 	}
 
 	_, err := s.db.ExecContext(ctx, "ANALYZE results")
@@ -231,10 +237,10 @@ func TestResultsCursorSeeksByRowValue_Postgres(t *testing.T) {
 		PeriodTypes:      []string{models.PeriodTypeRaw},
 		PeriodStartAfter: &windowStart,
 		Size:             pageSize,
-		With:             chartWithFields,
+		With:             chartWithFields(),
 	})
 	r.NoError(err)
-	r.NotEmpty(page1.Pagination.Cursor, "a 1 000-row page of an 8 640-row window must have a next cursor")
+	r.NotEmpty(page1.Pagination.Cursor, "a 1 000-row page of a 9 000-row window must have a next cursor")
 
 	filter := captureChartFilter(ctx, t, s, org.Slug, &results.ListResultsOptions{
 		Checks:           []string{target.UID},
@@ -242,7 +248,7 @@ func TestResultsCursorSeeksByRowValue_Postgres(t *testing.T) {
 		PeriodStartAfter: &windowStart,
 		Cursor:           page1.Pagination.Cursor,
 		Size:             pageSize,
-		With:             chartWithFields,
+		With:             chartWithFields(),
 	})
 	r.NotNil(filter.CursorTimestamp, "the cursor must reach the DB layer")
 	r.NotNil(filter.CursorUID)

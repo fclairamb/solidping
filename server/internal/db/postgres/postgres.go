@@ -2364,6 +2364,40 @@ func (s *Service) ListResults(
 	}, nil
 }
 
+// applyPeriodTypeFilter narrows a results SELECT to the requested aggregation
+// tiers, restating which side of the raw/rollup split they sit on.
+//
+// That restatement is redundant and load-bearing: both useful indexes on
+// `results` are PARTIAL and split on `period_type = 'raw'`
+// (results_raw_idx WHERE period_type = 'raw', results_aggregated_idx WHERE
+// period_type != 'raw'), and an index is only eligible when the query's WHERE
+// implies the index's own predicate. Postgres derives that implication from an
+// IN list on its own; SQLite does not, and scans the whole table even for
+// `period_type IN ('raw')`. Adding the side explicitly — only when every
+// requested tier sits on ONE side — makes the query seekable on both backends
+// at zero selectivity cost.
+//
+// A list straddling the split gets nothing added, because nothing true can be
+// added: such a query is unservable by either index and must be issued as two
+// (spec 2026-08-22-04).
+func applyPeriodTypeFilter(query *bun.SelectQuery, periodTypes []string) *bun.SelectQuery {
+	if len(periodTypes) == 0 {
+		return query
+	}
+
+	query = query.Where("result.period_type IN (?)", bun.List(periodTypes))
+
+	switch models.PeriodTypesTierSide(periodTypes) {
+	case models.PeriodTierRaw:
+		query = query.Where("result.period_type = ?", models.PeriodTypeRaw)
+	case models.PeriodTierRollup:
+		query = query.Where("result.period_type != ?", models.PeriodTypeRaw)
+	case models.PeriodTierMixed:
+	}
+
+	return query
+}
+
 // applyResultsFilter narrows a results SELECT by filter. Shared by ListResults
 // and CompactResults so both read exactly the same rows for a bucket.
 //
@@ -2396,27 +2430,7 @@ func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter
 		query = query.Where("result.region IN (?)", bun.List(filter.Regions))
 	}
 	// Filter by multiple period types
-	if len(filter.PeriodTypes) > 0 {
-		query = query.Where("result.period_type IN (?)", bun.List(filter.PeriodTypes))
-
-		// Redundant, and load-bearing: both useful indexes on `results` are
-		// PARTIAL and split on `period_type = 'raw'`, and an index is only
-		// eligible when the query's WHERE implies the index's own predicate.
-		// Postgres derives that implication from an IN list on its own; SQLite
-		// does not, and scans the whole table for `period_type IN ('raw')`.
-		// Restating the side explicitly — only when every requested tier sits on
-		// ONE side — makes the query seekable on both backends at zero
-		// selectivity cost. A list straddling the split gets nothing added,
-		// because nothing true can be added: that query is unservable by either
-		// index and must be issued as two (spec 2026-08-22-04).
-		switch models.PeriodTypesTierSide(filter.PeriodTypes) {
-		case models.PeriodTierRaw:
-			query = query.Where("result.period_type = ?", models.PeriodTypeRaw)
-		case models.PeriodTierRollup:
-			query = query.Where("result.period_type != ?", models.PeriodTypeRaw)
-		case models.PeriodTierMixed:
-		}
-	}
+	query = applyPeriodTypeFilter(query, filter.PeriodTypes)
 
 	// Filter by multiple statuses
 	if len(filter.Statuses) > 0 {

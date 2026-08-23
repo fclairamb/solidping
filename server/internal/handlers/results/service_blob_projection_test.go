@@ -120,7 +120,8 @@ func TestListResults_SkipsBlobsUnlessRequested(t *testing.T) {
 			rr.NotNil(apiRow, "the seeded row must appear in the response")
 
 			if tc.wantMetrics {
-				rr.Equal(float64(4), apiRow.Metrics["dnsMs"], "a requested blob must survive the projection")
+				rr.InDelta(float64(4), apiRow.Metrics["dnsMs"], 1e-9,
+					"a requested blob must survive the projection")
 			} else {
 				rr.Nil(apiRow.Metrics)
 			}

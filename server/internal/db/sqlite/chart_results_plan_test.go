@@ -129,9 +129,14 @@ func TestChartResultsQueriesUseIndexes_SQLite(t *testing.T) {
 		startAfter  time.Time
 		wantIndex   string
 	}{
-		{"month rollups", []string{"hour", "day"}, monthStart, "results_aggregated_idx"},
-		{"week rollups", []string{"hour"}, weekStart, "results_aggregated_idx"},
-		{"raw", []string{"raw"}, weekStart, "results_raw_idx"},
+		{
+			"month rollups",
+			[]string{models.PeriodTypeHour, models.PeriodTypeDay},
+			monthStart,
+			"results_aggregated_idx",
+		},
+		{"week rollups", []string{models.PeriodTypeHour}, weekStart, "results_aggregated_idx"},
+		{"raw", []string{models.PeriodTypeRaw}, weekStart, "results_raw_idx"},
 	}
 
 	for _, tier := range tiers {
@@ -157,8 +162,12 @@ func TestChartResultsQueriesUseIndexes_SQLite(t *testing.T) {
 		periodTypes []string
 		startAfter  time.Time
 	}{
-		{"pre-fix week (raw,hour)", []string{"raw", "hour"}, weekStart},
-		{"pre-fix month (raw,hour,day)", []string{"raw", "hour", "day"}, monthStart},
+		{"pre-fix week (raw,hour)", []string{models.PeriodTypeRaw, models.PeriodTypeHour}, weekStart},
+		{
+			"pre-fix month (raw,hour,day)",
+			[]string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
+			monthStart,
+		},
 	}
 
 	for _, control := range mixed {
@@ -200,7 +209,7 @@ func TestChartResultsQueriesUseIndexes_SQLite(t *testing.T) {
 
 // TestResultsCursorParity_SQLite pins spec 2026-08-22-04 §4: the row-value
 // keyset cursor `(period_start, uid) < (?, ?)` is a REWRITE of the OR form, not
-// a behaviour change. Both walks are run side by side over the same seed —
+// a behavior change. Both walks are run side by side over the same seed —
 // including rows deliberately sharing a period_start so the uid tie-break is
 // exercised — and must agree on the uid sequence, the page boundaries, and the
 // full unpaginated ordering.
