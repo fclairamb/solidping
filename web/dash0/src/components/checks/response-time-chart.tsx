@@ -15,9 +15,6 @@ import {
 import { format, startOfMinute } from "date-fns";
 import { useChartWindowResults, useRegions } from "@/api/hooks";
 import {
-  CHART_WITH_FIELDS,
-  chartFetchParams,
-  chartRollupTier,
   chartWindowBounds,
   type ChartTierFetch,
   type TimeRange,
@@ -32,16 +29,9 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
 import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 
-// Re-exported for the consumers that already import them from this module
-// (the check-detail route, the spec-2026-08-22-04 tier guard test). The
-// definitions live in @/lib/chart-window so @/api/hooks can build the same
-// plan without importing a component.
-export {
-  CHART_WITH_FIELDS,
-  chartFetchParams,
-  chartRollupTier,
-  chartWindowBounds,
-};
+// The window/tier plan lives in @/lib/chart-window rather than here, so
+// @/api/hooks can build the same plan without importing a component. Only the
+// types are re-exported (free at runtime); import the functions from the lib.
 export type { ChartTierFetch, TimeRange, ZoomWindow };
 
 interface ResponseTimeChartProps {
@@ -74,7 +64,7 @@ interface ResponseTimeChartProps {
   onSelectChange?: (uid?: string) => void;
 }
 
-interface ChartPoint {
+export interface ChartPoint {
   ts: number;
   durationMs: number | null;
   status: string;
@@ -137,8 +127,13 @@ function median(sorted: number[]): number {
 /** Detect gaps in data where interval exceeds 5x the per-tier median interval.
  * Transitions between different periodTypes (raw → hour → day → month) are
  * not gaps — the aggregator deletes source rows so the timeline is contiguous
- * across tiers, just at different densities. */
-function detectGaps(
+ * across tiers, just at different densities.
+ *
+ * Exported for ./chart-seam.test.ts: since spec 2026-08-22-07 the rollup→raw
+ * transition is the NORMAL case on every wide range rather than an edge case,
+ * so the "a tier change is not a gap" rule has to be pinned rather than
+ * assumed. */
+export function detectGaps(
   data: ChartPoint[],
   domainMin: number,
   domainMax: number,

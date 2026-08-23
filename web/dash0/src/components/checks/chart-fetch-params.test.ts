@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   chartFetchParams,
   type ChartTierFetch,
-} from "@/components/checks/response-time-chart";
+} from "@/lib/chart-window";
 
 const RANGES = ["hour", "day", "week", "month"] as const;
 /** Around the 5-minute raw/hour threshold, plus the undefined case. */
@@ -149,6 +149,10 @@ describe("chartFetchParams tier plan", () => {
     }
   });
 
+  // No seam is passed anywhere in this file, so both entries still share the
+  // full window. Spec 2026-08-22-07 narrows ONLY the raw entry's
+  // periodStartAfter, and only when a seam is supplied — that is pinned in
+  // src/lib/chart-window.test.ts.
   it("gives every tier the same window and the same projection", () => {
     for (const { label, plan } of allPlans()) {
       const [first] = plan;
