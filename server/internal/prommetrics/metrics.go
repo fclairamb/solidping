@@ -23,6 +23,7 @@ const (
 	labelLane         = "lane"
 	labelMessageType  = "type"
 	labelListener     = "listener"
+	labelChannel      = "channel"
 )
 
 // Lane label values for CheckLaneClaims (spec 2026-07-01-03).
@@ -475,7 +476,44 @@ var (
 		[]string{labelListener, labelOutcome},
 	)
 
+	// SupportCapture counts inbound human messages the support inbox tried to
+	// capture, per channel and outcome ("captured", "deduplicated", "throttled",
+	// "failed"). Capture is best-effort for the request — a failure must never
+	// break the channel it came from — so without a counter a silent capture
+	// outage is indistinguishable from nobody writing in (spec 2026-08-22-02).
+	SupportCapture = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_support_capture_total",
+			Help: "Inbound support messages by channel and capture outcome",
+		},
+		[]string{labelChannel, labelOutcome},
+	)
+
+	// SupportMirror counts the notification emails mirroring captured messages
+	// to the support mailbox, by outcome ("sent", "folded", "throttled",
+	// "failed", "disabled").
+	SupportMirror = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_support_mirror_total",
+			Help: "Support-inbox mirror notifications by outcome",
+		},
+		[]string{labelOutcome},
+	)
+
+	// SupportDMUnavailable counts inbound-DM opportunities dropped because the
+	// workspace has not re-authorised the app since im:history was added. It is
+	// the observable half of "degrade cleanly": a workspace that never
+	// reinstalls shows up here instead of looking like an empty inbox.
+	SupportDMUnavailable = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_support_dm_unavailable_total",
+			Help: "Inbound DMs skipped because the integration lacks the required scope",
+		},
+		[]string{labelChannel},
+	)
+
 	allCollectors = []prometheus.Collector{
+		SupportCapture, SupportMirror, SupportDMUnavailable,
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
 		WorkersActive, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
