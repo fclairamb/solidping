@@ -158,6 +158,11 @@ const (
 // SQLite backend — the database every server-level test runs against.
 const dbTypeSQLiteMemory = "sqlite-memory"
 
+// runModeTest is the RunMode value that gates the /test/* fixture routes and
+// InitializeTestData — see SetupRoutes (spec 2026-08-23-07) and
+// InitializeTestData below.
+const runModeTest = "test"
+
 // ErrUnsupportedDatabaseType is returned when an unsupported database type is specified.
 var ErrUnsupportedDatabaseType = errors.New("unsupported database type")
 
@@ -2026,7 +2031,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	fakeAPI := api.Use(fakeLimiter.RateLimit)
 	fakeAPI.GET("/fake", testHandler.FakeAPI)
 
-	if s.config.RunMode == "test" {
+	if s.config.RunMode == runModeTest {
 		api.POST("/test/jobs", testHandler.CreateEmailJob)
 		api.GET("/test/state-entries", testHandler.ListStateEntries)
 		api.POST("/test/users", testHandler.CreateUser)
@@ -3477,7 +3482,7 @@ func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
 // InitializeTestData creates test data for test mode.
 // This should be called after Initialize and before Start.
 func (s *Server) InitializeTestData(ctx context.Context) error {
-	if s.config.RunMode != "test" {
+	if s.config.RunMode != runModeTest {
 		return nil
 	}
 
