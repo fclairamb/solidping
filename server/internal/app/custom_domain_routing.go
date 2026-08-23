@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
@@ -40,6 +41,12 @@ type resolvedCustomDomain struct {
 	Slug        string
 	Name        string
 	Description *string
+	// Visibility is the page's stored visibility. A `password` page IS routed
+	// here (the unlock form has to appear somewhere), and the shell served for
+	// it embeds the page name and description as OG metadata — so the shell
+	// inherits the same who-may-cache-this rule as the API behind it
+	// (spec 2026-08-22-06).
+	Visibility string
 }
 
 // customDomainCacheEntry holds a resolution and its expiry. A nil page is the
@@ -196,6 +203,7 @@ func (s *Server) lookupCustomDomain(ctx context.Context, host string) *resolvedC
 		Slug:        statusPage.Slug,
 		Name:        statusPage.Name,
 		Description: statusPage.Description,
+		Visibility:  statusPage.Visibility,
 	}
 }
 
@@ -317,7 +325,7 @@ func (s *Server) serveStatus0IndexForCustomHost(
 	meta := s.status0MetaForCustomHost(req, page)
 	data = []byte(injectStatus0Meta(string(data), &meta))
 
-	writer.Header().Set("Cache-Control", "public, max-age=60")
+	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
 	writer.Header().Set("Content-Type", contentTypeHTML)
 	_, _ = writer.Write(data)
 }

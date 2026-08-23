@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
@@ -573,6 +574,8 @@ func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req *http.Request) 
 		return h.handlePublicError(writer, req, err)
 	}
 
+	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
+
 	return h.WriteJSON(writer, http.StatusOK, page)
 }
 
@@ -584,6 +587,8 @@ func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Re
 	if err != nil {
 		return h.handlePublicError(writer, req, err)
 	}
+
+	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
 
 	return h.WriteJSON(writer, http.StatusOK, page)
 }
@@ -639,7 +644,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 		GeneratedAt: time.Now().UTC(),
 	}
 
-	writer.Header().Set("Cache-Control", "public, max-age=60")
+	statuspagecache.Apply(writer.Header(), summary.Visibility, statuspagecache.PageMaxAge)
 
 	return h.WriteJSON(writer, http.StatusOK, response)
 }
@@ -682,15 +687,15 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req *http.Request) error 
 		opts.Width = width
 	}
 
-	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, slug, opts)
+	badge, err := h.svc.GenerateBadge(req.Context(), orgSlug, slug, opts)
 	if err != nil {
 		return h.handlePublicError(writer, req, err)
 	}
 
 	writer.Header().Set("Content-Type", "image/svg+xml")
-	writer.Header().Set("Cache-Control", "public, max-age=60")
+	statuspagecache.Apply(writer.Header(), badge.Visibility, statuspagecache.PageMaxAge)
 	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write([]byte(svg))
+	_, _ = writer.Write([]byte(badge.SVG))
 
 	return nil
 }
@@ -1033,6 +1038,12 @@ func (h *Handler) writeResourceTargetError(writer http.ResponseWriter) error {
 }
 
 func (h *Handler) handlePublicError(writer http.ResponseWriter, request *http.Request, err error) error {
+	// Nothing on the public surface may be stored by a shared cache unless a
+	// world-readable page was actually served: a cached 404 (or a cached 401)
+	// is an existence oracle for pages the visitor is not entitled to know
+	// about.
+	statuspagecache.ApplyGated(writer.Header())
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound), errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(

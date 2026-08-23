@@ -631,6 +631,11 @@ type StatusPageSummary struct {
 	// CustomDomain is the verified, active custom domain for this page, or ""
 	// when the page is served path-based only.
 	CustomDomain string
+	// Visibility is the page's stored visibility (`public`, `password` or
+	// `private`). It never reaches the wire — it exists so the handler can
+	// decide who may cache the response, which depends on the page rather than
+	// on whether this particular caller was let in (spec 2026-08-22-06).
+	Visibility string
 }
 
 // AvailabilitySettingsResponse mirrors models.AvailabilitySettings on the
@@ -2074,10 +2079,20 @@ func (s *Service) ViewStatusPageSummary(
 		PageName:     page.Name,
 		PageSlug:     page.Slug,
 		CustomDomain: customDomain,
+		Visibility:   page.Visibility,
 	}, nil
 }
 
 // --- Badge (spec 2026-08-08-07) ---
+
+// Badge is a rendered page badge together with the visibility of the page it
+// reflects. The SVG alone is not enough for the handler: the badge text
+// discloses the rollup status of a page the requester may not be entitled to
+// see, so the caching directive has to travel with it (spec 2026-08-22-06).
+type Badge struct {
+	SVG        string
+	Visibility string
+}
 
 // BadgeOptions are the caller-supplied rendering options for the page-level
 // SVG badge. Mirrors badges.BadgeOptions' Label/Style/MinWidth/Width shape so
@@ -2125,10 +2140,10 @@ func pageBadgeColor(status models.PageStatus) string {
 // page — a badge that disagreed with either would be worse than no badge.
 // Rendering itself reuses badges.GenerateSVG/ComposeBadgeSVG rather than a
 // second SVG renderer.
-func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts BadgeOptions) (string, error) {
+func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts BadgeOptions) (Badge, error) {
 	summary, err := s.ViewStatusPageSummary(ctx, orgSlug, slug)
 	if err != nil {
-		return "", err
+		return Badge{}, err
 	}
 
 	label := opts.Label
@@ -2149,7 +2164,10 @@ func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts 
 	value := string(summary.Status)
 	color := pageBadgeColor(summary.Status)
 
-	return badges.GenerateSVG(label, value, color, style, minWidth), nil
+	return Badge{
+		SVG:        badges.GenerateSVG(label, value, color, style, minWidth),
+		Visibility: summary.Visibility,
+	}, nil
 }
 
 // --- Availability enrichment ---

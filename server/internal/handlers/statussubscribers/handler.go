@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
@@ -381,6 +382,8 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 	// reader that followed the URL after unlocking in a browser carries the
 	// cookie; one that never unlocked gets a 401 it can surface to its user.
 	if !statuspagelock.RequestUnlocks(req, page) {
+		statuspagecache.ApplyGated(writer.Header())
+
 		return h.WriteError(writer, http.StatusUnauthorized,
 			base.ErrorCodeStatusPageLocked, "This status page is password protected")
 	}
@@ -397,7 +400,7 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 
 	feed := h.buildFeed(orgSlug, slug, page.Name, updates)
 
-	return h.writeFeed(writer, feed)
+	return h.writeFeed(writer, feed, page.Visibility)
 }
 
 func (h *Handler) buildFeed(
@@ -442,9 +445,12 @@ func (h *Handler) buildFeed(
 	return feed
 }
 
-func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomFeed) error {
+func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomFeed, visibility string) error {
 	writer.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
-	writer.Header().Set("Cache-Control", "public, max-age=300")
+	// The feed body carries the page's update titles and bodies verbatim, so a
+	// password-gated page's feed must never be retained by a shared cache —
+	// same rule, same helper as the page itself (spec 2026-08-22-06).
+	statuspagecache.Apply(writer.Header(), visibility, statuspagecache.FeedMaxAge)
 	writer.WriteHeader(http.StatusOK)
 
 	if _, err := writer.Write([]byte(xml.Header)); err != nil {
@@ -458,5 +464,7 @@ func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomFeed) error {
 }
 
 func (h *Handler) writeFeedNotFound(writer http.ResponseWriter) error {
+	statuspagecache.ApplyGated(writer.Header())
+
 	return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found")
 }
