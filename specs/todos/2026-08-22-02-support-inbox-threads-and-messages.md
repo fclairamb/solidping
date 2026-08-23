@@ -516,3 +516,83 @@ arrive.** Therefore you must also:
 **Ordering.** This spec runs LAST in the current batch, after
 `2026-08-22-01-email-check-inbound-dedup` has landed, per its own stated
 dependency.
+
+## Implementation Plan
+
+### How the three resolved decisions shaped this plan
+
+**Decision 1 — email inbound is out of scope.** No JMAP consumption for support, no
+inbound-email route, no `In-Reply-To`/plus-address thread mapping, no `email` capture
+adapter. What *does* ship is everything that makes the later spec tractable and safe:
+`EmailConfig.ReplyTo` (`SP_EMAIL_REPLY_TO` / system parameter `email.reply_to`), the
+fail-closed `SupportReplyable` classification, the notice in both bodies, and the
+`X-SolidPing-Support-Mirror` + `Auto-Submitted: auto-generated` markers on every mirror —
+written now, while nothing reads them, because retrofitting them means the loop ships
+first. The `email` channel value stays in the schema's CHECK constraint so the later spec
+needs no migration, but nothing writes it. The v1 asymmetry ("email support is a human
+mailbox, not a thread in the inbox") is stated in the docs page as a decision.
+
+**Decision 2 — no org-facing view in v1.** `organization_uid` / `user_uid` are recorded on
+the thread as attribution whenever the sender resolves to a verified `user_contacts` row,
+and the API returns them, so a future org view needs no migration. But: no
+`/api/v1/orgs/:org/support*` endpoint, no org-scoped permission, no dash0 route under
+`orgs/$org`, no sidebar entry anywhere. The only surface is the unlinked instance route
+`/support`, SuperAdmin-gated on every endpoint.
+
+**Decision 3 — Slack DM ships here.** `im:history` is added to `slackBotScopes` (the
+manifests already carry it and already subscribe `message.im` — the code's install request
+was the actual blocker). Because Slack never grants new scopes to an existing install, the
+reinstall requirement is treated as a first-class requirement, not a footnote:
+- the OAuth callback already stores `settings.scopes`; DM capture reads it and, when
+  `im:history` is absent, records the workspace as **"DM capture unavailable until
+  reinstall"** rather than erroring or logging per event (one WARN per team per hour);
+- the dash0 Slack integration panel renders that state as an `Alert` with a **Reinstall**
+  button that re-runs the install for the same channel;
+- `wiki/slack/README.md` and the docs-site Slack section say it explicitly.
+
+### Steps
+
+1. **Migration `016_v0_18_0.{up,down}.sql`, both dialects.** A second file for the same
+   unreleased release rather than an append to `015` — Bun keys applied migrations on the
+   numeric prefix only, so an append is silently skipped by any dev database that already
+   recorded `015`. `support_threads` (partial unique on `(channel, channel_identity)`
+   `where status <> 'closed'`) + `support_messages` (partial unique on
+   `(channel, external_id)`). SQLite has supported partial indexes since 3.8.0, so the two
+   dialects agree on behaviour, not merely both apply — pinned by a parity test.
+2. **Models** `models.SupportThread` / `models.SupportMessage`, with the channel/status/
+   direction vocabularies as typed constants and the **derived** reply-window helper
+   (`ReplyWindow(now)`) — WhatsApp 24 h from `last_inbound_at`, every other channel never
+   expires. Never stored as truth.
+3. **Email support-reply** (`internal/email`): `Message.SupportReplyable` /
+   `AutoSubmitted` / `SupportMirror`; the explicit per-template classification table with
+   an enumerating test that fails the build on an unclassified template; the notice
+   injected into HTML *and* plain text at the sender layer (one splice point instead of 21
+   template edits plus a field on every view model); `EmailConfig.ReplyTo`.
+4. **`supportsvc`** — capture (idempotent on `external_id`, body cap + truncate flag,
+   per-identity/per-thread abuse caps), list/get/patch/reply, attribution lookup via
+   `ListUserContactsByTypeValue`, retention purge, and the mirror notification with the
+   `audit.FailedLoginFolder`-shaped fold window + instance hourly ceiling.
+5. **Reply adapters** behind one interface: WhatsApp (new free-form `SendText`, refused
+   outside the 24 h window with the reason surfaced), Telegram, SMS (through the existing
+   instance spend guards), Slack, Discord. Email replies are not sendable in v1.
+6. **Capture wiring** per channel: WhatsApp `logInbound` → capture; Telegram `case ""` and
+   `default` (the "unknown command" reply is kept *and* the message captured); a new
+   Twilio inbound-SMS route that skips `STOP`/`START`/`HELP`; Slack `channel_type == "im"`
+   ahead of the thread-reply gate; Discord `DIRECT_MESSAGES` intent + the `GuildID == ""`
+   branch. Every path ignores the bot's own messages, or a reply is re-captured and the
+   thread talks to itself.
+7. **Capture never breaks its channel**: capture runs behind a recover-and-log wrapper and
+   its failures are counted in `solidping_support_capture_total{channel,outcome}`. The
+   webhook still returns its normal 2xx.
+8. **API** `/api/v1/support/*`, SuperAdmin on every endpoint, plus OpenAPI + regenerated
+   client.
+9. **dash0** `/support` (list with active/expired split + closed) and
+   `/support/$threadUid` (chat view, escaped bodies, reply box disabled with the reason on
+   an expired WhatsApp thread), 403 → Permission Denied, never a redirect.
+10. **Retention + deletion**: a daily `support_cleanup` job purging closed threads after 12
+    months (`SP_SUPPORT_RETENTION_DAYS`, `support.retention_days`), and org deletion
+    detaching attribution from surviving threads.
+11. **Docs**: `web/docs/docs/features/support-inbox.md`, the Slack reinstall note in
+    `configuration/notifications.md`, `wiki/slack/README.md`, and the retention/right-to-
+    erasure text the published privacy pages have to mirror (flagged for the website repo,
+    which is not in this repository).
