@@ -388,7 +388,8 @@
       "dotClickToClose": "Zum Schließen anklicken",
       "resetZoom": "Zoom zurücksetzen",
       "zoomHint": "Ziehen Sie über das Diagramm, um einen Zeitbereich zu vergrößern",
-      "zoomHintReset": "Vergrößert — ziehen zum Verfeinern oder doppelklicken zum Zurücksetzen"
+      "zoomHintReset": "Vergrößert — ziehen zum Verfeinern oder doppelklicken zum Zurücksetzen",
+      "rawUnavailable": "Neueste Punkte nicht verfügbar – nur aggregierte Daten"
     },
     "resultBox": {
       "close": "Schließen",

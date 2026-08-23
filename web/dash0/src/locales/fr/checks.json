@@ -433,7 +433,8 @@
       "dotClickToClose": "Cliquer pour fermer",
       "resetZoom": "Réinitialiser le zoom",
       "zoomHint": "Faites glisser sur le graphique pour zoomer sur une plage de temps",
-      "zoomHintReset": "Zoom actif — faites glisser pour affiner ou double-cliquez pour réinitialiser"
+      "zoomHintReset": "Zoom actif — faites glisser pour affiner ou double-cliquez pour réinitialiser",
+      "rawUnavailable": "Points récents indisponibles — données agrégées uniquement"
     },
     "resultBox": {
       "close": "Fermer",

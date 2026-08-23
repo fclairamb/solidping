@@ -25,7 +25,7 @@ import {
   useUpdateCheck,
   useRotateHeartbeatToken,
   useResults,
-  useResultTiers,
+  useChartWindowResults,
   useIncidents,
   useRegions,
 } from "@/api/hooks";
@@ -93,7 +93,6 @@ import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-c
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import {
   ResponseTimeChart,
-  chartFetchParams,
   formatMs,
 } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
@@ -639,33 +638,27 @@ function CheckDetailPage() {
     refetchInterval,
   });
 
-  // Same per-tier react-query keys as ResponseTimeChart's own useResultTiers
-  // call (see chartFetchParams) so these are cache hits, not a second round of
-  // HTTP requests. Used
-  // to derive the observed-region set for the results filter and the
-  // tier-aware duration stats strip, both scoped to the chart's current
-  // graphPeriod window — one page, one time window, per the spec.
+  // The SAME two-pass window the chart draws, through the same hook — so the
+  // react-query keys are identical and these are cache hits, not a second round
+  // of HTTP requests. Used to derive the observed-region set for the results
+  // filter and the tier-aware duration stats strip, both scoped to the chart's
+  // current graphPeriod window — one page, one time window, per the spec.
   const graphTimeRange = graphPeriod ?? "day";
   // A zoom is active only for a well-formed forward window; when set, the same
-  // window is fed to chartFetchParams here as in the chart, keeping these
-  // react-query cache hits (identical keys) rather than second HTTP requests.
-  const graphZoom =
-    graphFrom != null && graphTo != null && graphTo > graphFrom
-      ? { from: graphFrom, to: graphTo }
-      : undefined;
-  const chartWindowParams = useMemo(
-    () => chartFetchParams(graphTimeRange, periodMs, graphZoom),
-    // graphZoom is derived from graphFrom/graphTo (already deps).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [graphTimeRange, periodMs, graphFrom, graphTo],
+  // window is fed to the hook here as in the chart, keeping these cache hits.
+  const graphZoom = useMemo(
+    () =>
+      graphFrom != null && graphTo != null && graphTo > graphFrom
+        ? { from: graphFrom, to: graphTo }
+        : undefined,
+    [graphFrom, graphTo],
   );
-  const chartWindowTiers = useMemo(
-    () => chartWindowParams.map((tier) => ({ checkUid, ...tier })),
-    [chartWindowParams, checkUid],
+  const { data: chartWindowResults } = useChartWindowResults(
+    org,
+    checkUid,
+    { timeRange: graphTimeRange, periodMs, zoom: graphZoom },
+    { rawRefetchInterval: refetchInterval },
   );
-  const { data: chartWindowResults } = useResultTiers(org, chartWindowTiers, {
-    refetchInterval,
-  });
 
   const { data: regionsData } = useRegions(org);
 

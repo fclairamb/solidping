@@ -433,7 +433,8 @@
       "dotClickToClose": "Click to close",
       "resetZoom": "Reset zoom",
       "zoomHint": "Drag across the chart to zoom into a time range",
-      "zoomHintReset": "Zoomed in — drag to refine, or double-click to reset"
+      "zoomHintReset": "Zoomed in — drag to refine, or double-click to reset",
+      "rawUnavailable": "Latest points unavailable — showing aggregated data only"
     },
     "resultBox": {
       "close": "Close",

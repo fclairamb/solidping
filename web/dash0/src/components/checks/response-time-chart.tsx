@@ -12,8 +12,17 @@ import {
   ReferenceArea,
   type MouseHandlerDataParam,
 } from "recharts";
-import { format, subDays, subHours, startOfMinute } from "date-fns";
-import { useRegions, useResultTiers } from "@/api/hooks";
+import { format, startOfMinute } from "date-fns";
+import { useChartWindowResults, useRegions } from "@/api/hooks";
+import {
+  CHART_WITH_FIELDS,
+  chartFetchParams,
+  chartRollupTier,
+  chartWindowBounds,
+  type ChartTierFetch,
+  type TimeRange,
+  type ZoomWindow,
+} from "@/lib/chart-window";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +32,17 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
 import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 
-type TimeRange = "hour" | "day" | "week" | "month";
+// Re-exported for the consumers that already import them from this module
+// (the check-detail route, the spec-2026-08-22-04 tier guard test). The
+// definitions live in @/lib/chart-window so @/api/hooks can build the same
+// plan without importing a component.
+export {
+  CHART_WITH_FIELDS,
+  chartFetchParams,
+  chartRollupTier,
+  chartWindowBounds,
+};
+export type { ChartTierFetch, TimeRange, ZoomWindow };
 
 interface ResponseTimeChartProps {
   org: string;
@@ -87,20 +106,6 @@ interface GapRegion {
   showLabel: boolean;
 }
 
-function getStartFor(range: TimeRange): string {
-  const now = startOfMinute(new Date());
-  switch (range) {
-    case "hour":
-      return subHours(now, 1).toISOString();
-    case "day":
-      return subHours(now, 24).toISOString();
-    case "week":
-      return subDays(now, 7).toISOString();
-    case "month":
-      return subDays(now, 30).toISOString();
-  }
-}
-
 /** Choose x-axis format based on the actual time span */
 function adaptiveFormat(tsMs: number, spanMs: number): string {
   const date = new Date(tsMs);
@@ -118,122 +123,6 @@ function adaptiveFormat(tsMs: number, spanMs: number): string {
 export function formatMs(value: number): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
   return `${Math.round(value)}ms`;
-}
-
-/** Fields fetched for the chart window — extended with stored aggregate stats
- * (durationMinMs/MaxMs/AvgMs/P95Ms, totalChecks) so the Recent Results stats
- * strip can compute tier-aware min/avg/max/p95 from this same dataset without
- * an extra HTTP request. Raw rows simply omit the aggregate-only fields. */
-export const CHART_WITH_FIELDS =
-  "durationMs,region,durationMinMs,durationMaxMs,durationAvgMs,durationP95Ms,totalChecks";
-
-/** One tier's fetch parameters. `periodType` is either a rollup list
- * ("hour", "hour,day") or exactly "raw" — **never both**. The two partial
- * indexes on `results` are split on `period_type = 'raw'` vs
- * `period_type != 'raw'`, so a list straddling that split is provably
- * satisfied by neither and can only be answered by a sequential scan of the
- * largest table in the system (spec 2026-08-22-04). */
-export interface ChartTierFetch {
-  periodStartAfter: string;
-  /** Only present when a zoom window is active — maps the URL `graphTo` onto the
-   * results endpoint's existing `periodEndBefore` (RFC3339) filter. */
-  periodEndBefore?: string;
-  periodType: string;
-  with: string;
-  size: number;
-}
-
-/** A drag-selected X (time) zoom window, epoch-ms, `from < to`. */
-export interface ZoomWindow {
-  from: number;
-  to: number;
-}
-
-/** Maps a zoom span (ms) onto the equivalent default TimeRange bucket, so the
- * aggregation-tier choice for a zoomed window matches what that span would use
- * as a normal range (a narrow window naturally lands on the finer, less
- * aggregated tiers). */
-function rangeForSpan(spanMs: number): TimeRange {
-  const ONE_HOUR = 3_600_000;
-  const ONE_DAY = 24 * ONE_HOUR;
-  if (spanMs <= ONE_HOUR) return "hour";
-  if (spanMs <= ONE_DAY) return "day";
-  if (spanMs <= 7 * ONE_DAY) return "week";
-  return "month";
-}
-
-/** Builds the chart's **tier plan** for the current window (time range + check
- * period, or an explicit zoom window): at most two entries, the rollup tier
- * first and the raw tier second, never one query mixing the two. Exported so
- * the results-list route can issue the identical set of queries (same
- * react-query keys) to derive the observed region set and duration stats from
- * the chart's already-fetched window, with zero extra HTTP requests. When
- * `zoom` is passed, the window is `[zoom.from, zoom.to]` (server-side fetch,
- * not a client re-scale) and the tier is chosen from the zoom span.
- *
- * Raw is always requested alongside the rollups so the current open bucket
- * (which the aggregator never rolls up until it closes) is represented — but
- * as its OWN query, because `period_type IN ('raw','hour')` is implied by
- * neither partial index on `results` and forces a full sequential scan. The
- * aggregator deletes source rows after rollup, so raw + hour + day stay
- * disjoint in time; merging the tiers client-side yields exactly the rows the
- * single mixed query returned. Both entries span the full window — narrowing
- * the raw one is spec 2026-08-22-07, which builds on this split.
- *
- * **If you change the tier lists this can emit, update the Go plan tests too.**
- * They enumerate these exact lists and EXPLAIN each one against a production-
- * sized fixture; nothing but this comment links the two languages, so a new
- * tier list added here is a query nobody has ever seen a plan for:
- *   - server/internal/db/postgres/chart_results_plan_postgres_test.go
- *   - server/internal/db/sqlite/chart_results_plan_test.go
- * The local guard that the lists never re-mix raw with a rollup tier lives in
- * ./chart-fetch-params.test.ts. */
-export function chartFetchParams(
-  timeRange: TimeRange,
-  periodMs: number | undefined,
-  zoom?: ZoomWindow,
-): ChartTierFetch[] {
-  // For tier selection a zoomed window behaves like its span's default range.
-  const effectiveRange = zoom ? rangeForSpan(zoom.to - zoom.from) : timeRange;
-
-  const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
-  // The rollup half of the plan — empty when raw IS the tier for this range.
-  const rollupTier =
-    effectiveRange === "month"
-      ? "hour,day"
-      : effectiveRange === "week"
-        ? "hour"
-        : effectiveRange === "day" && denseEnoughForHourly
-          ? "hour"
-          : "";
-
-  const window: Pick<ChartTierFetch, "periodStartAfter" | "periodEndBefore"> =
-    zoom
-      ? {
-          periodStartAfter: new Date(zoom.from).toISOString(),
-          periodEndBefore: new Date(zoom.to).toISOString(),
-        }
-      : { periodStartAfter: getStartFor(timeRange) };
-
-  const tiers: ChartTierFetch[] = [];
-
-  if (rollupTier) {
-    tiers.push({
-      ...window,
-      periodType: rollupTier,
-      with: CHART_WITH_FIELDS,
-      size: 1000,
-    });
-  }
-
-  tiers.push({
-    ...window,
-    periodType: "raw",
-    with: CHART_WITH_FIELDS,
-    size: 1000,
-  });
-
-  return tiers;
 }
 
 /** Compute median of a sorted array of numbers */
@@ -549,36 +438,42 @@ export function ResponseTimeChart({
 
   const resetZoom = () => onZoomChange?.(undefined, undefined);
 
-  const fetchTiers = useMemo(
-    () => chartFetchParams(timeRange, periodMs, zoom),
+  // The window's own start — still the full requested range, independent of
+  // where the raw pass now begins — so the full-range boundary fallback below
+  // clamps the x-domain to what the user asked for, not to the seam.
+  const { periodStartAfter } = useMemo(
+    () => chartWindowBounds(timeRange, zoom),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
-    [timeRange, periodMs, zoomFrom, zoomTo],
+    [timeRange, zoomFrom, zoomTo],
   );
-  // Every tier shares the same window, so any entry answers for it.
-  // periodStartAfter also drives the full-range boundary fallback below.
-  const { periodStartAfter } = fetchTiers[0];
 
   // Derive a chart-specific refetch floor: 30s for hour/day, 5min for
   // week/month. The user just wants the line to move within a minute or two
-  // — the page's fast first-30s window doesn't apply to the graph.
+  // — the page's fast first-30s window doesn't apply to the graph. This now
+  // paces the RAW pass only; rollups refresh at their bucket width, since a
+  // closed bucket cannot change (spec 2026-08-22-07 §3).
   const baseInterval = periodMs ?? refetchInterval ?? 60_000;
   const chartRefetchInterval =
     timeRange === "week" || timeRange === "month"
       ? Math.max(baseInterval, 5 * 60_000)
       : Math.max(baseInterval, 30_000);
 
-  // One query per tier, run concurrently and merged: a single query naming raw
-  // alongside a rollup tier matches neither partial index on `results` and
-  // sequentially scans the whole table (spec 2026-08-22-04). The per-tier keys
-  // are the same ones the results route derives, so its parallel call for the
-  // region set and duration stats stays a cache hit rather than a second fetch.
-  const tierQueries = useMemo(
-    () => fetchTiers.map((tier) => ({ checkUid, ...tier })),
-    [fetchTiers, checkUid],
+  // Two passes: rollups over the whole window first (the chart is interactive
+  // from those alone), then raw over the seam between the newest rollup bucket
+  // and now. Never one query naming both sides of the raw/rollup index split —
+  // that matches neither partial index and scans the whole table
+  // (spec 2026-08-22-04). The results route calls this hook with the same
+  // arguments, so its region set and duration stats are cache hits.
+  const {
+    data: results,
+    isLoading,
+    rawError,
+  } = useChartWindowResults(
+    org,
+    checkUid,
+    { timeRange, periodMs, zoom },
+    { rawRefetchInterval: chartRefetchInterval },
   );
-  const { data: results, isLoading } = useResultTiers(org, tierQueries, {
-    refetchInterval: chartRefetchInterval,
-  });
 
   const {
     chartData,
@@ -1023,6 +918,17 @@ export function ResponseTimeChart({
               </Button>
             ))}
           </div>
+        )}
+        {/* Pass 2 (raw / the chart's right-hand edge) failed. Say so without
+            discarding the pass-1 render: a month of rollups is still a usable
+            chart, and blanking it would be a strictly worse answer. */}
+        {!isLoading && rawError != null && (
+          <p
+            className="mb-2 text-xs text-muted-foreground"
+            data-testid="response-time-chart-raw-error"
+          >
+            {t("detail.chart.rawUnavailable")}
+          </p>
         )}
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />

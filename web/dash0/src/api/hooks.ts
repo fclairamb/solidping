@@ -9,6 +9,13 @@ import {
 import { apiFetch, getToken } from "./client";
 import { mergeResultTiers } from "@/lib/result-tiers";
 import {
+  chartFetchParams,
+  chartRollupTier,
+  seamStartFrom,
+  type TimeRange,
+  type ZoomWindow,
+} from "@/lib/chart-window";
+import {
   stretchWhileLive,
   useLiveSubscription,
   useScopeLive,
@@ -1375,13 +1382,17 @@ export function useAllResults(
 export function useResultTiers(
   org: string,
   tiers: ResultsQueryOptions[],
-  options?: { refetchInterval?: number },
+  options?: { refetchInterval?: number; enabled?: boolean },
 ) {
   const queries = useQueries({
     queries: tiers.map((tier) => ({
       queryKey: ["allResults", org, tier],
       queryFn: async () => ({ data: await fetchAllResultPages(org, tier) }),
-      enabled: !!org,
+      // `enabled` lets a caller hold a pass back until the data its window
+      // depends on exists — see useChartWindowResults, where firing the raw
+      // pass before the rollup pass resolves would request the full window,
+      // which is the whole cost this indirection removes.
+      enabled: !!org && (options?.enabled ?? true),
       refetchInterval: options?.refetchInterval,
     })),
   });
@@ -1422,6 +1433,104 @@ export function useResultTiers(
     isLoading: queries.some((q) => q.isLoading),
     isFetching: queries.some((q) => q.isFetching),
     error: queries.find((q) => q.error)?.error ?? null,
+  };
+}
+
+/** How often pass 1 re-runs. A closed rollup bucket never changes, so the only
+ * reason to refetch is that a NEW bucket closed — which happens at the finest
+ * rollup width, one hour. Re-downloading a month of settled buckets every 60 s
+ * (what the single-pass chart did) is pure waste, and it is where most of the
+ * steady-state cost of an open dashboard went. */
+const ROLLUP_REFETCH_MS = 60 * 60_000;
+
+/**
+ * The chart's window, fetched as TWO passes instead of one blocked render
+ * (spec 2026-08-22-07).
+ *
+ * Pass 1 asks for the rollup tier over the whole window and resolves in one
+ * round-trip; the chart is interactive from that alone. Pass 2 then asks for
+ * raw over only the SEAM — the span between the newest bucket pass 1 returned
+ * and now — and merges into the same series. On a 30-day view of a 1-minute
+ * check that turns ~4 320 raw points across five sequential round-trips into
+ * ~180 in one, without losing the chart's right-hand edge (the open bucket the
+ * aggregator has not rolled up yet).
+ *
+ * The data dependency is what makes this two passes rather than two parallel
+ * fetches, and it is also what makes it correct when the aggregator lags: the
+ * seam is derived from pass 1's rows, so it widens on its own exactly when
+ * rollups fall behind (see seamStartFrom).
+ *
+ * Both the chart and the check-detail route call this with the same arguments,
+ * so they share one set of react-query keys and the route stays a cache hit
+ * rather than a second round of HTTP requests.
+ *
+ * `isLoading` is pass 1 ONLY — the skeleton belongs to the first render, not to
+ * the raw merge. A pass-2 failure surfaces as `rawError` and leaves the pass-1
+ * data on screen.
+ */
+export function useChartWindowResults(
+  org: string,
+  checkUid: string,
+  window: { timeRange: TimeRange; periodMs?: number; zoom?: ZoomWindow },
+  options?: { rawRefetchInterval?: number },
+) {
+  const { timeRange, periodMs, zoom } = window;
+  const zoomFrom = zoom?.from;
+  const zoomTo = zoom?.to;
+
+  // Pass 1 — rollups over the whole window. Empty for a range where raw IS the
+  // tier (hour, or a day view of a check slower than 5 min): there is nothing
+  // to narrow raw against, so it stays the full window.
+  const hasRollupTier = chartRollupTier(timeRange, periodMs, zoom) !== "";
+  const rollupTiers = useMemo(
+    () =>
+      hasRollupTier
+        ? [{ checkUid, ...chartFetchParams(timeRange, periodMs, zoom)[0] }]
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
+    [hasRollupTier, checkUid, timeRange, periodMs, zoomFrom, zoomTo],
+  );
+  const rollup = useResultTiers(org, rollupTiers, {
+    refetchInterval: ROLLUP_REFETCH_MS,
+  });
+
+  const rollupRows = rollup.data.data;
+  const seamStart = useMemo(() => seamStartFrom(rollupRows), [rollupRows]);
+
+  // Pass 2 — raw over the seam. Held back until pass 1 has settled, because a
+  // raw query issued before the seam is known would span the full window; once
+  // pass 1 has settled with NO rows (a check younger than one rollup bucket)
+  // the seam is undefined and raw correctly covers everything again.
+  const rawTiers = useMemo(() => {
+    const plan = chartFetchParams(timeRange, periodMs, zoom, seamStart);
+
+    return [{ checkUid, ...plan[plan.length - 1] }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
+  }, [checkUid, timeRange, periodMs, zoomFrom, zoomTo, seamStart]);
+  const raw = useResultTiers(org, rawTiers, {
+    refetchInterval: options?.rawRefetchInterval,
+    enabled: !hasRollupTier || !rollup.isLoading,
+  });
+
+  const rollupData = rollup.data.data;
+  const rawData = raw.data.data;
+  const data = useMemo(
+    () => ({ data: mergeResultTiers<OrgResult>([rollupData, rawData]) }),
+    [rollupData, rawData],
+  );
+
+  return {
+    data,
+    // Pass 1 only. When raw IS the tier there is no pass 1, so raw's own
+    // loading state is the first render's.
+    isLoading: hasRollupTier ? rollup.isLoading : raw.isLoading,
+    isFetching: rollup.isFetching || raw.isFetching,
+    error: rollup.error,
+    /** Pass 2's failure. Deliberately separate: the chart must stay usable on
+     * pass-1 data and surface this without discarding what is drawn. */
+    rawError: raw.error,
+    /** True while the seam has not arrived yet — the progressive-render phase. */
+    rawPending: raw.isLoading,
   };
 }
 
