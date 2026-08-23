@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -365,4 +366,128 @@ func TestResourceRecentResults_GroupsGetNoSeries(t *testing.T) {
 	r.NotNil(resourceRecentResults(recentByCheck,
 		&StatusPageResourceResponse{}, []string{"member-1"}),
 		"positive control: a single-check resource DOES get its series")
+}
+
+// countingResultsDB wraps a real db.Service and counts the rows the
+// response-time fetch actually pulls out of `results`.
+type countingResultsDB struct {
+	db.Service
+
+	rows int
+}
+
+func (c *countingResultsDB) RecentResultsPerCheck(
+	ctx context.Context, filter *models.RecentResultsPerCheckFilter,
+) ([]*models.Result, error) {
+	rows, err := c.Service.RecentResultsPerCheck(ctx, filter)
+	c.rows += len(rows)
+
+	return rows, err
+}
+
+// TestResponseTimeBudgets_SizedFromCheckRegions pins the per-check budget rule
+// of spec 2026-08-22-05 §2: responseTimeLimit points per declared region plus
+// one region's worth of slack for the NULL/legacy bucket, capped, and NO entry
+// (so, the generous fallback) when the region set is unknowable.
+func TestResponseTimeBudgets_SizedFromCheckRegions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	single := models.NewCheck(org.UID, "single", "http")
+	single.Regions = []string{"eu2"}
+	r.NoError(svc.db.CreateCheck(ctx, single))
+
+	multi := models.NewCheck(org.UID, "multi", "http")
+	multi.Regions = []string{"eu2", "us1", "ap1"}
+	r.NoError(svc.db.CreateCheck(ctx, multi))
+
+	sprawling := models.NewCheck(org.UID, "sprawling", "http")
+	for i := range 40 {
+		sprawling.Regions = append(sprawling.Regions, "r"+string(rune('a'+i%26))+string(rune('0'+i/26)))
+	}
+
+	r.NoError(svc.db.CreateCheck(ctx, sprawling))
+
+	undeclared := models.NewCheck(org.UID, "undeclared", "http")
+	r.NoError(svc.db.CreateCheck(ctx, undeclared))
+
+	budgets := svc.responseTimeBudgets(ctx, org.UID,
+		[]string{single.UID, multi.UID, sprawling.UID, undeclared.UID, "gone"})
+
+	r.Equal(2*responseTimeLimit, budgets[single.UID], "1 region + the NULL bucket")
+	r.Equal(4*responseTimeLimit, budgets[multi.UID], "3 regions + the NULL bucket")
+	r.Equal(regionFanoutCap*responseTimeLimit, budgets[sprawling.UID],
+		"an absurd region list is capped, never unbounded")
+	r.NotContains(budgets, undeclared.UID,
+		"a check with no declared regions has an UNKNOWN fan-out (its rows are stamped with "+
+			"whichever worker's region claimed the job), so it must fall back to the cap")
+	r.NotContains(budgets, "gone", "a check that vanished falls back to the cap")
+}
+
+// TestFetchRecentResults_ReadsAFractionOfWhatItUsedTo is the acceptance
+// criterion of spec 2026-08-22-05: for a 20-check page the fetch reads roughly
+// 6 000 rows instead of ~40 000, with no series losing points. The control runs
+// the pre-fix global-limit query on the same fixture and shows it reading the
+// full 40 000.
+func TestFetchRecentResults_ReadsAFractionOfWhatItUsedTo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	counting := &countingResultsDB{Service: svc.db}
+	svc.db = counting
+
+	now := time.Now().UTC().Truncate(time.Minute)
+	checkUIDs := make([]string, 0, 20)
+
+	// 20 single-region checks at a 10 s cadence: 2 000 raw rows each inside the
+	// raw-retention window, plus a rollup tail. 40 000 rows in scope — exactly
+	// the page the spec measured at 662 ms.
+	for range 20 {
+		// Slug left unset: 20 checks cannot share one slug, and nothing here
+		// looks a check up by name.
+		check := models.NewCheck(org.UID, "", "http")
+		check.Regions = []string{seedRegion}
+		r.NoError(svc.db.CreateCheck(ctx, check))
+
+		seedRawSeries(ctx, t, svc, org.UID, check.UID, now, 10*time.Second, 2_000)
+		seedHourRollups(ctx, t, svc, org.UID, check.UID, now.Add(-6*time.Hour), 150)
+
+		checkUIDs = append(checkUIDs, check.UID)
+	}
+
+	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, uptimebar.Hints{})
+
+	// No series loses points.
+	for _, checkUID := range checkUIDs {
+		r.Len(got[checkUID][seedRegion], responseTimeLimit,
+			"every check must still fill its full %d-point budget", responseTimeLimit)
+	}
+
+	// Two branches x 200 x 20 checks is the hard ceiling; the spec's target is
+	// ~6 000 against the ~40 000 below.
+	r.LessOrEqual(counting.rows, 2*2*responseTimeLimit*len(checkUIDs))
+	r.Less(counting.rows, 10_000,
+		"the per-check, per-tier fetch must read thousands of rows, not tens of thousands "+
+			"(measured 7 000 on this fixture, against the 40 000 the control reads below)")
+
+	// Control: the pre-fix query on the same fixture. It reads the whole global
+	// budget and throws ~85 % of it away.
+	legacy := legacyFetchRecentResults(ctx, t, svc, org.UID, checkUIDs)
+	r.Len(legacy, len(checkUIDs))
+
+	legacyRows, err := svc.db.ListResults(ctx, &models.ListResultsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       checkUIDs,
+		Limit:           responseTimeLimit * regionFanoutCap * len(checkUIDs),
+		SkipBlobs:       true,
+	})
+	r.NoError(err)
+	r.Greater(len(legacyRows.Results), 4*counting.rows,
+		"the pre-fix global-limit query MUST read several times more rows on this fixture — "+
+			"otherwise the reduction above proves nothing (read %d vs %d)",
+		len(legacyRows.Results), counting.rows)
 }

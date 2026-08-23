@@ -2510,10 +2510,19 @@ func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result
 //
 // A check with an EMPTY region list gets no entry at all, and so falls back to
 // DefaultPerCheckLimit (the pre-fix per-check budget). An empty list does not
-// mean "one region" — it means the fan-out is not declared on the check, so the
-// regions its results actually carry are unknown here and only the generous cap
-// is safe. Same for a check that vanished between resource expansion and this
-// lookup, and for a failed lookup (every check then uses the default).
+// mean "one region": createCheckJobs turns it into ONE region-less job, and
+// CheckWorker.resolveResultRegion then stamps that result with the WORKER's own
+// region — so a region-less check's rows can carry as many different region
+// labels as there are workers that ever claimed it. The fan-out is genuinely
+// unknown, and only the generous cap is safe.
+//
+// That path is rare in production: every check created or patched through the
+// API has its regions resolved and PERSISTED
+// (checks.Service.CreateCheck -> regions.ResolveRegionsForCheck, which never
+// returns an empty list). An empty column means a check written straight to the
+// database — fixtures, seeds, very old rows. Same fallback for a check that
+// vanished between resource expansion and this lookup, and for a failed lookup
+// (every check then uses the default).
 func (s *Service) responseTimeBudgets(ctx context.Context, orgUID string, checkUIDs []string) map[string]int {
 	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
 	if err != nil {
