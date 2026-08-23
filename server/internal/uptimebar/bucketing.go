@@ -309,6 +309,19 @@ func effectiveRetentionRawHours(retentionRawHours int) int {
 // results_raw_idx lookup, and it is also what keeps the two halves disjoint —
 // widening it past a rollup boundary would silently DOUBLE-COUNT, since the
 // accumulator adds raw and rollup rows into the same BucketStats.
+// RawTierStart is the exported form of rawTierStart, for readers outside this
+// package that must bound a raw-tier query by exactly the same clamp — today
+// the status page's response-time fetch (spec 2026-08-22-05). It is exported
+// rather than reimplemented so there is still ONE raw bound in the system: the
+// clamp is what keeps raw and rollups disjoint, and a second copy that drifted
+// would either drop raw rows no rollup covers yet or double-count the overlap.
+//
+// retentionRawHours must come from systemconfig (see each service's
+// uptimebarHints), never from the koanf field alone.
+func RawTierStart(windowStart, now time.Time, retentionRawHours int) time.Time {
+	return rawTierStart(windowStart, now, retentionRawHours)
+}
+
 func rawTierStart(windowStart, now time.Time, retentionRawHours int) time.Time {
 	bound := now.Add(-(time.Duration(effectiveRetentionRawHours(retentionRawHours))*time.Hour + rawClampMargin))
 	if bound.After(windowStart) {

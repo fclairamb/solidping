@@ -2308,7 +2308,7 @@ func (s *Service) enrichWithAvailability(
 		return
 	}
 
-	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime)
+	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, hints)
 
 	// Build availability data for each resource
 	period := string(pagePeriod(page))
@@ -2349,47 +2349,103 @@ func resourceRecentResults(
 }
 
 // regionFanoutCap generously bounds the number of distinct regions
-// fetchRecentResults assumes per check when sizing its query's row limit, so
-// that the per-(check,region) point budget below can't be starved by another
-// region's rows dominating the interleaved fetch. Real deployments run a
-// handful of regions (2-5 is typical for a multi-region check); this mirrors
-// uptimebar.capMaxRegionsPerCheck's "generous, never bites under realistic
-// topology" reasoning for the same class of problem.
+// fetchRecentResults assumes for a check whose own region set it cannot see.
+// Real deployments run a handful of regions (2-5 is typical for a multi-region
+// check); this mirrors uptimebar.capMaxRegionsPerCheck's "generous, never bites
+// under realistic topology" reasoning for the same class of problem.
+//
+// It used to multiply a GLOBAL row limit (responseTimeLimit x regionFanoutCap x
+// len(checkUIDs) = 40 000 rows for a 20-check page, ~85 % of them discarded).
+// It is now only the per-check fallback for an unknown region set: per-check
+// isolation comes from the query shape itself (spec 2026-08-22-05).
 const regionFanoutCap = 20
 
+// responseTimeLimit is the number of points the response-time chart keeps per
+// (check, region) pair.
+const responseTimeLimit = 100
+
+// responseTimeRollupSpan is how far back the ROLLUP branch reads:
+// responseTimeLimit day-buckets, doubled for slack. That is the widest window
+// the chart can meaningfully render — 100 points at the coarsest tier a status
+// page has any business plotting — and it reaches comfortably past the default
+// day-rollup retention (2 months), so the `month` tier still contributes the
+// 60-200 day band rather than being requested and never matched.
+//
+// Rollups are cheap to bound generously: one row per bucket per tier per
+// region, against raw's one row per probe. The raw branch is the expensive one
+// and is clamped to actual raw retention instead (see uptimebar.RawTierStart).
+const responseTimeRollupSpan = 2 * responseTimeLimit * 24 * time.Hour
+
+// responseTimeRollupTiers is the ROLLUP half of the fetch. It names every
+// aggregated tier and NO raw tier, which is what lets the whole branch ride
+// results_aggregated_idx (partial on period_type != 'raw').
+//
+// The tiers matter for real pages, not just for completeness: the per-(check,
+// region) budget is 100 points, so a 1-minute check fills it from ~100 minutes
+// of raw, but a 1-hour check needs 100 hours — past the 24 h raw retention, so
+// those points exist ONLY as hour rollups. Dropping this branch would silently
+// empty the chart for every slow check.
+func responseTimeRollupTiers() []string {
+	return []string{models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth}
+}
+
 // fetchRecentResults loads the last responseTimeLimit results per
-// (check, region) pair (any period type) for the response-time chart.
-// Returns an empty map when the response-time chart is disabled. The region
-// key is "" for a NULL/legacy region (spec 2026-08-14-04 — previously this
-// budget was shared across every region interleaved on one check, so a check
-// running in N regions got roughly 100/N points per region instead of 100
-// each).
+// (check, region) pair for the response-time chart, newest first. Returns an
+// empty map when the response-time chart is disabled. The region key is "" for
+// a NULL/legacy region (spec 2026-08-14-04 — that budget is per region, so a
+// check running in N regions gets 100 points each, not 100/N).
+//
+// It issues ONE query, with a per-check row budget and one tier-aligned,
+// time-bounded branch per side of the raw/rollup index split (spec
+// 2026-08-22-05). What it replaced had neither a period-type filter nor a time
+// bound, so no index on `results` was eligible and every public page view cost
+// a sequential scan of the largest table in the system plus an external merge
+// sort to disk.
+//
+// hints carries the org's LIVE raw retention, resolved once per request through
+// systemconfig by the caller's uptimebarHints. It must not be re-derived from
+// cfg.Aggregation.RetentionRaw here: the Aggregation settings tab writes
+// performance.* DB parameters that never reach the koanf struct, so a koanf
+// reader clamping to 24 h while the job keeps 168 h would silently drop six
+// days of raw rows that no rollup covers yet.
 func (s *Service) fetchRecentResults(
-	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool,
+	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool, hints uptimebar.Hints,
 ) map[string]map[string][]*models.Result {
 	recentByCheck := make(map[string]map[string][]*models.Result)
 
-	if !showResponseTime {
+	if !showResponseTime || len(checkUIDs) == 0 {
 		return recentByCheck
 	}
 
-	const responseTimeLimit = 100
+	now := time.Now().UTC()
+	rollupSince := now.Add(-responseTimeRollupSpan)
 
-	recentFilter := &models.ListResultsFilter{
+	filter := &models.RecentResultsPerCheckFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       checkUIDs,
-		Limit:           responseTimeLimit * regionFanoutCap * len(checkUIDs),
-		// The response-time chart plots duration/status only, so the
-		// metrics/output blobs never reach the page (spec 2026-07-24-02 §5).
-		SkipBlobs: true,
+		Tiers: []models.RecentResultsTier{
+			{
+				PeriodTypes: []string{models.PeriodTypeRaw},
+				// Exactly uptimebar's raw clamp, from the same resolved
+				// retention: raw older than this has been rolled up and
+				// deleted, so a wider bound only widens the index descent.
+				Since: uptimebar.RawTierStart(rollupSince, now, hints.RetentionRawHours),
+			},
+			{PeriodTypes: responseTimeRollupTiers(), Since: rollupSince},
+		},
+		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs),
+		DefaultPerCheckLimit: responseTimeLimit * regionFanoutCap,
 	}
 
-	recentResp, err := s.db.ListResults(sloghook.WithCallsite(ctx, "statuspages.recent_results"), recentFilter)
-	if err != nil || recentResp == nil {
+	rows, err := s.db.RecentResultsPerCheck(sloghook.WithCallsite(ctx, "statuspages.recent_results"), filter)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load status page response-time results",
+			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
+
 		return recentByCheck
 	}
 
-	for _, result := range recentResp.Results {
+	for _, result := range rows {
 		regionKey := ""
 		if result.Region != nil {
 			regionKey = *result.Region
@@ -2401,12 +2457,85 @@ func (s *Service) fetchRecentResults(
 			recentByCheck[result.CheckUID] = byRegion
 		}
 
-		if len(byRegion[regionKey]) < responseTimeLimit {
-			byRegion[regionKey] = append(byRegion[regionKey], result)
-		}
+		byRegion[regionKey] = append(byRegion[regionKey], result)
 	}
 
+	trimResponseTimeSeries(recentByCheck)
+
 	return recentByCheck
+}
+
+// trimResponseTimeSeries merges the two tier branches into one per-(check,
+// region) series: newest period_start first, preferring the FINER tier on a
+// tie, truncated to responseTimeLimit points.
+//
+// Raw and rollups are disjoint by construction — the aggregation job compacts a
+// bucket and deletes its source raw rows in one transaction — so in practice
+// raw simply occupies the recent end and rollups fill the older tail. The
+// raw-wins tie-break only matters while the aggregation job is mid-rollup, and
+// it resolves that window in favour of the more precise row.
+func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result) {
+	for _, byRegion := range recentByCheck {
+		for regionKey, rows := range byRegion {
+			sort.SliceStable(rows, func(i, j int) bool {
+				if !rows[i].PeriodStart.Equal(rows[j].PeriodStart) {
+					return rows[i].PeriodStart.After(rows[j].PeriodStart)
+				}
+
+				return rows[i].PeriodType == models.PeriodTypeRaw &&
+					rows[j].PeriodType != models.PeriodTypeRaw
+			})
+
+			if len(rows) > responseTimeLimit {
+				rows = rows[:responseTimeLimit]
+			}
+
+			byRegion[regionKey] = rows
+		}
+	}
+}
+
+// responseTimeBudgets sizes each check's row budget from ITS OWN region
+// fan-out: responseTimeLimit points per configured region, plus one region's
+// worth of slack for the NULL/legacy region bucket — a check created before
+// regions existed carries a NULL region, and so does every check's one-time
+// "Check created" lifecycle marker, which would otherwise eat a point out of a
+// real region's budget.
+//
+// The budget has to cover every region at once because the branch is ordered by
+// period_start across the whole check, not per region: a 3-region check's
+// newest 100 rows would be ~33 points each. It is capped at the regionFanoutCap
+// product so a check configured with an absurd region list cannot reintroduce
+// an unbounded fetch.
+//
+// A check with an EMPTY region list gets no entry at all, and so falls back to
+// DefaultPerCheckLimit (the pre-fix per-check budget). An empty list does not
+// mean "one region" — it means the fan-out is not declared on the check, so the
+// regions its results actually carry are unknown here and only the generous cap
+// is safe. Same for a check that vanished between resource expansion and this
+// lookup, and for a failed lookup (every check then uses the default).
+func (s *Service) responseTimeBudgets(ctx context.Context, orgUID string, checkUIDs []string) map[string]int {
+	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to size status page response-time budgets from check regions; "+
+			"falling back to the region fan-out cap",
+			"error", err, "orgUID", orgUID)
+
+		return nil
+	}
+
+	budgets := make(map[string]int, len(checkUIDs))
+
+	for _, checkUID := range checkUIDs {
+		check := checks[checkUID]
+		if check == nil || len(check.Regions) == 0 {
+			continue
+		}
+
+		budgets[checkUID] = responseTimeLimit * min(len(check.Regions)+1, regionFanoutCap)
+	}
+
+	return budgets
 }
 
 // hourlyBucketCount is the number of hourly buckets the 24h view renders.
@@ -2435,7 +2564,7 @@ func (s *Service) enrichHourly(
 		return
 	}
 
-	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime)
+	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, hints)
 	upThreshold, degradedThreshold := page.Settings.EffectiveThresholds()
 
 	for i := range sections {
