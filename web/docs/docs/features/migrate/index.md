@@ -20,6 +20,56 @@ with its type, interval, target and thresholds intact.
 | Uptime Kuma | A 1.x backup JSON | [Migrate from Uptime Kuma](./from-uptime-kuma.md) |
 | UptimeRobot | The API v2 `getMonitors` JSON | [Migrate from UptimeRobot](./from-uptimerobot.md) |
 
+## Recommended: let an AI agent do the translation
+
+The built-in importers map field to field. That is what you want for the common
+case, but it means anything without a direct SolidPing equivalent comes back as
+a warning rather than a decision — and the settings most specific to your
+organization are the ones most likely to land there.
+
+An AI assistant does not have that limitation. Point Claude, Gemini, Codex or
+any other capable agent at both your existing setup and SolidPing, and it can
+read your conventions — how you name things, how you group them, what a given
+threshold or hand-rolled probe was actually protecting — and pick the closest
+SolidPing equivalent instead of dropping it. This is the recommended route when:
+
+- your tool is not in the table above;
+- your configuration is templated, generated, or spread across many files;
+- you want to reorganize as you move — into
+  [check groups](/docs/features/check-groups), [SLOs](/docs/features/slos) or
+  [status pages](/docs/features/status-pages) — rather than land a flat copy of
+  what you already had.
+
+### Give the agent access
+
+The quickest route is the built-in [MCP server](/docs/features/mcp). An
+MCP-capable client needs only the URL:
+
+```
+{SP_BASE_URL}/api/v1/mcp
+```
+
+That hands the agent the tools this job actually needs: list the available check
+types, fetch a sample config for each, **validate** a candidate check before
+anything is written, then create it. An agent without MCP support can work
+straight against the [REST API](/docs/api) instead.
+
+Then give it your export and let it work:
+
+> Here is my Gatus `config.yaml`. Using the SolidPing MCP server, list the
+> available check types, work out the closest equivalent for each endpoint —
+> including the ones that do not map cleanly — validate each one, and show me
+> what you plan to create before you create it.
+
+### Review what it produces
+
+An agent is making judgment calls, so keep the discipline the importers enforce
+for you: have it validate and show you the plan first, then read what it
+created. Two things make this cheap to iterate on — checks are matched by slug,
+so a corrected re-run updates in place instead of duplicating, and a token
+scoped to `mcp:read` lets an agent survey your instance with no ability to write
+anything at all.
+
 ## How an import works
 
 Every source goes through the same path, so the mechanics below hold whichever
@@ -77,8 +127,10 @@ and `updated` counts and the full warning list.
 
 ## Your tool is not listed?
 
-The importers are thin converters onto the normal check API, so anything you can
-export as structured data can be scripted against
+This is where an [AI agent](#recommended-let-an-ai-agent-do-the-translation)
+earns its keep — it needs no importer, only your export and access to the MCP
+server. Failing that, the importers are thin converters onto the normal check
+API, so anything you can export as structured data can be scripted against
 [`POST /api/v1/orgs/:org/checks`](/docs/api) directly. If you would like a
 first-class importer for another tool,
 [open an issue](https://github.com/fclairamb/solidping/issues) with a sample
