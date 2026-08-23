@@ -1,6 +1,6 @@
 ---
-model: sonnet
-effort: medium
+model: opus
+effort: high
 ---
 
 # An empty production database seeds admin@solidping.com / solidpass, as superadmin

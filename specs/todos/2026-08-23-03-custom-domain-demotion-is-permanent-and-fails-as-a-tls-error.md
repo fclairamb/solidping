@@ -1,6 +1,6 @@
 ---
-model: sonnet
-effort: medium
+model: opus
+effort: high
 ---
 
 # A demoted custom domain never recovers, and it fails as a TLS handshake error
