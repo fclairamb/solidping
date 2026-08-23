@@ -64,6 +64,7 @@ import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
 import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
+import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { useTranslation } from "react-i18next";
 
 /** Parses the `?from=` search param used by the notification detail route. */
@@ -89,16 +90,8 @@ function hasOAuthTokenInURL(): boolean {
 
 export const Route = createFileRoute("/orgs/$org")({
   beforeLoad: ({ context, params, location }) => {
-    // Don't redirect if we're on a public page (login, register). Anchored to
-    // the org-level login/register routes specifically — a bare
-    // `.endsWith("/register")` also matches nested authenticated routes that
-    // happen to end in "register" (e.g.
-    // organization/private-locations/register), wrongly treating them as
-    // public and skipping the auth redirect.
-    if (
-      location.pathname.endsWith(`/orgs/${params.org}/login`) ||
-      location.pathname.endsWith(`/orgs/${params.org}/register`)
-    ) {
+    // Don't redirect if we're on a public page (login, register).
+    if (isOrgPublicRoute(location.pathname)) {
       return { org: params.org, isLoginPage: true };
     }
     // Allow through if OAuth callback tokens are present in the URL
@@ -965,11 +958,10 @@ function OrgLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();
-  // Anchored to the org-level login/register routes — see the matching
-  // beforeLoad check above for why a bare `.endsWith("/register")` is wrong.
-  const isLoginPage =
-    location.pathname.endsWith(`/orgs/${org}/login`) ||
-    location.pathname.endsWith(`/orgs/${org}/register`);
+  // Anchored to the org-level login/register routes — see isOrgPublicRoute for
+  // why a bare `.endsWith("/register")` is wrong, and why the org param must
+  // not be interpolated into the pattern here.
+  const isLoginPage = isOrgPublicRoute(location.pathname);
   const [oauthProcessing, setOauthProcessing] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const { data: features } = useFeatures();
