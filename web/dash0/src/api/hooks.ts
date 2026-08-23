@@ -843,7 +843,7 @@ export interface ImportResult {
 }
 
 /** Third-party import sources the convert endpoint accepts. */
-export const CONVERT_SOURCES = ["gatus", "betterstack", "uptime-kuma"] as const;
+export const CONVERT_SOURCES = ["gatus", "betterstack", "uptime-kuma", "uptimerobot"] as const;
 export type ConvertSource = (typeof CONVERT_SOURCES)[number];
 
 /** One source item (or field) that could not be mapped faithfully. */

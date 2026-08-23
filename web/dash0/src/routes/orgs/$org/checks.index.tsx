@@ -129,12 +129,12 @@ const groupSlugRegex = /^[a-z][a-z0-9-]{2,99}$/;
 // Import sources offered by the checks-list import flow: the native SolidPing
 // export document, plus the third-party converters served by
 // POST /checks/import/convert.
-const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma"] as const;
+const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma", "uptimerobot"] as const;
 type ImportSourceId = (typeof IMPORT_SOURCES)[number];
 
 // Sources whose payload is a file the user pastes or uploads. Better Stack is
 // the odd one out: it takes an API token and the server does the fetching.
-const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma"];
+const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma", "uptimerobot"];
 
 // Accepted upload extensions per source.
 const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
@@ -142,6 +142,7 @@ const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
   gatus: ".yaml,.yml",
   betterstack: "",
   "uptime-kuma": ".json",
+  uptimerobot: ".json",
 };
 
 // Normalized preview shape shared by the native import and every converter.

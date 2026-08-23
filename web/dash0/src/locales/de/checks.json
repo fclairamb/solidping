@@ -92,18 +92,21 @@
       "solidping": "SolidPing-Export (JSON/YAML)",
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (API-Token)",
-      "uptime-kuma": "Uptime Kuma (Backup-JSON)"
+      "uptime-kuma": "Uptime Kuma (Backup-JSON)",
+      "uptimerobot": "UptimeRobot (getMonitors-JSON)"
     },
     "importSourceHelp": {
       "solidping": "Ein über die Schaltfläche „Exportieren“ erzeugtes Dokument, als JSON oder YAML.",
       "gatus": "Fügen Sie Ihre Gatus-config.yaml ein oder laden Sie sie hoch — die endpoints:-Liste wird in Checks umgewandelt.",
       "betterstack": "Wir lesen Ihre Monitore und Heartbeats über die Better-Stack-API aus und konvertieren sie.",
-      "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an."
+      "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an.",
+      "uptimerobot": "Fügen Sie das JSON des getMonitors-Aufrufs der UptimeRobot-API v2 ein — den genauen curl-Befehl finden Sie in der Dokumentation."
     },
     "importPlaceholder": {
       "solidping": "Exportiertes JSON- oder YAML-Dokument einfügen…",
       "gatus": "Gatus-config.yaml einfügen…",
-      "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…"
+      "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…",
+      "uptimerobot": "UptimeRobot-getMonitors-JSON einfügen…"
     },
     "importPayload": "Konfiguration",
     "importUpload": "Datei hochladen",

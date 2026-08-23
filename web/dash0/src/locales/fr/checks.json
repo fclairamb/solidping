@@ -92,18 +92,21 @@
       "solidping": "Export SolidPing (JSON/YAML)",
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (jeton d'API)",
-      "uptime-kuma": "Uptime Kuma (sauvegarde JSON)"
+      "uptime-kuma": "Uptime Kuma (sauvegarde JSON)",
+      "uptimerobot": "UptimeRobot (JSON getMonitors)"
     },
     "importSourceHelp": {
       "solidping": "Un document produit par le bouton Exporter, en JSON ou YAML.",
       "gatus": "Collez ou envoyez votre config.yaml Gatus — la liste endpoints: est convertie en checks.",
       "betterstack": "Nous récupérons vos moniteurs et heartbeats via l'API Better Stack, puis nous les convertissons.",
-      "uptime-kuma": "Uptime Kuma 1.x : Paramètres → Sauvegarde → Exporter le JSON. La version 2.x ne propose plus cet export."
+      "uptime-kuma": "Uptime Kuma 1.x : Paramètres → Sauvegarde → Exporter le JSON. La version 2.x ne propose plus cet export.",
+      "uptimerobot": "Collez le JSON obtenu via l'appel getMonitors de l'API v2 d'UptimeRobot — voir la documentation pour la commande curl exacte."
     },
     "importPlaceholder": {
       "solidping": "Collez le document JSON ou YAML exporté…",
       "gatus": "Collez votre config.yaml Gatus…",
-      "uptime-kuma": "Collez la sauvegarde JSON Uptime Kuma…"
+      "uptime-kuma": "Collez la sauvegarde JSON Uptime Kuma…",
+      "uptimerobot": "Collez le JSON getMonitors d'UptimeRobot…"
     },
     "importPayload": "Configuration",
     "importUpload": "Envoyer un fichier",
