@@ -1,5 +1,6 @@
 ---
-sidebar_position: 16
+sidebar_position: 3
+slug: /features/migrate-from-uptime-kuma
 title: Migrate from Uptime Kuma
 description: Import your Uptime Kuma backup JSON into SolidPing — every monitor type, groups included.
 ---

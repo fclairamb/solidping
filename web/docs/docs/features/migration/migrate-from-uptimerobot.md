@@ -1,5 +1,6 @@
 ---
-sidebar_position: 17
+sidebar_position: 4
+slug: /features/migrate-from-uptimerobot
 title: Migrate from UptimeRobot
 description: Import your UptimeRobot monitors into SolidPing via the API v2 getMonitors response.
 ---

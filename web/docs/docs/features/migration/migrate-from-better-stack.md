@@ -1,5 +1,6 @@
 ---
-sidebar_position: 15
+sidebar_position: 2
+slug: /features/migrate-from-better-stack
 title: Migrate from Better Stack
 description: Import your Better Stack monitors and heartbeats into SolidPing with one API token.
 ---

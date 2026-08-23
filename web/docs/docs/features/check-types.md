@@ -1175,7 +1175,7 @@ check that reports `ip_version: ipv6` is real, verified IPv6 coverage.
 **One check covers one family.** `auto` means "pick one", not "probe both" — this
 is a deliberate difference from Better Stack, where an unset value monitors both.
 To cover both families, create two checks on the same target, one pinned to each;
-the [Better Stack importer](./migrate-from-better-stack.md) warns when a monitor relied on that
+the [Better Stack importer](./migration/migrate-from-better-stack.md) warns when a monitor relied on that
 default.
 
 Supported on `http`, `tcp`, `udp`, `icmp`, `ssl`, `ssh`, `smtp`, `imap`, `pop3`
