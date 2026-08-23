@@ -516,6 +516,32 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 	}
 }
 
+// fakeAPIRequestsPerMinute bounds the public /fake self-test fixture (spec
+// 2026-08-23-07). Unlike the dashboard, /fake has no legitimate
+// high-frequency caller pattern — a check pointed at it polls at most every
+// few seconds — and its delay/slowResponse params can each hold a connection
+// open for seconds, so it gets its own, much stricter limiter than the
+// general per-IP budget rather than riding on dashboard-sized traffic
+// assumptions.
+const fakeAPIRequestsPerMinute = 60
+
+// fakeAPIRateLimitConfig derives the /fake limiter from the server's own,
+// keeping deployment-specific knobs (trusted proxy hops) while collapsing the
+// allowance and adding a small per-IP concurrency cap — MaxConcurrent matters
+// here specifically because slowResponse/delay hold the connection, unlike
+// the device-consent limiter above. RateQueue and ConcurrencyQueue are left
+// at zero so an over-eager caller is rejected outright (429) rather than
+// parked in a waiting room, which would only prolong the connection-holding
+// it exists to bound.
+func fakeAPIRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: fakeAPIRequestsPerMinute,
+		Burst:             fakeAPIRequestsPerMinute / 5,
+		MaxConcurrent:     5,
+		TrustedProxies:    base.TrustedProxies,
+	}
+}
+
 // buildMainGroup installs the process-wide middleware chain and returns the
 // root group every route below hangs off.
 //
@@ -1977,12 +2003,31 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath)
 	}
 
-	// Test API routes (no authentication for development/testing)
+	// Test/dev fixture routes. Everything registered inside the RunMode=="test"
+	// block below 404s outside test mode; TestTestModeRoutesGatedByRunMode
+	// walks the whole block from both directions so a route added here
+	// without the gate, or a gate accidentally lifted, fails loudly instead of
+	// shipping unauthenticated in production (spec 2026-08-23-07 — /test/jobs
+	// used to sit here unauthenticated too, an open mail relay reachable by
+	// anyone).
 	testHandler := testapi.NewHandler(s.jobSvc, s.dbService, s.services.EventNotifier)
-	api.POST("/test/jobs", testHandler.CreateEmailJob)
-	api.GET("/fake", testHandler.FakeAPI)
+
+	// /fake is the one deliberate exception: a documented, intentionally
+	// public self-test fixture (specs/done/2026/01/2026-01-02-fake-api.md)
+	// with live dashboard callers (test.bulk.tsx, test.templates.tsx, which
+	// build its URL from window.location.origin) and potentially customer
+	// checks pointed at it. Do NOT move it inside the RunMode=="test" block —
+	// a future "fix" here breaks both of those. It is bounded instead (spec
+	// 2026-08-23-07): the delay/slowResponse ceiling is capped well below its
+	// old 30000ms (see testapi.MaxFakeDelayMS), and it carries its own,
+	// much stricter per-IP rate limit than the general budget, since a
+	// self-test fixture has no legitimate high-frequency caller pattern.
+	fakeLimiter := middleware.NewRateLimiter(fakeAPIRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	fakeAPI := api.Use(fakeLimiter.RateLimit)
+	fakeAPI.GET("/fake", testHandler.FakeAPI)
 
 	if s.config.RunMode == "test" {
+		api.POST("/test/jobs", testHandler.CreateEmailJob)
 		api.GET("/test/state-entries", testHandler.ListStateEntries)
 		api.POST("/test/users", testHandler.CreateUser)
 		api.POST("/test/checks/bulk", testHandler.BulkCreateChecks)

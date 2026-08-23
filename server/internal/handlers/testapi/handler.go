@@ -20,11 +20,22 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
+// MaxFakeDelayMS is the ceiling for both the `delay` and `slowResponse`
+// (its delay_ms leg) query params on the public GET /fake fixture. Lowered
+// from 30000ms by spec 2026-08-23-07: /fake is unauthenticated by design (see
+// its registration in server.go), so its delay params are a connection-
+// holding vector against this instance. 30s was long enough to be a
+// meaningful amplifier; the repo has no existing precedent for a comparable
+// public delay limit, so this picks 5000ms — still useful for simulating
+// slow upstreams in latency testing, far too short to usefully hold a
+// connection open.
+const MaxFakeDelayMS = 5000
+
 var (
 	// ErrPeriodRange is returned when period is outside valid range.
 	ErrPeriodRange = errors.New("period must be between 1 and 86400 seconds")
 	// ErrDelayRange is returned when delay is outside valid range.
-	ErrDelayRange = errors.New("delay must be between 0 and 30000 milliseconds")
+	ErrDelayRange = fmt.Errorf("delay must be between 0 and %d milliseconds", MaxFakeDelayMS)
 	// ErrInvalidFormat is returned when format is not supported.
 	ErrInvalidFormat = errors.New("format must be 'json', 'xml', or 'text'")
 	// ErrInvalidMethod is returned when HTTP method is not supported.
@@ -35,8 +46,8 @@ var (
 	ErrSlowResponseIterations = errors.New("slowResponse iterations must be between 1 and 100")
 	// ErrSlowResponseBytes is returned when bytes value is invalid.
 	ErrSlowResponseBytes = errors.New("slowResponse bytes must be positive")
-	// ErrSlowResponseDelay is returned when delay value is invalid.
-	ErrSlowResponseDelay = errors.New("slowResponse delay_ms must be non-negative")
+	// ErrSlowResponseDelay is returned when delay_ms is outside valid range.
+	ErrSlowResponseDelay = fmt.Errorf("slowResponse delay_ms must be between 0 and %d milliseconds", MaxFakeDelayMS)
 	// ErrRedirectSSRF is returned when redirect target is internal/private IP.
 	ErrRedirectSSRF = errors.New("redirect to internal/private IPs not allowed")
 	// ErrStreamingNotSupported is returned when streaming is not supported.
@@ -360,7 +371,7 @@ func (h *Handler) parseFakeParams(req *http.Request) (*fakeParams, error) {
 		return nil, ErrPeriodRange
 	}
 
-	if params.delay < 0 || params.delay > 30000 {
+	if params.delay < 0 || params.delay > MaxFakeDelayMS {
 		return nil, ErrDelayRange
 	}
 
@@ -391,7 +402,7 @@ func (h *Handler) parseFakeParams(req *http.Request) (*fakeParams, error) {
 		}
 
 		delayMs, err := strconv.Atoi(parts[2])
-		if err != nil || delayMs < 0 {
+		if err != nil || delayMs < 0 || delayMs > MaxFakeDelayMS {
 			return nil, ErrSlowResponseDelay
 		}
 
