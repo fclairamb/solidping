@@ -479,6 +479,8 @@ func (ds *DiscordSender) buildEmbed(payload *Payload) discord.Embed {
 		return ds.buildIncidentReopenedEmbed(payload)
 	case eventTypeIncidentComment:
 		return ds.buildCommentEmbed(payload)
+	case eventTypeIncidentAcknowledged:
+		return ds.buildAckEmbed(payload)
 	default:
 		return ds.buildDefaultEmbed(payload)
 	}
@@ -496,6 +498,33 @@ func (ds *DiscordSender) buildIncidentCreatedEmbed(payload *Payload) discord.Emb
 		Color:       discord.ColorRed,
 		Fields:      fields,
 		Timestamp:   payload.Incident.StartedAt.Format(time.RFC3339),
+		Footer:      &discord.Footer{Text: productMonitoring},
+	}
+}
+
+// buildAckEmbed builds an embed for incident.acknowledged events.
+//
+// Blue, not green: the incident is NOT over. An acknowledgment says a human
+// has it, and painting that the same color as a recovery is how a channel
+// teaches people to stop reading recoveries.
+func (ds *DiscordSender) buildAckEmbed(payload *Payload) discord.Embed {
+	checkName := getCheckName(payload.Check)
+
+	fields := []discord.Field{
+		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: fieldLabelAcknowledgedBy, Value: ackActor(payload.Acknowledgment), Inline: true},
+	}
+
+	if via := ackViaName(payload.Acknowledgment); via != "" {
+		fields = append(fields, discord.Field{Name: fieldLabelVia, Value: via, Inline: true})
+	}
+
+	return discord.Embed{
+		Title:       ackTitle(payload),
+		Description: ackPlainBody(payload) + " Escalation has stopped; the incident is still open.",
+		Color:       discord.ColorBlue,
+		Fields:      fields,
+		Timestamp:   time.Now().Format(time.RFC3339),
 		Footer:      &discord.Footer{Text: productMonitoring},
 	}
 }

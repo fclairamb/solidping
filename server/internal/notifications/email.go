@@ -43,7 +43,7 @@ func canAckEvent(eventType string) bool {
 func isModeledIncidentEvent(eventType string) bool {
 	switch eventType {
 	case eventTypeIncidentCreated, eventTypeIncidentResolved, eventTypeIncidentEscalated,
-		eventTypeIncidentReopened, eventTypeIncidentComment:
+		eventTypeIncidentReopened, eventTypeIncidentComment, eventTypeIncidentAcknowledged:
 		return true
 	default:
 		return false
@@ -91,6 +91,10 @@ const (
 	eventTypeIncidentEscalated = "incident.escalated"
 	eventTypeIncidentReopened  = "incident.reopened"
 	eventTypeIncidentComment   = "incident.comment"
+	// eventTypeIncidentAcknowledged closes the loop with everyone who was
+	// paged: without it a teammate taking the incident is invisible to every
+	// channel except the one the button lived in.
+	eventTypeIncidentAcknowledged = "incident.acknowledged"
 )
 
 // incidentTemplateForEvent maps an event type to its embedded template name.
@@ -109,6 +113,8 @@ func incidentTemplateForEvent(eventType string) (string, bool) {
 		return "incident-reopened.html", true
 	case eventTypeIncidentComment:
 		return "incident-comment.html", true
+	case eventTypeIncidentAcknowledged:
+		return "incident-acknowledged.html", true
 	default:
 		return "", false
 	}
@@ -548,6 +554,15 @@ func (s *EmailSender) buildIncidentViewModel(
 		viewModel["CommentText"] = commentText(payload.Comment)
 		viewModel["CommentAuthor"] = commentAuthor(payload.Comment)
 		viewModel["CommentSource"] = commentSourceLabel(payload.Comment)
+	}
+
+	if payload.EventType == eventTypeIncidentAcknowledged {
+		viewModel["AckActor"] = ackActor(payload.Acknowledgment)
+		viewModel["AckVia"] = ackViaLabel(payload.Acknowledgment)
+	}
+
+	if payload.Incident.AcknowledgedAt != nil {
+		viewModel["AcknowledgedAt"] = payload.Incident.AcknowledgedAt.Format("2006-01-02 15:04:05")
 	}
 
 	if unsubURL != "" {

@@ -1,0 +1,43 @@
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[ACKNOWLEDGED] {{.CheckName}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "acknowledged" "Label" "Acknowledged"}}{{end}}
+{{define "content"}}
+    <h1>{{.CheckName}} was acknowledged</h1>
+    <p><strong>{{.AckActor}}</strong> acknowledged{{if .AckVia}} {{.AckVia}}{{end}} the incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong>. Escalation has stopped — nobody else needs to pick this up.</p>
+    <p>The incident is still open: acknowledging says someone is on it, not that it is fixed.</p>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td class="label">Acknowledged by</td><td class="value">{{.AckActor}}</td></tr>
+        {{if .AckVia}}<tr><td class="label">Via</td><td class="value">{{.AckVia}}</td></tr>{{end}}
+        {{if .AcknowledgedAt}}<tr><td class="label">Acknowledged at</td><td class="value">{{.AcknowledgedAt}}</td></tr>{{end}}
+        <tr><td class="label">Check</td><td class="value">{{.CheckName}}</td></tr>
+        <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
+        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
+        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
+    </table>
+    {{if .IncidentURL}}
+    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    {{end}}
+{{end}}
+{{define "text"}}{{.CheckName}} was acknowledged
+
+{{.AckActor}} acknowledged{{if .AckVia}} {{.AckVia}}{{end}} the incident for {{.CheckName}}. Escalation has stopped — nobody else needs to pick this up.
+
+The incident is still open: acknowledging says someone is on it, not that it is fixed.
+
+Acknowledged by: {{.AckActor}}
+{{if .AckVia}}Via: {{.AckVia}}
+{{end}}{{if .AcknowledgedAt}}Acknowledged at: {{.AcknowledgedAt}}
+{{end}}Check: {{.CheckName}}
+Type: {{.CheckType}}
+Started at: {{.StartedAt}}
+{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
+{{end}}Incident ID: {{.IncidentUID}}
+{{if .IncidentURL}}
+View incident: {{.IncidentURL}}
+{{end}}
+This is an automated notification from SolidPing.
+{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
+Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
+Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
+{{end}}

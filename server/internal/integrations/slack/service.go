@@ -28,8 +28,10 @@ import (
 // This interface is implemented by handlers/incidents.Service via an adapter.
 type IncidentService interface {
 	// AcknowledgeIncidentFromSlack marks an incident as acknowledged via Slack.
+	// slackTeamID names the workspace the press happened in, so the ack-notice
+	// fan-out can skip the message that already shows the acknowledgment.
 	AcknowledgeIncidentFromSlack(
-		ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername string,
+		ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername, slackTeamID string,
 	) (*models.Incident, error)
 	// GetIncidentByUID gets an incident by UID.
 	GetIncidentByUID(ctx context.Context, orgUID, incidentUID string) (*models.Incident, error)

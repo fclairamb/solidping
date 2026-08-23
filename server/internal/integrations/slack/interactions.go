@@ -242,7 +242,8 @@ func (h *Handler) handleAcknowledgeIncident(
 	// Acknowledge the incident
 	acknowledgedAt := time.Now()
 	incident, err := h.svc.incidentsService.AcknowledgeIncidentFromSlack(
-		ctx, conn.OrganizationUID, incidentUID, interaction.User.ID, interaction.User.Username,
+		ctx, conn.OrganizationUID, incidentUID,
+		interaction.User.ID, interaction.User.Username, interaction.Team.ID,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to acknowledge incident",

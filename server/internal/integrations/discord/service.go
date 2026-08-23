@@ -25,8 +25,10 @@ import (
 // integration needs. Declared here (rather than imported) so the dependency
 // points one way — handlers/incidents must never import this package.
 type IncidentService interface {
+	// guildID names the guild the press happened in, so the ack-notice fan-out
+	// can skip the message that already shows the acknowledgment.
 	AcknowledgeIncidentFromDiscord(
-		ctx context.Context, orgUID, incidentUID, discordUserID, discordUsername string,
+		ctx context.Context, orgUID, incidentUID, discordUserID, discordUsername, guildID string,
 	) (*models.Incident, error)
 	GetIncidentByUID(ctx context.Context, orgUID, incidentUID string) (*models.Incident, error)
 	GetCheckByUID(ctx context.Context, orgUID, checkUID string) (*models.Check, error)

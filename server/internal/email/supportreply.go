@@ -32,6 +32,7 @@ const (
 	TemplateEscalation              = "escalation.html"
 	TemplateIncidentBurnCreated     = "incident-burn-created.html"
 	TemplateIncidentBurnResolved    = "incident-burn-resolved.html"
+	TemplateIncidentAcknowledged    = "incident-acknowledged.html"
 	TemplateIncidentComment         = "incident-comment.html"
 	TemplateIncidentCreated         = "incident-created.html"
 	TemplateIncidentEscalated       = "incident-escalated.html"
@@ -80,6 +81,7 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateEscalation:             true,
 	TemplateIncidentBurnCreated:    true,
 	TemplateIncidentBurnResolved:   true,
+	TemplateIncidentAcknowledged:   true,
 	TemplateIncidentComment:        true,
 	TemplateIncidentCreated:        true,
 	TemplateIncidentEscalated:      true,

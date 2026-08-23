@@ -30,7 +30,7 @@ type fakeIncidentService struct {
 }
 
 func (f *fakeIncidentService) AcknowledgeIncidentFromSlack(
-	_ context.Context, _, _, _, _ string,
+	_ context.Context, _, _, _, _, _ string,
 ) (*models.Incident, error) {
 	return nil, errFakeUnused
 }

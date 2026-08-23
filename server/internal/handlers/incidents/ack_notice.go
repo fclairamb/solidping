@@ -1,0 +1,149 @@
+package incidents
+
+import (
+	"context"
+	"log/slog"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/notifications"
+)
+
+// queueAckNotifications tells everyone who was paged about an incident that a
+// teammate has taken it.
+//
+// Without this, an acknowledgment is visible ONLY on the surface it happened
+// on: the escalation machinery stops, the dashboard updates, and every other
+// channel that shouted about the outage stays silent — so the four people who
+// were woken up have no way to learn that the fifth already picked it up. That
+// is the exact situation acknowledgments exist to prevent.
+//
+// The destination set is the one the incident's own alerts reached
+// (commentFanoutConnections), for the same reason a comment uses it: an
+// acknowledgment is a fact ABOUT an alert, so it belongs wherever that alert
+// landed and nowhere else.
+//
+// Two filters apply on top, both reused rather than reinvented:
+//
+//   - notifications.AcceptsEventType — the registry's per-channel opt-out. SMS
+//     and voice do not receive acknowledgments: a paid text saying "someone
+//     took it" is worse than silence.
+//   - isAckEchoOrigin — the Slack workspace / Discord guild whose button was
+//     pressed is skipped, because that message is rewritten in place with the
+//     acknowledgment already. See the type doc on AcknowledgeIncidentRequest's
+//     EchoOrigin fields.
+//
+// ALWAYS-ON by decision (spec 2026-08-24-01): there is no per-destination
+// opt-out setting, no new column and no new API field. The only opt-out is the
+// per-channel-type one above, which predates this.
+//
+// CALL ORDER IS LOAD-BEARING. This must run AFTER cancelPendingNotifications:
+// that sweep soft-deletes every pending job carrying the incident's UID, so an
+// ack notice enqueued before it would cancel itself.
+func (s *Service) queueAckNotifications(
+	ctx context.Context, orgUID string, incident *models.Incident, req *AcknowledgeIncidentRequest,
+) {
+	ack := &notifications.AckInfo{
+		ActorName: s.ackActorName(ctx, req),
+		Via:       req.Via,
+	}
+
+	for _, conn := range s.commentFanoutConnections(ctx, incident) {
+		if !conn.Enabled {
+			continue
+		}
+
+		if !notifications.AcceptsEventType(conn.Type, string(models.EventTypeIncidentAcknowledged)) {
+			continue
+		}
+
+		if isAckEchoOrigin(conn, req) {
+			slog.DebugContext(ctx, "Skipping ack notice to the connection the ack came from",
+				"connectionUid", conn.UID, "incidentUid", incident.UID)
+
+			continue
+		}
+
+		s.enqueueNotificationJob(ctx, orgUID, conn, incident.UID,
+			models.EventTypeIncidentAcknowledged, &notificationExtras{Acknowledgment: ack})
+	}
+}
+
+// ackActorName resolves the human label for the person who acknowledged,
+// straight from the request that carried the ack.
+//
+// Deliberately NOT read back off the event row: the fan-out already holds
+// every field the event was built from, and a re-read would be one query per
+// acknowledgment for information we just wrote. Precedence matches
+// ackNameFromPayload, so the channel message and the API response name the
+// same person.
+func (s *Service) ackActorName(ctx context.Context, req *AcknowledgeIncidentRequest) string {
+	for _, candidate := range []string{
+		req.SlackUsername,
+		req.DiscordUsername,
+		req.TelegramActor,
+	} {
+		if candidate != "" {
+			return candidate
+		}
+	}
+
+	// The platform user comes AFTER the chat identities on purpose: a Telegram
+	// ack is credited to the linked account, but the person who pressed the
+	// button in a group chat may be someone else entirely, and TelegramActor is
+	// the only record of who that was.
+	if req.AcknowledgedBy != "" {
+		if name := s.lookupUserDisplayName(ctx, req.AcknowledgedBy); name != "" {
+			return name
+		}
+	}
+
+	for _, candidate := range []string{
+		req.AcknowledgedByEmail,
+		req.PhoneNumber,
+		req.SlackUserID,
+		req.DiscordUserID,
+	} {
+		if candidate != "" {
+			return candidate
+		}
+	}
+
+	return ""
+}
+
+// isAckEchoOrigin reports whether this connection is the one the
+// acknowledgment was performed on.
+//
+// Matched at WORKSPACE level for Slack and GUILD level for Discord, not per
+// connection row — identical reasoning to isCommentEchoOrigin: the incident's
+// thread is stored once per incident, so any connection in that workspace or
+// guild would post into the very thread the acker is looking at, under a
+// message that already says "Acknowledged by @them".
+func isAckEchoOrigin(conn *models.Integration, req *AcknowledgeIncidentRequest) bool {
+	switch {
+	case conn.Type == models.ConnectionTypeSlack:
+		if req.EchoOriginTeamID == "" {
+			return false
+		}
+
+		settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+		if err != nil || settings == nil {
+			return false
+		}
+
+		return settings.TeamID == req.EchoOriginTeamID
+	case conn.Type == models.ConnectionTypeDiscord:
+		if req.EchoOriginGuildID == "" {
+			return false
+		}
+
+		settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
+		if err != nil || settings == nil {
+			return false
+		}
+
+		return settings.GuildID == req.EchoOriginGuildID
+	default:
+		return false
+	}
+}

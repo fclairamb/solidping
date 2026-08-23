@@ -33,13 +33,18 @@ type SenderCapabilities struct {
 	// fan-out. False only for paging-cost channels: an SMS or a phone call per
 	// operator note is noise the recipient pays for, in money and in attention.
 	NotifiesComments bool
+	// NotifiesAcks reports whether the channel receives `incident.acknowledged`
+	// fan-out. Same cost argument as comments: a paid text (or a ringing
+	// phone) saying "someone took it" is worse than silence, and the person
+	// who acked is usually the person the SMS would reach.
+	NotifiesAcks bool
 }
 
 // defaultSenderCapabilities is what a connection type gets when it declares
 // nothing: everything on. New integrations therefore receive comments by
 // default and only an explicit table entry can take that away.
 func defaultSenderCapabilities() SenderCapabilities {
-	return SenderCapabilities{NotifiesComments: true}
+	return SenderCapabilities{NotifiesComments: true, NotifiesAcks: true}
 }
 
 // senderCapabilities maps a connection type to its opt-outs. Only types that
@@ -48,8 +53,9 @@ func defaultSenderCapabilities() SenderCapabilities {
 // senderFactories.
 func senderCapabilities() map[models.ConnectionType]SenderCapabilities {
 	return map[models.ConnectionType]SenderCapabilities{
-		// SMS and voice: every comment would be a paid text or a ringing phone.
-		models.ConnectionTypeTwilio: {NotifiesComments: false},
+		// SMS and voice: every comment or acknowledgment would be a paid text
+		// or a ringing phone.
+		models.ConnectionTypeTwilio: {NotifiesComments: false, NotifiesAcks: false},
 	}
 }
 
@@ -68,11 +74,14 @@ func CapabilitiesForSender(connType models.ConnectionType) SenderCapabilities {
 // of naming any specific integration, which is what keeps the opt-out list in
 // the registry rather than in the incident service.
 func AcceptsEventType(connType models.ConnectionType, eventType string) bool {
-	if eventType == eventTypeIncidentComment {
+	switch eventType {
+	case eventTypeIncidentComment:
 		return CapabilitiesForSender(connType).NotifiesComments
+	case eventTypeIncidentAcknowledged:
+		return CapabilitiesForSender(connType).NotifiesAcks
+	default:
+		return true
 	}
-
-	return true
 }
 
 // senderFactories maps a connection type to its sender constructor. A table

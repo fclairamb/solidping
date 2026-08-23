@@ -202,6 +202,9 @@ func (s *PushoverSender) buildContent(
 	case eventTypeIncidentComment:
 		title = commentTitle(payload)
 		body = commentPlainBody(payload)
+	case eventTypeIncidentAcknowledged:
+		title = ackTitle(payload)
+		body = ackPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		body = "An incident update occurred for " + checkName

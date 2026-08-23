@@ -112,6 +112,17 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 		return s.replyWithComment(ctx, jctx, appID, appSecret, entry, payload)
 	}
 
+	// An acknowledgment is commentary on a still-live incident, exactly like a
+	// comment: replacing the card would hide the incident state the card
+	// exists to show, and the incident is NOT over.
+	if payload.EventType == eventTypeIncidentAcknowledged {
+		if !hasCard(entry) {
+			return nil
+		}
+
+		return s.replyWithAck(ctx, jctx, appID, appSecret, entry, payload)
+	}
+
 	if hasCard(entry) {
 		return s.updateExistingCard(ctx, jctx, appID, appSecret, entry, payload)
 	}
@@ -137,6 +148,34 @@ func (s *MSTeamsBotSender) replyWithComment(
 	result, err := client.ReplyToActivity(ctx, ref.ConversationID, ref.ActivityID, reply)
 	if err != nil {
 		return fmt.Errorf("replying with microsoft teams comment: %w", err)
+	}
+
+	if result != nil {
+		payload.MessageID = result.ID
+	}
+
+	return nil
+}
+
+// replyWithAck posts the acknowledgment notice as a reply under the
+// incident's existing card, leaving both the card and its stored reference
+// untouched.
+func (s *MSTeamsBotSender) replyWithAck(
+	ctx context.Context,
+	jctx *jobdef.JobContext,
+	appID, appSecret string,
+	entry *models.StateEntry,
+	payload *Payload,
+) error {
+	ref := cardRef(entry)
+
+	client := s.client(appID, appSecret, ref.ServiceURL, s.pinnedTenant(jctx))
+
+	reply := msteams.NewTextMessage(ackEmoji + " " + ackPlainBody(payload))
+
+	result, err := client.ReplyToActivity(ctx, ref.ConversationID, ref.ActivityID, reply)
+	if err != nil {
+		return fmt.Errorf("replying with microsoft teams acknowledgment: %w", err)
 	}
 
 	if result != nil {

@@ -186,6 +186,8 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 		return mattermostColorYellow, ":repeat: [REOPENED] " + checkName
 	case eventTypeIncidentComment:
 		return mattermostColorBlue, ":speech_balloon: [COMMENT] " + checkName
+	case eventTypeIncidentAcknowledged:
+		return mattermostColorBlue, ":white_check_mark: [ACKNOWLEDGED] " + checkName
 	default:
 		return mattermostColorOrange, "[UPDATE] " + checkName
 	}
@@ -202,6 +204,19 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 			{Short: true, Title: fieldLabelAuthor, Value: commentAuthor(payload.Comment)},
 			{Short: false, Title: fieldLabelComment, Value: commentText(payload.Comment)},
 		}
+	}
+
+	if payload.EventType == eventTypeIncidentAcknowledged {
+		fields := []mattermostField{
+			{Short: true, Title: mmFieldCheck, Value: checkName},
+			{Short: true, Title: fieldLabelAcknowledgedBy, Value: ackActor(payload.Acknowledgment)},
+		}
+
+		if via := ackViaName(payload.Acknowledgment); via != "" {
+			fields = append(fields, mattermostField{Short: true, Title: fieldLabelVia, Value: via})
+		}
+
+		return fields
 	}
 
 	fields := []mattermostField{

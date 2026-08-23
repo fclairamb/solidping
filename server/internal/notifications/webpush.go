@@ -185,6 +185,8 @@ func buildWebPushContent(payload *Payload, checkName string) (string, string) {
 			checkName + " is down again."
 	case eventTypeIncidentComment:
 		return commentTitle(payload), commentPreview(payload.Comment)
+	case eventTypeIncidentAcknowledged:
+		return ackTitle(payload), ackPlainBody(payload)
 	default:
 		return ref + "[UPDATE] " + checkName,
 			"An incident update occurred for " + checkName

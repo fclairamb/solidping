@@ -196,6 +196,8 @@ func (s *MSTeamsSender) eventTitleAndColor(payload *Payload, checkName string) (
 		return fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount), msTeamsColorAttention
 	case eventTypeIncidentComment:
 		return commentTitle(payload), msTeamsColorAccent
+	case eventTypeIncidentAcknowledged:
+		return ackTitle(payload), msTeamsColorAccent
 	default:
 		return "[UPDATE] " + checkName, ""
 	}
@@ -213,6 +215,18 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 			msTeamsFact{Title: fieldLabelAuthor, Value: commentAuthor(payload.Comment)},
 			msTeamsFact{Title: fieldLabelComment, Value: commentText(payload.Comment)},
 		)
+
+		return facts
+	}
+
+	if payload.EventType == eventTypeIncidentAcknowledged {
+		facts = append(facts, msTeamsFact{
+			Title: fieldLabelAcknowledgedBy, Value: ackActor(payload.Acknowledgment),
+		})
+
+		if via := ackViaName(payload.Acknowledgment); via != "" {
+			facts = append(facts, msTeamsFact{Title: fieldLabelVia, Value: via})
+		}
 
 		return facts
 	}

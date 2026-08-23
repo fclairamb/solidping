@@ -23,6 +23,7 @@ type fakeIncidents struct {
 	ackIncident string
 	ackUserID   string
 	ackUserName string
+	ackGuildID  string
 	ackErr      error
 	// ackTitle overrides the acknowledged incident's title, so a test can put
 	// operator-controlled text into the reply the ack update renders.
@@ -34,12 +35,13 @@ type fakeIncidents struct {
 }
 
 func (f *fakeIncidents) AcknowledgeIncidentFromDiscord(
-	_ context.Context, orgUID, incidentUID, discordUserID, discordUsername string,
+	_ context.Context, orgUID, incidentUID, discordUserID, discordUsername, guildID string,
 ) (*models.Incident, error) {
 	f.ackOrgUID = orgUID
 	f.ackIncident = incidentUID
 	f.ackUserID = discordUserID
 	f.ackUserName = discordUsername
+	f.ackGuildID = guildID
 
 	if f.ackErr != nil {
 		return nil, f.ackErr

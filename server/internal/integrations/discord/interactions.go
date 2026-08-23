@@ -280,7 +280,7 @@ func acknowledgeFromInteraction(
 	userName := interaction.InvokerName()
 
 	incident, err := svc.incidentsService.AcknowledgeIncidentFromDiscord(
-		ctx, conn.OrganizationUID, incidentUID, userID, userName,
+		ctx, conn.OrganizationUID, incidentUID, userID, userName, interaction.GuildID,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to acknowledge incident from Discord",

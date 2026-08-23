@@ -1987,23 +1987,56 @@ func (s *Service) queueGroupNotifications(
 	}
 }
 
+// notificationExtras is the per-event-type extra payload a fan-out attaches to
+// a notification job.
+//
+// A struct rather than one parameter per kind: the list only ever grows (a
+// comment's body, an acknowledgment's actor, whatever the next event type
+// needs), and every existing call site would have to learn a new `nil`
+// argument each time. Nil-safe accessors keep the plain lifecycle paths at a
+// bare `nil`.
+type notificationExtras struct {
+	Comment        *notifications.CommentInfo
+	Acknowledgment *notifications.AckInfo
+}
+
+// comment returns the carried comment, or nil.
+func (e *notificationExtras) comment() *notifications.CommentInfo {
+	if e == nil {
+		return nil
+	}
+
+	return e.Comment
+}
+
+// acknowledgment returns the carried acknowledgment attribution, or nil.
+func (e *notificationExtras) acknowledgment() *notifications.AckInfo {
+	if e == nil {
+		return nil
+	}
+
+	return e.Acknowledgment
+}
+
 // enqueueNotificationJob marshals the config, creates a single job row, and
 // records the pending audit row. Shared by EVERY fan-out path — per-check,
 // group, and comment — so the job config and the audit row can only ever be
 // built one way.
 //
-// comment is nil for lifecycle events and carries the body/author for
-// `incident.comment`; it is the only thing that differs between the paths,
-// which is why they are not separate functions.
+// extras is nil for plain lifecycle events and carries the per-event-type
+// extra payload otherwise (a comment's body/author, an acknowledgment's
+// actor); it is the only thing that differs between the paths, which is why
+// they are not separate functions.
 func (s *Service) enqueueNotificationJob(
 	ctx context.Context, orgUID string, conn *models.Integration,
-	incidentUID string, eventType models.EventType, comment *notifications.CommentInfo,
+	incidentUID string, eventType models.EventType, extras *notificationExtras,
 ) {
 	config, err := json.Marshal(jobtypes.NotificationJobConfig{
-		ConnectionUID: conn.UID,
-		IncidentUID:   incidentUID,
-		EventType:     string(eventType),
-		Comment:       comment,
+		ConnectionUID:  conn.UID,
+		IncidentUID:    incidentUID,
+		EventType:      string(eventType),
+		Comment:        extras.comment(),
+		Acknowledgment: extras.acknowledgment(),
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to marshal notification config",
@@ -2757,6 +2790,19 @@ type AcknowledgeIncidentRequest struct {
 	DiscordUsername string
 	Note            string // Optional free-text note
 	Via             string // "slack", "web", "email", "phone", etc.
+	// EchoOriginTeamID names the Slack workspace where this acknowledgment is
+	// ALREADY visible, and is therefore the workspace the ack-notice fan-out
+	// must skip: the message whose button was pressed is rewritten in place
+	// with "Acknowledged by @them", so a second message in the same thread
+	// tells the acker something they are already looking at.
+	//
+	// Set only by the Slack button path. A `/ack` slash command posts nothing
+	// visible in the channel, so it must NOT set this — otherwise the one
+	// workspace that asked is the one workspace that never hears.
+	EchoOriginTeamID string
+	// EchoOriginGuildID is the Discord counterpart of EchoOriginTeamID, set
+	// only by the Discord button path for the same reason.
+	EchoOriginGuildID string
 }
 
 // AcknowledgeIncident marks an incident as acknowledged. Accepts the org
@@ -2826,6 +2872,15 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
 	s.cancelPendingNotifications(ctx, incident.UID, nil)
+
+	// AFTER the sweep, never before: cancelPendingNotifications soft-deletes
+	// every pending job carrying this incident's UID, and an ack notice
+	// enqueued first would be swept by the very action that created it.
+	//
+	// Also strictly past the "already acknowledged" early return above, so a
+	// double-click, a retried Slack interaction or a second escalation email
+	// being clicked cannot fan out a second round of notices.
+	s.queueAckNotifications(ctx, orgUID, incident, req)
 
 	slog.InfoContext(ctx, "Incident acknowledged",
 		"incident_uid", incident.UID,
@@ -2925,14 +2980,21 @@ func (s *Service) GetCheckByUID(ctx context.Context, orgUID, checkUID string) (*
 
 // AcknowledgeIncidentFromSlack marks an incident as acknowledged via Slack.
 // This method is used by the Slack integration to acknowledge incidents.
+// slackTeamID is the workspace the ack happened in, and is what the ack-notice
+// fan-out skips: the Acknowledge button rewrites its own message in place with
+// "acknowledged by @them", so a second message in that workspace tells the
+// acker something they are already looking at. Pass "" from any future path
+// that posts nothing visible (a `/ack` slash command), or the one workspace
+// that asked is the one workspace that never hears.
 func (s *Service) AcknowledgeIncidentFromSlack(
-	ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername string,
+	ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername, slackTeamID string,
 ) (*models.Incident, error) {
 	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
-		IncidentUID:   incidentUID,
-		SlackUserID:   slackUserID,
-		SlackUsername: slackUsername,
-		Via:           "slack",
+		IncidentUID:      incidentUID,
+		SlackUserID:      slackUserID,
+		SlackUsername:    slackUsername,
+		Via:              CommentSourceSlack,
+		EchoOriginTeamID: slackTeamID,
 	})
 }
 
@@ -3065,14 +3127,19 @@ func (s *Service) AddCommentFromSlackCommand(
 // AcknowledgeIncidentFromDiscord marks an incident acknowledged from a Discord
 // message-component (button) interaction. Same idempotent, escalation-canceling
 // path as the Slack variant; only the attribution differs.
+// guildID is the guild the button was pressed in, skipped by the ack-notice
+// fan-out for the same reason as the Slack workspace: that message is rewritten
+// in place AND an acknowledgment notice is already posted into the incident's
+// thread there.
 func (s *Service) AcknowledgeIncidentFromDiscord(
-	ctx context.Context, orgUID, incidentUID, discordUserID, discordUsername string,
+	ctx context.Context, orgUID, incidentUID, discordUserID, discordUsername, guildID string,
 ) (*models.Incident, error) {
 	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
-		IncidentUID:     incidentUID,
-		DiscordUserID:   discordUserID,
-		DiscordUsername: discordUsername,
-		Via:             CommentSourceDiscord,
+		IncidentUID:       incidentUID,
+		DiscordUserID:     discordUserID,
+		DiscordUsername:   discordUsername,
+		Via:               CommentSourceDiscord,
+		EchoOriginGuildID: guildID,
 	})
 }
 
@@ -3306,7 +3373,8 @@ func (s *Service) queueCommentNotifications(
 			continue
 		}
 
-		s.enqueueNotificationJob(ctx, orgUID, conn, incident.UID, models.EventTypeIncidentComment, comment)
+		s.enqueueNotificationJob(ctx, orgUID, conn, incident.UID, models.EventTypeIncidentComment,
+			&notificationExtras{Comment: comment})
 	}
 }
 
@@ -3440,6 +3508,18 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 
 	incident.AcknowledgedAt = nil
 	incident.AcknowledgedBy = nil
+
+	// Withdrawing an acknowledgment must not leave its notice in flight: a
+	// channel hearing "Alice acknowledged this" seconds after the ack was
+	// undone is worse than never hearing it, because it stops other people
+	// from picking the incident up. Ack already swept everything else pending
+	// for this incident and unack does not resume escalation on its own, so
+	// this sweep can only reach notices the ack itself queued.
+	//
+	// Unack is otherwise SILENT by decision (spec 2026-08-24-01): no
+	// notification of its own. The cleared state is visible on the incident
+	// row and the API response.
+	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnacknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID

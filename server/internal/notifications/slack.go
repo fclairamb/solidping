@@ -74,10 +74,16 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 // A comment is the same, plus one extra hazard: posting it top-level would
 // CLAIM the incident's thread mapping, so the eventual resolved notice would
 // thread under a comment instead of under the alert.
+// An acknowledgment is the same case as a comment: it is commentary ON an
+// alert, so without that alert in the channel a bare ":white_check_mark:
+// acknowledged" names an incident nobody there ever heard of — and it would
+// claim the incident's thread mapping, sending the eventual resolved notice
+// under an ack instead of under the alert.
 func requiresExistingThread(eventType string) bool {
 	return eventType == eventTypeIncidentResolved ||
 		eventType == eventTypeIncidentReopened ||
-		eventType == eventTypeIncidentComment
+		eventType == eventTypeIncidentComment ||
+		eventType == eventTypeIncidentAcknowledged
 }
 
 // parseSettings extracts and validates Slack settings from the payload.
@@ -200,6 +206,8 @@ func (s *SlackSender) buildMessage(payload *Payload) *slack.MessageResponse {
 		return s.buildIncidentReopenedThreadReply(payload)
 	case eventTypeIncidentComment:
 		return s.buildCommentThreadReply(payload)
+	case eventTypeIncidentAcknowledged:
+		return s.buildAckThreadReply(payload)
 	default:
 		return s.buildSimpleMessage(payload)
 	}
@@ -539,6 +547,25 @@ func (s *SlackSender) buildIncidentActionButtons(incidentUID string) slack.Block
 			},
 		},
 	}
+}
+
+// buildAckThreadReply builds the acknowledgment notice posted under the
+// incident's thread: who took it, from where, and a reminder that the incident
+// itself is still open.
+//
+// Deliberately a thread reply and NOT an edit of the original alert: the alert
+// is still true (the check is still down), and a channel that rewrites its red
+// message the moment somebody acks teaches its readers that red means nothing.
+func (s *SlackSender) buildAckThreadReply(payload *Payload) *slack.MessageResponse {
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+
+	text := fmt.Sprintf(
+		":white_check_mark: %s%s — %s. Escalation stopped; the incident is still open.",
+		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName), ackSentence(payload),
+	)
+
+	return &slack.MessageResponse{Text: text}
 }
 
 // buildIncidentResolvedThreadReply builds a resolved-incident message. The status
