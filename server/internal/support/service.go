@@ -28,6 +28,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
+// deliveryStatusKey is the key under which an outbound reply's delivery state
+// lives in support_messages.delivery.
+const deliveryStatusKey = "status"
+
 // Capture outcomes, used as the `outcome` metric label.
 const (
 	outcomeCaptured    = "captured"
@@ -520,9 +524,9 @@ func (s *Service) Reply(
 	// that failed and left no trace is how an operator ends up answering the
 	// same person twice.
 	if sendErr != nil {
-		msg.Delivery = models.JSONMap{"status": "failed", "error": sendErr.Error()}
+		msg.Delivery = models.JSONMap{deliveryStatusKey: "failed", "error": sendErr.Error()}
 	} else {
-		msg.Delivery = models.JSONMap{"status": "sent"}
+		msg.Delivery = models.JSONMap{deliveryStatusKey: "sent"}
 	}
 
 	if err := s.insertMessage(ctx, msg); err != nil {
@@ -871,4 +875,35 @@ func (s *Service) DetachOrganization(ctx context.Context, orgUID string) (int64,
 	}
 
 	return affected, nil
+}
+
+// RecordDelivery updates the delivery status of an OUTBOUND support message
+// from a provider callback.
+//
+// This deliberately reuses the same callbacks that already drive
+// incident_notifications rather than inventing a second delivery pipeline: the
+// WhatsApp webhook and the Twilio status callback both arrive keyed on the
+// provider message id, which is exactly what support_messages.external_id
+// stores.
+//
+// Best-effort and silent when nothing matches — the overwhelming majority of
+// those callbacks are about an alert, not a support reply, so "no such message"
+// is the normal case and must not be logged as a fault.
+func (s *Service) RecordDelivery(ctx context.Context, channel, externalID, status string) {
+	if s == nil || externalID == "" || status == "" {
+		return
+	}
+
+	delivery := models.JSONMap{deliveryStatusKey: status, "source": "provider"}
+
+	if _, err := s.bun().NewUpdate().Model((*models.SupportMessage)(nil)).
+		Set("delivery = ?", delivery).
+		Set("updated_at = ?", s.now()).
+		Where("channel = ?", channel).
+		Where("external_id = ?", externalID).
+		Where("direction = ?", models.SupportDirectionOutbound).
+		Exec(ctx); err != nil {
+		s.log.WarnContext(ctx, "failed to record support reply delivery status",
+			"channel", channel, "error", err)
+	}
 }

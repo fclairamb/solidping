@@ -601,3 +601,61 @@ func TestListThreads_FiltersAndSearch(t *testing.T) {
 	r.NoError(err)
 	r.Len(bySearch, 1, "search must be case-insensitive")
 }
+
+// TestRecordDelivery_UpdatesAnOutboundReply proves the outbound reply's
+// delivery status is driven by the SAME provider callbacks that already update
+// incident_notifications, rather than a second pipeline.
+func TestRecordDelivery_UpdatesAnOutboundReply(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	h.svc.RegisterReplier(models.SupportChannelWhatsApp,
+		func(_ context.Context, _ *models.SupportThread, _ string) (string, error) {
+			return "wamid.OUT1", nil
+		})
+
+	thread, inbound, err := h.svc.Capture(ctx, &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000000",
+		ExternalID: "wamid.IN1", Body: "hello",
+	})
+	r.NoError(err)
+
+	reply, err := h.svc.Reply(ctx, thread.UID, "on it", "")
+	r.NoError(err)
+	r.Equal("sent", reply.Delivery["status"])
+
+	h.svc.RecordDelivery(ctx, models.SupportChannelWhatsApp, "wamid.OUT1", "delivered")
+
+	messages, err := h.svc.ListMessages(ctx, thread.UID, 0)
+	r.NoError(err)
+	r.Len(messages, 2)
+
+	var outbound *models.SupportMessage
+
+	for _, msg := range messages {
+		if msg.Direction == models.SupportDirectionOutbound {
+			outbound = msg
+		}
+	}
+
+	r.NotNil(outbound)
+	r.Equal("delivered", outbound.Delivery["status"])
+
+	// The INBOUND message is untouched: a delivery receipt is about what WE
+	// sent, and stamping it on what they sent would be nonsense.
+	for _, msg := range messages {
+		if msg.UID == inbound.UID {
+			r.Empty(msg.Delivery, "an inbound message carries no delivery status")
+		}
+	}
+
+	// An unknown provider id is the normal case — the overwhelming majority of
+	// these callbacks are about an alert, not a support reply — and must be a
+	// silent no-op rather than an error.
+	r.NotPanics(func() {
+		h.svc.RecordDelivery(ctx, models.SupportChannelWhatsApp, "wamid.NOTOURS", "delivered")
+	})
+}

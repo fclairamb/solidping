@@ -159,6 +159,11 @@ func (h *Handler) applyStatuses(req *http.Request, payload *whatsapp.WebhookPayl
 				"messageId", status.ID, "status", status.Status, "error", err)
 		}
 
+		// Support replies travel on the same provider ids, so the same callback
+		// updates them — one delivery pipeline, not two (spec 2026-08-22-02).
+		// A no-match is the normal case here and stays silent.
+		h.support.RecordDelivery(req.Context(), models.SupportChannelWhatsApp, status.ID, status.Status)
+
 		if status.Status == whatsapp.StatusFailed {
 			h.log.InfoContext(req.Context(), "whatsapp delivery failed",
 				"messageId", status.ID, "detail", status.Describe())

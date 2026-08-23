@@ -337,6 +337,11 @@ func (h *Handler) HandleStatus(writer http.ResponseWriter, req *http.Request) er
 	if sid != "" && status != "" {
 		details := &models.DeliveryDetails{ResponseBody: "twilio status: " + status}
 		_ = h.db.UpdateIncidentNotificationDeliveryByMessageID(req.Context(), target.orgUID, sid, details)
+
+		// An SMS support reply carries the same MessageSid, so the same
+		// callback updates it — one delivery pipeline, not two (spec
+		// 2026-08-22-02). A no-match is the normal case and stays silent.
+		h.support.RecordDelivery(req.Context(), models.SupportChannelSMS, sid, status)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)
