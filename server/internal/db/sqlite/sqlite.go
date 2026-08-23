@@ -2335,6 +2335,24 @@ func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter
 	// Filter by multiple period types
 	if len(filter.PeriodTypes) > 0 {
 		query = query.Where("result.period_type IN (?)", bun.List(filter.PeriodTypes))
+
+		// Redundant, and load-bearing: both useful indexes on `results` are
+		// PARTIAL and split on `period_type = 'raw'`, and an index is only
+		// eligible when the query's WHERE implies the index's own predicate.
+		// Postgres derives that implication from an IN list on its own; SQLite
+		// does not, and scans the whole table for `period_type IN ('raw')`.
+		// Restating the side explicitly — only when every requested tier sits on
+		// ONE side — makes the query seekable on both backends at zero
+		// selectivity cost. A list straddling the split gets nothing added,
+		// because nothing true can be added: that query is unservable by either
+		// index and must be issued as two (spec 2026-08-22-04).
+		switch models.PeriodTypesTierSide(filter.PeriodTypes) {
+		case models.PeriodTierRaw:
+			query = query.Where("result.period_type = ?", models.PeriodTypeRaw)
+		case models.PeriodTierRollup:
+			query = query.Where("result.period_type != ?", models.PeriodTypeRaw)
+		case models.PeriodTierMixed:
+		}
 	}
 
 	// Filter by multiple statuses
