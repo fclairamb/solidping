@@ -98,6 +98,9 @@ export function chartWindowBounds(
  * an import cycle with `@/api/hooks`. */
 export interface SeamAnchorRow {
   periodStart?: string;
+  /** A rollup bucket's exclusive upper edge. Present on every aggregated row
+   * the API returns (it is a base field, not gated by `with`); absent on raw. */
+  periodEnd?: string;
   region?: string;
 }
 
@@ -120,11 +123,15 @@ export interface SeamAnchorRow {
  *
  * Two deliberate choices:
  *
- * - **Anchored on `periodStart`, not `periodEnd`.** The aggregator compacts a
- *   bucket and deletes its source raw rows in ONE transaction, so the newest
- *   bucket's own span contains no raw at all. Starting at its `periodStart`
- *   therefore costs an empty sliver of index range and can never leave a gap,
- *   while `periodEnd` (optional on the wire) would need a fallback anyway.
+ * - **Anchored on the bucket's exclusive upper edge (`periodEnd`), falling back
+ *   to `periodStart`.** The edge is what makes the two tiers provably disjoint:
+ *   every rollup row returned by pass 1 ends at or before it, and the raw query
+ *   asks for `period_start >= it`, so no span can be drawn twice. Anchoring on
+ *   `periodStart` instead would put the newest closed bucket inside BOTH
+ *   windows and rely on the aggregator having already deleted that bucket's raw
+ *   rows — true today, but an invariant of a different component, and a
+ *   duplicated point at the seam is exactly what spec 2026-08-22-07 forbids.
+ *   The fallback keeps a row with no `periodEnd` merely wide, never short.
  * - **Per-region minimum of the per-region maxima.** Rollup rows arrive per
  *   region and regions can lag independently; a global maximum would set the
  *   seam from the healthiest region and leave a lagging one with neither rollup
@@ -144,8 +151,11 @@ export function seamStartFrom(
   for (const row of rollupRows) {
     if (!row.periodStart) continue;
 
-    const ts = Date.parse(row.periodStart);
-    if (Number.isNaN(ts)) continue;
+    const start = Date.parse(row.periodStart);
+    if (Number.isNaN(start)) continue;
+
+    const end = row.periodEnd ? Date.parse(row.periodEnd) : Number.NaN;
+    const ts = Number.isNaN(end) ? start : Math.max(start, end);
 
     const key = row.region ?? "";
     const current = newestByRegion.get(key);
@@ -196,9 +206,29 @@ export function chartFetchParams(
   zoom?: ZoomWindow,
   rawStartAfter?: string,
 ): ChartTierFetch[] {
-  const rollupTier = chartRollupTier(timeRange, periodMs, zoom);
-  const window = chartWindowBounds(timeRange, zoom);
+  return chartFetchParamsForWindow(
+    chartWindowBounds(timeRange, zoom),
+    chartRollupTier(timeRange, periodMs, zoom),
+    rawStartAfter,
+  );
+}
 
+/** `chartFetchParams` over a window the caller already fixed.
+ *
+ * An unzoomed window start is `startOfMinute(now)`, so `chartWindowBounds`
+ * returns a DIFFERENT value either side of a minute boundary. The two passes
+ * are evaluated at different moments — pass 2's plan is rebuilt when pass 1
+ * settles, which can be seconds or minutes after mount — so re-deriving the
+ * bound per pass would let a minute tick split the two tiers onto windows that
+ * disagree, and split the raw query key between the chart and the check-detail
+ * route (whose whole point is to be the SAME key, hence a cache hit rather than
+ * a second HTTP request). Callers that run more than one pass resolve the
+ * window once and hand it here. */
+export function chartFetchParamsForWindow(
+  window: Pick<ChartTierFetch, "periodStartAfter" | "periodEndBefore">,
+  rollupTier: string,
+  rawStartAfter?: string,
+): ChartTierFetch[] {
   const tiers: ChartTierFetch[] = [];
 
   if (rollupTier) {

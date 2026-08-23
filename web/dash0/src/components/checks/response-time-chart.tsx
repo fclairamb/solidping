@@ -1014,6 +1014,16 @@ export function ResponseTimeChart({
                   className="text-xs"
                   tick={{ fill: "var(--muted-foreground)" }}
                 />
+                {/* No `domain`: recharts rescales from the data, so merging
+                    pass 2 (raw, at the right-hand edge) CAN move the y-axis.
+                    That is an accepted outcome of spec 2026-08-22-07 §2, not an
+                    oversight — pinning the domain would flatten a genuine spike
+                    in the newest points, which is the part of the chart people
+                    are looking at, and the alternative (holding pass 1's scale
+                    and letting raw overflow it) draws points outside the plot.
+                    §2's "no visible jump" requirement is met by never
+                    unmounting the chart (see chart-progressive-render.test.tsx);
+                    the rescale itself is deliberate. */}
                 <YAxis
                   tickFormatter={formatMs}
                   className="text-xs"

@@ -253,23 +253,43 @@ hold the floor regardless of caller:
    `seamStartFrom(rollupRows)`. `response-time-chart.tsx` re-exports the old
    names so existing imports and the spec-04 guard test keep working.
 6. **Seam rule.** `seamStartFrom` groups pass-1 rows by region, takes each
-   region's newest `periodStart`, and returns the **oldest** of those. Anchoring
-   on `periodStart` (not `periodEnd`) is deliberate: the aggregator deletes a
-   bucket's raw rows in the same transaction that writes the bucket, so the
-   newest bucket's own span contains no raw and a start-anchored seam can only
-   be harmlessly wide — never short. Taking the per-region minimum is what makes
-   a region whose rollups lag get its own wider seam. No rollup rows at all →
-   `undefined` → raw spans the full window (brand-new check).
+   region's newest bucket edge (`periodEnd`, falling back to `periodStart`), and
+   returns the **oldest** of those. Anchoring on the exclusive upper edge is what
+   makes the two tiers provably disjoint: every rollup row ends at or before it
+   and the raw query asks for `period_start >= it`, so no span can be drawn
+   twice — without depending on the aggregator having already deleted that
+   bucket's raw rows (true today, but an invariant of a different component).
+   Taking the per-region minimum is what makes a region whose rollups lag get its
+   own wider seam. No rollup rows at all → `undefined` → raw spans the full
+   window (brand-new check).
 7. **`useResultTiers` gains `enabled`** (only that — per-pass loading/error come
    free from calling it once per pass).
 8. **`useChartWindowResults(org, checkUid, {timeRange, periodMs, zoom}, …)`** in
    `api/hooks.ts` runs the two passes: pass 1 = rollup tier (skipped when raw is
    the tier), pass 2 = raw, gated on pass 1 having settled and keyed on the seam.
    Merges through `mergeResultTiers`. Exposes `isLoading` = pass 1 only,
-   plus `rawError` / `rawPending`.
+   plus `rawError` / `rawPending`. The window bound is resolved **once per hook
+   instance** (`chartWindowBounds` memoized on the range/zoom alone) and handed
+   to both passes via `chartFetchParamsForWindow`: an unzoomed start is
+   `startOfMinute(now)`, and pass 2's plan is rebuilt after pass 1 settles, so
+   re-deriving it per pass would let a minute tick re-key the raw query for the
+   same window — and desynchronise the chart from the route, whose whole point is
+   to share that key.
 9. **Polling scope.** Pass 1 refetches at the rollup bucket width (1 h); pass 2
    keeps the caller's fast cadence. Range/zoom changes re-key both.
-10. **Both consumers use the hook** — `response-time-chart.tsx` and
+10. **The y-domain rescale is accepted, not prevented.** §2 asks that pass 2 not
+    "change the y-domain in a way that makes the plot visibly jump". The chart's
+    `<YAxis>` carries no `domain`, so recharts rescales from the merged data and
+    adding raw at the right-hand edge can move the axis. That is kept
+    deliberately: pinning the domain to pass 1's range would flatten a genuine
+    spike in the newest points — the part of the chart people are actually
+    looking at — and letting raw overflow a held scale would draw points outside
+    the plot. What §2 is protecting against (a *jump*, i.e. the chart being torn
+    down and rebuilt) is instead met by never unmounting: pinned by
+    `web/dash0/src/components/checks/chart-progressive-render.test.tsx`, which
+    asserts node identity across the merge. Recorded here rather than left to a
+    review comment, per the audit of 2026-08-23.
+11. **Both consumers use the hook** — `response-time-chart.tsx` and
     `checks.$checkUid.index.tsx` — so their query keys stay identical and the
     route remains a cache hit. The chart surfaces `rawError` as an inline note
     without discarding pass-1 data (`detail.chart.rawError`, 4 locales).
@@ -285,10 +305,18 @@ hold the floor regardless of caller:
   lagging aggregator widens it; brand-new check fetches raw over the full window
   (the positive control that points ARE fetched); pass-2-pending still yields
   pass-1 rows with `isLoading` false; pass-2 rejection keeps pass-1 rows and sets
-  `rawError`; across a poll tick raw is re-issued and rollup is not.
-- `response-time-chart` seam continuity — `detectGaps` (exported for the test)
+  `rawError`; across a poll tick raw is re-issued and rollup is not; **the chart
+  and the check-detail route's real call-site inputs produce exactly one HTTP
+  request per tier** (spec 04's cache-hit criterion, restated for the two-pass
+  hook — the seam is a key input the spec-04 test cannot see); and the window
+  bound survives a late-arriving `periodMs` across a minute tick.
+- `components/checks/chart-seam.test.ts` — `detectGaps` (exported for the test)
   reports no gap across a rollup→raw transition, with a positive control that a
-  real same-tier gap IS reported.
+  real same-tier gap IS reported; plus the disjointness of the two tiers driven
+  through the real pipeline (`seamStartFrom` → raw window → a server honouring
+  `period_start >= …` → `mergeResultTiers`) over a deliberately adversarial
+  fixture that still holds raw for the rolled-up hours, so a seam anchored one
+  bucket too wide fails it.
 - Go: `chart_raw_clamp_postgres_test.go` — a year-back raw request returns the
   same rows as one clamped to the boundary, reports `clamped:true`, and does not
   `Seq Scan on results`; with `performance.aggregation_retention_raw_hours` set

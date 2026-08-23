@@ -9,8 +9,9 @@ import {
 import { apiFetch, getToken } from "./client";
 import { mergeResultTiers } from "@/lib/result-tiers";
 import {
-  chartFetchParams,
+  chartFetchParamsForWindow,
   chartRollupTier,
+  chartWindowBounds,
   seamStartFrom,
   type TimeRange,
   type ZoomWindow,
@@ -1478,17 +1479,29 @@ export function useChartWindowResults(
   const zoomFrom = zoom?.from;
   const zoomTo = zoom?.to;
 
+  // Resolve the window ONCE for both passes. An unzoomed start is
+  // startOfMinute(now), and pass 2's plan is rebuilt when pass 1 settles — so
+  // re-deriving it per pass would let a minute tick land the two tiers on
+  // windows that disagree, and split the raw key between this hook's two call
+  // sites (the chart and the check-detail route) into two HTTP requests where
+  // there should be one cache hit.
+  const bounds = useMemo(
+    () => chartWindowBounds(timeRange, zoom),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
+    [timeRange, zoomFrom, zoomTo],
+  );
+
   // Pass 1 — rollups over the whole window. Empty for a range where raw IS the
   // tier (hour, or a day view of a check slower than 5 min): there is nothing
   // to narrow raw against, so it stays the full window.
-  const hasRollupTier = chartRollupTier(timeRange, periodMs, zoom) !== "";
+  const rollupTier = chartRollupTier(timeRange, periodMs, zoom);
+  const hasRollupTier = rollupTier !== "";
   const rollupTiers = useMemo(
     () =>
       hasRollupTier
-        ? [{ checkUid, ...chartFetchParams(timeRange, periodMs, zoom)[0] }]
+        ? [{ checkUid, ...chartFetchParamsForWindow(bounds, rollupTier)[0] }]
         : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
-    [hasRollupTier, checkUid, timeRange, periodMs, zoomFrom, zoomTo],
+    [hasRollupTier, rollupTier, bounds, checkUid],
   );
   const rollup = useResultTiers(org, rollupTiers, {
     refetchInterval: ROLLUP_REFETCH_MS,
@@ -1502,11 +1515,10 @@ export function useChartWindowResults(
   // pass 1 has settled with NO rows (a check younger than one rollup bucket)
   // the seam is undefined and raw correctly covers everything again.
   const rawTiers = useMemo(() => {
-    const plan = chartFetchParams(timeRange, periodMs, zoom, seamStart);
+    const plan = chartFetchParamsForWindow(bounds, rollupTier, seamStart);
 
     return [{ checkUid, ...plan[plan.length - 1] }];
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
-  }, [checkUid, timeRange, periodMs, zoomFrom, zoomTo, seamStart]);
+  }, [checkUid, bounds, rollupTier, seamStart]);
   const raw = useResultTiers(org, rawTiers, {
     refetchInterval: options?.rawRefetchInterval,
     enabled: !hasRollupTier || !rollup.isLoading,
