@@ -1,10 +1,13 @@
+import { useMemo } from "react";
 import {
+  useQueries,
   useQuery,
   useInfiniteQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
 import { apiFetch, getToken } from "./client";
+import { mergeResultTiers } from "@/lib/result-tiers";
 import {
   stretchWhileLive,
   useLiveSubscription,
@@ -843,7 +846,12 @@ export interface ImportResult {
 }
 
 /** Third-party import sources the convert endpoint accepts. */
-export const CONVERT_SOURCES = ["gatus", "betterstack", "uptime-kuma", "uptimerobot"] as const;
+export const CONVERT_SOURCES = [
+  "gatus",
+  "betterstack",
+  "uptime-kuma",
+  "uptimerobot",
+] as const;
 export type ConvertSource = (typeof CONVERT_SOURCES)[number];
 
 /** One source item (or field) that could not be mapped faithfully. */
@@ -1274,53 +1282,124 @@ export function useCheckAvailability(
   });
 }
 
+/** The per-query slice of `useAllResults`/`useResultTiers` options — everything
+ * that lands in the react-query key and on the wire. `refetchInterval` is
+ * deliberately NOT part of it: it is a client-side scheduling concern, and
+ * folding it into the key would split the cache between two callers that
+ * request the same data at different cadences. */
+export interface ResultsQueryOptions {
+  checkUid?: string;
+  periodType?: string;
+  periodStartAfter?: string;
+  periodEndBefore?: string;
+  with?: string;
+  size?: number;
+}
+
+/** Follows result cursors until exhausted, returning every row in the window.
+ * Shared by `useAllResults` and by each tier of `useResultTiers` so both walk
+ * pages identically. */
+async function fetchAllResultPages(
+  org: string,
+  options: ResultsQueryOptions,
+): Promise<OrgResult[]> {
+  const allData: OrgResult[] = [];
+  let cursor: string | undefined;
+  const pageSize = options.size ?? 100;
+
+  do {
+    const params = new URLSearchParams();
+    if (options.checkUid) params.set("checkUid", options.checkUid);
+    if (options.periodType) params.set("periodType", options.periodType);
+    if (options.periodStartAfter)
+      params.set("periodStartAfter", options.periodStartAfter);
+    if (options.periodEndBefore)
+      params.set("periodEndBefore", options.periodEndBefore);
+    if (options.with) params.set("with", options.with);
+    if (cursor) params.set("cursor", cursor);
+    params.set("limit", pageSize.toString());
+    const query = params.toString();
+    const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
+    const response = await apiFetch<{
+      data?: OrgResult[];
+      pagination?: CursorPagination;
+    }>(path);
+    if (response.data) allData.push(...response.data);
+    cursor = response.pagination?.cursor;
+  } while (cursor);
+
+  return allData;
+}
+
 /** Fetches all result pages by following cursors until exhausted. */
 export function useAllResults(
   org: string,
-  options?: {
-    checkUid?: string;
-    periodType?: string;
-    periodStartAfter?: string;
-    periodEndBefore?: string;
-    with?: string;
-    size?: number;
-    refetchInterval?: number;
-  },
+  options?: ResultsQueryOptions & { refetchInterval?: number },
 ) {
   const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
     queryKey: ["allResults", org, queryOptions],
-    queryFn: async () => {
-      const allData: OrgResult[] = [];
-      let cursor: string | undefined;
-      const pageSize = options?.size ?? 100;
-
-      do {
-        const params = new URLSearchParams();
-        if (options?.checkUid) params.set("checkUid", options.checkUid);
-        if (options?.periodType) params.set("periodType", options.periodType);
-        if (options?.periodStartAfter)
-          params.set("periodStartAfter", options.periodStartAfter);
-        if (options?.periodEndBefore)
-          params.set("periodEndBefore", options.periodEndBefore);
-        if (options?.with) params.set("with", options.with);
-        if (cursor) params.set("cursor", cursor);
-        params.set("limit", pageSize.toString());
-        const query = params.toString();
-        const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
-        const response = await apiFetch<{
-          data?: OrgResult[];
-          pagination?: CursorPagination;
-        }>(path);
-        if (response.data) allData.push(...response.data);
-        cursor = response.pagination?.cursor;
-      } while (cursor);
-
-      return { data: allData };
-    },
+    queryFn: async () => ({
+      data: await fetchAllResultPages(org, queryOptions),
+    }),
     enabled: !!org,
     refetchInterval,
   });
+}
+
+/**
+ * Runs one `useAllResults`-shaped paginated walk per aggregation tier, **in
+ * parallel**, and merges the pages back into the single descending sequence a
+ * combined query would have returned.
+ *
+ * The tiers exist because the two indexes on `results` are partial and split on
+ * `period_type = 'raw'`: a query asking for `raw` and a rollup tier at once is
+ * satisfied by neither and can only be answered by a sequential scan of the
+ * largest table in the system (spec 2026-08-22-04). Callers build the tier list
+ * with `chartFetchParams`.
+ *
+ * Each tier gets the SAME `["allResults", org, {...}]` key shape `useAllResults`
+ * uses, so a second caller passing the same tier list (the check-detail route,
+ * which derives its region set and duration stats from the chart's window)
+ * remains a react-query cache hit rather than a second round of HTTP requests.
+ */
+export function useResultTiers(
+  org: string,
+  tiers: ResultsQueryOptions[],
+  options?: { refetchInterval?: number },
+) {
+  const queries = useQueries({
+    queries: tiers.map((tier) => ({
+      queryKey: ["allResults", org, tier],
+      queryFn: async () => ({ data: await fetchAllResultPages(org, tier) }),
+      enabled: !!org,
+      refetchInterval: options?.refetchInterval,
+    })),
+  });
+
+  // A single string dependency, not a spread array: the tier count changes when
+  // the user switches range (a month view has a rollup tier, an hour view does
+  // not) and a variable-length deps array is a hook-rules violation.
+  const signature = [
+    ...tiers.map(
+      (t) => `${t.periodType}@${t.periodStartAfter}~${t.periodEndBefore ?? ""}`,
+    ),
+    ...queries.map((q) => q.dataUpdatedAt),
+  ].join("|");
+
+  const data = useMemo(
+    () => ({ data: mergeResultTiers(queries.map((q) => q.data?.data)) }),
+    // Re-merge whenever a tier resolves or the tier plan itself changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
+  );
+
+  return {
+    data,
+    isLoading: queries.some((q) => q.isLoading),
+    isFetching: queries.some((q) => q.isFetching),
+    error: queries.find((q) => q.error)?.error ?? null,
+  };
 }
 
 // Incidents hooks
