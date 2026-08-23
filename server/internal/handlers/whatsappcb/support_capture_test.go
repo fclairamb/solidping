@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/whatsapp"
 	"github.com/fclairamb/solidping/server/internal/support"
@@ -173,4 +175,42 @@ func TestDeliveryStatusesStillWorkWithCaptureOn(t *testing.T) {
 
 	// A status callback is not a human message.
 	r.Empty(threadsOf(t, svc))
+}
+
+// panickingDB is a db.Service whose first query panics. The embedded nil
+// interface makes every other method panic too.
+type panickingDB struct {
+	db.Service
+}
+
+func (panickingDB) DB() *bun.DB {
+	panic("capture blew up inside the support service")
+}
+
+// TestCapturePanicStillReturns204 is the webhook-level half of CaptureSafe's
+// contract, and the one that names the real cost.
+//
+// TestCaptureFailureStillReturns204 above covers a DB that returns errors. This
+// one covers a capture path that PANICS — a nil map, a slice index, a parser
+// tripping on a malformed provider payload. None of those are a returned error,
+// and an escaping panic unwinds the webhook handler: Meta sees a 5xx, retries,
+// and eventually disables the subscription. One bug would cost the whole
+// channel rather than one message.
+func TestCapturePanicStillReturns204(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupEnv(t)
+
+	// A support service over a database that panics on first contact.
+	env.handler.support = support.NewService(panickingDB{}, support.Options{})
+
+	rec := env.postSigned(t, inboundBody("wamid.PANIC", "33612345678", "text", "hello"))
+	r.Equal(http.StatusNoContent, rec.Code,
+		"a panic inside capture must never escape into webhook handling")
+
+	// Delivery statuses on the same webhook are unaffected: the alerting path
+	// keeps working even while capture is broken.
+	r.Equal(http.StatusNoContent, env.postSigned(t, statusBody(testMessageID, "delivered")).Code)
+	r.Contains(env.deliveryBody(t), "delivered")
 }

@@ -1737,18 +1737,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	s.services.Support = supportService
 	s.authService.SetSupportInbox(supportService)
 
-	supportHandler := supportinbox.NewHandler(supportService, s.config)
 	// SuperAdmin on EVERY endpoint. The dash0 route that consumes this is
 	// unlinked, but a hidden route is not an access control — the URL is public
-	// knowledge and this group is the boundary.
-	supportGroup := api.NewGroup("/support").
-		Use(authMiddleware.RequireAuth).
-		Use(authMiddleware.RequireSuperAdmin)
-	supportGroup.GET("/threads", supportHandler.ListThreads)
-	supportGroup.GET("/threads/:uid", supportHandler.GetThread)
-	supportGroup.PATCH("/threads/:uid", supportHandler.UpdateThread)
-	supportGroup.GET("/threads/:uid/messages", supportHandler.ListMessages)
-	supportGroup.POST("/threads/:uid/messages", supportHandler.CreateMessage)
+	// knowledge and that group is the boundary. The registration (gate
+	// included) lives in the handler package so one function owns it and a test
+	// can exercise the real thing.
+	supportinbox.RegisterRoutes(api, authMiddleware, supportinbox.NewHandler(supportService, s.config))
 
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)

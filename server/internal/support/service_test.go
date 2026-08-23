@@ -290,32 +290,6 @@ func TestCapture_AttributesVerifiedContactOnly(t *testing.T) {
 	r.Nil(after.UserUID)
 }
 
-func TestCaptureSafe_SurvivesADeadDatabase(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	h := newHarness(t, "")
-
-	// The negative control that matters most: capture failing must never be
-	// able to propagate out and turn a webhook into a non-2xx.
-	r.NoError(h.dbSvc.Close())
-
-	r.NotPanics(func() {
-		h.svc.CaptureSafe(t.Context(), &support.Inbound{
-			Channel: models.SupportChannelWhatsApp, Identity: "+33600000000",
-			ExternalID: "wamid.DEAD", Body: "hello",
-		})
-	})
-
-	// Positive control that the database really is unusable — otherwise the
-	// assertion above proves nothing.
-	_, _, captureErr := h.svc.Capture(t.Context(), &support.Inbound{
-		Channel: models.SupportChannelWhatsApp, Identity: "+33600000000",
-		ExternalID: "wamid.DEAD2", Body: "hello",
-	})
-	r.Error(captureErr)
-}
-
 func TestReplyWindow_WhatsAppExpiresAndOthersDoNot(t *testing.T) {
 	t.Parallel()
 

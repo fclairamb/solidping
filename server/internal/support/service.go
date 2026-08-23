@@ -907,6 +907,19 @@ func (s *Service) RecordDelivery(ctx context.Context, channel, externalID, statu
 		return
 	}
 
+	// Same containment as CaptureSafe, for the same reason and on the SAME
+	// webhooks: this runs inside Meta's and Twilio's delivery callbacks, so a
+	// panic here would unwind the handler, the provider would see a 5xx, retry,
+	// and eventually disable the subscription. A support reply's delivery
+	// status is never worth the channel.
+	defer func() {
+		if rec := recover(); rec != nil {
+			prommetrics.SupportCapture.WithLabelValues(channel, outcomeFailed).Inc()
+			s.log.WarnContext(ctx, "support delivery update panicked",
+				"channel", channel, "panic", fmt.Sprint(rec))
+		}
+	}()
+
 	delivery := models.JSONMap{deliveryStatusKey: status, "source": "provider"}
 
 	if _, err := s.bun().NewUpdate().Model((*models.SupportMessage)(nil)).
