@@ -31,7 +31,21 @@ const mimeTraceCapture = "application/json"
 const traceUploadTimeout = 30 * time.Second
 
 // handleTraceRequest runs one server-requested path trace and POSTs the result.
+//
+// It recovers from a panic for the same reason the server-side dispatcher does:
+// this runs on its own goroutine inside a long-lived agent process, and an
+// unrecovered panic here would kill the agent — taking every check it runs with
+// it — over a diagnostic that is best-effort by design. The prober parses ICMP
+// bytes chosen by whatever sits on the path, which is the last input that
+// should ever be able to decide whether monitoring keeps running.
 func (b *WSBackend) handleTraceRequest(ctx context.Context, frame *agents.ServerFrame) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			b.logger.DebugContext(ctx, "path trace panicked",
+				"topic", frame.Topic, "panic", recovered)
+		}
+	}()
+
 	if frame.Trace == nil || frame.Topic == "" {
 		return
 	}
@@ -70,9 +84,15 @@ func (b *WSBackend) handleTraceRequest(ctx context.Context, frame *agents.Server
 		return
 	}
 
-	// Region and trigger are DELIBERATELY not set here. The server stamps them
-	// from the persisted result row when it renders the attachment; an agent
-	// must never be the authority on where it ran.
+	// Region is DELIBERATELY left empty here: an agent must never be the
+	// authority on where it ran. The SERVER stamps it onto the capture at the
+	// upload endpoint, from the agent's enrolled row
+	// (attachments.StampTracerouteRegion).
+	//
+	// Trigger stays empty on an agent capture and nothing fills it in: at
+	// upload time the server knows the topic but not whether that incident was
+	// opened or reopened by this trace, and a guess written into evidence is
+	// worse than a blank. The attachment's details bag records `agent-upload`.
 	body, err := capture.Marshal()
 	if err != nil {
 		b.logger.WarnContext(ctx, "path trace did not serialize", "topic", frame.Topic, "error", err)

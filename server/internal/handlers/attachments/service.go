@@ -285,6 +285,68 @@ func sniffMime(topic string, body []byte) (string, error) {
 	}
 }
 
+// ReadAttachment returns an attachment's stored bytes, capped like every other
+// read on this rail. Used by tests and by any caller that needs the artifact
+// itself rather than a signed URL to it.
+func (s *Service) ReadAttachment(ctx context.Context, orgUID, fileUID string) ([]byte, error) {
+	file, err := s.dbSvc.GetFile(ctx, orgUID, fileUID)
+	if err != nil {
+		return nil, fmt.Errorf("look up attachment: %w", err)
+	}
+
+	reader, err := s.files.OpenContent(ctx, file)
+	if err != nil {
+		return nil, fmt.Errorf("open attachment: %w", err)
+	}
+
+	defer func() { _ = reader.Close() }()
+
+	return ReadCapped(reader)
+}
+
+// StampTracerouteRegion rewrites an agent-uploaded path capture so it names the
+// region the SERVER knows the uploading agent serves.
+//
+// THE AGENT IS NEVER THE AUTHORITY ON WHERE IT RAN. That rule is why the agent
+// leaves Region empty on the capture it uploads — but leaving it empty is only
+// half a design: the dashboard reads the region out of the capture JSON, so an
+// unstamped capture renders with no vantage point at all. On a private-location
+// incident "which agent produced this path?" is the entire question, so the
+// blank was worse than the risk it was avoiding.
+//
+// Stamping here restores both properties at once: the value comes from the
+// agent's enrolled row rather than from anything it sent, and the stored
+// artifact is self-describing for anyone who downloads the raw JSON later.
+//
+// Trigger is deliberately NOT stamped. At upload time the server knows the
+// topic but not whether the incident it names was opened or reopened by this
+// capture, and inventing one of the two would be a guess written into evidence.
+// The attachment's details bag records `agent-upload`, which is the honest
+// answer to "how did this arrive?".
+//
+// A body that does not parse is returned UNCHANGED rather than rejected: the
+// media sniff downstream is the one place that decides what is acceptable, and
+// duplicating that judgment here would make the two able to disagree.
+func StampTracerouteRegion(body []byte, region string) []byte {
+	if region == "" {
+		return body
+	}
+
+	capture, err := nettrace.ParseCapture(body)
+	if err != nil {
+		return body
+	}
+
+	capture.Region = region
+
+	stamped, err := capture.Marshal()
+	if err != nil {
+		return body
+	}
+
+	return stamped
+}
+
 // ReadCapped reads at most MaxAttachmentBytes+1 bytes and reports
 // ErrAttachmentTooLarge when the body exceeds the cap. Reading one byte past
 // the cap is what distinguishes "exactly at the limit" from "truncated".

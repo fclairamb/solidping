@@ -140,6 +140,35 @@ describe("IncidentTracerouteCard", () => {
     ).toContain("eu2");
   });
 
+  // The region badge is driven by the CAPTURE's own field, not by the
+  // attachment metadata — which is exactly why the server stamps the region
+  // into an agent-uploaded capture (attachments.StampTracerouteRegion). An
+  // unstamped capture renders no vantage point at all, and on a
+  // private-location incident that is the whole question.
+  it("renders no region badge when the capture names no region", async () => {
+    const capture = icmpCapture();
+    capture.region = undefined;
+
+    stubFetch(capture);
+    renderCard(incidentWith("traceroute"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("incident-traceroute-table")).toBeTruthy(),
+    );
+
+    expect(screen.queryByTestId("incident-traceroute-region")).toBeNull();
+
+    // Positive control: the same card WITH a region does render the badge, so
+    // the absence above is the missing field and not a broken selector.
+    cleanup();
+    stubFetch(icmpCapture());
+    renderCard(incidentWith("traceroute"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("incident-traceroute-region")).toBeTruthy(),
+    );
+  });
+
   it("says 'no reply' for a silent hop when the mode CAN see hop addresses", async () => {
     stubFetch(icmpCapture());
     renderCard(incidentWith("traceroute"));

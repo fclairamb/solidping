@@ -145,10 +145,24 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	}
 
-	fileUID, err := h.svc.Put(req.Context(), orgUID, rawTopic(topic), attachmentName(topic), body,
-		models.JSONMap{
-			DetailKeyTrigger: TriggerAgentUpload,
-		})
+	// The probing region comes from the agent's ENROLLED ROW, never from the
+	// request: an agent must not be the authority on where it ran. For a path
+	// capture it is also stamped into the artifact itself, because the
+	// dashboard reads the region out of the capture JSON rather than out of
+	// this bag (spec 2026-08-21-10).
+	if topic.Kind == KindTraceroute {
+		body = StampTracerouteRegion(body, agent.Region)
+	}
+
+	details := models.JSONMap{
+		DetailKeyTrigger: TriggerAgentUpload,
+	}
+
+	if agent.Region != "" {
+		details[DetailKeyRegion] = agent.Region
+	}
+
+	fileUID, err := h.svc.Put(req.Context(), orgUID, rawTopic(topic), attachmentName(topic), body, details)
 	if err != nil {
 		return h.writePutError(writer, req, err)
 	}

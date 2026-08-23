@@ -587,3 +587,66 @@ func TestTheKindDecidesTheMediaType(t *testing.T) {
 	r.True(kinds[KindScreenshot])
 	r.True(kinds[KindTraceroute])
 }
+
+// TestAgentUploadStampsTheProbingRegion is the vantage-point guarantee for a
+// deported capture (spec 2026-08-21-10).
+//
+// It matters most exactly where it was missing: on a private-location incident,
+// "which agent's path is this?" IS the question, and a capture with no region
+// answers it with a blank. The value must come from the agent's ENROLLED ROW,
+// never from the upload, and it must land in the capture JSON — which is what
+// the dashboard reads — as well as in the attachment's details.
+func TestAgentUploadStampsTheProbingRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentTracerouteTopic(f.incident.UID)
+
+	// The uploaded capture carries NO region, exactly as the agent sends it.
+	uploaded := tracerouteBytes(t)
+
+	parsedBefore, err := nettrace.ParseCapture(uploaded)
+	r.NoError(err)
+	r.Empty(parsedBefore.Region, "the agent must not claim a region of its own")
+
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, uploaded)).Code)
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 1)
+	r.Equal("eu-west", live[0].Region, "the details bag must record the agent's region")
+
+	// And the stored BYTES carry it, because that is where the dashboard reads
+	// the region from — an attachment-only stamp would still render a blank.
+	stored, err := f.svc.ReadAttachment(f.ctx(), f.org.UID, live[0].UID)
+	r.NoError(err)
+
+	capture, err := nettrace.ParseCapture(stored)
+	r.NoError(err)
+	r.Equal("eu-west", capture.Region)
+
+	// Trigger stays empty on the capture: the server knows how it arrived, not
+	// whether it opened or reopened the incident. The details bag says how.
+	r.Empty(capture.Trigger)
+	r.Equal(TriggerAgentUpload, live[0].Trigger)
+}
+
+// TestStampTracerouteRegionLeavesUnparseableBytesAlone: the media sniff is the
+// one place that decides what is acceptable. Stamping must not become a second,
+// slightly different gate that the two could disagree on.
+func TestStampTracerouteRegionLeavesUnparseableBytesAlone(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	junk := []byte("not a capture")
+	r.Equal(junk, StampTracerouteRegion(junk, "eu-west"))
+
+	// And an empty region is a no-op rather than an erasure.
+	valid := tracerouteBytes(t)
+	r.Equal(valid, StampTracerouteRegion(valid, ""))
+}
