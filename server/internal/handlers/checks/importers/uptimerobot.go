@@ -3,6 +3,7 @@ package importers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,6 +11,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
+
+// jsonNull is the JSON literal for null, checked in a couple of places where
+// UptimeRobot represents "unset" as an explicit null rather than omitting the
+// field.
+const jsonNull = "null"
+
+// errNotJSONObjectOrArray is returned when the top-level input is neither a
+// JSON object nor a JSON array.
+var errNotJSONObjectOrArray = errors.New("uptimerobot payload is neither a JSON object nor an array")
 
 // UptimeRobotConverter turns an UptimeRobot API v2 `getMonitors` response into
 // an ExportDocument. Users fetch the JSON themselves with a read-only API key
@@ -21,8 +31,6 @@ type UptimeRobotConverter struct{}
 func (c *UptimeRobotConverter) Source() string { return SourceUptimeRobot }
 
 // robotResponse is the raw shape of one `getMonitors` page.
-//
-//nolint:tagliatelle // field names are UptimeRobot's, not ours
 type robotResponse struct {
 	Stat     string         `json:"stat"`
 	Monitors []robotMonitor `json:"monitors"`
@@ -62,7 +70,7 @@ type robotFlexInt int
 // UnmarshalJSON implements json.Unmarshaler.
 func (f *robotFlexInt) UnmarshalJSON(data []byte) error {
 	trimmed := strings.Trim(strings.TrimSpace(string(data)), `"`)
-	if trimmed == "" || trimmed == "null" {
+	if trimmed == "" || trimmed == jsonNull {
 		*f = 0
 
 		return nil
@@ -94,6 +102,8 @@ const (
 )
 
 // robotSubTypePorts maps a well-known Port monitor sub_type to its port.
+//
+//nolint:gochecknoglobals // robotSubTypePorts is a constant lookup map.
 var robotSubTypePorts = map[int]int{
 	1: 80,  // HTTP
 	2: 443, // HTTPS
@@ -179,7 +189,7 @@ func decodeRobotMonitors(input []byte) ([]robotMonitor, error) {
 	case '[':
 		return decodeRobotMonitorArray(trimmed)
 	default:
-		return nil, fmt.Errorf("parse uptimerobot response: input is neither a JSON object nor an array")
+		return nil, fmt.Errorf("parse uptimerobot response: %w", errNotJSONObjectOrArray)
 	}
 }
 
@@ -305,7 +315,7 @@ func (c *UptimeRobotConverter) warnUnmapped(monitor *robotMonitor, name string, 
 // object/array/string — the shapes UptimeRobot uses to mean "nothing here".
 func isEmptyJSON(raw json.RawMessage) bool {
 	switch strings.TrimSpace(string(raw)) {
-	case "", "null", "{}", "[]", `""`:
+	case "", jsonNull, "{}", "[]", `""`:
 		return true
 	default:
 		return false
@@ -345,21 +355,8 @@ func (c *UptimeRobotConverter) httpConfig(monitor *robotMonitor, timeout string,
 func (c *UptimeRobotConverter) portConfig(monitor *robotMonitor, timeout, name string, warn *warnings) map[string]any {
 	cfg := map[string]any{cfgKeyHost: monitor.URL}
 
-	subType := int(monitor.SubType)
-	if port, known := robotSubTypePorts[subType]; known {
+	if port, ok := robotPortFor(monitor, name, warn); ok {
 		cfg[cfgKeyPort] = port
-	} else if subType == robotSubTypeCustom || subType == 0 {
-		if port := int(monitor.Port); port > 0 {
-			cfg[cfgKeyPort] = port
-		} else {
-			warn.addf(name, "port", "port monitor has no resolvable port and was imported without one")
-		}
-	} else {
-		warn.addf(name, "sub_type", "unknown port sub_type %d — the port field was used instead", subType)
-
-		if port := int(monitor.Port); port > 0 {
-			cfg[cfgKeyPort] = port
-		}
 	}
 
 	if timeout != "" {
@@ -367,4 +364,28 @@ func (c *UptimeRobotConverter) portConfig(monitor *robotMonitor, timeout, name s
 	}
 
 	return cfg
+}
+
+// robotPortFor resolves the port for a Port monitor: a well-known sub_type
+// (1-6) resolves to its standard port; sub_type 99 (custom) or an absent
+// sub_type reads the `port` field; any other sub_type falls back to the
+// `port` field too, with a warning.
+func robotPortFor(monitor *robotMonitor, name string, warn *warnings) (int, bool) {
+	subType := int(monitor.SubType)
+
+	if port, known := robotSubTypePorts[subType]; known {
+		return port, true
+	}
+
+	if subType != robotSubTypeCustom && subType != 0 {
+		warn.addf(name, "sub_type", "unknown port sub_type %d — the port field was used instead", subType)
+	}
+
+	if port := int(monitor.Port); port > 0 {
+		return port, true
+	}
+
+	warn.addf(name, "port", "port monitor has no resolvable port and was imported without one")
+
+	return 0, false
 }

@@ -24,15 +24,17 @@ Shared rules (all sources):
     `checks.MaxIncidentPeriodSeconds` (86400). Better Stack routinely allows
     multi-day heartbeat grace periods, and Kuma's
     `maxretries × retryInterval` product easily exceeds a day.
-- **Credentials are never imported — deliberately.** SolidPing *does* have
-  somewhere to put them (`checkhttp.HTTPConfig.BasicAuth`, and the
-  `Username`/`Password` fields on the ssh, mqtt and database checkers); the
-  values are dropped as a security policy, not for lack of a field. A foreign
-  export can carry plaintext secrets, and an import must not silently
-  re-persist them into SolidPing behind the operator's back. Every dropped
-  credential is reported so the operator re-enters it deliberately. The single
-  exception is Better Stack request headers, which are carried over into the
-  **encrypted** `secretHeaders` field rather than the queryable public config.
+- **Credentials are never imported — deliberately** (Gatus, Better Stack,
+  Uptime Kuma). SolidPing *does* have somewhere to put them
+  (`checkhttp.HTTPConfig.BasicAuth`, and the `Username`/`Password` fields on
+  the ssh, mqtt and database checkers); the values are dropped as a security
+  policy, not for lack of a field. A foreign export can carry plaintext
+  secrets, and an import must not silently re-persist them into SolidPing
+  behind the operator's back. Every dropped credential is reported so the
+  operator re-enters it deliberately. Two exceptions: Better Stack request
+  headers are carried over into the **encrypted** `secretHeaders` field rather
+  than the queryable public config, and the UptimeRobot converter imports a
+  **basic** HTTP auth credential outright (see its own section below).
 - **Notification/alert bindings are never imported** (same as native import).
 - The converted document's `organization` is the source id, which becomes the
   managed-manifest label (`solidping.io/managed=gatus|betterstack|uptime-kuma`).
