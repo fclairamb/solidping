@@ -3428,6 +3428,15 @@ type OrgSettingsResponse struct {
 	// resolve to no policy of their own — the blast radius of setting or
 	// changing DefaultEscalationPolicyUID. Always present.
 	InheritingCheckCount int `json:"inheritingCheckCount"`
+	// TracerouteOnFailure is the ORG-LEVEL default for the path capture taken
+	// when a check goes down on a network-reachability failure (spec
+	// 2026-08-21-10). It applies to every check whose own
+	// `tracerouteOnFailure` is `inherit`.
+	//
+	// ALWAYS PRESENT, and true when the org has never set it — the spec's
+	// "org-level default (on)". A nullable field here would make the settings
+	// page render an unchecked box for an org that is in fact tracing.
+	TracerouteOnFailure bool `json:"tracerouteOnFailure"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -3464,12 +3473,37 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		return nil, err
 	}
 
+	traceParam, err := s.db.GetOrgParameter(ctx, org.UID, models.ParamKeyTracerouteEnabled)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgSettingsResponse{
 		RegistrationEmailPattern:   pattern,
 		SessionMaxDurationSeconds:  sessionMaxDurationSeconds,
 		DefaultEscalationPolicyUID: org.DefaultEscalationPolicyUID,
 		InheritingCheckCount:       inheritingCount,
+		TracerouteOnFailure:        paramBoolDefaultTrue(traceParam),
 	}, nil
+}
+
+// paramBoolDefaultTrue reads a boolean org parameter whose ABSENCE means true.
+//
+// The default has to live somewhere, and it lives here rather than in a row
+// written at org creation: a default stamped into every org at signup is a
+// default nobody can change later without a backfill, and it would make orgs
+// created before the feature behave differently from ones created after.
+func paramBoolDefaultTrue(param *models.Parameter) bool {
+	if param == nil {
+		return true
+	}
+
+	value, ok := param.Value[models.ParameterValueKey].(bool)
+	if !ok {
+		return true
+	}
+
+	return value
 }
 
 // UpdateOrgSettingsRequest contains the request data for updating org settings.
@@ -3484,6 +3518,9 @@ type UpdateOrgSettingsRequest struct {
 	// default (checks fall back to no policy); a non-empty UID sets it (the UID
 	// must be a policy in this org). Omit the field to leave it untouched.
 	DefaultEscalationPolicyUID *string `json:"defaultEscalationPolicyUid"`
+	// TracerouteOnFailure sets the org-level path-trace default (spec
+	// 2026-08-21-10). Omit to leave it unchanged.
+	TracerouteOnFailure *bool `json:"tracerouteOnFailure"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -3510,6 +3547,14 @@ func (s *Service) UpdateOrgSettings(
 	if req.DefaultEscalationPolicyUID != nil {
 		if updateErr := s.updateDefaultEscalationPolicy(ctx, org.UID, *req.DefaultEscalationPolicyUID); updateErr != nil {
 			return nil, updateErr
+		}
+	}
+
+	if req.TracerouteOnFailure != nil {
+		if updateErr := s.db.SetOrgParameter(
+			ctx, org.UID, models.ParamKeyTracerouteEnabled, *req.TracerouteOnFailure, false,
+		); updateErr != nil {
+			return nil, fmt.Errorf("set traceroute default: %w", updateErr)
 		}
 	}
 
@@ -3540,6 +3585,10 @@ func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
 
 	if req.DefaultEscalationPolicyUID != nil {
 		changed = append(changed, "default_escalation_policy_uid")
+	}
+
+	if req.TracerouteOnFailure != nil {
+		changed = append(changed, "traceroute_on_failure")
 	}
 
 	return changed

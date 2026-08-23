@@ -52,6 +52,17 @@ func NewSystemParameter(key string, value JSONMap, secret bool) *Parameter {
 // from ever drifting.
 const ParameterValueKey = "value"
 
+// ParamKeyTracerouteEnabled is the ORG-scoped switch that supplies the default
+// for every check whose own `traceroute_on_failure` is NULL (spec
+// 2026-08-21-10). Absent means ON.
+//
+// It lives here, next to the parameter machinery, rather than in the incident
+// package that reads it: the org-settings handler writes it and the incident
+// pipeline reads it, and those two packages sit on opposite sides of an import
+// cycle. A shared constant is what keeps the two ends from drifting apart into
+// two subtly different strings.
+const ParamKeyTracerouteEnabled = "diagnostics.traceroute.enabled"
+
 // ParameterValue wraps a scalar into the JSON envelope parameters are stored
 // in.
 func ParameterValue(value any) JSONMap {

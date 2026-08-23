@@ -8599,6 +8599,18 @@ components:
               type: string
               enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, UNKNOWN]
               description: The status that the check transitioned to
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy. When a network-reachability failure
+            (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or
+            reopens an incident for this check, an MTR-style traceroute is
+            captured and attached. `inherit` defers to the organization default
+            (itself on unless an admin turned it off); `on` and `off` decide for
+            this check. Application-level failures (HTTP 5xx, keyword mismatch,
+            certificate expiry) never trigger a trace, whatever this is set to.
+          default: inherit
         flappingWindowSeconds:
           type: integer
           description: >-
@@ -8801,6 +8813,13 @@ components:
       type: object
       required: [config]
       properties:
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy (see the Check schema). `inherit` puts
+            the check back under the organization default. Omit to leave
+            unchanged.
         name:
           type: string
           description: Check name (auto-generated from URL if not provided)
@@ -8884,6 +8903,13 @@ components:
     UpdateCheckRequest:
       type: object
       properties:
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy (see the Check schema). `inherit` puts
+            the check back under the organization default. Omit to leave
+            unchanged.
         name:
           type: string
         slug:
@@ -9509,7 +9535,14 @@ components:
           description: The `files` row uid.
         kind:
           type: string
-          description: Attachment kind, e.g. `screenshot`.
+          enum: [screenshot, traceroute]
+          description: >-
+            Attachment kind. `screenshot` is a PNG of what a failing browser
+            check's page looked like; `traceroute` is a JSON MTR-style path
+            capture (`nettrace.Capture`: mode, hops with address/PTR/loss and
+            min/avg/max RTT) taken after a network-reachability failure opened
+            the incident. Fetch and parse the JSON from `downloadUrl` — it is
+            never inlined into this payload.
         name:
           type: string
         mimeType:
@@ -9535,7 +9568,9 @@ components:
           format: date-time
           description: >-
             When the probe took the capture. For a screenshot this is a moment
-            AFTER failure detection, not the failing frame itself.
+            AFTER failure detection, not the failing frame itself; for a
+            traceroute it is when the sweep STARTED, which is always after the
+            failing result was already reported.
         region:
           type: string
           description: >-
@@ -13245,7 +13280,7 @@ components:
 
     OrgSettingsResponse:
       type: object
-      required: [registrationEmailPattern, inheritingCheckCount]
+      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure]
       properties:
         registrationEmailPattern:
           type: string
@@ -13266,6 +13301,12 @@ components:
           description: >-
             How many live checks currently resolve to no policy of their own —
             the blast radius of setting or changing the org default.
+        tracerouteOnFailure:
+          type: boolean
+          description: >-
+            Organization default for path-trace-on-failure. Applies to every
+            check whose own `tracerouteOnFailure` is `inherit`. True when the
+            organization has never set it.
 
     UpdateOrgSettingsRequest:
       type: object
@@ -13281,6 +13322,11 @@ components:
           description: >-
             A UID sets the org default escalation policy (must be a policy in
             this org); an empty string clears it; omit to leave unchanged.
+        tracerouteOnFailure:
+          type: boolean
+          description: >-
+            Sets the organization default for path-trace-on-failure. Omit to
+            leave unchanged.
 
     # Invitation schemas
     CreateInvitationRequest:

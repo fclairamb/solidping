@@ -171,6 +171,27 @@ func (e CheckLastStatusChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for CheckTracerouteOnFailure.
+const (
+	CheckTracerouteOnFailureInherit CheckTracerouteOnFailure = "inherit"
+	CheckTracerouteOnFailureOff     CheckTracerouteOnFailure = "off"
+	CheckTracerouteOnFailureOn      CheckTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the CheckTracerouteOnFailure enum.
+func (e CheckTracerouteOnFailure) Valid() bool {
+	switch e {
+	case CheckTracerouteOnFailureInherit:
+		return true
+	case CheckTracerouteOnFailureOff:
+		return true
+	case CheckTracerouteOnFailureOn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckType.
 const (
 	CheckTypeDns    CheckType = "dns"
@@ -288,6 +309,27 @@ func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for CheckListItemTracerouteOnFailure.
+const (
+	CheckListItemTracerouteOnFailureInherit CheckListItemTracerouteOnFailure = "inherit"
+	CheckListItemTracerouteOnFailureOff     CheckListItemTracerouteOnFailure = "off"
+	CheckListItemTracerouteOnFailureOn      CheckListItemTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the CheckListItemTracerouteOnFailure enum.
+func (e CheckListItemTracerouteOnFailure) Valid() bool {
+	switch e {
+	case CheckListItemTracerouteOnFailureInherit:
+		return true
+	case CheckListItemTracerouteOnFailureOff:
+		return true
+	case CheckListItemTracerouteOnFailureOn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckListItemType.
 const (
 	CheckListItemTypeDns    CheckListItemType = "dns"
@@ -312,6 +354,27 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeSsl:
 		return true
 	case CheckListItemTypeTcp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateCheckRequestTracerouteOnFailure.
+const (
+	CreateCheckRequestTracerouteOnFailureInherit CreateCheckRequestTracerouteOnFailure = "inherit"
+	CreateCheckRequestTracerouteOnFailureOff     CreateCheckRequestTracerouteOnFailure = "off"
+	CreateCheckRequestTracerouteOnFailureOn      CreateCheckRequestTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the CreateCheckRequestTracerouteOnFailure enum.
+func (e CreateCheckRequestTracerouteOnFailure) Valid() bool {
+	switch e {
+	case CreateCheckRequestTracerouteOnFailureInherit:
+		return true
+	case CreateCheckRequestTracerouteOnFailureOff:
+		return true
+	case CreateCheckRequestTracerouteOnFailureOn:
 		return true
 	default:
 		return false
@@ -864,6 +927,24 @@ func (e HealthResponseStatus) Valid() bool {
 	case HealthResponseStatusOk:
 		return true
 	case HealthResponseStatusUnhealthy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IncidentAttachmentKind.
+const (
+	IncidentAttachmentKindScreenshot IncidentAttachmentKind = "screenshot"
+	IncidentAttachmentKindTraceroute IncidentAttachmentKind = "traceroute"
+)
+
+// Valid indicates whether the value is a known member of the IncidentAttachmentKind enum.
+func (e IncidentAttachmentKind) Valid() bool {
+	switch e {
+	case IncidentAttachmentKindScreenshot:
+		return true
+	case IncidentAttachmentKindTraceroute:
 		return true
 	default:
 		return false
@@ -1773,6 +1854,27 @@ func (e StatusPageSummaryStatus) Valid() bool {
 	}
 }
 
+// Defines values for UpdateCheckRequestTracerouteOnFailure.
+const (
+	UpdateCheckRequestTracerouteOnFailureInherit UpdateCheckRequestTracerouteOnFailure = "inherit"
+	UpdateCheckRequestTracerouteOnFailureOff     UpdateCheckRequestTracerouteOnFailure = "off"
+	UpdateCheckRequestTracerouteOnFailureOn      UpdateCheckRequestTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the UpdateCheckRequestTracerouteOnFailure enum.
+func (e UpdateCheckRequestTracerouteOnFailure) Valid() bool {
+	switch e {
+	case UpdateCheckRequestTracerouteOnFailureInherit:
+		return true
+	case UpdateCheckRequestTracerouteOnFailureOff:
+		return true
+	case UpdateCheckRequestTracerouteOnFailureOn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateDependencyRequestKind.
 const (
 	UpdateDependencyRequestKindHard UpdateDependencyRequestKind = "hard"
@@ -2397,10 +2499,13 @@ type Check struct {
 	Slug       *string          `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
-	TargetHost *string             `json:"targetHost,omitempty"`
-	Type       *CheckType          `json:"type,omitempty"`
-	Uid        *openapi_types.UUID `json:"uid,omitempty"`
-	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
+	TargetHost *string `json:"targetHost,omitempty"`
+
+	// TracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+	TracerouteOnFailure *CheckTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+	Type                *CheckType                `json:"type,omitempty"`
+	Uid                 *openapi_types.UUID       `json:"uid,omitempty"`
+	UpdatedAt           *time.Time                `json:"updatedAt,omitempty"`
 
 	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
@@ -2408,6 +2513,9 @@ type Check struct {
 
 // CheckLastStatusChangeStatus The status that the check transitioned to
 type CheckLastStatusChangeStatus string
+
+// CheckTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+type CheckTracerouteOnFailure string
 
 // CheckType defines model for Check.Type.
 type CheckType string
@@ -2555,10 +2663,13 @@ type CheckListItem struct {
 	Slug       *string          `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
-	TargetHost *string             `json:"targetHost,omitempty"`
-	Type       *CheckListItemType  `json:"type,omitempty"`
-	Uid        *openapi_types.UUID `json:"uid,omitempty"`
-	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
+	TargetHost *string `json:"targetHost,omitempty"`
+
+	// TracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+	TracerouteOnFailure *CheckListItemTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+	Type                *CheckListItemType                `json:"type,omitempty"`
+	Uid                 *openapi_types.UUID               `json:"uid,omitempty"`
+	UpdatedAt           *time.Time                        `json:"updatedAt,omitempty"`
 
 	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
@@ -2566,6 +2677,9 @@ type CheckListItem struct {
 
 // CheckListItemLastStatusChangeStatus The status that the check transitioned to
 type CheckListItemLastStatusChangeStatus string
+
+// CheckListItemTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+type CheckListItemTracerouteOnFailure string
 
 // CheckListItemType defines model for CheckListItem.Type.
 type CheckListItemType string
@@ -2785,9 +2899,15 @@ type CreateCheckRequest struct {
 	// Slug URL-friendly identifier (auto-generated from URL if not provided)
 	Slug *string `json:"slug,omitempty"`
 
+	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+	TracerouteOnFailure *CreateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *CreateCheckRequestType `json:"type,omitempty"`
 }
+
+// CreateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+type CreateCheckRequestTracerouteOnFailure string
 
 // CreateCheckRequestType Check type (auto-inferred from URL if not provided)
 type CreateCheckRequestType string
@@ -3618,7 +3738,7 @@ type IncidentAckRequest struct {
 
 // IncidentAttachment One stored evidence blob hanging off an incident. The bytes are fetched through `downloadUrl`, never inlined.
 type IncidentAttachment struct {
-	// CapturedAt When the probe took the capture. For a screenshot this is a moment AFTER failure detection, not the failing frame itself.
+	// CapturedAt When the probe took the capture. For a screenshot this is a moment AFTER failure detection, not the failing frame itself; for a traceroute it is when the sweep STARTED, which is always after the failing result was already reported.
 	CapturedAt *time.Time          `json:"capturedAt,omitempty"`
 	CheckUid   *openapi_types.UUID `json:"checkUid,omitempty"`
 	CreatedAt  time.Time           `json:"createdAt"`
@@ -3626,8 +3746,8 @@ type IncidentAttachment struct {
 	// DownloadUrl RELATIVE, short-lived signed URL (`/pub/files/<uid>?exp=…&sig=…`). Relative so it resolves against whichever host served the dashboard — SolidPing answers on several. Re-signed on every fetch of the incident; do not cache it.
 	DownloadUrl string `json:"downloadUrl"`
 
-	// Kind Attachment kind, e.g. `screenshot`.
-	Kind string `json:"kind"`
+	// Kind Attachment kind. `screenshot` is a PNG of what a failing browser check's page looked like; `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
+	Kind IncidentAttachmentKind `json:"kind"`
 
 	// MimeType Content type as SNIFFED at write time from the bytes themselves, not as declared by the uploader.
 	MimeType string `json:"mimeType"`
@@ -3643,6 +3763,9 @@ type IncidentAttachment struct {
 	// Uid The `files` row uid.
 	Uid openapi_types.UUID `json:"uid"`
 }
+
+// IncidentAttachmentKind Attachment kind. `screenshot` is a PNG of what a failing browser check's page looked like; `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
+type IncidentAttachmentKind string
 
 // IncidentAttachmentTrigger What caused the capture to be kept.
 type IncidentAttachmentTrigger string
@@ -4509,6 +4632,9 @@ type OrgSettingsResponse struct {
 
 	// SessionMaxDurationSeconds Org-level session max duration override in seconds; omitted when inherited
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+
+	// TracerouteOnFailure Organization default for path-trace-on-failure. Applies to every check whose own `tracerouteOnFailure` is `inherit`. True when the organization has never set it.
+	TracerouteOnFailure bool `json:"tracerouteOnFailure"`
 }
 
 // OrganizationMemberSummary defines model for OrganizationMemberSummary.
@@ -5481,7 +5607,13 @@ type UpdateCheckRequest struct {
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). An empty string clears it back to the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
 	Slug         *string `json:"slug,omitempty"`
+
+	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+	TracerouteOnFailure *UpdateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 }
+
+// UpdateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+type UpdateCheckRequestTracerouteOnFailure string
 
 // UpdateDependencyRequest defines model for UpdateDependencyRequest.
 type UpdateDependencyRequest struct {
@@ -5573,6 +5705,9 @@ type UpdateOrgSettingsRequest struct {
 
 	// SessionMaxDurationSeconds Session max duration override in seconds; <=0 clears the override
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+
+	// TracerouteOnFailure Sets the organization default for path-trace-on-failure. Omit to leave unchanged.
+	TracerouteOnFailure *bool `json:"tracerouteOnFailure,omitempty"`
 }
 
 // UpdateProfileRequest defines model for UpdateProfileRequest.

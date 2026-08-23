@@ -374,11 +374,6 @@ func (s *Service) dropStaleTraceroute(
 	}
 }
 
-// TracerouteOrgParameterKey is the org-scoped switch that supplies the default
-// for every check that has not decided for itself. Absent means ON, per the
-// spec's "org-level default (on)".
-const TracerouteOrgParameterKey = "diagnostics.traceroute.enabled"
-
 // tracerouteEnabled resolves check → org → on.
 //
 // A read error resolves to the DEFAULT (on) rather than to off: the parameter
@@ -389,7 +384,7 @@ func (s *Service) tracerouteEnabled(ctx context.Context, check *models.Check) bo
 		return *check.TracerouteOnFailure
 	}
 
-	param, err := s.db.GetOrgParameter(ctx, check.OrganizationUID, TracerouteOrgParameterKey)
+	param, err := s.db.GetOrgParameter(ctx, check.OrganizationUID, models.ParamKeyTracerouteEnabled)
 	if err != nil || param == nil {
 		return true
 	}
