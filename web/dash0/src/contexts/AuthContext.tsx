@@ -15,6 +15,7 @@ import {
   getRefreshToken,
   getExpiresAt,
   getExpiresInSeconds,
+  redirectToPasswordChange,
 } from "@/api/client";
 import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/token-refresh";
 import { identifyAnalytics, resetAnalytics } from "@/lib/analytics";
@@ -137,6 +138,12 @@ interface AuthResponse {
     name?: string;
     avatarUrl?: string;
     role: string;
+    // Present (and true) only while the account must rotate its password.
+    // The session handed over IS valid — it simply reaches nothing but the
+    // rotation endpoint — so this is what routes the user to the
+    // "set a new password" screen instead of letting them walk into a wall of
+    // 403s on the dashboard's first data fetch.
+    mustChangePassword?: boolean;
   };
   organization?: {
     uid: string;
@@ -159,6 +166,11 @@ interface MeResponse {
     name?: string;
     avatarUrl?: string;
     role: string;
+    // See AuthResponse.user.mustChangePassword. /auth/me is deliberately one
+    // of the three endpoints a flagged session can still reach, precisely so a
+    // cold page load with a stored token can learn its own state here rather
+    // than by failing somewhere less legible.
+    mustChangePassword?: boolean;
   };
   // Optional — a zero-org session (a user who belongs to no organization yet)
   // gets a 200 from /auth/me with no organization. Mirrors the sibling
@@ -244,6 +256,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         `/api/v1/auth/me`,
         { suppress401Redirect: true }
       );
+      // A stored session restored on a cold page load never saw a login
+      // response, so this is where such a tab discovers it is confined to the
+      // rotation screen.
+      if (data.user.mustChangePassword) {
+        redirectToPasswordChange();
+      }
       setUser({
         uid: data.user.uid,
         email: data.user.email,
@@ -315,6 +333,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resolvedOrg = data.organization?.slug;
 
     setSession(data.accessToken, data.refreshToken, data.expiresIn);
+
+    // Forced rotation: store the session (the rotation form needs it as its
+    // proof of identity) and go straight to the screen. Every login-shaped
+    // response funnels through here — password, 2FA, recovery code, passkey —
+    // so no sign-in path can slip past it.
+    if (data.user.mustChangePassword) {
+      redirectToPasswordChange();
+      return { loginAction: "", organizations: [], resolvedOrg };
+    }
 
     if (resolvedOrg) {
       setStoredOrg(resolvedOrg);

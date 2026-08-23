@@ -199,6 +199,36 @@ export function redirectToExpiredLogin(): void {
   window.location.href = `${basepath}/orgs/${org}/login?session_expired=true&returnTo=${encodeURIComponent(returnTo)}`;
 }
 
+/** The route a session with a pending forced password rotation is confined to. */
+export const PASSWORD_CHANGE_PATH = "/change-password";
+
+/**
+ * The machine-readable code the API returns (with HTTP 403) while the signed-in
+ * account carries `must_change_password`. Deliberately distinct from FORBIDDEN:
+ * the correct reaction is "go rotate your password", not "you lack a
+ * permission". See server/internal/handlers/auth/password_rotation.go.
+ */
+export const PASSWORD_CHANGE_REQUIRED_CODE = "PASSWORD_CHANGE_REQUIRED";
+
+/**
+ * Sends the browser to the forced-rotation screen.
+ *
+ * This is the backstop half of what makes that screen inescapable: the login
+ * response already carries `mustChangePassword` and AuthContext routes there
+ * proactively, but a user who deep-links, hits Back, or restores an old tab
+ * never sees that response. Every API call such a session makes answers 403 /
+ * PASSWORD_CHANGE_REQUIRED, and every one of them lands here — so any attempt
+ * to navigate elsewhere bounces straight back.
+ *
+ * Idempotent, so the several failing requests a page fires concurrently do not
+ * fight over the navigation.
+ */
+export function redirectToPasswordChange(): void {
+  const basepath = import.meta.env.VITE_BASE_URL || "";
+  if (window.location.pathname === `${basepath}${PASSWORD_CHANGE_PATH}`) return;
+  window.location.href = `${basepath}${PASSWORD_CHANGE_PATH}`;
+}
+
 async function doFetch(url: string, headers: Headers, fetchOptions: RequestInit): Promise<Response> {
   noteApiActivity();
   try {
@@ -304,6 +334,17 @@ export async function handleResponse<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+
+    // Forced password rotation: not an ordinary 403. Rendering the usual
+    // "Permission denied" here would strand the user on a screen with no way
+    // out, when the one action that unblocks them is a form we ship.
+    if (
+      response.status === 403 &&
+      error.code === PASSWORD_CHANGE_REQUIRED_CODE
+    ) {
+      redirectToPasswordChange();
+    }
+
     throw new ApiError(
       error.title || "An error occurred",
       error.code || "UNKNOWN_ERROR",
