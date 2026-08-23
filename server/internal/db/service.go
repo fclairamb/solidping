@@ -358,6 +358,31 @@ type Service interface {
 	UpsertAggregatedResult(ctx context.Context, result *models.Result) error
 	GetResult(ctx context.Context, uid string) (*models.Result, error)
 	ListResults(ctx context.Context, filter *models.ListResultsFilter) (*models.ListResultsResponse, error)
+	// RecentResultsPerCheck returns the newest rows PER CHECK, per tier —
+	// `filter.LimitFor(checkUID)` rows for each requested check in each of
+	// filter.Tiers, newest period_start first — in ONE round trip.
+	//
+	// It exists because ListResults cannot express this: its Limit is global,
+	// so "the last 100 points for each of 20 checks" can only be asked for as
+	// one huge global limit that over-fetches and still, on a page mixing fast
+	// and slow checks, starves the slow ones (spec 2026-08-22-05: 40 000 rows
+	// read to keep ~6 000, sorted to disk, 662 ms per public page view).
+	//
+	// Every tier branch MUST sit entirely on one side of the raw/rollup split;
+	// Validate rejects anything else. This is not a style rule — both useful
+	// indexes on `results` are partial on `period_type = 'raw'` / `!= 'raw'`,
+	// and a per-check branch without that predicate degrades into one
+	// sequential scan of the whole table PER CHECK (measured 12 274 ms for a
+	// 20-check page, i.e. 18x WORSE than the query this replaces).
+	//
+	// The rows carry no metrics/output: this serves the response-time chart,
+	// which reads duration/status only.
+	//
+	// The returned rows are grouped per check and per tier but NOT globally
+	// ordered — callers merge and sort them (see statuspages.fetchRecentResults).
+	RecentResultsPerCheck(
+		ctx context.Context, filter *models.RecentResultsPerCheckFilter,
+	) ([]*models.Result, error)
 	// CountResultsByPeriodType returns the total row count in `results` grouped
 	// by period_type, across every organization. Table-wide and uncached —
 	// only the aggregation-job-cadence gauge sampler may call this, never a
