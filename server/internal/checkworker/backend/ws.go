@@ -809,6 +809,11 @@ func (b *WSBackend) readPump(ctx context.Context, conn *websocket.Conn) {
 			// (uncancellable) context so it outlives the request that produced
 			// the capture.
 			go b.handleUploadRequest(ctx, &frame)
+		case frame.Type == agents.MsgTypeTraceRequest:
+			// The server wants a path trace run FROM HERE — this agent's route
+			// to the target is the one that failed. Same posture as the upload
+			// request: off the pump's goroutine, best-effort, never retried.
+			go b.handleTraceRequest(ctx, &frame)
 		case frame.ID != "":
 			b.mu.Lock()
 			waiter, ok := b.pending[frame.ID]

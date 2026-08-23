@@ -292,6 +292,45 @@ type CheckersConfig struct {
 	EnabledLabels []string `koanf:"enabled_labels"` // Enable types matching any of these labels
 	// Browser configures the Chrome backend the `browser` check type runs on.
 	Browser BrowserCheckerConfig `koanf:"browser"`
+	// Traceroute configures the path capture taken when a check goes down on a
+	// network-reachability failure (spec 2026-08-21-10).
+	Traceroute TracerouteConfig `koanf:"traceroute"`
+}
+
+// TracerouteConfig is the deployment-level half of the traceroute-on-failure
+// policy. The per-CHECK toggle lives on `checks.traceroute_on_failure` and the
+// per-ORG default in the `diagnostics.traceroute.enabled` org parameter; this
+// is the operator's kill switch and the knobs neither of those should expose.
+//
+// EVERY KOANF KEY HERE IS A SINGLE WORD, on purpose. koanf's env loader
+// collapses underscores in SP_* names to dots, so a `max_hops` key would be
+// unreachable as SP_CHECKERS_TRACEROUTE_MAX_HOPS and would silently do nothing
+// — the quirk BrowserCheckerConfig needs a hand-written reader for. Naming
+// around it is cheaper than another manual binding.
+type TracerouteConfig struct {
+	// Enabled is the deployment kill switch (SP_CHECKERS_TRACEROUTE_ENABLED,
+	// default true). It only ever turns the feature OFF: a check still has to
+	// be opted in (directly or through its org) for a trace to happen.
+	Enabled bool `koanf:"enabled"`
+	// Rounds is how many times each hop is probed
+	// (SP_CHECKERS_TRACEROUTE_ROUNDS, default 3 — the spec's value).
+	Rounds int `koanf:"rounds"`
+	// Hops caps the TTL walk (SP_CHECKERS_TRACEROUTE_HOPS, default 30).
+	Hops int `koanf:"hops"`
+	// Budget is the hard wall-clock ceiling for one capture, reverse DNS
+	// included (SP_CHECKERS_TRACEROUTE_BUDGET, default 15s). The trace runs
+	// AFTER the failing result is reported, so this bounds nothing the
+	// monitored service or the incident can observe.
+	Budget time.Duration `koanf:"budget"`
+	// Limit is the per-ORGANIZATION ceiling on traces started per minute
+	// (SP_CHECKERS_TRACEROUTE_LIMIT, default 10).
+	//
+	// This is the mass-outage guard the spec asks for. When one upstream drops,
+	// every check behind it opens an incident within the same minute, and
+	// without a ceiling that is one 15-second traceroute per check — hundreds of
+	// concurrent sweeps whose results would all say the same thing. 0 disables
+	// the limit, which is a foot-gun and not a default.
+	Limit int `koanf:"limit"`
 }
 
 // BrowserCheckerConfig selects where the `browser` check type finds Chrome.
@@ -1530,6 +1569,18 @@ func Load() (*Config, error) {
 			SMSRunawayPerHour:  30,
 			CallRunawayPerHour: 10,
 		},
+		Checkers: CheckersConfig{
+			Traceroute: TracerouteConfig{
+				// ON by deployment default, per the spec's "org-level default
+				// (on)". A check still has to be opted in through its org or
+				// its own toggle before anything is traced.
+				Enabled: true,
+				Rounds:  nettraceDefaultRounds,
+				Hops:    nettraceDefaultHops,
+				Budget:  nettraceDefaultBudget,
+				Limit:   10,
+			},
+		},
 	}
 
 	if err := koanfInstance.Load(structs.Provider(defaults, "koanf"), nil); err != nil {
@@ -1739,6 +1790,36 @@ func applyCheckersEnv(cfg *CheckersConfig) {
 		cfg.Browser.ChromePath = v
 	}
 }
+
+// TraceroutePolicy is the resolved, defaulted view of TracerouteConfig. Reading
+// through it rather than the raw struct is what keeps "0 means the default"
+// from having to be re-remembered at every call site.
+func (c *CheckersConfig) TraceroutePolicy() TracerouteConfig {
+	out := c.Traceroute
+
+	if out.Rounds <= 0 {
+		out.Rounds = nettraceDefaultRounds
+	}
+
+	if out.Hops <= 0 {
+		out.Hops = nettraceDefaultHops
+	}
+
+	if out.Budget <= 0 {
+		out.Budget = nettraceDefaultBudget
+	}
+
+	return out
+}
+
+// Fallbacks for TraceroutePolicy. Duplicated from internal/nettrace rather than
+// imported because config is a leaf package that nothing else may depend on;
+// the nettrace tests assert the two agree.
+const (
+	nettraceDefaultRounds = 3
+	nettraceDefaultHops   = 30
+	nettraceDefaultBudget = 15 * time.Second
+)
 
 // applyPasswordHashingEnv reads SP_AUTH_PASSWORD_* into cfg. koanf's env loader
 // collapses every underscore in SP_*-prefixed names to a dot, so multi-word keys

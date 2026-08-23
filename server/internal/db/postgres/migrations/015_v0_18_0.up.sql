@@ -13,6 +13,7 @@
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
 --   SECTION: audit-actor-metadata      events source_ip/user_agent + wider actor_type
+--   SECTION: traceroute-diagnostics    checks.traceroute_on_failure per-check override
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -484,3 +485,28 @@ comment on column events.actor_uid is
 
 comment on column events.source_ip is
   'Client address of the request that caused the event. NULL when unknown or when audit.capture_ip is off.';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: traceroute-diagnostics
+-- Per-check opt-out for the MTR-style path capture taken when a check goes
+-- down on a network-reachability failure (spec 2026-08-21-10).
+-- ==========================================================================
+
+-- NULLABLE ON PURPOSE — three states, not two:
+--
+--   NULL   inherit the org default (org parameter `diagnostics.traceroute.enabled`,
+--          which itself defaults to ON per the spec)
+--   true   always trace this check
+--   false  never trace this check, whatever the org says
+--
+-- A NOT NULL DEFAULT true would collapse "the operator has not decided" into
+-- "the operator said yes", and every existing check would silently become an
+-- explicit opt-in that the org-level switch could no longer turn off.
+alter table checks add column if not exists traceroute_on_failure boolean;
+
+--bun:split
+
+comment on column checks.traceroute_on_failure is
+  'Per-check path-trace-on-failure override. NULL inherits the org default (spec 2026-08-21-10).';

@@ -153,6 +153,21 @@ type Check struct {
 	// (and ultimately to no escalation) when nil.
 	EscalationPolicyUID *string `bun:"escalation_policy_uid"`
 
+	// TracerouteOnFailure is the per-check override for the MTR-style path
+	// capture taken when this check goes down on a network-reachability
+	// failure (spec 2026-08-21-10).
+	//
+	// THREE STATES, AND nil IS THE INTERESTING ONE:
+	//
+	//	nil     inherit the org default (org parameter
+	//	        `diagnostics.traceroute.enabled`, itself ON per the spec)
+	//	&true   always trace this check
+	//	&false  never trace this check, whatever the org default says
+	//
+	// A plain bool would collapse "not decided" into "no", which would make
+	// the org-level default unreachable for every check that already exists.
+	TracerouteOnFailure *bool `bun:"traceroute_on_failure"`
+
 	// Status tracking
 	Status          CheckStatus `bun:"status,notnull,default:0"`
 	StatusStreak    int         `bun:"status_streak,notnull,default:0"`
@@ -280,6 +295,11 @@ type CheckUpdate struct {
 
 	// Optional escalation policy override (nil = inherit from group / none)
 	EscalationPolicyUID *string
+
+	// TracerouteOnFailure sets the per-check path-trace override;
+	// ClearTracerouteOnFailure resets it to NULL (inherit the org default).
+	TracerouteOnFailure      *bool
+	ClearTracerouteOnFailure bool
 
 	// Clear* fields set the corresponding column to NULL on update.
 	ClearEscalationPolicyUID bool

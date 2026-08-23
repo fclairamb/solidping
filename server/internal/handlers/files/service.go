@@ -336,6 +336,25 @@ func (s *Service) ListAttachments(ctx context.Context, orgUID, topic string) ([]
 	return files, nil
 }
 
+// ListAttachmentsByPrefix returns every live attachment of an org whose topic
+// starts with prefix. The caller supplies the trailing slash (see
+// attachments.IncidentTopicPrefix) — without it `incidents/abc/` would also
+// match incident `abcdef`.
+func (s *Service) ListAttachmentsByPrefix(
+	ctx context.Context, orgUID, topicPrefix string,
+) ([]*models.File, error) {
+	if topicPrefix == "" {
+		return nil, nil
+	}
+
+	files, _, err := s.db.ListFiles(ctx, orgUID, models.ListFilesFilter{TopicPrefix: topicPrefix})
+	if err != nil {
+		return nil, fmt.Errorf("list attachments by prefix: %w", err)
+	}
+
+	return files, nil
+}
+
 // DeleteAttachmentsByTopic soft-deletes every live attachment of an org under
 // an EXACT topic and returns how many rows changed. This is the replace half of
 // replace-on-write.

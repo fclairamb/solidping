@@ -1887,6 +1887,12 @@ func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optio
 		query = query.Set("region_spread = ?", *update.RegionSpread)
 	}
 
+	if update.ClearTracerouteOnFailure {
+		query = query.Set("traceroute_on_failure = NULL")
+	} else if update.TracerouteOnFailure != nil {
+		query = query.Set("traceroute_on_failure = ?", *update.TracerouteOnFailure)
+	}
+
 	if update.ReopenCooldownMultiplier != nil {
 		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
 	}

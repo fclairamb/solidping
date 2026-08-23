@@ -99,6 +99,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
@@ -1144,6 +1145,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// capture it advertised. Wired only on the agent-path incident service —
 	// the in-process worker already has the bytes in memory.
 	agentWorkerIncidents.SetAgentUploadRequester(agentWSHandler)
+
+	// Path diagnostics for DEPORTED agents (spec 2026-08-21-10). The trace has
+	// to run on the agent — its route to the target is the one that failed, and
+	// a sweep from this process would describe a path the probe never took — so
+	// this dispatcher gets the agent sender and NO local resolver. A result from
+	// a worker with no live connection here is simply not traced.
+	agentTraceSettings := s.config.Checkers.TraceroutePolicy()
+	agentWSHandler.SetTraceSettings(
+		agentTraceSettings.Rounds, agentTraceSettings.Hops, agentTraceSettings.Budget)
+
+	agentTraces := tracediag.New(agentTraceSettings, attachmentsService, slog.Default())
+	agentTraces.SetAgentSender(agentWSHandler)
+	agentWorkerIncidents.SetTraceRequester(agentTraces)
 
 	// Results routes (authentication required)
 	resultsService := results.NewService(s.dbService)

@@ -12,6 +12,7 @@
 --   SECTION: status-subscriber-channels status_page_subscriber webhook/slack
 --   SECTION: slo-burn-alerts           slo_alert_policies + incidents.kind/slo binding
 --   SECTION: audit-actor-metadata      events source_ip/user_agent + wider actor_type
+--   SECTION: traceroute-diagnostics    checks.traceroute_on_failure per-check override
 --
 -- ORDER IS LOAD-BEARING. Sections run top to bottom and later ones build on
 -- earlier ones. The .down.sql unwinds them in the exact reverse order.
@@ -482,3 +483,17 @@ create index if not exists idx_events_created on events (created_at);
 --bun:split
 
 PRAGMA foreign_keys=ON;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: traceroute-diagnostics
+-- Per-check opt-out for the MTR-style path capture taken when a check goes
+-- down on a network-reachability failure (spec 2026-08-21-10).
+-- ==========================================================================
+
+-- NULLABLE ON PURPOSE — three states, not two: NULL inherits the org default
+-- (org parameter `diagnostics.traceroute.enabled`, itself ON by default), true
+-- forces the trace on, false forces it off. A NOT NULL DEFAULT would collapse
+-- "not decided" into "yes" for every check that already exists.
+alter table checks add column traceroute_on_failure boolean;

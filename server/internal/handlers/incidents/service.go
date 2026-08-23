@@ -128,6 +128,10 @@ type AttachmentStore interface {
 	// DeleteIncidentAttachments soft-deletes everything attached to the
 	// incident and reports how many rows changed.
 	DeleteIncidentAttachments(ctx context.Context, orgUID, incidentUID string) (int, error)
+	// DeleteIncidentAttachment soft-deletes ONE kind of attachment on the
+	// incident, so retiring the stale screenshot cannot take the path capture
+	// with it (or the other way round).
+	DeleteIncidentAttachment(ctx context.Context, orgUID, incidentUID, kind string) (int, error)
 	// ListIncidentAttachments renders the incident's live attachments for the
 	// API, signed download URLs included.
 	ListIncidentAttachments(ctx context.Context, orgUID, incidentUID string) ([]attachments.Response, error)
@@ -151,6 +155,48 @@ type AgentUploadRequester interface {
 	// RequestScreenshotUpload asks the agent behind workerUID for the capture
 	// named by captureID, to be POSTed under topic.
 	RequestScreenshotUpload(ctx context.Context, workerUID, captureID, topic string)
+}
+
+// TraceRequest is what the incident pipeline hands to the path-trace
+// dispatcher: everything needed to run (or route) one capture, and nothing the
+// dispatcher would otherwise have to query back for.
+//
+// Topic is SERVER-GENERATED here, from the incident row this package just
+// wrote — same rule as the screenshot upload request, and for the same reason:
+// a topic is a storage key and an authorization subject.
+type TraceRequest struct {
+	OrgUID      string
+	IncidentUID string
+	CheckUID    string
+	// WorkerUID names the worker that produced the failing result. It is how
+	// the dispatcher decides WHERE to trace from: a capture run on the wrong
+	// host describes a route the probe never took.
+	WorkerUID string
+	// Region is the probing region, taken from the PERSISTED result row rather
+	// than from anything a deported agent said about itself.
+	Region string
+	// Trigger is TriggerIncidentOpen or TriggerIncidentReopen.
+	Trigger string
+	// Topic is the attachment topic to write the capture under.
+	Topic string
+	// Failure is the checker's network-reachability marker: the class, and the
+	// exact address and port the failing probe dialed.
+	Failure checkerdef.NetworkFailure
+}
+
+// TraceRequester is the path-diagnostics side of the incident lifecycle (spec
+// 2026-08-21-10).
+//
+// Same shape and same posture as AttachmentStore and AgentUploadRequester: one
+// small method returning NOTHING, so the incident state machine has no failure
+// to observe. The implementation runs the trace asynchronously — the failing
+// result is already reported and the incident already open by the time it
+// starts, which is the spec's "best-effort and asynchronous" requirement
+// expressed as a call-site property rather than as a promise.
+type TraceRequester interface {
+	// RequestTrace starts (or routes) one path capture. Never blocks on the
+	// trace itself.
+	RequestTrace(ctx context.Context, req TraceRequest)
 }
 
 // PublicationHook is the status-page publication side of the incident
@@ -203,6 +249,12 @@ type Service struct {
 	// with no agent transport).
 	agentUploads AgentUploadRequester
 
+	// traces asks for the MTR-style path capture when a check goes down on a
+	// network-reachability failure. Nil-safe: the call goes through
+	// requestTraceroute, which no-ops when unset (tests, or a deployment with
+	// file storage disabled).
+	traces TraceRequester
+
 	// maintenance resolves "is this check in an active maintenance window?".
 	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
 	// suppressed as maintenance and a result tagged as maintenance can never
@@ -236,6 +288,118 @@ func (s *Service) SetAttachmentStore(store AttachmentStore) {
 // Optional.
 func (s *Service) SetAgentUploadRequester(requester AgentUploadRequester) {
 	s.agentUploads = requester
+}
+
+// SetTraceRequester wires the path-diagnostics side. Optional.
+func (s *Service) SetTraceRequester(requester TraceRequester) {
+	s.traces = requester
+}
+
+// requestTraceroute asks for a path capture for the incident this result just
+// opened or reopened (spec 2026-08-21-10).
+//
+// THREE GATES, IN THIS ORDER, AND EACH ONE MATTERS:
+//
+//  1. TRANSITIONS ONLY. Like persistScreenshot, this is reached from
+//     createIncident and reopenIncident and nowhere else. A check that flaps
+//     every 30 s produces one trace per outage, not 2,880 a day.
+//  2. NETWORK-REACHABILITY FAILURES ONLY. No marker, no trace. An HTTP 500, a
+//     keyword mismatch or an expiring certificate never carries one (the
+//     checker sets it at transport-error sites only), so the "do not trace
+//     application failures" rule is a property of where the field is written
+//     rather than of a condition here that could rot.
+//  3. OPT-IN. The check's own answer wins; nil defers to the org.
+//
+// A marker with no address is dropped rather than re-resolved: tracing a
+// freshly resolved name could point at a different machine than the one that
+// actually failed, and a confidently wrong path is worse than none.
+func (s *Service) requestTraceroute(
+	ctx context.Context, check *models.Check, incident *models.Incident,
+	result *models.Result, trigger string,
+) {
+	if s.traces == nil || result == nil || result.Diagnostics == nil {
+		return
+	}
+
+	failure := result.Diagnostics.NetworkFailure
+	if failure == nil || failure.Address == "" {
+		return
+	}
+
+	if !s.tracerouteEnabled(ctx, check) {
+		return
+	}
+
+	req := TraceRequest{
+		OrgUID:      check.OrganizationUID,
+		IncidentUID: incident.UID,
+		CheckUID:    check.UID,
+		Trigger:     trigger,
+		Topic:       attachments.IncidentTracerouteTopic(incident.UID),
+		Failure:     *failure,
+	}
+
+	if result.WorkerUID != nil {
+		req.WorkerUID = *result.WorkerUID
+	}
+
+	if result.Region != nil {
+		req.Region = *result.Region
+	}
+
+	s.traces.RequestTrace(ctx, req)
+}
+
+// dropStaleTraceroute retires the PREVIOUS onset's path capture on a relapse.
+//
+// UNCONDITIONALLY, unlike the screenshot — and the asymmetry is the point. A
+// screenshot arrives WITH the failing result, so "did this relapse bring one?"
+// is answerable right here. A trace is started afterwards and may never
+// complete (no capability, rate-limited, agent gone, budget blown), so the only
+// way to guarantee the incident never shows a path from the previous outage
+// next to a relapse it does not describe is to drop it now and let the new one
+// land if it can.
+func (s *Service) dropStaleTraceroute(
+	ctx context.Context, check *models.Check, incident *models.Incident,
+) {
+	if s.attachmentStore == nil {
+		return
+	}
+
+	if _, err := s.attachmentStore.DeleteIncidentAttachment(
+		ctx, check.OrganizationUID, incident.UID, attachments.KindTraceroute,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to drop stale incident traceroute",
+			"incidentUid", incident.UID, "error", err)
+	}
+}
+
+// TracerouteOrgParameterKey is the org-scoped switch that supplies the default
+// for every check that has not decided for itself. Absent means ON, per the
+// spec's "org-level default (on)".
+const TracerouteOrgParameterKey = "diagnostics.traceroute.enabled"
+
+// tracerouteEnabled resolves check → org → on.
+//
+// A read error resolves to the DEFAULT (on) rather than to off: the parameter
+// row is the org's OVERRIDE, and a database blip must not silently look like an
+// operator having turned the feature off.
+func (s *Service) tracerouteEnabled(ctx context.Context, check *models.Check) bool {
+	if check.TracerouteOnFailure != nil {
+		return *check.TracerouteOnFailure
+	}
+
+	param, err := s.db.GetOrgParameter(ctx, check.OrganizationUID, TracerouteOrgParameterKey)
+	if err != nil || param == nil {
+		return true
+	}
+
+	enabled, ok := param.Value[models.ParameterValueKey].(bool)
+	if !ok {
+		return true
+	}
+
+	return enabled
 }
 
 // persistScreenshot writes the triggering result's browser capture as the
@@ -342,8 +506,8 @@ func (s *Service) dropStaleScreenshot(
 		return
 	}
 
-	if _, err := s.attachmentStore.DeleteIncidentAttachments(
-		ctx, check.OrganizationUID, incident.UID,
+	if _, err := s.attachmentStore.DeleteIncidentAttachment(
+		ctx, check.OrganizationUID, incident.UID, attachments.KindScreenshot,
 	); err != nil {
 		slog.WarnContext(ctx, "Failed to drop stale incident screenshot",
 			"incidentUid", incident.UID, "error", err)
@@ -938,6 +1102,7 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	// After the row exists: the attachment topic is keyed on the incident uid,
 	// so there is nothing to attach to before this point.
 	s.persistScreenshot(ctx, check, incident, result, attachments.TriggerIncidentOpen)
+	s.requestTraceroute(ctx, check, incident, result, attachments.TriggerIncidentOpen)
 
 	// Emit incident created event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
@@ -1147,7 +1312,9 @@ func (s *Service) reopenIncident(
 	// A reopen is a NEW onset: the relapse's capture replaces the original
 	// one, and a relapse with no capture leaves no stale one behind.
 	s.dropStaleScreenshot(ctx, check, incident, result)
+	s.dropStaleTraceroute(ctx, check, incident)
 	s.persistScreenshot(ctx, check, incident, result, attachments.TriggerIncidentReopen)
+	s.requestTraceroute(ctx, check, incident, result, attachments.TriggerIncidentReopen)
 
 	// Pass check fields to the incident for notification payload
 	incident.RelapseCount = newRelapseCount

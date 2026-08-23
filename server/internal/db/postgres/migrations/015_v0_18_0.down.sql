@@ -6,6 +6,18 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: traceroute-diagnostics
+-- Teardown half of the traceroute-diagnostics section (spec 2026-08-21-10).
+-- ==========================================================================
+
+-- LOSSY: per-check overrides are dropped with the column. On the way back up
+-- every check returns to inheriting the org default, which is the behaviour
+-- that predates the feature.
+alter table checks drop column if exists traceroute_on_failure;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: audit-actor-metadata
 -- Teardown half of the audit-actor-metadata section (spec 2026-08-21-09).
 -- ==========================================================================

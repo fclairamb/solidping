@@ -801,6 +801,7 @@ func isCheckFieldValidationError(err error) bool {
 		errors.Is(err, errFlappingWindowNegative) ||
 		errors.Is(err, errFlapBackoffTooSmall) ||
 		errors.Is(err, errMaxRecoveryMultTooSmall) ||
+		errors.Is(err, errInvalidTraceroutePolicy) ||
 		errors.As(err, &periodErr)
 }
 

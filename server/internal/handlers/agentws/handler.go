@@ -113,6 +113,13 @@ type Handler struct {
 	// uploads.go.
 	conns  *connRegistry
 	logger *slog.Logger
+	// traceRounds / traceMaxHops / traceBudget are the path-trace settings the
+	// server hands to an agent on a trace-request frame (spec 2026-08-21-10).
+	// They live here rather than on the agent so an operator tunes them in one
+	// config instead of on every deployed agent.
+	traceRounds  int
+	traceMaxHops int
+	traceBudget  time.Duration
 }
 
 // NewHandler creates the agent WebSocket handler.

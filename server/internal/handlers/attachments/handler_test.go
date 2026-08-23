@@ -16,6 +16,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/nettrace"
+
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -433,18 +435,18 @@ func TestAgentUploadReplacesTheSameTopic(t *testing.T) {
 // incident is a different artifact and must survive a screenshot upload.
 //
 // This matters because the kind segment is a bare word — reaping the screenshot
-// topic as a PREFIX would also take `screenshot-after`, `har`, and anything
-// else a later spec hangs off the same incident.
+// topic as a PREFIX would also take the path capture, `har`, and anything else
+// a later spec hangs off the same incident.
 func TestAgentUploadReplaceIsScopedToTheExactTopic(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	f := setupUploadTest(t)
 
-	// A sibling artifact on the same incident, written directly (there is only
-	// one registered kind on the wire today).
-	sibling := IncidentTopicPrefix(f.incident.UID) + "screenshot-after"
-	siblingUID, err := f.svc.Put(f.ctx(), f.org.UID, sibling, "after.png", pngBytes("after"), nil)
+	// A sibling artifact on the same incident: the path capture (spec
+	// 2026-08-21-10), which is a real second kind rather than a hypothetical.
+	sibling := IncidentTracerouteTopic(f.incident.UID)
+	siblingUID, err := f.svc.Put(f.ctx(), f.org.UID, sibling, "trace.json", tracerouteBytes(t), nil)
 	r.NoError(err)
 
 	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
@@ -458,4 +460,25 @@ func TestAgentUploadReplaceIsScopedToTheExactTopic(t *testing.T) {
 	stored, err := f.db.GetFile(f.ctx(), f.org.UID, siblingUID)
 	r.NoError(err, "a different kind on the same incident must survive the replace")
 	r.NotNil(stored)
+}
+
+// tracerouteBytes builds a minimal valid path capture, which is what the
+// traceroute kind's sniff accepts (see sniffMime: the bytes must PARSE as a
+// capture, not merely be JSON).
+func tracerouteBytes(t *testing.T) []byte {
+	t.Helper()
+
+	capture := &nettrace.Capture{
+		Mode:                nettrace.ModeICMPRaw,
+		HopAddressesVisible: true,
+		Host:                "acme.com",
+		Address:             "192.0.2.10",
+		Family:              "ipv4",
+		Hops:                []nettrace.Hop{{TTL: 1, Address: "10.0.0.1", Sent: 3, Received: 3}},
+	}
+
+	body, err := capture.Marshal()
+	require.NoError(t, err)
+
+	return body
 }

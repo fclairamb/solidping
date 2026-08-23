@@ -22,6 +22,8 @@ type fakeAttachmentStore struct {
 
 	puts    []fakePut
 	deletes []string
+	// kindDeletes records every per-kind reap as "<incidentUid>/<kind>".
+	kindDeletes []string
 	// failPut makes the store report an error, to prove the pipeline survives
 	// a storage outage.
 	failPut error
@@ -55,6 +57,23 @@ func (f *fakeAttachmentStore) DeleteIncidentAttachments(
 	defer f.mu.Unlock()
 
 	f.deletes = append(f.deletes, incidentUID)
+
+	return 1, nil
+}
+
+func (f *fakeAttachmentStore) DeleteIncidentAttachment(
+	_ context.Context, _, incidentUID, kind string,
+) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.kindDeletes = append(f.kindDeletes, incidentUID+"/"+kind)
+
+	// The screenshot reap is what the existing assertions read, so it keeps
+	// feeding `deletes`; the traceroute reap is recorded separately.
+	if kind == attachments.KindScreenshot {
+		f.deletes = append(f.deletes, incidentUID)
+	}
 
 	return 1, nil
 }

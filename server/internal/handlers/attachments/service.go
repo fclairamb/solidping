@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/files/signedurl"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage"
+	"github.com/fclairamb/solidping/server/internal/nettrace"
 )
 
 // MaxAttachmentBytes caps a single uploaded attachment. Mirrors the browser
@@ -31,8 +32,12 @@ const MaxAttachmentBytes int64 = 4 * 1024 * 1024
 // copied link keeps working outside the session that produced it.
 const DownloadURLTTL = time.Hour
 
-// mimePNG is the only attachment content type accepted today.
-const mimePNG = "image/png"
+// Attachment content types. PNG for a screenshot, JSON for a path capture —
+// and each is accepted ONLY under the topic kind that owns it (see sniffMime).
+const (
+	mimePNG  = "image/png"
+	mimeJSON = "application/json"
+)
 
 // pngMagic is the 8-byte PNG signature. Content types are sniffed, not
 // believed: a declared type is caller-controlled and the storage backend serves
@@ -112,6 +117,22 @@ type Response struct {
 	Trigger    string     `json:"trigger,omitempty"`
 }
 
+// PutIncidentTraceroute writes a serialized nettrace.Capture as the incident's
+// path-diagnostics attachment.
+//
+// REPLACE-ON-WRITE like the screenshot: a topic names ONE current artifact, and
+// a relapse's trace supersedes the previous onset's rather than stacking.
+func (s *Service) PutIncidentTraceroute(
+	ctx context.Context, orgUID, incidentUID string, capture []byte, details models.JSONMap,
+) (string, error) {
+	return s.Put(
+		ctx, orgUID,
+		IncidentTracerouteTopic(incidentUID),
+		"incident-"+incidentUID+"-traceroute.json",
+		capture, details,
+	)
+}
+
 // PutIncidentScreenshot writes a PNG as the incident's screenshot attachment.
 // It REPLACES any previous one (see Put): the caller's contract is "this is the
 // evidence for the current onset", so the prior capture is retired first.
@@ -133,12 +154,29 @@ func (s *Service) DeleteIncidentAttachments(ctx context.Context, orgUID, inciden
 	return s.files.DeleteAttachments(ctx, orgUID, IncidentTopicPrefix(incidentUID))
 }
 
+// DeleteIncidentAttachment soft-deletes ONE kind of attachment on an incident.
+//
+// The per-kind variant exists because an incident now carries more than one
+// artifact: reaping "the stale screenshot" through the entity prefix would take
+// the path capture with it, and reaping "the stale path capture" would take the
+// screenshot.
+func (s *Service) DeleteIncidentAttachment(
+	ctx context.Context, orgUID, incidentUID, kind string,
+) (int, error) {
+	return s.files.DeleteAttachmentsByTopic(ctx, orgUID, IncidentTopicPrefix(incidentUID)+kind)
+}
+
 // ListIncidentAttachments returns the incident's live attachments, rendered
 // with signed download URLs. Empty (never an error) when there are none.
+//
+// Listed by the incident's topic PREFIX rather than by one exact topic: an
+// incident now carries a screenshot AND a path capture, and the next kind
+// should surface without editing this function. Reaping stays exact-topic —
+// see files.DeleteAttachmentsByTopic for why the asymmetry is deliberate.
 func (s *Service) ListIncidentAttachments(
 	ctx context.Context, orgUID, incidentUID string,
 ) ([]Response, error) {
-	rows, err := s.files.ListAttachments(ctx, orgUID, IncidentScreenshotTopic(incidentUID))
+	rows, err := s.files.ListAttachmentsByPrefix(ctx, orgUID, IncidentTopicPrefix(incidentUID))
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +224,7 @@ func (s *Service) put(
 		return "", ErrAttachmentTooLarge
 	}
 
-	mimeType, err := sniffMime(body)
+	mimeType, err := sniffMime(topic, body)
 	if err != nil {
 		return "", err
 	}
@@ -208,15 +246,40 @@ func (s *Service) put(
 	return file.UID, nil
 }
 
-// sniffMime validates the bytes against the allowlist. PNG only today; the
-// allowlist is a function rather than a set so a future kind (HAR, pcap) adds
-// its own magic-byte check instead of trusting a header.
-func sniffMime(body []byte) (string, error) {
-	if len(body) >= len(pngMagic) && bytes.Equal(body[:len(pngMagic)], pngMagic) {
-		return mimePNG, nil
+// sniffMime validates the bytes against the allowlist FOR THIS TOPIC'S KIND.
+//
+// Keying on the kind rather than on a global allowlist is what stops the
+// traceroute kind from widening the screenshot kind: an agent that POSTs JSON
+// under `incidents/<uid>/screenshot` is refused even though JSON is now an
+// accepted type somewhere. Each kind declares what it is, and anything with no
+// declared type is refused outright — fail closed.
+func sniffMime(topic string, body []byte) (string, error) {
+	parsed, err := ParseTopic(topic)
+	if err != nil {
+		return "", err
 	}
 
-	return "", fmt.Errorf("%w: only %s is accepted", ErrUnsupportedMediaType, mimePNG)
+	switch parsed.Kind {
+	case KindScreenshot:
+		if len(body) >= len(pngMagic) && bytes.Equal(body[:len(pngMagic)], pngMagic) {
+			return mimePNG, nil
+		}
+
+		return "", fmt.Errorf("%w: %s attachments must be %s", ErrUnsupportedMediaType, KindScreenshot, mimePNG)
+
+	case KindTraceroute:
+		// Not "is it JSON" but "is it a CAPTURE": the bytes come off the wire
+		// from a deported agent, and a blob the dashboard cannot render is
+		// worse stored than refused.
+		if _, parseErr := nettrace.ParseCapture(body); parseErr != nil {
+			return "", fmt.Errorf("%w: %s", ErrUnsupportedMediaType, parseErr.Error())
+		}
+
+		return mimeJSON, nil
+
+	default:
+		return "", fmt.Errorf("%w: no media type is defined for kind %q", ErrUnsupportedMediaType, parsed.Kind)
+	}
 }
 
 // ReadCapped reads at most MaxAttachmentBytes+1 bytes and reports

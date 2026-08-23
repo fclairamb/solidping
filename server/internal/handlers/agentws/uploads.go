@@ -3,8 +3,10 @@ package agentws
 import (
 	"context"
 	"sync"
+	"time"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 )
 
 // The server->agent upload-request side of the agent protocol (spec
@@ -132,4 +134,53 @@ func (h *Handler) RequestScreenshotUpload(ctx context.Context, workerUID, captur
 	// capture is lost; the incident is already open regardless.
 	h.logger.DebugContext(ctx, "no live agent connection for capture upload request",
 		"worker_uid", workerUID, "topic", topic)
+}
+
+// SendTraceRequest asks the agent behind workerUID to RUN a path trace and
+// upload the capture (spec 2026-08-21-10). It implements
+// tracediag.AgentTraceSender.
+//
+// UNLIKE RequestScreenshotUpload THIS RETURNS A BOOLEAN, and the difference is
+// not cosmetic. A screenshot the agent already holds is either delivered or
+// lost, and the caller has nothing to decide. A trace has not run yet, so
+// "there is no live connection for this worker" is genuinely actionable: it
+// tells the dispatcher to consider tracing from THIS process instead — which it
+// may only do when the worker is one of its own, because a trace from the wrong
+// host describes a route the probe never took.
+func (h *Handler) SendTraceRequest(
+	ctx context.Context, workerUID string, req incidents.TraceRequest,
+) bool {
+	if workerUID == "" || req.Topic == "" || req.Failure.Address == "" {
+		return false
+	}
+
+	frame := agentcrypto.ServerFrame{
+		Type:  agentcrypto.MsgTypeTraceRequest,
+		Topic: req.Topic,
+		Trace: &agentcrypto.TraceRequestFrame{
+			Host:     req.Failure.Host,
+			Address:  req.Failure.Address,
+			Port:     req.Failure.Port,
+			Rounds:   h.traceRounds,
+			MaxHops:  h.traceMaxHops,
+			BudgetMs: h.traceBudget.Milliseconds(),
+		},
+	}
+
+	if h.conns.send(workerUID, &frame) {
+		return true
+	}
+
+	h.logger.DebugContext(ctx, "no live agent connection for a path trace request",
+		"worker_uid", workerUID, "topic", req.Topic)
+
+	return false
+}
+
+// SetTraceSettings pins the trace parameters the server sends to agents, so the
+// knobs live in one config rather than in every deployed agent's own flags.
+func (h *Handler) SetTraceSettings(rounds, maxHops int, budget time.Duration) {
+	h.traceRounds = rounds
+	h.traceMaxHops = maxHops
+	h.traceBudget = budget
 }

@@ -22,6 +22,10 @@ const (
 	EntityIncidents = "incidents"
 	// KindScreenshot is the kind segment for a page capture.
 	KindScreenshot = "screenshot"
+	// KindTraceroute is the kind segment for an MTR-style path capture taken
+	// when a check went down on a network-reachability failure
+	// (spec 2026-08-21-10).
+	KindTraceroute = "traceroute"
 )
 
 // MaxTopicLength bounds a topic. Topics are machine-generated
@@ -52,6 +56,12 @@ func IncidentTopicPrefix(incidentUID string) string {
 // stored under.
 func IncidentScreenshotTopic(incidentUID string) string {
 	return IncidentTopicPrefix(incidentUID) + KindScreenshot
+}
+
+// IncidentTracerouteTopic returns the exact topic an incident's path capture is
+// stored under.
+func IncidentTracerouteTopic(incidentUID string) string {
+	return IncidentTopicPrefix(incidentUID) + KindTraceroute
 }
 
 // ParsedTopic is a topic split into its three segments.

@@ -732,6 +732,19 @@ type CheckResponse struct {
 	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
 	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
 
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`.
+	//
+	// A TRI-STATE STRING RATHER THAN A NULLABLE BOOLEAN, and that is a
+	// deliberate API choice. Over PATCH a `*bool` cannot express "put this
+	// check back to inheriting": an explicit JSON `null` and an absent field
+	// both decode to nil, so the third state would be unreachable from the
+	// dashboard. The column underneath is still a nullable boolean.
+	//
+	// ALWAYS EMITTED on read (never omitempty) — a missing field would send
+	// the form back to guessing which of the three states it is looking at.
+	TracerouteOnFailure string `json:"tracerouteOnFailure"`
+
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindowSeconds    int  `json:"flappingWindowSeconds"`
@@ -1175,6 +1188,12 @@ type CreateCheckRequest struct {
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
 
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`. Absent leaves it unchanged
+	// (create: inherit); `inherit` is what puts a check that had an explicit
+	// answer back under the org default.
+	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
@@ -1369,6 +1388,15 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// Set adaptive resolution / flapping settings.
 	check.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 
+	if req.TracerouteOnFailure != nil {
+		value, ok := parseTraceroutePolicy(*req.TracerouteOnFailure)
+		if !ok {
+			return CheckResponse{}, errInvalidTraceroutePolicy
+		}
+
+		check.TracerouteOnFailure = value
+	}
+
 	if vErr := validateFlappingFields(
 		req.FlappingWindowSeconds, req.FlapBackoffFactor, req.MaxRecoveryMultiplier,
 	); vErr != nil {
@@ -1552,6 +1580,12 @@ type UpdateCheckRequest struct {
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
 
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`. Absent leaves it unchanged
+	// (create: inherit); `inherit` is what puts a check that had an explicit
+	// answer back under the org default.
+	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
@@ -1708,6 +1742,19 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, applyErr
 		}
 	}
+	if req.TracerouteOnFailure != nil {
+		value, ok := parseTraceroutePolicy(*req.TracerouteOnFailure)
+		if !ok {
+			return CheckResponse{}, errInvalidTraceroutePolicy
+		}
+
+		// nil is the INHERIT answer, and it has to travel as an explicit clear
+		// rather than as "no change" — otherwise a check could be moved onto an
+		// explicit on/off and never moved back.
+		update.TracerouteOnFailure = value
+		update.ClearTracerouteOnFailure = value == nil
+	}
+
 	if req.ReopenCooldownMultiplier != nil {
 		update.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 	}
@@ -2752,6 +2799,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		ConfirmationPeriodSeconds: check.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 		EscalationPolicyUID:       check.EscalationPolicyUID,
+		TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
 	}
 }
 
@@ -4284,4 +4332,53 @@ func checkDisplayName(check *models.Check) string {
 	}
 
 	return ""
+}
+
+// Traceroute policy wire values (spec 2026-08-21-10). The column is a nullable
+// boolean; these are its three states named so a PATCH can reach all of them.
+const (
+	// TraceroutePolicyInherit defers to the org default.
+	TraceroutePolicyInherit = "inherit"
+	// TraceroutePolicyOn always traces this check's network failures.
+	TraceroutePolicyOn = "on"
+	// TraceroutePolicyOff never traces this check, whatever the org says.
+	TraceroutePolicyOff = "off"
+)
+
+// errInvalidTraceroutePolicy rejects anything outside the three-value set. It
+// is listed in isCheckFieldValidationError so a bad value is a 400, not a 500.
+var errInvalidTraceroutePolicy = errors.New(
+	"tracerouteOnFailure must be one of: " +
+		TraceroutePolicyInherit + ", " + TraceroutePolicyOn + ", " + TraceroutePolicyOff,
+)
+
+// parseTraceroutePolicy maps a wire value to the column. The nil return is the
+// INHERIT state, not a failure — ok is what reports validity.
+func parseTraceroutePolicy(value string) (*bool, bool) {
+	switch value {
+	case TraceroutePolicyInherit, "":
+		return nil, true
+	case TraceroutePolicyOn:
+		enabled := true
+
+		return &enabled, true
+	case TraceroutePolicyOff:
+		disabled := false
+
+		return &disabled, true
+	default:
+		return nil, false
+	}
+}
+
+// renderTraceroutePolicy maps the column back to its wire value.
+func renderTraceroutePolicy(value *bool) string {
+	switch {
+	case value == nil:
+		return TraceroutePolicyInherit
+	case *value:
+		return TraceroutePolicyOn
+	default:
+		return TraceroutePolicyOff
+	}
 }
