@@ -2,6 +2,7 @@ package audit
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -138,8 +139,44 @@ func redactValue(value any, depth int) (any, bool) {
 	case []models.JSONMap:
 		return redactJSONMapSlice(typed, depth), true
 	default:
+		if unwrapped, isPtr := derefPointer(value); isPtr {
+			if unwrapped == nil {
+				return nil, true
+			}
+
+			return redactValue(unwrapped, depth)
+		}
+
 		return redactScalar(value)
 	}
+}
+
+// derefPointer unwraps one level of pointer, reporting whether the value was a
+// pointer at all. A nil pointer unwraps to a nil `any` — stored as JSON null,
+// which is what the pre-audit emitters wrote for an unset column.
+//
+// This exists because redactScalar FAILS CLOSED on anything it does not
+// enumerate, and it enumerated only VALUE types. A pointer is not a container
+// and cannot hide a nested key — the pointee still goes back through
+// redactValue and is filtered on its own merits — but the omission meant every
+// `*string` was silently dropped. Bun models are full of them
+// (models.Check.Name and .Slug are both `*string`), so the moment the check
+// emitters moved onto audit.NewEvent (spec 2026-08-21-09), `check_name` and
+// `check_slug` stopped being written to check.created / check.updated /
+// check.deleted rows. The audit trail lost the only human-readable identity a
+// deleted check leaves behind, and the dashboard's recent-activity row lost
+// its link text — which is how this was noticed.
+func derefPointer(value any) (any, bool) {
+	rv := reflect.ValueOf(value)
+	if rv.Kind() != reflect.Ptr {
+		return nil, false
+	}
+
+	if rv.IsNil() {
+		return nil, true
+	}
+
+	return rv.Elem().Interface(), true
 }
 
 // redactScalar handles the leaf types. It FAILS CLOSED: anything not

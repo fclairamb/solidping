@@ -785,3 +785,81 @@ func TestRedactReachesSecretsInsideSlicesOfMaps(t *testing.T) {
 	// Positive control: an ordinary list is unaffected.
 	r.Equal([]any{"one", "two"}, out["plain_list"])
 }
+
+// TestRedactKeepsPointerScalars is the regression guard for the audit trail
+// silently losing `check_name` / `check_slug`.
+//
+// Bun models store nullable columns as pointers — models.Check.Name and .Slug
+// are both `*string` — and the check emitters pass those fields straight into
+// the payload. Redact's fail-closed default enumerated VALUE types only, so
+// every one of them was dropped: `check.created` rows kept `check_type` (a
+// plain string) and lost the two fields that name the check. Nothing failed;
+// the trail just stopped answering "which check was this?".
+func TestRedactKeepsPointerScalars(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	name := "Activation feed probe"
+	slug := "http-example-com"
+	count := 3
+	flag := true
+	var missing *string
+
+	out := audit.Redact(models.JSONMap{
+		"check_name": &name,
+		"check_slug": &slug,
+		"count":      &count,
+		"enabled":    &flag,
+		"absent":     missing,
+	})
+
+	r.Equal(name, out["check_name"])
+	r.Equal(slug, out["check_slug"])
+	r.Equal(3, out["count"])
+	r.Equal(true, out["enabled"])
+	// A nil pointer is a present-but-null field, exactly what the pre-audit
+	// emitters wrote for an unset column — not an absent key.
+	r.Contains(out, "absent")
+	r.Nil(out["absent"])
+}
+
+// TestRedactStillFiltersThroughPointers — unwrapping a pointer must not become
+// a way around key filtering. The pointee goes back through Redact's own walk,
+// so a secret behind a pointer is still removed.
+func TestRedactStillFiltersThroughPointers(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	secret := "hunter2"
+	nested := map[string]any{"password": "hunter2", "kept": "yes"}
+
+	out := audit.Redact(models.JSONMap{
+		"api_token": &secret,
+		"settings":  &nested,
+	})
+
+	r.NotContains(out, "api_token", "a sensitive KEY is dropped whether or not its value is a pointer")
+
+	settings, ok := out["settings"].(map[string]any)
+	r.True(ok, "a pointer to a map is walked as a map")
+	r.NotContains(settings, "password")
+	r.Equal("yes", settings["kept"])
+}
+
+// TestRedactTruncatesThroughPointers — the length cap must survive the
+// dereference, or a pointer becomes a way to store a 40 KB blob.
+func TestRedactTruncatesThroughPointers(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	long := strings.Repeat("x", 5000)
+
+	out := audit.Redact(models.JSONMap{"note": &long})
+
+	stored, ok := out["note"].(string)
+	r.True(ok)
+	r.Len(stored, 256)
+}
