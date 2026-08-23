@@ -3,8 +3,12 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -93,12 +97,7 @@ func (r *SupportCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 		return nil
 	}
 
-	// <= 0 means "keep forever" and is a supported, deliberate choice — an
-	// operator under a legal hold must be able to switch the sweep off without
-	// removing the job.
-	retentionDays := resolveRetentionTier(ctx, jctx,
-		systemconfig.KeySupportRetentionDays, "SP_SUPPORT_RETENTION_DAYS",
-		0, DefaultSupportRetentionDays)
+	retentionDays := resolveSupportRetentionDays(ctx, jctx)
 	if retentionDays <= 0 {
 		log.InfoContext(ctx, "Support retention disabled; keeping every thread")
 		r.rescheduleSelf(ctx, jctx)
@@ -132,6 +131,64 @@ func (r *SupportCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 	r.rescheduleSelf(ctx, jctx)
 
 	return nil
+}
+
+// resolveSupportRetentionDays resolves the retention window through the
+// documented precedence: env var → global DB parameter → hardcoded default.
+//
+// It does NOT reuse resolveRetentionTier, which rejects values below 1 and
+// falls through to the default. Here ZERO IS MEANINGFUL: it means "keep
+// forever", the switch an operator under a legal hold needs. Silently turning
+// that into 365 days would delete the very records they are obliged to keep.
+func resolveSupportRetentionDays(ctx context.Context, jctx *jobdef.JobContext) int {
+	log := jctx.Logger
+
+	if raw := strings.TrimSpace(os.Getenv("SP_SUPPORT_RETENTION_DAYS")); raw != "" {
+		if days, err := strconv.Atoi(raw); err == nil && days >= 0 {
+			return days
+		}
+
+		log.WarnContext(ctx, "Ignoring invalid SP_SUPPORT_RETENTION_DAYS", "value", raw)
+	}
+
+	if jctx.DBService != nil {
+		param, err := jctx.DBService.GetSystemParameter(ctx, string(systemconfig.KeySupportRetentionDays))
+		if err == nil && param != nil {
+			if days, ok := supportRetentionFromParam(param.Value); ok {
+				return days
+			}
+
+			log.WarnContext(ctx, "Ignoring invalid support.retention_days parameter")
+		}
+	}
+
+	return DefaultSupportRetentionDays
+}
+
+// supportRetentionFromParam reads the retention value out of a system parameter
+// row, tolerating both the float64 a JSON round trip produces and a plain int.
+func supportRetentionFromParam(value models.JSONMap) (int, bool) {
+	raw, ok := value["value"]
+	if !ok {
+		return 0, false
+	}
+
+	switch typed := raw.(type) {
+	case float64:
+		if typed >= 0 {
+			return int(typed), true
+		}
+	case int:
+		if typed >= 0 {
+			return typed, true
+		}
+	case int64:
+		if typed >= 0 {
+			return int(typed), true
+		}
+	}
+
+	return 0, false
 }
 
 func (r *SupportCleanupJobRun) rescheduleSelf(ctx context.Context, jctx *jobdef.JobContext) {
