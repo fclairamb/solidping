@@ -46,6 +46,12 @@
       "confirmInputLabel": "Type {{org}} to confirm",
       "confirmAction": "Delete organization",
       "deleted": "Organization {{org}} deleted"
+    },
+    "traceroute": {
+      "title": "Network path diagnostics",
+      "description": "When a check goes down because its target could not be REACHED, capture an MTR-style traceroute and attach it to the incident.",
+      "label": "Traceroute on network failure",
+      "help": "Applies to every check set to \"inherit\". Only reachability failures trigger a capture — connect timeouts, refusals, ICMP loss, stalled TLS handshakes. An HTTP 5xx, a keyword mismatch or an expiring certificate never does, because the server answered. Traces run after the failing result is already reported and are rate-limited per organization, so they never delay an incident or flood a mass outage."
     }
   },
   "usage": {

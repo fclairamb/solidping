@@ -61,6 +61,9 @@ export interface Check {
    * Escalation policy assigned directly to this check. When null/absent the
    * check inherits its group's policy, then the org default, then none.
    */
+  /** Per-check path-trace policy: `inherit` (the org default), `on` or `off`.
+   * Always present on read; a check that never set it reads `inherit`. */
+  tracerouteOnFailure?: string;
   escalationPolicyUid?: string | null;
   type?:
     | "http"
@@ -182,6 +185,10 @@ export interface RegionDefinition {
 }
 
 export interface CreateCheckRequest {
+  /** Per-check path-trace policy: `inherit`, `on` or `off` (spec
+   * 2026-08-21-10). `inherit` is what puts a check back under the org default;
+   * omitting the field leaves it unchanged. */
+  tracerouteOnFailure?: string;
   name?: string;
   slug?: string;
   description?: string;
@@ -240,6 +247,10 @@ export interface CreateCheckRequest {
 }
 
 export interface UpdateCheckRequest {
+  /** Per-check path-trace policy: `inherit`, `on` or `off` (spec
+   * 2026-08-21-10). `inherit` is what puts a check back under the org default;
+   * omitting the field leaves it unchanged. */
+  tracerouteOnFailure?: string;
   name?: string;
   slug?: string;
   description?: string;
@@ -356,6 +367,85 @@ export interface IncidentAttachment {
   region?: string;
   checkUid?: string;
   trigger?: "incident-open" | "incident-reopen" | "agent-upload";
+}
+
+/** One hop in an MTR-style path capture (spec 2026-08-21-10).
+ *
+ * `address` empty means nothing answered at this TTL — UNLESS the capture's
+ * `hopAddressesVisible` is false, in which case the probe mode could not have
+ * heard a router even if one had answered. The two look identical here and
+ * mean completely different things, so never render a blank address without
+ * consulting that flag. */
+export interface TracerouteHop {
+  ttl: number;
+  address?: string;
+  /** Every distinct router seen at this TTL, when a load-balanced path
+   * answered from more than one. Absent for the ordinary single-router case. */
+  addresses?: string[];
+  /** Reverse-DNS name of `address`, when one resolved inside the budget. */
+  hostname?: string;
+  sent: number;
+  received: number;
+  /** 0-100, two decimals. */
+  lossPct: number;
+  rttMinMs?: number;
+  rttAvgMs?: number;
+  rttMaxMs?: number;
+  /** The target itself answered here. */
+  final?: boolean;
+  /** A router answered destination-unreachable rather than TTL-exceeded. */
+  unreachable?: boolean;
+}
+
+/** The JSON body of a `traceroute` incident attachment.
+ *
+ * Fetched from the attachment's own signed `downloadUrl` rather than inlined
+ * into the incident payload: it is a few kilobytes that only matter on the one
+ * page that renders it. */
+export interface TracerouteCapture {
+  version: number;
+  /** `icmp` (privileged raw), `icmp-udp` (unprivileged datagram) or `tcp`. */
+  mode: "icmp" | "icmp-udp" | "tcp";
+  /** False for `tcp`, which cannot observe intermediate hop addresses at all. */
+  hopAddressesVisible: boolean;
+  host?: string;
+  address: string;
+  family: string;
+  port?: number;
+  region?: string;
+  trigger?: string;
+  rounds: number;
+  maxHops: number;
+  /** When the sweep STARTED — always after the failing result was reported. */
+  startedAt: string;
+  durationMs: number;
+  /** The target answered, so the path is whole. */
+  complete: boolean;
+  /** The budget ran out before the sweep finished. Still evidence. */
+  truncated?: boolean;
+  hops: TracerouteHop[];
+}
+
+/** Fetches a traceroute attachment's JSON from its signed relative URL.
+ *
+ * The URL is same-origin and self-authenticating (exp+sig), so this is a plain
+ * fetch rather than an `apiFetch` — there is no bearer token to attach, and
+ * attaching one would be pointless. It is re-signed on every incident fetch, so
+ * the query key includes it and a refetched incident naturally refetches this. */
+export function useTracerouteCapture(url: string | undefined) {
+  return useQuery({
+    queryKey: ["traceroute-capture", url],
+    queryFn: async (): Promise<TracerouteCapture> => {
+      const response = await fetch(url as string);
+      if (!response.ok) {
+        throw new Error(`traceroute capture: HTTP ${response.status}`);
+      }
+      return (await response.json()) as TracerouteCapture;
+    },
+    enabled: !!url,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
 }
 
 export interface IncidentDetails {
@@ -1460,7 +1550,8 @@ export function useAuditEvents(
     queryFn: async () => {
       const params = new URLSearchParams();
       if (options.family) params.set("type", options.family);
-      if (options.actorUserUid) params.set("actorUserUid", options.actorUserUid);
+      if (options.actorUserUid)
+        params.set("actorUserUid", options.actorUserUid);
       if (options.targetType) params.set("targetType", options.targetType);
       if (options.target) params.set("target", options.target);
       if (options.sourceIp) params.set("sourceIp", options.sourceIp);
@@ -2310,7 +2401,10 @@ export interface CreateEndpointSubscriberResponse extends StatusPageSubscriber {
  * Operator-side by design: the public subscribe endpoint is email-only,
  * because a visitor pasting an incoming-webhook URL has no verification story.
  */
-export function useCreateEndpointSubscriber(org: string, statusPageUid: string) {
+export function useCreateEndpointSubscriber(
+  org: string,
+  statusPageUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -3172,6 +3266,10 @@ export interface OrgSettings {
   // How many live checks currently resolve to no policy of their own — the
   // blast radius of setting/changing the org default. Always present.
   inheritingCheckCount?: number;
+  // Org-level default for path-trace-on-failure (spec 2026-08-21-10). Applies
+  // to every check whose own `tracerouteOnFailure` is `inherit`. Always
+  // present, and true for an org that never set it.
+  tracerouteOnFailure?: boolean;
 }
 
 export function useOrgSettings(org: string) {
@@ -3189,6 +3287,8 @@ export interface UpdateOrgSettingsRequest {
   // A UID sets the org default escalation policy; "" clears it; omit to leave
   // it untouched.
   defaultEscalationPolicyUid?: string;
+  // Org-level default for path-trace-on-failure; omit to leave it untouched.
+  tracerouteOnFailure?: boolean;
 }
 
 export function useUpdateOrgSettings(org: string) {
@@ -6637,7 +6737,9 @@ export function useUpdateSloAlertPolicy(org: string, uid: string) {
         { method: "PATCH", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sloAlertPolicies", org, uid] });
+      queryClient.invalidateQueries({
+        queryKey: ["sloAlertPolicies", org, uid],
+      });
       // The burning badge is derived from the same incidents, so the list and
       // the detail header have to re-read too.
       queryClient.invalidateQueries({ queryKey: ["slos", org] });

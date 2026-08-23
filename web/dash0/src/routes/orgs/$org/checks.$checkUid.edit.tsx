@@ -19,9 +19,7 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
   // `?section=<name>` deep-link only: expand + scroll that collapsible on load.
   // Unlike /new, the edit form never pre-fills field VALUES from query params —
   // silently mutating an existing check's form state from a URL is unwanted.
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { section?: string } =>
+  validateSearch: (search: Record<string, unknown>): { section?: string } =>
     typeof search.section === "string" ? { section: search.section } : {},
   component: CheckEditPage,
 });
@@ -101,7 +99,11 @@ function CheckEditPage() {
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: redirectToUid },
-          search: { graphPeriod: undefined, graphFull: undefined, region: undefined },
+          search: {
+            graphPeriod: undefined,
+            graphFull: undefined,
+            region: undefined,
+          },
         })
       }
       onSubmit={async (data) => {
@@ -121,7 +123,10 @@ function CheckEditPage() {
           period: data.period,
           config: data.config,
           regions: data.regions,
-          ...(data.regionSpread !== undefined ? { regionSpread: data.regionSpread } : {}),
+          ...(data.regionSpread !== undefined
+            ? { regionSpread: data.regionSpread }
+            : {}),
+          tracerouteOnFailure: data.tracerouteOnFailure,
           reopenCooldownMultiplier: data.reopenCooldownMultiplier,
           flappingWindowSeconds: data.flappingWindowSeconds,
           flapBackoffFactor: data.flapBackoffFactor,
@@ -142,9 +147,14 @@ function CheckEditPage() {
           const toAdd = data.dependsOnParentUids.filter(
             (uid) => !currentParentToEdge.has(uid),
           );
-          const toRemove = currentEdges.filter((e) => !desired.has(e.parentCheck.uid));
+          const toRemove = currentEdges.filter(
+            (e) => !desired.has(e.parentCheck.uid),
+          );
           for (const parentUid of toAdd) {
-            await createDep.mutateAsync({ parentCheckUid: parentUid, kind: "hard" });
+            await createDep.mutateAsync({
+              parentCheckUid: parentUid,
+              kind: "hard",
+            });
           }
           for (const edge of toRemove) {
             await deleteDep.mutateAsync(edge.uid);
@@ -154,7 +164,11 @@ function CheckEditPage() {
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: redirectToUid },
-          search: { graphPeriod: undefined, graphFull: undefined, region: undefined },
+          search: {
+            graphPeriod: undefined,
+            graphFull: undefined,
+            region: undefined,
+          },
         });
       }}
     />

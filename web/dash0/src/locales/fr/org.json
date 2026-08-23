@@ -43,6 +43,12 @@
       "confirmInputLabel": "Saisissez {{org}} pour confirmer",
       "confirmAction": "Supprimer l'organisation",
       "deleted": "Organisation {{org}} supprimée"
+    },
+    "traceroute": {
+      "title": "Diagnostics du chemin réseau",
+      "description": "Quand un check tombe parce que sa cible n'a pas pu être JOINTE, capturer un traceroute façon MTR et l'attacher à l'incident.",
+      "label": "Traceroute en cas de panne réseau",
+      "help": "S'applique à tous les checks réglés sur « hériter ». Seuls les échecs d'accessibilité déclenchent une capture : timeouts de connexion, refus, perte ICMP, handshakes TLS bloqués. Un HTTP 5xx, un mot-clé absent ou un certificat qui expire, jamais — le serveur a répondu. Les traces s'exécutent après que le résultat en échec a déjà été rapporté et sont limitées par organisation : elles ne retardent jamais un incident et n'inondent pas une panne massive."
     }
   },
   "usage": {

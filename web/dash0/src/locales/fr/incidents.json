@@ -121,6 +121,36 @@
       "caption": "Capturée {{capturedAt}} depuis {{region}}, peu après la détection de l'échec.",
       "unknownTime": "à une heure inconnue",
       "unknownRegion": "une région inconnue"
+    },
+    "traceroute": {
+      "title": "Chemin réseau lors de la panne",
+      "description": "Un traceroute façon MTR effectué juste après l'ouverture de cet incident, depuis la région de sonde vers l'adresse que le check en échec avait contactée.",
+      "loadFailed": "La capture du chemin n'a pas pu être chargée. Son lien de téléchargement est éphémère — rechargez l'incident pour en signer un nouveau.",
+      "modes": {
+        "icmp": "ICMP (privilégié)",
+        "icmp-udp": "ICMP (non privilégié)",
+        "tcp": "TCP (accessibilité seule)"
+      },
+      "target": "Cible : {{target}}",
+      "region": "Sondé depuis {{region}}",
+      "rounds": "{{rounds}} passages",
+      "tcpModeNotice": "Cet hôte n'a pas pu ouvrir de socket ICMP : le chemin a donc été sondé par simples connexions TCP. Cela mesure jusqu'où les paquets sont allés, mais ne montre pas les routeurs intermédiaires — un saut vide ici signifie « non observable », pas « sans réponse ».",
+      "truncated": "Le budget de temps a expiré avant que le trace n'atteigne la cible. Ce qui est affiché est réel, mais ce n'est pas tout le chemin.",
+      "incomplete": "Le trace n'a jamais atteint la cible. Le dernier saut ayant répondu est l'endroit où le chemin cesse de fonctionner.",
+      "columns": {
+        "hop": "#",
+        "host": "Hôte",
+        "loss": "Perte",
+        "avg": "RTT moy."
+      },
+      "noReply": "sans réponse",
+      "notObservable": "non observable dans ce mode",
+      "extraPaths": "+{{count}} autre(s)",
+      "targetBadge": "cible",
+      "unreachableBadge": "inaccessible",
+      "lossValue": "{{pct}} %",
+      "msValue": "{{ms}} ms",
+      "caption": "Capturé à {{startedAt}}, en {{durationMs}} ms — après que la sonde en échec ait déjà été rapportée, donc sans jamais retarder l'incident."
     }
   },
   "timeline": {

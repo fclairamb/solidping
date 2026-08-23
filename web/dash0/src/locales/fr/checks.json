@@ -214,7 +214,12 @@
     "portRequired": "Le port est requis",
     "domainRequired": "Le domaine est requis",
     "topic": "Sujet",
-    "tls": "TLS"
+    "tls": "TLS",
+    "tracerouteOnFailure": "Traceroute en cas de panne réseau",
+    "tracerouteInherit": "Hériter du réglage de l'organisation",
+    "tracerouteOn": "Toujours capturer",
+    "tracerouteOff": "Ne jamais capturer",
+    "tracerouteOnFailureHelp": "Quand ce check tombe parce que la cible n'a pas pu être JOINTE (timeout de connexion, refus, perte ICMP, blocage du handshake TLS), capturer un traceroute façon MTR et l'attacher à l'incident. Les échecs applicatifs — HTTP 5xx, mot-clé absent, certificat qui expire — n'en déclenchent jamais : le serveur a répondu, donc le chemin est bon."
   },
   "types": {
     "http": "HTTP",

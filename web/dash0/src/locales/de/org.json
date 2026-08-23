@@ -43,6 +43,12 @@
       "confirmInputLabel": "Geben Sie {{org}} zur Bestätigung ein",
       "confirmAction": "Organisation löschen",
       "deleted": "Organisation {{org}} gelöscht"
+    },
+    "traceroute": {
+      "title": "Netzwerkpfad-Diagnose",
+      "description": "Wenn ein Check ausfällt, weil sein Ziel nicht ERREICHT werden konnte, einen Traceroute im MTR-Stil aufzeichnen und an den Vorfall anhängen.",
+      "label": "Traceroute bei Netzwerkausfall",
+      "help": "Gilt für jeden Check, der auf „übernehmen“ steht. Nur Erreichbarkeitsfehler lösen eine Aufzeichnung aus: Verbindungs-Timeouts, Ablehnungen, ICMP-Verlust, hängende TLS-Handshakes. Ein HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat nie — der Server hat geantwortet. Traces laufen, nachdem das fehlgeschlagene Ergebnis bereits gemeldet wurde, und sind pro Organisation begrenzt: Sie verzögern nie einen Vorfall und überschwemmen keinen Massenausfall."
     }
   },
   "usage": {

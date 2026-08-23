@@ -230,6 +230,8 @@ export interface CheckFormData {
   regions?: string[];
   /** "" clears an existing override back to automatic; omit to leave unchanged. */
   regionSpread?: string;
+  /** `inherit` | `on` | `off` — the per-check path-trace policy. */
+  tracerouteOnFailure?: string;
   reopenCooldownMultiplier?: number | null;
   flappingWindowSeconds?: number | null;
   flapBackoffFactor?: number | null;
@@ -468,6 +470,9 @@ export function CheckForm({
   const [regionSpreadValue, setRegionSpreadValue] = useState(initialRegionSpread?.value ?? "");
   const [regionSpreadUnit, setRegionSpreadUnit] = useState<RegionSpreadUnit>(
     initialRegionSpread?.unit ?? "seconds",
+  );
+  const [tracerouteOnFailure, setTracerouteOnFailure] = useState(
+    initialData?.tracerouteOnFailure ?? "inherit",
   );
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [flappingWindowSeconds, setFlappingWindowSeconds] = useState(initialData?.flappingWindowSeconds?.toString() ?? "");
@@ -760,6 +765,10 @@ export function CheckForm({
                 : (mode === "edit" ? "" : undefined),
             }
           : {}),
+        // Always sent, including "inherit": it is the only way to put a check
+        // that carries an explicit on/off back under the org default, and an
+        // omitted field means "leave unchanged" on PATCH.
+        tracerouteOnFailure,
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         ...(flappingWindowSeconds !== "" ? { flappingWindowSeconds: parseInt(flappingWindowSeconds, 10) } : {}),
         ...(flapBackoffFactor !== "" ? { flapBackoffFactor: parseInt(flapBackoffFactor, 10) } : {}),
@@ -1519,6 +1528,34 @@ export function CheckForm({
                   )}
                 </div>
               )}
+              <div className="mt-4 space-y-2" data-testid="check-traceroute-section">
+                <Label htmlFor="check-traceroute">
+                  {t("form.tracerouteOnFailure")}
+                </Label>
+                <Select
+                  value={tracerouteOnFailure}
+                  onValueChange={setTracerouteOnFailure}
+                >
+                  <SelectTrigger
+                    id="check-traceroute"
+                    data-testid="check-traceroute-select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inherit">
+                      {t("form.tracerouteInherit")}
+                    </SelectItem>
+                    <SelectItem value="on">{t("form.tracerouteOn")}</SelectItem>
+                    <SelectItem value="off">
+                      {t("form.tracerouteOff")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t("form.tracerouteOnFailureHelp")}
+                </p>
+              </div>
               {AdvancedTypeFields && (
                 <div className="mt-4">
                   <AdvancedTypeFields

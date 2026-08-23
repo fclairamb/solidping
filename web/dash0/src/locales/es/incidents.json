@@ -121,6 +121,36 @@
       "caption": "Capturada {{capturedAt}} desde {{region}}, poco después de detectar el fallo.",
       "unknownTime": "a una hora desconocida",
       "unknownRegion": "una región desconocida"
+    },
+    "traceroute": {
+      "title": "Ruta de red durante el fallo",
+      "description": "Un traceroute estilo MTR tomado justo después de abrirse esta incidencia, desde la región de sondeo hacia la dirección que marcó el check fallido.",
+      "loadFailed": "No se pudo cargar la captura de la ruta. Su enlace de descarga es efímero: recarga la incidencia para firmar uno nuevo.",
+      "modes": {
+        "icmp": "ICMP (privilegiado)",
+        "icmp-udp": "ICMP (sin privilegios)",
+        "tcp": "TCP (solo alcanzabilidad)"
+      },
+      "target": "Destino: {{target}}",
+      "region": "Sondeado desde {{region}}",
+      "rounds": "{{rounds}} rondas",
+      "tcpModeNotice": "Este host no pudo abrir un socket ICMP, así que la ruta se sondeó con conexiones TCP simples. Eso mide hasta dónde llegaron los paquetes, pero no muestra los routers intermedios: un salto vacío aquí significa «no observable», no «sin respuesta».",
+      "truncated": "El presupuesto de tiempo se agotó antes de que el trazado llegara al destino. Lo mostrado es real, pero no es la ruta completa.",
+      "incomplete": "El trazado nunca alcanzó el destino. El último salto que respondió es donde la ruta deja de funcionar.",
+      "columns": {
+        "hop": "#",
+        "host": "Host",
+        "loss": "Pérdida",
+        "avg": "RTT medio"
+      },
+      "noReply": "sin respuesta",
+      "notObservable": "no observable en este modo",
+      "extraPaths": "+{{count}} más",
+      "targetBadge": "destino",
+      "unreachableBadge": "inalcanzable",
+      "lossValue": "{{pct}} %",
+      "msValue": "{{ms}} ms",
+      "caption": "Capturado a las {{startedAt}}, en {{durationMs}} ms; después de que la sonda fallida ya se hubiera reportado, así que nunca retrasó la incidencia."
     }
   },
   "timeline": {

@@ -121,6 +121,36 @@
       "caption": "Aufgenommen {{capturedAt}} aus {{region}}, kurz nach der Fehlererkennung.",
       "unknownTime": "zu unbekannter Zeit",
       "unknownRegion": "einer unbekannten Region"
+    },
+    "traceroute": {
+      "title": "Netzwerkpfad beim Ausfall",
+      "description": "Ein Traceroute im MTR-Stil, aufgenommen unmittelbar nach dem Öffnen dieses Vorfalls, von der Prüfregion zur Adresse, die der fehlgeschlagene Check angewählt hatte.",
+      "loadFailed": "Die Pfadaufnahme konnte nicht geladen werden. Ihr Download-Link ist kurzlebig — laden Sie den Vorfall neu, um einen frischen zu signieren.",
+      "modes": {
+        "icmp": "ICMP (privilegiert)",
+        "icmp-udp": "ICMP (unprivilegiert)",
+        "tcp": "TCP (nur Erreichbarkeit)"
+      },
+      "target": "Ziel: {{target}}",
+      "region": "Geprüft von {{region}}",
+      "rounds": "{{rounds}} Durchläufe",
+      "tcpModeNotice": "Dieser Host konnte keinen ICMP-Socket öffnen, daher wurde der Pfad mit einfachen TCP-Verbindungen geprüft. Das misst, wie weit die Pakete kamen, zeigt aber nicht die Router dazwischen — ein leerer Hop bedeutet hier „nicht beobachtbar“, nicht „keine Antwort“.",
+      "truncated": "Das Zeitbudget lief ab, bevor der Trace das Ziel erreichte. Das Gezeigte ist echt, aber nicht der ganze Pfad.",
+      "incomplete": "Der Trace hat das Ziel nie erreicht. Der letzte antwortende Hop ist die Stelle, an der der Pfad aufhört zu funktionieren.",
+      "columns": {
+        "hop": "#",
+        "host": "Host",
+        "loss": "Verlust",
+        "avg": "Ø RTT"
+      },
+      "noReply": "keine Antwort",
+      "notObservable": "in diesem Modus nicht beobachtbar",
+      "extraPaths": "+{{count}} weitere",
+      "targetBadge": "Ziel",
+      "unreachableBadge": "nicht erreichbar",
+      "lossValue": "{{pct}} %",
+      "msValue": "{{ms}} ms",
+      "caption": "Aufgenommen um {{startedAt}}, in {{durationMs}} ms — nachdem die fehlgeschlagene Prüfung bereits gemeldet war, hat sie den Vorfall also nie verzögert."
     }
   },
   "timeline": {

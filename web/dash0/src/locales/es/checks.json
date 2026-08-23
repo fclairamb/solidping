@@ -214,7 +214,12 @@
     "portRequired": "El puerto es obligatorio",
     "domainRequired": "El dominio es obligatorio",
     "topic": "Tema",
-    "tls": "TLS"
+    "tls": "TLS",
+    "tracerouteOnFailure": "Traceroute ante fallo de red",
+    "tracerouteInherit": "Heredar el valor de la organización",
+    "tracerouteOn": "Capturar siempre",
+    "tracerouteOff": "No capturar nunca",
+    "tracerouteOnFailureHelp": "Cuando este check caiga porque no se pudo ALCANZAR el destino (tiempo de conexión agotado, rechazo, pérdida ICMP, handshake TLS colgado), captura un traceroute estilo MTR y adjúntalo a la incidencia. Los fallos de aplicación como HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo activan: el servidor respondió, así que la ruta está bien."
   },
   "types": {
     "http": "HTTP",

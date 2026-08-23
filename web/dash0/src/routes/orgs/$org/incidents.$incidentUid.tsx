@@ -53,6 +53,7 @@ import {
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { IncidentPublicationsPanel } from "@/components/incidents/incident-publications-panel";
+import { IncidentTracerouteCard } from "@/components/incidents/traceroute-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -1097,6 +1098,7 @@ function IncidentDetailPage() {
       <ProbeResponseCard incident={incident} />
 
       <IncidentScreenshotCard incident={incident} />
+      <IncidentTracerouteCard incident={incident} />
 
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
 

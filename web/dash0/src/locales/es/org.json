@@ -43,6 +43,12 @@
       "confirmInputLabel": "Escriba {{org}} para confirmar",
       "confirmAction": "Eliminar organización",
       "deleted": "Organización {{org}} eliminada"
+    },
+    "traceroute": {
+      "title": "Diagnóstico de la ruta de red",
+      "description": "Cuando un check caiga porque no se pudo ALCANZAR su destino, captura un traceroute estilo MTR y adjúntalo a la incidencia.",
+      "label": "Traceroute ante fallo de red",
+      "help": "Se aplica a todos los checks configurados como «heredar». Solo los fallos de alcanzabilidad activan una captura: tiempos de conexión agotados, rechazos, pérdida ICMP, handshakes TLS colgados. Un HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo hacen, porque el servidor respondió. Los trazados se ejecutan después de que el resultado fallido ya se haya reportado y están limitados por organización: nunca retrasan una incidencia ni inundan un apagón masivo."
     }
   },
   "usage": {
