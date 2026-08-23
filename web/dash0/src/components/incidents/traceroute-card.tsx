@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
 import {
+  useIncident,
+  useIncidents,
   useTracerouteCapture,
   type IncidentAttachment,
   type IncidentDetail,
@@ -246,4 +248,52 @@ function HopRow({
       </TableCell>
     </TableRow>
   );
+}
+
+// ResultTracerouteCard renders the path capture on a RESULT detail page.
+//
+// A trace is stored against the INCIDENT, not the result, because that is the
+// only place it is bounded — one capture per outage rather than one per failing
+// probe. So the link runs the other way here: given a result, find the incident
+// this result opened (or reopened), and render its capture.
+//
+// The lookup is client-side and cheap by construction. It is gated on `enabled`
+// — the result page passes false for a passing probe and for every aggregated
+// row — so the extra query only ever fires on the handful of pages where a
+// trace could possibly exist. There is no server-side "incident by onset
+// result" index, and adding one to serve a rarely-visited page would be a
+// migration in search of a problem.
+export function ResultTracerouteCard({
+  org,
+  checkUid,
+  resultUid,
+  enabled,
+}: {
+  org: string;
+  checkUid: string;
+  resultUid: string;
+  enabled: boolean;
+}) {
+  const { data: incidents } = useIncidents(org, {
+    checkUid,
+    size: 25,
+    enabled: enabled && !!checkUid,
+  });
+
+  // Both onsets count: `first_result` is the incident's open, `last_failure`
+  // the most recent relapse, and the stored capture belongs to whichever of
+  // them is current.
+  const match = (incidents?.data ?? []).find(
+    (incident) =>
+      incident.details?.first_result?.resultUid === resultUid ||
+      incident.details?.last_failure?.resultUid === resultUid,
+  );
+
+  // Only the DETAIL endpoint populates `attachments`, so the list row above is
+  // just the lookup — the capture itself needs this second fetch.
+  const { data: incident } = useIncident(org, match?.uid ?? "");
+
+  if (!incident) return null;
+
+  return <IncidentTracerouteCard incident={incident} />;
 }

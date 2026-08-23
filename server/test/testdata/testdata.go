@@ -681,6 +681,11 @@ const shotFixturePNG = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAF0lEQVR4
 const (
 	traceCheckUID    = "00000000-0000-0000-0000-000000000027"
 	traceIncidentUID = "00000000-0000-0000-0000-000000000028"
+	// traceResultUID is a REAL raw result row, named as the incident's onset.
+	// It exists so the result-detail page has something to open: that page
+	// finds its incident by matching this uid against the incident's
+	// `first_result.resultUid`, which a dangling id would silently break.
+	traceResultUID = "00000000-0000-0000-0000-000000000029"
 )
 
 // createTestIncidentTraceroute seeds a down TCP check whose active incident
@@ -716,6 +721,27 @@ func createTestIncidentTraceroute(
 		return fmt.Errorf("failed to create traceroute test check: %w", err)
 	}
 
+	failedStatus := int(models.ResultStatusDown)
+	failedDuration := float32(5)
+	failedRegion := "eu-west"
+
+	result := &models.Result{
+		UID:             traceResultUID,
+		OrganizationUID: orgUID,
+		CheckUID:        traceCheckUID,
+		PeriodType:      models.PeriodTypeRaw,
+		PeriodStart:     now,
+		Region:          &failedRegion,
+		Status:          &failedStatus,
+		Duration:        &failedDuration,
+		Output:          models.JSONMap{"error": "connection refused"},
+		CreatedAt:       now,
+	}
+
+	if err := dbService.CreateResult(ctx, result); err != nil {
+		return fmt.Errorf("failed to create traceroute test result: %w", err)
+	}
+
 	incident := models.NewIncident(orgUID, traceCheckUID, now, "Traceroute Check is down")
 	incident.UID = traceIncidentUID
 	incident.CreatedAt = now
@@ -723,7 +749,7 @@ func createTestIncidentTraceroute(
 	incident.Details = models.JSONMap{
 		"failure_reason": "connection refused",
 		"first_result": models.JSONMap{
-			"resultUid":   traceIncidentUID,
+			"resultUid":   traceResultUID,
 			"status":      "DOWN",
 			"region":      "eu-west",
 			"duration":    float32(5),

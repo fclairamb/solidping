@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/nettrace"
 )
 
 // isForbiddenPublicFieldName reports JSON keys that must never appear anywhere in a
@@ -27,7 +28,12 @@ func isForbiddenPublicFieldName(name string) bool {
 	switch name {
 	case "details", "failureresponse", "firstresult", "first_result",
 		"lastfailure", "last_failure", "output", "diagnostics",
-		"attachments", "attachment", "downloadurl", "screenshot", "signedurl":
+		"attachments", "attachment", "downloadurl", "screenshot", "signedurl",
+		// Path diagnostics (spec 2026-08-21-10). A traceroute names every
+		// router between a probe and its target — internal gateway addresses,
+		// private PTR records, the shape of a customer's transit — which is
+		// operator evidence and nobody else's business.
+		"traceroute", "hops", "networkfailure":
 		return true
 	default:
 		return false
@@ -299,4 +305,85 @@ func TestPublicStatusPagePayloadCarriesNoAttachments(t *testing.T) {
 	r.NotContains(string(rawPublic), "downloadUrl")
 	r.NotContains(string(rawPublic), "attachments")
 	r.NotContains(string(rawPublic), "/pub/files/")
+}
+
+// TestPublicStatusPagePayloadCarriesNoPathTrace is the same audit for the
+// traceroute kind (spec 2026-08-21-10).
+//
+// It is a SECOND value-level test rather than a parameter of the one above
+// because what leaks is different in kind. A screenshot leaks a picture; a path
+// trace leaks TOPOLOGY — the internal gateway a probe crosses, the PTR name of a
+// customer's edge router, how many hops sit between two networks. Publishing
+// that on a status page would hand a reader a partial map of somebody's
+// internal network, indexed by the outage that revealed it.
+func TestPublicStatusPagePayloadCarriesNoPathTrace(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	const (
+		fileUID     = "0a5f7b41-2b0c-4d7e-9d0e-8d4c3f2a1b09"
+		signature   = "acme-signed-traceroute-signature"
+		internalHop = "gw-internal.acme.example"
+	)
+
+	attachment := attachments.Response{
+		UID:         fileUID,
+		Kind:        attachments.KindTraceroute,
+		Name:        "incident-traceroute.json",
+		MimeType:    "application/json",
+		Size:        1024,
+		DownloadURL: "/pub/files/" + fileUID + "?exp=1&sig=" + signature,
+		Region:      "eu-west",
+	}
+
+	// Positive control on the OPERATOR payload: it really does carry the signed
+	// link and the traceroute kind, so their absence below means something.
+	rawOperator, err := json.Marshal(attachment)
+	r.NoError(err)
+	r.Contains(string(rawOperator), signature)
+	r.Contains(string(rawOperator), attachments.KindTraceroute)
+
+	// And the capture itself really does carry hop topology, so "no hop names
+	// on the public payload" is a claim about the payload and not about an
+	// empty fixture.
+	capture := &nettrace.Capture{
+		Mode:                nettrace.ModeICMPRaw,
+		HopAddressesVisible: true,
+		Host:                "acme.com",
+		Address:             "192.0.2.10",
+		Family:              "ipv4",
+		Hops: []nettrace.Hop{
+			{TTL: 1, Address: "10.0.0.1", Hostname: internalHop, Sent: 3, Received: 3},
+		},
+	}
+
+	rawCapture, err := capture.Marshal()
+	r.NoError(err)
+	r.Contains(string(rawCapture), internalHop)
+
+	response := StatusPageResponse{
+		UID:  "page-1",
+		Name: "Acme Status",
+		Slug: testPublicSlug,
+		ActiveIncidents: []PublicIncident{{
+			UID:               "inc-1",
+			Title:             "Investigating connectivity",
+			State:             "active",
+			StartedAt:         time.Now(),
+			AffectedResources: []string{"API"},
+		}},
+	}
+
+	rawPublic, err := json.Marshal(response)
+	r.NoError(err)
+
+	r.Contains(string(rawPublic), "activeIncidents")
+	r.Contains(string(rawPublic), "Investigating connectivity")
+
+	r.NotContains(string(rawPublic), signature)
+	r.NotContains(string(rawPublic), fileUID)
+	r.NotContains(string(rawPublic), internalHop)
+	r.NotContains(string(rawPublic), "traceroute")
+	r.NotContains(string(rawPublic), "hops")
 }

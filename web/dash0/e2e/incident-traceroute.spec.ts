@@ -13,6 +13,8 @@ import { test, expect } from "./fixtures";
 // screenshot card and NOT this one.
 const TRACE_INCIDENT = "00000000-0000-0000-0000-000000000028";
 const NO_TRACE_INCIDENT = "00000000-0000-0000-0000-000000000026";
+const TRACE_CHECK = "00000000-0000-0000-0000-000000000027";
+const TRACE_RESULT = "00000000-0000-0000-0000-000000000029";
 
 test.describe("Incident traceroute attachment", () => {
   test("renders the hop table with loss, RTT, mode and region", async ({
@@ -104,5 +106,26 @@ test.describe("Incident traceroute attachment", () => {
         document.documentElement.clientWidth + 1,
     );
     expect(overflows).toBe(false);
+  });
+
+  // The spec asks for the hop table on the RESULT detail page as well as the
+  // incident's. A trace is stored against the incident (one per outage, not one
+  // per failing probe), so the result page finds it by matching itself against
+  // the incident's onset — which only works for the result that actually opened
+  // the outage.
+  test("the onset result's detail page renders the same hop table", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(
+      `/dash0/orgs/test/checks/${TRACE_CHECK}/results/${TRACE_RESULT}`,
+    );
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("incident-traceroute-card")).toBeVisible();
+    await expect(page.getByTestId("incident-traceroute-hop-1")).toContainText(
+      "gw.acme.com",
+    );
   });
 });

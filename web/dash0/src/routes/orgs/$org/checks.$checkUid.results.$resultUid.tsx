@@ -16,6 +16,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { EmailDeliveryCard, EMAIL_DELIVERY_OUTPUT_KEYS } from "@/components/checks/email-delivery-card";
 import { useResult, useRegions, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
+import { ResultTracerouteCard } from "@/components/incidents/traceroute-card";
 import { regionDisplayLabel } from "@/lib/region-label";
 
 export const Route = createFileRoute(
@@ -278,6 +279,16 @@ function ResultDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Path diagnostics (spec 2026-08-21-10). Only a RAW failing probe can
+          have opened an incident, so the lookup behind this is gated on
+          exactly that — a passing probe and an aggregated row never query. */}
+      <ResultTracerouteCard
+        org={org}
+        checkUid={data.checkUid ?? checkUid}
+        resultUid={resultUid}
+        enabled={!isAggregate && data.status !== "up"}
+      />
 
       {isAggregate && (
         <Card>
