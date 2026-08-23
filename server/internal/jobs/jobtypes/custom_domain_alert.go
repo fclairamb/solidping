@@ -6,12 +6,9 @@ import (
 	"fmt"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
-
-// customDomainDemotedTemplate is the operator-facing email rendered when a
-// custom domain goes dark.
-const customDomainDemotedTemplate = "custom-domain-demoted.html"
 
 // alertCustomDomainDemoted tells the organization that one of its status pages
 // has stopped being served on its custom domain.
@@ -125,7 +122,7 @@ func enqueueCustomDomainEmail(
 ) {
 	raw, err := json.Marshal(EmailJobConfig{
 		To:       []string{recipient},
-		Template: customDomainDemotedTemplate,
+		Template: email.TemplateCustomDomainDemoted,
 		// Transactional operator mail: no List-Unsubscribe. An admin cannot opt
 		// out of being told their status page went dark.
 		TemplateData: data,

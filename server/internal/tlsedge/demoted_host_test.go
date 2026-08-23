@@ -99,7 +99,9 @@ func TestDemotedHostWithStoredCertificateAnswersOverHTTP(t *testing.T) {
 	servable.Store(false)
 	edge.expireServableCache()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+
+	listener, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	r.NoError(err)
 
 	srv := &http.Server{ //nolint:exhaustruct // only the fields under test matter
@@ -117,7 +119,9 @@ func TestDemotedHostWithStoredCertificateAnswersOverHTTP(t *testing.T) {
 
 	client := &http.Client{ //nolint:exhaustruct // only the transport matters
 		Transport: &http.Transport{ //nolint:exhaustruct // only TLS config matters
-			TLSClientConfig: &tls.Config{ //nolint:gosec // self-signed fixture
+			TLSClientConfig: &tls.Config{
+				// The fixture certificate is self-signed: the point of the test
+				// is that the HANDSHAKE COMPLETES, not that it chains.
 				InsecureSkipVerify: true,
 				ServerName:         demotedTestDomain,
 			},

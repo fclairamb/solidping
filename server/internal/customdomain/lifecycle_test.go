@@ -10,10 +10,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-var testNow = time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+// testNow is the fixed clock every transition is evaluated against, so the
+// assertions on grace_since and the re-promotion timestamp are exact rather
+// than approximate.
+func testNow() time.Time {
+	return time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+}
 
 func verifiedAt(offset time.Duration) *time.Time {
-	at := testNow.Add(offset)
+	at := testNow().Add(offset)
 
 	return &at
 }
@@ -31,7 +36,7 @@ func TestGraceKeepsServing(t *testing.T) {
 	}
 
 	for i := 1; i < customdomain.HardDemoteAfterFailures; i++ {
-		out := customdomain.Next(state, customdomain.Observation{Now: testNow})
+		out := customdomain.Next(state, customdomain.Observation{Now: testNow()})
 		state = out.State
 
 		r.NotNil(state.VerifiedAt, "failure %d must not stop the page being served", i)
@@ -58,11 +63,11 @@ func TestEnteredGraceFiresOnceOnTheTransition(t *testing.T) {
 		Failures:   customdomain.GraceAfterFailures - 1,
 	}
 
-	first := customdomain.Next(state, customdomain.Observation{Now: testNow})
+	first := customdomain.Next(state, customdomain.Observation{Now: testNow()})
 	r.True(first.EnteredGrace)
 	r.False(first.HardDemoted)
 
-	second := customdomain.Next(first.State, customdomain.Observation{Now: testNow})
+	second := customdomain.Next(first.State, customdomain.Observation{Now: testNow()})
 	r.False(second.EnteredGrace, "already in grace — the edge fires once")
 	r.Equal(first.GraceSince, second.GraceSince, "grace_since must not be pushed forward")
 }
@@ -80,11 +85,11 @@ func TestHardDemotionOnlyAtTheFarThreshold(t *testing.T) {
 		Failures:   customdomain.HardDemoteAfterFailures - 2,
 	}
 
-	notYet := customdomain.Next(state, customdomain.Observation{Now: testNow})
+	notYet := customdomain.Next(state, customdomain.Observation{Now: testNow()})
 	r.False(notYet.HardDemoted)
 	r.NotNil(notYet.VerifiedAt, "one short of the threshold still serves")
 
-	dark := customdomain.Next(notYet.State, customdomain.Observation{Now: testNow})
+	dark := customdomain.Next(notYet.State, customdomain.Observation{Now: testNow()})
 	r.True(dark.HardDemoted)
 	r.Nil(dark.VerifiedAt)
 	r.Equal(models.CustomDomainStateDemoted, dark.Lifecycle)
@@ -104,7 +109,7 @@ func TestSuccessInGraceRecoversInvisibly(t *testing.T) {
 		Failures:   customdomain.GraceAfterFailures + 1,
 	}
 
-	out := customdomain.Next(state, customdomain.Observation{OK: true, Now: testNow})
+	out := customdomain.Next(state, customdomain.Observation{OK: true, Now: testNow()})
 	r.True(out.Recovered)
 	r.Equal(models.CustomDomainStateActive, out.Lifecycle)
 	r.Zero(out.Failures)
@@ -124,7 +129,7 @@ func TestDemotedDomainRepromotesAfterConsecutiveSuccesses(t *testing.T) {
 	}
 
 	for i := 1; i < customdomain.RepromoteSuccesses; i++ {
-		out := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: true, Now: testNow})
+		out := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: true, Now: testNow()})
 		state = out.State
 
 		r.False(out.Repromoted, "success %d must not be enough on its own", i)
@@ -132,10 +137,10 @@ func TestDemotedDomainRepromotesAfterConsecutiveSuccesses(t *testing.T) {
 		r.Equal(i, state.Successes)
 	}
 
-	final := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: true, Now: testNow})
+	final := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: true, Now: testNow()})
 	r.True(final.Repromoted)
 	r.NotNil(final.VerifiedAt)
-	r.Equal(testNow, *final.VerifiedAt)
+	r.Equal(testNow(), *final.VerifiedAt)
 	r.Equal(models.CustomDomainStateActive, final.Lifecycle)
 	r.Zero(final.Successes)
 }
@@ -153,7 +158,7 @@ func TestRepromotionRequiresAValidCertificate(t *testing.T) {
 		Successes: customdomain.RepromoteSuccesses,
 	}
 
-	out := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: false, Now: testNow})
+	out := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: false, Now: testNow()})
 	r.False(out.Repromoted, "no held certificate ⇒ no automatic re-promotion")
 	r.Nil(out.VerifiedAt)
 	r.Equal(models.CustomDomainStateDemoted, out.Lifecycle)
@@ -169,7 +174,7 @@ func TestPendingDomainIsNeverAutoPromoted(t *testing.T) {
 	state := customdomain.State{Lifecycle: models.CustomDomainStatePending}
 
 	for range customdomain.RepromoteSuccesses + 3 {
-		out := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: true, Now: testNow})
+		out := customdomain.Next(state, customdomain.Observation{OK: true, CertValid: true, Now: testNow()})
 		state = out.State
 
 		r.False(out.Repromoted)
@@ -180,7 +185,7 @@ func TestPendingDomainIsNeverAutoPromoted(t *testing.T) {
 
 // TestNormalizeDerivesDemotedForLegacyRows is what makes the fix reach the rows
 // that are already broken: a page written before the state column existed, and
-// demoted by the old one-way sweep, must be recognised as `demoted` — not
+// demoted by the old one-way sweep, must be recognized as `demoted` — not
 // `pending` — or it could never recover.
 func TestNormalizeDerivesDemotedForLegacyRows(t *testing.T) {
 	t.Parallel()
@@ -217,11 +222,11 @@ func TestCountersAreMutuallyExclusive(t *testing.T) {
 		Failures:  7,
 	}
 
-	out := customdomain.Next(state, customdomain.Observation{OK: true, Now: testNow})
+	out := customdomain.Next(state, customdomain.Observation{OK: true, Now: testNow()})
 	r.Zero(out.Failures)
 	r.Equal(1, out.Successes)
 
-	back := customdomain.Next(out.State, customdomain.Observation{Now: testNow})
+	back := customdomain.Next(out.State, customdomain.Observation{Now: testNow()})
 	r.Zero(back.Successes)
 	r.Equal(1, back.Failures)
 }

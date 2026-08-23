@@ -436,7 +436,7 @@ func TestPathBasedShellVaryMatchesCustomHost(t *testing.T) {
 // collapsed the two cases would still look right there).
 //
 // The distinction is the whole point of spec 2026-08-23-03's HTTP half: a
-// demoted domain must be recognised as OURS so it gets a legible message,
+// demoted domain must be recognized as OURS so it gets a legible message,
 // while a host that is genuinely not ours keeps falling through unchanged.
 func TestLookupCustomDomainDistinguishesDemotedFromUnknown(t *testing.T) {
 	t.Parallel()

@@ -318,7 +318,7 @@ func (s *Service) VerifyCustomDomain(
 	diag := s.verifier.Diagnose(ctx, *page.CustomDomain, token, s.cnameTarget(), s.cnameMode())
 
 	now := time.Now()
-	update := customDomainVerifyUpdate(page, diag, now)
+	update := customDomainVerifyUpdate(page, &diag, now)
 
 	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
 		return StatusPageResponse{}, writeErr
@@ -350,7 +350,7 @@ func (s *Service) VerifyCustomDomain(
 // about when a page stops being served is how a status page goes dark for a
 // reason nobody can reconstruct afterwards.
 func customDomainVerifyUpdate(
-	page *models.StatusPage, diag domainverify.Diagnosis, now time.Time,
+	page *models.StatusPage, diag *domainverify.Diagnosis, now time.Time,
 ) *models.StatusPageCustomDomainUpdate {
 	summary := diag.String()
 

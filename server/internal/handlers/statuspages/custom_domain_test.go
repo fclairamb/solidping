@@ -537,7 +537,7 @@ func TestVerifyCustomDomain_FailureDoesNotTakeALivePageDark(t *testing.T) {
 }
 
 // TestVerifyCustomDomain_FailureOnAPendingPageStaysUnverified is the boundary:
-// the grace behaviour above applies to a page that WAS serving. A page that has
+// the grace behavior above applies to a page that WAS serving. A page that has
 // never verified must not be nudged towards `verified` by a failed attempt.
 func TestVerifyCustomDomain_FailureOnAPendingPageStaysUnverified(t *testing.T) {
 	t.Parallel()

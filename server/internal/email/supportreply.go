@@ -28,6 +28,7 @@ const supportReplyNoticeHTML = `<div style="margin:16px auto 0;max-width:600px;p
 // mean "unclassified" — which fails closed to "no Reply-To" and would be
 // invisible without the enumerating test.
 const (
+	TemplateCustomDomainDemoted     = "custom-domain-demoted.html"
 	TemplateEscalation              = "escalation.html"
 	TemplateIncidentBurnCreated     = "incident-burn-created.html"
 	TemplateIncidentBurnResolved    = "incident-burn-resolved.html"
@@ -75,6 +76,7 @@ const (
 //nolint:gochecknoglobals // package-level classification table
 var supportReplyableTemplates = map[string]bool{
 	// Alerts and notifications — a human replying to these is the whole point.
+	TemplateCustomDomainDemoted:    true,
 	TemplateEscalation:             true,
 	TemplateIncidentBurnCreated:    true,
 	TemplateIncidentBurnResolved:   true,
