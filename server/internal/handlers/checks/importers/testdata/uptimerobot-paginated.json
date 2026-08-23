@@ -1,0 +1,38 @@
+[
+  {
+    "stat": "ok",
+    "pagination": {"offset": 0, "limit": 2, "total": 3},
+    "monitors": [
+      {
+        "id": 1,
+        "friendly_name": "Page one site",
+        "url": "https://page1.example.org",
+        "type": 1,
+        "interval": 300,
+        "status": 2
+      },
+      {
+        "id": 2,
+        "friendly_name": "Page one ping",
+        "url": "203.0.113.9",
+        "type": 3,
+        "interval": 60,
+        "status": 2
+      }
+    ]
+  },
+  {
+    "stat": "ok",
+    "pagination": {"offset": 2, "limit": 2, "total": 3},
+    "monitors": [
+      {
+        "id": 3,
+        "friendly_name": "Page two site",
+        "url": "https://page2.example.org",
+        "type": 1,
+        "interval": 300,
+        "status": 2
+      }
+    ]
+  }
+]

@@ -85,6 +85,8 @@ func (h *Handler) converterFor(source string) (Converter, error) {
 		return &GatusConverter{}, nil
 	case SourceUptimeKuma:
 		return &UptimeKumaConverter{}, nil
+	case SourceUptimeRobot:
+		return &UptimeRobotConverter{}, nil
 	case SourceBetterStack:
 		return NewBetterStackConverter(BetterStackOptions{BaseURL: h.betterStackBaseURL}), nil
 	default:

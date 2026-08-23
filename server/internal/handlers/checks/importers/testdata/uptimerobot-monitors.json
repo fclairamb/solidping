@@ -1,0 +1,135 @@
+{
+  "stat": "ok",
+  "pagination": {
+    "offset": 0,
+    "limit": 50,
+    "total": 12
+  },
+  "monitors": [
+    {
+      "id": 1,
+      "friendly_name": "Main website",
+      "url": "https://example.org",
+      "type": 1,
+      "sub_type": "",
+      "keyword_type": null,
+      "keyword_value": "",
+      "http_username": "",
+      "http_password": "",
+      "http_auth_type": null,
+      "port": "",
+      "interval": 300,
+      "timeout": 15,
+      "status": 2
+    },
+    {
+      "id": 2,
+      "friendly_name": "Docs keyword check",
+      "url": "https://docs.example.org",
+      "type": 2,
+      "keyword_type": 1,
+      "keyword_value": "Documentation",
+      "interval": 300,
+      "timeout": 20,
+      "status": 2
+    },
+    {
+      "id": 3,
+      "friendly_name": "Broken widget",
+      "url": "https://widget.example.org",
+      "type": 2,
+      "keyword_type": 2,
+      "keyword_value": "Error",
+      "interval": 120,
+      "status": 2
+    },
+    {
+      "id": 4,
+      "friendly_name": "Core gateway",
+      "url": "198.51.100.10",
+      "type": 3,
+      "interval": 60,
+      "status": 2
+    },
+    {
+      "id": 5,
+      "friendly_name": "SMTP relay",
+      "url": "smtp.example.org",
+      "type": 4,
+      "sub_type": "4",
+      "interval": 300,
+      "status": 2
+    },
+    {
+      "id": 6,
+      "friendly_name": "Custom app port",
+      "url": "app.example.org",
+      "type": 4,
+      "sub_type": "99",
+      "port": "8443",
+      "interval": 300,
+      "status": 2
+    },
+    {
+      "id": 7,
+      "friendly_name": "Nightly backup ping",
+      "type": 5,
+      "url": "https://heartbeat.uptimerobot.com/m123456789",
+      "interval": 86400,
+      "status": 2
+    },
+    {
+      "id": 8,
+      "friendly_name": "Paused legacy site",
+      "url": "https://legacy.example.org",
+      "type": 1,
+      "interval": 300,
+      "status": 0
+    },
+    {
+      "id": 9,
+      "friendly_name": "Admin portal",
+      "url": "https://admin.example.org",
+      "type": 1,
+      "http_username": "opuser",
+      "http_password": "s3cret",
+      "http_auth_type": 1,
+      "interval": 300,
+      "status": 2
+    },
+    {
+      "id": 10,
+      "friendly_name": "Legacy digest auth",
+      "url": "https://legacy-auth.example.org",
+      "type": 1,
+      "http_username": "digestuser",
+      "http_password": "pw",
+      "http_auth_type": 2,
+      "interval": 300,
+      "status": 2
+    },
+    {
+      "id": 11,
+      "friendly_name": "Unmapped watchdog",
+      "url": "https://watchdog.example.org",
+      "type": 6,
+      "interval": 300,
+      "status": 2
+    },
+    {
+      "id": 12,
+      "friendly_name": "Monitored with extras",
+      "url": "https://extras.example.org",
+      "type": 1,
+      "interval": 300,
+      "status": 2,
+      "alert_contacts": [
+        {"id": "123", "type": "2", "value": "ops@example.org"}
+      ],
+      "mwindows": [55],
+      "custom_http_statuses": "200:1_404:0",
+      "custom_http_headers": {"X-Test": "1"},
+      "psp": {"psp_id": 456, "is_public": 1}
+    }
+  ]
+}

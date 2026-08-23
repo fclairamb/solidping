@@ -1,0 +1,159 @@
+{
+  "document": {
+    "version": 1,
+    "exportedAt": "",
+    "organization": "uptimerobot",
+    "checks": [
+      {
+        "name": "Main website",
+        "slug": "main-website",
+        "type": "http",
+        "config": {
+          "timeout": "15s",
+          "url": "https://example.org"
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Docs keyword check",
+        "slug": "docs-keyword-check",
+        "type": "http",
+        "config": {
+          "body_expect": "Documentation",
+          "timeout": "20s",
+          "url": "https://docs.example.org"
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Broken widget",
+        "slug": "broken-widget",
+        "type": "http",
+        "config": {
+          "body_reject": "Error",
+          "url": "https://widget.example.org"
+        },
+        "enabled": true,
+        "period": "2m"
+      },
+      {
+        "name": "Core gateway",
+        "slug": "core-gateway",
+        "type": "icmp",
+        "config": {
+          "host": "198.51.100.10"
+        },
+        "enabled": true,
+        "period": "1m"
+      },
+      {
+        "name": "SMTP relay",
+        "slug": "smtp-relay",
+        "type": "tcp",
+        "config": {
+          "host": "smtp.example.org",
+          "port": 25
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Custom app port",
+        "slug": "custom-app-port",
+        "type": "tcp",
+        "config": {
+          "host": "app.example.org",
+          "port": 8443
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Nightly backup ping",
+        "slug": "nightly-backup-ping",
+        "type": "heartbeat",
+        "config": {},
+        "enabled": true,
+        "period": "24h"
+      },
+      {
+        "name": "Paused legacy site",
+        "slug": "paused-legacy-site",
+        "type": "http",
+        "config": {
+          "url": "https://legacy.example.org"
+        },
+        "enabled": false,
+        "period": "5m"
+      },
+      {
+        "name": "Admin portal",
+        "slug": "admin-portal",
+        "type": "http",
+        "config": {
+          "basicAuth": "opuser:s3cret",
+          "url": "https://admin.example.org"
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Legacy digest auth",
+        "slug": "legacy-digest-auth",
+        "type": "http",
+        "config": {
+          "url": "https://legacy-auth.example.org"
+        },
+        "enabled": true,
+        "period": "5m"
+      },
+      {
+        "name": "Monitored with extras",
+        "slug": "monitored-with-extras",
+        "type": "http",
+        "config": {
+          "url": "https://extras.example.org"
+        },
+        "enabled": true,
+        "period": "5m"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "item": "Nightly backup ping",
+      "field": "type",
+      "message": "heartbeat monitor imported as a SolidPing heartbeat check — the ping URL changes, repoint the job that pushes to it after the import"
+    },
+    {
+      "item": "Legacy digest auth",
+      "field": "http_auth_type",
+      "message": "only basic HTTP authentication is imported — re-enter this monitor's credential on the check"
+    },
+    {
+      "item": "Unmapped watchdog",
+      "field": "type",
+      "message": "monitor skipped: UptimeRobot type 6 has no SolidPing counterpart"
+    },
+    {
+      "message": "alert contacts and maintenance windows are not imported — configure SolidPing integrations and maintenance windows instead"
+    },
+    {
+      "item": "Monitored with extras",
+      "field": "custom_http_statuses",
+      "message": "custom HTTP status rules are not imported — the check uses the default 2xx expectation"
+    },
+    {
+      "item": "Monitored with extras",
+      "field": "custom_http_headers",
+      "message": "custom HTTP headers are not imported"
+    },
+    {
+      "item": "Monitored with extras",
+      "field": "psp",
+      "message": "public status page (PSP) settings are not imported"
+    }
+  ]
+}

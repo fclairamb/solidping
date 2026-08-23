@@ -13,5 +13,5 @@ func TestSupportedSources(t *testing.T) {
 	r := require.New(t)
 
 	sources := importers.SupportedSources()
-	r.ElementsMatch([]string{"gatus", "betterstack", "uptime-kuma"}, sources)
+	r.ElementsMatch([]string{"gatus", "betterstack", "uptime-kuma", "uptimerobot"}, sources)
 }

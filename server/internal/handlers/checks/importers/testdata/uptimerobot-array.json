@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "friendly_name": "Bare array site",
+    "url": "https://bare.example.org",
+    "type": 1,
+    "interval": 300,
+    "status": 2
+  },
+  {
+    "id": 2,
+    "friendly_name": "Bare array ping",
+    "url": "203.0.113.5",
+    "type": 3,
+    "interval": 60,
+    "status": 2
+  }
+]
