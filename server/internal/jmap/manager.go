@@ -17,6 +17,18 @@ import (
 // `system_parameters` table.
 const SystemParameterKey = "email.inbox"
 
+// Bounds on the crash-recovery re-scan of the Processed mailbox (spec
+// 2026-08-22-01). Claim-by-archive moves a message out of the inbox before it
+// is processed, so a consumer that dies in between takes that email's signal
+// with it; the re-scan is what gets it back. Both bounds exist so the repair
+// stays O(1) in mailbox size: a window narrow enough that anything older is
+// certainly not an in-flight claim, and a hard count so a burst inside the
+// window still cannot turn one reconnect into a full-mailbox fetch.
+const (
+	rescanWindow = 24 * time.Hour
+	rescanLimit  = 50
+)
+
 // Manager validation errors.
 var (
 	ErrSessionURLRequired    = errors.New("jmap: sessionUrl is required")
@@ -50,6 +62,18 @@ type Mailboxes struct {
 // Handler turns an inbox email into a SolidPing-meaningful action. The first
 // non-OutcomeIgnored handler wins.
 type Handler interface {
+	// ClaimsEmail reports whether this handler would act on the email. It MUST
+	// be free of side effects and cheap: the manager calls it on every inbox
+	// message, before anything is processed, to decide which ones to claim by
+	// moving them to Processed (spec 2026-08-22-01, layer 1).
+	//
+	// It exists because the claim has to happen before HandleEmail runs, and
+	// claiming indiscriminately would drag every unrelated message (spam,
+	// bounces, a human's reply) out of the inbox and onto the wrong retention
+	// clock. A handler that returns false for an email must return
+	// OutcomeIgnored for it too; the reverse is allowed — a handler may claim
+	// an email and then reject it.
+	ClaimsEmail(email Email) bool
 	HandleEmail(ctx context.Context, mailboxes *Mailboxes, email Email) (Outcome, error)
 }
 
@@ -287,6 +311,7 @@ func (m *Manager) runEventSource(
 		"fallbackPollSeconds", cfg.PollIntervalSeconds)
 
 	m.setMode("push")
+	m.recoverStrandedClaims(ctx, client, mboxes, logger)
 
 	if err := m.syncEmails(ctx, client, mboxes, cfg); err != nil {
 		m.recordError(err)
@@ -323,12 +348,25 @@ func (m *Manager) runPolling(
 	logger.InfoContext(ctx, "starting JMAP polling", "intervalSeconds", cfg.PollIntervalSeconds)
 
 	m.setMode("poll")
+	m.recoverStrandedClaims(ctx, client, mboxes, logger)
 
 	if err := m.syncEmails(ctx, client, mboxes, cfg); err != nil {
 		m.recordError(err)
 	}
 
 	m.syncLoop(ctx, client, mboxes, cfg, logger)
+}
+
+// recoverStrandedClaims runs the bounded Processed re-scan once per connect
+// cycle (startup and every reconnect), before the first sync. A failure here
+// is logged and swallowed: it is a repair pass, and a mailbox that will not
+// answer the re-scan query must not stop the supervisor from serving new mail.
+func (m *Manager) recoverStrandedClaims(
+	ctx context.Context, client *Client, mboxes *Mailboxes, logger *slog.Logger,
+) {
+	if err := m.rescanProcessed(ctx, client, mboxes); err != nil {
+		logger.WarnContext(ctx, "JMAP processed re-scan failed", "error", err)
+	}
 }
 
 // syncLoop runs the steady-state ticker, the cleanup ticker, and the
@@ -365,8 +403,21 @@ func (m *Manager) syncLoop(
 	}
 }
 
-// syncEmails queries the inbox, fetches each email, runs the handler chain,
-// and moves processed emails to the Processed mailbox.
+// syncEmails drains the inbox in three phases — select, claim, process — so
+// that N replicas polling the same mailbox produce at most one result per
+// email (spec 2026-08-22-01, layer 1).
+//
+// The old ordering was process-then-archive: every consumer that saw a message
+// before someone's move landed recorded it, and when all the movers failed the
+// message stayed in the inbox and was replayed on the next poll. The move is
+// now the claim instead: it happens FIRST, and a consumer processes only the
+// ids the server reports as `updated`. `notUpdated` means someone else got
+// there first — an expected outcome, logged at debug, not the WARN it used to
+// raise.
+//
+// Selecting first (via Handler.ClaimsEmail) keeps the claim narrow: only mail
+// a handler would actually act on is moved, so unrelated messages stay in the
+// inbox on the failed-retention clock exactly as before.
 func (m *Manager) syncEmails(
 	ctx context.Context, client *Client, mboxes *Mailboxes, cfg *Config,
 ) error {
@@ -388,39 +439,42 @@ func (m *Manager) syncEmails(
 
 	handlers := m.cloneHandlers()
 
-	for i := range emails {
-		email := emails[i]
+	// Phase 1 — select. Pure predicate, no side effects, no ordering hazard.
+	candidates, byID := selectClaimable(handlers, emails)
+	if len(candidates) == 0 {
+		m.recordSyncTime(time.Now())
 
-		processedID := ""
+		return nil
+	}
 
-		for _, h := range handlers {
-			outcome, hErr := h.HandleEmail(ctx, mboxes, email)
-			if hErr != nil {
-				slog.WarnContext(ctx, "JMAP handler error",
-					"messageId", email.ID, "error", hErr)
+	// Phase 2 — claim. One Email/set for the whole batch; the reply says which
+	// ids are ours.
+	claim, err := client.EmailSetMailboxPartial(
+		ctx, client.AccountID(), candidates, mboxes.Inbox.ID, mboxes.Processed.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("claim: %w", err)
+	}
 
-				continue
-			}
+	for _, lost := range claim.NotUpdated {
+		slog.DebugContext(ctx, "JMAP claim lost to another consumer", "messageId", lost)
+	}
 
-			if outcome == OutcomeIgnored {
-				continue
-			}
-
-			processedID = email.ID
-
-			break
-		}
-
-		if processedID == "" {
+	// Phase 3 — process, only what we actually moved.
+	for _, id := range claim.Updated {
+		email, ok := byID[id]
+		if !ok {
 			continue
 		}
 
-		if err := client.EmailSetMailbox(
-			ctx, client.AccountID(), []string{processedID}, mboxes.Inbox.ID, mboxes.Processed.ID,
-		); err != nil {
-			slog.WarnContext(ctx, "JMAP move-to-processed failed",
-				"messageId", processedID, "error", err)
+		if m.dispatch(ctx, handlers, mboxes, email) {
+			continue
 		}
+
+		// Claimed but not acted on (a handler errored, or the predicate was
+		// looser than the handler). Put it back so the next sync retries it
+		// rather than leaving it stranded in Processed with no result.
+		m.releaseClaim(ctx, client, mboxes, id)
 	}
 
 	_ = cfg // currently unused inside this function but reserved for retention/labeling decisions
@@ -428,6 +482,138 @@ func (m *Manager) syncEmails(
 	m.recordSyncTime(time.Now())
 
 	return nil
+}
+
+// selectClaimable returns the ids a handler would act on, plus a lookup of the
+// corresponding emails. Order follows the query so the claim batch is stable.
+func selectClaimable(handlers []Handler, emails []Email) ([]string, map[string]Email) {
+	candidates := make([]string, 0, len(emails))
+	byID := make(map[string]Email, len(emails))
+
+	for i := range emails {
+		email := emails[i]
+		if !anyClaims(handlers, email) {
+			continue
+		}
+
+		candidates = append(candidates, email.ID)
+		byID[email.ID] = email
+	}
+
+	return candidates, byID
+}
+
+// dispatch runs the handler chain over one email and reports whether any
+// handler took ownership of it (processed or rejected). Errors are logged and
+// the chain continues, exactly as before the claim rework.
+//
+//nolint:gocritic // Handler interface passes Email by value
+func (m *Manager) dispatch(
+	ctx context.Context, handlers []Handler, mboxes *Mailboxes, email Email,
+) bool {
+	for _, h := range handlers {
+		outcome, hErr := h.HandleEmail(ctx, mboxes, email)
+		if hErr != nil {
+			slog.WarnContext(ctx, "JMAP handler error",
+				"messageId", email.ID, "error", hErr)
+
+			continue
+		}
+
+		if outcome == OutcomeIgnored {
+			continue
+		}
+
+		return true
+	}
+
+	return false
+}
+
+// releaseClaim moves an email back to the inbox after a claim that did not
+// result in any handler taking it. Best effort: if the release itself fails
+// the message sits in Processed, and the startup re-scan is the safety net.
+func (m *Manager) releaseClaim(ctx context.Context, client *Client, mboxes *Mailboxes, id string) {
+	if err := client.EmailSetMailbox(
+		ctx, client.AccountID(), []string{id}, mboxes.Processed.ID, mboxes.Inbox.ID,
+	); err != nil {
+		slog.WarnContext(ctx, "JMAP claim release failed", "messageId", id, "error", err)
+
+		return
+	}
+
+	slog.DebugContext(ctx, "JMAP claim released back to inbox", "messageId", id)
+}
+
+// rescanProcessed re-runs the handler chain over the newest messages already
+// sitting in the Processed mailbox, recovering emails whose claimer moved them
+// and then died before recording the result (spec 2026-08-22-01, layer 1
+// crash-safety).
+//
+// It moves nothing and is bounded twice over — at most rescanLimit messages,
+// and only those received within rescanWindow — so its cost does not grow with
+// the mailbox. Replaying already-recorded messages is harmless only because
+// the handler's insert is idempotent on Message-ID (layer 3); without that
+// backstop this function would be a duplicate generator, not a repair.
+func (m *Manager) rescanProcessed(
+	ctx context.Context, client *Client, mboxes *Mailboxes,
+) error {
+	handlers := m.cloneHandlers()
+	if len(handlers) == 0 {
+		return nil
+	}
+
+	ids, err := client.EmailQuery(ctx, client.AccountID(), EmailQueryFilter{
+		InMailbox: mboxes.Processed.ID,
+		After:     time.Now().Add(-rescanWindow).UTC().Format(time.RFC3339),
+		Limit:     rescanLimit,
+	})
+	if err != nil {
+		return fmt.Errorf("processed query: %w", err)
+	}
+
+	if len(ids) == 0 {
+		return nil
+	}
+
+	// Belt and braces: a server that ignores the `limit` argument must not be
+	// able to turn the re-scan into a full-mailbox fetch.
+	if len(ids) > rescanLimit {
+		ids = ids[:rescanLimit]
+	}
+
+	emails, err := client.EmailGet(ctx, client.AccountID(), ids, nil)
+	if err != nil {
+		return fmt.Errorf("processed get: %w", err)
+	}
+
+	cutoff := time.Now().Add(-rescanWindow)
+
+	for i := range emails {
+		email := emails[i]
+		if email.ReceivedAt.Before(cutoff) {
+			continue
+		}
+
+		if !anyClaims(handlers, email) {
+			continue
+		}
+
+		m.dispatch(ctx, handlers, mboxes, email)
+	}
+
+	return nil
+}
+
+//nolint:gocritic // Handler interface passes Email by value
+func anyClaims(handlers []Handler, email Email) bool {
+	for _, h := range handlers {
+		if h.ClaimsEmail(email) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // cleanupOldEmails moves expired emails to Trash and destroys old Trash items.

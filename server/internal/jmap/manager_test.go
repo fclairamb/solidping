@@ -146,9 +146,12 @@ func extractInMailbox(body string) string {
 // stubHandler is a Handler test double.
 type stubHandler struct {
 	outcome jmap.Outcome
+	claims  bool
 	called  atomic.Int32
 	err     error
 }
+
+func (s *stubHandler) ClaimsEmail(_ jmap.Email) bool { return s.claims }
 
 func (s *stubHandler) HandleEmail(_ context.Context, _ *jmap.Mailboxes, _ jmap.Email) (jmap.Outcome, error) {
 	s.called.Add(1)
@@ -173,8 +176,8 @@ func TestManagerProcessesEmailsViaSecondHandler(t *testing.T) {
 	}
 	cfg.ApplyDefaults()
 
-	first := &stubHandler{outcome: jmap.OutcomeIgnored}
-	second := &stubHandler{outcome: jmap.OutcomeProcessed}
+	first := &stubHandler{outcome: jmap.OutcomeIgnored, claims: true}
+	second := &stubHandler{outcome: jmap.OutcomeProcessed, claims: true}
 
 	client := jmap.NewClient(&cfg)
 	_, err := client.DiscoverSession(context.Background())
