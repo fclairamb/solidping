@@ -1,6 +1,8 @@
 package jmap_test
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"testing"
@@ -56,13 +58,38 @@ func newInboundFixture(t *testing.T) *inboundFixture {
 func (f *inboundFixture) newManager(t *testing.T) (*jmap.Manager, *jmap.Client) {
 	t.Helper()
 
+	return f.newManagerWithDB(t, f.svc)
+}
+
+// newManagerWithDB is newManager with the handler's database swapped, so a test
+// can break exactly one query and watch what the handler does about it.
+func (f *inboundFixture) newManagerWithDB(t *testing.T, handlerDB db.Service) (*jmap.Manager, *jmap.Client) {
+	t.Helper()
+
 	jobSvc := jobsvc.NewService(f.svc.DB(), f.svc, notifier.NewLocalEventNotifier(), nil)
-	handler := emailcheck.NewHandler(f.svc, jobSvc, nil, nil, slog.Default())
+	handler := emailcheck.NewHandler(handlerDB, jobSvc, nil, nil, slog.Default())
 
 	mgr := jmap.NewManager(f.svc)
 	mgr.RegisterHandler(handler)
 
 	return mgr, f.fake.client(t)
+}
+
+// errDedupDown is what a database that cannot answer the dedup question looks
+// like to the handler.
+var errDedupDown = errors.New("dedup lookup unavailable")
+
+// brokenDedupDB is the real service with exactly one query broken. Embedding
+// keeps every other db.Service method live, so the result insert still works —
+// the test is about what the handler decides, not about a dead database.
+type brokenDedupDB struct {
+	db.Service
+}
+
+func (b brokenDedupDB) HasRawResultWithMessageID(
+	_ context.Context, _, _, _ string, _ time.Time,
+) (bool, error) {
+	return false, errDedupDown
 }
 
 // resultsFor counts raw results carrying the given Message-ID — the number the
@@ -269,4 +296,109 @@ func TestUnknownTokenIsClaimedAndRejected(t *testing.T) {
 	r.Equal(fakeProcessedID, fix.fake.mailboxOf("e1"),
 		"an unresolvable token must be filed away, not left to be re-read forever")
 	r.Equal(0, resultsFor(t, fix.svc, fix.check.UID, "<unknown@mail.example.com>"))
+}
+
+// TestDedupFailureOnTheLivePathStillRecords pins the fail-OPEN half: a fresh
+// inbound email whose uniqueness cannot be verified is still recorded, because
+// the claim and the lock already make a duplicate unlikely there and losing a
+// real signal is the worse outcome.
+func TestDedupFailureOnTheLivePathStillRecords(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	const messageID = "<live-path@mail.example.com>"
+
+	fix := newInboundFixture(t)
+	fix.deliver("e1", messageID)
+
+	mgr, client := fix.newManagerWithDB(t, brokenDedupDB{Service: fix.svc})
+	r.NoError(mgr.SyncEmailsForTest(t.Context(), client, fakeMailboxes(), fix.fake.config()))
+
+	r.Equal(1, resultsFor(t, fix.svc, fix.check.UID, messageID),
+		"a broken dedup lookup must not cost us a live inbound email")
+}
+
+// TestDedupFailureOnTheRescanPathRecordsNothing pins the fail-CLOSED half, and
+// it is the one that matters: the re-scan replays mail that may already have a
+// result, on every reconnect. Recording without a positive "not seen before"
+// would make the crash-repair pass the very duplicate generator this spec
+// exists to remove.
+func TestDedupFailureOnTheRescanPathRecordsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	const messageID = "<rescan-path@mail.example.com>"
+
+	fix := newInboundFixture(t)
+	fix.fake.put("e1", &fakeEmail{
+		mailbox:    fakeProcessedID,
+		to:         inboundToken + "@inbox.example.com",
+		messageID:  messageID,
+		receivedAt: time.Now().UTC(),
+	})
+
+	mgr, client := fix.newManagerWithDB(t, brokenDedupDB{Service: fix.svc})
+	r.NoError(mgr.RescanProcessedForTest(t.Context(), client, fakeMailboxes()))
+
+	r.Equal(0, resultsFor(t, fix.svc, fix.check.UID, messageID),
+		"a re-scan that cannot prove the message is new must record nothing")
+
+	// Positive control: the same re-scan over a working database DOES record,
+	// so the assertion above cannot be satisfied by a re-scan that is simply
+	// broken or never reaches the handler.
+	working, workingClient := fix.newManager(t)
+	r.NoError(working.RescanProcessedForTest(t.Context(), workingClient, fakeMailboxes()))
+	r.Equal(1, resultsFor(t, fix.svc, fix.check.UID, messageID))
+}
+
+// TestRescanSkipsMailWithoutAMessageID is the other unanswerable case on the
+// strict path: with no Message-ID there is nothing to dedup on, so the re-scan
+// cannot tell a stranded message from one it already recorded and must leave
+// it alone. The live path keeps recording those, which the control asserts.
+func TestRescanSkipsMailWithoutAMessageID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fix := newInboundFixture(t)
+	fix.fake.put("e1", &fakeEmail{
+		mailbox:    fakeProcessedID,
+		to:         inboundToken + "@inbox.example.com",
+		messageID:  "",
+		receivedAt: time.Now().UTC(),
+	})
+
+	mgr, client := fix.newManager(t)
+	r.NoError(mgr.RescanProcessedForTest(t.Context(), client, fakeMailboxes()))
+	r.Equal(0, resultsWithoutMessageID(t, fix.svc, fix.check.UID),
+		"the re-scan must not replay mail it cannot identify")
+
+	// Control: the same headerless mail arriving fresh in the inbox is
+	// recorded, because the live path fails open.
+	fix.fake.put("e2", &fakeEmail{
+		mailbox:    fakeInboxID,
+		to:         inboundToken + "@inbox.example.com",
+		messageID:  "",
+		receivedAt: time.Now().UTC(),
+	})
+	r.NoError(mgr.SyncEmailsForTest(t.Context(), client, fakeMailboxes(), fix.fake.config()))
+	r.Equal(1, resultsWithoutMessageID(t, fix.svc, fix.check.UID))
+}
+
+// resultsWithoutMessageID counts raw results whose output carries an empty
+// Message-ID — the rows the headerless cases produce.
+func resultsWithoutMessageID(t *testing.T, svc db.Service, checkUID string) int {
+	t.Helper()
+
+	count, err := svc.DB().NewSelect().
+		Model((*models.Result)(nil)).
+		Where("check_uid = ?", checkUID).
+		Where("period_type = ?", models.PeriodTypeRaw).
+		Where("json_extract(output, '$.messageId') = ?", "").
+		Count(t.Context())
+	require.NoError(t, err)
+
+	return count
 }

@@ -139,7 +139,9 @@ func (h *Handler) ClaimsEmail(email jmap.Email) bool {
 // matches but no check exists (the email cannot ever succeed).
 //
 //nolint:gocritic // jmap.Handler interface passes Email by value
-func (h *Handler) HandleEmail(ctx context.Context, _ *jmap.Mailboxes, email jmap.Email) (jmap.Outcome, error) {
+func (h *Handler) HandleEmail(
+	ctx context.Context, _ *jmap.Mailboxes, email jmap.Email, origin jmap.Origin,
+) (jmap.Outcome, error) {
 	token, status, recipient := h.extractTokenAndStatus(&email)
 	if token == "" {
 		return jmap.OutcomeIgnored, nil
@@ -155,7 +157,7 @@ func (h *Handler) HandleEmail(ctx context.Context, _ *jmap.Mailboxes, email jmap
 		return jmap.OutcomeRejected, nil
 	}
 
-	if err := h.recordResult(ctx, check, &email, status); err != nil {
+	if err := h.recordResult(ctx, check, &email, status, origin); err != nil {
 		return jmap.OutcomeIgnored, err
 	}
 
@@ -327,24 +329,43 @@ var ErrCheckMissing = errors.New("check is required")
 // true rather than likely, and it is what licenses the crash-recovery re-scan
 // to replay recently-processed messages at all.
 //
-// Two deliberate non-suppressions: an email with no Message-ID (rare) is never
-// deduped, because every such mail would otherwise collapse onto one row; and
-// a lookup FAILURE records anyway, because losing the signal from a genuine
-// inbound email is worse than a duplicate — a broken dedup query degrades to
-// the old behavior instead of dropping results on the floor.
-func (h *Handler) alreadyRecorded(ctx context.Context, checkUID, messageID string) bool {
+// It reports whether the insert must be SKIPPED, and the two arrival paths
+// resolve an unanswerable question in opposite directions — which is the whole
+// reason origin is threaded down here:
+//
+//   - jmap.OriginInbox (fresh, just-claimed mail) fails OPEN. A missing
+//     Message-ID, or a lookup that errors, records anyway: layers 1 and 2 make
+//     a duplicate unlikely on this path, and dropping a live signal from a
+//     genuine inbound email is the worse failure.
+//   - jmap.OriginRescan (crash-recovery replay of the Processed mailbox) fails
+//     CLOSED. Every message on that path may already have a result and the
+//     path repeats on every reconnect, so recording without a positive
+//     "not seen before" would turn the repair pass into a duplicate generator —
+//     up to one extra row per message per reconnect. Skipping costs at most the
+//     signal from one email that really was stranded.
+func (h *Handler) alreadyRecorded(
+	ctx context.Context, orgUID, checkUID, messageID string, origin jmap.Origin,
+) bool {
+	strict := origin == jmap.OriginRescan
+
 	if messageID == "" {
-		return false
+		if strict {
+			h.logger.WarnContext(ctx, "re-scan skipped an email with no Message-ID; cannot prove it is new",
+				"check_uid", checkUID)
+		}
+
+		return strict
 	}
 
 	seen, err := h.db.HasRawResultWithMessageID(
-		ctx, checkUID, messageID, time.Now().Add(-resultDedupWindow),
+		ctx, orgUID, checkUID, messageID, time.Now().Add(-resultDedupWindow),
 	)
 	if err != nil {
-		h.logger.WarnContext(ctx, "email dedup lookup failed; recording anyway",
-			"check_uid", checkUID, "messageId", messageID, "error", err)
+		h.logger.WarnContext(ctx, "email dedup lookup failed",
+			"check_uid", checkUID, "messageId", messageID,
+			"origin", origin, "recorded", !strict, "error", err)
 
-		return false
+		return strict
 	}
 
 	if seen {
@@ -355,7 +376,9 @@ func (h *Handler) alreadyRecorded(ctx context.Context, checkUID, messageID strin
 	return seen
 }
 
-func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *jmap.Email, status string) error {
+func (h *Handler) recordResult(
+	ctx context.Context, check *models.Check, email *jmap.Email, status string, origin jmap.Origin,
+) error {
 	if check == nil {
 		return ErrCheckMissing
 	}
@@ -379,7 +402,7 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 		messageID = email.MessageID[0]
 	}
 
-	if h.alreadyRecorded(ctx, check.UID, messageID) {
+	if h.alreadyRecorded(ctx, check.OrganizationUID, check.UID, messageID, origin) {
 		return nil
 	}
 

@@ -335,6 +335,12 @@ func (c *Client) EmailSetMailbox(
 // `updated`. A response carrying NEITHER key is read as full success, which is
 // exactly what this client inferred before the split existed — a terse server
 // therefore behaves as it always did rather than silently processing nothing.
+// That fallback is the one place the claim is not a true CAS, and what makes
+// it survivable is the Message-ID dedup backstop (spec 2026-08-22-01, layer 3):
+// against such a server two consumers may both believe they won, and only the
+// dedup query stops the second from writing a row. The stricter half is
+// unconditional: once EITHER map is non-empty, an id named in neither is
+// treated as not ours, because at-most-once beats a duplicate.
 func (c *Client) EmailSetMailboxPartial(
 	ctx context.Context, accountID string, ids []string, fromMailboxID, toMailboxID string,
 ) (SetMailboxResult, error) {

@@ -51,6 +51,25 @@ const (
 	OutcomeRejected
 )
 
+// Origin tells a handler how an email reached it. It exists because the two
+// paths have OPPOSITE safe failure modes when a handler's own duplicate check
+// cannot be completed (spec 2026-08-22-01).
+type Origin int
+
+const (
+	// OriginInbox is a fresh message this process just claimed out of the
+	// inbox. Layers 1 and 2 already make a duplicate unlikely here, so a
+	// handler that cannot verify uniqueness should record ANYWAY — losing a
+	// live signal is the worse outcome.
+	OriginInbox Origin = iota
+	// OriginRescan is a replay from the Processed mailbox during crash
+	// recovery. Every message on this path may already have been recorded, and
+	// the path repeats on every reconnect, so a handler that cannot verify
+	// uniqueness must record NOTHING — failing open here turns the repair pass
+	// into a duplicate generator, which is exactly what this spec is about.
+	OriginRescan
+)
+
 // Mailboxes carries the IDs the manager resolved at startup so handlers can
 // classify emails relative to them if needed.
 type Mailboxes struct {
@@ -74,7 +93,10 @@ type Handler interface {
 	// OutcomeIgnored for it too; the reverse is allowed — a handler may claim
 	// an email and then reject it.
 	ClaimsEmail(email Email) bool
-	HandleEmail(ctx context.Context, mailboxes *Mailboxes, email Email) (Outcome, error)
+	// HandleEmail acts on the email. origin says which path it arrived on;
+	// see Origin for why that changes how a handler should behave when its own
+	// duplicate check fails.
+	HandleEmail(ctx context.Context, mailboxes *Mailboxes, email Email, origin Origin) (Outcome, error)
 }
 
 // Status summarizes the current connection health, suitable for the admin
@@ -467,7 +489,7 @@ func (m *Manager) syncEmails(
 			continue
 		}
 
-		if m.dispatch(ctx, handlers, mboxes, email) {
+		if m.dispatch(ctx, handlers, mboxes, email, OriginInbox) {
 			continue
 		}
 
@@ -509,10 +531,10 @@ func selectClaimable(handlers []Handler, emails []Email) ([]string, map[string]E
 //
 //nolint:gocritic // Handler interface passes Email by value
 func (m *Manager) dispatch(
-	ctx context.Context, handlers []Handler, mboxes *Mailboxes, email Email,
+	ctx context.Context, handlers []Handler, mboxes *Mailboxes, email Email, origin Origin,
 ) bool {
 	for _, h := range handlers {
-		outcome, hErr := h.HandleEmail(ctx, mboxes, email)
+		outcome, hErr := h.HandleEmail(ctx, mboxes, email, origin)
 		if hErr != nil {
 			slog.WarnContext(ctx, "JMAP handler error",
 				"messageId", email.ID, "error", hErr)
@@ -599,7 +621,7 @@ func (m *Manager) rescanProcessed(
 			continue
 		}
 
-		m.dispatch(ctx, handlers, mboxes, email)
+		m.dispatch(ctx, handlers, mboxes, email, OriginRescan)
 	}
 
 	return nil

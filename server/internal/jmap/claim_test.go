@@ -379,7 +379,7 @@ func (h *recordingHandler) ClaimsEmail(email jmap.Email) bool {
 }
 
 func (h *recordingHandler) HandleEmail(
-	_ context.Context, _ *jmap.Mailboxes, email jmap.Email,
+	_ context.Context, _ *jmap.Mailboxes, email jmap.Email, _ jmap.Origin,
 ) (jmap.Outcome, error) {
 	if h.fail {
 		return jmap.OutcomeIgnored, errHandlerBoom

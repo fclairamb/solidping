@@ -2202,13 +2202,18 @@ func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *mode
 	return err
 }
 
-// HasRawResultWithMessageID reports whether a raw result for checkUID already
+// HasRawResultWithMessageID reports whether a raw result for the check already
 // carries output.messageId == messageID, among rows with period_start >=
 // since. Mirrors the Postgres JSONB query with SQLite's json_extract; see the
 // db.Service doc for why the caller must bound the window (spec
 // 2026-08-22-01).
+//
+// The leading organization_uid / check_uid / period_start clauses match
+// results_raw_idx exactly. SQLite has no skip-scan to fall back on, so without
+// the org column this would be a full scan of `results` on every inbound
+// email.
 func (s *Service) HasRawResultWithMessageID(
-	ctx context.Context, checkUID, messageID string, since time.Time,
+	ctx context.Context, orgUID, checkUID, messageID string, since time.Time,
 ) (bool, error) {
 	if messageID == "" {
 		return false, nil
@@ -2216,6 +2221,7 @@ func (s *Service) HasRawResultWithMessageID(
 
 	return s.db.NewSelect().
 		Model((*models.Result)(nil)).
+		Where("organization_uid = ?", orgUID).
 		Where("check_uid = ?", checkUID).
 		Where("period_type = ?", models.PeriodTypeRaw).
 		Where("period_start >= ?", since).

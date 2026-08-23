@@ -2265,13 +2265,18 @@ func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *mode
 	return err
 }
 
-// HasRawResultWithMessageID reports whether a raw result for checkUID already
+// HasRawResultWithMessageID reports whether a raw result for the check already
 // carries output.messageId == messageID, among rows with period_start >=
 // since. The migration-free idempotency backstop for inbound email (spec
 // 2026-08-22-01); see the db.Service doc for why the caller must bound the
 // window. `output->>'messageId'` is the JSONB twin of SQLite's json_extract.
+//
+// The leading organization_uid / check_uid / period_start clauses match
+// results_raw_idx exactly, so the JSONB comparison only ever runs over the
+// check's recent rows — it is not an index the planner can reach without the
+// org column, which is why the caller passes one.
 func (s *Service) HasRawResultWithMessageID(
-	ctx context.Context, checkUID, messageID string, since time.Time,
+	ctx context.Context, orgUID, checkUID, messageID string, since time.Time,
 ) (bool, error) {
 	if messageID == "" {
 		return false, nil
@@ -2279,6 +2284,7 @@ func (s *Service) HasRawResultWithMessageID(
 
 	return s.db.NewSelect().
 		Model((*models.Result)(nil)).
+		Where("organization_uid = ?", orgUID).
 		Where("check_uid = ?", checkUID).
 		Where("period_type = ?", models.PeriodTypeRaw).
 		Where("period_start >= ?", since).

@@ -153,7 +153,9 @@ type stubHandler struct {
 
 func (s *stubHandler) ClaimsEmail(_ jmap.Email) bool { return s.claims }
 
-func (s *stubHandler) HandleEmail(_ context.Context, _ *jmap.Mailboxes, _ jmap.Email) (jmap.Outcome, error) {
+func (s *stubHandler) HandleEmail(
+	_ context.Context, _ *jmap.Mailboxes, _ jmap.Email, _ jmap.Origin,
+) (jmap.Outcome, error) {
 	s.called.Add(1)
 
 	return s.outcome, s.err

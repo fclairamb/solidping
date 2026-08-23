@@ -80,8 +80,20 @@ raw result per inbound email (spec 2026-08-22-01):
 3. **Message-ID dedup.** Before inserting, `emailcheck` looks for an
    existing raw result for the same check whose `output.messageId`
    matches, within the last 7 days. No schema change backs this — the
-   query IS the constraint, and the window is what keeps it bounded. An
-   email with no `Message-ID` header skips this layer.
+   query IS the constraint. It is scoped by `organization_uid` even
+   though `check_uid` alone identifies the rows, because every index on
+   `results` leads with the org column; without it neither backend can
+   seek `results_raw_idx` and the lookup becomes a full scan on every
+   inbound email.
+
+   When the lookup cannot answer — no `Message-ID` header, or the query
+   errors — the two arrival paths resolve it in **opposite** directions:
+   fresh inbox mail is recorded anyway (layers 1–2 already cover it, and
+   losing a live signal is worse), while the crash-recovery re-scan
+   records **nothing** (its whole input may already be recorded, and it
+   repeats on every reconnect, so failing open there would make the
+   repair pass a duplicate generator). `jmap.Origin` is what carries the
+   distinction to the handler.
 
 Layers 1 and 3 are the correctness pair; either alone leaves a hole
 (layer 1 cannot survive a crash mid-claim, layer 3 alone would let N

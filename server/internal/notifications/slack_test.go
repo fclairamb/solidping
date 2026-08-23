@@ -1004,7 +1004,7 @@ func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *model
 }
 
 func (m *mockDBService) HasRawResultWithMessageID(
-	_ context.Context, _, _ string, _ time.Time,
+	_ context.Context, _, _, _ string, _ time.Time,
 ) (bool, error) {
 	panic("not implemented")
 }
