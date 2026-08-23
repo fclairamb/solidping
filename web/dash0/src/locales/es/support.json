@@ -1,0 +1,57 @@
+{
+  "title": "Bandeja de soporte",
+  "subtitle": "Mensajes humanos capturados desde los canales de bots. A nivel de instancia, solo para super administradores.",
+  "empty": "Aún no hay mensajes de soporte.",
+  "emptyFiltered": "Ningún hilo coincide con estos filtros.",
+  "search": "Buscar remitente o asunto",
+  "allChannels": "Todos los canales",
+  "allStatuses": "Todos los estados",
+  "backToInbox": "Volver a la bandeja",
+  "sections": {
+    "active": "Activos",
+    "activeHelp": "Hilos abiertos o pendientes a los que aún podemos responder.",
+    "expired": "Ventana de respuesta caducada",
+    "expiredHelp": "Siguen sin respuesta, pero el canal ya no acepta una respuesta libre.",
+    "closed": "Cerrados",
+    "closedHelp": "Resueltos. Se purgan tras el periodo de retención."
+  },
+  "status": {
+    "open": "Abierto",
+    "pending": "Pendiente",
+    "closed": "Cerrado",
+    "label": "Estado"
+  },
+  "thread": {
+    "unread_one": "{{count}} sin leer",
+    "unread_other": "{{count}} sin leer",
+    "lastMessage": "Último mensaje",
+    "attribution": "Atribuido a",
+    "attributionHelp": "Una pista sobre quién escribió. No da acceso a esa organización.",
+    "noAttribution": "Remitente sin atribuir",
+    "truncated": "Este mensaje se truncó al guardarlo.",
+    "inbound": "Ellos",
+    "outbound": "Nosotros",
+    "deliveryFailed": "Fallo en la entrega",
+    "noMessages": "Este hilo no tiene mensajes."
+  },
+  "window": {
+    "open": "Ventana de respuesta abierta",
+    "expired": "Ventana de respuesta cerrada",
+    "expiresAt": "Respuestas libres permitidas hasta {{time}}",
+    "costsMoney": "Cada respuesta cuesta dinero"
+  },
+  "reply": {
+    "placeholder": "Escribe una respuesta…",
+    "send": "Enviar respuesta",
+    "sending": "Enviando…",
+    "sent": "Respuesta enviada",
+    "failed": "No se pudo enviar la respuesta",
+    "disabledNoAdapter": "Este canal no tiene adaptador de respuesta en esta instancia.",
+    "costWarning": "Este canal se factura por segmento. Las respuestas pasan por los mismos límites de gasto que las alertas."
+  },
+  "actions": {
+    "markPending": "Marcar pendiente",
+    "reopen": "Reabrir",
+    "close": "Cerrar hilo"
+  }
+}

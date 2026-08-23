@@ -1,0 +1,57 @@
+{
+  "title": "Support-Postfach",
+  "subtitle": "Von den Bot-Kanälen erfasste Nachrichten von Menschen. Instanzweit, nur für Super-Admins.",
+  "empty": "Noch keine Support-Nachrichten.",
+  "emptyFiltered": "Keine Konversation passt zu diesen Filtern.",
+  "search": "Absender oder Betreff suchen",
+  "allChannels": "Alle Kanäle",
+  "allStatuses": "Alle Status",
+  "backToInbox": "Zurück zum Postfach",
+  "sections": {
+    "active": "Aktiv",
+    "activeHelp": "Offene und wartende Konversationen, auf die wir noch antworten können.",
+    "expired": "Antwortfenster abgelaufen",
+    "expiredHelp": "Weiterhin unbeantwortet, aber der Kanal akzeptiert keine freie Antwort mehr.",
+    "closed": "Geschlossen",
+    "closedHelp": "Erledigt. Wird nach der Aufbewahrungsfrist gelöscht."
+  },
+  "status": {
+    "open": "Offen",
+    "pending": "Wartend",
+    "closed": "Geschlossen",
+    "label": "Status"
+  },
+  "thread": {
+    "unread_one": "{{count}} ungelesen",
+    "unread_other": "{{count}} ungelesen",
+    "lastMessage": "Letzte Nachricht",
+    "attribution": "Zugeordnet zu",
+    "attributionHelp": "Ein Hinweis darauf, wer geschrieben hat. Er gewährt dieser Organisation keinen Zugriff.",
+    "noAttribution": "Nicht zugeordneter Absender",
+    "truncated": "Diese Nachricht wurde beim Speichern gekürzt.",
+    "inbound": "Sie",
+    "outbound": "Wir",
+    "deliveryFailed": "Zustellung fehlgeschlagen",
+    "noMessages": "Diese Konversation enthält keine Nachrichten."
+  },
+  "window": {
+    "open": "Antwortfenster offen",
+    "expired": "Antwortfenster geschlossen",
+    "expiresAt": "Freie Antworten möglich bis {{time}}",
+    "costsMoney": "Jede Antwort kostet Geld"
+  },
+  "reply": {
+    "placeholder": "Antwort schreiben…",
+    "send": "Antwort senden",
+    "sending": "Wird gesendet…",
+    "sent": "Antwort gesendet",
+    "failed": "Antwort konnte nicht gesendet werden",
+    "disabledNoAdapter": "Für diesen Kanal gibt es auf dieser Instanz keinen Antwort-Adapter.",
+    "costWarning": "Dieser Kanal wird pro Segment abgerechnet. Antworten durchlaufen dieselben Ausgabengrenzen wie Alarme."
+  },
+  "actions": {
+    "markPending": "Als wartend markieren",
+    "reopen": "Wieder öffnen",
+    "close": "Konversation schließen"
+  }
+}

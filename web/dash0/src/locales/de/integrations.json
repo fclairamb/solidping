@@ -145,7 +145,10 @@
     "discordMentionOnCallHelp": "New and escalated incident messages start by @-mentioning whoever the escalation policy pages first. Members without a mapped Discord account are named in plain text.",
     "discordCommentIngestion": "Capture every thread reply as a comment",
     "discordCommentIngestionHelp": "Off (recommended): only an explicit comment command becomes an incident comment, so triage chatter stays chatter. On: every human reply in a tracked incident thread is saved to the incident timeline. Requires the Discord Gateway and the MESSAGE_CONTENT intent.",
-    "discordMemberMappingHelp": "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones."
+    "discordMemberMappingHelp": "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
+    "slackDmUnavailableTitle": "Direktnachrichten werden nicht erfasst",
+    "slackDmUnavailableBody": "Dieser Workspace wurde verbunden, bevor SolidPing den Scope im:history angefordert hat. Slack gewährt einer bestehenden Installation keine neuen Scopes, daher erreichen Direktnachrichten an den Bot das Support-Postfach nie. Installieren Sie die App erneut, um die Erfassung zu aktivieren — an dieser Integration ändert sich sonst nichts.",
+    "slackReinstallButton": "Slack-App neu installieren"
   },
   "kubernetes": {
     "name": "Kubernetes",

@@ -1,0 +1,57 @@
+{
+  "title": "Support inbox",
+  "subtitle": "Human messages captured from the bot channels. Instance-wide, super-admin only.",
+  "empty": "No support messages yet.",
+  "emptyFiltered": "No threads match these filters.",
+  "search": "Search sender or subject",
+  "allChannels": "All channels",
+  "allStatuses": "All statuses",
+  "backToInbox": "Back to the inbox",
+  "sections": {
+    "active": "Active",
+    "activeHelp": "Open and pending threads we can still reply to.",
+    "expired": "Expired reply window",
+    "expiredHelp": "Still unanswered, but the channel will no longer accept a free-form reply.",
+    "closed": "Closed",
+    "closedHelp": "Dealt with. Purged after the retention period."
+  },
+  "status": {
+    "open": "Open",
+    "pending": "Pending",
+    "closed": "Closed",
+    "label": "Status"
+  },
+  "thread": {
+    "unread_one": "{{count}} unread",
+    "unread_other": "{{count}} unread",
+    "lastMessage": "Last message",
+    "attribution": "Attributed to",
+    "attributionHelp": "A hint about who wrote in. It does not give that organization access to this thread.",
+    "noAttribution": "Unattributed sender",
+    "truncated": "This message was truncated when it was stored.",
+    "inbound": "Them",
+    "outbound": "Us",
+    "deliveryFailed": "Delivery failed",
+    "noMessages": "This thread has no messages."
+  },
+  "window": {
+    "open": "Reply window open",
+    "expired": "Reply window closed",
+    "expiresAt": "Free-form replies allowed until {{time}}",
+    "costsMoney": "Every reply costs money"
+  },
+  "reply": {
+    "placeholder": "Write a reply…",
+    "send": "Send reply",
+    "sending": "Sending…",
+    "sent": "Reply sent",
+    "failed": "Could not send the reply",
+    "disabledNoAdapter": "This channel has no reply adapter on this instance.",
+    "costWarning": "This channel bills per message segment. Replies pass the same spend guards as alerting."
+  },
+  "actions": {
+    "markPending": "Mark pending",
+    "reopen": "Reopen",
+    "close": "Close thread"
+  }
+}

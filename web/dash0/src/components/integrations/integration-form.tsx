@@ -1610,6 +1610,12 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
         </p>
       )}
 
+      <SlackDmCaptureNotice
+        settings={settings}
+        org={org}
+        channelUid={channelUid}
+      />
+
       {/* Tab strip */}
       <div className="flex gap-1 rounded-md border bg-background p-0.5 w-fit">
         {(["channel", "dm"] as SlackTab[]).map((tab) => (
@@ -2652,5 +2658,74 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * "Direct messages need a reinstall" (spec 2026-08-22-02).
+ *
+ * SolidPing now asks for the `im:history` scope so a DM to the bot lands in the
+ * support inbox. Slack DOES NOT GRANT NEW SCOPES TO EXISTING INSTALLS: a
+ * workspace connected before that scope was requested keeps its old grant, and
+ * Slack simply never delivers `message.im` to us. From the inbox that is
+ * indistinguishable from nobody writing in — which is why the state is surfaced
+ * here, in the product, instead of leaving an operator to discover it from a
+ * silence.
+ *
+ * Reinstalling is the whole fix, and it reuses the existing install flow with
+ * this channel's uid so the callback updates the row rather than creating a
+ * second one.
+ */
+function SlackDmCaptureNotice({
+  settings,
+  org,
+  channelUid,
+}: {
+  settings: Record<string, unknown>;
+  org?: string;
+  channelUid?: string;
+}) {
+  const { t } = useTranslation("integrations");
+
+  const scopes = Array.isArray(settings.scopes) ? (settings.scopes as string[]) : [];
+  if (scopes.includes("im:history")) {
+    return null;
+  }
+
+  return (
+    <Alert data-testid="slack-dm-reinstall">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertTitle>
+        {t("form.slackDmUnavailableTitle", "Direct messages are not being captured")}
+      </AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p>
+          {t(
+            "form.slackDmUnavailableBody",
+            "This workspace was connected before SolidPing asked for the im:history scope. " +
+              "Slack does not grant new scopes to an existing install, so direct messages to the " +
+              "bot never reach the support inbox. Reinstall the app to enable DM capture — " +
+              "nothing else about this integration changes.",
+          )}
+        </p>
+        {org ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void startSlackInstall(org, channelUid).catch(() =>
+                toast.error(
+                  t("form.slackInstallFailed", "Failed to start Slack install"),
+                ),
+              );
+            }}
+            data-testid="slack-dm-reinstall-button"
+          >
+            {t("form.slackReinstallButton", "Reinstall Slack app")}
+          </Button>
+        ) : null}
+      </AlertDescription>
+    </Alert>
   );
 }

@@ -15,6 +15,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SupportIndexRouteImport } from './routes/support.index'
+import { Route as SupportThreadUidRouteImport } from './routes/support.$threadUid'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as OrgsOrgRouteImport } from './routes/orgs/$org'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -171,6 +173,16 @@ const DeviceRoute = DeviceRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportIndexRoute = SupportIndexRouteImport.update({
+  id: '/support/',
+  path: '/support/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportThreadUidRoute = SupportThreadUidRouteImport.update({
+  id: '/support/$threadUid',
+  path: '/support/$threadUid',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
@@ -873,6 +885,8 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/support/$threadUid': typeof SupportThreadUidRoute
+  '/support/': typeof SupportIndexRoute
   '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
@@ -1007,6 +1021,8 @@ export interface FileRoutesByTo {
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/support/$threadUid': typeof SupportThreadUidRoute
+  '/support': typeof SupportIndexRoute
   '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
@@ -1119,6 +1135,8 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/support/$threadUid': typeof SupportThreadUidRoute
+  '/support/': typeof SupportIndexRoute
   '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
@@ -1256,6 +1274,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/support/$threadUid'
+    | '/support/'
     | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
@@ -1390,6 +1410,8 @@ export interface FileRouteTypes {
     | '/confirm-registration/$token'
     | '/invite/$token'
     | '/reset-password/$token'
+    | '/support/$threadUid'
+    | '/support'
     | '/auth/slack/complete'
     | '/orgs/$org/badges'
     | '/orgs/$org/design-reference'
@@ -1501,6 +1523,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/support/$threadUid'
+    | '/support/'
     | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
@@ -1637,6 +1661,8 @@ export interface RootRouteChildren {
   InviteTokenRoute: typeof InviteTokenRoute
   OrgsOrgRoute: typeof OrgsOrgRouteWithChildren
   ResetPasswordTokenRoute: typeof ResetPasswordTokenRoute
+  SupportThreadUidRoute: typeof SupportThreadUidRoute
+  SupportIndexRoute: typeof SupportIndexRoute
   AuthSlackCompleteRoute: typeof AuthSlackCompleteRoute
 }
 
@@ -1682,6 +1708,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support/': {
+      id: '/support/'
+      path: '/support'
+      fullPath: '/support/'
+      preLoaderRoute: typeof SupportIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support/$threadUid': {
+      id: '/support/$threadUid'
+      path: '/support/$threadUid'
+      fullPath: '/support/$threadUid'
+      preLoaderRoute: typeof SupportThreadUidRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password/$token': {
@@ -3137,6 +3177,8 @@ const rootRouteChildren: RootRouteChildren = {
   InviteTokenRoute: InviteTokenRoute,
   OrgsOrgRoute: OrgsOrgRouteWithChildren,
   ResetPasswordTokenRoute: ResetPasswordTokenRoute,
+  SupportThreadUidRoute: SupportThreadUidRoute,
+  SupportIndexRoute: SupportIndexRoute,
   AuthSlackCompleteRoute: AuthSlackCompleteRoute,
 }
 export const routeTree = rootRouteImport
