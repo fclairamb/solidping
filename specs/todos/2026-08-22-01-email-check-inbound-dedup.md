@@ -194,9 +194,19 @@ at the call site explaining why this supersedes a `Node.Role` gate.
 Postgres `output->>'messageId' = ?`, SQLite `json_extract(output, '$.messageId')`,
 both scoped to `period_type = 'raw'` and `period_start >= since` so the JSON
 scan stays inside the check's recent-results range.
+Both are additionally scoped by `organization_uid`: it is redundant logically
+(`check_uid` alone identifies the rows) but load-bearing physically — every
+index on `results` leads with the org column, so without it neither backend can
+seek `results_raw_idx` and this per-email lookup degrades to a full scan.
 `emailcheck.recordResult` consults it before inserting (window:
 `resultDedupWindow` = 7 days) and skips the insert on a hit, logging at debug.
-Emails with no `Message-ID` skip the layer.
+
+When the lookup cannot answer (no `Message-ID`, or the query errors), the two
+arrival paths — carried down as `jmap.Origin` — resolve it in opposite
+directions. `OriginInbox` fails **open** (record anyway; layers 1–2 cover it
+and losing a live signal is worse). `OriginRescan` fails **closed** (record
+nothing; its input may already be recorded and it repeats every reconnect, so
+failing open would make the repair pass a duplicate generator).
 
 ### Tests
 

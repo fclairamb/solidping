@@ -70,6 +70,16 @@ const (
 	OriginRescan
 )
 
+// String makes the origin readable in structured logs, where it is the field
+// that explains why a handler did or did not record a given email.
+func (o Origin) String() string {
+	if o == OriginRescan {
+		return "rescan"
+	}
+
+	return "inbox"
+}
+
 // Mailboxes carries the IDs the manager resolved at startup so handlers can
 // classify emails relative to them if needed.
 type Mailboxes struct {
