@@ -167,16 +167,16 @@ func redactValue(value any, depth int) (any, bool) {
 // deleted check leaves behind, and the dashboard's recent-activity row lost
 // its link text — which is how this was noticed.
 func derefPointer(value any) (any, bool) {
-	rv := reflect.ValueOf(value)
-	if rv.Kind() != reflect.Ptr {
+	reflected := reflect.ValueOf(value)
+	if reflected.Kind() != reflect.Pointer {
 		return nil, false
 	}
 
-	if rv.IsNil() {
+	if reflected.IsNil() {
 		return nil, true
 	}
 
-	return rv.Elem().Interface(), true
+	return reflected.Elem().Interface(), true
 }
 
 // redactScalar handles the leaf types. It FAILS CLOSED: anything not
