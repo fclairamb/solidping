@@ -69,7 +69,7 @@ docker run -p 4000:4000 -v solidping-data:/data \
 Then open [http://localhost:4000](http://localhost:4000) in your browser.
 
 **Default credentials:**
-- Email: `admin@solidping.com`
+- Email: `admin@solidping.io`
 - Password: `solidpass`
 - Organization: `default`
 

@@ -40,7 +40,7 @@ This is why the recommended run mode is the **default** one, not
 `SP_RUNMODE=test`: test mode's out-of-the-box identity is `test@test.com`, and
 its seeded fixtures (e.g. "Notified Check → https://example.com") would show up
 in the sidebar and the checks list. Default mode ships
-`admin@solidping.com` / `solidpass`, which reads plausibly on camera.
+`admin@solidping.io` / `solidpass`, which reads plausibly on camera.
 
 All of this happens inside the pipeline — there is no manual setup step, and
 `make showcase` is reproducible from a blank database.
@@ -110,7 +110,7 @@ Useful knobs:
 |---|---|---|
 | `E2E_BASE_URL` | `http://localhost:4000/dash0/` | Server to record against (same convention as the e2e suite) |
 | `SHOWCASE_SLOW_MO` | `250` | Playwright `slowMo` in ms — the "human pacing" dial |
-| `SHOWCASE_BOOTSTRAP_ORG` / `SHOWCASE_EMAIL` / `SHOWCASE_PASSWORD` | `default` / `admin@solidping.com` / `solidpass` | Account used to bootstrap; also the identity that appears on camera |
+| `SHOWCASE_BOOTSTRAP_ORG` / `SHOWCASE_EMAIL` / `SHOWCASE_PASSWORD` | `default` / `admin@solidping.io` / `solidpass` | Account used to bootstrap; also the identity that appears on camera |
 | `SHOWCASE_ORG` / `SHOWCASE_ORG_NAME` | `northwind` / `Northwind Systems` | The org that gets provisioned and filmed |
 | `SHOWCASE_USER_NAME` | `Alex Rivera` | Display name shown in the sidebar footer |
 

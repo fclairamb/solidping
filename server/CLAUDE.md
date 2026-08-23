@@ -288,7 +288,7 @@ The easiest way to test the API is to get a JWT token and save it to a file:
 ```bash
 # 1. Login and save token to file (org is optional in body)
 curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"org":"default","email":"admin@solidping.com","password":"solidpass"}' \
+  -d '{"org":"default","email":"admin@solidping.io","password":"solidpass"}' \
   'http://localhost:4000/api/v1/auth/login' \
   | jq -r '.accessToken' > /tmp/token.txt
 
@@ -359,7 +359,7 @@ curl -s -H "Authorization: Bearer eyJhbGci..." 'http://localhost:4000/api/v1/org
 ```
 
 ### Default Credentials
-- **Email**: `admin@solidping.com`
+- **Email**: `admin@solidping.io`
 - **Password**: `solidpass`
 - **Organization**: `default`
 

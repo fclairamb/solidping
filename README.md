@@ -52,7 +52,7 @@ make dev-test   # Backend + frontend with hot reload
 ```
 
 ### Default Credentials
-- Email: `admin@solidping.com`
+- Email: `admin@solidping.io`
 - Password: `solidpass`
 - Organization: `default`
 
@@ -60,7 +60,7 @@ make dev-test   # Backend + frontend with hot reload
 ```bash
 # Get a JWT token
 TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"org":"default","email":"admin@solidping.com","password":"solidpass"}' \
+  -d '{"org":"default","email":"admin@solidping.io","password":"solidpass"}' \
   'http://localhost:4000/api/v1/auth/login' | jq -r '.accessToken')
 
 # List checks

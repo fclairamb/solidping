@@ -381,7 +381,7 @@ orgLimits.DELETE("/checks-per-minute", rateLimitHandler.DeleteChecksPerMinute)
 ```bash
 # Login as super admin
 TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"email":"admin@solidping.com","password":"solidpass"}' \
+  -d '{"email":"admin@solidping.io","password":"solidpass"}' \
   'http://localhost:4000/api/v1/auth/login' | jq -r '.accessToken')
 
 # Create some checks with short periods

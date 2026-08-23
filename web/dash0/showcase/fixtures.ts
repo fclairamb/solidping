@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
  * the user record exactly as it found it.
  *
  * The recommended run mode is therefore the DEFAULT one (not `test`), whose
- * out-of-the-box account is `admin@solidping.com` / `solidpass` — an identity
+ * out-of-the-box account is `admin@solidping.io` / `solidpass` — an identity
  * that reads plausibly on camera. See `showcase/README.md`.
  */
 export const API_BASE = process.env.E2E_BASE_URL
@@ -35,12 +35,12 @@ export const API_BASE = process.env.E2E_BASE_URL
 
 /**
  * Credentials used to bootstrap the recording. Defaults match a default-run-mode
- * server (`admin@solidping.com` / `solidpass`, org `default`). Override for a
+ * server (`admin@solidping.io` / `solidpass`, org `default`). Override for a
  * server seeded differently.
  */
 export const BOOTSTRAP_ORG = process.env.SHOWCASE_BOOTSTRAP_ORG ?? "default";
 const BOOTSTRAP_EMAIL =
-  process.env.SHOWCASE_EMAIL ?? "admin@solidping.com";
+  process.env.SHOWCASE_EMAIL ?? "admin@solidping.io";
 const BOOTSTRAP_PASSWORD = process.env.SHOWCASE_PASSWORD ?? "solidpass";
 
 /**

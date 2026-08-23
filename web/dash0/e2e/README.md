@@ -108,6 +108,6 @@ test("should see dashboard", async ({ authenticatedPage }) => {
 ## Test Credentials
 
 Default test credentials (from CLAUDE.md):
-- Email: `admin@solidping.com`
+- Email: `admin@solidping.io`
 - Password: `solidpass`
 - Organization: `default`

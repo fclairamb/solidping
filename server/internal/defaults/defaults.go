@@ -19,7 +19,7 @@ const (
 
 	// Email is the default admin email created during initial setup.
 	// This account is created automatically when the server starts with no organizations.
-	Email = "admin@solidping.com"
+	Email = "admin@solidping.io"
 
 	// Password is the default admin password created during initial setup.
 	// WARNING: This is a development/demo password. Change it immediately in production.

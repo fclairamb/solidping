@@ -93,7 +93,7 @@ docker-compose up -d
 Once running, access the dashboard at [http://localhost:4000](http://localhost:4000).
 
 **Default credentials:**
-- Email: `admin@solidping.com`
+- Email: `admin@solidping.io`
 - Password: `solidpass`
 
 :::warning

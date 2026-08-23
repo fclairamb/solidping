@@ -37,7 +37,7 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 
 | Mode | Email | Password | Org |
 |---|---|---|---|
-| Normal | `admin@solidping.com` | `solidpass` | `default` |
+| Normal | `admin@solidping.io` | `solidpass` | `default` |
 | Test (`SP_RUNMODE=test`) | `test@test.com` | `test` | `test` |
 
 ## SaaS mode & entitlements
@@ -126,7 +126,7 @@ Key codes: `INTERNAL_ERROR`, `VALIDATION_ERROR`, `NOT_FOUND`, `UNAUTHORIZED`, `F
 ### Quick API test
 ```bash
 TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"org":"default","email":"admin@solidping.com","password":"solidpass"}' \
+  -d '{"org":"default","email":"admin@solidping.io","password":"solidpass"}' \
   'http://localhost:4000/api/v1/auth/login' | jq -r '.accessToken')
 curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/api/v1/orgs/default/checks'
 ```
