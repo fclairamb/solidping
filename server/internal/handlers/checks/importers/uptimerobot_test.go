@@ -1,6 +1,8 @@
 package importers_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -184,4 +186,45 @@ func TestUptimeRobotConverterPortSubTypeFallback(t *testing.T) {
 	check = checkBySlug(t, result.Document, "no-port-at-all")
 	r.NotContains(check.Config, "port")
 	r.True(warningMentions(result.Warnings, "no resolvable port"))
+}
+
+// TestUptimeRobotConverterWellKnownPortSubTypes asserts every entry of the
+// sub_type → well-known-port lookup table individually. The golden fixture
+// only exercises sub_type 4 (SMTP) and 99 (custom); a transposed pair
+// anywhere else in that table would otherwise ship with zero coverage.
+func TestUptimeRobotConverterWellKnownPortSubTypes(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		subType int
+		port    int
+		label   string
+	}{
+		{1, 80, "HTTP"},
+		{2, 443, "HTTPS"},
+		{3, 21, "FTP"},
+		{4, 25, "SMTP"},
+		{5, 110, "POP3"},
+		{6, 143, "IMAP"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			body := []byte(fmt.Sprintf(`{"monitors":[
+			  {"id":1,"friendly_name":"Well known %s","url":"port.example.org","type":4,"sub_type":"%d",
+			   "interval":300,"status":2}
+			]}`, tc.label, tc.subType))
+
+			result, err := (&importers.UptimeRobotConverter{}).Convert(body)
+			r.NoError(err)
+
+			check := checkBySlug(t, result.Document, "well-known-"+strings.ToLower(tc.label))
+			r.Equal(tc.port, check.Config["port"], "sub_type %d must resolve to port %d", tc.subType, tc.port)
+			r.False(warningMentions(result.Warnings, "unknown port sub_type"),
+				"a well-known sub_type must not warn")
+		})
+	}
 }
