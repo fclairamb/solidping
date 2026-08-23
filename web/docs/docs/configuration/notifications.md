@@ -157,8 +157,12 @@ slack:
    - `chat:write`
    - `chat:write.public`
    - `channels:read`
+   - `im:history` — required for [direct-message capture](#direct-messages-and-the-support-inbox)
 5. Go to "Basic Information" to get your credentials
 6. Install the app to your workspace
+
+The reference manifests in `wiki/slack/` are the authoritative scope list; the
+five above are the minimum for alerting plus DM capture.
 
 ### Slash commands
 
@@ -197,6 +201,37 @@ An integration created before this setting existed carries no value and is
 therefore treated as `explicit`, so no workspace keeps over-capturing after an
 upgrade. Bot-authored messages (including SolidPing's own thread replies) are
 never ingested in either mode.
+
+### Direct messages and the support inbox
+
+A direct message to the SolidPing bot is captured in the instance
+[support inbox](../features/support-inbox.md) instead of being dropped. Channel
+messages and `@SolidPing` mentions are unaffected — only `channel_type: "im"` is
+captured.
+
+:::warning Existing workspaces must reinstall the app
+
+This needs the `im:history` bot scope, and **Slack does not grant new scopes to
+an existing install**. Every workspace that connected before SolidPing started
+requesting it keeps its old grant, and Slack simply never delivers `message.im`
+to us — so DMs to the bot go nowhere and the inbox looks empty rather than
+broken.
+
+Reinstalling the app is the whole fix, and it changes nothing else about the
+integration. SolidPing surfaces the state in three places so it does not have to
+be discovered from a silence:
+
+- the integration's edit page shows a **"Direct messages are not being
+  captured"** banner with a **Reinstall Slack app** button;
+- the server logs one warning at boot naming how many workspaces still owe a
+  reinstall;
+- the `solidping_support_dm_unavailable{channel="slack"}` gauge reports the same
+  number for alerting.
+
+Discord needs no equivalent step: its DM support is a gateway intent, not a
+user-granted scope.
+
+:::
 
 ### Notification Format
 
