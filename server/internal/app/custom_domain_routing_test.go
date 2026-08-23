@@ -189,6 +189,21 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			wantStatus: http.StatusOK, wantBody: "api-view",
 		},
 		{
+			// Spec 2026-08-23-03: a domain that IS ours but is not currently
+			// servable must get a legible message. Before this it fell through
+			// to the instance's own-host routing, which served the operator
+			// dashboard on a customer's hostname.
+			name: "demoted custom host gets a legible 503, never the fallthrough",
+			host: "demoted.acme.com", path: "/",
+			wantStatus: http.StatusServiceUnavailable, wantBody: "Status page unavailable",
+			wantNotBody: "next",
+		},
+		{
+			name: "demoted custom host does not serve the dashboard either",
+			host: "demoted.acme.com", path: "/dash0/",
+			wantStatus: http.StatusServiceUnavailable, wantNotBody: "next",
+		},
+		{
 			name: "custom host denied API is 404",
 			host: "status.acme.com", path: "/api/v1/orgs/acme/checks",
 			wantStatus: http.StatusNotFound,
@@ -414,4 +429,82 @@ func TestPathBasedShellVaryMatchesCustomHost(t *testing.T) {
 	asset := serve("/status0/assets/app-abc123.js")
 	r.Equal("public, max-age=31536000", asset.Header().Get("Cache-Control"))
 	r.Empty(asset.Header().Get("Vary"), "an immutable asset varies on nothing")
+}
+
+// TestLookupCustomDomainDistinguishesDemotedFromUnknown goes through the real
+// DB resolution path (the table test above seeds the cache, so a resolver that
+// collapsed the two cases would still look right there).
+//
+// The distinction is the whole point of spec 2026-08-23-03's HTTP half: a
+// demoted domain must be recognised as OURS so it gets a legible message,
+// while a host that is genuinely not ours keeps falling through unchanged.
+func TestLookupCustomDomainDistinguishesDemotedFromUnknown(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	server := newCustomHostTestServer(t)
+	server.dbService = dbSvc
+
+	org := models.NewOrganization("acme", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	page := models.NewStatusPage(org.UID, "Acme", "main")
+	r.NoError(dbSvc.CreateStatusPage(ctx, page))
+
+	demoted := "demoted-db.acme.com"
+	r.NoError(dbSvc.UpdateStatusPageCustomDomain(ctx, page.UID,
+		&models.StatusPageCustomDomainUpdate{
+			Domain: &demoted,
+			State:  models.CustomDomainStateDemoted,
+		}))
+
+	resolved := server.lookupCustomDomain(ctx, demoted)
+	r.Nil(resolved.page, "a demoted domain is not servable")
+	r.True(resolved.known, "but it IS ours, so it must not fall through")
+	r.Equal(reasonUnverified, resolved.reason)
+
+	stranger := server.lookupCustomDomain(ctx, "nothing-to-do-with-us.example.net")
+	r.Nil(stranger.page)
+	r.False(stranger.known, "a host we know nothing about must keep falling through")
+}
+
+// TestCustomDomainUnavailablePageIsLegibleAndUncached pins the properties the
+// error page has to have: an HTML browser gets a rendered message naming the
+// host (not a raw stack of headers), and no cache anywhere may keep it — the
+// state flips the moment DNS is fixed.
+func TestCustomDomainUnavailablePageIsLegibleAndUncached(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	server := newCustomHostTestServer(t)
+
+	handler := server.handlerWithCustomDomains(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("next"))
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	req.Host = "demoted.acme.com"
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	handler.ServeHTTP(rec, req)
+
+	r.Equal(http.StatusServiceUnavailable, rec.Code)
+	r.Contains(rec.Header().Get("Content-Type"), "text/html")
+	r.Equal("no-store", rec.Header().Get("Cache-Control"))
+	r.Equal("noindex", rec.Header().Get("X-Robots-Tag"))
+	r.NotEmpty(rec.Header().Get("Retry-After"))
+
+	body := rec.Body.String()
+	r.Contains(body, "Status page unavailable")
+	r.Contains(body, "demoted.acme.com", "the visitor must be told which host this is about")
+	r.NotContains(body, "next", "it must never fall through to the instance's own routing")
 }

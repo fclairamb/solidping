@@ -2,6 +2,7 @@ package statuspages
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -488,3 +489,80 @@ func TestCertStatusProviderWithoutForgetterIsSafe(t *testing.T) {
 	})
 	r.NoError(err, "clearing must not require a DomainForgetter")
 }
+
+// TestVerifyCustomDomain_FailureDoesNotTakeALivePageDark is the operator-side
+// half of spec 2026-08-23-03's grace requirement. Clicking Verify during a DNS
+// blip used to clear custom_domain_verified_at on the spot, so an admin trying
+// to DIAGNOSE a problem could take their own live status page offline with one
+// click — while the automatic sweep, seeing the identical failure, would only
+// have moved it into grace. The two paths now share one state machine.
+func TestVerifyCustomDomain_FailureDoesNotTakeALivePageDark(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "cname.solidping.io.", nil
+		},
+	}
+
+	verified, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal("verified", verified.CustomDomainStatus)
+	r.True(svc.CustomDomainServable(ctx, "status.acme.com"))
+
+	// DNS breaks; the admin clicks Verify to see what is wrong.
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "", errStubLookup
+		},
+	}
+
+	after, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.True(svc.CustomDomainServable(ctx, "status.acme.com"),
+		"a single failed manual verify must not take a live page dark")
+	r.Equal(models.CustomDomainStateActive, after.CustomDomainState)
+	r.NotNil(after.CustomDomainLastCheck)
+	r.Contains(*after.CustomDomainLastCheck, "ok=false",
+		"the failure must still be recorded, diagnosably")
+}
+
+// TestVerifyCustomDomain_FailureOnAPendingPageStaysUnverified is the boundary:
+// the grace behaviour above applies to a page that WAS serving. A page that has
+// never verified must not be nudged towards `verified` by a failed attempt.
+func TestVerifyCustomDomain_FailureOnAPendingPageStaysUnverified(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, svc, org := setupCustomDomainTest(t)
+	page := mkPage(t, svc, org, "main")
+
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
+		CustomDomain: strptr("status.acme.com"), CustomDomainSet: true,
+	})
+	r.NoError(err)
+
+	svc.verifier = &domainverify.Verifier{
+		LookupCNAME: func(_ context.Context, _ string) (string, error) {
+			return "elsewhere.example.net.", nil
+		},
+	}
+
+	resp, err := svc.VerifyCustomDomain(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Equal("unverified", resp.CustomDomainStatus)
+	r.Equal(models.CustomDomainStatePending, resp.CustomDomainState)
+	r.False(svc.CustomDomainServable(ctx, "status.acme.com"))
+}
+
+// errStubLookup is a static stub error for the manual-verify failure cases.
+var errStubLookup = errors.New("stub lookup failure")

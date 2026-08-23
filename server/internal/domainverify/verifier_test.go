@@ -326,3 +326,73 @@ func TestNoTXTSurfaceRemains(t *testing.T) {
 		}
 	}
 }
+
+// TestDiagnoseRecordsWhatItSaw covers the diagnosability directive of spec
+// 2026-08-23-03. A bare false has meant, at various times, a wrong CNAME, an
+// NXDOMAIN, an installation with no CNAME target configured, and a page checked
+// in the wrong mode — and telling them apart required shell access to the pod.
+func TestDiagnoseRecordsWhatItSaw(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mismatch names both sides", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "elsewhere.example.net.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "cname.solidping.io", ModeShared)
+		r.False(diag.OK)
+		r.Equal("cname.solidping.io", diag.Expected)
+		r.Equal("elsewhere.example.net", diag.Resolved)
+		r.Equal(ModeShared, diag.Mode)
+		r.Contains(diag.String(), "expected=cname.solidping.io")
+		r.Contains(diag.String(), "resolved=elsewhere.example.net")
+	})
+
+	t.Run("lookup error is preserved", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "", errTestLookup
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "cname.solidping.io", ModeShared)
+		r.False(diag.OK)
+		r.ErrorIs(diag.Err, errTestLookup)
+		r.Contains(diag.String(), "error=")
+	})
+
+	t.Run("no configured target says so instead of blaming DNS", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		called := false
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			called = true
+
+			return "cname.solidping.io.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "", ModeShared)
+		r.False(diag.OK)
+		r.False(called, "DNS is never consulted when nothing could have matched")
+		r.Contains(diag.String(), "no CNAME target configured")
+	})
+
+	t.Run("token mode records the per-page target", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "spabc.cname.solidping.io.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "solidping.io", ModeToken)
+		r.True(diag.OK)
+		r.Contains(diag.String(), "mode=token")
+		r.Contains(diag.String(), "expected=spabc.cname.solidping.io")
+	})
+}
