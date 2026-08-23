@@ -17,7 +17,10 @@ import (
 // Port distinct from every other _postgres_test.go file's embedded-Postgres
 // port in this repo (see the port-numbering note in
 // postgres_headroom_postgres_test.go).
-const portRecentResultsPlan = 15494
+const (
+	portRecentResultsPlan      = 15494
+	portRecentResultsSemantics = 15495
+)
 
 // seedRecentResultsChecks creates `count` checks, each with a day of raw at a
 // 10 s cadence plus 45 days of hour+day rollups — production retention shape.
@@ -231,4 +234,66 @@ func planActualRows(plan string) int {
 	}
 
 	return 0
+}
+
+// TestRecentResultsPerCheck_Semantics_Postgres is the dialect-parity half of
+// spec 2026-08-22-05's acceptance ("both dialects produce identical series for
+// the same fixture"): the SAME assertions the SQLite package makes in
+// TestRecentResultsPerCheck_Semantics, against the Postgres LATERAL form.
+//
+// It pins WHAT comes back — per-check budgets honored independently, each tier
+// bounded by its own `since`, blobs never projected — where the test above pins
+// only HOW the rows are reached.
+//
+//nolint:paralleltest // embedded-postgres tests run sequentially in this package
+func TestRecentResultsPerCheck_Semantics_Postgres(t *testing.T) {
+	ctx := t.Context()
+	r := require.New(t)
+
+	s := newTier1ServicePG(t, portRecentResultsSemantics)
+
+	org := models.NewOrganization("recent-semantics-org", "Recent Semantics Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	checkUIDs := seedRecentResultsChecks(ctx, t, s, org.UID, "recent-semantics", 3)
+
+	filter := recentResultsPageFilter(org.UID, checkUIDs)
+	filter.DefaultPerCheckLimit = 50
+	filter.PerCheckLimits = map[string]int{checkUIDs[0]: 10}
+
+	rows, err := s.RecentResultsPerCheck(ctx, filter)
+	r.NoError(err)
+
+	perCheck := make(map[string]int)
+
+	for _, row := range rows {
+		perCheck[row.CheckUID]++
+
+		r.Nil(row.Metrics, "the response-time fetch must never project the blobs")
+		r.Nil(row.Output)
+		r.NotEmpty(row.UID, "every projected column must actually be scanned")
+
+		if row.PeriodType == models.PeriodTypeRaw {
+			r.False(row.PeriodStart.Before(filter.Tiers[0].Since),
+				"a raw row older than the raw bound leaked in")
+		} else {
+			r.False(row.PeriodStart.Before(filter.Tiers[1].Since),
+				"a rollup row older than the rollup bound leaked in")
+		}
+	}
+
+	// Two branches each, both with more matching rows than their budget.
+	r.Equal(2*10, perCheck[checkUIDs[0]], "an explicit per-check budget is honored exactly")
+	r.Equal(2*50, perCheck[checkUIDs[1]], "a dense neighbor cannot starve another check's budget")
+	r.Equal(2*50, perCheck[checkUIDs[2]])
+
+	// And the guard holds at the dialect boundary, not only in models.
+	filter.Tiers = []models.RecentResultsTier{{
+		PeriodTypes: []string{models.PeriodTypeRaw, models.PeriodTypeHour},
+		Since:       time.Now().UTC().Add(-time.Hour),
+	}}
+
+	mixed, err := s.RecentResultsPerCheck(ctx, filter)
+	r.ErrorIs(err, models.ErrRecentResultsMixedTier)
+	r.Nil(mixed)
 }
