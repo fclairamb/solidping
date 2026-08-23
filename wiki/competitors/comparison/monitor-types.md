@@ -31,7 +31,21 @@
 | **External script** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ (via JS check) |
 | **Cron exit codes** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
-**Most Comprehensive**: SolidPing (38 check types — broadest protocol coverage of any tool surveyed)
+**Most Comprehensive**: SolidPing (40 check types — broadest protocol coverage of any tool surveyed)
+
+> **How the SolidPing number is derived (updated 2026-08-23).** Count the
+> enumerated `CheckType` constants and subtract the synthetic one:
+>
+> ```bash
+> grep -rhoE 'CheckType = "[a-z0-9_-]+"' \
+>   server/internal/checkers/checkerdef/*.go | wc -l   # -> 41
+> ```
+>
+> `sleep` is a testing type, explicitly exempted from the customer-facing docs
+> (see `docsAnchorExemptTypes` in `server/internal/checkers/registry/docs_anchor_test.go`),
+> leaving **40**. This value has been 32, then 38, now 40 within four months, and
+> stale copies of it have been caught twice — re-derive it at publish time rather
+> than quoting this page from memory.
 
 **Best Free**: UptimeRobot (8 types, 50 free monitors) for SaaS; SolidPing for self-hosted (unlimited)
 

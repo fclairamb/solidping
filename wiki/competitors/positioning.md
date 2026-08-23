@@ -113,7 +113,7 @@ head-on on the self-hoster page; it does not deserve a `/vs/` page.
 - *Axis 2:* real distributed workers across regions for consensus + private-network
   probing, built in — not a paid add-on tier. And self-hosted: the consensus
   vantage points can be *yours*, which no SaaS on this list offers.
-- *Axis 3:* an external observer with its own fate, plus 38 check types — the two
+- *Axis 3:* an external observer with its own fate, plus 40 check types — the two
   things a platform built-in structurally cannot provide.
 
 **Recommendation:** pair both axes in a single headline, because no single
@@ -156,7 +156,7 @@ from writing the same sentence next week.**
   line. Consensus, bundling and MCP were all in this category — each is a
   sentence on a landing page, and each was duplicated within weeks.
 - If the answer is an implementation cost or an architectural property, it can
-  carry positioning. Protocol breadth (38 check types vs Kuvasz's 6) means
+  carry positioning. Protocol breadth (40 check types vs Kuvasz's 6) means
   building 32 checkers. In-customer-network probing is an architecture. A check
   interval floor is a property of the results/aggregation model.
   *Watch the erosion rate, though: Kuvasz went 4 → 6 in three weeks (TCP and DNS,
@@ -227,7 +227,7 @@ targets:
 2. **"Sub-minute checks, free. No paid tier required."**
    → anyone evaluating Hyperping Essentials or Better Stack's "30-second checks."
 3. **"Uptime Kuma's big sibling — same single binary, plus distributed workers,
-   on-call rotations, status pages, 38 check types."**
+   on-call rotations, status pages, 40 check types."**
    → Kuma users feeling the limits (one node, no on-call, fewer protocols).
 4. **"Heartbeat + active checks in one tool."**
    → anyone running Healthchecks.io alongside a separate active-check tool.
@@ -247,7 +247,7 @@ targets:
    *Caveat (2026-07-21): UptimeMonitoring.com (Monitive) launched MCP-FIRST —
    the whole product is "create/manage monitors by asking Claude/ChatGPT/Cursor."
    MCP is now contested table-stakes, not a differentiator. Hold the line on
-   "self-hosted MCP" AND pair it with the real moat (38 check types vs their
+   "self-hosted MCP" AND pair it with the real moat (40 check types vs their
    HTTP-only, OSS self-host vs SaaS-only, built-in on-call).*
    **Caveat (2026-07-28) — retire this hook as a headline.** Kuvasz
    (571★, AGPL, self-hosted, Kotlin) ships a built-in MCP server since v4.0.0.

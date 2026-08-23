@@ -84,7 +84,7 @@ Based on competitive analysis, prioritize these features:
 | Strength | Closest Competitor |
 |----------|-------------------|
 | Self-hosted + Multi-tenancy + RBAC + 2FA | None (unique combination) |
-| 38 check types in a single binary | Site24x7 (SaaS only); Uptime Kuma has ~12 |
+| 40 check types in a single binary | Site24x7 (SaaS only); Uptime Kuma has ~12 |
 | Dual PostgreSQL / SQLite + embedded Postgres | None (most OSS tools are single-DB) |
 | Distributed workers + multi-region scheduling | SaaS only (BetterStack, Pingdom); not in self-hosted OSS |
 | Group-incident correlation (one alert per outage, not per check) in self-hosted | BetterStack (SaaS only, "automatic incident merging") |
