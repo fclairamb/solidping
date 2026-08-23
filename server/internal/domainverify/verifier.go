@@ -12,8 +12,10 @@
 //     one-record UX, but the target itself carries the per-page secret, so a
 //     dangling CNAME can only ever be re-claimed by a page holding that token.
 //     Requires a wildcard A/AAAA (or ALIAS) record at "*.cname.<target>" — NOT
-//     a CNAME, because net.Resolver.LookupCNAME returns the canonical (final)
-//     name of the chain and a wildcard CNAME hop would be invisible.
+//     a CNAME. What LookupCNAME returns for a multi-hop chain is
+//     resolver-dependent (see CheckCNAME's doc), so a wildcard CNAME
+//     hop may or may not be visible; requiring A/AAAA is the only answer that
+//     is correct on every platform.
 //
 // Verification passes in the configured mode only: accepting the shared target
 // while in token mode would nullify the protection.
@@ -240,6 +242,31 @@ func New() *Verifier {
 // (case-insensitive, trailing-dot-stripped). An empty expected target never
 // matches. A transport/lookup error (including NXDOMAIN) is returned so callers
 // can log it, but always alongside ok=false.
+//
+// What LookupCNAME returns when the customer's record points at a target that
+// is ITSELF a CNAME is resolver-dependent — the misunderstanding that produced
+// the false "verification fails while DNS resolves" report investigated in spec
+// 2026-08-23-05. The intuition that it yields the FINAL canonical name of the
+// chain is wrong for Go's pure resolver: goLookupCNAME delegates to
+// goLookupIPCNAMEOrder(ctx, "CNAME", ...), which fires A, AAAA and CNAME
+// queries and keeps the FIRST CNAME record it parses. Every recursive answer
+// starts its answer section with the queried name's own CNAME, so what comes
+// back is the FIRST hop — exactly the target the customer published, chain or
+// no chain. The cgo resolver (getaddrinfo with AI_CANONNAME) can legitimately
+// return the final name instead, so neither behavior may be relied upon.
+//
+// Two consequences:
+//
+//   - An instance CNAME target that is itself a CNAME does NOT, on its own,
+//     break verification under the pure-Go resolver used by CGO_ENABLED=0
+//     builds. Before blaming "chain flattening", read the recorded Diagnosis
+//     line: a resolved= differing from expected= is a real mismatch, an error=
+//     is a resolver/transport fault, and an intermittent mix of pass and fail
+//     is the latter.
+//   - Token mode still demands a wildcard A/AAAA (never a CNAME) at
+//     "*.cname.<target>", precisely because the two resolvers disagree.
+//
+// See wiki/runbooks/custom-domain-tls.md section 7.
 func (v *Verifier) CheckCNAME(ctx context.Context, domain, expected string) (bool, error) {
 	want := normalizeTarget(expected)
 	if want == "" {
@@ -279,8 +306,9 @@ type Diagnosis struct {
 	// unusable token in token mode) — in which case nothing could have
 	// verified and the DNS was never consulted.
 	Expected string
-	// Resolved is the canonical name DNS actually returned, normalized the
-	// same way Expected is. Empty when the lookup failed.
+	// Resolved is the name DNS actually returned, normalized the same way
+	// Expected is. Empty when the lookup failed. Which name that is for a
+	// multi-hop chain is resolver-dependent — see CheckCNAME's doc.
 	Resolved string
 	// Err is the lookup transport error (including NXDOMAIN), if any.
 	Err error
