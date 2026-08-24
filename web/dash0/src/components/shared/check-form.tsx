@@ -75,12 +75,12 @@ const globalDefaultPeriodSeconds = 60;
 // own minPeriodSeconds via the check-types API (browser 60s, js 30s).
 const globalMinPeriodSeconds = 10;
 
-const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
+export const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
   { value: "tcp", label: "TCP", description: "Check TCP port connectivity" },
   { value: "icmp", label: "ICMP", description: "Ping hosts using ICMP" },
   { value: "dns", label: "DNS", description: "Verify DNS resolution" },
-  { value: "ssl", label: "SSL", description: "Check SSL certificate validity" },
+  { value: "ssl", label: "TLS", description: "Check TLS certificate validity" },
   { value: "heartbeat", label: "Heartbeat", description: "Monitor via incoming pings" },
   { value: "email", label: "Email", description: "Receive status updates via incoming email" },
   { value: "domain", label: "Domain", description: "Monitor domain name expiration" },
