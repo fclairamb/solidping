@@ -7,6 +7,7 @@ import {
   isSafeReturnTo,
   resolveDestination,
   returnToOrg,
+  stripOAuthErrorParams,
 } from "./login-destination";
 
 const BASE = "/dash0";
@@ -230,5 +231,61 @@ describe("returnToOrg", () => {
 
   it("returns null when there is no org segment", () => {
     expect(returnToOrg("/dash0/settings", BASE)).toBeNull();
+  });
+});
+
+describe("stripOAuthErrorParams", () => {
+  it("removes the params a failed OAuth callback appended", () => {
+    expect(
+      stripOAuthErrorParams(
+        "/dash0/orgs/default?error=OAUTH_FAILED&error_description=OAuth+failed",
+      ),
+    ).toBe("/dash0/orgs/default");
+  });
+
+  it("drops the '?' when nothing is left, and leaves a param-less path alone", () => {
+    expect(stripOAuthErrorParams("/dash0/orgs/default?error=X")).toBe(
+      "/dash0/orgs/default",
+    );
+    expect(stripOAuthErrorParams("/dash0/orgs/default")).toBe(
+      "/dash0/orgs/default",
+    );
+  });
+
+  it("keeps every other query param and the hash", () => {
+    expect(
+      stripOAuthErrorParams(
+        "/dash0/orgs/acme/checks?error=OAUTH_FAILED&tab=down&error_description=nope&q=api#top",
+      ),
+    ).toBe("/dash0/orgs/acme/checks?tab=down&q=api#top");
+  });
+
+  it("is idempotent, so retries cannot compound", () => {
+    const once = stripOAuthErrorParams(
+      "/dash0/orgs/default?error=OAUTH_FAILED&error_description=sql%3A+no+rows+in+result+set",
+    );
+    expect(once).toBe("/dash0/orgs/default");
+    expect(stripOAuthErrorParams(once)).toBe(once);
+  });
+
+  it("does not turn a relative path into an absolute URL", () => {
+    // Regression guard: implementing this with `new URL(path)` would need an
+    // origin, and would hand redirect_uri an absolute URL.
+    expect(stripOAuthErrorParams("/dash0/orgs/default?error=X&a=1")).toBe(
+      "/dash0/orgs/default?a=1",
+    );
+    expect(
+      stripOAuthErrorParams("/dash0/orgs/default?error=X").startsWith("/"),
+    ).toBe(true);
+  });
+
+  it("leaves a nested error inside an unrelated param's value untouched", () => {
+    expect(
+      stripOAuthErrorParams(
+        "/dash0/orgs/default?returnTo=%2Fdash0%2Forgs%2Fdefault%3Ferror%3DOAUTH_FAILED&error=OAUTH_FAILED",
+      ),
+    ).toBe(
+      "/dash0/orgs/default?returnTo=%2Fdash0%2Forgs%2Fdefault%3Ferror%3DOAUTH_FAILED",
+    );
   });
 });
