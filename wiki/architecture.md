@@ -326,7 +326,7 @@ solidping/
 ### Incident Management
 - Automatic incident creation on check status changes
 - **Adaptive resolution**: Smart thresholds with cooldown to absorb flaps without spamming
-- **Group-incident correlation**: When multiple checks in a `check_group` fail simultaneously, one group incident is opened with a per-member timeline; notifications fan out once per channel instead of once per check
+- **Per-check incidents with read-time grouping**: Every incident belongs to exactly one check, including checks that are members of a `check_group` — each member that fails opens and pages for its own incident. The dashboard groups active incidents by check group for display, and status pages consolidate a group's members into a single public entry at the publication layer. (Before v0.18.0, a group's members were merged into one "group incident" at write time; those historical rows still render.)
 - **Acknowledgment, snooze, manual resolve**: Operators can ack from dashboard, Slack, or email; snoozing silences pending notifications until a time; manual resolve closes incidents that are known-fixed
 - Relapse detection (re-opening incidents on repeated failures within the cooldown)
 - Incident timeline and event log
