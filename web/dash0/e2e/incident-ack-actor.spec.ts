@@ -5,9 +5,25 @@ import { test, expect } from "./fixtures";
 // operator opens an acknowledged incident to answer ("who has this?") was the
 // one thing the page would not tell them.
 test.describe("Incident acknowledgment attribution", () => {
-  // Deterministically seeded in test mode (server/test/testdata): an active
-  // incident, also used by the comments and notifications specs.
-  const incidentUid = "00000000-0000-0000-0000-000000000013";
+  // Deterministically seeded in test mode (server/test/testdata,
+  // createTestFailureResponseCaptures): an incident that STAYS active for the
+  // whole run. The notification fixture's incident (…0013) is not usable here
+  // — its check really runs, so the worker resolves it a minute or two in and
+  // a resolved incident has no Acknowledge button at all.
+  const incidentUid = "00000000-0000-0000-0000-000000000017";
+
+  // Every test leaves the shared fixture unacknowledged again: other specs
+  // read this same incident, and an ack that outlives its test is exactly the
+  // kind of order-dependent state that makes a suite flaky.
+  async function clearAck(page: import("@playwright/test").Page) {
+    const unack = page.getByRole("button", { name: "Unacknowledge" });
+    if (await unack.isVisible().catch(() => false)) {
+      await unack.click();
+      await expect(
+        page.getByRole("button", { name: "Acknowledge" }),
+      ).toBeVisible({ timeout: 10000 });
+    }
+  }
 
   test("acknowledging names the acker in the badge and the timeline", async ({
     authenticatedPage,
@@ -19,13 +35,7 @@ test.describe("Incident acknowledgment attribution", () => {
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     // Start from a clean slate: a previous run may have left it acknowledged.
-    const unack = page.getByRole("button", { name: "Unacknowledge" });
-    if (await unack.isVisible().catch(() => false)) {
-      await unack.click();
-      await expect(
-        page.getByRole("button", { name: "Acknowledge" }),
-      ).toBeVisible({ timeout: 10000 });
-    }
+    await clearAck(page);
 
     await page.getByRole("button", { name: "Acknowledge" }).click();
 
@@ -44,6 +54,8 @@ test.describe("Incident acknowledgment attribution", () => {
       path: "test-results/screenshots/incident-ack-actor.png",
       fullPage: true,
     });
+
+    await clearAck(page);
   });
 
   test("the attribution disappears again when the ack is withdrawn", async ({
@@ -100,5 +112,7 @@ test.describe("Incident acknowledgment attribution", () => {
         document.documentElement.clientWidth + 1,
     );
     expect(hasOverflow).toBe(false);
+
+    await clearAck(page);
   });
 });
