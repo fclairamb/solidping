@@ -166,6 +166,20 @@ export interface Check {
   flappingWindowSeconds?: number;
   flapBackoffFactor?: number;
   maxRecoveryMultiplier?: number;
+  /**
+   * Live adaptive-recovery (flapping) state — the effective, lazy-reset-aware
+   * counterpart of the raw flapping config above. Absent when the feature is
+   * off for this check, or nothing has accumulated (no outage yet, or the
+   * rolling window has since lapsed). See spec 2026-08-24-05.
+   */
+  flapState?: {
+    /** Outages counted inside the current rolling window. 1 = 2nd outage
+     * within the window, the first that actually counts as a flap. */
+    flapCount: number;
+    lastOutageAt?: string;
+    /** Stability currently required before an open incident auto-resolves. */
+    effectiveRecoveryPeriodSeconds: number;
+  } | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
   /**
@@ -519,6 +533,13 @@ export interface IncidentDetail {
   resolutionType?: "auto" | "manual" | "expired";
   failureCount?: number;
   relapseCount?: number;
+  /**
+   * The check's flap count at the moment this incident opened or last
+   * reopened — a point-in-time snapshot, not a live value. 0/absent means it
+   * opened at the base level, not escalated by adaptive-recovery flapping.
+   * See spec 2026-08-24-05.
+   */
+  flapLevel?: number;
   lastReopenedAt?: string;
   causedByIncidentUid?: string;
   pagingSuppressed?: boolean;
