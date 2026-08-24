@@ -12,7 +12,7 @@ package models
 // Pure and allocation-light on purpose: it lives on the model package so both
 // SQL dialects can share one definition of "what the rewritten array is",
 // rather than expressing it twice in dialect-specific SQL.
-func MigrateRegionList(list []string, from, to string) ([]string, bool) {
+func MigrateRegionList(list []string, from, target string) ([]string, bool) {
 	if len(list) == 0 {
 		return list, false
 	}
@@ -24,7 +24,7 @@ func MigrateRegionList(list []string, from, to string) ([]string, bool) {
 	for _, region := range list {
 		next := region
 		if region == from {
-			next = to
+			next = target
 			changed = true
 		}
 

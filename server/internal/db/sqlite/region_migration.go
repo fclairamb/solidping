@@ -102,7 +102,9 @@ func (s *Service) ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.
 // MigrateCheckRegionSlug rewrites `checks.regions` in ONE transaction,
 // replacing `from` with `to` everywhere it appears. See db.Service for the
 // full contract.
-func (s *Service) MigrateCheckRegionSlug(ctx context.Context, from, to string) ([]*models.Check, error) {
+func (s *Service) MigrateCheckRegionSlug(
+	ctx context.Context, from, target string,
+) ([]*models.Check, error) {
 	var updated []*models.Check
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -126,7 +128,7 @@ func (s *Service) MigrateCheckRegionSlug(ctx context.Context, from, to string) (
 		var rows []*models.Check
 		if err := tx.NewSelect().
 			Model(&rows).
-			Where("uid IN (?)", bun.In(uids)).
+			Where("uid IN (?)", bun.List(uids)).
 			Scan(ctx); err != nil {
 			return fmt.Errorf("load checks to migrate: %w", err)
 		}
@@ -134,7 +136,7 @@ func (s *Service) MigrateCheckRegionSlug(ctx context.Context, from, to string) (
 		now := time.Now()
 
 		for _, check := range rows {
-			next, changed := models.MigrateRegionList(check.Regions, from, to)
+			next, changed := models.MigrateRegionList(check.Regions, from, target)
 			if !changed {
 				continue
 			}
@@ -176,7 +178,7 @@ func (s *Service) loadChecksByUIDs(ctx context.Context, uids []string) ([]*model
 	var checks []*models.Check
 	if err := s.db.NewSelect().
 		Model(&checks).
-		Where("uid IN (?)", bun.In(uids)).
+		Where("uid IN (?)", bun.List(uids)).
 		Where("deleted_at IS NULL").
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("load checks by uid: %w", err)

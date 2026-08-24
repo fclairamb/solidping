@@ -95,9 +95,9 @@ func (s *Service) MigrateRegion(
 	ctx context.Context, req RegionMigrationRequest, actorUID string,
 ) (*RegionMigrationReport, error) {
 	from := strings.TrimSpace(req.From)
-	to := strings.TrimSpace(req.To)
+	target := strings.TrimSpace(req.To)
 
-	if err := s.validateRegionMigration(ctx, from, to); err != nil {
+	if err := s.validateRegionMigration(ctx, from, target); err != nil {
 		return nil, err
 	}
 
@@ -106,7 +106,7 @@ func (s *Service) MigrateRegion(
 		return nil, fmt.Errorf("list checks referencing region: %w", err)
 	}
 
-	report, err := s.buildRegionMigrationReport(ctx, from, to, req.DryRun, affected)
+	report, err := s.buildRegionMigrationReport(ctx, from, target, req.DryRun, affected)
 	if err != nil {
 		return nil, err
 	}
@@ -115,14 +115,14 @@ func (s *Service) MigrateRegion(
 		return report, nil
 	}
 
-	if err := s.applyRegionMigration(ctx, from, to, affected); err != nil {
+	if err := s.applyRegionMigration(ctx, from, target, affected); err != nil {
 		return nil, err
 	}
 
 	slog.WarnContext(ctx, "region migration applied",
 		"actorUid", actorUID,
 		"from", from,
-		"to", to,
+		"to", target,
 		"checksUpdated", report.ChecksUpdated,
 		"jobsReassigned", report.JobsReassigned,
 		"jobsDeleted", report.JobsDeleted,
@@ -135,16 +135,16 @@ func (s *Service) MigrateRegion(
 // validateRegionMigration enforces the four preconditions. `from` deliberately
 // need NOT be declared — cleaning up a slug that no longer exists anywhere is
 // the entire point of the endpoint.
-func (s *Service) validateRegionMigration(ctx context.Context, from, to string) error {
-	if from == "" || to == "" {
+func (s *Service) validateRegionMigration(ctx context.Context, from, target string) error {
+	if from == "" || target == "" {
 		return ErrRegionMigrationMissingSlug
 	}
 
-	if from == to {
+	if from == target {
 		return ErrRegionMigrationSameSlug
 	}
 
-	if regions.IsPrivateRegion(from) && !regions.IsPrivateRegion(to) {
+	if regions.IsPrivateRegion(from) && !regions.IsPrivateRegion(target) {
 		return ErrRegionMigrationPrivateToCloud
 	}
 
@@ -153,9 +153,9 @@ func (s *Service) validateRegionMigration(ctx context.Context, from, to string) 
 		return err
 	}
 
-	if !slices.Contains(known, to) {
+	if !slices.Contains(known, target) {
 		return fmt.Errorf("%w: %q (known regions: %s)",
-			ErrRegionMigrationTargetUnknown, to, strings.Join(known, ", "))
+			ErrRegionMigrationTargetUnknown, target, strings.Join(known, ", "))
 	}
 
 	return nil
@@ -173,9 +173,9 @@ func (s *Service) knownRegionSlugs(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("get global regions: %w", err)
 	}
 
-	for _, def := range defs {
-		if def.Slug != "" {
-			seen[def.Slug] = true
+	for i := range defs {
+		if defs[i].Slug != "" {
+			seen[defs[i].Slug] = true
 		}
 	}
 
@@ -203,11 +203,11 @@ func (s *Service) knownRegionSlugs(ctx context.Context) ([]string, error) {
 // buildRegionMigrationReport derives the whole report from the PRE-migration
 // state, which is what lets dryRun and the real run return identical numbers.
 func (s *Service) buildRegionMigrationReport(
-	ctx context.Context, from, to string, dryRun bool, affected []*models.Check,
+	ctx context.Context, from, target string, dryRun bool, affected []*models.Check,
 ) (*RegionMigrationReport, error) {
 	report := &RegionMigrationReport{
 		From:   from,
-		To:     to,
+		To:     target,
 		DryRun: dryRun,
 		ByOrg:  map[string]int{},
 	}
@@ -226,7 +226,7 @@ func (s *Service) buildRegionMigrationReport(
 		jobsByCheck[job.CheckUID] = append(jobsByCheck[job.CheckUID], job)
 	}
 
-	toJobs, err := s.db.ListCheckJobsByRegion(ctx, to)
+	toJobs, err := s.db.ListCheckJobsByRegion(ctx, target)
 	if err != nil {
 		return nil, fmt.Errorf("list check jobs in target region: %w", err)
 	}
@@ -247,11 +247,11 @@ func (s *Service) buildRegionMigrationReport(
 		report.ChecksUpdated++
 		report.ByOrg[orgSlugs[check.OrganizationUID]]++
 
-		nextRegions, _ := models.MigrateRegionList(check.Regions, from, to)
+		nextRegions, _ := models.MigrateRegionList(check.Regions, from, target)
 		// A job survives the reconcile only if the check still wants that
 		// region and is enabled — reconcileCheckJobs deletes every job of a
 		// disabled check.
-		willKeepTarget := check.Enabled && slices.Contains(nextRegions, to)
+		willKeepTarget := check.Enabled && slices.Contains(nextRegions, target)
 
 		for _, job := range jobsByCheck[check.UID] {
 			if !willKeepTarget || hasTargetJob[check.UID] {
@@ -292,8 +292,10 @@ func (s *Service) organizationSlugs(ctx context.Context) (map[string]string, err
 
 // applyRegionMigration performs the writes: the atomic `checks.regions`
 // rewrite, then a reconcile per affected check.
-func (s *Service) applyRegionMigration(ctx context.Context, from, to string, affected []*models.Check) error {
-	updated, err := s.db.MigrateCheckRegionSlug(ctx, from, to)
+func (s *Service) applyRegionMigration(
+	ctx context.Context, from, target string, affected []*models.Check,
+) error {
+	updated, err := s.db.MigrateCheckRegionSlug(ctx, from, target)
 	if err != nil {
 		return fmt.Errorf("migrate check regions: %w", err)
 	}
@@ -308,13 +310,13 @@ func (s *Service) applyRegionMigration(ctx context.Context, from, to string, aff
 		// the NEW region set. Checks that were only referenced by a stranded
 		// job (their regions never named `from`) are unchanged and reconcile
 		// from the row we already loaded.
-		target := check
+		subject := check
 		if fresh, ok := rewritten[check.UID]; ok {
-			target = fresh
+			subject = fresh
 		}
 
-		if err := s.reconcileCheckJobs(ctx, target, false); err != nil {
-			return fmt.Errorf("reconcile check %s: %w", target.UID, err)
+		if err := s.reconcileCheckJobs(ctx, subject, false); err != nil {
+			return fmt.Errorf("reconcile check %s: %w", subject.UID, err)
 		}
 	}
 
