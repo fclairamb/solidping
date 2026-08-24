@@ -537,7 +537,7 @@ function CheckRow({
             {Math.round(durationMs)}ms
           </span>
         ) : (
-          <span className="text-muted-foreground text-xs font-mono">\u2014</span>
+          <span className="text-muted-foreground text-xs font-mono">—</span>
         )}
       </TableCell>
       <TableCell>
