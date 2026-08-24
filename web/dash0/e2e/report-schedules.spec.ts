@@ -97,11 +97,12 @@ test.describe("Uptime report schedules", () => {
     const { uid } = await createResp.json();
 
     try {
-      await page.goto("orgs/test/organization/report-schedules");
+      // "Send me a test" lives on the edit page — per the design reference,
+      // list rows carry only the Pencil/Trash2 icon pair.
+      await page.goto(`orgs/test/organization/report-schedules/${uid}`);
       await page.waitForLoadState("networkidle");
 
-      const row = page.getByTestId("report-row").filter({ hasText: name }).first();
-      await row.getByTestId("report-row-test").click();
+      await page.getByTestId("report-test").click();
 
       await expect(
         page.getByText("Test report queued to your address"),

@@ -123,6 +123,66 @@ test.describe("Organization audit log", () => {
     );
   });
 
+  test("load more pages via a URL cursor that survives reload and back", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Wrap the events API rather than seeding 50+ real events: a cursor-less
+    // request gets a fake next-page cursor grafted onto the real response, and
+    // a request carrying that cursor gets an empty last page. What's under
+    // test is the client contract — cursor → URL → request — not the server's
+    // pagination, which the backend suite covers.
+    await page.route("**/api/v1/orgs/test/events*", async (route) => {
+      // A navigation (reload, goBack) can dispose an in-flight response while
+      // this handler holds it; that race must not fail the test from inside
+      // the interceptor, so the whole body is fenced.
+      try {
+        const url = new URL(route.request().url());
+        if (url.searchParams.get("cursor") === "e2e-cursor") {
+          await route.fulfill({ json: { data: [] } });
+          return;
+        }
+        const response = await route.fetch();
+        const body = await response.json();
+        body.pagination = { ...body.pagination, cursor: "e2e-cursor" };
+        await route.fulfill({ response, json: body });
+      } catch {
+        // Interrupted by navigation/teardown — the request it served is gone.
+      }
+    });
+
+    await page.goto("orgs/test/organization/audit");
+    await page.waitForLoadState("networkidle");
+
+    const pagedRequest = page.waitForRequest((req) =>
+      req.url().includes("cursor=e2e-cursor"),
+    );
+    await page.getByTestId("audit-load-more").click();
+    await pagedRequest;
+    await expect(page).toHaveURL(/cursor=e2e-cursor/);
+
+    // A reload reproduces page 2 from the URL instead of resetting to page 1.
+    const reloadedRequest = page.waitForRequest((req) =>
+      req.url().includes("cursor=e2e-cursor"),
+    );
+    await page.reload();
+    await reloadedRequest;
+    await expect(page).toHaveURL(/cursor=e2e-cursor/);
+
+    // Load-more pushed a history entry, so back walks up to page 1. The
+    // page-1 response is awaited so the test does not end with the
+    // interceptor still holding an in-flight fetch.
+    const pageOneResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes("/api/v1/orgs/test/events") &&
+        !res.url().includes("cursor="),
+    );
+    await page.goBack();
+    await pageOneResponse;
+    await expect(page).not.toHaveURL(/cursor=/);
+  });
+
   test("the IP filter is offered to an admin and reaches the API", async ({
     authenticatedPage,
   }) => {

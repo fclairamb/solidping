@@ -85,6 +85,8 @@ import {
   CheckTypeBadge,
   CheckTypeIcon,
 } from "@/components/shared/check-type-identity";
+import { DocsLink } from "@/components/shared/docs-link";
+import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
@@ -994,6 +996,10 @@ function CheckDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
+
+          {/* Deep link into the docs section for *this* check's type, so the
+              page's own protocol reference is one click away. */}
+          <DocsLink href={docsHrefForType(check.type)} />
 
           {/* Inline toolbar — always visible; icon-only below lg, icon + label at lg+ */}
           <div className="flex items-center gap-2">

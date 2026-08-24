@@ -4,6 +4,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useAuditEvents, useMembers, type Event } from "@/api/hooks";
 import { EventTypeBadge } from "@/components/dashboard/event-display";
+import { DocsLink } from "@/components/shared/docs-link";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { useAuth } from "@/contexts/AuthContext";
 import { DurationAgo } from "@/components/shared/relative-time";
@@ -97,6 +98,7 @@ interface AuditSearch {
   targetType?: TargetType;
   target?: string;
   ip?: string;
+  cursor?: string;
 }
 
 export const Route = createFileRoute("/orgs/$org/organization/audit")({
@@ -139,6 +141,10 @@ export const Route = createFileRoute("/orgs/$org/organization/audit")({
 
     if (typeof search.ip === "string" && search.ip !== "") {
       out.ip = search.ip;
+    }
+
+    if (typeof search.cursor === "string" && search.cursor !== "") {
+      out.cursor = search.cursor;
     }
 
     return out;
@@ -184,15 +190,11 @@ function changedFields(event: Event): string[] {
 function AuditPage() {
   const { t } = useTranslation(["events", "common"]);
   const { org } = Route.useParams();
-  const { family, actor, range, targetType, target, ip } = Route.useSearch();
+  const { family, actor, range, targetType, target, ip, cursor } =
+    Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
 
   const activeRange: Range = range ?? "7d";
-
-  // Cursor is deliberately NOT in the URL: a pasted link should reproduce the
-  // filters, not a position halfway down a trail that has grown since.
-  const [cursors, setCursors] = useState<string[]>([]);
-  const cursor = cursors[cursors.length - 1];
 
   const { data, isLoading, error, refetch, isRefetching } = useAuditEvents(org, {
     family,
@@ -212,10 +214,9 @@ function AuditPage() {
   // Any filter change resets pagination — keeping a cursor from the previous
   // filter set would page into a result list that no longer exists.
   const setFilters = (next: Partial<AuditSearch>) => {
-    setCursors([]);
     navigate({
       to: ".",
-      search: (prev) => ({ ...prev, ...next }),
+      search: (prev) => ({ ...prev, ...next, cursor: undefined }),
       replace: true,
     });
   };
@@ -269,17 +270,7 @@ function AuditPage() {
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          aria-label={t("common:refresh")}
-        >
-          <RefreshCw
-            className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
-          />
-          <span className="hidden sm:inline">{t("common:refresh")}</span>
-        </Button>
+        <DocsLink href="/docs/features/audit-log" />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -408,6 +399,19 @@ function AuditPage() {
             />
           </div>
         )}
+
+        <Button
+          variant="outline"
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          aria-label={t("common:refresh")}
+          className="sm:ml-auto"
+        >
+          <RefreshCw
+            className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
+          />
+          <span className="hidden sm:inline">{t("common:refresh")}</span>
+        </Button>
       </div>
 
       {error ? (
@@ -519,9 +523,18 @@ function AuditPage() {
 
           {data?.cursor && (
             <div className="flex justify-center">
+              {/* The cursor lives in the URL like the filters do, so the page
+                  a reader is looking at survives a refresh and travels in a
+                  pasted link. Pushed (not replaced) so browser back walks back
+                  up the trail page by page. */}
               <Button
                 variant="outline"
-                onClick={() => setCursors((prev) => [...prev, data.cursor!])}
+                onClick={() =>
+                  navigate({
+                    to: ".",
+                    search: (prev) => ({ ...prev, cursor: data.cursor! }),
+                  })
+                }
                 data-testid="audit-load-more"
               >
                 {t("events:audit.loadMore")}
