@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
-import type { IncidentDetail, OrgResult } from "@/api/hooks";
+import type { Check, IncidentDetail, OrgResult } from "@/api/hooks";
+import { formatDuration as formatSecondsDuration } from "@/lib/period-estimate";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -179,6 +180,38 @@ function formatDuration(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
   return `${seconds}s`;
+}
+
+// flappingSummaryParams builds the {{count}}/{{window}}/{{multiplier}}/
+// {{effective}} interpolation values for the check-detail flapping line
+// (spec 2026-08-24-05), or undefined when the check has no live flap state
+// to report. flapCount is 0-indexed (0 = first-ever outage, which never
+// produces a flapState block at all — see buildFlapStateResponse on the
+// backend) so the human-facing outage number is flapCount + 1.
+function flappingSummaryParams(check: Check):
+  | { count: number; window: string; multiplier?: number; effective: string }
+  | undefined {
+  const flapState = check.flapState;
+  if (!flapState) return undefined;
+
+  const window = check.flappingWindowSeconds
+    ? formatSecondsDuration(check.flappingWindowSeconds)
+    : "";
+  const effective = formatSecondsDuration(flapState.effectiveRecoveryPeriodSeconds);
+  const base = check.recoveryPeriodSeconds ?? 0;
+
+  return {
+    count: flapState.flapCount + 1,
+    window,
+    effective,
+    // Only meaningful when there is a nonzero base to multiply — with an
+    // immediate (0s) recovery period the backoff factor has nothing to act
+    // on, so the multiplier clause is dropped rather than showing ×NaN.
+    multiplier:
+      base > 0
+        ? Math.max(1, Math.round(flapState.effectiveRecoveryPeriodSeconds / base))
+        : undefined,
+  };
 }
 
 function IncidentDuration({ incident }: { incident: IncidentDetail }) {
@@ -843,6 +876,7 @@ function CheckDetailPage() {
   }
 
   const headerStatus = check.status ?? check.lastResult?.status;
+  const flapSummary = flappingSummaryParams(check);
 
   return (
     <div className="space-y-6">
@@ -1292,6 +1326,26 @@ function CheckDetailPage() {
                 )}
               </div>
             </div>
+            {flapSummary && (
+              <div>
+                <div className="text-sm font-medium text-muted-foreground">
+                  {t("checks:detail.flapping")}
+                </div>
+                <div data-testid="check-flapping-summary" className="text-sm">
+                  {flapSummary.multiplier !== undefined
+                    ? t("checks:detail.flappingSummary", {
+                        count: flapSummary.count,
+                        window: flapSummary.window,
+                        multiplier: flapSummary.multiplier,
+                        effective: flapSummary.effective,
+                      })
+                    : t("checks:detail.flappingSummaryImmediate", {
+                        count: flapSummary.count,
+                        window: flapSummary.window,
+                      })}
+                </div>
+              </div>
+            )}
             {check.config && Object.keys(check.config).length > 0 && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-2">
