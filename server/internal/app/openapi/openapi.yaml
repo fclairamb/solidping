@@ -219,6 +219,61 @@ paths:
           $ref: "#/components/responses/Forbidden"
 
   # System actions (Super Admin Only)
+  /api/v1/system/regions/migrate:
+    post:
+      tags: [System]
+      summary: Migrate every reference to a region slug
+      description: >
+        Reassigns a region slug server-wide and across every organization:
+        `checks.regions` is rewritten in one transaction, then each affected
+        check's `check_jobs` are re-materialized under the new slug through the
+        normal reconcile (so the unique `(checkUid, region)` pair, the phase
+        stagger, the plan weight and the schedule are all recomputed).
+
+
+        This exists because renaming a worker region — an `SP_NODE_REGION` /
+        `SP_REGIONS` change, with no check ever edited — leaves every job row
+        under the old spelling, and a worker only claims a job whose region its
+        own region matches by prefix. Those jobs become unclaimable by every
+        worker, silently and forever. The migration is the recovery, and it is
+        server-scope because org-scoped credentials cannot reach the jobs of
+        the other tenants a rename breaks.
+
+
+        `to` must be a declared region (present in the `regions` system
+        parameter) or served by a live worker — migrating to a slug nobody
+        serves would only move the stranding. `from` deliberately need not be
+        declared: cleaning up a slug that no longer exists is the point. A
+        private (`@…`) region may only migrate to another private region, since
+        its sealed configs are encrypted to the private region's agent keys and
+        cannot be re-targeted server-side.
+
+
+        Idempotent: a second call with the same pair finds no references and
+        returns zeros. Super-admin only.
+      operationId: migrateRegion
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegionMigrationRequest"
+      responses:
+        "200":
+          description: Migration report (identical shape for a dry run)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionMigrationReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /api/v1/system/test-email:
     post:
       tags: [System]
@@ -12217,6 +12272,75 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkerLaneLoad"
+
+    RegionMigrationRequest:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          description: >
+            The region slug to migrate away from. Need NOT be a declared
+            region — a slug that no longer exists anywhere is the normal case.
+          example: default
+        to:
+          type: string
+          description: >
+            The region slug to migrate to. Must be declared in the `regions`
+            system parameter or served by a live worker.
+          example: gravelines
+        dryRun:
+          type: boolean
+          default: false
+          description: >
+            When true, returns the full report without writing anything. The
+            numbers are computed from the same pre-state the real run uses, so
+            a dry run and the apply that follows it agree.
+
+    RegionMigrationReport:
+      type: object
+      required:
+        [
+          from,
+          to,
+          dryRun,
+          checksUpdated,
+          jobsReassigned,
+          jobsDeleted,
+          byOrg,
+          overdueRecovered,
+        ]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        dryRun:
+          type: boolean
+        checksUpdated:
+          type: integer
+          description: >
+            Checks the migration touches: their `regions` array was rewritten,
+            they owned a job stranded under `from`, or both.
+        jobsReassigned:
+          type: integer
+          description: Stranded `from` jobs that come back to life under `to`.
+        jobsDeleted:
+          type: integer
+          description: >
+            `from` jobs removed without a replacement — the check does not
+            declare `to`, is disabled, or already owns a `to` job (the unique
+            `(checkUid, region)` case, where the correct job is kept).
+        byOrg:
+          type: object
+          additionalProperties:
+            type: integer
+          description: checksUpdated split by organization slug.
+        overdueRecovered:
+          type: integer
+          description: >
+            Reassigned jobs whose `scheduledAt` was already in the past — the
+            stranded backlog that starts running again.
 
     TestEmailRequest:
       type: object
