@@ -125,6 +125,13 @@ func CreateTestData(ctx context.Context, dbService db.Service, cfg *config.Confi
 		return err
 	}
 
+	// Seed a check whose stored status is "validating" so the checks-list
+	// status filter (?status=validating) has deterministic data for E2E
+	// coverage (spec 2026-08-24-04).
+	if err := createTestValidatingCheck(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
 	slog.InfoContext(ctx, "Test data creation completed successfully")
 
 	return nil
@@ -883,6 +890,37 @@ func createTestIncidentScreenshot(
 
 	slog.InfoContext(ctx, "Created test incident screenshot",
 		"incidentUID", shotIncidentUID, "fileUID", fileUID)
+
+	return nil
+}
+
+// validatingCheckUID is the fixed UID for a check seeded directly in the
+// "validating" status — the transient "failing, but the confirmation period
+// hasn't elapsed yet" state (models.CheckStatusValidating). Deterministic
+// data for the checks-list status filter's ?status=validating E2E coverage;
+// producing this state through a real check run would mean racing the actual
+// confirmation-period timer.
+const validatingCheckUID = "00000000-0000-0000-0000-000000000030"
+
+// createTestValidatingCheck seeds one disabled check whose stored status is
+// CheckStatusValidating. Disabled so test mode's scheduler never probes it
+// and overwrites the fixture status with a real result — same reasoning as
+// createTestSLOData's disabled fixture check.
+func createTestValidatingCheck(ctx context.Context, dbService db.Service, orgUID string, now time.Time) error {
+	check := models.NewCheck(orgUID, "validating-check", "http")
+	check.UID = validatingCheckUID
+	name := "Validating Check"
+	check.Name = &name
+	check.Config = models.JSONMap{"url": "https://acme.com/health"}
+	check.Status = models.CheckStatusValidating
+	check.StatusChangedAt = &now
+	check.Enabled = false
+	check.CreatedAt = now
+	check.UpdatedAt = now
+
+	if err := dbService.CreateCheck(ctx, check); err != nil {
+		return fmt.Errorf("failed to create validating test check: %w", err)
+	}
 
 	return nil
 }
