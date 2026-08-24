@@ -33,8 +33,8 @@ func TestOAuthErrorRedirectHidesInternals(t *testing.T) {
 	t.Run("unexpected errors are replaced by the generic description", func(t *testing.T) {
 		t.Parallel()
 
-		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) {
-			require.NoError(t, handler.handleOAuthError(w, req, "/dash0/orgs/default", internal))
+		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) error {
+			return handler.handleOAuthError(w, req, "/dash0/orgs/default", internal)
 		})
 
 		require.Equal(t, OAuthCodeFailed, params.Get("error"))
@@ -48,8 +48,8 @@ func TestOAuthErrorRedirectHidesInternals(t *testing.T) {
 	t.Run("typed errors keep their specific description", func(t *testing.T) {
 		t.Parallel()
 
-		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) {
-			require.NoError(t, handler.handleOAuthError(w, req, "/dash0/orgs/default", ErrEmailNotVerified))
+		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) error {
+			return handler.handleOAuthError(w, req, "/dash0/orgs/default", ErrEmailNotVerified)
 		})
 
 		require.Equal(t, OAuthCodeEmailNotVerified, params.Get("error"))
@@ -62,8 +62,8 @@ func TestOAuthErrorRedirectHidesInternals(t *testing.T) {
 
 		slackHandler := NewSlackOAuthHandler(nil, cfg)
 
-		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) {
-			require.NoError(t, slackHandler.handleOAuthError(w, req, "/dash0/orgs/default", internal))
+		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) error {
+			return slackHandler.handleOAuthError(w, req, "/dash0/orgs/default", internal)
 		})
 
 		require.Equal(t, OAuthCodeFailed, params.Get("error"))
@@ -73,11 +73,13 @@ func TestOAuthErrorRedirectHidesInternals(t *testing.T) {
 
 // redirectParams runs a handler that is expected to issue a redirect and returns
 // the query params of its Location header.
-func redirectParams(t *testing.T, run func(http.ResponseWriter, *http.Request)) url.Values {
+func redirectParams(t *testing.T, run func(http.ResponseWriter, *http.Request) error) url.Values {
 	t.Helper()
 
 	recorder := httptest.NewRecorder()
-	run(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/discord/callback", nil))
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/api/v1/auth/discord/callback", nil)
+	require.NoError(t, run(recorder, req))
 
 	require.Equal(t, http.StatusFound, recorder.Code)
 
@@ -196,6 +198,8 @@ func TestEveryProviderHealsStaleUserLinks(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := require.New(t)
 			ctx := t.Context()
 

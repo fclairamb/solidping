@@ -22,6 +22,8 @@ const portProviderLinksPG = 15501
 // user_providers row must be HARD deleted because
 // `user_providers_provider_idx` is not. A fix that passed on SQLite alone could
 // still deadlock on the real unique indexes in production.
+//
+//nolint:paralleltest,tparallel // one embedded PG instance shared by every sub-test
 func TestProviderLinkHealing_Postgres(t *testing.T) {
 	t.Parallel()
 

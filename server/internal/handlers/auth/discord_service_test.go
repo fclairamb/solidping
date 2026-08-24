@@ -97,7 +97,7 @@ func fakeDiscordEndpoints(
 // past its connection budget), so fixtures that reused a guild id, a Discord
 // user id or an email would collide on the real unique indexes — including
 // `user_providers_provider_idx`, which is exactly what these tests are about.
-var fixtureSeq atomic.Int64
+var fixtureSeq atomic.Int64 //nolint:gochecknoglobals // one counter shared by every contract body, across engines
 
 // nextFixture returns a short token unique to one contract-body invocation.
 func nextFixture() string {
