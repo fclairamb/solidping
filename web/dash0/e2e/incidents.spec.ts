@@ -342,6 +342,7 @@ test.describe("Incidents", () => {
   const capturedCheckSlug = "captured-check";
   const capturedCheckUid = "00000000-0000-0000-0000-000000000016";
   const capturedCheckIncidentTitle = "Captured Check is down";
+  const otherCheckSlug = "captured-truncated-check";
   const otherCheckIncidentTitle = "Captured Truncated Check is down";
 
   test("picking a check from the dropdown narrows the list and updates the URL", async ({
@@ -349,11 +350,27 @@ test.describe("Incidents", () => {
   }) => {
     const page = authenticatedPage;
 
+    // Establish the negative control on a FILTERED view first: prove the other
+    // check's incident exists in the dataset at all, so the `not.toBeVisible()`
+    // below means "the filter removed it", not "it was never reachable".
+    //
+    // Do NOT assert this on the unfiltered `?state=all` list. That list is
+    // `ORDER BY started_at DESC` capped at `size: 50` (incidents.index.tsx),
+    // and these fixture incidents are seeded at server start — i.e. they are
+    // the OLDEST rows. In a full suite run the preceding tests create enough
+    // newer incidents to push the fixtures past row 50, so an unfiltered
+    // visibility assertion passes when this file runs alone and fails at
+    // ~test 330/595 in CI.
+    await page.goto(
+      `orgs/test/incidents?state=all&checkUid=${otherCheckSlug}`,
+    );
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText(otherCheckIncidentTitle)).toBeVisible();
+
+    // Now exercise the actual behavior under test: picking a check from the
+    // dropdown on an unfiltered list.
     await page.goto("orgs/test/incidents?state=all");
     await page.waitForLoadState("networkidle");
-
-    // Sanity: before filtering, the other check's incident is present.
-    await expect(page.getByText(otherCheckIncidentTitle)).toBeVisible();
 
     const picker = page.getByTestId("incidents-check-filter");
     await picker.click();
