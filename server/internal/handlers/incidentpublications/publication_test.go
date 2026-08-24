@@ -1004,11 +1004,16 @@ func TestRollupParentPublishesExactlyOnce(t *testing.T) {
 	r.Equal(parent.UID, *pubs[0].IncidentUID, "the PARENT is the one that publishes")
 }
 
-// TestGroupIncidentPublishesOncePerPage covers the group path end to end: a
-// group rendered as one public component yields one publication, titled with
-// the GROUP's public name — never with a member check's name, since a group
-// component never exposes its members.
-func TestGroupIncidentPublishesOncePerPage(t *testing.T) {
+// TestLegacyGroupIncidentPublishesOncePerPage pins the HISTORICAL shape: a
+// group incident written before the per-check migration (check_group_uid set,
+// members in incident_member_checks) still publishes exactly as it did, titled
+// with the GROUP's public name — never with a member check's name, since a
+// group component never exposes its members.
+//
+// Nothing writes rows like this any more (spec 2026-08-24-14), which is why it
+// has to be pinned: the read path is the only thing keeping months of history
+// renderable.
+func TestLegacyGroupIncidentPublishesOncePerPage(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -1047,129 +1052,251 @@ func TestGroupIncidentPublishesOncePerPage(t *testing.T) {
 		"the internal group title, which leaks the member count, must not be reused")
 }
 
-// --- Group membership notes --------------------------------------------------
-
-// TestGroupMemberNoteIsRateLimited proves both halves of the "also affecting X"
-// behavior. A new member joining an already-published group incident appends
-// one update; a second member joining seconds later appends nothing — the
-// posts are coalesced, so a group whose members fail one after another reads as
-// one incident rather than as a wall of near-identical entries.
+// TestGroupedCheckPublishesThroughItsGroupResource is the regression guard for
+// the silent customer-facing failure this spec could have introduced.
 //
-// The positive control is built in: the first note MUST appear, so a
-// rate-limiter that simply suppressed everything would fail the first
-// assertion instead of quietly passing the second.
-func TestGroupMemberNoteIsRateLimited(t *testing.T) {
+// After per-check incidents, an incident for a grouped check has
+// check_group_uid NULL. The publication policy used to resolve the group from
+// that column; had it kept doing so, a status page that renders a group as ONE
+// component would have found no target for the check and published NOTHING —
+// an outage invisible to customers, with no error anywhere. The group must be
+// resolved from the CHECK.
+func TestGroupedCheckPublishesThroughItsGroupResource(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	ctx := t.Context()
 
-	s := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0, noResource: true})
+	probe := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0, noResource: true})
 
-	group := models.NewCheckGroup(s.org.UID, "Payments platform", "payments-platform")
-	r.NoError(s.dbSvc.CreateCheckGroup(ctx, group))
+	group := models.NewCheckGroup(probe.org.UID, "Payments platform", "payments-platform")
+	r.NoError(probe.dbSvc.CreateCheckGroup(ctx, group))
+	r.NoError(probe.dbSvc.UpdateCheck(ctx, probe.check.UID, &models.CheckUpdate{
+		CheckGroupUID: &group.UID,
+	}))
 
-	r.NoError(s.dbSvc.UpdateCheck(ctx, s.check.UID, &models.CheckUpdate{CheckGroupUID: &group.UID}))
+	groupName := "Payments platform"
+	resource := models.NewStatusPageGroupResource(probe.section.UID, group.UID, 1)
+	resource.PublicName = &groupName
+	r.NoError(probe.dbSvc.CreateStatusPageResource(ctx, resource))
 
-	// Two further members, each with its own PUBLIC component on the page, so
-	// naming them is legitimate.
-	members := make([]*models.Check, 0, 2)
+	// A PER-CHECK incident: check_group_uid deliberately left NULL, which is
+	// what the state machine writes now.
+	incident := models.NewIncident(probe.org.UID, probe.check.UID, probe.clk.Now(), "payments-api is down")
+	r.NoError(probe.dbSvc.CreateIncident(ctx, incident))
+	r.Nil(incident.CheckGroupUID, "per-check incidents never carry a group")
 
-	for idx, name := range []string{"Payments worker", "Payments ledger"} {
-		member := models.NewCheck(s.org.UID, "payments-member-"+string(rune('a'+idx)), "http")
+	probe.pubs.OnIncidentOpened(ctx, incident)
+
+	pubs := probe.publications()
+	r.Len(pubs, 1, "a grouped check must still publish through its group resource")
+	r.Contains(pubs[0].PublicTitle, groupName)
+}
+
+// --- Group consolidation at the publication layer -----------------------------
+
+// groupProbe builds a page with one group, `members` checks in it, and one
+// public component per member. It returns the setup plus the member checks.
+func groupProbe(t *testing.T, names ...string) (*pubSetup, *models.CheckGroup, []*models.Check) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	probe := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0, noResource: true})
+
+	group := models.NewCheckGroup(probe.org.UID, "Payments platform", "payments-platform")
+	r.NoError(probe.dbSvc.CreateCheckGroup(ctx, group))
+
+	// The setup's own check joins the group and gets a public component.
+	r.NoError(probe.dbSvc.UpdateCheck(ctx, probe.check.UID, &models.CheckUpdate{CheckGroupUID: &group.UID}))
+
+	firstName := "Payments API"
+	firstResource := models.NewStatusPageResource(probe.section.UID, probe.check.UID, 1)
+	firstResource.PublicName = &firstName
+	r.NoError(probe.dbSvc.CreateStatusPageResource(ctx, firstResource))
+
+	reloaded, err := probe.dbSvc.GetCheck(ctx, probe.org.UID, probe.check.UID)
+	r.NoError(err)
+	probe.check = reloaded
+
+	members := make([]*models.Check, 0, len(names))
+
+	for idx, name := range names {
+		member := models.NewCheck(probe.org.UID, "payments-member-"+string(rune('a'+idx)), "http")
 		member.CheckGroupUID = &group.UID
-		r.NoError(s.dbSvc.CreateCheck(ctx, member))
+		r.NoError(probe.dbSvc.CreateCheck(ctx, member))
 
 		publicName := name
-		resource := models.NewStatusPageResource(s.section.UID, member.UID, idx+2)
+		resource := models.NewStatusPageResource(probe.section.UID, member.UID, idx+2)
 		resource.PublicName = &publicName
-		r.NoError(s.dbSvc.CreateStatusPageResource(ctx, resource))
+		r.NoError(probe.dbSvc.CreateStatusPageResource(ctx, resource))
 
 		members = append(members, member)
 	}
 
-	// A group resource for the trigger check itself, so the incident publishes.
-	groupName := "Payments platform"
-	groupResource := models.NewStatusPageGroupResource(s.section.UID, group.UID, 1)
-	groupResource.PublicName = &groupName
-	r.NoError(s.dbSvc.CreateStatusPageResource(ctx, groupResource))
+	return probe, group, members
+}
 
-	incident := models.NewIncident(s.org.UID, s.check.UID, s.clk.Now(), "Payments platform — 1/3 checks down")
-	incident.CheckGroupUID = &group.UID
-	r.NoError(s.dbSvc.CreateIncident(ctx, incident))
+// openIncident opens a per-check incident for a check and runs it through the
+// publication policy, exactly as the incident state machine does.
+func openIncident(t *testing.T, probe *pubSetup, check *models.Check, title string) *models.Incident {
+	t.Helper()
 
-	s.pubs.OnIncidentOpened(ctx, incident)
+	incident := models.NewIncident(probe.org.UID, check.UID, probe.clk.Now(), title)
+	require.NoError(t, probe.dbSvc.CreateIncident(t.Context(), incident))
+	probe.pubs.OnIncidentOpened(t.Context(), incident)
 
-	pubs := s.publications()
+	return incident
+}
+
+// resolveIncident closes a per-check incident and runs the resolve policy.
+func resolveIncident(t *testing.T, probe *pubSetup, incident *models.Incident) {
+	t.Helper()
+
+	now := probe.clk.Now()
+	state := models.IncidentStateResolved
+
+	require.NoError(t, probe.dbSvc.UpdateIncident(t.Context(), incident.UID, &models.IncidentUpdate{
+		State:      &state,
+		ResolvedAt: &now,
+	}))
+
+	incident.State = state
+	incident.ResolvedAt = &now
+
+	probe.pubs.OnIncidentResolved(t.Context(), incident)
+}
+
+// TestGroupMembersConsolidateIntoOnePublication is the read-time/publish-time
+// half of the spec: members now get their OWN incidents, and the status page
+// still shows one public entry per group.
+//
+// It also proves both halves of the "also affecting X" rate limit — a second
+// member appends one note, a third arriving seconds later is coalesced, and a
+// fourth past the interval speaks again. The positive control is built in: the
+// first note MUST appear, so a limiter that suppressed everything would fail
+// the first assertion rather than quietly pass the second.
+func TestGroupMembersConsolidateIntoOnePublication(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	probe, _, members := groupProbe(t, "Payments worker", "Payments ledger", "Payments archiver")
+
+	openIncident(t, probe, probe.check, "payments-api is down")
+
+	pubs := probe.publications()
 	r.Len(pubs, 1)
 
-	baseline := len(s.updateKinds(pubs[0]))
+	baseline := len(probe.updateKinds(pubs[0]))
 
-	// First member joins → a note is appended.
-	s.clk.Advance(20 * time.Second)
-	s.pubs.OnGroupMemberJoined(ctx, incident, members[0])
+	// Second member fails 20s later: no second public entry, one note.
+	probe.clk.Advance(20 * time.Second)
+	openIncident(t, probe, members[0], "payments-member-a is down")
 
-	afterFirst := s.updateKinds(pubs[0])
+	r.Len(probe.publications(), 1, "a sibling member must not mint a second public entry")
+
+	afterFirst := probe.updateKinds(pubs[0])
 	r.Len(afterFirst, baseline+1, "a new member joining appends an 'also affecting' note")
 	r.Contains(afterFirst, models.StatusUpdateKindInfo)
 
-	// Second member joins seconds later → coalesced, nothing appended.
-	s.clk.Advance(30 * time.Second)
-	s.pubs.OnGroupMemberJoined(ctx, incident, members[1])
+	// Third member seconds later → coalesced.
+	probe.clk.Advance(30 * time.Second)
+	openIncident(t, probe, members[1], "payments-member-b is down")
 
-	r.Len(s.updateKinds(pubs[0]), baseline+1,
+	r.Len(probe.publications(), 1)
+	r.Len(probe.updateKinds(pubs[0]), baseline+1,
 		"a second member joining inside the rate-limit window is coalesced")
 
-	// Past the window, a further join speaks again — the limiter is a spacing
-	// rule, not a one-shot.
-	s.clk.Advance(6 * time.Minute)
-	s.pubs.OnGroupMemberJoined(ctx, incident, members[1])
+	// Past the window the limiter speaks again — it is a spacing rule, not a
+	// one-shot.
+	probe.clk.Advance(6 * time.Minute)
+	openIncident(t, probe, members[2], "payments-member-c is down")
 
-	r.Len(s.updateKinds(pubs[0]), baseline+2,
+	r.Len(probe.publications(), 1)
+	r.Len(probe.updateKinds(pubs[0]), baseline+2,
 		"past the interval the next join is announced")
+
+	// And every affected component is named on the public projection — the
+	// breadth consolidation buys, without ever publishing "N/M checks down".
+	public := probe.publicJSON()
+	r.Contains(public, "Payments worker")
+	r.NotContains(public, "checks down")
 }
 
-// TestGroupMemberNoteNeverNamesAnUndisplayedCheck pins the topology-hiding
-// rule: a member that is NOT a component on the page contributes no note at
-// all, because a group component never lists its members.
-func TestGroupMemberNoteNeverNamesAnUndisplayedCheck(t *testing.T) {
+// TestGroupSiblingWithNoPublicComponentIsNeverNamed pins the topology-hiding
+// rule: a member that is NOT a component on the page still consolidates (no
+// second entry) but contributes no note, because a group component never lists
+// its members.
+func TestGroupSiblingWithNoPublicComponentIsNeverNamed(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	ctx := t.Context()
 
-	s := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0, noResource: true})
-
-	group := models.NewCheckGroup(s.org.UID, "Payments platform", "payments-platform")
-	r.NoError(s.dbSvc.CreateCheckGroup(ctx, group))
-	r.NoError(s.dbSvc.UpdateCheck(ctx, s.check.UID, &models.CheckUpdate{CheckGroupUID: &group.UID}))
-
-	groupName := "Payments platform"
-	groupResource := models.NewStatusPageGroupResource(s.section.UID, group.UID, 1)
-	groupResource.PublicName = &groupName
-	r.NoError(s.dbSvc.CreateStatusPageResource(ctx, groupResource))
+	probe, group, _ := groupProbe(t)
 
 	// A member with NO resource of its own on the page.
-	hidden := models.NewCheck(s.org.UID, "payments-internal-shard", "http")
+	hidden := models.NewCheck(probe.org.UID, "payments-internal-shard", "http")
 	hidden.CheckGroupUID = &group.UID
-	r.NoError(s.dbSvc.CreateCheck(ctx, hidden))
+	r.NoError(probe.dbSvc.CreateCheck(ctx, hidden))
 
-	incident := models.NewIncident(s.org.UID, s.check.UID, s.clk.Now(), "Payments platform — 1/3 checks down")
-	incident.CheckGroupUID = &group.UID
-	r.NoError(s.dbSvc.CreateIncident(ctx, incident))
+	openIncident(t, probe, probe.check, "payments-api is down")
 
-	s.pubs.OnIncidentOpened(ctx, incident)
-
-	pubs := s.publications()
+	pubs := probe.publications()
 	r.Len(pubs, 1)
 
-	baseline := len(s.updateKinds(pubs[0]))
+	baseline := len(probe.updateKinds(pubs[0]))
 
-	s.clk.Advance(20 * time.Second)
-	s.pubs.OnGroupMemberJoined(ctx, incident, hidden)
+	probe.clk.Advance(20 * time.Second)
+	openIncident(t, probe, hidden, "payments-internal-shard is down")
 
-	r.Len(s.updateKinds(pubs[0]), baseline,
+	r.Len(probe.publications(), 1, "a hidden sibling still consolidates")
+	r.Len(probe.updateKinds(pubs[0]), baseline,
 		"a member that is not a public component on the page is never named")
+}
+
+// TestConsolidatedPublicationClosesOnlyWithTheLastMember is the resolve half.
+// The public entry hangs off whichever member published FIRST, so closing it
+// when that one recovers would announce "resolved" while a sibling is still
+// down — and letting it hang off a resolved incident would leave it open
+// forever. Both failure modes are asserted here.
+func TestConsolidatedPublicationClosesOnlyWithTheLastMember(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	probe, _, members := groupProbe(t, "Payments worker")
+
+	first := openIncident(t, probe, probe.check, "payments-api is down")
+
+	probe.clk.Advance(time.Minute)
+
+	second := openIncident(t, probe, members[0], "payments-member-a is down")
+
+	pubs := probe.publications()
+	r.Len(pubs, 1)
+	r.Equal(first.UID, *pubs[0].IncidentUID, "the first member to fail owns the public entry")
+
+	// The OWNER recovers while a sibling is still down: the entry stays open.
+	probe.clk.Advance(time.Minute)
+	resolveIncident(t, probe, first)
+
+	pubs = probe.publications()
+	r.Len(pubs, 1)
+	r.False(pubs[0].IsResolved(),
+		"the public entry must not close while a sibling member is still down")
+
+	// The LAST member recovers: the entry closes, even though it belongs to a
+	// different (already resolved) incident.
+	probe.clk.Advance(time.Minute)
+	resolveIncident(t, probe, second)
+
+	pubs = probe.publications()
+	r.Len(pubs, 1)
+	r.True(pubs[0].IsResolved(),
+		"the public entry closes when the LAST member recovers, whoever owns it")
 }
 
 // TestZeroPublishDelaySurvivesTheWrite is a regression pin for a bug that made

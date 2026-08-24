@@ -1091,12 +1091,30 @@ func (s *Service) affectedResourceNames(
 
 	checkUIDs := []string{incident.CheckUID}
 
+	// Historical group incidents carry their members in incident_member_checks.
+	// Those rows are frozen (nothing writes them any more) but they still have
+	// to render, so the legacy expansion stays exactly as it was.
 	if incident.CheckGroupUID != nil {
 		members, memErr := s.db.ListIncidentMemberChecks(ctx, incident.UID)
 		if memErr == nil {
 			for _, member := range members {
 				checkUIDs = append(checkUIDs, member.CheckUID)
 			}
+		}
+	}
+
+	// The group comes from the CHECK now (spec 2026-08-24-14), and a
+	// consolidated entry covers every member that failed while it was open —
+	// that breadth is precisely what consolidating buys the reader, since the
+	// internal "N/M checks down" phrasing is deliberately never published.
+	groupUID := s.incidentGroupUID(ctx, incident)
+	if groupUID != nil {
+		for _, sibling := range s.groupSiblingIncidents(ctx, incident, *groupUID, false) {
+			if !siblingOverlapsPublication(sibling, pub) {
+				continue
+			}
+
+			checkUIDs = append(checkUIDs, sibling.CheckUID)
 		}
 	}
 
@@ -1108,7 +1126,7 @@ func (s *Service) affectedResourceNames(
 			continue
 		}
 
-		for _, name := range s.resourceNamesOnPage(ctx, orgUID, pub.StatusPageUID, checkUID, incident.CheckGroupUID) {
+		for _, name := range s.resourceNamesOnPage(ctx, orgUID, pub.StatusPageUID, checkUID, groupUID) {
 			if _, dup := seen[name]; dup {
 				continue
 			}
@@ -1119,6 +1137,23 @@ func (s *Service) affectedResourceNames(
 	}
 
 	return names
+}
+
+// siblingOverlapsPublication reports whether a sibling group incident was
+// live at any point during the publication's life. A member that failed and
+// recovered long before the entry was published was never part of this public
+// outage, and listing it would tell readers something untrue.
+func siblingOverlapsPublication(sibling *models.Incident, pub *models.IncidentPublication) bool {
+	if sibling == nil {
+		return false
+	}
+
+	// Still down: it is affected right now, whenever it started.
+	if sibling.ResolvedAt == nil {
+		return true
+	}
+
+	return sibling.ResolvedAt.After(pub.PublishedAt)
 }
 
 // resourceNamesOnPage returns the public display names under which a check
@@ -1169,7 +1204,7 @@ func (s *Service) resourceNamesOnPage(
 func (s *Service) affectedName(
 	ctx context.Context, orgUID string, page *models.StatusPage, incident *models.Incident,
 ) string {
-	names := s.resourceNamesOnPage(ctx, orgUID, page.UID, incident.CheckUID, incident.CheckGroupUID)
+	names := s.resourceNamesOnPage(ctx, orgUID, page.UID, incident.CheckUID, s.incidentGroupUID(ctx, incident))
 	if len(names) > 0 {
 		return names[0]
 	}
