@@ -10,6 +10,10 @@ import {
   type Ipv6Capability,
 } from "@/components/shared/ipv6-capability";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
+import {
+  calculateReopenCooldownSeconds,
+  describeReopenCooldown,
+} from "@/lib/reopen-cooldown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,6 +78,11 @@ const globalDefaultPeriodSeconds = 60;
 // Server-enforced global floor (spec 2026-07-01-04): heavy types carry their
 // own minPeriodSeconds via the check-types API (browser 60s, js 30s).
 const globalMinPeriodSeconds = 10;
+// Mirrors defaultCooldownMultiplier in
+// server/internal/handlers/incidents/service.go — used when the Reopen
+// Cooldown Multiplier field is left blank, both for the computed hint and
+// the flappingSummary line below.
+const defaultReopenCooldownMultiplier = 5;
 
 export const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
@@ -848,8 +857,21 @@ export function CheckForm({
     (parseInt(flappingWindowSeconds, 10) || 0) > 0
       ? formatDuration(parseInt(flappingWindowSeconds, 10))
       : "6h";
-  const flappingSummary = `window ${flappingWindowLabel}, cooldown ×${
-    reopenCooldownMultiplier.trim() || "5"
+  // The actual window, not the bare multiplier: a summary reading
+  // "cooldown ×60" told the user nothing about the 30-min clamp it silently
+  // hits on a 1-min check (spec 2026-08-24-05).
+  const reopenCooldownMultiplierValue =
+    reopenCooldownMultiplier.trim() !== ""
+      ? parseInt(reopenCooldownMultiplier, 10) || 0
+      : defaultReopenCooldownMultiplier;
+  const reopenCooldownResult = calculateReopenCooldownSeconds(
+    reopenCooldownMultiplierValue,
+    regionPeriodSeconds,
+  );
+  const flappingSummary = `window ${flappingWindowLabel}, cooldown ${
+    reopenCooldownResult.seconds > 0
+      ? formatDuration(reopenCooldownResult.seconds)
+      : "off"
   }${flappingCustomized ? "" : " (defaults)"}`;
 
   const timeoutError = getFieldError(fieldErrors, "timeout");
@@ -1426,6 +1448,9 @@ export function CheckForm({
                 <Label htmlFor="reopenCooldownMultiplier" className="text-sm">{t("form.reopenCooldown")}</Label>
                 <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.reopenCooldownHelp")}</p>
+                <p className="text-xs text-muted-foreground break-words" data-testid="reopen-cooldown-estimate">
+                  {describeReopenCooldown(reopenCooldownMultiplierValue, regionPeriodSeconds, t)}
+                </p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="flappingWindowSeconds" className="text-sm">{t("form.flappingWindow")}</Label>
