@@ -17,6 +17,10 @@ interface MockCheck {
   type: string;
   status: string;
   targetHost: string | null;
+  /** Omit (or pass null) to simulate a check that has never produced a
+   * timing — see spec 2026-08-24-12: the empty-duration cell must render
+   * a literal em dash, not the escape sequence. */
+  durationMs?: number | null;
 }
 
 function hostViewFixture(): MockCheck[] {
@@ -55,7 +59,7 @@ async function mockChecksIndex(page: Page, checks: MockCheck[]): Promise<void> {
           checkGroupUid: null,
           targetHost: c.targetHost,
           status: c.status,
-          lastResult: { status: c.status, durationMs: 12 },
+          lastResult: { status: c.status, durationMs: c.durationMs === undefined ? 12 : c.durationMs },
           config:
             c.type === "heartbeat"
               ? { token: "tok" }
@@ -144,5 +148,50 @@ test.describe("Checks index host view", () => {
     await expect(hostSection).toBeVisible();
     await hostSection.getByTestId("host-section-header").click();
     await expect(hostSection.getByRole("link", { name: "TCP Node", exact: true })).toBeVisible();
+  });
+
+  // Regression coverage for spec 2026-08-24-12: the duration cell's
+  // empty-state text node used to contain the JS escape sequence —
+  // instead of a literal em dash. JSX text isn't a JS string literal, so it
+  // rendered as those six characters verbatim. Asserting only that a dash
+  // is *present* would still pass on the broken string — the assertion that
+  // actually proves the fix is that the raw escape sequence is *absent*.
+  test("renders a literal em dash, not the escape sequence, when a check has no duration", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockChecksIndex(page, [
+      {
+        uid: "e2e-no-duration",
+        name: "No Duration Node",
+        type: "tcp",
+        status: "up",
+        targetHost: "no-duration.example.com",
+        durationMs: null,
+      },
+    ]);
+
+    await page.goto("orgs/test/checks?groupBy=host");
+    await page.waitForLoadState("networkidle");
+
+    const hostView = page.getByTestId("host-view");
+    await expect(hostView).toBeVisible({ timeout: 10000 });
+
+    const hostSection = hostView
+      .getByTestId("host-section")
+      .filter({ has: page.getByTestId("host-section-name").getByText("no-duration.example.com") });
+    await expect(hostSection).toBeVisible();
+    await hostSection.getByTestId("host-section-header").click();
+
+    const row = page.getByRole("row").filter({ has: page.getByRole("link", { name: "No Duration Node", exact: true }) });
+    await expect(row).toBeVisible();
+
+    // The duration column is the 5th cell: Name, Type, Target, Status,
+    // Duration, Actions.
+    const durationCell = row.getByRole("cell").nth(4);
+    await expect(durationCell).toHaveText("—");
+
+    const rowText = (await row.innerText()).trim();
+    expect(rowText).not.toContain("\\u2014");
   });
 });
