@@ -32,6 +32,7 @@ import {
   useImportChecks,
   useConvertChecks,
   useEscalationPolicies,
+  useCheckTypes,
   type Check,
   type CheckGroup,
   type ConversionWarning,
@@ -97,11 +98,17 @@ import {
 } from "@/components/ui/tooltip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
+import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { checkLabel, tunnelCheckUidOf } from "@/components/checks/tunnel";
-import { CheckTypeBadge } from "@/components/shared/check-type-identity";
+import { CheckTypeBadge, getCheckTypeIdentity } from "@/components/shared/check-type-identity";
 import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
+import {
+  facetedFilterTriggerLabel,
+  parseFacetedFilterParam,
+  serializeFacetedFilterParam,
+} from "@/lib/faceted-filter";
 import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { CHECKS_LIST_POLL_MS, useLiveSubscription } from "@/contexts/LiveEventsContext";
@@ -115,9 +122,18 @@ type GroupByMode = (typeof GROUP_BY_MODES)[number];
 interface ChecksIndexSearch {
   labels?: string;
   status?: string;
+  type?: string;
   groupBy?: GroupByMode;
   q?: string;
 }
+
+// Status tokens the faceted filter offers, in display order. `degraded` is
+// deliberately excluded: models.CheckStatusDegraded is an aggregated/summary
+// value the live pipeline never assigns to a check
+// (server/internal/db/models/check.go), so it would sit in the list as a dead
+// option nothing could ever match. `?status=degraded` still parses and 200s
+// if a caller hand-types it — this only decides what the popover renders.
+const STATUS_FILTER_VALUES = ["up", "down", "validating", "warning", "created"] as const;
 
 // Group slugs are 3-100 chars: a lowercase letter followed by 2-99 lowercase
 // letters/digits/hyphens. This mirrors slugRegex in
@@ -159,6 +175,7 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
   validateSearch: (search: Record<string, unknown>): ChecksIndexSearch => ({
     labels: typeof search.labels === "string" && search.labels ? search.labels : undefined,
     status: typeof search.status === "string" && search.status ? search.status : undefined,
+    type: typeof search.type === "string" && search.type ? search.type : undefined,
     groupBy: GROUP_BY_MODES.includes(search.groupBy as GroupByMode)
       ? (search.groupBy as GroupByMode)
       : undefined,
@@ -978,6 +995,7 @@ function ChecksIndexPage() {
   const {
     labels: labelsParam,
     status: statusParam,
+    type: typeParam,
     groupBy: groupByParam,
     q: qParam,
   } = Route.useSearch();
@@ -985,6 +1003,54 @@ function ChecksIndexPage() {
   const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
+  // Status and type are both faceted (multi-value) filters. The URL is the
+  // source of truth — read directly off Route.useSearch() with no local-state
+  // mirror (like `groupBy` above), so a cold deep link with several values
+  // selected renders correctly on first paint. Parsing is lenient (unknown
+  // status tokens are dropped rather than crashing the UI); the backend still
+  // 400s a genuinely bad ?status= and the list error state covers that.
+  const statusValues = useMemo(
+    () => parseFacetedFilterParam(statusParam, new Set<string>(STATUS_FILTER_VALUES)),
+    [statusParam],
+  );
+  const typeValues = useMemo(() => parseFacetedFilterParam(typeParam), [typeParam]);
+
+  const statusOptions = useMemo(
+    () => STATUS_FILTER_VALUES.map((value) => ({ value, label: t(`status.${value}`) })),
+    [t],
+  );
+  const statusTriggerLabel = facetedFilterTriggerLabel(statusValues, statusOptions, {
+    all: t("statusFilter.all"),
+    count: (count) => t("statusFilter.count", { count }),
+    plusOne: (label, extra) => t("statusFilter.plusOne", { label, count: extra }),
+  });
+  const setStatusValues = (next: string[]) => {
+    void navigate({
+      search: (prev) => ({ ...prev, status: serializeFacetedFilterParam(next) || undefined }),
+      replace: true,
+    });
+  };
+
+  const { data: checkTypes } = useCheckTypes(org);
+  const typeOptions = useMemo(
+    () =>
+      (checkTypes ?? [])
+        .map((ct) => ({ value: ct.type, label: getCheckTypeIdentity(ct.type).label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [checkTypes],
+  );
+  const typeTriggerLabel = facetedFilterTriggerLabel(typeValues, typeOptions, {
+    all: t("typeFilter.all"),
+    count: (count) => t("typeFilter.count", { count }),
+    plusOne: (label, extra) => t("typeFilter.plusOne", { label, count: extra }),
+  });
+  const setTypeValues = (next: string[]) => {
+    void navigate({
+      search: (prev) => ({ ...prev, type: serializeFacetedFilterParam(next) || undefined }),
+      replace: true,
+    });
+  };
 
   // The view mode ("Group by: Groups / Host") is the page's primary
   // navigation, so — per this repo's convention (see web/dash0/CLAUDE.md,
@@ -1038,16 +1104,17 @@ function ChecksIndexPage() {
     });
   }, [debouncedSearch, qParam, navigate]);
 
-  // True when any of the four filter dimensions narrows the check list away
-  // from its default view: free-text search, the status select, the label
-  // filter, or a non-default internal-checks toggle ("false" is the default,
-  // user-facing view — "true"/"all" are the filtered ones). Drives hiding
-  // fully-filtered-out groups (and the ungrouped section) and swapping group
-  // headers to show matching counts instead of full-fleet counts. See spec
-  // 2026-08-02-07 (GitHub issue #171).
+  // True when any of the five filter dimensions narrows the check list away
+  // from its default view: free-text search, the status filter, the type
+  // filter, the label filter, or a non-default internal-checks toggle
+  // ("false" is the default, user-facing view — "true"/"all" are the
+  // filtered ones). Drives hiding fully-filtered-out groups (and the
+  // ungrouped section) and swapping group headers to show matching counts
+  // instead of full-fleet counts. See spec 2026-08-02-07 (GitHub issue #171).
   const isFiltering =
     Boolean(debouncedSearch) ||
-    Boolean(statusParam) ||
+    statusValues.length > 0 ||
+    typeValues.length > 0 ||
     Boolean(labelsParam) ||
     internalFilter !== "false";
 
@@ -1096,7 +1163,12 @@ function ChecksIndexPage() {
     q: debouncedSearch || undefined,
     internal: internalFilter,
     labels: labelsParam,
+    // Pass the raw URL params through untouched, not the leniently-parsed
+    // statusValues/typeValues used for the popover's checked state: an
+    // unknown ?status= token must still reach the backend and 400 (covered
+    // by the list error state) rather than silently vanish from the request.
     status: statusParam,
+    type: typeParam,
     limit: 100,
     // Load the stream in the exact order the page renders it, so the top of
     // the page fills first instead of arriving in unrelated created_at order:
@@ -1483,28 +1555,20 @@ function ChecksIndexPage() {
             </SelectContent>
           </Select>
         )}
-        <Select
-          value={statusParam ?? "all"}
-          onValueChange={(value) =>
-            void navigate({
-              search: (prev) => ({
-                ...prev,
-                status: value === "all" ? undefined : value,
-              }),
-              replace: true,
-            })
-          }
-        >
-          <SelectTrigger className="w-[140px]" data-testid="status-filter">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="up">Up</SelectItem>
-            <SelectItem value="down">Down</SelectItem>
-            <SelectItem value="created">Pending</SelectItem>
-          </SelectContent>
-        </Select>
+        <FacetedFilter
+          options={statusOptions}
+          selected={statusValues}
+          onChange={setStatusValues}
+          triggerLabel={statusTriggerLabel}
+          testId="status-filter"
+        />
+        <FacetedFilter
+          options={typeOptions}
+          selected={typeValues}
+          onChange={setTypeValues}
+          triggerLabel={typeTriggerLabel}
+          testId="type-filter"
+        />
         <Button
           variant="outline"
           onClick={handleRefresh}

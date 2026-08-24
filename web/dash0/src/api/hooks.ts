@@ -666,6 +666,8 @@ export function useInfiniteChecks(
     labels?: string;
     with?: string;
     q?: string;
+    /** Comma-separated check types, e.g. "ssh" or "http,tcp". */
+    type?: string;
     checkGroupUid?: string;
     internal?: string;
     status?: string;

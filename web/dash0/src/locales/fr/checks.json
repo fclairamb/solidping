@@ -26,9 +26,20 @@
     "up": "Opérationnel",
     "down": "En panne",
     "warning": "Avertissement",
+    "created": "En attente",
     "degraded": "Dégradé",
     "abandoned": "Abandonné",
     "unknown": "Inconnu"
+  },
+  "statusFilter": {
+    "all": "Tous les statuts",
+    "count": "{{count}} statuts",
+    "plusOne": "{{label}} +{{count}}"
+  },
+  "typeFilter": {
+    "all": "Tous les types",
+    "count": "{{count}} types",
+    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} opérationnels",

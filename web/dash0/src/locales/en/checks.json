@@ -26,9 +26,20 @@
     "up": "Up",
     "down": "Down",
     "warning": "Warning",
+    "created": "Pending",
     "degraded": "Degraded",
     "abandoned": "Abandoned",
     "unknown": "Unknown"
+  },
+  "statusFilter": {
+    "all": "All statuses",
+    "count": "{{count}} statuses",
+    "plusOne": "{{label}} +{{count}}"
+  },
+  "typeFilter": {
+    "all": "All types",
+    "count": "{{count}} types",
+    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} up",

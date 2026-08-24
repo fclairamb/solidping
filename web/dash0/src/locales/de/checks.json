@@ -26,9 +26,20 @@
     "up": "Aktiv",
     "down": "Ausfall",
     "warning": "Warnung",
+    "created": "Ausstehend",
     "degraded": "Beeinträchtigt",
     "abandoned": "Abgebrochen",
     "unknown": "Unbekannt"
+  },
+  "statusFilter": {
+    "all": "Alle Status",
+    "count": "{{count}} Status",
+    "plusOne": "{{label}} +{{count}}"
+  },
+  "typeFilter": {
+    "all": "Alle Typen",
+    "count": "{{count}} Typen",
+    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} aktiv",

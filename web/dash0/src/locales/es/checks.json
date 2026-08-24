@@ -26,9 +26,20 @@
     "up": "Activo",
     "down": "Caído",
     "warning": "Advertencia",
+    "created": "Pendiente",
     "degraded": "Degradado",
     "abandoned": "Abandonado",
     "unknown": "Desconocido"
+  },
+  "statusFilter": {
+    "all": "Todos los estados",
+    "count": "{{count}} estados",
+    "plusOne": "{{label}} +{{count}}"
+  },
+  "typeFilter": {
+    "all": "Todos los tipos",
+    "count": "{{count}} tipos",
+    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} activos",
