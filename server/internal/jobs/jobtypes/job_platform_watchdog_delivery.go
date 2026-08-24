@@ -89,9 +89,14 @@ func deliverWatchdogDigestToUser(
 // Notification routes are org-scoped (a Slack DM needs the org's bot token),
 // but the watchdog reports on the PLATFORM and has no org of its own. Walking
 // the recipient's memberships is what lets an operator be reached through the
-// contacts they already configured, wherever they configured them. Contacts
-// are de-duplicated so a person who set the same address up in two orgs is
-// messaged once.
+// contacts they already configured, wherever they configured them.
+//
+// Destinations are de-duplicated by contact TYPE + VALUE, never by contact
+// UID: `user_contacts` rows are org-scoped, so the same email address
+// registered in two orgs is two distinct UIDs belonging to the same human. A
+// UID-keyed dedup therefore never fires across orgs and mails that person the
+// digest twice. The first route wins, so the caller still sees the routes in
+// `position` order.
 func watchdogRoutesFor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, userUID string,
 ) []*models.UserNotificationRoute {
@@ -115,17 +120,41 @@ func watchdogRoutesFor(
 		}
 
 		for _, route := range routes {
-			if !route.Enabled || route.Contact == nil || seen[route.Contact.UID] {
+			if !route.Enabled || route.Contact == nil {
 				continue
 			}
 
-			seen[route.Contact.UID] = true
+			key := watchdogDestinationKey(route.Contact)
+			if seen[key] {
+				continue
+			}
+
+			seen[key] = true
 
 			out = append(out, route)
 		}
 	}
 
 	return out
+}
+
+// watchdogDestinationKey is the identity of a delivery DESTINATION rather than
+// of a database row: the contact's type plus its normalized value.
+//
+// Normalization is deliberately conservative — trim everywhere, and lowercase
+// only for email, whose local part is case-insensitive in every mail system
+// anyone actually runs. A Slack user id, a Telegram chat id and a web-push
+// subscription are all case-sensitive opaque tokens, so lowercasing them would
+// merge two genuinely different destinations.
+func watchdogDestinationKey(contact *models.UserContact) string {
+	value := strings.TrimSpace(contact.Value)
+	if contact.Type == models.UserContactTypeEmail {
+		value = strings.ToLower(value)
+	}
+
+	// The NUL separator cannot occur in either half, so no type/value pair can
+	// collide with another by concatenation.
+	return contact.Type + "\x00" + value
 }
 
 // dispatchWatchdogRoute delivers the digest over one route. Returns whether

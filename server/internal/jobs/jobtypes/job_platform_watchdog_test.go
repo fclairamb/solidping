@@ -374,3 +374,63 @@ func jobConfigText(t *testing.T, job *models.Job) string {
 
 	return string(raw)
 }
+
+// TestPlatformWatchdogReschedulesEvenWhenTheRunFails is the survival contract.
+//
+// Retries are capped, so a job that only reschedules on its success path stops
+// running for good once a persistent failure burns them — for the watchdog
+// that means going silent, which is the exact failure class it exists to
+// report. A malformed `platform_watchdog` parameter must therefore still leave
+// the next hourly run on the queue.
+func TestPlatformWatchdogReschedulesEvenWhenTheRunFails(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newWatchdogEnv(t)
+
+	env.strandRegion(t)
+
+	// Written straight to the parameter store, bypassing the PUT validation —
+	// the shape an older or hand-edited row could still have.
+	env.configure(t, map[string]any{"enabled": true, "recipients": "not-a-list"})
+
+	err := env.runWatchdog(t)
+	r.Error(err, "an undecodable configuration must still surface as a failure")
+	r.True(jobdef.IsRetryable(err), "the failure must stay visible through the retry chain")
+
+	r.Len(env.jobsOfType(t, jobdef.JobTypePlatformWatchdog), 1,
+		"a failing run must still schedule the next one, or the watchdog dies silently")
+}
+
+// TestPlatformWatchdogDeliversOnceAcrossOrgs: `user_contacts` are org-scoped,
+// so an operator who belongs to two orgs has two contact rows for one email
+// address. They are one human and must get one digest.
+func TestPlatformWatchdogDeliversOnceAcrossOrgs(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newWatchdogEnv(t)
+	ctx := t.Context()
+
+	env.strandRegion(t)
+
+	const email = "alice@acme.com"
+
+	recipient := env.addRecipient(t, email, true)
+
+	// The same person, the same address, a second organization — a different
+	// user_contacts row with a different UID.
+	second := models.NewOrganization("acme-eu", "Acme EU")
+	r.NoError(env.db.CreateOrganization(ctx, second))
+	r.NoError(env.db.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(second.UID, recipient, models.MemberRoleAdmin)))
+	r.NoError(env.db.EnsureDefaultEmailRoute(ctx, recipient, second.UID, strings.ToUpper(email)))
+
+	env.configure(t, map[string]any{"enabled": true, "recipients": []string{recipient}})
+
+	r.NoError(env.runWatchdog(t))
+
+	emails := env.emailJobs(t)
+	r.Len(emails, 1, "one human with the same address in two orgs gets one digest, not two")
+	r.Contains(strings.ToLower(jobConfigText(t, emails[0])), email)
+}

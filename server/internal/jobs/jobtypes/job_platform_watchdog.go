@@ -59,6 +59,26 @@ type PlatformWatchdogJobRun struct{}
 func (r *PlatformWatchdogJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
+	// The reschedule is DEFERRED, so it happens on every exit path — including
+	// the two error returns below.
+	//
+	// This deliberately diverges from the sibling internal jobs (snooze sweep,
+	// stuck-job reaper, …), which reschedule only on the success path and lean
+	// on the retry chain otherwise. Retries are capped (jobworker's
+	// MaxRetryCount), so for them a persistent failure means "this sweep stops
+	// until the next deploy" — survivable. For THIS job it is not: a watchdog
+	// that quietly stops running is exactly the silent-blindness failure the
+	// spec exists to kill, and a malformed `platform_watchdog` parameter would
+	// be enough to cause it. So the next hourly run is scheduled regardless,
+	// while the retryable error still fires the retry and keeps the failure
+	// visible. CreateJob dedupes on type+config+org+pending, so the retry's own
+	// reschedule cannot stack a duplicate.
+	//
+	// interval is read after the config loads; a run that fails before that
+	// falls back to the default so the chain still continues.
+	interval := watchdog.DefaultInterval
+	defer func() { r.rescheduleSelf(ctx, jctx, interval) }()
+
 	cfg, err := watchdog.LoadConfig(ctx, jctx.DBService)
 	if err != nil {
 		log.ErrorContext(ctx, "Failed to load the platform watchdog configuration", "error", err)
@@ -66,12 +86,13 @@ func (r *PlatformWatchdogJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		return jobdef.NewRetryableError(fmt.Errorf("load watchdog config: %w", err))
 	}
 
+	interval = cfg.Interval()
+
 	if !cfg.Enabled {
 		// Disabled means NO side effects: no detector queries, no state
-		// writes, no metrics, no delivery. Only the reschedule, so flipping
-		// the parameter to true takes effect within one interval.
+		// writes, no metrics, no delivery. Only the (deferred) reschedule, so
+		// flipping the parameter to true takes effect within one interval.
 		log.DebugContext(ctx, "Platform watchdog is disabled; skipping evaluation")
-		r.rescheduleSelf(ctx, jctx, cfg.Interval())
 
 		return nil
 	}
@@ -97,8 +118,6 @@ func (r *PlatformWatchdogJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 	if !digest.Empty() {
 		deliverWatchdogDigest(ctx, jctx, log, cfg, digest)
 	}
-
-	r.rescheduleSelf(ctx, jctx, cfg.Interval())
 
 	return nil
 }

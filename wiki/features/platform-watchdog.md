@@ -28,9 +28,19 @@ The watchdog is the channel that says the word.
 | Configuration | `platform_watchdog` **system parameter** |
 | Metrics | `solidping_watchdog_*` in `internal/prommetrics` |
 
-The job self-reschedules like the snooze sweep, and is provisioned at startup
-unconditionally — it reads its own enable flag, so turning the watchdog on is a
-parameter edit rather than a restart.
+The job is provisioned at startup unconditionally — it reads its own enable
+flag, so turning the watchdog on is a parameter edit rather than a restart.
+
+It self-reschedules from a **`defer`**, on every exit path including the error
+returns. This diverges from the sibling internal jobs (snooze sweep, stuck-job
+reaper, …), which reschedule only on success and lean on the capped retry chain
+otherwise — for them a persistent failure means "this sweep pauses until the
+next deploy", which is survivable. For the watchdog it is not: a malformed
+`platform_watchdog` parameter burning the retries would leave the platform
+silently unwatched, which is the exact failure class the feature exists to
+report. The retryable error is still returned, so the retry fires and the
+failure stays visible; `CreateJob` dedupes on type+config+org+pending, so the
+retry's own reschedule cannot stack a duplicate.
 
 ## The three detectors
 
@@ -130,7 +140,9 @@ exactly what incident paging does. No new medium, no hardcoded webhook.
 Routes are collected across every organization the recipient belongs to
 (routes are org-scoped because a Slack DM needs the org's bot token, while the
 watchdog reports on the platform and has no org of its own), de-duplicated by
-contact.
+contact **type + normalized value** — `user_contacts` rows are org-scoped, so
+the same address in two orgs is two rows and one human, and a UID-keyed dedup
+would mail them twice.
 
 Supported: **email** (enqueued as a normal `email` job), **Telegram**,
 **Slack DM**, **Web Push**, **SMS**. WhatsApp is template-gated by Meta and
