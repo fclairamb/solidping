@@ -168,6 +168,15 @@ func incidentNeedsPaging(incident *models.Incident, now time.Time) bool {
 	if incident.SnoozedUntil != nil && incident.SnoozedUntil.After(now) {
 		return false
 	}
+	// Rolled-up child: its cause is somebody else's incident and that incident
+	// is the one being paged for. Checked HERE, at fire time, and not only when
+	// the cycle was scheduled, because the attachment routinely happens after
+	// the steps are queued — a hard parent's own probe usually confirms after
+	// its dependents' do (specs 2026-05-03-57 and 2026-08-24-15). Without this
+	// gate, retroactive suppression cannot stop a storm already in flight.
+	if incident.PagingSuppressed {
+		return false
+	}
 
 	return true
 }

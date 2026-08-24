@@ -71,6 +71,8 @@ const INTENTIONALLY_UNMAPPED: Record<string, string> = {
   "check.updated": "configuration change — family fallback (blue) is enough",
   "check.deleted": "configuration change — family fallback (blue) is enough",
   "incident.unsnoozed": "minor lifecycle event — amber family fallback is enough",
+  "incident.rolled_up":
+    "retroactive dependency rollup (spec 2026-08-24-15) — amber incident family fallback is enough; it is a suppression notice on the child's timeline, not a page",
   "status_update.created": "status-page activity — family fallback (blue) is enough",
   "status_update.updated": "status-page activity — family fallback (blue) is enough",
   "status_update.deleted": "status-page activity — family fallback (blue) is enough",

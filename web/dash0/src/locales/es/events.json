@@ -30,6 +30,7 @@
     "incident.reopened": "Incidente reabierto",
     "incident.snoozed": "Incidente silenciado",
     "incident.unsnoozed": "Silencio anulado",
+    "incident.rolled_up": "Agrupado en el incidente principal",
     "incident.comment": "Comentario",
     "statuspage.incident.published": "Publicado en la página de estado",
     "statuspage.incident.updated": "Incidente de la página de estado actualizado",

@@ -30,6 +30,7 @@
     "incident.reopened": "Incident rouvert",
     "incident.snoozed": "Incident mis en veille",
     "incident.unsnoozed": "Mise en veille annulée",
+    "incident.rolled_up": "Rattaché à l'incident parent",
     "incident.comment": "Commentaire",
     "statuspage.incident.published": "Publié sur la page de statut",
     "statuspage.incident.updated": "Incident de page de statut mis à jour",

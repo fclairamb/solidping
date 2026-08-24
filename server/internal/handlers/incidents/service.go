@@ -109,6 +109,9 @@ const (
 	keyEscalationThreshold        = "escalation_threshold"
 	keyRelapseCount               = "relapse_count"
 	keyEffectiveRecoveryThreshold = "effective_recovery_threshold"
+	keyParentIncidentUID          = "parent_incident_uid"
+	keyParentCheckUID             = "parent_check_uid"
+	keyRollupDepth                = "rollup_depth"
 )
 
 // AttachmentStore is the attachment side of the incident lifecycle (spec
@@ -1048,6 +1051,11 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 		return fmt.Errorf("failed to emit incident created event: %w", err)
 	}
 
+	// Forward rollup: this check may itself be a hard parent whose dependents
+	// already opened and are already paging. The parent confirming LAST is the
+	// normal ordering (spec 2026-08-24-15), so re-evaluate them now.
+	s.rollUpExistingChildren(ctx, check, incident, incident.StartedAt)
+
 	s.publishOpened(ctx, incident)
 
 	return nil
@@ -1272,6 +1280,11 @@ func (s *Service) reopenIncident(
 	incident.State = activeState
 	incident.ResolvedAt = nil
 
+	// A reopen is an onset too: dependents that failed during the relapse may
+	// already be open and paging. `result.PeriodStart` — not incident.StartedAt,
+	// which still holds the ORIGINAL onset — is the correlation anchor.
+	s.rollUpExistingChildren(ctx, check, incident, result.PeriodStart)
+
 	s.publishReopened(ctx, incident)
 
 	return nil
@@ -1377,6 +1390,10 @@ func (s *Service) queueLifecycleNotifications(
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed,
+		// A retroactive rollup is recorded on the child's timeline and never
+		// paged — the whole point of the attachment is that the child stops
+		// paging. See rollup.go.
+		models.EventTypeIncidentRolledUp,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call

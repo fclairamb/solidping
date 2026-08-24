@@ -30,6 +30,13 @@ const (
 	EventTypeIncidentResolved EventType = "incident.resolved"
 	// EventTypeIncidentReopened indicates an incident was reopened after a relapse.
 	EventTypeIncidentReopened EventType = "incident.reopened"
+	// EventTypeIncidentRolledUp indicates an already-open incident was
+	// retroactively attached to a hard parent's incident and its paging
+	// suppressed, because the parent confirmed AFTER it did (spec
+	// 2026-08-24-15). Distinct from the silent attachment that happens at
+	// incident-open time: this one changes a live incident's paging behavior
+	// mid-flight, so the timeline has to say so. Never pages.
+	EventTypeIncidentRolledUp EventType = "incident.rolled_up"
 	// EventTypeIncidentAcknowledged indicates an incident was acknowledged.
 	EventTypeIncidentAcknowledged EventType = "incident.acknowledged"
 	// EventTypeIncidentUnacknowledged indicates an acknowledgment was cleared.

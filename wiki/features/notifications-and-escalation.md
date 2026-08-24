@@ -258,6 +258,7 @@ notification jobs.
 | `incident.unsnoozed` | snooze cleared, or `SweepUnsnooze` (`service.go:2151`) when window closes | no | does not restart |
 | `incident.comment` | `addCommentByOrgUID` (dashboard, API, Slack `/comment`, Telegram `/comment`, Discord `comment`, Slack/Discord thread reply in `all` mode) | yes — see below | — |
 | `incident.escalation_failed` | a step couldn't deliver (no on-call user, empty schedule) | no | — |
+| `incident.rolled_up` | `rollUpExistingChildren` — a hard parent opened AFTER this child and retroactively suppressed it | no | remaining steps skipped at fire time |
 | `check.created/updated/deleted` | check CRUD endpoints | no | — |
 | `org.activation.*` (5 milestones) | activation funnel (`internal/activation/`) | no | — |
 

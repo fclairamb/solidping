@@ -247,3 +247,34 @@ func (s *Service) FindActiveIncidentsForChecksInWindow(
 
 	return incidents, nil
 }
+
+// AttachIncidentToRollupParent attaches a child incident to a hard-parent
+// incident, guarded on the child still being active and NOT already
+// suppressed. The guard is the whole point: the backward evaluation (at
+// child-open) and the forward one (at parent-open) can race from two workers,
+// and only the call that actually flips the row is allowed to emit the
+// rollup lifecycle event. Returns true when this call performed the update.
+func (s *Service) AttachIncidentToRollupParent(
+	ctx context.Context, childIncidentUID, parentIncidentUID string,
+) (bool, error) {
+	res, err := s.db.NewUpdate().
+		Model((*models.Incident)(nil)).
+		Set("caused_by_incident_uid = ?", parentIncidentUID).
+		Set("paging_suppressed = ?", true).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", childIncidentUID).
+		Where("paging_suppressed = ?", false).
+		Where("state = ?", models.IncidentStateActive).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("attach incident to rollup parent: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("attach incident to rollup parent rows affected: %w", err)
+	}
+
+	return affected > 0, nil
+}

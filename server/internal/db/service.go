@@ -1058,6 +1058,17 @@ type Service interface {
 	FindActiveIncidentsForChecksInWindow(
 		ctx context.Context, checkUIDs []string, since, until time.Time,
 	) ([]*models.Incident, error)
+	// AttachIncidentToRollupParent is the compare-and-set that attaches a
+	// child incident to a hard-parent incident: it sets
+	// caused_by_incident_uid and paging_suppressed = TRUE, but ONLY while the
+	// child is still active and NOT already suppressed. That guard is what
+	// makes the two rollup evaluations (backward at child-open, forward at
+	// parent-open) idempotent against each other — whichever worker loses the
+	// race updates zero rows and must not emit a second lifecycle event.
+	// Reports whether this call is the one that performed the attachment.
+	AttachIncidentToRollupParent(
+		ctx context.Context, childIncidentUID, parentIncidentUID string,
+	) (bool, error)
 
 	// Org entitlement operations
 	GetOrgEntitlements(ctx context.Context, orgUID string) (*models.OrgEntitlements, error)

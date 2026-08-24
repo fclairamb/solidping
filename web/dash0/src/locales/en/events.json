@@ -30,6 +30,7 @@
     "incident.reopened": "Incident Reopened",
     "incident.snoozed": "Incident Snoozed",
     "incident.unsnoozed": "Incident Unsnoozed",
+    "incident.rolled_up": "Rolled Up Under Parent",
     "incident.comment": "Comment",
     "statuspage.incident.published": "Published to Status Page",
     "statuspage.incident.updated": "Status Page Incident Updated",
