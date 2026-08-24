@@ -424,17 +424,18 @@ export function getEventVia(event: {
   return typeof via === "string" && via.length > 0 ? via : undefined;
 }
 
-// getEventActorLabel is what an event row's "Actor" column should read.
+// getEventActorName is the NAME of the human behind an event, or undefined
+// when there is no name to give.
 //
 // Resolution order: the API-resolved actor name (present for events caused by
 // a platform user), then the acknowledgment payload's own actor — which is the
 // ONLY record of a Slack, Discord or phone acker, since those people have no
-// `users` row for actorUid to point at — then the actor's email, and finally
-// the coarse actor type. Returns undefined when even that is absent, so the
-// caller renders its own placeholder.
-export function getEventActorLabel(event: {
+// `users` row for actorUid to point at — then the actor's email.
+//
+// Never falls back to the actor TYPE: a caller that has a localized word for
+// "user"/"system" must render that rather than the raw English slug.
+export function getEventActorName(event: {
   eventType?: string;
-  actorType?: string;
   actorName?: string;
   actorEmail?: string;
   payload?: Record<string, unknown>;
@@ -446,5 +447,19 @@ export function getEventActorLabel(event: {
 
   if (event.actorEmail && event.actorEmail.length > 0) return event.actorEmail;
 
-  return event.actorType || undefined;
+  return undefined;
+}
+
+// getEventActorLabel is what an event row's "Actor" column should read: the
+// name when one is recoverable, otherwise the coarse actor type. Returns
+// undefined when even that is absent, so the caller renders its own
+// placeholder.
+export function getEventActorLabel(event: {
+  eventType?: string;
+  actorType?: string;
+  actorName?: string;
+  actorEmail?: string;
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  return getEventActorName(event) ?? event.actorType ?? undefined;
 }
