@@ -92,6 +92,7 @@ function EventsPage() {
         icon={Calendar}
         title={t("title")}
         description={t("subtitle")}
+        docsHref="/docs/features/events"
         className="flex-wrap"
       />
 

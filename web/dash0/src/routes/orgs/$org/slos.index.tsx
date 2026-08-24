@@ -161,6 +161,7 @@ function SlosIndexPage() {
         icon={Target}
         title={t("layout.title")}
         description={t("layout.subtitle")}
+        docsHref="/docs/features/slos"
         actions={
           <Button
             onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}

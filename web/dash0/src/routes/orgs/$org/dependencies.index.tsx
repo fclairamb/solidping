@@ -112,6 +112,7 @@ function DependenciesIndexPage() {
         icon={GitBranch}
         title={t("dependencies:list.title")}
         description={t("dependencies:list.subtitle")}
+        docsHref="/docs/features/incidents#group-incidents-correlated-outages"
         className="flex-wrap"
       />
 
