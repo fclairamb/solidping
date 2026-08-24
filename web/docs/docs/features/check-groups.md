@@ -8,7 +8,7 @@ title: Check Groups
 Check groups let you organize related checks — everything behind one service, one
 customer, or one environment — into a named collection. Groups keep large check lists
 navigable and drive two behaviors that matter during an outage: **grouped pagination**
-and **group-incident correlation**.
+and **grouped incident display**.
 
 ## What a group is
 
@@ -32,9 +32,8 @@ still using the old one, since there is no redirect from an old slug to a new on
 Every group also carries a derived, read-time `status` plus a
 `memberStatusCounts` breakdown (wire status → count), computed from its
 **enabled** member checks — no new stored state, and nothing that changes
-alerting (group incidents already correlate outages; see
-[Group-incident correlation](#group-incident-correlation) below). Disabled and
-deleted checks never affect the rollup.
+alerting (see [Grouped incident display](#group-incident-correlation) below).
+Disabled and deleted checks never affect the rollup.
 
 | Enabled members | Group status |
 |---|---|
@@ -86,12 +85,15 @@ migrate or keep in sync. It has no effect on alerting, groups, or status pages; 
 purely a dashboard view. The checks list API also accepts `?sort=targetHost` if you
 want to page through checks in host order yourself.
 
-## Group-incident correlation
+## Grouped incident display {#group-incident-correlation}
 
-When several checks in the same group fail at once, SolidPing correlates them into a
-single **group incident** instead of paging you once per check — one alert per outage,
-not one per symptom. See [Incident Management](/features/incidents#group-incidents-correlated-outages)
-for how correlated incidents behave.
+Incidents are always per-check: a member of a group that fails opens its own
+incident and pages its own channels. The grouping shows up where it helps rather
+than in the data — the dashboard lists a group's active incidents under a
+*"RabbitMQ — 2/6 down"* header, and a group published as one status-page
+component produces one public incident however many members are down. See
+[Incident Management](/features/incidents#group-incidents-correlated-outages)
+for the details, including what changed in v0.18.0.
 
 ## Managing groups
 

@@ -214,5 +214,9 @@
     "showRolledUp": "Afficher les incidents regroupés",
     "pagingSuppressed": "notifications suspendues",
     "rolledUpInactive": "regroupé"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} en panne",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} en panne"
   }
 }

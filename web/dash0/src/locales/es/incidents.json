@@ -214,5 +214,9 @@
     "showRolledUp": "Mostrar incidentes agrupados",
     "pagingSuppressed": "notificaciones suprimidas",
     "rolledUpInactive": "agrupado"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} caídos",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} caídos"
   }
 }

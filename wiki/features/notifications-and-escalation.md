@@ -46,13 +46,11 @@ The reference implementation lives in two files:
                                    ▼
                        events table + dispatch
                                    │
-                  ┌────────────────┴────────────────┐
-                  ▼                                 ▼
-         queueNotifications                queueGroupNotifications
-         (single-check incident)           (group incident: one
-         service.go:1176                    message per (channel, type))
-                  │                                 │
-                  └────────── notification job ─────┘
+                                   ▼
+                          queueNotifications
+                          (always per-check)
+                                   │
+                            notification job
                                    │
                                    ▼  jobs/jobtypes/job_notification.go:79
                             sender.Send(...)
@@ -62,11 +60,9 @@ The reference implementation lives in two files:
 
 Two parallel branches feed off `EventTypeIncidentCreated`:
 
-1. **Notifications** — fan out *now* to every channel bound to the check
-   (or, for group incidents, to the union of every currently-failing
-   member's channels). One job per `(channel, eventType)` pair so each
-   Slack channel only buzzes once even if the underlying group spans ten
-   checks.
+1. **Notifications** — fan out *now* to every channel bound to the check.
+   One job per `(channel, eventType)` pair, so a Slack channel bound to a
+   check only buzzes once per event.
 2. **Escalation cycle** — if the check has an escalation policy attached,
    `scheduleEscalationPolicy` (`incidents/service.go:1222`) creates one
    delayed job per step. Steps fire on the policy's cumulative
@@ -150,12 +146,11 @@ read the just-written values without a re-fetch.
 
 ## Incident lifecycle — open, escalate, resolve, reopen
 
-`routeCheckResultWithIncident` (`service.go:304`) splits four ways on
-`(isFailure, isGroup)`. Group incidents (one incident covering multiple
-checks in a check group) take parallel paths with shared helpers; the
-group-specific bits live in `handleGroupFailure` (`service.go:651`) and
-`updateGroupMemberOnFailure` (`service.go:667`). The rest of this
-section follows the per-check paths.
+`routeCheckResultWithIncident` splits two ways on `isFailure`. Every
+result takes the same path — a check that belongs to a check group is an
+ordinary check as far as incidents are concerned (spec 2026-08-24-14), so
+it opens its own incident through `createOrReopenIncident`, including
+`applyRollup`.
 
 ### Failure path — `handleFailure` (`service.go:329`)
 
@@ -282,9 +277,8 @@ from. The `emitEvent` switch keeps an explicit (empty) `incident.comment` case
 so it cannot be re-read as "comments are silent" — which is the bug this
 replaced.
 
-The connection set is identical to the lifecycle path (per-check
-`ListChannelsForCheck`, or the union of a group incident's member checks). Two
-filters apply on top:
+The connection set is identical to the lifecycle path (`ListChannelsForCheck`).
+Two filters apply on top:
 
 1. **Registry opt-out** — `notifications.AcceptsEventType(connType, eventType)`
    (`notifications/registry.go`). The per-sender table declares
@@ -326,8 +320,7 @@ gets a red Telegram alert and is never told it ended.
 
 `incident.resolved` therefore also queues one **`incident_resolution_notice`**
 job (`jobtypes/job_incident_resolution_notice.go`), enqueued after the
-`PagingSuppressed` early return and before the group branch, so rolled-up
-children stay silent and group incidents are covered. The job:
+`PagingSuppressed` early return, so rolled-up children stay silent. The job:
 
 - fans out over the **thread anchors** (`telegram_msg:<incidentUID>:<chatID>`
   state entries) — the exact set of chats that received a page — sending the
@@ -369,25 +362,42 @@ centralized as constants at the top of `incidents/service.go`:
 `result_uid`, plus the operator-action keys `via`, `actor_uid`,
 `acknowledged_by_email`, `slack_user_id`, `slack_username`, `note`.
 
-## Group incidents
+## Group incidents — historical only
 
-When several checks in the same `check_group` fail at once, the system
-opens a single **group incident** instead of one per check. `emitEvent`
-detects this via `incident.CheckGroupUID != nil` and dispatches through
-`queueGroupNotifications` (`incidents/service.go:1109`).
+Until v0.18.0, several checks in the same `check_group` failing at once
+produced ONE **group incident** with a `"<group> — N/M checks down"` title,
+keyed to whichever member failed first, the rest recorded as
+`incident_member_checks` rows. That is gone (spec 2026-08-24-14). Old rows
+still render; nothing creates them.
 
-The dedup rule:
+It was removed because the consolidation cost more than it bought:
 
-- For `incident.created` / `incident.escalated` / `incident.reopened`:
-  fan **one** notification per `(channel, eventType)` where the channel
-  set is the *union* of every currently-failing member's bound channels.
-  Recovered members do not bring their channels into mid-incident events.
-- For `incident.resolved`: include channels from *every* member so that
-  every channel that fired at open time hears about the close, even if
-  that specific member recovered earlier in the incident's life.
+- a member that was not the group's first failure had no incident with its
+  own `check_uid`, so its check page showed nothing and
+  `GET /incidents?checkUid=` could not find it;
+- it inherited the trigger member's notification and escalation state, so a
+  core check going down 25 minutes into a stale incident never paged afresh;
+- dependency rollup matches parents on `incidents.check_uid`
+  (`findRollupRoot`), so a grouped check could never act as a rollup parent
+  unless it happened to fail first — during the outage that motivated this,
+  55 dependents paged individually for a cause that was already known.
 
-The incident's `title` is rebuilt as members fail and recover —
-`"<group> — N/M checks down"` (`formatGroupTitle`, `service.go:623`).
+**Notifications are now per-check, always.** The accepted trade-off is that a
+correlated infra event taking down a group's prod *and* nonprod members
+produces one incident per member rather than one merged incident — deliberate:
+prod and nonprod deserve distinct paging.
+
+The consolidated view survives where it is a presentation concern rather than
+an identity one:
+
+- **dash0** groups the incidents it has loaded by the check's
+  `check_group_uid` and renders a plain `RabbitMQ — 2/6 down` header above the
+  member rows (`web/dash0/src/lib/incident-grouping.ts`). No API change —
+  `GET /incidents` stays a flat list.
+- **Status pages** consolidate at the publication layer
+  (`incidentpublications`): the first member to publish owns the public entry,
+  later members append a rate-limited "also affecting X" note, and the entry
+  closes when the LAST member recovers.
 
 ## Suppression: maintenance, ack, snooze, manual resolve
 

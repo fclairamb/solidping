@@ -47,14 +47,38 @@ same `#42` is shown in the dashboard incident list and header, in Slack alert
 headers, and in Telegram alerts — where it is what you type back as
 `/ack #42` (see [Telegram](../configuration/telegram.md#in-chat-commands)).
 
-## Group Incidents (Correlated Outages)
+## Check groups in incidents {#group-incidents-correlated-outages}
 
-When several checks belong to the same check group, SolidPing correlates their failures into a **single group incident** — one alert per outage instead of one per check. This dramatically reduces noise when a shared dependency (a database, a region, an upstream provider) takes down many checks at once.
+**Every incident belongs to exactly one check.** A check that belongs to a check
+group is no different: when it fails, it opens its own incident, notifies its own
+channels, and can be acknowledged, snoozed and resolved on its own.
 
-- The group incident tracks each member check individually (when it joined, how many times it failed, whether it is currently failing).
-- The title reflects live counts, e.g. *"API Services: 2 of 5 down"*, and updates as members fail and recover.
-- A recently-resolved group incident is **reopened** rather than recreated if another member fails within a short cooldown window, preventing incident thrashing on flapping dependencies.
-- The group incident resolves only once **all** members have recovered.
+That matters when a group spans environments. If the prod and the staging member
+of a "RabbitMQ" group both go down, they are two incidents — because they are two
+outages, with different urgency, and merging them would let a staging blip absorb
+a production page.
+
+Grouping still does the work you want from it, just at display time:
+
+- **In the dashboard**, active incidents are listed under a group header —
+  *"RabbitMQ — 2/6 down"* — with the member incidents beneath it, so an outage
+  spanning a group reads as one thing.
+- **On a status page**, a group published as a single component produces a
+  single public incident, however many member checks are failing. Later members
+  add an "also affecting …" update to that entry rather than opening a second
+  one, and the public entry stays open until the **last** member recovers.
+- **Dependency rollup** works normally: point your dependent checks at the
+  grouped check they actually depend on and their incidents roll up under it,
+  paging once for the root cause.
+
+:::note Changed in v0.18.0
+Earlier versions merged a group's failures into a single *group incident* owned
+by whichever member failed first. Existing group incidents are kept and still
+display; new ones are no longer created. The old behavior hid later members'
+failures from their own check pages, let them inherit an already-escalated
+incident's state, and prevented a grouped check from acting as a dependency
+rollup parent.
+:::
 
 ## Acknowledging, Snoozing & Resolving {#acknowledge-snooze-resolve}
 

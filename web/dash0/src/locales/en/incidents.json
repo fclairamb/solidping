@@ -214,5 +214,9 @@
     "showRolledUp": "Show rolled-up incidents",
     "pagingSuppressed": "paging suppressed",
     "rolledUpInactive": "rolled up"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} down",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} down"
   }
 }

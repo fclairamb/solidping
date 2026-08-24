@@ -214,5 +214,9 @@
     "showRolledUp": "Zusammengefasste Vorfälle anzeigen",
     "pagingSuppressed": "Benachrichtigung unterdrückt",
     "rolledUpInactive": "zusammengefasst"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} ausgefallen",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} ausgefallen"
   }
 }

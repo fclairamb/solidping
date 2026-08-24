@@ -21,6 +21,7 @@ import {
   Info,
   Building2,
   KeyRound,
+  Layers,
   LogOut,
   Moon,
   Monitor,
@@ -1606,18 +1607,22 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">Flapping badge</h3>
         <p className="text-sm text-muted-foreground">
-          "Flapping ×N" for an incident that opened or reopened at an
-          escalated adaptive-recovery flap level (spec 2026-08-24-05,
+          "Flapping ×N" for an incident that opened or reopened at an escalated
+          adaptive-recovery flap level (spec 2026-08-24-05,
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             incident.flapLevel
           </code>
-          ). Used identically on the incidents list and the incident detail
-          page — one component so the amber tone (
+          ). Used identically on the incidents list and the incident detail page
+          — one component so the amber tone (
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             flappingBadgeClass
           </code>
-          ) can never drift between the two. The component does not self-hide
-          — callers guard on <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flapLevel &gt; 0</code>.
+          ) can never drift between the two. The component does not self-hide —
+          callers guard on{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            flapLevel &gt; 0
+          </code>
+          .
         </p>
         <ExampleRow
           preview={
@@ -1800,6 +1805,49 @@ function ButtonsBadgesSection() {
           importLine={`import { StatusBadge } from "@/components/shared/status-badge";\n\n<StatusBadge status={group.status} />\n<span className="text-xs text-muted-foreground">{formatMemberSummary(group.memberStatusCounts, t)}</span>`}
         />
 
+        <h3 className="text-sm font-medium">Incident group header</h3>
+        <p className="text-sm text-muted-foreground">
+          Incidents are per-check (spec 2026-08-24-14): six members of a group
+          going down produce six incidents, which is what makes each one
+          independently pageable and lets any of them act as a dependency-rollup
+          parent. The consolidated &quot;N/M down&quot; view is rebuilt at READ
+          time — the incidents list (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            incidents.index.tsx
+          </code>
+          ) and the dashboard&apos;s Active-incidents card group what they hold
+          with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            groupIncidentsByCheckGroup
+          </code>{" "}
+          and render this header above the member rows.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Deliberately NOT collapsible, unlike the checks-index group header
+          above: there is no per-group open/closed state worth persisting across
+          filters, sorts and pagination. The count is what is LOADED, so the
+          denominator is dropped rather than overstated when a group&apos;s
+          members straddle a page boundary — never assert a fleet-wide total the
+          client cannot see.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full overflow-hidden rounded-md border">
+              <div className="flex items-center gap-2 bg-muted/40 px-3 py-2 text-sm">
+                <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="font-semibold">RabbitMQ — 2/6 down</span>
+              </div>
+              <div className="border-t px-3 py-2 text-sm text-muted-foreground">
+                rabbitmq-prod
+              </div>
+              <div className="border-t px-3 py-2 text-sm text-muted-foreground">
+                rabbitmq-nonprod
+              </div>
+            </div>
+          }
+          importLine={`import { groupIncidentsByCheckGroup, groupHeaderCounts } from "@/lib/incident-grouping";\n\nconst rows = groupIncidentsByCheckGroup(incidents, checks, checkGroups);`}
+        />
+
         <h3 className="text-sm font-medium">Live connection status dot</h3>
         <p className="text-sm text-muted-foreground">
           Passive indicator for the org live-updates WebSocket, mounted in the
@@ -1912,11 +1960,10 @@ function ButtonsBadgesSection() {
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             UTC+2
           </code>{" "}
-          when the runtime can't name the zone) — an on-call operator
-          comparing an incident against their own wall clock shouldn't have to
-          do offset arithmetic in their head. UTC stays one hover away, in the
-          same Tooltip. All instances share a single 30s re-render timer (not
-          one{" "}
+          when the runtime can't name the zone) — an on-call operator comparing
+          an incident against their own wall clock shouldn't have to do offset
+          arithmetic in their head. UTC stays one hover away, in the same
+          Tooltip. All instances share a single 30s re-render timer (not one{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             setInterval
           </code>{" "}
