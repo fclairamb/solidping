@@ -129,3 +129,108 @@ Out of scope: a dashboard surface for watchdog state (the digest + metrics
 cover v1), per-org self-monitoring for customers (this is the *server
 operator's* tool; org-facing "your checks look stale" is a separate product
 decision), and any new delivery medium.
+
+## Implementation Plan
+
+### A. `internal/watchdog` — a detector/transition package with no HTTP surface
+
+New package holding everything that is testable without a job runner:
+
+- `watchdog.Severity` (`info` < `warning` < `critical`) and `watchdog.Anomaly`
+  (`Detector`, `Subject`, `Fingerprint` = `<detector>:<subject>`, `Severity`,
+  `Headline`, `Detail`, `Remediation`).
+- `watchdog.Config` — decoded from the `platform_watchdog` **system parameter**
+  (the single tunable surface the spec asks for, editable through the existing
+  super-admin `/system/parameters` CRUD). Carries `enabled`, `recipients`,
+  `minSeverity` plus every threshold: interval, dark-region overdue floor/age,
+  fleet-collapse drop %/baseline floor, stale-incident floor/multiplier,
+  re-notify window. Absent keys fall back to the documented defaults, so an
+  operator only writes `{"enabled":true,"recipients":["…"]}`.
+- `watchdog.Service` with an injectable `now func() time.Time` and three
+  detectors, each returning `([]Anomaly, error)` and each invoked
+  **independently** by `Evaluate` — a detector that errors contributes an entry
+  to `Report.Failed[detector]` and never aborts the others.
+  1. `detectDarkRegions` — calls the **spec-09 `RegionHealth` function**
+     through a `RegionHealthReporter` interface satisfied by
+     `*checks.Service`. Production wiring passes the real service, so there is
+     exactly one definition of "dark". Bar: `jobsOverdue >= minOverdueJobs`
+     **and** `oldestOverdueAt` older than `minOverdueAge`; `liveWorkers == 0`
+     with `jobs > 0` marks the region genuinely dark and scales severity by
+     blast radius (critical at ≥ `criticalOverdueJobs` stranded jobs, or an
+     oldest-overdue older than `criticalOverdueAge`).
+  2. `detectFleetCollapse` — two **grouped** `COUNT(*)` queries over `results`
+     (`period_type='raw'`) for the last completed hour and the same hour one
+     day earlier. Anomaly when the baseline is `>= minBaseline` and the drop
+     exceeds `dropPercent`.
+  3. `detectStaleIncidents` — one query for active incidents joined to their
+     check (`state = active`, capped scan), one **grouped** `MAX(period_start)`
+     query for those check UIDs. Stale when the last result is older than
+     `max(multiplier × period, minAge)`. Reports the count and the three
+     oldest.
+- `transitions.go` — the anti-flood state machine over **global**
+  `state_entries` (`organization_uid IS NULL`, key
+  `watchdog:anomaly:<fingerprint>`, value `{firstSeenAt,lastSeenAt,lastNotifiedAt,severity}`):
+  new → notify; ongoing → silent until `renotifyAfter` (24h) then re-notify with
+  "still broken since …"; gone → recovery notice once, then delete the entry.
+  **Resolution is only reconciled for detectors that actually succeeded this
+  run** — a query error must never be laundered into a false "recovered".
+- `digest.go` — one compact digest per run (never one message per anomaly):
+  subject line with counts, one block per anomaly, and for dark regions the
+  ready-to-run `POST /api/v1/system/regions/migrate` remediation (spec
+  2026-08-24-08) plus the `GET /api/v1/system/regions/health` listing (spec
+  2026-08-24-09).
+
+### B. Metrics (`internal/prommetrics`)
+
+Per-detector gauges registered in `allCollectors`, set on every run so an
+external Prometheus can alert independently of the in-band path:
+`solidping_watchdog_anomalies{detector,severity}`,
+`solidping_watchdog_stranded_jobs`, `solidping_watchdog_stale_incidents`,
+`solidping_watchdog_detector_failures_total{detector}`,
+`solidping_watchdog_last_run_timestamp_seconds`.
+
+### C. The hourly job (`internal/jobs/jobtypes/job_platform_watchdog.go`)
+
+`jobdef.JobTypePlatformWatchdog = "platform_watchdog"`, registered in
+`registry.go` and ensured at startup next to its siblings
+(`ensurePlatformWatchdogJob`), self-rescheduling at `cfg.Interval` exactly like
+the snooze sweep — the reschedule happens in a `defer` so a failing run still
+schedules the next one.
+
+Run order: load config → `enabled:false` ⇒ **reschedule only, zero side
+effects** (no queries, no state writes, no metrics) → evaluate → publish
+metrics → classify transitions → render digest → deliver.
+
+### D. Delivery through the recipients' own routes
+
+`deliverWatchdogDigest` resolves each recipient UID with `GetUser`, then
+`ListUserContactsWithRoutes(uid, user.OrganizationUID)` — already ordered by
+`position ASC` — and dispatches every **enabled** route through the existing
+mediums: email (an enqueued `JobTypeEmail`), Telegram (instance bot client),
+Slack DM (`postSlackDM` over the org connection), Web Push, and SMS through
+`Services.SMS`. WhatsApp is template-gated and cannot carry free text, so it is
+skipped with an explicit WARN rather than silently.
+
+- A recipient with zero enabled/deliverable routes is logged **WARN
+  `watchdog digest undeliverable`** with the user UID.
+- `enabled:true` with no recipients still runs, logs the anomalies and updates
+  the metrics, and logs a **WARN** naming the misconfiguration.
+- `minSeverity` filters *delivery* only — every anomaly is still logged and
+  metered.
+
+### E. Tests
+
+`internal/watchdog/*_test.go` (SQLite fixtures, pinned clock) and
+`internal/jobs/jobtypes/job_platform_watchdog_test.go`:
+
+- dark region reproducing the 2026-08-24 shape (jobs under a slug no live
+  worker prefix-matches), through a real `checks.Service`;
+- halved result rate vs. the same hour yesterday, and a below-floor baseline
+  that must stay silent;
+- a frozen active incident whose check stopped producing results;
+- transitions: new → notify, ongoing < 24h → silent, ongoing > 24h → re-notify,
+  resolved → recovery exactly once (and silent on the run after);
+- a failing detector does not suppress the others **and** does not resolve its
+  own fingerprints;
+- delivery: routes resolved in position order, a routeless recipient logs
+  undeliverable while the run still succeeds, `enabled:false` writes no state.
