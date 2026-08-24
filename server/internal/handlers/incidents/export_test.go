@@ -14,11 +14,13 @@ func (s *Service) ApplyRollupForTest(ctx context.Context, check *models.Check, i
 	s.applyRollup(ctx, check, incident)
 }
 
-// EffectiveRecoveryPeriodForTest exposes the unexported effectiveRecoveryPeriod
-// so external tests can assert the flapping-backoff math (worked example, cap,
-// off-switches) directly against a check's flap state.
+// EffectiveRecoveryPeriodForTest asserts the flapping-backoff math (worked
+// example, cap, off-switches) directly against a check's flap state. The math
+// itself now lives on models.Check.EffectiveRecoveryPeriod (spec
+// 2026-08-24-05) — this wrapper is kept so the existing test call sites in
+// this package need no changes.
 func EffectiveRecoveryPeriodForTest(check *models.Check) time.Duration {
-	return effectiveRecoveryPeriod(check)
+	return check.EffectiveRecoveryPeriod()
 }
 
 // RecoveryElapsedForTest exposes the unexported recoveryElapsed so external
