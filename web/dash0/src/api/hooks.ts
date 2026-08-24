@@ -3178,17 +3178,24 @@ export function useInvitations(org: string) {
   });
 }
 
+export interface CreateInvitationResponse {
+  token: string;
+  inviteUrl: string;
+  // Whether the invitation email was queued for delivery — not proof it
+  // reached an inbox, since delivery is async. False when email sending is
+  // disabled on this instance, or when enqueueing the job failed; the
+  // dashboard must then treat inviteUrl as the only channel.
+  emailSent: boolean;
+}
+
 export function useCreateInvitation(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { email: string; role: string }) =>
-      apiFetch<{ token: string; inviteUrl: string }>(
-        `/api/v1/orgs/${org}/invitations`,
-        {
-          method: "POST",
-          body: JSON.stringify(data),
-        },
-      ),
+      apiFetch<CreateInvitationResponse>(`/api/v1/orgs/${org}/invitations`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invitations", org] });
     },
