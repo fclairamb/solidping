@@ -256,7 +256,6 @@ func (s *Service) stopOrgChecks(ctx context.Context, orgUID string) error {
 	return nil
 }
 
-// deleteOrgMemberships soft-deletes every membership of the organization.
 // releaseOrgProviderLinks soft-deletes every organization_providers row the org
 // still holds, so its Slack team / Discord guild / OIDC issuer identity becomes
 // claimable again instead of pointing at a soft-deleted org forever.
@@ -275,6 +274,7 @@ func (s *Service) releaseOrgProviderLinks(ctx context.Context, orgUID string) er
 	return nil
 }
 
+// deleteOrgMemberships soft-deletes every membership of the organization.
 func (s *Service) deleteOrgMemberships(ctx context.Context, orgUID string) error {
 	members, err := s.db.ListMembersByOrg(ctx, orgUID)
 	if err != nil {
