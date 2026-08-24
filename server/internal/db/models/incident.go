@@ -66,10 +66,16 @@ type Incident struct {
 	SnoozeReason    *string       `bun:"snooze_reason"`
 	FailureCount    int           `bun:"failure_count,notnull,default:1"`
 	RelapseCount    int           `bun:"relapse_count,notnull,default:0"`
-	LastReopenedAt  *time.Time    `bun:"last_reopened_at"`
-	Title           *string       `bun:"title"`
-	Description     *string       `bun:"description"`
-	Details         JSONMap       `bun:"details,type:jsonb,nullzero"`
+	// FlapLevel is the check's FlapCount at the moment this incident opened
+	// or last reopened (spec 2026-08-24-05) — the "at what flap level did
+	// this page fire" record. 0 = not flapping (first outage in the rolling
+	// window). Unlike checks.flap_count this is a point-in-time snapshot, not
+	// a live value, so it never needs lazy-reset handling.
+	FlapLevel      int        `bun:"flap_level,notnull,default:0"`
+	LastReopenedAt *time.Time `bun:"last_reopened_at"`
+	Title          *string    `bun:"title"`
+	Description    *string    `bun:"description"`
+	Details        JSONMap    `bun:"details,type:jsonb,nullzero"`
 	// CheckGroupUID is set on group incidents — NULL keeps the existing per-check semantics.
 	CheckGroupUID *string `bun:"check_group_uid"`
 	// CausedByIncidentUID points to the root-cause incident this one was rolled up under.
@@ -122,6 +128,7 @@ type IncidentUpdate struct {
 	SnoozeReason        *string
 	FailureCount        *int
 	RelapseCount        *int
+	FlapLevel           *int
 	LastReopenedAt      *time.Time
 	Title               *string
 	Description         *string

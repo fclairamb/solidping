@@ -1039,6 +1039,9 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 	incident.Details = failureDetails(result)
+	// FlapLevel snapshots the flap count recordFlap just bumped, so the
+	// incident carries the level it actually opened at (spec 2026-08-24-05).
+	incident.FlapLevel = check.FlapCount
 
 	// Roll up under a hard parent if one is open within the correlation window.
 	s.applyRollup(ctx, check, incident)
@@ -1220,11 +1223,16 @@ func (s *Service) reopenIncident(
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
 	newDetails := lastFailureDetails(incident.Details, result)
+	// FlapLevel snapshots the flap count recordFlap just bumped above, so a
+	// reopened incident reflects the escalated level it reopened at (spec
+	// 2026-08-24-05) — mirrors the same assignment in createIncident.
+	newFlapLevel := check.FlapCount
 
 	update := models.IncidentUpdate{
 		State:               &activeState,
 		ClearResolvedAt:     true,
 		RelapseCount:        &newRelapseCount,
+		FlapLevel:           &newFlapLevel,
 		LastReopenedAt:      &now,
 		FailureCount:        &newFailureCount,
 		Details:             &newDetails,
@@ -1266,6 +1274,7 @@ func (s *Service) reopenIncident(
 
 	// Pass check fields to the incident for notification payload
 	incident.RelapseCount = newRelapseCount
+	incident.FlapLevel = newFlapLevel
 
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
 		keyCheckUID:                   check.UID,
@@ -2150,12 +2159,17 @@ type IncidentResponse struct {
 	// not have, and the surfaces that show an attribution are on the detail
 	// page. `acknowledgedBy` alone is NOT a substitute — it is NULL for every
 	// Slack, Discord and phone ack.
-	AcknowledgedByActor *IncidentActorResponse   `json:"acknowledgedByActor,omitempty"`
-	SnoozedUntil        *time.Time               `json:"snoozedUntil,omitempty"`
-	SnoozedBy           *string                  `json:"snoozedBy,omitempty"`
-	SnoozeReason        *string                  `json:"snoozeReason,omitempty"`
-	FailureCount        int                      `json:"failureCount"`
-	RelapseCount        int                      `json:"relapseCount"`
+	AcknowledgedByActor *IncidentActorResponse `json:"acknowledgedByActor,omitempty"`
+	SnoozedUntil        *time.Time             `json:"snoozedUntil,omitempty"`
+	SnoozedBy           *string                `json:"snoozedBy,omitempty"`
+	SnoozeReason        *string                `json:"snoozeReason,omitempty"`
+	FailureCount        int                    `json:"failureCount"`
+	RelapseCount        int                    `json:"relapseCount"`
+	// FlapLevel is the check's flap count at the moment this incident opened
+	// or last reopened — 0 (omitted) means it opened at the base level, not
+	// escalated by the adaptive-recovery flapping layer. See
+	// models.Incident.FlapLevel.
+	FlapLevel           int                      `json:"flapLevel,omitempty"`
 	LastReopenedAt      *time.Time               `json:"lastReopenedAt,omitempty"`
 	Title               *string                  `json:"title,omitempty"`
 	Description         *string                  `json:"description,omitempty"`
@@ -2237,6 +2251,7 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		SnoozeReason:        inc.SnoozeReason,
 		FailureCount:        inc.FailureCount,
 		RelapseCount:        inc.RelapseCount,
+		FlapLevel:           inc.FlapLevel,
 		LastReopenedAt:      inc.LastReopenedAt,
 		Title:               inc.Title,
 		Description:         inc.Description,

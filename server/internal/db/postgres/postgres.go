@@ -3097,6 +3097,7 @@ func applyIncidentSetFields(query *bun.UpdateQuery, update *models.IncidentUpdat
 		{"snooze_reason", update.SnoozeReason},
 		{"failure_count", update.FailureCount},
 		{"relapse_count", update.RelapseCount},
+		{"flap_level", update.FlapLevel},
 		{"last_reopened_at", update.LastReopenedAt},
 		{"title", update.Title},
 		{"description", update.Description},
