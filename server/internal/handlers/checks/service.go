@@ -754,6 +754,14 @@ type CheckResponse struct {
 	FlapBackoffFactor        int  `json:"flapBackoffFactor"`
 	MaxRecoveryMultiplier    int  `json:"maxRecoveryMultiplier"`
 
+	// FlapState is the check's LIVE adaptive-recovery state (spec
+	// 2026-08-24-05) — the effective (lazy-reset-aware) counterpart of the
+	// raw flapping_window_seconds/flap_backoff_factor/max_recovery_multiplier
+	// config above. Omitted when the flapping feature is off for this check,
+	// or when no flap state has accumulated (no outage yet, or the rolling
+	// window has since lapsed).
+	FlapState *FlapStateResponse `json:"flapState,omitempty"`
+
 	// Wall-clock incident-tracking periods (seconds), per spec 2026-05-08-02.
 	// 0 means "open / resolve immediately on first signal".
 	ConfirmationPeriodSeconds int `json:"confirmationPeriodSeconds"`
@@ -769,6 +777,24 @@ type CheckResponse struct {
 	// responses never carry it — and omitted until the check's first run
 	// produces a cost signal.
 	Scheduling *CheckSchedulingResponse `json:"scheduling,omitempty"`
+}
+
+// FlapStateResponse surfaces a check's live adaptive-recovery (flapping)
+// state (spec 2026-08-24-05). FlapCount and EffectiveRecoveryPeriodSeconds
+// are both computed as of "now" via models.Check.EffectiveFlapCount /
+// EffectiveRecoveryPeriodAt — the lazy-reset-aware values, never the raw
+// (possibly stale) flap_count column.
+type FlapStateResponse struct {
+	// FlapCount is the number of outages counted inside the current rolling
+	// flapping window. 1 means "2nd outage within the window" (the first
+	// outage that actually counts as a flap) — see models.Check.FlapCount.
+	FlapCount int `json:"flapCount"`
+	// LastOutageAt is the wall-clock of the most recent outage onset that
+	// counted against the window.
+	LastOutageAt *time.Time `json:"lastOutageAt,omitempty"`
+	// EffectiveRecoveryPeriodSeconds is the stability currently required
+	// before an open incident on this check auto-resolves, given FlapCount.
+	EffectiveRecoveryPeriodSeconds int `json:"effectiveRecoveryPeriodSeconds"`
 }
 
 // CheckSchedulingResponse surfaces the scheduler's per-check telemetry on the
@@ -2890,6 +2916,25 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 		EscalationPolicyUID:       check.EscalationPolicyUID,
 		TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
+		FlapState:                 buildFlapStateResponse(check, time.Now()),
+	}
+}
+
+// buildFlapStateResponse computes the check's live flapState block (spec
+// 2026-08-24-05), or nil when there is nothing to report: an effective flap
+// count of 0 covers both "the flapping feature is off for this check" and
+// "no flap state has accumulated" (never happened, or the rolling window has
+// since lapsed — see models.Check.EffectiveFlapCount, the lazy-reset trap).
+func buildFlapStateResponse(check *models.Check, now time.Time) *FlapStateResponse {
+	effectiveCount := check.EffectiveFlapCount(now)
+	if effectiveCount == 0 {
+		return nil
+	}
+
+	return &FlapStateResponse{
+		FlapCount:                      effectiveCount,
+		LastOutageAt:                   check.LastOutageAt,
+		EffectiveRecoveryPeriodSeconds: int(check.EffectiveRecoveryPeriodAt(now) / time.Second),
 	}
 }
 
