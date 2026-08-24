@@ -4249,15 +4249,12 @@ type InviteListResponse struct {
 
 // InviteResponse defines model for InviteResponse.
 type InviteResponse struct {
-	Email openapi_types.Email `json:"email"`
-
-	// EmailSent Whether the invitation email was queued for delivery — NOT confirmation it reached an inbox, since delivery is async. False when email sending is disabled on this instance, or when enqueueing the job failed; the invite link (inviteUrl) is then the only channel.
-	EmailSent bool               `json:"emailSent"`
-	ExpiresAt time.Time          `json:"expiresAt"`
-	InviteUrl string             `json:"inviteUrl"`
-	Role      string             `json:"role"`
-	Token     string             `json:"token"`
-	Uid       openapi_types.UUID `json:"uid"`
+	Email     openapi_types.Email `json:"email"`
+	ExpiresAt time.Time           `json:"expiresAt"`
+	InviteUrl string              `json:"inviteUrl"`
+	Role      string              `json:"role"`
+	Token     string              `json:"token"`
+	Uid       openapi_types.UUID  `json:"uid"`
 }
 
 // Job defines model for Job.
