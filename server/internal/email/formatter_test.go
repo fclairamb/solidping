@@ -307,8 +307,9 @@ func TestFormatter_TextBlockRendering(t *testing.T) {
 				"invitation.html",
 				map[string]any{
 					"OrgName": "Acme", "Role": "admin", "InviterName": "Alice", "InviteURL": "https://x.test/i",
+					"ExpiresIn": "24 hours",
 				},
-				[]string{"Acme", "admin", "Alice", "https://x.test/i", "7 days"},
+				[]string{"Acme", "admin", "Alice", "https://x.test/i", "24 hours"},
 			},
 			{
 				"welcome.html",
@@ -370,6 +371,12 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 		wantHTML    []string
 	}{
 		{
+			// ExpiresIn is deliberately "1 hour", not the historical "7
+			// days": the template used to hardcode "expires in 7 days"
+			// regardless of the caller's data, so a value that disagrees
+			// with that literal is the positive control — this case fails
+			// against the old template and only passes once the real
+			// expiresIn is rendered.
 			name:     "invitation",
 			template: "invitation.html",
 			data: map[string]any{
@@ -377,6 +384,7 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 				"Role":        "admin",
 				"InviterName": "Alice",
 				"InviteURL":   "https://solidping.example/i/abc",
+				"ExpiresIn":   "1 hour",
 			},
 			wantSubject: "You're invited to join Acme on SolidPing",
 			wantHTML: []string{
@@ -384,7 +392,7 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 				"admin",
 				"Alice",
 				"https://solidping.example/i/abc",
-				"expires in 7 days",
+				"expires in 1 hour",
 			},
 		},
 		{
@@ -490,6 +498,39 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 	}
 }
 
+// TestFormatter_InvitationExpiryIsDynamic pins the fix for the invitation
+// template hardcoding "This invitation expires in 7 days" regardless of the
+// actual TTL (default 24h, range 1h-1w). Renders with a 1-hour ExpiresIn —
+// deliberately not "7 days" — and asserts the real value appears, in BOTH
+// the HTML body and the text part, and that the old hardcoded literal is
+// gone from either. This is a positive control: it fails against the
+// pre-fix template, which ignored ExpiresIn entirely.
+func TestFormatter_InvitationExpiryIsDynamic(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	data := map[string]any{
+		"OrgName":     "Acme",
+		"Role":        "admin",
+		"InviterName": "Alice",
+		"InviteURL":   "https://solidping.example/i/abc",
+		"ExpiresIn":   "1 hour",
+	}
+
+	_, html, text, err := formatter.Format("invitation.html", data)
+	r.NoError(err)
+
+	r.Contains(html, "expires in 1 hour")
+	r.NotContains(html, "7 days")
+
+	r.Contains(text, "expires in 1 hour")
+	r.NotContains(text, "7 days")
+}
+
 // unresolvedTemplateVarPattern matches a Go template action that leaked into
 // rendered output unresolved (e.g. "{{.Foo}}" or "<no value>"), which would
 // mean the fixture data was missing a field the template expects.
@@ -527,6 +568,7 @@ func TestFormatter_AllShippedTemplatesRenderCleanly(t *testing.T) {
 		{"password-reset.html", map[string]any{"ResetURL": "https://x.test/r"}},
 		{"invitation.html", map[string]any{
 			"OrgName": "Acme", "Role": "admin", "InviterName": "Alice", "InviteURL": "https://x.test/i",
+			"ExpiresIn": "24 hours",
 		}},
 		{"welcome.html", map[string]any{"DashboardURL": "https://x.test/dash"}},
 		{"password-changed.html", map[string]any{"ChangedAt": "Sun, 05 Jul 2026 10:00:00 UTC"}},
