@@ -69,6 +69,7 @@ import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
+import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -167,6 +168,7 @@ import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 import { useDebounce } from "@/lib/use-debounce";
+import { facetedFilterTriggerLabel } from "@/lib/faceted-filter";
 import { cn, slugify } from "@/lib/utils";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
@@ -212,6 +214,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "stepper", label: "Stepper" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
+  { id: "faceted-filter", label: "Faceted filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
   { id: "check-group-picker", label: "Check group picker" },
   { id: "token-chips-input", label: "Token chips input" },
@@ -259,6 +262,7 @@ function DesignReferencePage() {
       <StepperSection />
       <FeedbackSection />
       <LabelFilterSection />
+      <FacetedFilterSection />
       <CheckMultiPickerSection />
       <CheckGroupPickerSection />
       <TokenChipsInputSection />
@@ -3935,6 +3939,69 @@ function LabelFilterSection() {
     >
       <ExampleRow
         preview={<LabelFilter org={org} value={labels} onChange={setLabels} />}
+        importLine={snippet}
+      />
+    </Section>
+  );
+}
+
+function FacetedFilterSection() {
+  const [selected, setSelected] = useState<string[]>(["down"]);
+  const options = [
+    { value: "up", label: "Up" },
+    { value: "down", label: "Down" },
+    { value: "validating", label: "Validating" },
+    { value: "warning", label: "Warning" },
+    { value: "created", label: "Pending" },
+  ];
+  const triggerLabel = facetedFilterTriggerLabel(selected, options, {
+    all: "All statuses",
+    count: (count) => `${count} statuses`,
+    plusOne: (label, extra) => `${label} +${extra}`,
+  });
+  const snippet = `import { FacetedFilter } from "@/components/shared/faceted-filter";
+import {
+  facetedFilterTriggerLabel,
+  parseFacetedFilterParam,
+  serializeFacetedFilterParam,
+} from "@/lib/faceted-filter";
+
+// Multi-select popover for a small, known option set (status, check type) —
+// the checkbox sibling of LabelFilter's open-ended key:value picker. The
+// caller owns URL state: read selected values with parseFacetedFilterParam
+// (lenient — unknown tokens are dropped so a stale URL never wedges the UI),
+// compute the trigger text with facetedFilterTriggerLabel (none → "all",
+// one → its label, two → "label +1", 3+ → "N selected"), and write back with
+// serializeFacetedFilterParam.
+const selected = parseFacetedFilterParam(statusParam, new Set(["up", "down", …]));
+<FacetedFilter
+  options={options}
+  selected={selected}
+  onChange={(next) =>
+    void navigate({
+      search: (prev) => ({ ...prev, status: serializeFacetedFilterParam(next) || undefined }),
+      replace: true,
+    })
+  }
+  triggerLabel={facetedFilterTriggerLabel(selected, options, statusFilterStrings)}
+  testId="status-filter"
+/>`;
+  return (
+    <Section
+      id="faceted-filter"
+      title="Faceted filter"
+      description="Multi-select popover for a small, known option set — used for the checks-list status and check-type filters. A checkbox per option, trigger text reflects the selection (All / one label / label +1 / N selected). Reuse this instead of a single-value Select whenever several values can be picked at once; reuse LabelFilter instead when the facet is an open-ended key:value pair. Try it below — the trigger starts on “Down”."
+    >
+      <ExampleRow
+        preview={
+          <FacetedFilter
+            options={options}
+            selected={selected}
+            onChange={setSelected}
+            triggerLabel={triggerLabel}
+            testId="design-reference-faceted-filter"
+          />
+        }
         importLine={snippet}
       />
     </Section>
