@@ -48,28 +48,52 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
     await expect(tooltip).toContainText(clipboardText);
   });
 
-  test("incident detail: timeline uses the inline variant with absolute time always visible", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  test.describe("inline variant: local time first, UTC on hover", () => {
+    // Pin an explicit non-UTC zone so local and UTC genuinely differ —
+    // Playwright's default browser timezone is UTC, which would make a
+    // regression here (inline text reading as the UTC clock) pass by
+    // accident.
+    test.use({ timezoneId: "Europe/Paris" });
 
-    await page.goto(`/dash0/orgs/test/incidents/${INCIDENT_UID}`);
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    test("incident detail: timeline uses the inline variant, local time always visible, UTC on hover", async ({
+      authenticatedPage,
+    }) => {
+      const page = authenticatedPage;
+      await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
-    // Proposal item 7: the inline variant shows "HH:MM:SS UTC · Nx ago"
-    // without needing a hover, so several timestamps can be compared at a
-    // glance.
-    const timelineTime = page.getByTestId("incident-timeline-time").first();
-    await expect(timelineTime).toBeVisible();
-    await expect(timelineTime).toContainText(/UTC/);
-    await expect(timelineTime).toContainText(/ago|just now/);
+      await page.goto(`/dash0/orgs/test/incidents/${INCIDENT_UID}`);
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByText("Incident Details")).toBeVisible();
 
-    // Click-to-copy still applies to the inline variant.
-    await timelineTime.click();
-    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clipboardText).toMatch(UTC_ISO_RE);
+      // The inline variant shows "HH:MM:SS <zone> · Nx ago" without needing
+      // a hover, so several timestamps can be compared at a glance — and
+      // that clock is now LOCAL time, not UTC.
+      const timelineTime = page.getByTestId("incident-timeline-time").first();
+      await expect(timelineTime).toBeVisible();
+      await expect(timelineTime).toContainText(/ago|just now/);
+
+      const timeText = (await timelineTime.textContent()) ?? "";
+      const clockMatch = timeText.match(/(\d{2}:\d{2}:\d{2})\s+(\S+)/);
+      expect(clockMatch, `expected an "HH:MM:SS <zone>" clock in "${timeText}"`).not.toBeNull();
+      const [, , zoneMarker] = clockMatch!;
+      // The zone marker must never be the bare "UTC" — in the pinned
+      // Europe/Paris zone it should read as an abbreviation ("GMT+2",
+      // "CEST", …) or the UTC-offset fallback ("UTC+2"), never plain "UTC".
+      expect(zoneMarker).not.toBe("UTC");
+
+      // Hovering reveals the tooltip with local time first, then the
+      // unambiguous UTC ISO — that's where UTC now lives.
+      await timelineTime.hover();
+      const tooltip = page.getByTestId("time-ago-tooltip");
+      await expect(tooltip).toBeVisible();
+      await expect(tooltip).toContainText("(local)");
+      await expect(tooltip).toContainText(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/);
+
+      // Click-to-copy still writes the UTC ISO, unchanged.
+      await timelineTime.click();
+      const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+      expect(clipboardText).toMatch(UTC_ISO_RE);
+    });
   });
 
   test("incident detail page stays usable on a mobile viewport", async ({

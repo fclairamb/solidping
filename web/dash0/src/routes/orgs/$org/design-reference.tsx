@@ -1899,7 +1899,24 @@ function ButtonsBadgesSection() {
             2026-08-14T09:31:07Z
           </code>
           ) to the clipboard — the format that pastes cleanly into a log query.
-          All instances share a single 30s re-render timer (not one{" "}
+          The{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            inline
+          </code>{" "}
+          variant's always-visible clock is the browser's LOCAL time, suffixed
+          with a short zone marker (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            11:31:07 CEST
+          </code>
+          , falling back to a UTC-offset label like{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            UTC+2
+          </code>{" "}
+          when the runtime can't name the zone) — an on-call operator
+          comparing an incident against their own wall clock shouldn't have to
+          do offset arithmetic in their head. UTC stays one hover away, in the
+          same Tooltip. All instances share a single 30s re-render timer (not
+          one{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             setInterval
           </code>{" "}
@@ -1934,7 +1951,7 @@ function ButtonsBadgesSection() {
               />
             </span>
           }
-          importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Incident detail (timeline, comments, header): absolute time shown\n// inline instead of hidden behind hover.\n<TimeAgo date={u.publishedAt} variant="inline" />`}
+          importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Incident detail (timeline, comments, header): absolute LOCAL time shown\n// inline instead of hidden behind hover (UTC is one hover away).\n<TimeAgo date={u.publishedAt} variant="inline" />`}
         />
 
         <h3 className="text-sm font-medium">Session card</h3>
