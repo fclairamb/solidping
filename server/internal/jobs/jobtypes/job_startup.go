@@ -118,7 +118,41 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 
 	// Ensure the SLO burn-rate evaluation sweep exists. Self-reschedules every
 	// minute; this seeds the first run (spec 2026-08-21-08).
-	return r.ensureSLOBurnEvalJob(ctx, jctx)
+	if err := r.ensureSLOBurnEvalJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure the platform watchdog exists (global, not per-org). It
+	// self-reschedules hourly; this seeds the first run so an instance that
+	// went blind between two deploys is reported on the first cycle after the
+	// restart rather than an hour later (spec 2026-08-24-10).
+	return r.ensurePlatformWatchdogJob(ctx, jctx)
+}
+
+// ensurePlatformWatchdogJob provisions the global platform watchdog. The job
+// reads its own enable flag from the `platform_watchdog` system parameter, so
+// it is provisioned unconditionally: a disabled watchdog costs one cheap job
+// row per interval and turning it on becomes a parameter edit rather than a
+// restart. CreateJob dedupes on type+config+org+pending, so a restart won't
+// stack a duplicate.
+func (r *StartupJobRun) ensurePlatformWatchdogJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping platform watchdog provisioning (services not available)")
+
+		return nil
+	}
+
+	if _, err := jctx.Services.Jobs.CreateJob(
+		ctx, "", string(jobdef.JobTypePlatformWatchdog), nil, nil,
+	); err != nil {
+		log.InfoContext(ctx, "Failed to create platform watchdog job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured platform watchdog job exists")
+	}
+
+	return nil
 }
 
 // ensureSLOBurnEvalJob provisions the global SLO burn-rate evaluation sweep.

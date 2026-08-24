@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
+	"github.com/fclairamb/solidping/server/internal/watchdog"
 )
 
 // Errors for system parameter operations.
@@ -259,6 +260,15 @@ func (s *Service) SetParameter(ctx context.Context, key string, value any, secre
 
 	if systemconfig.IsAggregationRetentionKey(key) {
 		if err := systemconfig.ValidateAggregationRetentionParameter(key, value); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
+		}
+	}
+
+	// The platform watchdog is an alerting path of last resort: a value it
+	// cannot decode would only surface as a failing hourly job nobody reads.
+	// Reject it here, while the operator is still looking at the request.
+	if key == watchdog.ParamPlatformWatchdog {
+		if err := watchdog.ValidateParameter(value); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
 		}
 	}

@@ -3,7 +3,9 @@ package watchdog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -193,6 +195,50 @@ func (c *Config) StaleIncidentMinAge() time.Duration {
 // Severity is the parsed delivery bar.
 func (c *Config) Severity() Severity {
 	return ParseSeverity(c.MinSeverity)
+}
+
+// Parameter validation errors.
+var (
+	// ErrInvalidParameterShape is returned when the value is not a JSON object.
+	ErrInvalidParameterShape = errors.New("platform_watchdog must be a JSON object")
+	// ErrInvalidRecipient is returned for a blank entry in recipients.
+	ErrInvalidRecipient = errors.New("platform_watchdog recipients must be non-empty user UIDs")
+	// ErrInvalidMinSeverity is returned for an unknown minSeverity token.
+	ErrInvalidMinSeverity = errors.New(`platform_watchdog minSeverity must be one of "info", "warning", "critical"`)
+)
+
+// ValidateParameter rejects a platform_watchdog value the watchdog could not
+// decode at run time.
+//
+// This runs on the write, not on the read, on purpose. A malformed value only
+// surfaces at the next hourly run — as a failing job on an alerting path that
+// nobody is watching, which is precisely the failure mode this spec exists to
+// remove. Catching it in the PUT hands the mistake back to the person making
+// it, while they are still looking.
+func ValidateParameter(value any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidParameterShape, err)
+	}
+
+	cfg := &Config{}
+	if err := json.Unmarshal(raw, cfg); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidParameterShape, err)
+	}
+
+	for _, recipient := range cfg.Recipients {
+		if strings.TrimSpace(recipient) == "" {
+			return ErrInvalidRecipient
+		}
+	}
+
+	switch cfg.MinSeverity {
+	case "", "info", "warning", "critical":
+	default:
+		return fmt.Errorf("%w (got %q)", ErrInvalidMinSeverity, cfg.MinSeverity)
+	}
+
+	return nil
 }
 
 // LoadConfig reads and decodes the `platform_watchdog` system parameter.

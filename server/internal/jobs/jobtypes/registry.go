@@ -48,6 +48,9 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeSLOBurnEval: func() jobdef.JobDefinition {
 		return &SLOBurnEvalJobDefinition{}
 	},
+	jobdef.JobTypePlatformWatchdog: func() jobdef.JobDefinition {
+		return &PlatformWatchdogJobDefinition{}
+	},
 }
 
 // GetJobDefinition retrieves a job definition by type.

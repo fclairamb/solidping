@@ -127,6 +127,19 @@ const (
 	// Deliberately absent from publiclyCreatableJobTypes — it opens incidents
 	// and therefore pages people.
 	JobTypeSLOBurnEval JobType = "slo_burn_eval"
+	// JobTypePlatformWatchdog is the hourly internal watchdog (spec
+	// 2026-08-24-10): it evaluates the platform's own vitals — dark regions
+	// with assigned work, a collapse in fleet execution rate, active incidents
+	// frozen because their check stopped running — and reports the state
+	// TRANSITIONS to a configured operator list through those operators' own
+	// notification routes.
+	//
+	// It exists because every other alerting path in solidping is check-level,
+	// which means the worst failure mode of a monitoring product (going blind)
+	// is exactly the one that produces zero signal. Self-rescheduling like the
+	// snooze sweep; never publicly creatable — it reports on the instance, not
+	// on an org.
+	JobTypePlatformWatchdog JobType = "platform_watchdog"
 )
 
 // publiclyCreatableJobTypes is the allowlist of job types that may be enqueued
