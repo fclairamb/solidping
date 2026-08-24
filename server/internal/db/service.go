@@ -495,15 +495,13 @@ type Service interface {
 	// humans type into Telegram and read in Slack. Returns sql.ErrNoRows if none.
 	GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error)
 	// FindActiveIncidentByCheckUID returns the incident a check is participating in, whether
-	// per-check (incidents.check_uid = $1) or via a group (incident_member_checks row exists
-	// with currently_failing = true). Returns sql.ErrNoRows if none.
+	// keyed on incidents.check_uid. Returns sql.ErrNoRows if none.
+	//
+	// It does NOT reach through incident_member_checks any more (spec
+	// 2026-08-24-14): that OR-branch is exactly how a check's own failure
+	// disappeared into another check's incident.
 	FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error)
 	FindRecentlyResolvedIncidentByCheckUID(ctx context.Context, checkUID string, since time.Time) (*models.Incident, error)
-	// FindActiveIncidentByGroupUID returns the active group incident keyed on check_group_uid.
-	FindActiveIncidentByGroupUID(ctx context.Context, groupUID string) (*models.Incident, error)
-	// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
-	// for a group resolved after `since`. Used for the reopen-within-cooldown path.
-	FindRecentlyResolvedIncidentByGroupUID(ctx context.Context, groupUID string, since time.Time) (*models.Incident, error)
 	// ListIncidents returns incidents matching filter plus the total count of
 	// matching rows ignoring Limit/cursor (mirrors ListChecks).
 	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, int64, error)
@@ -566,7 +564,11 @@ type Service interface {
 	) error
 	ListEscalationPolicyTargets(ctx context.Context, stepUIDs []string) ([]*models.EscalationPolicyTarget, error)
 
-	// Incident member operations (group incidents only)
+	// Incident member operations. HISTORICAL: group incidents are no longer
+	// created (spec 2026-08-24-14), so the readers below serve old rows and the
+	// writers have no production caller left. Do not build on them — a new
+	// caller would reintroduce the binding of one check's failure to another
+	// check's incident that this table's write path was removed for.
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
 	// ListIncidentMemberChecksByIncidentUIDs returns member rows for several
 	// group incidents at once, grouped by incident UID — one batched query

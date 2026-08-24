@@ -941,16 +941,6 @@ func (m *mockDBService) GetCheckByEmailToken(_ context.Context, _ string) (*mode
 	panic("not implemented")
 }
 
-func (m *mockDBService) FindActiveIncidentByGroupUID(_ context.Context, _ string) (*models.Incident, error) {
-	panic("not implemented")
-}
-
-func (m *mockDBService) FindRecentlyResolvedIncidentByGroupUID(
-	_ context.Context, _ string, _ time.Time,
-) (*models.Incident, error) {
-	panic("not implemented")
-}
-
 func (m *mockDBService) ListIncidentMemberChecks(
 	_ context.Context, _ string,
 ) ([]*models.IncidentMemberCheck, error) {

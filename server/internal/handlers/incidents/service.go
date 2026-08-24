@@ -2861,8 +2861,9 @@ func (s *Service) queueCommentNotifications(
 }
 
 // commentFanoutConnections resolves the connection set a comment reaches,
-// mirroring queueNotifications / queueGroupNotifications so a comment lands
-// exactly where the incident's own alerts landed.
+// mirroring queueNotifications so a comment lands exactly where the incident's
+// own alerts landed. Historical group incidents still fan out over their
+// member checks here — the read path for them is deliberately intact.
 func (s *Service) commentFanoutConnections(
 	ctx context.Context, incident *models.Incident,
 ) []*models.Integration {

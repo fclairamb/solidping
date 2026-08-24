@@ -3292,47 +3292,6 @@ func (s *Service) FindRecentlyResolvedIncidentByCheckUID(
 	return incident, nil
 }
 
-// FindActiveIncidentByGroupUID returns the active group incident keyed on check_group_uid.
-func (s *Service) FindActiveIncidentByGroupUID(ctx context.Context, groupUID string) (*models.Incident, error) {
-	incident := new(models.Incident)
-
-	err := s.db.NewSelect().
-		Model(incident).
-		Where("check_group_uid = ?", groupUID).
-		Where("state = ?", models.IncidentStateActive).
-		Where("deleted_at IS NULL").
-		Limit(1).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return incident, nil
-}
-
-// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
-// for a group resolved after `since`. Used to reopen within cooldown.
-func (s *Service) FindRecentlyResolvedIncidentByGroupUID(
-	ctx context.Context, groupUID string, since time.Time,
-) (*models.Incident, error) {
-	incident := new(models.Incident)
-
-	err := s.db.NewSelect().
-		Model(incident).
-		Where("check_group_uid = ?", groupUID).
-		Where("state = ?", models.IncidentStateResolved).
-		Where("resolved_at >= ?", since).
-		Where("deleted_at IS NULL").
-		Order("resolved_at DESC").
-		Limit(1).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return incident, nil
-}
-
 // ListIncidentMemberChecks returns all member rows for a group incident.
 func (s *Service) ListIncidentMemberChecks(
 	ctx context.Context, incidentUID string,
