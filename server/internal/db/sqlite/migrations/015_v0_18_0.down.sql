@@ -6,6 +6,19 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: flap-level
+-- Teardown half of the flap-level snapshot (spec 2026-08-24-05). SQLite
+-- mirror of the flap-level section of
+-- postgres/migrations/015_v0_18_0.down.sql.
+-- ==========================================================================
+
+-- LOSSY: which flap level each incident opened/reopened at is discarded. The
+-- underlying checks.flap_count / last_outage_at are untouched, so live
+-- adaptive-recovery behavior is unaffected — only the historical per-incident
+-- record is lost.
+alter table incidents drop column flap_level;
+
+-- ==========================================================================
 -- SECTION: must-change-password
 -- Teardown half of the forced-rotation flag (spec 2026-08-23-04).
 -- ==========================================================================

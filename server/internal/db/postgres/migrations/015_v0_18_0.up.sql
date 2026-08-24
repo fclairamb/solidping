@@ -17,6 +17,7 @@
 --   SECTION: support-inbox              support_threads + support_messages
 --   SECTION: custom-domain-state        status_pages lifecycle columns
 --   SECTION: must-change-password       users.must_change_password
+--   SECTION: flap-level                 incidents.flap_level
 --
 -- CONSOLIDATION NOTE (2026-08-24): the support-inbox, custom-domain-state and
 -- must-change-password sections were folded in from what were briefly separate
@@ -745,3 +746,17 @@ alter table users add column if not exists must_change_password boolean not null
 
 comment on column users.must_change_password is
   'When true, an authenticated session for this user may reach only POST /auth/change-password, GET /auth/me and POST /auth/logout until the password is rotated.';
+
+-- ==========================================================================
+-- SECTION: flap-level
+-- Snapshot the check's flap count on the incident it opened/reopened at
+-- (spec 2026-08-24-05), so a page can say "this opened at flap level 2"
+-- instead of leaving the adaptive-recovery backoff invisible.
+-- ==========================================================================
+
+alter table incidents add column flap_level int not null default 0;
+
+--bun:split
+
+comment on column incidents.flap_level is
+  'checks.flap_count at the moment this incident opened or last reopened. 0 = not flapping (first outage in the rolling window).';

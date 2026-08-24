@@ -16,6 +16,7 @@
 --   SECTION: support-inbox              support_threads + support_messages
 --   SECTION: custom-domain-state        status_pages lifecycle columns
 --   SECTION: must-change-password       users.must_change_password
+--   SECTION: flap-level                 incidents.flap_level
 --
 -- CONSOLIDATION NOTE (2026-08-24): the support-inbox, custom-domain-state and
 -- must-change-password sections were folded in from what were briefly separate
@@ -624,3 +625,13 @@ update status_pages
 -- ==========================================================================
 
 alter table users add column must_change_password integer not null default 0;
+
+-- ==========================================================================
+-- SECTION: flap-level
+-- Snapshot the check's flap count on the incident it opened/reopened at
+-- (spec 2026-08-24-05). SQLite mirror of the flap-level section of
+-- postgres/migrations/015_v0_18_0.up.sql — a plain ADD COLUMN with a
+-- constant default, same as must-change-password above, needs no rebuild.
+-- ==========================================================================
+
+alter table incidents add column flap_level integer not null default 0;
