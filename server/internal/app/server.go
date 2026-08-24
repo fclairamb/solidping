@@ -1479,6 +1479,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Recovering is a deployment-level operation, so it lives here rather than
 	// behind per-org admin credentials.
 	systemActions.POST("/regions/migrate", checksHandler.MigrateRegion)
+	// Ghost-region detection (spec 2026-08-24-09): the read-side companion of
+	// the migration above — one row per region slug seen anywhere, so an
+	// operator knows which `from` slugs to migrate before ever running one.
+	systemActions.GET("/regions/health", checksHandler.RegionHealth)
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (trusted service preferred for the SaaS billing service; admin user
