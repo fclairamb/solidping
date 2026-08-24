@@ -87,7 +87,9 @@ function SessionRow({
           <DeviceIcon device={parsed.device} className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{deviceLabel}</span>
+              <span className="font-medium" data-testid={`session-device-label-${session.uid}`}>
+                {deviceLabel}
+              </span>
               {session.isCurrent && (
                 <Badge data-testid="session-current-badge" className="border-primary">
                   {t("sessions.currentSession")}

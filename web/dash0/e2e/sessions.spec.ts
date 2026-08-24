@@ -34,6 +34,36 @@ test.describe("Sessions", () => {
     await expect(page.getByTestId("session-current-badge")).toHaveCount(1);
   });
 
+  // Regression test for spec 2026-08-24-02: a session minted with a known
+  // User-Agent must render the parsed device label ("Chromium on ..."), not
+  // the "Unknown device" fallback. This exercises a real password login
+  // through an actual browser (Playwright sends its genuine UA header), so
+  // it pins the read path (parseUserAgent + the badge) even though a true
+  // federated/OAuth login can't be driven end-to-end here without a mock
+  // IdP — the backend fix itself (properties.created_with capturing the
+  // request-parked UA/IP on every session-minting path, federated included)
+  // is covered by the Go table test in
+  // server/internal/handlers/auth/created_with_test.go.
+  test("a session minted with a known user agent shows its parsed device, not Unknown device", async ({
+    page,
+  }) => {
+    await freshLogin(page);
+
+    await page.goto("orgs/test/account/sessions");
+    await page.waitForLoadState("networkidle");
+
+    const currentBadge = page.getByTestId("session-current-badge");
+    await expect(currentBadge).toBeVisible();
+
+    const currentRow = currentBadge.locator(
+      "xpath=ancestor::*[starts-with(@data-testid, 'session-row-')]"
+    );
+    const deviceLabel = currentRow.locator("[data-testid^='session-device-label-']");
+    await expect(deviceLabel).toBeVisible();
+    await expect(deviceLabel).not.toHaveText("Unknown device");
+    await expect(deviceLabel).not.toHaveText("");
+  });
+
   test("sign out other sessions deletes every session but the caller's own", async ({
     page,
     browser,
