@@ -45,7 +45,8 @@
   },
   "oauth_config": {
     "redirect_urls": [
-      "https://solidping.io/api/v1/integrations/slack/oauth"
+      "https://solidping.io/api/v1/integrations/slack/oauth",
+      "https://solidping.io/api/v1/auth/slack/callback"
     ],
     "scopes": {
       "user": ["openid", "profile", "email"],
