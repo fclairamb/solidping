@@ -456,7 +456,9 @@ test.describe("Incidents", () => {
     );
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("No incidents found")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "No incidents found" }),
+    ).toBeVisible();
     await expect(
       page.getByText("No incidents found for this check"),
     ).toBeVisible();
