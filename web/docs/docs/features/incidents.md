@@ -218,19 +218,11 @@ Each incident includes:
 
 ## Events
 
-SolidPing logs events for audit and debugging:
-
-| Event Type | Description |
-|------------|-------------|
-| `check.created` | New check added |
-| `check.updated` | Check configuration changed |
-| `check.deleted` | Check removed |
-| `incident.created` | New incident |
-| `incident.escalated` | Incident escalated |
-| `incident.resolved` | Incident resolved |
-| `notification.queued` | Notification scheduled |
-| `notification.sent` | Notification delivered |
-| `notification.failed` | Notification failed |
+Every incident state change (created, acknowledged, escalated, resolved,
+comments…) is recorded as an event, viewable in this incident's own timeline
+and in the organization's event stream. See [Events](events.md) for the full
+event catalog, and the "Get Incident Events" endpoint below for this
+incident's events specifically.
 
 ## API Endpoints
 
