@@ -485,7 +485,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             <Link
               to="/orgs/$org/incidents"
               params={{ org }}
-              search={{ state: "active" as const, showSuppressed: undefined }}
+              search={{ state: "active" as const, showSuppressed: undefined, checkUid: undefined }}
               className="block"
               data-testid="kpi-tile-incidents"
             >
@@ -1019,7 +1019,7 @@ function ActiveIncidentsList({
         <Link
           to="/orgs/$org/incidents"
           params={{ org }}
-          search={{ state: "active" as const, showSuppressed: undefined }}
+          search={{ state: "active" as const, showSuppressed: undefined, checkUid: undefined }}
           className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
         >
           {t("activeIncidents.footer")}
