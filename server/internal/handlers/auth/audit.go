@@ -54,6 +54,26 @@ func auditActorCtx(ctx context.Context, userUID string, authContext Context) con
 	return audit.WithActor(ctx, actor)
 }
 
+// contextFromRequestMeta falls back to the request provenance the audit
+// middleware parked on ctx when the caller had no explicit Context (every
+// federated callback: it is several frames away from the *http.Request).
+//
+// Precedence matches auditActorCtx: an explicitly-passed non-empty value
+// wins over the ctx fallback, so nothing that already threads a real
+// Context (password, 2FA, passkey logins) changes behavior.
+func contextFromRequestMeta(ctx context.Context, explicit Context) Context {
+	actor := audit.ActorFromContext(ctx)
+	if explicit.UserAgent == "" {
+		explicit.UserAgent = actor.UserAgent
+	}
+
+	if explicit.RemoteAddr == "" {
+		explicit.RemoteAddr = actor.SourceIP
+	}
+
+	return explicit
+}
+
 // recordLoginFailed writes (or folds into) an auth.login_failed event.
 //
 // orgSlug is what the caller typed, which may be empty or may not resolve —

@@ -218,12 +218,21 @@ type Context struct {
 	RemoteAddr string `json:"remoteAddr,omitempty"`
 }
 
-// ToMap converts Context to a map for storage.
+// ToMap converts Context to a map for storage, omitting fields with no
+// value. A session with no known provenance therefore stores no
+// userAgent/remoteAddr keys at all, rather than persisting them as `""` —
+// indistinguishable at read time from a pre-feature row.
 func (c *Context) ToMap() map[string]any {
-	return map[string]any{
-		"userAgent":  c.UserAgent,
-		"remoteAddr": c.RemoteAddr,
+	result := map[string]any{}
+	if c.UserAgent != "" {
+		result["userAgent"] = c.UserAgent
 	}
+
+	if c.RemoteAddr != "" {
+		result["remoteAddr"] = c.RemoteAddr
+	}
+
+	return result
 }
 
 // UserInfo represents user information returned in responses.
@@ -1710,6 +1719,10 @@ func extractCreatedWith(properties map[string]any) *TokenCreatedWith {
 		createdWith.RemoteAddr = remoteAddr
 	}
 
+	if createdWith.Method == "" && createdWith.UserAgent == "" && createdWith.RemoteAddr == "" {
+		return nil
+	}
+
 	return createdWith
 }
 
@@ -2156,6 +2169,11 @@ func (s *Service) GenerateTokensForOAuth(
 		method = AuthMethodOAuth
 	}
 
+	// A federated callback is several frames away from the *http.Request and
+	// rarely threads an explicit Context; fall back to what the request-meta
+	// middleware parked on ctx (spec 2026-08-24-02).
+	authContext = contextFromRequestMeta(ctx, authContext)
+
 	// Generate refresh token
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
@@ -2423,12 +2441,14 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: map[string]any{keyMethod: AuthMethodRegistration},
-	}
+
+	authContext := contextFromRequestMeta(ctx, Context{})
+	createdWith := authContext.ToMap()
+	createdWith[keyMethod] = AuthMethodRegistration
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
 
 	if err = s.startSession(
-		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodRegistration, Context{},
+		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodRegistration, authContext,
 	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
@@ -3392,12 +3412,14 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	expiresAt := s.refreshTokenExpiry(ctx, matchedOrg.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: map[string]any{keyMethod: AuthMethodInvitation},
-	}
+
+	authContext := contextFromRequestMeta(ctx, Context{})
+	createdWith := authContext.ToMap()
+	createdWith[keyMethod] = AuthMethodInvitation
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
 
 	if err = s.startSession(
-		ctx, actorFromUser(user), matchedOrg, refreshToken, role, AuthMethodInvitation, Context{},
+		ctx, actorFromUser(user), matchedOrg, refreshToken, role, AuthMethodInvitation, authContext,
 	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}

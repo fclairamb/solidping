@@ -255,9 +255,10 @@ func (s *Service) CompleteOrgLogin(
 		role = string(member.Role)
 	}
 
-	// The audit context is whatever the request-meta middleware parked on ctx
-	// (source IP, user agent); a federated callback is an ordinary HTTP
-	// request, so that is already populated.
+	// No explicit Context to thread here — GenerateTokensForOAuth falls back
+	// to whatever the request-meta middleware parked on ctx (source IP, user
+	// agent); a federated callback is an ordinary HTTP request, so that is
+	// already populated.
 	tokens, err := s.GenerateTokensForOAuth(ctx, user, org, role, resolved.method, Context{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
