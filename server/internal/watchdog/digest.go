@@ -50,15 +50,18 @@ func BuildDigest(transitions []Transition, report *Report, generatedAt time.Time
 
 // splitTransitions separates the anomalies that need attention from the
 // recoveries.
-func splitTransitions(transitions []Transition) (active, resolved []Transition) {
-	for _, transition := range transitions {
-		if transition.Kind == TransitionResolved {
-			resolved = append(resolved, transition)
+func splitTransitions(transitions []Transition) ([]Transition, []Transition) {
+	active := make([]Transition, 0, len(transitions))
+	resolved := make([]Transition, 0, len(transitions))
+
+	for i := range transitions {
+		if transitions[i].Kind == TransitionResolved {
+			resolved = append(resolved, transitions[i])
 
 			continue
 		}
 
-		active = append(active, transition)
+		active = append(active, transitions[i])
 	}
 
 	sort.SliceStable(active, func(i, j int) bool {
@@ -77,8 +80,8 @@ func digestSubject(active, resolved []Transition) string {
 
 	critical := 0
 
-	for _, transition := range active {
-		if transition.Anomaly.Severity == SeverityCritical {
+	for i := range active {
+		if active[i].Anomaly.Severity == SeverityCritical {
 			critical++
 		}
 	}
@@ -110,13 +113,13 @@ func writeActiveSection(body *strings.Builder, active []Transition) {
 
 	body.WriteString("\nANOMALIES\n")
 
-	for _, transition := range active {
-		anomaly := transition.Anomaly
+	for i := range active {
+		anomaly := &active[i].Anomaly
 
-		body.WriteString(fmt.Sprintf("\n[%s] %s (%s)\n",
+		fmt.Fprintf(body, "\n[%s] %s (%s)\n",
 			strings.ToUpper(anomaly.Severity.String()),
-			transition.Fingerprint,
-			transitionLabel(transition)))
+			active[i].Fingerprint,
+			transitionLabel(&active[i]))
 		body.WriteString("  " + anomaly.Headline + "\n")
 
 		if anomaly.Detail != "" {
@@ -139,10 +142,10 @@ func writeResolvedSection(body *strings.Builder, resolved []Transition) {
 
 	body.WriteString("\nRECOVERED\n")
 
-	for _, transition := range resolved {
-		body.WriteString(fmt.Sprintf("  %s — clear again (first seen %s)\n",
-			transition.Fingerprint,
-			transition.FirstSeenAt.UTC().Format(time.RFC3339)))
+	for i := range resolved {
+		fmt.Fprintf(body, "  %s — clear again (first seen %s)\n",
+			resolved[i].Fingerprint,
+			resolved[i].FirstSeenAt.UTC().Format(time.RFC3339))
 	}
 }
 
@@ -163,13 +166,13 @@ func writeFailureSection(body *strings.Builder, report *Report) {
 	body.WriteString("\nDETECTOR FAILURES (these anomalies could NOT be evaluated this run)\n")
 
 	for _, name := range names {
-		body.WriteString(fmt.Sprintf("  %s: %v\n", name, report.Failed[name]))
+		fmt.Fprintf(body, "  %s: %v\n", name, report.Failed[name])
 	}
 }
 
 // transitionLabel renders the transition in the words an operator needs:
 // "NEW" or "STILL BROKEN since …".
-func transitionLabel(transition Transition) string {
+func transitionLabel(transition *Transition) string {
 	if transition.Kind == TransitionNew {
 		return "NEW"
 	}

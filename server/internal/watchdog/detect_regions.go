@@ -32,7 +32,12 @@ func (s *Service) detectDarkRegions(ctx context.Context, cfg *Config) ([]Anomaly
 		return nil, ErrRegionHealthUnavailable
 	}
 
-	now := s.now()
+	// The age bar is measured against the REPORT's own instant, not the
+	// watchdog's clock. JobsOverdue and OldestOverdueAt were computed by
+	// RegionHealth against its clock, so comparing them to a different `now`
+	// would silently mix two time bases — the kind of skew that turns a
+	// threshold test into a coin flip.
+	now := report.GeneratedAt
 
 	rows := append([]checks.RegionHealthRow(nil), report.Regions...)
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Slug < rows[j].Slug })
@@ -138,9 +143,9 @@ func darkRegionRemediation(row *checks.RegionHealthRow, dark bool) string {
 func countFor(anomalies []Anomaly, detector string) int {
 	total := 0
 
-	for _, anomaly := range anomalies {
-		if anomaly.Detector == detector {
-			total += anomaly.Count
+	for i := range anomalies {
+		if anomalies[i].Detector == detector {
+			total += anomalies[i].Count
 		}
 	}
 

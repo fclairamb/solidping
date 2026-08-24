@@ -68,9 +68,9 @@ type Transition struct {
 func NotifiableTransitions(transitions []Transition) []Transition {
 	out := make([]Transition, 0, len(transitions))
 
-	for _, transition := range transitions {
-		if transition.Notify {
-			out = append(out, transition)
+	for i := range transitions {
+		if transitions[i].Notify {
+			out = append(out, transitions[i])
 		}
 	}
 
@@ -100,15 +100,16 @@ func (s *Service) Reconcile(ctx context.Context, report *Report, cfg *Config) ([
 	transitions := make([]Transition, 0, len(report.Anomalies)+len(known))
 	current := make(map[string]bool, len(report.Anomalies))
 
-	for _, anomaly := range report.Anomalies {
+	for i := range report.Anomalies {
+		anomaly := &report.Anomalies[i]
 		fingerprint := anomaly.Fingerprint()
 		current[fingerprint] = true
 
 		previous := known[fingerprint]
 		transition := classify(anomaly, previous, cfg, now)
 
-		if err := s.writeMarker(ctx, fingerprint, transition, previous, now); err != nil {
-			return nil, err
+		if markerErr := s.writeMarker(ctx, fingerprint, &transition, previous, now); markerErr != nil {
+			return nil, markerErr
 		}
 
 		transitions = append(transitions, transition)
@@ -176,12 +177,12 @@ func detectorOf(fingerprint string) string {
 }
 
 // classify decides what one anomaly's transition is against its stored marker.
-func classify(anomaly Anomaly, entry *models.StateEntry, cfg *Config, now time.Time) Transition {
+func classify(anomaly *Anomaly, entry *models.StateEntry, cfg *Config, now time.Time) Transition {
 	if entry == nil {
 		return Transition{
 			Fingerprint: anomaly.Fingerprint(),
 			Kind:        TransitionNew,
-			Anomaly:     anomaly,
+			Anomaly:     *anomaly,
 			FirstSeenAt: now,
 			Notify:      true,
 		}
@@ -193,7 +194,7 @@ func classify(anomaly Anomaly, entry *models.StateEntry, cfg *Config, now time.T
 	transition := Transition{
 		Fingerprint: anomaly.Fingerprint(),
 		Kind:        TransitionOngoing,
-		Anomaly:     anomaly,
+		Anomaly:     *anomaly,
 		FirstSeenAt: firstSeen,
 	}
 
@@ -213,7 +214,7 @@ func classify(anomaly Anomaly, entry *models.StateEntry, cfg *Config, now time.T
 // transition that actually notified — otherwise the quiet window would reset
 // on every run and the re-notify would never fire.
 func (s *Service) writeMarker(
-	ctx context.Context, fingerprint string, transition Transition,
+	ctx context.Context, fingerprint string, transition *Transition,
 	previous *models.StateEntry, now time.Time,
 ) error {
 	value := models.JSONMap{

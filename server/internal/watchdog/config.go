@@ -233,7 +233,7 @@ func ValidateParameter(value any) error {
 	}
 
 	switch cfg.MinSeverity {
-	case "", "info", "warning", "critical":
+	case "", SeverityTokenInfo, SeverityTokenWarning, SeverityTokenCritical:
 	default:
 		return fmt.Errorf("%w (got %q)", ErrInvalidMinSeverity, cfg.MinSeverity)
 	}

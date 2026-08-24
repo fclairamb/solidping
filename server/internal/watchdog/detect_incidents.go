@@ -3,6 +3,7 @@ package watchdog
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +12,12 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
+
+// uidChunkSize bounds how many UIDs go into one IN(...) clause. bun.List
+// inlines every value as a SQL literal, so this bounds generated statement
+// size and parse cost rather than any driver placeholder limit — same
+// reasoning and same number as sqlite.checksByUIDsChunkSize.
+const uidChunkSize = 500
 
 // SubjectStaleIncidents is the stable subject of the frozen-incident anomaly.
 // One anomaly per run carrying a count, not one per incident: 61 frozen
@@ -106,21 +113,24 @@ func (s *Service) loadChecks(ctx context.Context, uids []string) (map[string]*mo
 		return map[string]*models.Check{}, nil
 	}
 
-	var rows []*models.Check
+	out := make(map[string]*models.Check, len(uids))
 
-	err := s.db.DB().NewSelect().
-		Model(&rows).
-		Where("uid IN (?)", bun.In(uids)).
-		Where("deleted_at IS NULL").
-		Where("enabled = ?", true).
-		Scan(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("load checks for stale incidents: %w", err)
-	}
+	for batch := range slices.Chunk(uids, uidChunkSize) {
+		var rows []*models.Check
 
-	out := make(map[string]*models.Check, len(rows))
-	for _, row := range rows {
-		out[row.UID] = row
+		err := s.db.DB().NewSelect().
+			Model(&rows).
+			Where("uid IN (?)", bun.List(batch)).
+			Where("deleted_at IS NULL").
+			Where("enabled = ?", true).
+			Scan(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("load checks for stale incidents: %w", err)
+		}
+
+		for _, row := range rows {
+			out[row.UID] = row
+		}
 	}
 
 	return out, nil
@@ -133,22 +143,25 @@ func (s *Service) lastRawResultPerCheck(ctx context.Context, uids []string) (map
 		return map[string]*time.Time{}, nil
 	}
 
-	var rows []lastResultRow
+	out := make(map[string]*time.Time, len(uids))
 
-	err := s.db.DB().NewSelect().
-		TableExpr("results").
-		ColumnExpr("check_uid, MAX(period_start) AS last_at").
-		Where("period_type = ?", "raw").
-		Where("check_uid IN (?)", bun.In(uids)).
-		GroupExpr("check_uid").
-		Scan(ctx, &rows)
-	if err != nil {
-		return nil, fmt.Errorf("last result per check: %w", err)
-	}
+	for batch := range slices.Chunk(uids, uidChunkSize) {
+		var rows []lastResultRow
 
-	out := make(map[string]*time.Time, len(rows))
-	for i := range rows {
-		out[rows[i].CheckUID] = rows[i].LastAt
+		err := s.db.DB().NewSelect().
+			TableExpr("results").
+			ColumnExpr("check_uid, MAX(period_start) AS last_at").
+			Where("period_type = ?", "raw").
+			Where("check_uid IN (?)", bun.List(batch)).
+			GroupExpr("check_uid").
+			Scan(ctx, &rows)
+		if err != nil {
+			return nil, fmt.Errorf("last result per check: %w", err)
+		}
+
+		for i := range rows {
+			out[rows[i].CheckUID] = rows[i].LastAt
+		}
 	}
 
 	return out, nil
@@ -255,14 +268,14 @@ func staleIncidentsAnomaly(stale []staleIncident, cfg *Config, now time.Time) An
 
 	details := make([]string, 0, len(shown))
 
-	for _, item := range shown {
+	for i := range shown {
 		last := "never"
-		if item.lastAt != nil {
-			last = item.lastAt.UTC().Format(time.RFC3339)
+		if shown[i].lastAt != nil {
+			last = shown[i].lastAt.UTC().Format(time.RFC3339)
 		}
 
 		details = append(details, fmt.Sprintf("#%d %s (last result %s, silent for %s)",
-			item.number, item.checkRef, last, roundDuration(item.staleFor)))
+			shown[i].number, shown[i].checkRef, last, roundDuration(shown[i].staleFor)))
 	}
 
 	return Anomaly{

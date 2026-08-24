@@ -41,6 +41,16 @@ const (
 // minSeverity filtering is a plain comparison.
 type Severity int
 
+// Severity tokens, as they appear in the system parameter and the digest.
+const (
+	// SeverityTokenInfo is the "info" token.
+	SeverityTokenInfo = "info"
+	// SeverityTokenWarning is the "warning" token, and the default bar.
+	SeverityTokenWarning = "warning"
+	// SeverityTokenCritical is the "critical" token.
+	SeverityTokenCritical = "critical"
+)
+
 // Severity levels, ascending.
 const (
 	// SeverityInfo is informational — never pages, always logged.
@@ -57,13 +67,13 @@ const (
 func (s Severity) String() string {
 	switch s {
 	case SeverityInfo:
-		return "info"
+		return SeverityTokenInfo
 	case SeverityWarning:
-		return "warning"
+		return SeverityTokenWarning
 	case SeverityCritical:
-		return "critical"
+		return SeverityTokenCritical
 	default:
-		return "warning"
+		return SeverityTokenWarning
 	}
 }
 
@@ -72,12 +82,12 @@ func (s Severity) String() string {
 // bar, never "off".
 func ParseSeverity(value string) Severity {
 	switch value {
-	case "info":
+	case SeverityTokenInfo:
 		return SeverityInfo
-	case "warning":
-		return SeverityWarning
-	case "critical":
+	case SeverityTokenCritical:
 		return SeverityCritical
+	case SeverityTokenWarning:
+		return SeverityWarning
 	default:
 		return SeverityWarning
 	}
@@ -109,7 +119,7 @@ type Anomaly struct {
 }
 
 // Fingerprint is the anti-flood identity of an anomaly: `<detector>:<subject>`.
-func (a Anomaly) Fingerprint() string {
+func (a *Anomaly) Fingerprint() string {
 	return a.Detector + ":" + a.Subject
 }
 
@@ -245,15 +255,27 @@ func (s *Service) Evaluate(ctx context.Context, cfg *Config) *Report {
 // only self-report — down with it.
 func (s *Service) runDetector(
 	ctx context.Context, cfg *Config, run func(context.Context, *Config) ([]Anomaly, error),
-) (anomalies []Anomaly, err error) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			anomalies = nil
-			err = errDetectorPanicked(recovered)
-		}
+) ([]Anomaly, error) {
+	var (
+		anomalies []Anomaly
+		err       error
+	)
+
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				anomalies, err = nil, errDetectorPanicked(recovered)
+			}
+		}()
+
+		anomalies, err = run(ctx, cfg)
 	}()
 
-	return run(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return anomalies, nil
 }
 
 // Filter returns the anomalies at or above minSeverity. Filtering applies to
@@ -262,9 +284,9 @@ func (s *Service) runDetector(
 func Filter(anomalies []Anomaly, minSeverity Severity) []Anomaly {
 	out := make([]Anomaly, 0, len(anomalies))
 
-	for _, anomaly := range anomalies {
-		if anomaly.Severity >= minSeverity {
-			out = append(out, anomaly)
+	for i := range anomalies {
+		if anomalies[i].Severity >= minSeverity {
+			out = append(out, anomalies[i])
 		}
 	}
 

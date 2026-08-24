@@ -31,7 +31,9 @@ func PublishMetrics(report *Report) {
 		counts[detector] = make(map[Severity]int, len(allSeverities))
 	}
 
-	for _, anomaly := range report.Anomalies {
+	for i := range report.Anomalies {
+		anomaly := &report.Anomalies[i]
+
 		if _, known := counts[anomaly.Detector]; !known {
 			counts[anomaly.Detector] = make(map[Severity]int, len(allSeverities))
 		}
