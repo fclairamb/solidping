@@ -26,6 +26,9 @@ type resolveSetup struct {
 	check    *models.Check
 	incident *models.Incident
 	connUID  string
+	// jobs is the same job service the incidents service writes through, so a
+	// test can plant a pending job and watch the cancellation sweep reach it.
+	jobs jobsvc.Service
 }
 
 func newResolveSetup(t *testing.T) *resolveSetup {
@@ -58,7 +61,7 @@ func newResolveSetup(t *testing.T) *resolveSetup {
 	r.NoError(dbSvc.CreateIncident(ctx, inc))
 
 	return &resolveSetup{
-		svc: svc, dbSvc: dbSvc,
+		svc: svc, dbSvc: dbSvc, jobs: jobs,
 		org: org, check: check, incident: inc, connUID: conn.UID,
 	}
 }

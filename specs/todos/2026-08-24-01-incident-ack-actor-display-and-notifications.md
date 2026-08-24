@@ -176,8 +176,13 @@ They are directives, not suggestions — implement exactly this.
    cancellation sweep; the already-acked early return queues nothing;
    `unacknowledgeIncidentByOrgUID` calls `cancelPendingNotifications` so a
    still-pending ack notice cannot fire after the ack was withdrawn.
-   `CancelPendingForIncident` exempts `incident_ack_notice` the same way it
-   exempts `incident_resolution_notice`, so the ack's own sweep cannot eat it.
+   The ack notice is deliberately NOT added to `CancelPendingForIncident`'s
+   exemption list (which holds only `incident_resolution_notice`): ordering
+   alone protects it from the ack's own sweep, while remaining sweepable is
+   exactly what lets unack — and a resolution that lands first — silence it.
+   The job also re-checks the incident at run time and sends nothing if the
+   acknowledgment was withdrawn, the incident resolved, or paging is
+   suppressed.
 9. **Origin-channel decision (B.5)** — **skip the originating channel.** The
    Slack/Discord message whose button was pressed is rewritten in place with
    "Acknowledged by …", so a second message in the same workspace/guild is

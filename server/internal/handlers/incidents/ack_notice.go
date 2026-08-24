@@ -104,7 +104,10 @@ func (s *Service) ackActorName(ctx context.Context, req *AcknowledgeIncidentRequ
 	for _, candidate := range []string{
 		req.SlackUsername,
 		req.DiscordUsername,
-		req.TelegramActor,
+		// The bare first name, not the whole `via Telegram (Carol)` label —
+		// otherwise the notice reads "via Telegram (Carol) acknowledged this
+		// incident via Telegram".
+		telegramActorName(req.TelegramActor),
 	} {
 		if candidate != "" {
 			return candidate

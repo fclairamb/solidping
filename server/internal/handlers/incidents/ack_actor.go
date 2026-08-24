@@ -58,14 +58,19 @@ const ackActorUnknownName = "Unknown"
 
 // resolveAckActor builds the display identity of an incident's acker.
 //
-// Two independent sources, in precedence order, because neither alone is
-// sufficient:
+// Three sources, and the ORDER between them is deliberate:
 //
-//   - the `users` row behind `acknowledged_by`, which is authoritative but
-//     only populated for the dash0 UI, a magic link whose email matches a
-//     user, and a linked Telegram chat;
-//   - the latest `incident.acknowledged` event payload, which is the ONLY
-//     record of a Slack, Discord or phone acker.
+//  1. the chat identity on the latest `incident.acknowledged` event payload —
+//     the ONLY record of a Slack, Discord or phone acker, and also the only
+//     record of WHICH person pressed the button in a shared Telegram group;
+//  2. the `users` row behind `acknowledged_by`, authoritative but populated
+//     only for the dash0 UI, a magic link whose email matches a user, and a
+//     linked Telegram chat;
+//  3. the payload's weaker identifiers (email, phone, raw chat user ids).
+//
+// A Telegram ack is credited to the account the chat is LINKED to, so putting
+// the user row first would report the linked account for a button a colleague
+// pressed — the one thing the payload exists to disambiguate.
 //
 // Best-effort throughout: a missing event or a deleted user degrades the
 // attribution, never the incident response.
@@ -80,15 +85,18 @@ func (s *Service) resolveAckActor(
 
 	if incident.AcknowledgedBy != nil && *incident.AcknowledgedBy != "" {
 		actor.UserUID = *incident.AcknowledgedBy
-		actor.Name = s.lookupUserDisplayName(ctx, *incident.AcknowledgedBy)
 	}
 
-	if payload := s.latestAckEventPayload(ctx, orgUID, incident.UID); payload != nil {
-		actor.Via = payloadString(payload, payloadKeyVia)
+	payload := s.latestAckEventPayload(ctx, orgUID, incident.UID)
+	actor.Via = payloadString(payload, payloadKeyVia)
+	actor.Name = ackChatIdentity(payload)
 
-		if actor.Name == "" {
-			actor.Name = ackNameFromPayload(payload)
-		}
+	if actor.Name == "" && actor.UserUID != "" {
+		actor.Name = s.lookupUserDisplayName(ctx, actor.UserUID)
+	}
+
+	if actor.Name == "" {
+		actor.Name = ackWeakIdentity(payload)
 	}
 
 	if actor.Name == "" {
@@ -98,25 +106,23 @@ func (s *Service) resolveAckActor(
 	return actor
 }
 
-// AckActorFromEventPayload is resolveAckActor's payload half, exposed for the
-// callers that already hold an acknowledgment event and must not re-read it —
-// notably the ack-notice fan-out, which renders the actor into the outgoing
-// message. Returns "" when the payload names nobody.
-func AckActorFromEventPayload(payload models.JSONMap) string {
-	return ackNameFromPayload(payload)
+// ackChatIdentity returns the chat username the acknowledgment was performed
+// under, or "" when the ack did not come from a chat platform.
+func ackChatIdentity(payload models.JSONMap) string {
+	for _, key := range []string{payloadKeyAckSlackUsername, payloadKeyAckDiscordUser} {
+		if v := payloadString(payload, key); v != "" {
+			return v
+		}
+	}
+
+	return telegramActorName(payloadString(payload, payloadKeyAckTelegram))
 }
 
-// ackNameFromPayload picks the best display name the acknowledgment event
-// recorded.
-//
-// The order is "most specific identity first": a chat username is a name a
-// human chose, an email is a name a human recognizes, and a phone number is a
-// last resort that at least distinguishes two callers.
-func ackNameFromPayload(payload models.JSONMap) string {
+// ackWeakIdentity returns the last-resort identifiers: an address, a number,
+// or a raw platform user id. Each at least distinguishes two people, which a
+// blank attribution does not.
+func ackWeakIdentity(payload models.JSONMap) string {
 	for _, key := range []string{
-		payloadKeyAckSlackUsername,
-		payloadKeyAckDiscordUser,
-		payloadKeyAckTelegram,
 		payloadKeyAckEmail,
 		payloadKeyAckPhone,
 		payloadKeyAckSlackUserID,
@@ -128,6 +134,25 @@ func ackNameFromPayload(payload models.JSONMap) string {
 	}
 
 	return ""
+}
+
+// telegramActorName extracts the bare first name out of the Telegram
+// attribution label, which is stored as the whole phrase `via Telegram (Carol)`
+// (telegram.ActorLabel).
+//
+// Necessary because that label is a SENTENCE FRAGMENT, not a name: rendering it
+// as one produces "Acknowledged by via Telegram (Carol) via Telegram". A label
+// carrying no name ("via Telegram") yields "" so the caller falls through to
+// the linked account instead.
+func telegramActorName(label string) string {
+	open := strings.Index(label, "(")
+	closing := strings.LastIndex(label, ")")
+
+	if open < 0 || closing <= open+1 {
+		return ""
+	}
+
+	return strings.TrimSpace(label[open+1 : closing])
 }
 
 // payloadString reads a trimmed string off an event payload, tolerating both
