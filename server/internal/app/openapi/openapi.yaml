@@ -14147,7 +14147,7 @@ components:
 
     InviteResponse:
       type: object
-      required: [uid, token, email, role, inviteUrl, expiresAt]
+      required: [uid, token, email, role, inviteUrl, expiresAt, emailSent]
       properties:
         uid:
           type: string
@@ -14164,6 +14164,14 @@ components:
         expiresAt:
           type: string
           format: date-time
+        emailSent:
+          type: boolean
+          description: >-
+            Whether the invitation email was queued for delivery — NOT
+            confirmation it reached an inbox, since delivery is async. False
+            when email sending is disabled on this instance, or when
+            enqueueing the job failed; the invite link (inviteUrl) is then the
+            only channel.
 
     InviteListItem:
       type: object

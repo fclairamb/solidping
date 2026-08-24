@@ -216,6 +216,11 @@ func invitationFixture() map[string]any {
 		"Role":        "admin",
 		"InviterName": "Alice Admin",
 		"InviteURL":   "https://solidping.example/dash0/invitations/preview-token",
+		// Dynamic on purpose: the template used to hardcode "7 days" here
+		// regardless of the actual invite TTL. This fixture value is
+		// deliberately NOT "7 days" so the preview harness would catch a
+		// regression back to the hardcoded string.
+		"ExpiresIn": "24 hours",
 	}
 }
 

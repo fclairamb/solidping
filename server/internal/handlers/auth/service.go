@@ -521,11 +521,19 @@ func (s *Service) CheckMembershipSlot(ctx context.Context, orgUID string) error 
 // The subject is left blank: every template defines its own
 // {{define "subject"}} block, so duplicating the subject at the call
 // site only invites drift.
+//
+// Returns whether the job was successfully queued. This is NOT proof of
+// delivery — actual sending happens later, asynchronously, in the "email"
+// job type — only that the job row was created. Callers that need to report
+// delivery status to a user (e.g. the invitation create response) must also
+// check whether email sending is enabled instance-wide
+// (s.fullCfg.Email.Enabled): a queued job for a disabled sender is a no-op
+// at send time.
 func (s *Service) enqueueEmail(
 	ctx context.Context, orgUID, recipient, template string, data any,
-) {
+) bool {
 	if s.jobsSvc == nil || recipient == "" {
-		return
+		return false
 	}
 
 	cfg := emailJobConfig{
@@ -538,13 +546,18 @@ func (s *Service) enqueueEmail(
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to marshal email job config",
 			"template", template, "error", err)
-		return
+
+		return false
 	}
 
 	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeEmail), raw, nil); err != nil {
 		slog.ErrorContext(ctx, "Failed to enqueue email job",
 			"template", template, "error", err)
+
+		return false
 	}
+
+	return true
 }
 
 // Login authenticates a user and returns access and refresh tokens.
@@ -3070,6 +3083,35 @@ func getAllowedInviteExpirations() map[string]time.Duration {
 // ErrInvalidExpiresIn is returned when an invalid expiresIn value is provided.
 var ErrInvalidExpiresIn = errors.New("invalid expiresIn: must be one of 1h, 6h, 12h, 24h, 48h, 1w")
 
+// inviteExpirationLabels maps each accepted expiresIn code to the
+// human-readable phrase shown in the invitation email ("This invitation
+// expires in ..."). Kept as a literal map (rather than deriving from
+// time.Duration.String(), which renders machine-ish output like "168h0m0s")
+// so the email always reads naturally. Keys mirror
+// getAllowedInviteExpirations exactly.
+func inviteExpirationLabels() map[string]string {
+	return map[string]string{
+		"1h":            "1 hour",
+		"6h":            "6 hours",
+		"12h":           "12 hours",
+		durationLabel24: "24 hours",
+		"48h":           "48 hours",
+		"1w":            "7 days",
+	}
+}
+
+// humanizeInviteExpiresIn converts an expiresIn code (e.g. "24h") into the
+// human-readable phrase used in the invitation email. Falls back to the raw
+// code for any value outside getAllowedInviteExpirations — defensive only,
+// CreateInvitation already validates the code before this is ever called.
+func humanizeInviteExpiresIn(expiresIn string) string {
+	if label, ok := inviteExpirationLabels()[expiresIn]; ok {
+		return label
+	}
+
+	return expiresIn
+}
+
 // ErrInvalidApp is returned when an invalid app value is provided.
 var ErrInvalidApp = errors.New("invalid app: must be one of dash0, dash")
 
@@ -3081,6 +3123,12 @@ type InviteResponse struct {
 	Role      string    `json:"role"`
 	InviteURL string    `json:"inviteUrl"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	// EmailSent reports whether the invitation email was queued for
+	// delivery — NOT confirmation that it reached an inbox, since delivery
+	// itself is async (job type "email"). False when email sending is
+	// disabled instance-wide, or when enqueueing the job failed; either way
+	// the dashboard must treat InviteURL as the only channel.
+	EmailSent bool `json:"emailSent"`
 }
 
 // InviteListItem represents an invitation in a list response.
@@ -3177,7 +3225,7 @@ func (s *Service) CreateInvitation(
 	expiresAt := time.Now().Add(ttl)
 
 	// Send invitation email
-	s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, inviteURL)
+	emailSent := s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, req.ExpiresIn, inviteURL)
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberInvited,
 		audit.Target{Type: auditTargetMember, Name: req.Email},
@@ -3193,6 +3241,7 @@ func (s *Service) CreateInvitation(
 		Role:      req.Role,
 		InviteURL: inviteURL,
 		ExpiresAt: expiresAt,
+		EmailSent: emailSent,
 	}, nil
 }
 
@@ -3727,23 +3776,31 @@ func maskEmail(email string) string {
 	return local[:2] + "***@" + parts[1]
 }
 
+// sendInvitationEmail enqueues the invitation email and reports whether it
+// was actually queued for delivery: instance-wide email sending must be
+// enabled AND the job must have been created successfully. This is the value
+// surfaced to the inviter as InviteResponse.EmailSent, so the dashboard can
+// tell them whether the link is a convenience or their only channel.
 func (s *Service) sendInvitationEmail(
-	ctx context.Context, orgUID, recipientEmail, inviterUID, orgName, role, inviteURL string,
-) {
+	ctx context.Context, orgUID, recipientEmail, inviterUID, orgName, role, expiresIn, inviteURL string,
+) bool {
 	if recipientEmail == "" {
-		return
+		return false
 	}
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
+	queued := s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
 		map[string]any{
 			emailKeyOrgName: orgName,
 			"Role":          role,
 			"InviterName":   inviterName,
 			"InviteURL":     inviteURL,
+			"ExpiresIn":     humanizeInviteExpiresIn(expiresIn),
 		},
 	)
+
+	return s.fullCfg.Email.Enabled && queued
 }
 
 func (s *Service) getInviterName(ctx context.Context, inviterUID string) string {
