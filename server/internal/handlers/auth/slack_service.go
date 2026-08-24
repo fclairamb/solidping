@@ -406,12 +406,24 @@ func (s *SlackOAuthService) findOrCreateOrganization(
 ) (*models.Organization, error) {
 	// Check organization_providers table for existing Slack team link
 	orgProvider, err := s.db.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, teamID)
-	if err == nil && orgProvider != nil {
-		return s.db.GetOrganization(ctx, orgProvider.OrganizationUID)
-	}
-
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("failed to get organization provider: %w", err)
+	}
+
+	if err == nil && orgProvider != nil {
+		// A link pointing at a soft-deleted org is stale: it is cleared and we
+		// fall through to the create path rather than failing this login (and
+		// every later one) forever. See resolveLinkedOrganization.
+		org, resolveErr := resolveLinkedOrganization(
+			ctx, s.db, models.ProviderTypeSlack, teamID, orgProvider,
+		)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if org != nil {
+			return org, nil
+		}
 	}
 
 	// Create new organization
@@ -439,8 +451,23 @@ func (s *SlackOAuthService) findOrCreateUser(
 ) (*models.User, error) {
 	// Check by Slack user ID first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeSlack, userInfo.Sub)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
 	if err == nil && provider != nil {
-		return s.db.GetUser(ctx, provider.UserUID)
+		user, resolveErr := resolveLinkedUser(
+			ctx, s.db, models.ProviderTypeSlack, userInfo.Sub, provider,
+		)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if user != nil {
+			return user, nil
+		}
+
+		provider = nil
 	}
 
 	// Check by email

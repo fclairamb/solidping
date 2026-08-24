@@ -3,7 +3,6 @@ package auth
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -189,7 +188,7 @@ func (h *SlackOAuthHandler) handleOAuthError(
 		description = OAuthDescTokenExchange
 	default:
 		code = OAuthCodeFailed
-		description = fmt.Sprintf("OAuth failed: %v", err)
+		description = logOAuthFailure(req, "slack", err)
 	}
 
 	return h.redirectWithError(writer, req, redirectURI, code, description)

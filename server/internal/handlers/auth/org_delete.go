@@ -97,6 +97,16 @@ func (s *Service) DeleteOrg(
 		return nil, fmt.Errorf("failed to release organization previous slugs: %w", aliasErr)
 	}
 
+	// External identity links (Slack workspace, Discord guild, …) go too. The
+	// `on delete cascade` on organization_providers.organization_uid only fires
+	// for HARD deletes, so a soft-deleted org used to leave its links live —
+	// and a live link pointing at a dead org bricked every later SSO login for
+	// that workspace/guild (spec 2026-08-25-01). Releasing them here prevents
+	// the class; resolveLinkedOrganization heals rows that already went stale.
+	if linkErr := s.releaseOrgProviderLinks(ctx, org.UID); linkErr != nil {
+		return nil, linkErr
+	}
+
 	if delErr := s.db.DeleteOrganization(ctx, org.UID); delErr != nil {
 		return nil, fmt.Errorf("failed to delete organization: %w", delErr)
 	}
@@ -247,6 +257,24 @@ func (s *Service) stopOrgChecks(ctx context.Context, orgUID string) error {
 }
 
 // deleteOrgMemberships soft-deletes every membership of the organization.
+// releaseOrgProviderLinks soft-deletes every organization_providers row the org
+// still holds, so its Slack team / Discord guild / OIDC issuer identity becomes
+// claimable again instead of pointing at a soft-deleted org forever.
+func (s *Service) releaseOrgProviderLinks(ctx context.Context, orgUID string) error {
+	links, err := s.db.ListOrganizationProviders(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("failed to list organization provider links: %w", err)
+	}
+
+	for _, link := range links {
+		if delErr := s.db.DeleteOrganizationProvider(ctx, link.UID); delErr != nil {
+			return fmt.Errorf("failed to release organization provider link: %w", delErr)
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) deleteOrgMemberships(ctx context.Context, orgUID string) error {
 	members, err := s.db.ListMembersByOrg(ctx, orgUID)
 	if err != nil {

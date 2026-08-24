@@ -654,8 +654,24 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 
 	// Check by SAML NameID first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeSAML, providerID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
 	if err == nil && provider != nil {
-		return s.db.GetUser(ctx, provider.UserUID)
+		// A link pointing at a soft-deleted user is stale: it is cleared
+		// and we fall through to the email lookup / create path rather
+		// than failing this login (and every later one) forever.
+		user, resolveErr := resolveLinkedUser(ctx, s.db, models.ProviderTypeSAML, providerID, provider)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if user != nil {
+			return user, nil
+		}
+
+		provider = nil
 	}
 
 	// Check by email

@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -168,7 +167,7 @@ func (h *MicrosoftOAuthHandler) handleOAuthError(
 		description = OAuthDescTokenExchange
 	default:
 		code = OAuthCodeFailed
-		description = fmt.Sprintf("OAuth failed: %v", err)
+		description = logOAuthFailure(req, "microsoft", err)
 	}
 
 	return h.redirectWithError(writer, req, redirectURI, code, description)

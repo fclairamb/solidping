@@ -422,8 +422,24 @@ func (s *Service) authenticateViaLDAP(ctx context.Context, orgSlug, identifier, 
 // directory bind, never via a locally-set password.
 func (s *Service) findOrCreateLDAPUser(ctx context.Context, info *LDAPUserInfo) (*models.User, error) {
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeLDAP, info.DN)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
 	if err == nil && provider != nil {
-		return s.db.GetUser(ctx, provider.UserUID)
+		// A link pointing at a soft-deleted user is stale: it is cleared
+		// and we fall through to the email lookup / create path rather
+		// than failing this login (and every later one) forever.
+		user, resolveErr := resolveLinkedUser(ctx, s.db, models.ProviderTypeLDAP, info.DN, provider)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if user != nil {
+			return user, nil
+		}
+
+		provider = nil
 	}
 
 	user, err := s.db.GetUserByEmail(ctx, info.Email)

@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -38,7 +39,26 @@ const (
 	OAuthCodeFailed           = "OAUTH_FAILED"
 	OAuthDescInvalidState     = "Invalid or expired state parameter"
 	OAuthDescTokenExchange    = "Failed to exchange authorization code"
+	// OAuthDescGenericFailure is what an UNEXPECTED provider-callback failure
+	// tells the user. The details never travel with the redirect: the browser
+	// lands on the SPA with these params in the URL bar, so anything specific
+	// put here leaks internals to anyone looking over the user's shoulder (the
+	// production incident behind spec 2026-08-25-01 put a raw
+	// "sql: no rows in result set" there). The real error goes to the server
+	// log instead — see logOAuthFailure.
+	OAuthDescGenericFailure = "Sign-in failed, please try again"
 )
+
+// logOAuthFailure records an unexpected provider-callback failure server-side
+// and returns the generic, user-safe description to put in the redirect. Every
+// provider handler's handleOAuthError default arm funnels through it, so the
+// "detail stays in the logs" rule holds in exactly one place.
+func logOAuthFailure(req *http.Request, provider string, err error) string {
+	slog.ErrorContext(req.Context(), "OAuth callback failed",
+		"provider", provider, "error", err)
+
+	return OAuthDescGenericFailure
+}
 
 // Handler provides HTTP handlers for authentication endpoints.
 type Handler struct {

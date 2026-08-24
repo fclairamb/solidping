@@ -101,6 +101,12 @@ type DiscordOAuthService struct {
 	cfg         *config.Config
 	authService *Service
 	httpClient  *http.Client
+
+	// tokenURL / apiBaseURL are the Discord endpoints this service talks to.
+	// Fields rather than constants so tests can drive the real HandleCallback
+	// against httptest stand-ins (same seam as the Slack connector).
+	tokenURL   string
+	apiBaseURL string
 }
 
 // NewDiscordOAuthService creates a new Discord OAuth service.
@@ -112,6 +118,8 @@ func NewDiscordOAuthService(
 		cfg:         cfg,
 		authService: authService,
 		httpClient:  &http.Client{Timeout: defaultTimeout},
+		tokenURL:    discordTokenURL,
+		apiBaseURL:  discordAPIBaseURL,
 	}
 }
 
@@ -253,7 +261,7 @@ func (s *DiscordOAuthService) exchangeCode(
 	data.Set("redirect_uri", s.getCallbackURL())
 
 	req, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, discordTokenURL, strings.NewReader(data.Encode()),
+		ctx, http.MethodPost, s.tokenURL, strings.NewReader(data.Encode()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -290,7 +298,7 @@ func (s *DiscordOAuthService) fetchUserProfile(
 	ctx context.Context, accessToken string,
 ) (*DiscordUserInfo, error) {
 	req, err := http.NewRequestWithContext(
-		ctx, http.MethodGet, discordAPIBaseURL+"/users/@me", nil,
+		ctx, http.MethodGet, s.apiBaseURL+"/users/@me", nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -327,7 +335,7 @@ func (s *DiscordOAuthService) fetchUserGuilds(
 	ctx context.Context, accessToken string,
 ) ([]DiscordGuild, error) {
 	req, err := http.NewRequestWithContext(
-		ctx, http.MethodGet, discordAPIBaseURL+"/users/@me/guilds", nil,
+		ctx, http.MethodGet, s.apiBaseURL+"/users/@me/guilds", nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -367,12 +375,24 @@ func (s *DiscordOAuthService) findOrCreateOrganization(
 	orgProvider, err := s.db.GetOrganizationProviderByProviderID(
 		ctx, models.ProviderTypeDiscord, guildID,
 	)
-	if err == nil && orgProvider != nil {
-		return s.db.GetOrganization(ctx, orgProvider.OrganizationUID)
-	}
-
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("failed to get organization provider: %w", err)
+	}
+
+	if err == nil && orgProvider != nil {
+		// A link pointing at a soft-deleted org is stale: it is cleared and we
+		// fall through to the create path rather than failing this login (and
+		// every later one) forever. See resolveLinkedOrganization.
+		org, resolveErr := resolveLinkedOrganization(
+			ctx, s.db, models.ProviderTypeDiscord, guildID, orgProvider,
+		)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if org != nil {
+			return org, nil
+		}
 	}
 
 	// Create new organization. Discord has no workspace-subdomain equivalent,
@@ -404,8 +424,25 @@ func (s *DiscordOAuthService) findOrCreateUser(
 	provider, err := s.db.GetUserProviderByProviderID(
 		ctx, models.ProviderTypeDiscord, userInfo.ID,
 	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
 	if err == nil && provider != nil {
-		return s.db.GetUser(ctx, provider.UserUID)
+		user, resolveErr := resolveLinkedUser(
+			ctx, s.db, models.ProviderTypeDiscord, userInfo.ID, provider,
+		)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if user != nil {
+			return user, nil
+		}
+
+		// Stale link cleared — fall through to the email lookup / create path,
+		// and re-link at the end (provider == nil drives that below).
+		provider = nil
 	}
 
 	// Check by email

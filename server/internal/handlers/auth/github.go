@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -162,7 +161,7 @@ func (h *GitHubOAuthHandler) handleOAuthError(
 		description = OAuthDescTokenExchange
 	default:
 		code = OAuthCodeFailed
-		description = fmt.Sprintf("OAuth failed: %v", err)
+		description = logOAuthFailure(req, "github", err)
 	}
 
 	return h.redirectWithError(writer, req, redirectURI, code, description)
