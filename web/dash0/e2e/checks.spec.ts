@@ -413,6 +413,11 @@ test.describe("Checks", () => {
     // The flapping window shows a human-duration estimate
     await expect(page.getByTestId("flapping-window-estimate")).toContainText("2 h");
 
+    // The reopen cooldown shows the ACTUAL resolved window, not the bare
+    // multiplier: multiplier 3 on the default 1-min check period -> 3 min,
+    // no clamp (spec 2026-08-24-05).
+    await expect(page.getByTestId("reopen-cooldown-estimate")).toContainText("3 min");
+
     // Submit the edit form
     await page.getByTestId("check-submit-button").click();
 
