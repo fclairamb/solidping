@@ -388,6 +388,11 @@ type Service struct {
 	// checkStatsTTL overrides defaultCheckStatsTTL. Zero = use the default;
 	// only tests set it.
 	checkStatsTTL time.Duration
+	// now is the injectable clock RegionHealth reads "now" through (spec
+	// 2026-08-24-09), so tests can pin it and assert the exact liveness
+	// boundary instead of racing a live wall clock. Defaults to time.Now in
+	// NewService; only tests override it, via SetRegionHealthNowForTest.
+	now func() time.Time
 }
 
 // NewService creates a new checks service. entSvc enforces the MaxChecks
@@ -405,6 +410,7 @@ func NewService(
 		regions:       regions.NewService(dbService),
 		creds:         creds,
 		entitlements:  entSvc,
+		now:           time.Now,
 	}
 }
 

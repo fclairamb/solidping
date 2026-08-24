@@ -203,12 +203,14 @@ func TestRegionHealth(t *testing.T) {
 }
 
 // TestRegionHealthLivenessBoundary pins the inclusive ">=" liveness cutoff
-// (mirrors ListLiveWorkers / knownRegionSlugs): a worker whose last_active_at
-// sits inside the window, even barely, still counts as live; one just past it
-// does not. Exact-millisecond edge equality against a live wall clock would
-// be a race (see reference_wallclock_phase_landmine_flakes), so both workers
-// are offset by a safety margin comfortably larger than in-memory SQLite
-// round-trip time while staying a tiny fraction of the 5-minute window.
+// (mirrors ListLiveWorkers / knownRegionSlugs) at the LITERAL edge: a worker
+// whose last_active_at is exactly now - WorkerLivenessWindow counts as live,
+// and one a single microsecond older does not. Exact-edge equality against a
+// live wall clock would normally be a race (RegionHealth's own `now` is
+// always captured slightly after any timestamp the test computed earlier —
+// see reference_wallclock_phase_landmine_flakes), so this pins `now` itself
+// via SetRegionHealthNowForTest instead of racing time.Now(), which is what
+// makes bit-exact edge assertions safe.
 func TestRegionHealthLivenessBoundary(t *testing.T) {
 	t.Parallel()
 
@@ -216,25 +218,26 @@ func TestRegionHealthLivenessBoundary(t *testing.T) {
 	svc, dbSvc, org := newRegionHealthService(t)
 	ctx := t.Context()
 
-	const margin = 2 * time.Second
+	fixedNow := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	checks.SetRegionHealthNowForTest(svc, func() time.Time { return fixedNow })
 
-	insideCutoff := time.Now().Add(-regions.WorkerLivenessWindow + margin)
-	outsideCutoff := time.Now().Add(-regions.WorkerLivenessWindow - margin)
+	exactEdge := fixedNow.Add(-regions.WorkerLivenessWindow)
+	justPastEdge := exactEdge.Add(-time.Microsecond)
 
 	check := createRegionCheck(t, svc, org.Slug, []string{"boundary-in", "boundary-out"})
-	setJobScheduledAt(t, dbSvc, check.UID, time.Now().Add(time.Hour))
+	setJobScheduledAt(t, dbSvc, check.UID, fixedNow.Add(time.Hour))
 
 	insideWorkerRow := models.NewWorker("w-inside", "w-inside")
 	insideWorkerRow.Region = strPtr("boundary-in")
 	insideWorker, err := dbSvc.RegisterOrUpdateWorker(ctx, insideWorkerRow)
 	r.NoError(err)
-	r.NoError(dbSvc.UpdateWorker(ctx, insideWorker.UID, models.WorkerUpdate{LastActiveAt: &insideCutoff}))
+	r.NoError(dbSvc.UpdateWorker(ctx, insideWorker.UID, models.WorkerUpdate{LastActiveAt: &exactEdge}))
 
 	outsideWorkerRow := models.NewWorker("w-outside", "w-outside")
 	outsideWorkerRow.Region = strPtr("boundary-out")
 	outsideWorker, err := dbSvc.RegisterOrUpdateWorker(ctx, outsideWorkerRow)
 	r.NoError(err)
-	r.NoError(dbSvc.UpdateWorker(ctx, outsideWorker.UID, models.WorkerUpdate{LastActiveAt: &outsideCutoff}))
+	r.NoError(dbSvc.UpdateWorker(ctx, outsideWorker.UID, models.WorkerUpdate{LastActiveAt: &justPastEdge}))
 
 	report, err := svc.RegionHealth(ctx)
 	r.NoError(err)
@@ -244,10 +247,10 @@ func TestRegionHealthLivenessBoundary(t *testing.T) {
 		byslug[row.Slug] = row
 	}
 
-	r.Equal(1, byslug["boundary-in"].LiveWorkers)
+	r.Equal(1, byslug["boundary-in"].LiveWorkers, "last_active_at == now-window must count as live (inclusive >=)")
 	r.False(byslug["boundary-in"].Ghost)
 
-	r.Equal(0, byslug["boundary-out"].LiveWorkers)
+	r.Equal(0, byslug["boundary-out"].LiveWorkers, "last_active_at one unit older than now-window must not count as live")
 	r.True(byslug["boundary-out"].Ghost)
 }
 

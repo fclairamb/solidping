@@ -87,7 +87,7 @@ type regionJobStats struct {
 // mirrors system.Service.LaneLoad, which aggregates the same kind of
 // worker/region data the same way for the same reason.
 func (s *Service) RegionHealth(ctx context.Context) (*RegionHealthReport, error) {
-	now := time.Now()
+	now := s.now()
 
 	declared, err := s.declaredRegionSlugs(ctx)
 	if err != nil {
