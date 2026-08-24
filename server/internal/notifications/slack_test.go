@@ -285,6 +285,22 @@ func (m *mockDBService) ListChecksWithStaleJobPeriods(_ context.Context) ([]*mod
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListChecksWithStaleJobRegions(_ context.Context) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListChecksReferencingRegion(_ context.Context, _ string) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) MigrateCheckRegionSlug(_ context.Context, _, _ string) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckJobsByRegion(_ context.Context, _ string) ([]*models.CheckJob, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateCheckJob(_ context.Context, _ *models.CheckJob) error {
 	panic("not implemented")
 }

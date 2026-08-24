@@ -2625,6 +2625,21 @@ func (s *Service) ReconcileStaleJobSchedules(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("list checks with stale job periods: %w", err)
 	}
 
+	// Stale REGIONS are the symmetric drift and are healed by the very same
+	// reconcile (spec 2026-08-24-08). Renaming a region's slug — an
+	// SP_NODE_REGION / SP_REGIONS change, no check ever edited — leaves every
+	// materialized job under the old spelling, and the claim predicate matches
+	// worker region against job region by prefix, so those jobs become
+	// unclaimable by every worker, forever and silently. Detecting them at boot
+	// means that class of incident self-heals on the next deploy even if the
+	// operator never calls POST /system/regions/migrate.
+	staleRegions, err := s.db.ListChecksWithStaleJobRegions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list checks with stale job regions: %w", err)
+	}
+
+	stale = mergeChecksByUID(stale, staleRegions)
+
 	for _, check := range stale {
 		// relevel=false: the stale jobs are detected by their mismatched period,
 		// which already forces the phase recompute; correct jobs are untouched.
@@ -2634,6 +2649,28 @@ func (s *Service) ReconcileStaleJobSchedules(ctx context.Context) (int, error) {
 	}
 
 	return len(stale), nil
+}
+
+// mergeChecksByUID unions two check slices, keeping first-seen order and
+// reconciling each check at most once — a check whose jobs drifted on BOTH
+// period and region appears in both queries.
+func mergeChecksByUID(first, second []*models.Check) []*models.Check {
+	seen := make(map[string]bool, len(first)+len(second))
+	out := make([]*models.Check, 0, len(first)+len(second))
+
+	for _, list := range [][]*models.Check{first, second} {
+		for _, check := range list {
+			if seen[check.UID] {
+				continue
+			}
+
+			seen[check.UID] = true
+
+			out = append(out, check)
+		}
+	}
+
+	return out
 }
 
 // reconcileCheckJobs ensures the check_jobs match the check's current regions

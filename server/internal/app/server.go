@@ -1474,6 +1474,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// listed per-org, but system agents (kind='system', no owning org) are
 	// otherwise visible nowhere short of querying the DB by hand.
 	systemActions.GET("/agents", agentsAdminHandler.ListAllAgents)
+	// Region migration (spec 2026-08-24-08): renaming a worker region strands
+	// every check_job materialized under the old slug, in every org at once.
+	// Recovering is a deployment-level operation, so it lives here rather than
+	// behind per-org admin credentials.
+	systemActions.POST("/regions/migrate", checksHandler.MigrateRegion)
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (trusted service preferred for the SaaS billing service; admin user

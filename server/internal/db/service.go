@@ -327,9 +327,36 @@ type Service interface {
 	// have at least one check_job whose period no longer matches the check's
 	// period — the one-shot startup reconcile target (spec 2026-07-20-05).
 	ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.Check, error)
+	// ListChecksWithStaleJobRegions returns enabled, non-deleted checks whose
+	// check_jobs no longer line up with `checks.regions` — either a job sits in
+	// a region the check no longer declares (the slug it was materialized under
+	// was renamed, so no worker's prefix match can ever claim it again), or a
+	// declared region has no job at all. The symmetric sibling of
+	// ListChecksWithStaleJobPeriods, feeding the same startup reconcile
+	// (spec 2026-08-24-08).
+	ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.Check, error)
+	// ListChecksReferencingRegion returns every non-deleted check that names
+	// the region slug in `checks.regions` OR owns a check_jobs row carrying it,
+	// across ALL organizations. Both sources matter: a rename can leave the old
+	// slug in the check, in its jobs, or (the live 2026-08-24 incident) only in
+	// the jobs. Server-operator scope — deliberately not org-filtered.
+	ListChecksReferencingRegion(ctx context.Context, region string) ([]*models.Check, error)
+	// MigrateCheckRegionSlug rewrites `checks.regions` in ONE transaction,
+	// replacing `from` with `to` in every non-deleted check that declares it and
+	// de-duplicating when `to` is already present (a check listing both would
+	// otherwise want two identical jobs and trip the unique (check_uid, region)
+	// index). Returns the checks whose array actually changed, already carrying
+	// the new value, so the caller can feed them straight to reconcileCheckJobs.
+	// Cross-org by design. Idempotent: a second call matches nothing.
+	MigrateCheckRegionSlug(ctx context.Context, from, to string) ([]*models.Check, error)
 
 	// CheckJob operations
 	ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error)
+	// ListCheckJobsByRegion returns every check_job carrying the given region
+	// slug, across ALL organizations. Backs the region-migration report, which
+	// must describe the blast radius (reassigned / deleted / overdue) before
+	// anything is written.
+	ListCheckJobsByRegion(ctx context.Context, region string) ([]*models.CheckJob, error)
 	DeleteCheckJob(ctx context.Context, uid string) error
 	CreateCheckJob(ctx context.Context, job *models.CheckJob) error
 	// GetCheckJobByUID returns one check job by UID.
