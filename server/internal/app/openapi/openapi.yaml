@@ -274,6 +274,53 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+  /api/v1/system/regions/health:
+    get:
+      tags: [System]
+      summary: Ghost-region detection report
+      description: >
+        One row per region slug seen anywhere — in the declared `regions`
+        system parameter, in a check's `regions` array, in a
+        `check_jobs.region`, or in a live or previously-live worker's
+        announced region — so the caller gets the ghosts and the healthy
+        baseline in one call.
+
+
+        A **ghost** is a slug something depends on (a job or a check
+        reference) that nothing live can serve: `(jobs > 0 || checksReferencing
+        > 0) && liveWorkers == 0`. A declared region with zero live workers
+        and zero references is dark but unused, not a ghost — the alarm
+        condition is work assigned to nobody, not an idle region.
+
+
+        `liveWorkers` reuses the exact prefix rule the scheduler claims jobs
+        with (`workerRegion` has the slug as a prefix, so a `us` job is
+        served by a `us-1` worker) and the same liveness window as the region
+        capability report. `lastWorkerSeenAt` spans every matching worker,
+        soft-deleted included, so it dates when the region actually went
+        dark. NULL-region (any-region) jobs never count toward any row — they
+        are claimable by every cloud worker by construction.
+
+
+        Read-side companion of `POST /system/regions/migrate`: its output
+        names exactly the `from` slugs a migration should target. Cheap and
+        unpaginated — a handful of bounded scans, not a query per region.
+        Super-admin only.
+      operationId: getRegionHealth
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Ghost-region detection report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionHealthReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/v1/system/test-email:
     post:
       tags: [System]
@@ -12341,6 +12388,73 @@ components:
           description: >
             Reassigned jobs whose `scheduledAt` was already in the past — the
             stranded backlog that starts running again.
+
+    RegionHealthRow:
+      type: object
+      required:
+        [
+          slug,
+          declared,
+          liveWorkers,
+          lastWorkerSeenAt,
+          checksReferencing,
+          jobs,
+          jobsOverdue,
+          oldestOverdueAt,
+          ghost,
+        ]
+      properties:
+        slug:
+          type: string
+        declared:
+          type: boolean
+          description: Whether the slug is present in the `regions` system parameter.
+        liveWorkers:
+          type: integer
+          description: >
+            Non-deleted workers within the liveness window whose announced
+            region has this slug as a prefix.
+        lastWorkerSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Max `lastActiveAt` across every matching worker, including
+            soft-deleted ones — dates when the region went dark.
+        checksReferencing:
+          type: integer
+          description: Distinct, non-deleted checks whose `regions` array names this slug.
+        jobs:
+          type: integer
+          description: check_jobs rows carrying this slug. NULL-region jobs are never counted.
+        jobsOverdue:
+          type: integer
+          description: Subset of `jobs` whose `scheduledAt` has already passed.
+        oldestOverdueAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Earliest `scheduledAt` among the overdue jobs, null when there are none.
+        ghost:
+          type: boolean
+          description: >
+            `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work
+            assigned to a slug nothing live can serve.
+
+    RegionHealthReport:
+      type: object
+      required: [regions, ghostCount, generatedAt]
+      properties:
+        regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegionHealthRow"
+        ghostCount:
+          type: integer
+          description: Count of rows where `ghost` is true.
+        generatedAt:
+          type: string
+          format: date-time
 
     TestEmailRequest:
       type: object
