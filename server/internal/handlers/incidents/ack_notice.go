@@ -2,9 +2,12 @@ package incidents
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 )
 
@@ -42,8 +45,29 @@ import (
 func (s *Service) queueAckNotifications(
 	ctx context.Context, orgUID string, incident *models.Incident, req *AcknowledgeIncidentRequest,
 ) {
+	// A rolled-up child was never paged, and a RESOLVED incident's ack is a
+	// stale button press on a message the resolution notice has already
+	// answered — announcing "Alice took it" for something that is over would
+	// make the channel read backwards. Neither is a destination problem, so
+	// both are decided here rather than per channel.
+	if incident.PagingSuppressed || incident.State == models.IncidentStateResolved {
+		slog.DebugContext(ctx, "Skipping ack notice fan-out",
+			"incidentUid", incident.UID,
+			"pagingSuppressed", incident.PagingSuppressed,
+			"state", incident.State)
+
+		return
+	}
+
+	actorName := s.ackActorName(ctx, req)
+
+	// People paged over a person contact (Telegram today) are reached by their
+	// own job, exactly as the resolution notice does: the escalation step is
+	// the only thing that ever messages them, and it has just been canceled.
+	s.queueTelegramAckNotice(ctx, orgUID, incident.UID, actorName, req.Via)
+
 	ack := &notifications.AckInfo{
-		ActorName: s.ackActorName(ctx, req),
+		ActorName: actorName,
 		Via:       req.Via,
 	}
 
@@ -145,5 +169,34 @@ func isAckEchoOrigin(conn *models.Integration, req *AcknowledgeIncidentRequest) 
 		return settings.GuildID == req.EchoOriginGuildID
 	default:
 		return false
+	}
+}
+
+// queueTelegramAckNotice enqueues the job that closes the loop with the person
+// contacts (Telegram today) paged for this incident.
+//
+// Same contract as queueNotifications: a failure to enqueue is logged and
+// never fails the acknowledgment. An acknowledgment whose notice job could not
+// be created is a missed message; an acknowledgment that failed is an
+// escalation that keeps waking people up.
+func (s *Service) queueTelegramAckNotice(ctx context.Context, orgUID, incidentUID, actorName, via string) {
+	config, err := json.Marshal(jobtypes.IncidentAckNoticeJobConfig{
+		OrganizationUID: orgUID,
+		IncidentUID:     incidentUID,
+		ActorName:       actorName,
+		Via:             via,
+	})
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to marshal incident ack notice config",
+			"incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	if _, err := s.jobsSvc.CreateJob(
+		ctx, orgUID, string(jobdef.JobTypeIncidentAckNotice), config, nil,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to create incident ack notice job",
+			"incidentUid", incidentUID, "error", err)
 	}
 }

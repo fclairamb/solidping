@@ -32,6 +32,14 @@ const (
 	// unhandled" — so without this job the on-call engineer is paged and then
 	// never told the incident ended. V1 covers Telegram (spec 2026-08-14-01).
 	JobTypeIncidentResolutionNotice JobType = "incident_resolution_notice"
+	// JobTypeIncidentAckNotice tells the PEOPLE who were paged for an incident
+	// that a teammate has taken it. Exact counterpart of
+	// JobTypeIncidentResolutionNotice, and it exists for the same reason: the
+	// escalation step is the only thing that ever reaches a person contact, and
+	// it stops firing the moment the incident is acknowledged — so without this
+	// job everyone who was woken up is left assuming the page is still
+	// unclaimed. V1 covers Telegram (spec 2026-08-24-01).
+	JobTypeIncidentAckNotice JobType = "incident_ack_notice"
 	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
 	// records suggested checks in the discovered_checks table (grouped by IP) for
 	// operator review and promotion.

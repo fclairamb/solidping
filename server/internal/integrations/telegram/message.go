@@ -9,6 +9,11 @@ const (
 	StateDown      = "DOWN"
 	StateEscalated = "ESCALATED"
 	StateResolved  = "RESOLVED"
+	// StateAcknowledged is a still-OPEN incident a human has claimed. It is a
+	// distinct label rather than a flavor of RESOLVED because the difference —
+	// "someone is on it" versus "it is over" — is the whole point of an
+	// acknowledgment.
+	StateAcknowledged = "ACKNOWLEDGED"
 )
 
 // StateEmoji maps an incident state label to its leading emoji. An unknown
@@ -20,6 +25,8 @@ const (
 // and msteamsbot.go: one emoji per event/state product-wide.
 func StateEmoji(state string) string {
 	switch state {
+	case StateAcknowledged:
+		return "✅"
 	case StateResolved:
 		return "🟢"
 	case StateEscalated:
@@ -87,8 +94,12 @@ func buildAlertHTML(params *AlertParams, prefix string) string {
 	}
 
 	headline := "Incident"
-	if state == StateResolved {
+
+	switch state {
+	case StateResolved:
 		headline = "Resolved"
+	case StateAcknowledged:
+		headline = "Acknowledged"
 	}
 
 	name := strings.TrimSpace(params.CheckName)
