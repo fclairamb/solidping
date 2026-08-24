@@ -28,7 +28,8 @@ import (
 var errInvalidStatus = errors.New("invalid status filter token")
 
 // parseStatusFilter accepts a comma-separated list of status tokens
-// (up/down/created/degraded/warning) and returns the matching CheckStatus values.
+// (up/down/created/validating/degraded/warning) and returns the matching
+// CheckStatus values.
 func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 	parts := strings.Split(s, ",")
 	out := make([]models.CheckStatus, 0, len(parts))
@@ -44,6 +45,8 @@ func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 			out = append(out, models.CheckStatusUp)
 		case "down":
 			out = append(out, models.CheckStatusDown)
+		case "validating":
+			out = append(out, models.CheckStatusValidating)
 		case "degraded":
 			out = append(out, models.CheckStatusDegraded)
 		case "warning":
@@ -226,7 +229,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		opts.Internal = &internalParam
 	}
 
-	// Parse status filter (comma-separated: up,down,error,timeout,created)
+	// Parse status filter (comma-separated: up,down,created,validating,degraded,warning)
 	if statusParam := query.Get("status"); statusParam != "" {
 		statuses, err := parseStatusFilter(statusParam)
 		if err != nil {
