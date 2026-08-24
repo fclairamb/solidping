@@ -87,6 +87,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { FlappingBadge } from "@/components/shared/flapping-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgo } from "@/components/ui/time-ago";
 import {
@@ -929,14 +930,7 @@ function IncidentDetailPage() {
               <Badge variant="outline">{t("escalated")}</Badge>
             )}
             {(incident.flapLevel ?? 0) > 0 && (
-              <Badge
-                variant="outline"
-                className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
-                title={t("flappingHint", { count: incident.flapLevel })}
-                data-testid="incident-flapping-badge"
-              >
-                {t("flapping", { count: incident.flapLevel })}
-              </Badge>
+              <FlappingBadge flapLevel={incident.flapLevel!} t={t} />
             )}
           </div>
         </div>

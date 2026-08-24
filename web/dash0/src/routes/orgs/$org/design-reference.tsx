@@ -76,6 +76,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
+import { FlappingBadge } from "@/components/shared/flapping-badge";
 import {
   formatBudgetSeconds,
   sloBudgetBarClass,
@@ -1601,6 +1602,31 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Flapping badge</h3>
+        <p className="text-sm text-muted-foreground">
+          "Flapping ×N" for an incident that opened or reopened at an
+          escalated adaptive-recovery flap level (spec 2026-08-24-05,
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            incident.flapLevel
+          </code>
+          ). Used identically on the incidents list and the incident detail
+          page — one component so the amber tone (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            flappingBadgeClass
+          </code>
+          ) can never drift between the two. The component does not self-hide
+          — callers guard on <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flapLevel &gt; 0</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-2">
+              <FlappingBadge flapLevel={1} t={designReferenceFlappingT} />
+              <FlappingBadge flapLevel={3} t={designReferenceFlappingT} />
+            </div>
+          }
+          importLine={`import { FlappingBadge } from "@/components/shared/flapping-badge";\n\n{(incident.flapLevel ?? 0) > 0 && (\n  <FlappingBadge flapLevel={incident.flapLevel} t={t} />\n)}`}
         />
 
         <h3 className="text-sm font-medium">
@@ -3595,6 +3621,22 @@ function designReferenceEventT(
   if (sample) return sample.label;
   const fallback = options?.defaultValue;
   return typeof fallback === "string" ? fallback : key;
+}
+
+// designReferenceFlappingT is a stand-in for the real `t` from
+// useTranslation("incidents") — this page is a static catalog, not
+// localized — reproducing the two keys FlappingBadge needs
+// (locales/en/incidents.json: "flapping", "flappingHint").
+function designReferenceFlappingT(
+  key: string,
+  options?: Record<string, unknown>,
+): string {
+  const count = typeof options?.count === "number" ? options.count : 0;
+  if (key === "flapping") return `flapping ×${count}`;
+  if (key === "flappingHint") {
+    return `Opened at flap level ${count} — adaptive recovery escalated the required stability before this incident's auto-resolve.`;
+  }
+  return key;
 }
 
 function EventToneSection() {

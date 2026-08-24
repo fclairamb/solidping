@@ -4,6 +4,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { useIncidents, type IncidentDetail } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
+import { FlappingBadge } from "@/components/shared/flapping-badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgo } from "@/components/ui/time-ago";
@@ -273,14 +274,11 @@ function IncidentsIndexPage() {
                         </Badge>
                       )}
                       {(incident.flapLevel ?? 0) > 0 && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs font-normal bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
-                          title={t("flappingHint", { count: incident.flapLevel })}
-                          data-testid="incident-flapping-badge"
-                        >
-                          {t("flapping", { count: incident.flapLevel })}
-                        </Badge>
+                        <FlappingBadge
+                          flapLevel={incident.flapLevel!}
+                          t={t}
+                          className="text-xs font-normal"
+                        />
                       )}
                       {incident.pagingSuppressed && (
                         <Badge variant="outline" className="text-xs font-normal">
