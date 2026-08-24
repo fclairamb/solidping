@@ -145,7 +145,9 @@ func logWatchdogReport(ctx context.Context, log *slog.Logger, report *watchdog.R
 		return
 	}
 
-	for _, anomaly := range report.Anomalies {
+	for i := range report.Anomalies {
+		anomaly := &report.Anomalies[i]
+
 		log.WarnContext(ctx, "Platform watchdog anomaly",
 			"fingerprint", anomaly.Fingerprint(),
 			"severity", anomaly.Severity.String(),
