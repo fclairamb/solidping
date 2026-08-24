@@ -216,8 +216,6 @@ type PublicationHook interface {
 	// OnIncidentReopened reopens the SAME publication on a relapse rather than
 	// minting a second public entry.
 	OnIncidentReopened(ctx context.Context, incident *models.Incident)
-	// OnGroupMemberJoined appends a rate-limited "also affecting X" note.
-	OnGroupMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check)
 }
 
 // Service provides incident management functionality.
@@ -509,8 +507,8 @@ func (s *Service) dropStaleScreenshot(
 	}
 }
 
-// publishOpened / publishResolved / publishReopened / publishMemberJoined are
-// the nil-safe wrappers every incident-lifecycle call site uses.
+// publishOpened / publishResolved / publishReopened are the nil-safe wrappers
+// every incident-lifecycle call site uses.
 func (s *Service) publishOpened(ctx context.Context, incident *models.Incident) {
 	if s.publications == nil {
 		return
@@ -533,14 +531,6 @@ func (s *Service) publishReopened(ctx context.Context, incident *models.Incident
 	}
 
 	s.publications.OnIncidentReopened(ctx, incident)
-}
-
-func (s *Service) publishMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check) {
-	if s.publications == nil {
-		return
-	}
-
-	s.publications.OnGroupMemberJoined(ctx, incident, check)
 }
 
 // IsCheckInActiveMaintenance reports whether the check is inside an active
@@ -864,31 +854,23 @@ func confirmationElapsedDerive(check *models.Check, newStreak int, now time.Time
 	return !now.Before(firstFailure.Add(confirmation))
 }
 
-// routeCheckResultWithIncident dispatches to the per-check or group state
-// machine using a pre-fetched active incident (or nil). Extracted from
-// ProcessCheckResult to keep cyclomatic complexity manageable; the
-// pre-fetched incident lets the validating-state derivation upstream and the
-// state-machine downstream agree on what the active incident is for this
-// result.
+// routeCheckResultWithIncident dispatches to the incident state machine using
+// a pre-fetched active incident (or nil). Extracted from ProcessCheckResult to
+// keep cyclomatic complexity manageable; the pre-fetched incident lets the
+// validating-state derivation upstream and the state-machine downstream agree
+// on what the active incident is for this result.
+//
+// Incidents are ALWAYS per-check (spec 2026-08-24-14). A check that belongs to
+// a check group takes exactly this path too — group membership is an
+// organizational and display concept, never an incident-identity one. The
+// consolidated "N/M checks down" view is rebuilt at read time (dash0) and at
+// the publication layer (status pages) instead of being baked into the row.
 func (s *Service) routeCheckResultWithIncident(
 	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
 	incident *models.Incident,
 ) error {
-	// Route uses the active incident's CheckGroupUID first; falls back to the
-	// check's group when there's no active incident yet.
-	isGroup := (incident != nil && incident.CheckGroupUID != nil) ||
-		(incident == nil && check.CheckGroupUID != nil)
-
 	if isFailure {
-		if isGroup {
-			return s.handleGroupFailure(ctx, check, result, incident)
-		}
-
 		return s.handleFailure(ctx, check, result, incident)
-	}
-
-	if isGroup {
-		return s.handleGroupSuccess(ctx, check, result, incident)
 	}
 
 	return s.handleSuccess(ctx, check, result, incident)
@@ -1295,429 +1277,6 @@ func (s *Service) reopenIncident(
 	return nil
 }
 
-// formatGroupTitle returns "<group> — N/M checks down". Used for both create
-// and rebuild — callers pass the current failing/total counts.
-func formatGroupTitle(group *models.CheckGroup, failing, total int) string {
-	name := "Group"
-	if group != nil {
-		name = group.Name
-	}
-
-	return fmt.Sprintf("%s — %d/%d checks down", name, failing, total)
-}
-
-// countEnabledGroupMembers returns the number of enabled checks in the group.
-// Used to compute the M in the "N/M" title.
-func (s *Service) countEnabledGroupMembers(ctx context.Context, orgUID, groupUID string) int {
-	filter := &models.ListChecksFilter{
-		CheckGroupUID: &groupUID,
-	}
-
-	checks, _, err := s.db.ListChecks(ctx, orgUID, filter)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to list group members for title",
-			"groupUID", groupUID, "error", err)
-
-		return 0
-	}
-
-	return len(checks)
-}
-
-// handleGroupFailure handles a failed result for a check that belongs to a group.
-func (s *Service) handleGroupFailure(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	if incident == nil && !confirmationElapsed(check, s.clock.Now()) {
-		return nil
-	}
-
-	if incident == nil {
-		return s.createOrReopenGroupIncident(ctx, check, result)
-	}
-
-	// Group incident is active — update or insert this check's member row.
-	return s.updateGroupMemberOnFailure(ctx, check, result, incident)
-}
-
-// updateGroupMemberOnFailure handles a check failure when the group incident exists.
-func (s *Service) updateGroupMemberOnFailure(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	member, err := s.db.GetIncidentMemberCheck(ctx, incident.UID, check.UID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to load incident member: %w", err)
-	}
-
-	now := s.clock.Now()
-
-	if member == nil {
-		// New member joining an active incident.
-		newMember := &models.IncidentMemberCheck{
-			IncidentUID:      incident.UID,
-			CheckUID:         check.UID,
-			JoinedAt:         now,
-			FirstFailureAt:   result.PeriodStart,
-			LastFailureAt:    result.PeriodStart,
-			FailureCount:     1,
-			CurrentlyFailing: true,
-		}
-		if err := s.db.UpsertIncidentMemberCheck(ctx, newMember); err != nil {
-			return fmt.Errorf("failed to insert new member: %w", err)
-		}
-
-		// A new component joined an outage customers may already be reading
-		// about — say so, once, rate-limited on the publication side.
-		s.publishMemberJoined(ctx, incident, check)
-	} else {
-		// Bump the member's failure count, mark currently_failing, advance the
-		// last_failure_at timestamp. Same path for "still failing" and "relapse".
-		newCount := member.FailureCount + 1
-		failing := true
-		mUpdate := &models.IncidentMemberUpdate{
-			LastFailureAt:    &result.PeriodStart,
-			FailureCount:     &newCount,
-			CurrentlyFailing: &failing,
-		}
-		if err := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); err != nil {
-			return fmt.Errorf("failed to update member: %w", err)
-		}
-	}
-
-	// Bump the incident's aggregate failure count and re-evaluate escalation.
-	newFailureCount := incident.FailureCount + 1
-	update := &models.IncidentUpdate{FailureCount: &newFailureCount}
-
-	if incident.EscalatedAt == nil {
-		// Per-spec: escalation fires the first time any individual member crosses
-		// its own escalation threshold.
-		var memberFailureCount int
-		if member != nil {
-			memberFailureCount = member.FailureCount + 1
-		} else {
-			memberFailureCount = 1
-		}
-
-		if memberFailureCount >= check.EscalationThreshold {
-			update.EscalatedAt = &now
-		}
-	}
-
-	// Rebuild title with the latest failing/total counts.
-	failing, total := s.groupCounts(ctx, incident, check)
-	if failing > 0 && total > 0 {
-		group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-		title := formatGroupTitle(group, failing, total)
-		update.Title = &title
-	}
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, update); err != nil {
-		return fmt.Errorf("failed to update group incident: %w", err)
-	}
-
-	if update.EscalatedAt != nil {
-		if err := s.emitEvent(
-			ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
-				keyCheckUID:            check.UID,
-				keyCheckSlug:           check.Slug,
-				keyCheckName:           check.Name,
-				keyFailureCount:        newFailureCount,
-				keyEscalationThreshold: check.EscalationThreshold,
-			}); err != nil {
-			return fmt.Errorf("failed to emit group escalation event: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// groupCounts returns (failing, total) for an active group incident. `total`
-// is the count of currently-enabled checks in the group at evaluation time.
-func (s *Service) groupCounts(
-	ctx context.Context, incident *models.Incident, check *models.Check,
-) (int, int) {
-	if incident == nil || incident.CheckGroupUID == nil {
-		return 0, 0
-	}
-
-	failing, err := s.db.CountFailingIncidentMembers(ctx, incident.UID)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to count failing members",
-			"incidentUID", incident.UID, "error", err)
-	}
-
-	total := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-
-	return failing, total
-}
-
-// createOrReopenGroupIncident tries to reopen a recently-resolved group
-// incident, otherwise creates a new one with this check as the trigger.
-func (s *Service) createOrReopenGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
-) error {
-	if check.CheckGroupUID == nil {
-		return nil
-	}
-
-	cooldown := calculateCooldown(check)
-	if cooldown > 0 {
-		since := s.clock.Now().Add(-cooldown)
-
-		incident, err := s.db.FindRecentlyResolvedIncidentByGroupUID(ctx, *check.CheckGroupUID, since)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("failed to find recently resolved group incident: %w", err)
-		}
-
-		if incident != nil && incident.AcknowledgedBy == nil {
-			return s.reopenGroupIncident(ctx, check, result, incident)
-		}
-	}
-
-	return s.createGroupIncident(ctx, check, result)
-}
-
-// createGroupIncident inserts a new group incident with this check as trigger
-// and inserts the first member row.
-func (s *Service) createGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
-) error {
-	if check.CheckGroupUID == nil {
-		return nil
-	}
-
-	group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
-	totalMembers := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *check.CheckGroupUID)
-	if totalMembers == 0 {
-		totalMembers = 1
-	}
-
-	title := formatGroupTitle(group, 1, totalMembers)
-	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
-	incident.CheckGroupUID = check.CheckGroupUID
-	incident.Details = failureDetails(result)
-
-	if err := s.db.CreateIncident(ctx, incident); err != nil {
-		// Race: another concurrent failure beat us to it. Re-fetch the existing
-		// active group incident and attach this check as a member.
-		if isUniqueConstraintError(err) {
-			existing, lookupErr := s.db.FindActiveIncidentByGroupUID(ctx, *check.CheckGroupUID)
-			if lookupErr != nil {
-				return fmt.Errorf("group incident race: lookup after unique violation: %w", lookupErr)
-			}
-
-			slog.WarnContext(ctx, "group incident race resolved, joined existing",
-				"incidentUid", existing.UID, "checkUid", check.UID)
-
-			return s.updateGroupMemberOnFailure(ctx, check, result, existing)
-		}
-
-		return fmt.Errorf("failed to create group incident: %w", err)
-	}
-
-	member := &models.IncidentMemberCheck{
-		IncidentUID:      incident.UID,
-		CheckUID:         check.UID,
-		JoinedAt:         s.clock.Now(),
-		FirstFailureAt:   result.PeriodStart,
-		LastFailureAt:    result.PeriodStart,
-		FailureCount:     1,
-		CurrentlyFailing: true,
-	}
-	if err := s.db.UpsertIncidentMemberCheck(ctx, member); err != nil {
-		return fmt.Errorf("failed to insert trigger member: %w", err)
-	}
-
-	if err := s.emitEvent(
-		ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
-			keyCheckUID:  check.UID,
-			keyCheckSlug: check.Slug,
-			keyCheckName: check.Name,
-			keyStartedAt: result.PeriodStart,
-			keyResultUID: result.UID,
-		}); err != nil {
-		return fmt.Errorf("failed to emit group incident created event: %w", err)
-	}
-
-	s.publishOpened(ctx, incident)
-
-	return nil
-}
-
-// reopenGroupIncident reopens a previously-resolved group incident, marking
-// this check as a (possibly re-joining) member.
-func (s *Service) reopenGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	now := s.clock.Now()
-	activeState := models.IncidentStateActive
-	newRelapseCount := incident.RelapseCount + 1
-	newFailureCount := incident.FailureCount + 1
-	newDetails := lastFailureDetails(incident.Details, result)
-
-	update := models.IncidentUpdate{
-		State:               &activeState,
-		ClearResolvedAt:     true,
-		RelapseCount:        &newRelapseCount,
-		LastReopenedAt:      &now,
-		FailureCount:        &newFailureCount,
-		Details:             &newDetails,
-		ClearAcknowledgedAt: true,
-		ClearAcknowledgedBy: true,
-	}
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
-		return fmt.Errorf("failed to reopen group incident: %w", err)
-	}
-
-	incident.Details = newDetails
-
-	// Reset / insert this check's member row to "currently failing".
-	failing := true
-	one := 1
-	mUpdate := &models.IncidentMemberUpdate{
-		LastFailureAt:    &result.PeriodStart,
-		FailureCount:     &one,
-		CurrentlyFailing: &failing,
-	}
-	if err := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); err != nil {
-		// If no row exists yet (new member on reopen), insert one.
-		member := &models.IncidentMemberCheck{
-			IncidentUID:      incident.UID,
-			CheckUID:         check.UID,
-			JoinedAt:         now,
-			FirstFailureAt:   result.PeriodStart,
-			LastFailureAt:    result.PeriodStart,
-			FailureCount:     1,
-			CurrentlyFailing: true,
-		}
-		if upErr := s.db.UpsertIncidentMemberCheck(ctx, member); upErr != nil {
-			return fmt.Errorf("failed to upsert reopen member: %w", upErr)
-		}
-	}
-
-	incident.RelapseCount = newRelapseCount
-
-	if err := s.emitEvent(
-		ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
-			keyCheckUID:                   check.UID,
-			keyCheckSlug:                  check.Slug,
-			keyCheckName:                  check.Name,
-			keyRelapseCount:               newRelapseCount,
-			keyResultUID:                  result.UID,
-			keyEffectiveRecoveryThreshold: effectiveRecoveryPeriodSeconds(check),
-		}); err != nil {
-		return fmt.Errorf("failed to emit group reopened event: %w", err)
-	}
-
-	incident.State = activeState
-	incident.ResolvedAt = nil
-
-	s.publishReopened(ctx, incident)
-
-	return nil
-}
-
-// handleGroupSuccess handles a successful result for a check whose group has
-// an active incident.
-func (s *Service) handleGroupSuccess(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	if incident == nil {
-		return nil
-	}
-
-	member, err := s.db.GetIncidentMemberCheck(ctx, incident.UID, check.UID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to load member on success: %w", err)
-	}
-
-	if !member.CurrentlyFailing {
-		return nil
-	}
-
-	if !recoveryElapsed(check, incident, s.clock.Now()) {
-		return nil
-	}
-
-	// Mark this member recovered.
-	failing := false
-	recoveredAt := result.PeriodStart
-	mUpdate := &models.IncidentMemberUpdate{
-		LastRecoveryAt:   &recoveredAt,
-		CurrentlyFailing: &failing,
-	}
-	if updErr := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); updErr != nil {
-		return fmt.Errorf("failed to mark member recovered: %w", updErr)
-	}
-
-	failingCount, err := s.db.CountFailingIncidentMembers(ctx, incident.UID)
-	if err != nil {
-		return fmt.Errorf("failed to count failing members: %w", err)
-	}
-
-	if failingCount == 0 {
-		return s.resolveGroupIncident(ctx, check, result, incident)
-	}
-
-	// Some members still failing — rebuild title.
-	total := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-	if total == 0 {
-		total = failingCount
-	}
-
-	group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-	title := formatGroupTitle(group, failingCount, total)
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{Title: &title}); err != nil {
-		return fmt.Errorf("failed to rebuild group title: %w", err)
-	}
-
-	return nil
-}
-
-// resolveGroupIncident resolves a group incident when its last failing member recovers.
-func (s *Service) resolveGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	resolvedState := models.IncidentStateResolved
-	resolvedAt := result.PeriodStart
-
-	update := models.IncidentUpdate{
-		State:      &resolvedState,
-		ResolvedAt: &resolvedAt,
-	}
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
-		return fmt.Errorf("failed to resolve group incident: %w", err)
-	}
-
-	durationSeconds := int64(resolvedAt.Sub(incident.StartedAt).Seconds())
-
-	if err := s.emitEvent(
-		ctx, check.OrganizationUID, models.EventTypeIncidentResolved, incident, models.JSONMap{
-			keyCheckUID:        check.UID,
-			keyCheckSlug:       check.Slug,
-			keyCheckName:       check.Name,
-			keyResolvedAt:      resolvedAt,
-			keyDurationSeconds: durationSeconds,
-			keyTotalFailures:   incident.FailureCount,
-		}); err != nil {
-		return fmt.Errorf("failed to emit group resolved event: %w", err)
-	}
-
-	incident.State = resolvedState
-	incident.ResolvedAt = &resolvedAt
-
-	s.publishResolved(ctx, incident)
-
-	return nil
-}
-
 // generateIncidentTitle generates a title for an incident.
 func (s *Service) generateIncidentTitle(check *models.Check) string {
 	if check.Slug != nil && *check.Slug != "" {
@@ -1787,19 +1346,17 @@ func (s *Service) queueLifecycleNotifications(
 
 		// People who were PAGED for this incident only ever hear from the
 		// escalation machinery, which stops the moment the incident is handled.
-		// Without this they are paged and then never told it ended. Enqueued
-		// before the group branch on purpose: a group incident pages under its
-		// own UID, so the notice job works identically for it.
+		// Without this they are paged and then never told it ended.
 		if eventType == models.EventTypeIncidentResolved {
 			s.queueResolutionNotice(ctx, orgUID, incident.UID)
 		}
 
-		if incident.CheckGroupUID != nil {
-			s.queueGroupNotifications(ctx, orgUID, incident.UID, eventType)
-
-			return nil
-		}
-
+		// Every incident — grouped check or not — pages through the per-check
+		// fan-out (spec 2026-08-24-14). A correlated infra event that takes
+		// several members of one group down now produces one page per member,
+		// deliberately: prod and nonprod deserve distinct paging, and the
+		// merged group incident silently inherited the escalation state of
+		// whichever member happened to fail first.
 		checkUID, _ := payload["check_uid"].(string)
 		if checkUID == "" {
 			slog.WarnContext(ctx, "Missing check_uid in event payload", "eventType", eventType)
@@ -1903,49 +1460,6 @@ func (s *Service) queueResolutionNotice(ctx context.Context, orgUID, incidentUID
 	); err != nil {
 		slog.WarnContext(ctx, "Failed to create incident resolution notice job",
 			"incidentUid", incidentUID, "error", err)
-	}
-}
-
-// queueGroupNotifications fans out a single notification per (connection,
-// event-type), where the connection set is the union of every currently-
-// failing member's connections. Recovered members do not bring their
-// channels into mid-incident events, but they DO contribute to the
-// resolved event so every channel that fired on creation also hears about
-// the recovery.
-func (s *Service) queueGroupNotifications(
-	ctx context.Context, orgUID, incidentUID string, eventType models.EventType,
-) {
-	members, err := s.db.ListIncidentMemberChecks(ctx, incidentUID)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to list group members for notification dedup",
-			"incidentUid", incidentUID, "error", err)
-
-		return
-	}
-
-	seen := make(map[string]bool)
-
-	for _, member := range members {
-		if !member.CurrentlyFailing && eventType != models.EventTypeIncidentResolved {
-			continue
-		}
-
-		conns, err := s.db.ListChannelsForCheck(ctx, member.CheckUID)
-		if err != nil {
-			slog.WarnContext(ctx, "Failed to load connections for group member",
-				"checkUid", member.CheckUID, "error", err)
-
-			continue
-		}
-
-		for _, conn := range conns {
-			if !conn.Enabled || seen[conn.UID] {
-				continue
-			}
-
-			seen[conn.UID] = true
-			s.enqueueNotificationJob(ctx, orgUID, conn, incidentUID, eventType, nil)
-		}
 	}
 }
 
