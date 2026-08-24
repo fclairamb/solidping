@@ -470,6 +470,16 @@ export interface IncidentDetails {
   failureResponse?: IncidentFailureResponse;
 }
 
+/** Display identity of whoever performed an incident action. */
+export interface IncidentActor {
+  /** Human label. Never empty — the API falls back to a neutral word. */
+  name: string;
+  /** Channel the action came from ("web", "slack", "discord", …). */
+  via?: string;
+  /** SolidPing user, when the actor maps to one. */
+  userUid?: string;
+}
+
 export interface IncidentDetail {
   /** Evidence blobs. Populated by the DETAIL endpoint only. */
   attachments?: IncidentAttachment[];
@@ -489,7 +499,17 @@ export interface IncidentDetail {
   description?: string;
   startedAt?: string;
   acknowledgedAt?: string;
+  /**
+   * UID of the SolidPing user credited with the acknowledgment — NULL for
+   * every Slack / Discord / phone ack, whose actor has no platform account.
+   * Render `acknowledgedByActor` instead.
+   */
   acknowledgedBy?: string;
+  /**
+   * Resolved, display-ready identity of the acker. Returned by the DETAIL
+   * endpoint and by `POST .../ack` only; the list endpoint omits it.
+   */
+  acknowledgedByActor?: IncidentActor;
   snoozedUntil?: string;
   snoozedBy?: string;
   snoozeReason?: string;

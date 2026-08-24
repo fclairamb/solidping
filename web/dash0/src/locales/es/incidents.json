@@ -66,7 +66,8 @@
   "stateBadges": {
     "acked": "Reconocido",
     "snoozed": "Pospuesto",
-    "snoozedUntil": "Pospuesto hasta {{time}}"
+    "snoozedUntil": "Pospuesto hasta {{time}}",
+    "ackedBy": "Reconocido por {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Reconocidos",
@@ -160,7 +161,16 @@
     "acknowledged": "Reconocido",
     "escalated": "Escalado",
     "reopenedRelapse": "Reabierto (recaída n.º {{count}})",
-    "resolved": "Resuelto"
+    "resolved": "Resuelto",
+    "acknowledgedBy": "por {{name}}",
+    "acknowledgedByVia": "por {{name}} vía {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "correo",
+      "phone": "teléfono"
+    }
   },
   "eventLog": {
     "title": "Registro de eventos",

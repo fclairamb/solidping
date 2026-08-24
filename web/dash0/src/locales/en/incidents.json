@@ -66,7 +66,8 @@
   "stateBadges": {
     "acked": "Acked",
     "snoozed": "Snoozed",
-    "snoozedUntil": "Snoozed until {{time}}"
+    "snoozedUntil": "Snoozed until {{time}}",
+    "ackedBy": "Acked by {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Acknowledged",
@@ -160,7 +161,16 @@
     "acknowledged": "Acknowledged",
     "escalated": "Escalated",
     "reopenedRelapse": "Reopened (relapse #{{count}})",
-    "resolved": "Resolved"
+    "resolved": "Resolved",
+    "acknowledgedBy": "by {{name}}",
+    "acknowledgedByVia": "by {{name}} via {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "email",
+      "phone": "phone"
+    }
   },
   "eventLog": {
     "title": "Event Log",

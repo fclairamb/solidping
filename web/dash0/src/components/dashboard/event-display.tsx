@@ -368,3 +368,83 @@ export function getCommentSlackAuthor(event: {
   const id = event.payload?.slackUserId;
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
+
+// ACK_EVENT_TYPE is the event a successful acknowledgment writes.
+export const ACK_EVENT_TYPE = "incident.acknowledged";
+
+// ACK_ACTOR_PAYLOAD_KEYS are the payload keys an `incident.acknowledged`
+// event may carry an actor under, most specific identity first.
+//
+// SNAKE_CASE, deliberately. Every other payload the dashboard reads is
+// camelCase (a comment's `slackUserName`), and that mismatch is exactly why
+// acknowledgments used to render with no actor at all: the keys the backend
+// writes here predate the camelCase convention and cannot be renamed without
+// orphaning every historical acknowledgment. Kept in sync with
+// server/internal/handlers/incidents/ack_actor.go — change both together.
+const ACK_ACTOR_PAYLOAD_KEYS = [
+  "slack_username",
+  "discord_username",
+  "acknowledged_by_telegram",
+  "acknowledged_by_email",
+  "acknowledged_by_phone",
+  "slack_user_id",
+  "discord_user_id",
+] as const;
+
+// isAckEvent reports whether an event is an incident acknowledgment.
+export function isAckEvent(event: { eventType?: string }): boolean {
+  return event.eventType === ACK_EVENT_TYPE;
+}
+
+// getAckActor returns the display name of whoever acknowledged, read off the
+// event payload. Returns undefined when the payload names nobody — an ack
+// performed from the dashboard by a user the payload does not repeat.
+export function getAckActor(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  if (!isAckEvent(event)) return undefined;
+
+  for (const key of ACK_ACTOR_PAYLOAD_KEYS) {
+    const value = event.payload?.[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
+}
+
+// getEventVia returns the channel an incident action came from ("web",
+// "slack", …), or undefined when the payload predates the key.
+export function getEventVia(event: {
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  const via = event.payload?.via;
+  return typeof via === "string" && via.length > 0 ? via : undefined;
+}
+
+// getEventActorLabel is what an event row's "Actor" column should read.
+//
+// Resolution order: the API-resolved actor name (present for events caused by
+// a platform user), then the acknowledgment payload's own actor — which is the
+// ONLY record of a Slack, Discord or phone acker, since those people have no
+// `users` row for actorUid to point at — then the actor's email, and finally
+// the coarse actor type. Returns undefined when even that is absent, so the
+// caller renders its own placeholder.
+export function getEventActorLabel(event: {
+  eventType?: string;
+  actorType?: string;
+  actorName?: string;
+  actorEmail?: string;
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  if (event.actorName && event.actorName.length > 0) return event.actorName;
+
+  const ackActor = getAckActor(event);
+  if (ackActor) return ackActor;
+
+  if (event.actorEmail && event.actorEmail.length > 0) return event.actorEmail;
+
+  return event.actorType || undefined;
+}

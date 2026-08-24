@@ -66,7 +66,8 @@
   "stateBadges": {
     "acked": "Acquitté",
     "snoozed": "En pause",
-    "snoozedUntil": "En pause jusqu'à {{time}}"
+    "snoozedUntil": "En pause jusqu'à {{time}}",
+    "ackedBy": "Acquitté par {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Acquittés",
@@ -160,7 +161,16 @@
     "acknowledged": "Acquitté",
     "escalated": "Escaladé",
     "reopenedRelapse": "Rouvert (rechute n°{{count}})",
-    "resolved": "Résolu"
+    "resolved": "Résolu",
+    "acknowledgedBy": "par {{name}}",
+    "acknowledgedByVia": "par {{name}} via {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "e-mail",
+      "phone": "téléphone"
+    }
   },
   "eventLog": {
     "title": "Journal des événements",

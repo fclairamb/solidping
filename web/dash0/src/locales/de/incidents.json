@@ -66,7 +66,8 @@
   "stateBadges": {
     "acked": "Bestätigt",
     "snoozed": "Pausiert",
-    "snoozedUntil": "Pausiert bis {{time}}"
+    "snoozedUntil": "Pausiert bis {{time}}",
+    "ackedBy": "Bestätigt von {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Bestätigt",
@@ -160,7 +161,16 @@
     "acknowledged": "Bestätigt",
     "escalated": "Eskaliert",
     "reopenedRelapse": "Wieder geöffnet (Rückfall Nr. {{count}})",
-    "resolved": "Aufgelöst"
+    "resolved": "Aufgelöst",
+    "acknowledgedBy": "von {{name}}",
+    "acknowledgedByVia": "von {{name}} über {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "E-Mail",
+      "phone": "Telefon"
+    }
   },
   "eventLog": {
     "title": "Ereignisprotokoll",
