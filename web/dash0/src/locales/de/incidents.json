@@ -21,6 +21,8 @@
   "filterByState": "Nach Status filtern",
   "filterByCheck": "Nach Check filtern",
   "relapse": "{{count}}× Rückfall",
+  "flapping": "Flattern ×{{count}}",
+  "flappingHint": "Geöffnet bei Flap-Level {{count}} — die adaptive Erholung hat die erforderliche Stabilität vor der automatischen Auflösung dieses Vorfalls erhöht.",
   "active": "Aktiv",
   "resolved": "Gelöst",
   "reopened": "Wieder geöffnet",

@@ -21,6 +21,8 @@
   "filterByState": "Filtrer par état",
   "filterByCheck": "Filtrer par check",
   "relapse": "{{count}}x rechute",
+  "flapping": "instabilité ×{{count}}",
+  "flappingHint": "Ouvert au niveau d'instabilité {{count}} — la récupération adaptative a augmenté la stabilité requise avant la résolution automatique de cet incident.",
   "active": "Actif",
   "resolved": "Résolu",
   "reopened": "Rouvert",

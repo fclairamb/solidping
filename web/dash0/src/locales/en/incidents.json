@@ -21,6 +21,8 @@
   "filterByState": "Filter by state",
   "filterByCheck": "Filter by check",
   "relapse": "{{count}}x relapse",
+  "flapping": "flapping ×{{count}}",
+  "flappingHint": "Opened at flap level {{count}} — adaptive recovery escalated the required stability before this incident's auto-resolve.",
   "active": "Active",
   "resolved": "Resolved",
   "reopened": "Reopened",

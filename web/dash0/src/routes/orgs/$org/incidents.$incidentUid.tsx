@@ -928,6 +928,16 @@ function IncidentDetailPage() {
             {incident.escalatedAt && (
               <Badge variant="outline">{t("escalated")}</Badge>
             )}
+            {(incident.flapLevel ?? 0) > 0 && (
+              <Badge
+                variant="outline"
+                className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
+                title={t("flappingHint", { count: incident.flapLevel })}
+                data-testid="incident-flapping-badge"
+              >
+                {t("flapping", { count: incident.flapLevel })}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
