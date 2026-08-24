@@ -24,6 +24,8 @@ const (
 	labelMessageType  = "type"
 	labelListener     = "listener"
 	labelChannel      = "channel"
+	labelDetector     = "detector"
+	labelSeverity     = "severity"
 )
 
 // Lane label values for CheckLaneClaims (spec 2026-07-01-03).
@@ -517,8 +519,67 @@ var (
 		[]string{labelChannel},
 	)
 
+	// WatchdogAnomalies reports how many platform anomalies the hourly
+	// watchdog found, per detector and severity (spec 2026-08-24-10).
+	//
+	// This is the OUT-OF-BAND half of the watchdog. The in-band digest is
+	// delivered by the very process it is monitoring, which is better than
+	// nothing but must never be the only signal: if the API is what broke, the
+	// message reporting it does not go out. A scraped gauge lets an external
+	// Prometheus alert on the same facts without depending on us at all.
+	WatchdogAnomalies = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_watchdog_anomalies",
+			Help: "Platform anomalies found by the last watchdog run, by detector and severity",
+		},
+		[]string{labelDetector, labelSeverity},
+	)
+
+	// WatchdogStrandedJobs is the total overdue-job count across every region
+	// the watchdog reported as dark or backlogged. 419 stranded jobs is the
+	// single number that told the story on 2026-08-24, so it gets its own
+	// series rather than living inside a label.
+	WatchdogStrandedJobs = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_watchdog_stranded_jobs",
+			Help: "Overdue check_jobs across every region the watchdog flagged",
+		},
+	)
+
+	// WatchdogStaleIncidents is the count of active incidents whose check has
+	// stopped producing results — the "frozen incident" symptom.
+	WatchdogStaleIncidents = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_watchdog_stale_incidents",
+			Help: "Active incidents whose check has produced no result for longer than its staleness threshold",
+		},
+	)
+
+	// WatchdogDetectorFailures counts detector errors. A detector that cannot
+	// run is a blind spot, and a blind spot in the thing that watches for
+	// blind spots has to be visible from outside.
+	WatchdogDetectorFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_watchdog_detector_failures_total",
+			Help: "Watchdog detector runs that ended in an error",
+		},
+		[]string{labelDetector},
+	)
+
+	// WatchdogLastRun is the unix timestamp of the last completed watchdog
+	// run. Its absence or staleness is itself alertable — a watchdog that
+	// stopped running is exactly the failure nobody notices.
+	WatchdogLastRun = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_watchdog_last_run_timestamp_seconds",
+			Help: "Unix timestamp of the last completed platform watchdog run",
+		},
+	)
+
 	allCollectors = []prometheus.Collector{
 		SupportCapture, SupportMirror, SupportDMUnavailable,
+		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
+		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
 		WorkersActive, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
