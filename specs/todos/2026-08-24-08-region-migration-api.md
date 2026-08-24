@@ -129,3 +129,56 @@ Out of scope: renaming the region *definition* itself in the `regions`
 parameter (that is already editable via `/system/parameters`), and any
 automatic detection/alerting of stranded jobs — that is spec
 `2026-08-24-09` (detection) and `2026-08-24-10` (watchdog).
+
+## Implementation Plan
+
+1. **DB layer** (`internal/db/service.go` + both dialects)
+   - `ListChecksReferencingRegion(ctx, region) ([]*models.Check, error)` — every
+     non-deleted check whose `regions` array contains the slug **or** that owns a
+     `check_jobs` row carrying it (the live incident had checks already updated and
+     jobs stranded, so both sources must be swept).
+   - `ListCheckJobsByRegion(ctx, region) ([]*models.CheckJob, error)` — cross-org,
+     used to build the report's pre-state (reassigned / deleted / overdue).
+   - `MigrateCheckRegionSlug(ctx, from, to) ([]*models.Check, error)` — ONE
+     transaction: rewrite every `checks.regions` array containing `from`, replacing
+     it with `to` and de-duplicating order-preservingly when `to` is already there.
+     Returns the post-rewrite rows.
+   - `ListChecksWithStaleJobRegions(ctx) ([]*models.Check, error)` — the startup
+     pass's symmetric query: enabled checks with a job whose region is absent from
+     the check's `regions`, **or** missing a job for a region they declare.
+   Postgres uses `= ANY(regions)` / `unnest`; SQLite uses `json_each`, mirroring
+   migration `011_v0_14_0`.
+
+2. **Service** (`internal/handlers/checks/region_migration.go`)
+   - `MigrateRegion(ctx, RegionMigrationRequest) (*RegionMigrationReport, error)`.
+   - Validation: both slugs required, non-empty, distinct; `to` must be declared in
+     `regions.ParamRegions` **or** served by a live non-deleted worker
+     (`ListLiveWorkers`, `regions.WorkerLivenessWindow`); private→cloud rejected
+     (sealed configs are encrypted to a region key). `from` need not be declared.
+   - Report computed from the pre-state so `dryRun` and the real run agree:
+     `checksUpdated` (checks touched), `byOrg` (same split by org slug),
+     `jobsReassigned` / `jobsDeleted` (a `from` job whose check ends up declaring
+     `to` is reassigned unless a `to` job already exists — the unique
+     `(check_uid, region)` index case — otherwise deleted), `overdueRecovered`
+     (reassigned jobs whose `scheduled_at` was already in the past).
+   - Apply: `MigrateCheckRegionSlug` then `reconcileCheckJobs(check, false)` per
+     affected check — never a raw `UPDATE … SET region`.
+   - Idempotent: a second call finds nothing and returns zeros.
+   - WARN log with actor UID, pair and counts.
+
+3. **Startup reconcile** — extend `ReconcileStaleJobSchedules` to union the stale
+   *region* checks with the stale *period* checks and feed both through the same
+   `reconcileCheckJobs` loop; keep the single reconciled-count return.
+
+4. **Handler + route** — `MigrateRegion` on the checks handler, registered as
+   `POST /api/v1/system/regions/migrate` on the existing super-admin `systemActions`
+   group (precedent: `systemActions.GET("/agents", …)`). 422 `VALIDATION_ERROR`
+   naming the known regions on a bad `to`.
+
+5. **OpenAPI** — document the endpoint, request and report schema in
+   `internal/app/openapi/openapi.yaml`.
+
+6. **Tests** — Postgres-backed service tests for: regions+jobs moved, unique-index
+   collision, undeclared `to` refused, private→cloud refused, idempotency, `dryRun`
+   writes nothing (row counts), the startup stale-region pass with no API call, and
+   handler auth (org admin 403, super-admin 200).
