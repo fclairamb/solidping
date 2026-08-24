@@ -36,7 +36,8 @@ a two-segment badge, or add `uptime-bar` for a second row underneath.
 GET /api/v1/orgs/{org}/checks/{checkIdentifier}/badges/{components}
 ```
 
-`checkIdentifier` is the check's slug (preferred) or UID; `components` is the
+`checkIdentifier` is the check's UID or slug — a value that parses as a UUID
+is looked up by UID, anything else by slug; `components` is the
 comma-separated token list above. Query parameters:
 
 | Parameter | Values | Default |

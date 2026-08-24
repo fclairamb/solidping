@@ -26,10 +26,10 @@ The type filter narrows the timeline to the most common operational events:
 | `incident.resolved` | An incident resolved |
 
 Leaving the filter on **All Events** shows the complete stream — every event
-type the organization records, including status page publications, uptime
-report deliveries, membership and integration changes, and more — each with
-its own label and badge. The dropdown's seven entries are shortcuts for the
-day-to-day noise, not the full list of what can appear here.
+type the organization records, including status page publications,
+membership and integration changes, and more — each with its own label and
+badge. The dropdown's seven entries are shortcuts for the day-to-day noise,
+not the full list of what can appear here.
 
 The **Actor** column names the user, integration, or system process that
 triggered the event — including a Slack, Discord, or phone acknowledgment,

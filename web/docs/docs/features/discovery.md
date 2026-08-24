@@ -29,7 +29,8 @@ integration/connection exists.
 
 Besides the CIDR list, an **Advanced options** section exposes ports (comma
 separated, defaults if left empty), per-probe timeout (e.g. `1s`, `500ms`,
-default `1s`), and concurrency (default `64`, capped at `256`). A range
+default `1s`), and concurrency (default `64`; the form limits it to `256`,
+though this is a UI guardrail rather than a server-enforced ceiling). A range
 estimated at more than 4096 addresses shows a warning that the scan may take
 hours to days, since large ranges are split into bounded chunks that scan
 progressively.
@@ -49,7 +50,9 @@ host, not from a remote agent.
 A scan moves through `pending` → `running` → `success` or `failed`. While a
 LAN scan (the chunked kind) is running, a progress card shows completed vs.
 total chunks, plus running counts of groups and checks found so far, and it
-can be stopped — chunks already in flight finish, queued chunks are dropped.
+can be stopped — queued chunks are dropped before they start, and chunks
+already running are actively cancelled (the worker notices within its poll
+interval), not left to run to completion.
 
 ## Findings and promoting checks
 
@@ -66,8 +69,7 @@ promoting it — it will not resurface for this scan.
 
 ## API
 
-Full endpoint reference: `GET /discovery-types`, `GET /discovery-scans`,
-`POST /discovery-scans`, `GET /discovery-scans/:jobUid`, and
-`POST /discovery-scans/:jobUid/cancel` under `/api/v1/orgs/:org/...`. The
-generated API reference documents every request and response schema under the
-**Discovery** tag.
+Full endpoint reference, all under `/api/v1/orgs/:org/discovery/...`:
+`GET /types`, `GET /scans`, `POST /scans`, `GET /scans/:jobUid`, and
+`POST /scans/:jobUid/cancel`. The generated API reference documents every
+request and response schema under the **Discovery** tag.
