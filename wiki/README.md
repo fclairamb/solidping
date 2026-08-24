@@ -57,6 +57,7 @@ the relevant code.
 - [features/browser-monitoring.md](features/browser-monitoring.md) — Headless-Chrome (chromedp) checks: when to pick browser over http, execution model, capabilities & limits, worker requirements, security model.
 - [features/showcase-media.md](features/showcase-media.md) — Regenerable product screenshots & video: the `web/dash0/showcase/` Playwright pipeline, `make showcase`, AV1 post-processing, which assets are committed, where they're surfaced, and the marketing (`solidping-website`) hand-off.
 - [features/config-as-code.md](features/config-as-code.md) — Declarative checks: export → edit → `sp apply` loop, the `solidping.io/managed` scope, reconcile plan (create/update/delete/unmanaged/rename), `${env:}`/`${param:}` secret references, prune + deletion cap, admin gating.
+- [features/platform-watchdog.md](features/platform-watchdog.md) — The hourly `platform_watchdog` job: how the platform reports on ITSELF. Three independent detectors (dark region with assigned work, fleet execution collapse, frozen active incidents), transition-based anti-flood, delivery through the operators' own notification routes, and the out-of-band `solidping_watchdog_*` gauges.
 - [features/results-aggregation.md](features/results-aggregation.md) — The raw → hour → day → month results rollup: per-org job, tier boundaries, transactional compaction, pure-Go aggregate math (warning-counts-as-up, degraded promotion, metric suffixes), retention config, consumers (uptimebar, badges, results-API fallback), failure-mode history.
 
 ## Conventions

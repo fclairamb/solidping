@@ -147,6 +147,14 @@ func (f failingRegionHealth) RegionHealth(_ context.Context) (*checks.RegionHeal
 	return nil, f.err
 }
 
+// panickingRegionHealth is the reporter that panics rather than returning an
+// error — the failure mode a plain `if err != nil` would not survive.
+type panickingRegionHealth struct{}
+
+func (panickingRegionHealth) RegionHealth(_ context.Context) (*checks.RegionHealthReport, error) {
+	panic("region health panicked")
+}
+
 // findAnomaly returns the anomaly for a detector, or nil.
 func findAnomaly(anomalies []watchdog.Anomaly, detector string) *watchdog.Anomaly {
 	for i := range anomalies {
@@ -156,6 +164,33 @@ func findAnomaly(anomalies []watchdog.Anomaly, detector string) *watchdog.Anomal
 	}
 
 	return nil
+}
+
+// TestPanickingDetectorIsContainedNotFatal: a detector bug must be reported as
+// a detector failure, not take down the one job whose whole purpose is to
+// speak up when everything else has gone quiet.
+func TestPanickingDetectorIsContainedNotFatal(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newTestEnv(t)
+
+	panicking := watchdog.NewService(env.db, panickingRegionHealth{})
+	panicking.SetNow(func() time.Time { return pinnedNow })
+
+	check := env.createCheck(t, []string{"healthy"})
+	env.clearResults(t, check.UID)
+
+	lastHour := pinnedNow.Truncate(time.Hour).Add(-time.Hour)
+	env.addResults(t, check.UID, lastHour.AddDate(0, 0, -1), 400)
+	env.addResults(t, check.UID, lastHour, 10)
+
+	report := panicking.Evaluate(t.Context(), enabledConfig())
+
+	r.Len(report.Failed, 1)
+	r.Contains(report.Failed[watchdog.DetectorDarkRegion].Error(), "panicked")
+	r.NotNil(findAnomaly(report.Anomalies, watchdog.DetectorFleetCollapse),
+		"the surviving detectors must still report")
 }
 
 // TestDarkRegionDetectorReproducesTheStranding is the 2026-08-24 shape: jobs
