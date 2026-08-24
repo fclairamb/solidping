@@ -12,6 +12,7 @@ import {
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { parseUserAgent } from "@/lib/user-agent";
+import { methodLabel } from "@/lib/auth-method-label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,19 +61,6 @@ function DeviceIcon({ device, className }: { device: "mobile" | "tablet" | "desk
   if (device === "mobile") return <Smartphone className={className} />;
   if (device === "tablet") return <Tablet className={className} />;
   return <Monitor className={className} />;
-}
-
-function methodLabel(method: string | undefined, t: (key: string) => string): string | null {
-  switch (method) {
-    case "password":
-      return t("sessions.methodPassword");
-    case "oauth":
-      return t("sessions.methodOauth");
-    case "passkey":
-      return t("sessions.methodPasskey");
-    default:
-      return null;
-  }
 }
 
 function SessionRow({
