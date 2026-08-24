@@ -1,5 +1,45 @@
 # Changelog
 
+## [Unreleased]
+
+
+### Features
+
+* **discord:** a first-class Discord bot, not just a webhook. Install it into a server, map servers to organizations, and get incidents as bot-owned threads that edit in place and carry acknowledge and comment buttons. Org members map to Discord identities so on-call mentions reach the right person, comments posted in the thread are ingested back onto the incident through a Gateway supervisor, slash-command and mention dispatch is transport-agnostic, and every inbound interaction is Ed25519-verified with stale and unsigned requests rejected. Ships with a bot settings panel and a server-admin page in the dashboard
+* **audit:** an organization audit log. Every session-minting path, membership change, token operation, config apply, and escalation / on-call / maintenance / integration / status-page mutation emits a typed event carrying actor metadata and a normalized source address. Payload redaction fails closed on anything it does not recognize, failed logins are flood-controlled, and retention is swept by a cleanup job. The events API gained family, type, actor, target and admin-only IP filters plus working cursors; the dashboard gained an admin-gated audit page; and every event family has a human identity in all four locales
+* **slo:** burn-rate alerting on SLOs. Define an alert policy over an SLO and get paged when the error budget burns too fast, evaluated over multiple windows against a shared evaluator. Burn incidents are a distinct incident kind rather than a check failure, with their own lifecycle entry points, their own email and Slack templates, and a periodic sweep job. The dashboard gained an SLO alerting section, a burning badge and a policy edit route
+* **diagnostics:** MTR-style path tracing on network failures. A pure-Go path prober with a privilege ladder traces the route when a network-reachability failure opens an incident, so the incident shows where the packets actually stopped. Exposed as an org-level default plus a per-check policy, rendered on the incident and on the onset result page, and pinned never-public
+* **support:** a support inbox. Inbound human messages are captured from email, WhatsApp, Telegram, SMS, Slack DMs and Discord DMs into threads and messages, with idempotent capture, abuse ceilings and a mailbox mirror. Replies go back out through per-provider adapters and take their delivery status from the existing provider callbacks, and instance support Reply-To is classified fail-closed per template. Ships with a retention job, org-deletion detach, an OpenAPI-documented API and a `/support` inbox in the dashboard
+* **email:** the JMAP inbox consumer is safe to run more than once — inbound mail is deduplicated by `Message-ID` before insert, claimed by archiving it before processing, and the consumer runs under a Postgres advisory lock
+* **status-pages:** branding and private pages. Upload a per-page logo and favicon (gated by a white-label entitlement), password-protect a page behind an unlock cookie, and let visitors subscribe over webhook or Slack. Branding moved into settings, and public assets are authorized by file topic
+* **incidents:** screenshots of what the browser saw. Browser checks can opt into capturing a screenshot on failure, persisted when the incident opens and rendered in the dashboard. Built on a new generic attachment rail (`files.topic` / `files.details`) with an agent upload endpoint, an out-of-band upload frame, a bounded TTL'd capture LRU for deported agents, orphan reaping, and attachments pinned out of public payloads
+* **incidents:** acknowledgement now has a face. The acknowledging actor is resolved and exposed, every paged channel is notified that the incident was acknowledged (Telegram included), and the dashboard and the organization events feed both name who acknowledged it
+* **incidents:** flapping is visible. `flap_level` is recorded and exposed on create and reopen, checks carry a live `flapState`, and the dashboard shows a flapping state on check detail plus a "flapping ×N" badge on the incidents list and detail, alongside the actual reopen-cooldown window
+* **incidents:** check groups are handled as groups. Active group incidents are closed and member-row incident binding stopped, status pages consolidate group members into a single public entry, the dashboard groups active incidents by check group at read time, and hard children are re-evaluated when a parent incident opens
+* **custom-domain:** an explicit custom-domain lifecycle — a stored-cert handshake, a legible 503 while the domain is not ready, a grace and re-promotion sweep, a demotion alert (including demotions reached through Verify), and DNS diagnostics surfaced in the dashboard
+* **regions:** a server-scope region migration API with stale-region reconciliation at startup, plus ghost-region detection behind `GET /system/regions/health`
+* **watchdog:** the platform monitors itself. A detector package feeds per-detector anomaly gauges through Prometheus, driven by an hourly platform-watchdog job with delivery and parameter validation
+* **auth:** flagged accounts are forced through a password rotation, with a dedicated rotation screen in the dashboard
+* **auth:** stale SSO provider links heal themselves. A soft-deleted organization used to leave its Discord guild or Slack team link alive, which permanently bricked login for everyone in that guild — the stale link is now cleared and re-linked on the next sign-in, and the same fallback covers user links across all nine connectors
+* **import:** UptimeRobot as an import source, with a golden-tested converter and a dashboard source picker
+* **performance:** result and chart queries seek instead of scan. Result blobs are skipped when unrequested, the keyset cursor seeks by row value, the chart fetch is split at the raw/rollup boundary into parallel tier queries (and still seeks on SQLite), a per-check per-tier recent-results filter cannot ask for a mixed tier, status-page response times are fetched per check and per tier instead of scanning results, raw-tier queries are clamped to the retention band and report the effective window, and status-page cache directives derive from page visibility
+* **dash0:** faceted status and type filters on the checks list, a check filter on the incidents list, documentation links across SLOs, badges, discovery, events and dependencies, incident timestamps rendered in local time with UTC on hover, invitation email delivery status led by the address with the link as fallback, and every auth method a session can carry is labelled
+
+
+### Bug Fixes
+
+* **audit:** every session-minting path is recorded, not just password logins; redaction fails closed on unrecognized payload value types and keeps pointer-valued fields; the events cursor gained a uid tie-break; the OAuth grant path is audited and the guard widened past the auth package; and an OAuth grant presented by the wrong client is recorded as token misuse
+* **traceroute:** an HTTP response stall is no longer labelled a connect timeout, the connection phase resets at dial start so a redirect chain keeps a real connect timeout, a panic on either trace goroutine is recovered, the per-check policy survives export, import and clone, and an agent-uploaded capture is stamped with the probing region
+* **support:** `SP_SUPPORT_RETENTION_DAYS=0` genuinely means keep forever, an abuse-ceiling drop counts as throttled rather than failed, and the re-scan path fails closed with the dedup lookup scoped to the org index
+* **charts:** the tier merge is keyed on org and check so navigation cannot serve stale rows, the seam is anchored on the bucket edge with the chart window resolved once, and same-`period_start` rollup points get a uid DESC tie-break
+* **status-pages:** public incident history is cached by visibility, and public pages no longer vary on `Cookie`
+* **notifications:** browser push notifications are incident-aware, escalation Slack DMs address the check by name and number with an incident link, and the agent websocket subscribes to `check.created` before announcing the connection
+* **checks:** the 100th auto-slugged check for one host no longer 500s, and `validating` is accepted in the status filter
+* **db:** generic attachments moved out of the already-released migration 014 into a new 015
+* **config:** a hostname-derived worker slug is slugified instead of refused, and the fixed-point property holds by construction
+* **dash0:** the login page no longer unmounts mid-org-picker redirect, `apiFetch` tolerates an empty body under any status rather than only 204, breadcrumb leaves resolve for every Organization tab and deep route, the SSL check type is labelled TLS across all surfaces, and an empty check duration renders a literal em dash
+* **docs:** the API reference index is served at `/docs/api`
+
 ## [0.17.0](https://github.com/fclairamb/solidping/compare/v0.16.2...v0.17.0) (2026-08-20)
 
 
