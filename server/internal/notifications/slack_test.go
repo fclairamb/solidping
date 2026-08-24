@@ -1600,6 +1600,12 @@ func (m *mockDBService) FindActiveIncidentsForChecksInWindow(
 	panic("not implemented")
 }
 
+func (m *mockDBService) AttachIncidentToRollupParent(
+	_ context.Context, _, _ string,
+) (bool, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetOrgEntitlements(_ context.Context, _ string) (*models.OrgEntitlements, error) {
 	return nil, nil //nolint:nilnil // mock
 }
