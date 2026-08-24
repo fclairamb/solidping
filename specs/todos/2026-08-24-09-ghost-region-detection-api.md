@@ -126,3 +126,94 @@ method the handler and the job both call, not as handler-inline SQL.
 Out of scope: any mutation (migration is spec `2026-08-24-08`), alerting on
 the result (spec `2026-08-24-10`), and dashboard UI — though the response is
 deliberately shaped so a future `/system` page can render it as-is.
+
+## Implementation Plan
+
+Builds directly on spec `2026-08-24-08` (region migration), which just landed
+on this branch: same `checks` package, same `systemActions` route group, same
+`regions.WorkerLivenessWindow` constant, same prefix-match convention.
+
+### Architecture decision: raw bounded scans + Go aggregation, not per-slug DB calls
+
+`ListChecksReferencingRegion` / `ListCheckJobsByRegion` (added by 08) each take
+**one** region string and are the right shape for the migration report (which
+only ever inspects `from`/`to`). They are the wrong shape here: computing a
+row **per slug in the whole universe** by calling them once per slug would be
+one query per slug, not "a handful of grouped queries".
+
+Instead follow the precedent already in this codebase for exactly this shape
+of report — `system.Service.LaneLoad`
+([service.go:612](server/internal/handlers/system/service.go#L612)): it scans
+`workers` and a narrow `check_jobs` projection with `s.db.DB()` (the raw
+`*bun.DB` escape hatch on `db.Service`, no new interface method), and
+aggregates in Go, including the exact region prefix match
+(`strings.HasPrefix(workerRegion, *job.Region)`) this spec must reuse. Doing
+the same avoids new `db.Service` interface methods entirely (so no new
+`mockDBService` stubs), avoids duplicating dialect-specific SQL for something
+that doesn't need it (`checks.regions` and `check_jobs.region` decode through
+the existing `models.Check`/`models.CheckJob` bun tags regardless of dialect —
+only the *query shape*, not the Go type, ever needed a Postgres/SQLite split,
+and a narrow column projection doesn't touch the array/JSON column at all
+differently from the full-model reads those tags already handle), and keeps
+the whole computation to 3 bounded scans (checks, check_jobs, workers) +
+1 param read (declared regions), independent of region cardinality.
+
+### Steps
+
+1. **`server/internal/handlers/checks/region_health.go`** (new file):
+   - `RegionHealthRow` / `RegionHealthReport` types (camelCase JSON per the
+     spec's example shape).
+   - `Service.RegionHealth(ctx) (*RegionHealthReport, error)`:
+     a. `s.regions.GetGlobalRegions` → declared slug set.
+     b. One scan of `checks` (`uid` unneeded — just `regions`, non-deleted
+        only) → per-slug `checksReferencing` counts, de-duplicating a slug
+        that (through API misuse) repeats within one check's array so it
+        never double-counts.
+     c. One scan of `check_jobs` (`region, scheduled_at`, `region IS NOT
+        NULL` — NULL/any-region jobs excluded by construction) → per-slug
+        `jobs`, `jobsOverdue` (`scheduledAt` before `now`), `oldestOverdueAt`.
+     d. One scan of **all** `workers`, deliberately with no `deleted_at`
+        filter (unlike `ListWorkers`/`ListLiveWorkers`, neither of which
+        would surface a dark region's last heartbeat) → used twice per slug:
+        `liveWorkers` (non-deleted, `last_active_at >= now -
+        WorkerLivenessWindow`, prefix match) and `lastWorkerSeenAt` (max
+        `last_active_at` over every matching worker, deleted included).
+     e. Union the universe: declared ∪ checksReferencing keys ∪ jobStats keys
+        ∪ non-deleted workers' regions (deleted-only workers do not extend
+        the universe — matches the spec's source list exactly).
+     f. Per slug: `ghost = (jobs>0 || checksReferencing>0) && liveWorkers==0`.
+   - Liveness cutoff computed once (`time.Now().Add(-regions.WorkerLivenessWindow)`),
+     boundary inclusive (`>=`), mirroring `ListLiveWorkers`/`knownRegionSlugs`.
+2. **`server/internal/handlers/checks/region_health_handler.go`** (new file):
+   `Handler.RegionHealth` → `h.svc.RegionHealth(ctx)` → `h.WriteJSON(200, report)`.
+   No request body, no error branches beyond internal (read-only, no
+   validation surface).
+3. **`server/internal/app/server.go`**: register
+   `systemActions.GET("/regions/health", checksHandler.RegionHealth)` next to
+   the existing `POST /regions/migrate` registration — same group, so
+   `RequireAuth` + `RequireSuperAdmin` apply unchanged.
+4. **`server/internal/app/openapi/openapi.yaml`**: document
+   `GET /api/v1/system/regions/health`, `RegionHealthRow` and
+   `RegionHealthReport` schemas, mirroring the migration endpoint's doc style.
+5. **Tests** — `server/internal/handlers/checks/region_health_test.go`
+   (SQLite, following `region_migration_test.go`'s fixture-building helpers):
+   - One fixture organization/service covering every case in the spec's test
+     list in a single `RegionHealth` call: healthy declared region (live
+     worker + checks + jobs), declared-but-dark unused region (`ghost:
+     false`), ghost with overdue jobs, undeclared slug referenced only via
+     `checks.regions`, prefix-servable slug (`us` job vs `us-1` worker — not
+     a ghost), private ghost (`@x`, no agent/worker), NULL-region job
+     (create a check with no declared regions, confirm its any-region job
+     never appears in any row's counts).
+   - Liveness boundary sub-test: a worker whose `last_active_at` is set to
+     exactly `now - WorkerLivenessWindow` counts as live (`liveWorkers: 1`,
+     not a ghost) — set via direct DB update since `UpdateWorkerHeartbeat`
+     always stamps "now".
+   - `lastWorkerSeenAt` sub-test: a soft-deleted worker's timestamp still
+     surfaces (create, heartbeat, then `DeleteWorker`).
+   - Handler auth-matrix test (mirrors
+     `agents/handler_test.go:TestListAllAgentsHandlerAuthMatrix`): 403 org
+     admin / regular user, 200 super-admin.
+6. `make fmt`, targeted package build + `golangci-lint run
+   ./server/internal/handlers/checks/... ./server/internal/app/...`, then the
+   full gate once.
