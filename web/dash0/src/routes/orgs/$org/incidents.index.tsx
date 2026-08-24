@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
+import { CheckPicker } from "@/components/shared/check-picker";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 type StateFilter = "all" | "active" | "resolved" | "acked" | "snoozed";
@@ -49,6 +50,13 @@ export const Route = createFileRoute("/orgs/$org/incidents/")({
     showSuppressed:
       search.showSuppressed === true || search.showSuppressed === "true"
         ? true
+        : undefined,
+    // Undefined when absent so a clean URL stays clean. Accepts a uid OR a
+    // slug — the backend resolves both (issue #127) — so an operator can
+    // type a human-readable value by hand.
+    checkUid:
+      typeof search.checkUid === "string" && search.checkUid
+        ? search.checkUid
         : undefined,
   }),
   component: IncidentsIndexPage,
@@ -91,7 +99,10 @@ function IncidentDuration({ incident }: { incident: IncidentDetail }) {
 function IncidentsIndexPage() {
   const { t } = useTranslation("incidents");
   const { org } = Route.useParams();
-  const { state: stateFilter, showSuppressed } = Route.useSearch();
+  // Read directly off the route's search state — no local-state mirror —
+  // so a cold deep-link (?checkUid=... pasted into a fresh tab) applies on
+  // first render instead of only after a client-side navigation seeds it.
+  const { state: stateFilter, showSuppressed, checkUid } = Route.useSearch();
   const navigate = useNavigate();
 
   // Live updates: an `incidents` hint invalidates the `incidents` org root
@@ -107,6 +118,7 @@ function IncidentsIndexPage() {
     isRefetching,
   } = useIncidents(org, {
     state: stateFilter === "all" ? undefined : stateFilter,
+    checkUid: checkUid || undefined,
     size: 50,
     with: "check",
     hideSuppressed: !showSuppressed,
@@ -129,7 +141,10 @@ function IncidentsIndexPage() {
             onValueChange={(v) =>
               navigate({
                 to: ".",
-                search: { state: v as StateFilter, showSuppressed },
+                // Functional form: carries every other filter forward so a
+                // fourth one can't reintroduce the "picking a state drops
+                // the check filter" bug.
+                search: (prev) => ({ ...prev, state: v as StateFilter }),
                 replace: true,
               })
             }
@@ -145,16 +160,31 @@ function IncidentsIndexPage() {
               <SelectItem value="resolved">{t("resolvedOnly")}</SelectItem>
             </SelectContent>
           </Select>
+          <div className="w-[220px] max-w-full">
+            <CheckPicker
+              org={org}
+              value={checkUid}
+              onChange={(uid) =>
+                navigate({
+                  to: ".",
+                  search: (prev) => ({ ...prev, checkUid: uid }),
+                  replace: true,
+                })
+              }
+              placeholder={t("filterByCheck")}
+              triggerTestId="incidents-check-filter"
+            />
+          </div>
           <label className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer">
             <Switch
               checked={!!showSuppressed}
               onCheckedChange={(checked) =>
                 navigate({
                   to: ".",
-                  search: {
-                    state: stateFilter,
+                  search: (prev) => ({
+                    ...prev,
                     showSuppressed: checked ? true : undefined,
-                  },
+                  }),
                   replace: true,
                 })
               }
@@ -296,11 +326,13 @@ function IncidentsIndexPage() {
           <div className="space-y-1">
             <h3 className="font-semibold text-base text-foreground">{t("noIncidentsFound")}</h3>
             <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-              {stateFilter === "active"
-                ? t("allOperational")
-                : stateFilter === "resolved"
-                  ? t("noResolved")
-                  : t("noIncidents")}
+              {checkUid
+                ? t("noIncidentsForCheck")
+                : stateFilter === "active"
+                  ? t("allOperational")
+                  : stateFilter === "resolved"
+                    ? t("noResolved")
+                    : t("noIncidents")}
             </p>
           </div>
         </div>
