@@ -933,6 +933,42 @@ func (e HealthResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for IncidentActorVia.
+const (
+	IncidentActorViaAuto     IncidentActorVia = "auto"
+	IncidentActorViaDiscord  IncidentActorVia = "discord"
+	IncidentActorViaEmail    IncidentActorVia = "email"
+	IncidentActorViaManual   IncidentActorVia = "manual"
+	IncidentActorViaPhone    IncidentActorVia = "phone"
+	IncidentActorViaSlack    IncidentActorVia = "slack"
+	IncidentActorViaTelegram IncidentActorVia = "telegram"
+	IncidentActorViaWeb      IncidentActorVia = "web"
+)
+
+// Valid indicates whether the value is a known member of the IncidentActorVia enum.
+func (e IncidentActorVia) Valid() bool {
+	switch e {
+	case IncidentActorViaAuto:
+		return true
+	case IncidentActorViaDiscord:
+		return true
+	case IncidentActorViaEmail:
+		return true
+	case IncidentActorViaManual:
+		return true
+	case IncidentActorViaPhone:
+		return true
+	case IncidentActorViaSlack:
+		return true
+	case IncidentActorViaTelegram:
+		return true
+	case IncidentActorViaWeb:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IncidentAttachmentKind.
 const (
 	IncidentAttachmentKindScreenshot IncidentAttachmentKind = "screenshot"
@@ -1680,6 +1716,33 @@ func (e StatusPageCustomDomainCertStatus) Valid() bool {
 	case StatusPageCustomDomainCertStatusIssued:
 		return true
 	case StatusPageCustomDomainCertStatusNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StatusPageCustomDomainState.
+const (
+	StatusPageCustomDomainStateActive  StatusPageCustomDomainState = "active"
+	StatusPageCustomDomainStateDemoted StatusPageCustomDomainState = "demoted"
+	StatusPageCustomDomainStateGrace   StatusPageCustomDomainState = "grace"
+	StatusPageCustomDomainStateNone    StatusPageCustomDomainState = "none"
+	StatusPageCustomDomainStatePending StatusPageCustomDomainState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageCustomDomainState enum.
+func (e StatusPageCustomDomainState) Valid() bool {
+	switch e {
+	case StatusPageCustomDomainStateActive:
+		return true
+	case StatusPageCustomDomainStateDemoted:
+		return true
+	case StatusPageCustomDomainStateGrace:
+		return true
+	case StatusPageCustomDomainStateNone:
+		return true
+	case StatusPageCustomDomainStatePending:
 		return true
 	default:
 		return false
@@ -2657,6 +2720,18 @@ type Check struct {
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
 
+	// FlapState Live adaptive-recovery (flapping) state — the effective, lazy-reset-aware counterpart of flappingWindowSeconds / flapBackoffFactor / maxRecoveryMultiplier above. Omitted when the flapping feature is off for this check, or when no flap state has accumulated (no outage yet, or the rolling window has since lapsed).
+	FlapState *struct {
+		// EffectiveRecoveryPeriodSeconds Stability currently required before an open incident on this check auto-resolves, given flapCount.
+		EffectiveRecoveryPeriodSeconds *int `json:"effectiveRecoveryPeriodSeconds,omitempty"`
+
+		// FlapCount Number of outages counted inside the current rolling flapping window. 1 means the 2nd outage within the window — the first one that actually counts as a flap.
+		FlapCount *int `json:"flapCount,omitempty"`
+
+		// LastOutageAt Wall-clock of the most recent outage onset that counted against the window.
+		LastOutageAt *time.Time `json:"lastOutageAt,omitempty"`
+	} `json:"flapState,omitempty"`
+
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
@@ -2820,6 +2895,18 @@ type CheckListItem struct {
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
+
+	// FlapState Live adaptive-recovery (flapping) state — the effective, lazy-reset-aware counterpart of flappingWindowSeconds / flapBackoffFactor / maxRecoveryMultiplier above. Omitted when the flapping feature is off for this check, or when no flap state has accumulated (no outage yet, or the rolling window has since lapsed).
+	FlapState *struct {
+		// EffectiveRecoveryPeriodSeconds Stability currently required before an open incident on this check auto-resolves, given flapCount.
+		EffectiveRecoveryPeriodSeconds *int `json:"effectiveRecoveryPeriodSeconds,omitempty"`
+
+		// FlapCount Number of outages counted inside the current rolling flapping window. 1 means the 2nd outage within the window — the first one that actually counts as a flap.
+		FlapCount *int `json:"flapCount,omitempty"`
+
+		// LastOutageAt Wall-clock of the most recent outage onset that counted against the window.
+		LastOutageAt *time.Time `json:"lastOutageAt,omitempty"`
+	} `json:"flapState,omitempty"`
 
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
@@ -3939,6 +4026,21 @@ type IncidentAckRequest struct {
 	Note *string `json:"note,omitempty"`
 }
 
+// IncidentActor Display identity of whoever performed an incident action, for the surfaces that must name a human rather than a UUID.
+type IncidentActor struct {
+	// Name Human label to render — the SolidPing user's name or email, or the chat username / email address / phone number recorded on the event. Never empty; falls back to `Unknown` when nothing is recoverable.
+	Name string `json:"name"`
+
+	// UserUid SolidPing user the action is credited to. Absent for chat and phone actors with no platform account.
+	UserUid *openapi_types.UUID `json:"userUid,omitempty"`
+
+	// Via Channel the action came from. Absent for actions recorded before the channel was captured.
+	Via *IncidentActorVia `json:"via,omitempty"`
+}
+
+// IncidentActorVia Channel the action came from. Absent for actions recorded before the channel was captured.
+type IncidentActorVia string
+
 // IncidentAttachment One stored evidence blob hanging off an incident. The bytes are fetched through `downloadUrl`, never inlined.
 type IncidentAttachment struct {
 	// CapturedAt When the probe took the capture. For a screenshot this is a moment AFTER failure detection, not the failing frame itself; for a traceroute it is when the sweep STARTED, which is always after the failing result was already reported.
@@ -3990,6 +4092,16 @@ type IncidentCommentRequest struct {
 type IncidentDetail struct {
 	AcknowledgedAt *time.Time `json:"acknowledgedAt,omitempty"`
 
+	// AcknowledgedBy UID of the SolidPing user credited with the acknowledgment.
+	//
+	// **Present only when the acker maps to a platform account** — the dashboard, a magic link whose recipient address matches a user, or a linked Telegram chat. A Slack, Discord or phone acknowledgment leaves this null, because those people have no `users` row. Read `acknowledgedByActor` to render an attribution; this field alone says "nobody" for the majority of real acknowledgments.
+	AcknowledgedBy *openapi_types.UUID `json:"acknowledgedBy,omitempty"`
+
+	// AcknowledgedByActor Resolved, display-ready identity of the acker: a name to render and the channel it came from. Derived from the `users` row when `acknowledgedBy` is set, and from the `incident.acknowledged` event payload otherwise.
+	//
+	// **Returned by the DETAIL endpoint and by `POST .../ack` only.** The list endpoint omits it — resolving it costs a user lookup and an event lookup per incident, which a 100-row page cannot afford.
+	AcknowledgedByActor *IncidentActor `json:"acknowledgedByActor,omitempty"`
+
 	// Attachments Evidence blobs attached to this incident (spec 2026-08-21-01). Present on the DETAIL endpoint only — the list endpoint never populates it. Today the only kind is `screenshot`: the PNG a browser check captured when the incident opened or reopened, for checks with the browser `screenshot` option enabled.
 	//
 	// **Operator-only, exactly like `details`.** Each entry carries a short-lived SIGNED download URL, so it is never serialized onto a status page or a subscriber payload.
@@ -4008,6 +4120,9 @@ type IncidentDetail struct {
 	Details      *map[string]interface{} `json:"details,omitempty"`
 	EscalatedAt  *time.Time              `json:"escalatedAt,omitempty"`
 	FailureCount *int                    `json:"failureCount,omitempty"`
+
+	// FlapLevel The check's flap count at the moment this incident opened or last reopened — a snapshot, not a live value. 0 (omitted) means it opened at the base level, not escalated by the adaptive-recovery flapping layer.
+	FlapLevel *int `json:"flapLevel,omitempty"`
 
 	// Number Short per-organization incident reference, rendered as `#42` in the dashboard, Slack and Telegram. Assigned at creation, never reused.
 	Number     *int64               `json:"number,omitempty"`
@@ -5449,8 +5564,17 @@ type StatusPage struct {
 	// CustomDomainCertStatus TLS certificate state for the custom domain when the server terminates TLS itself (config acme.enabled). "none" = nothing issued yet (issuance is on-demand, on the first HTTPS request), "issued" = a certificate is in storage, "error" = the last issuance attempt failed (see the server log). Omitted when in-server TLS is disabled or the domain is not verified yet. Authenticated endpoints only.
 	CustomDomainCertStatus *StatusPageCustomDomainCertStatus `json:"customDomainCertStatus,omitempty"`
 
+	// CustomDomainDegradedSince When the domain entered "grace". Absent otherwise. Authenticated endpoints only.
+	CustomDomainDegradedSince *time.Time `json:"customDomainDegradedSince,omitempty"`
+
+	// CustomDomainLastCheck One-line diagnostic from the last DNS re-check: the verification mode used, the CNAME target expected, what DNS actually returned, and the lookup error if any. Exists so a failing verification is diagnosable from the API instead of by correlating server logs with manual dig runs. Authenticated endpoints only.
+	CustomDomainLastCheck *string `json:"customDomainLastCheck,omitempty"`
+
 	// CustomDomainRecords The DNS records the customer must create. Since v0.8.0 this is exactly ONE entry: the routing CNAME. Its value is the installation CNAME target in "shared" mode, or the page-specific "<token>.cname.<target>" host in "token" mode (server.custom_domain_cname_mode). The TXT ownership challenge was removed. Authenticated endpoints only.
 	CustomDomainRecords *[]DnsRecord `json:"customDomainRecords,omitempty"`
+
+	// CustomDomainState Custom-domain lifecycle state (spec 2026-08-23-03). "grace" is the one customDomainStatus cannot express: the page is STILL served, but its periodic DNS re-checks are failing and it will stop being served if nothing is done. "demoted" means it already has, and is recoverable — the sweep re-promotes after several consecutive successful checks while a valid certificate is still held. Authenticated endpoints only.
+	CustomDomainState *StatusPageCustomDomainState `json:"customDomainState,omitempty"`
 
 	// CustomDomainStatus Custom-domain verification state. Authenticated endpoints only.
 	CustomDomainStatus *StatusPageCustomDomainStatus `json:"customDomainStatus,omitempty"`
@@ -5503,6 +5627,9 @@ type StatusPageAutoResolve string
 
 // StatusPageCustomDomainCertStatus TLS certificate state for the custom domain when the server terminates TLS itself (config acme.enabled). "none" = nothing issued yet (issuance is on-demand, on the first HTTPS request), "issued" = a certificate is in storage, "error" = the last issuance attempt failed (see the server log). Omitted when in-server TLS is disabled or the domain is not verified yet. Authenticated endpoints only.
 type StatusPageCustomDomainCertStatus string
+
+// StatusPageCustomDomainState Custom-domain lifecycle state (spec 2026-08-23-03). "grace" is the one customDomainStatus cannot express: the page is STILL served, but its periodic DNS re-checks are failing and it will stop being served if nothing is done. "demoted" means it already has, and is recoverable — the sweep re-promotes after several consecutive successful checks while a valid certificate is still held. Authenticated endpoints only.
+type StatusPageCustomDomainState string
 
 // StatusPageCustomDomainStatus Custom-domain verification state. Authenticated endpoints only.
 type StatusPageCustomDomainStatus string
@@ -6183,9 +6310,12 @@ type UpsertCheckRequestType string
 type UserSummary struct {
 	AvatarUrl *string              `json:"avatarUrl,omitempty"`
 	Email     *openapi_types.Email `json:"email,omitempty"`
-	Name      *string              `json:"name,omitempty"`
-	Role      *UserSummaryRole     `json:"role,omitempty"`
-	Uid       *openapi_types.UUID  `json:"uid,omitempty"`
+
+	// MustChangePassword True when this account must rotate its password before it can do anything else. The session returned alongside this flag reaches only POST /auth/change-password, GET /auth/me and POST /auth/logout; every other endpoint answers 403 with code PASSWORD_CHANGE_REQUIRED. Omitted when false.
+	MustChangePassword *bool               `json:"mustChangePassword,omitempty"`
+	Name               *string             `json:"name,omitempty"`
+	Role               *UserSummaryRole    `json:"role,omitempty"`
+	Uid                *openapi_types.UUID `json:"uid,omitempty"`
 }
 
 // UserSummaryRole defines model for UserSummary.Role.

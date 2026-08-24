@@ -9044,6 +9044,34 @@ components:
             this multiple of the base recovery period (also hard-capped at 30
             minutes).
           default: 8
+        flapState:
+          type: object
+          nullable: true
+          description: >-
+            Live adaptive-recovery (flapping) state — the effective,
+            lazy-reset-aware counterpart of flappingWindowSeconds /
+            flapBackoffFactor / maxRecoveryMultiplier above. Omitted when the
+            flapping feature is off for this check, or when no flap state has
+            accumulated (no outage yet, or the rolling window has since
+            lapsed).
+          properties:
+            flapCount:
+              type: integer
+              description: >-
+                Number of outages counted inside the current rolling flapping
+                window. 1 means the 2nd outage within the window — the first
+                one that actually counts as a flap.
+            lastOutageAt:
+              type: string
+              format: date-time
+              description: >-
+                Wall-clock of the most recent outage onset that counted
+                against the window.
+            effectiveRecoveryPeriodSeconds:
+              type: integer
+              description: >-
+                Stability currently required before an open incident on this
+                check auto-resolves, given flapCount.
         createdAt:
           type: string
           format: date-time
@@ -9948,6 +9976,13 @@ components:
             an event lookup per incident, which a 100-row page cannot afford.
         failureCount:
           type: integer
+        flapLevel:
+          type: integer
+          description: >-
+            The check's flap count at the moment this incident opened or last
+            reopened — a snapshot, not a live value. 0 (omitted) means it
+            opened at the base level, not escalated by the adaptive-recovery
+            flapping layer.
         title:
           type: string
         description:
