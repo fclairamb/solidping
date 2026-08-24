@@ -64,3 +64,14 @@ func (s *Service) CreateOrReopenIncidentForTest(
 func FailureDetailsForTest(result *models.Result) models.JSONMap {
 	return failureDetails(result)
 }
+
+// RollUpExistingChildrenForTest exposes the unexported forward rollup walk so
+// external tests can prove it is idempotent — calling it twice for the same
+// parent must produce exactly one attachment and one event, which is the same
+// convergence property that protects it against a concurrent backward
+// evaluation on another worker (spec 2026-08-24-15).
+func (s *Service) RollUpExistingChildrenForTest(
+	ctx context.Context, parentCheck *models.Check, parent *models.Incident, onset time.Time,
+) {
+	s.rollUpExistingChildren(ctx, parentCheck, parent, onset)
+}
