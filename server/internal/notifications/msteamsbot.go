@@ -100,27 +100,17 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 		return nil
 	}
 
-	// A comment must never REPLACE the incident card — that card shows live
-	// incident state and someone reading the channel would lose it. It is
-	// posted as a reply under the existing card instead, and only when one
-	// exists (same orphan rule as resolved/reopened).
-	if payload.EventType == eventTypeIncidentComment {
+	// A comment or an acknowledgment must never REPLACE the incident card —
+	// that card shows live incident state and someone reading the channel
+	// would lose it. Both are posted as a reply under the existing card
+	// instead, and only when one exists (same orphan rule as
+	// resolved/reopened).
+	if isCardReplyEvent(payload.EventType) {
 		if !hasCard(entry) {
 			return nil
 		}
 
-		return s.replyWithComment(ctx, jctx, appID, appSecret, entry, payload)
-	}
-
-	// An acknowledgment is commentary on a still-live incident, exactly like a
-	// comment: replacing the card would hide the incident state the card
-	// exists to show, and the incident is NOT over.
-	if payload.EventType == eventTypeIncidentAcknowledged {
-		if !hasCard(entry) {
-			return nil
-		}
-
-		return s.replyWithAck(ctx, jctx, appID, appSecret, entry, payload)
+		return s.replyUnderCard(ctx, jctx, appID, appSecret, entry, payload)
 	}
 
 	if hasCard(entry) {
@@ -130,37 +120,29 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 	return s.postNewCard(ctx, jctx, appID, appSecret, settings, payload, stateKey)
 }
 
-// replyWithComment posts an incident comment as a reply under the incident's
-// existing card, leaving both the card and its stored reference untouched.
-func (s *MSTeamsBotSender) replyWithComment(
-	ctx context.Context,
-	jctx *jobdef.JobContext,
-	appID, appSecret string,
-	entry *models.StateEntry,
-	payload *Payload,
-) error {
-	ref := cardRef(entry)
-
-	client := s.client(appID, appSecret, ref.ServiceURL, s.pinnedTenant(jctx))
-
-	reply := msteams.NewTextMessage(commentEmoji + " " + commentPlainBody(payload))
-
-	result, err := client.ReplyToActivity(ctx, ref.ConversationID, ref.ActivityID, reply)
-	if err != nil {
-		return fmt.Errorf("replying with microsoft teams comment: %w", err)
-	}
-
-	if result != nil {
-		payload.MessageID = result.ID
-	}
-
-	return nil
+// isCardReplyEvent reports whether an event is posted as a REPLY under the
+// incident's card rather than as an update of it.
+//
+// Both members are commentary on a STILL-LIVE incident: the card must keep
+// showing the incident's own state, so neither may overwrite it.
+func isCardReplyEvent(eventType string) bool {
+	return eventType == eventTypeIncidentComment ||
+		eventType == eventTypeIncidentAcknowledged
 }
 
-// replyWithAck posts the acknowledgment notice as a reply under the
+// cardReplyText renders the one-line body of such a reply.
+func cardReplyText(payload *Payload) string {
+	if payload.EventType == eventTypeIncidentAcknowledged {
+		return ackEmoji + " " + ackPlainBody(payload)
+	}
+
+	return commentEmoji + " " + commentPlainBody(payload)
+}
+
+// replyUnderCard posts a comment or an acknowledgment as a reply under the
 // incident's existing card, leaving both the card and its stored reference
 // untouched.
-func (s *MSTeamsBotSender) replyWithAck(
+func (s *MSTeamsBotSender) replyUnderCard(
 	ctx context.Context,
 	jctx *jobdef.JobContext,
 	appID, appSecret string,
@@ -171,11 +153,11 @@ func (s *MSTeamsBotSender) replyWithAck(
 
 	client := s.client(appID, appSecret, ref.ServiceURL, s.pinnedTenant(jctx))
 
-	reply := msteams.NewTextMessage(ackEmoji + " " + ackPlainBody(payload))
+	reply := msteams.NewTextMessage(cardReplyText(payload))
 
 	result, err := client.ReplyToActivity(ctx, ref.ConversationID, ref.ActivityID, reply)
 	if err != nil {
-		return fmt.Errorf("replying with microsoft teams acknowledgment: %w", err)
+		return fmt.Errorf("replying under the microsoft teams incident card: %w", err)
 	}
 
 	if result != nil {

@@ -23,13 +23,11 @@ import (
 func TestAckActorPerOrigin(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-
 	type testCase struct {
 		name string
 		// ack performs the acknowledgment through the real entry point for
 		// this origin, returning nothing — assertions read the API afterwards.
-		ack func(t *testing.T, s *resolveSetup, userUID string)
+		ack func(t *testing.T, ctx context.Context, s *resolveSetup, userUID string)
 		// wantName is the exact display name the API must resolve.
 		wantName string
 		// wantVia is the channel the API must report.
@@ -41,7 +39,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 	cases := []testCase{
 		{
 			name: "web — dashboard button, credited to the signed-in user",
-			ack: func(t *testing.T, s *resolveSetup, userUID string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, userUID string) {
 				t.Helper()
 				_, err := s.svc.AcknowledgeIncident(ctx, s.org.Slug, &incidents.AcknowledgeIncidentRequest{
 					IncidentUID:    s.incident.UID,
@@ -56,7 +54,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 		},
 		{
 			name: "magic link — recipient is a known user",
-			ack: func(t *testing.T, s *resolveSetup, userUID string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, userUID string) {
 				t.Helper()
 				_, err := s.svc.AcknowledgeIncident(ctx, s.org.Slug, &incidents.AcknowledgeIncidentRequest{
 					IncidentUID:         s.incident.UID,
@@ -72,7 +70,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 		},
 		{
 			name: "magic link — recipient has no platform account",
-			ack: func(t *testing.T, s *resolveSetup, _ string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, _ string) {
 				t.Helper()
 				_, err := s.svc.AcknowledgeIncident(ctx, s.org.Slug, &incidents.AcknowledgeIncidentRequest{
 					IncidentUID:         s.incident.UID,
@@ -86,7 +84,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 		},
 		{
 			name: "slack — no users row exists for the acker",
-			ack: func(t *testing.T, s *resolveSetup, _ string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, _ string) {
 				t.Helper()
 				_, err := s.svc.AcknowledgeIncidentFromSlack(
 					ctx, s.org.UID, s.incident.UID, "U0ALICE", "alice", "T0ACME",
@@ -98,7 +96,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 		},
 		{
 			name: "discord — no users row exists for the acker",
-			ack: func(t *testing.T, s *resolveSetup, _ string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, _ string) {
 				t.Helper()
 				_, err := s.svc.AcknowledgeIncidentFromDiscord(
 					ctx, s.org.UID, s.incident.UID, "D0BOB", "bob", "G0ACME",
@@ -110,7 +108,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 		},
 		{
 			name: "telegram — the person who pressed wins over the linked account",
-			ack: func(t *testing.T, s *resolveSetup, userUID string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, userUID string) {
 				t.Helper()
 				// The chat is linked to Alice's account, but Carol pressed the
 				// button in the shared group. Reporting "Alice" here would be
@@ -127,7 +125,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 		},
 		{
 			name: "telegram — an unnamed presser falls back to the linked account",
-			ack: func(t *testing.T, s *resolveSetup, userUID string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, userUID string) {
 				t.Helper()
 				_, err := s.svc.AcknowledgeIncidentFromTelegram(
 					ctx, s.org.UID, s.incident.UID, userUID, "via Telegram",
@@ -140,7 +138,7 @@ func TestAckActorPerOrigin(t *testing.T) {
 		},
 		{
 			name: "phone — DTMF caller, identified only by their number",
-			ack: func(t *testing.T, s *resolveSetup, _ string) {
+			ack: func(t *testing.T, ctx context.Context, s *resolveSetup, _ string) {
 				t.Helper()
 				_, err := s.svc.AcknowledgeIncidentFromPhone(
 					ctx, s.org.UID, s.incident.UID, "+33123456789",
@@ -157,10 +155,11 @@ func TestAckActorPerOrigin(t *testing.T) {
 			t.Parallel()
 
 			r := require.New(t)
+			ctx := t.Context()
 			s := newResolveSetup(t)
 			user := newAckTestUser(t, s)
 
-			tc.ack(t, s, user.UID)
+			tc.ack(t, ctx, s, user.UID)
 
 			out, err := s.svc.GetIncident(ctx, s.org.Slug, s.incident.UID, nil)
 			r.NoError(err)

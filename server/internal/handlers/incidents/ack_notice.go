@@ -148,22 +148,14 @@ func (s *Service) ackActorName(ctx context.Context, req *AcknowledgeIncidentRequ
 // message that already says "Acknowledged by @them".
 func isAckEchoOrigin(conn *models.Integration, req *AcknowledgeIncidentRequest) bool {
 	switch {
-	case conn.Type == models.ConnectionTypeSlack:
-		if req.EchoOriginTeamID == "" {
-			return false
-		}
-
+	case req.EchoOriginTeamID != "" && conn.Type == models.ConnectionTypeSlack:
 		settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
 		if err != nil || settings == nil {
 			return false
 		}
 
 		return settings.TeamID == req.EchoOriginTeamID
-	case conn.Type == models.ConnectionTypeDiscord:
-		if req.EchoOriginGuildID == "" {
-			return false
-		}
-
+	case req.EchoOriginGuildID != "" && conn.Type == models.ConnectionTypeDiscord:
 		settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
 		if err != nil || settings == nil {
 			return false

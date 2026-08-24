@@ -18,12 +18,12 @@ import (
 // resolutionChatA so the shared seedTelegramUser fixture resolves to it.
 const ackTestChat = resolutionChatA
 
-func newAckNoticeRun(env *phoneTestEnv, actor, via string) *IncidentAckNoticeJobRun {
+func newAckNoticeRun(env *phoneTestEnv, via string) *IncidentAckNoticeJobRun {
 	return &IncidentAckNoticeJobRun{
 		config: IncidentAckNoticeJobConfig{
 			OrganizationUID: env.org.UID,
 			IncidentUID:     env.incident.UID,
-			ActorName:       actor,
+			ActorName:       "alice",
 			Via:             via,
 		},
 	}
@@ -108,7 +108,7 @@ func TestAckNotice_ThreadsUnderTheAnchorAndNamesTheActor(t *testing.T) {
 	seedThreadAnchor(t, env, ackTestChat, 100)
 	ackTestIncident(t, env)
 
-	r.NoError(newAckNoticeRun(env, "alice", "slack").Run(ctx, env.jctx))
+	r.NoError(newAckNoticeRun(env, "slack").Run(ctx, env.jctx))
 
 	sends := fake.callsFor("sendMessage")
 	r.Len(sends, 1, "exactly one ack notice per paged chat")
@@ -153,10 +153,10 @@ func TestAckNotice_SecondRunSendsNothing(t *testing.T) {
 	seedThreadAnchor(t, env, ackTestChat, 100)
 	ackTestIncident(t, env)
 
-	r.NoError(newAckNoticeRun(env, "alice", "web").Run(ctx, env.jctx))
+	r.NoError(newAckNoticeRun(env, "web").Run(ctx, env.jctx))
 	r.Len(fake.callsFor("sendMessage"), 1)
 
-	r.NoError(newAckNoticeRun(env, "alice", "web").Run(ctx, env.jctx))
+	r.NoError(newAckNoticeRun(env, "web").Run(ctx, env.jctx))
 	r.Len(fake.callsFor("sendMessage"), 1, "a re-run must not duplicate the notice")
 }
 
@@ -176,7 +176,7 @@ func TestAckNotice_SkipsAWithdrawnAcknowledgment(t *testing.T) {
 	seedThreadAnchor(t, env, ackTestChat, 100)
 	// Deliberately NOT acknowledged — the incident is still unclaimed.
 
-	r.NoError(newAckNoticeRun(env, "alice", "web").Run(ctx, env.jctx))
+	r.NoError(newAckNoticeRun(env, "web").Run(ctx, env.jctx))
 	r.Empty(fake.callsFor("sendMessage"))
 }
 
@@ -196,7 +196,7 @@ func TestAckNotice_SkipsAResolvedIncident(t *testing.T) {
 	ackTestIncident(t, env)
 	resolveTestIncident(t, env, 5*time.Minute)
 
-	r.NoError(newAckNoticeRun(env, "alice", "web").Run(ctx, env.jctx))
+	r.NoError(newAckNoticeRun(env, "web").Run(ctx, env.jctx))
 	r.Empty(fake.callsFor("sendMessage"))
 }
 
@@ -219,7 +219,7 @@ func TestAckNotice_SkipsASuppressedIncident(t *testing.T) {
 	r.NoError(env.db.UpdateIncident(ctx, env.incident.UID,
 		&models.IncidentUpdate{PagingSuppressed: &suppressed}))
 
-	r.NoError(newAckNoticeRun(env, "alice", "web").Run(ctx, env.jctx))
+	r.NoError(newAckNoticeRun(env, "web").Run(ctx, env.jctx))
 	r.Empty(fake.callsFor("sendMessage"))
 }
 
@@ -241,7 +241,7 @@ func TestAckNotice_FallsBackToTheAuditTrail(t *testing.T) {
 	ackTestIncident(t, env)
 
 	// No thread anchor at all — the 7-day TTL has passed.
-	r.NoError(newAckNoticeRun(env, "alice", "telegram").Run(ctx, env.jctx))
+	r.NoError(newAckNoticeRun(env, "telegram").Run(ctx, env.jctx))
 
 	sends := fake.callsFor("sendMessage")
 	r.Len(sends, 1)

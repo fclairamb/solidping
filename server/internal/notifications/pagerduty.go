@@ -31,6 +31,11 @@ const (
 	// PagerDuty incident that shares its dedup_key, so an on-call engineer
 	// who acked in Slack does not also get paged by PagerDuty.
 	pagerdutyEventActionAcknowledge = "acknowledge"
+	// Events API v2 envelope keys, named once so the three event builders
+	// cannot drift on a spelling the API silently ignores.
+	pagerdutyFieldEventAction = "event_action"
+	pagerdutyFieldDedupKey    = "dedup_key"
+	pagerdutyFieldClient      = "client"
 
 	// pagerdutyLinkText labels the incident-page link sent in every trigger.
 	pagerdutyLinkText = "View incident in SolidPing"
@@ -142,13 +147,13 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 	}
 
 	event := map[string]any{
-		pagerdutyFieldRoutingKey: settings.RoutingKey,
-		"event_action":           pagerdutyEventActionTrigger,
+		pagerdutyFieldRoutingKey:  settings.RoutingKey,
+		pagerdutyFieldEventAction: pagerdutyEventActionTrigger,
 		// dedup_key = incident UID, so trigger/resolve (and any future
 		// trigger for the same incident) all correlate to ONE PagerDuty
 		// incident across its whole lifecycle.
-		"dedup_key": payload.Incident.UID,
-		"client":    productName,
+		pagerdutyFieldDedupKey: payload.Incident.UID,
+		pagerdutyFieldClient:   productName,
 		"payload": map[string]any{
 			"summary":  summary,
 			"source":   pagerdutySource(payload),
@@ -177,10 +182,10 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 
 func (s *PagerDutySender) resolve(ctx context.Context, settings *pagerdutySettings, payload *Payload) error {
 	event := map[string]any{
-		pagerdutyFieldRoutingKey: settings.RoutingKey,
-		"event_action":           pagerdutyEventActionResolve,
-		"dedup_key":              payload.Incident.UID,
-		"client":                 productName,
+		pagerdutyFieldRoutingKey:  settings.RoutingKey,
+		pagerdutyFieldEventAction: pagerdutyEventActionResolve,
+		pagerdutyFieldDedupKey:    payload.Incident.UID,
+		pagerdutyFieldClient:      productName,
 	}
 
 	return s.doRequest(ctx, event)
@@ -193,10 +198,10 @@ func (s *PagerDutySender) acknowledge(
 	ctx context.Context, settings *pagerdutySettings, payload *Payload,
 ) error {
 	event := map[string]any{
-		pagerdutyFieldRoutingKey: settings.RoutingKey,
-		"event_action":           pagerdutyEventActionAcknowledge,
-		"dedup_key":              payload.Incident.UID,
-		"client":                 productName,
+		pagerdutyFieldRoutingKey:  settings.RoutingKey,
+		pagerdutyFieldEventAction: pagerdutyEventActionAcknowledge,
+		pagerdutyFieldDedupKey:    payload.Incident.UID,
+		pagerdutyFieldClient:      productName,
 	}
 
 	return s.doRequest(ctx, event)
