@@ -18,6 +18,7 @@
 --   SECTION: custom-domain-state        status_pages lifecycle columns
 --   SECTION: must-change-password       users.must_change_password
 --   SECTION: flap-level                 incidents.flap_level
+--   SECTION: per-check-incidents       close active group incidents
 --
 -- CONSOLIDATION NOTE (2026-08-24): the support-inbox, custom-domain-state and
 -- must-change-password sections were folded in from what were briefly separate
@@ -760,3 +761,48 @@ alter table incidents add column flap_level int not null default 0;
 
 comment on column incidents.flap_level is
   'checks.flap_count at the moment this incident opened or last reopened. 0 = not flapping (first outage in the rolling window).';
+
+-- ==========================================================================
+-- SECTION: per-check-incidents
+-- Retire the group-incident lifecycle (spec 2026-08-24-14).
+-- ==========================================================================
+
+-- Incidents are per-check from now on. The group-incident WRITE path is gone
+-- from the binary: nothing creates, reopens, updates or resolves a row with
+-- check_group_uid set any more. Existing rows are kept verbatim — they still
+-- render, members and all — but an ACTIVE one would have no code left to close
+-- it, so it is closed here instead.
+--
+-- The alternative was to keep the whole group state machine alive purely to
+-- drain in-flight incidents. That is strictly more code, kept for one deploy,
+-- to preserve a shape the spec exists to delete. Members that are genuinely
+-- still down simply open their own per-check incident on their next failing
+-- result — which is the entire point of the change.
+--
+-- Member rows are cleared FIRST, while the parent is still active, so the
+-- update can be scoped to exactly the incidents this migration closes and
+-- history on already-resolved group incidents stays untouched.
+update incident_member_checks
+   set currently_failing = false
+ where currently_failing = true
+   and incident_uid in (
+         select uid from incidents
+          where check_group_uid is not null
+            and state = 1
+            and deleted_at is null
+       );
+
+--bun:split
+
+update incidents
+   set state           = 2,
+       resolved_at     = coalesce(resolved_at, now()),
+       resolution_type = coalesce(resolution_type, 'auto'),
+       description     = coalesce(description || E'\n\n', '')
+                         || 'Closed by the v0.18.0 migration to per-check incidents: group incidents'
+                         || ' are no longer maintained. Any member check still down opens its own'
+                         || ' incident on its next failing result.',
+       updated_at      = now()
+ where check_group_uid is not null
+   and state = 1
+   and deleted_at is null;

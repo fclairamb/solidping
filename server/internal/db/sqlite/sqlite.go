@@ -3188,6 +3188,9 @@ func (s *Service) GetIncident(ctx context.Context, orgUID, uid string) (*models.
 func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error) {
 	incident := new(models.Incident)
 
+	// Matched on incidents.check_uid alone — see the postgres twin for why the
+	// incident_member_checks OR-branch is gone (spec 2026-08-24-14).
+	//
 	// Restricted to check incidents: a burn incident carries a representative
 	// check purely so channel/escalation resolution has an anchor, and if this
 	// lookup returned one the check-result state machine would read a burning
@@ -3198,12 +3201,7 @@ func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID str
 		Where("kind = ?", models.IncidentKindCheck).
 		Where("state = ?", models.IncidentStateActive).
 		Where("deleted_at IS NULL").
-		Where(
-			"(check_uid = ? OR uid IN ("+
-				"SELECT incident_uid FROM incident_member_checks "+
-				"WHERE check_uid = ? AND currently_failing = 1))",
-			checkUID, checkUID,
-		).
+		Where("check_uid = ?", checkUID).
 		Limit(1).
 		Scan(ctx)
 	if err != nil {

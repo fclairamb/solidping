@@ -3240,8 +3240,13 @@ func (s *Service) GetIncident(ctx context.Context, orgUID, uid string) (*models.
 func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error) {
 	incident := new(models.Incident)
 
-	// Match per-check incidents on incidents.check_uid OR group incidents that
-	// currently include this check via incident_member_checks.
+	// Matched on incidents.check_uid alone. Group incidents are historical
+	// (spec 2026-08-24-14): the OR-branch that also matched an
+	// incident_member_checks row is gone, because that binding is exactly how
+	// a check's own failure disappeared into another check's incident — the
+	// prod check joined a stale nonprod group incident, and its page showed no
+	// incident at all. The v0.18.0 migration resolves every remaining active
+	// group incident, so nothing can be reached through a member row anyway.
 	//
 	// Restricted to check incidents: a burn incident carries a representative
 	// check purely so channel/escalation resolution has an anchor, and if this
@@ -3253,12 +3258,7 @@ func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID str
 		Where("kind = ?", models.IncidentKindCheck).
 		Where("state = ?", models.IncidentStateActive).
 		Where("deleted_at IS NULL").
-		Where(
-			"(check_uid = ? OR uid IN ("+
-				"SELECT incident_uid FROM incident_member_checks "+
-				"WHERE check_uid = ? AND currently_failing = TRUE))",
-			checkUID, checkUID,
-		).
+		Where("check_uid = ?", checkUID).
 		Limit(1).
 		Scan(ctx)
 	if err != nil {

@@ -17,6 +17,7 @@
 --   SECTION: custom-domain-state        status_pages lifecycle columns
 --   SECTION: must-change-password       users.must_change_password
 --   SECTION: flap-level                 incidents.flap_level
+--   SECTION: per-check-incidents       close active group incidents
 --
 -- CONSOLIDATION NOTE (2026-08-24): the support-inbox, custom-domain-state and
 -- must-change-password sections were folded in from what were briefly separate
@@ -635,3 +636,35 @@ alter table users add column must_change_password integer not null default 0;
 -- ==========================================================================
 
 alter table incidents add column flap_level integer not null default 0;
+
+-- ==========================================================================
+-- SECTION: per-check-incidents
+-- Retire the group-incident lifecycle (spec 2026-08-24-14). SQLite mirror of
+-- the per-check-incidents section of postgres/migrations/015_v0_18_0.up.sql —
+-- see there for the rationale.
+-- ==========================================================================
+
+update incident_member_checks
+   set currently_failing = 0
+ where currently_failing = 1
+   and incident_uid in (
+         select uid from incidents
+          where check_group_uid is not null
+            and state = 1
+            and deleted_at is null
+       );
+
+--bun:split
+
+update incidents
+   set state           = 2,
+       resolved_at     = coalesce(resolved_at, datetime('now')),
+       resolution_type = coalesce(resolution_type, 'auto'),
+       description     = coalesce(description || char(10) || char(10), '')
+                         || 'Closed by the v0.18.0 migration to per-check incidents: group incidents'
+                         || ' are no longer maintained. Any member check still down opens its own'
+                         || ' incident on its next failing result.',
+       updated_at      = datetime('now')
+ where check_group_uid is not null
+   and state = 1
+   and deleted_at is null;

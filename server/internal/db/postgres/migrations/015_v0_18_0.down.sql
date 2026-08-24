@@ -6,6 +6,19 @@
 -- Several sections are lossy on the way down; each says so in its own note.
 
 -- ==========================================================================
+-- SECTION: per-check-incidents
+-- Teardown half of the group-incident retirement (spec 2026-08-24-14).
+-- ==========================================================================
+
+-- NO-OP, and deliberately so. The up half changed DATA, not schema: it closed
+-- every group incident that was still active. There is no record of which rows
+-- those were, and re-opening them would resurrect incidents whose checks have
+-- long since recovered. A downgraded binary brings the group state machine
+-- back; it simply starts from "no group incident is currently open", which is
+-- a legal state it already handles (the next failing member opens one).
+
+
+-- ==========================================================================
 -- SECTION: flap-level
 -- Teardown half of the flap-level snapshot (spec 2026-08-24-05).
 -- ==========================================================================
