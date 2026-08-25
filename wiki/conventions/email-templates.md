@@ -67,6 +67,11 @@ path, so what it shows is what the mailer produces.
   blocks and `:hover` survive in a `<style>` block; everything else becomes a
   `style=""` attribute. Write classes, not inline styles — except where the style
   must survive a client that strips `<style>` entirely (the preheader div).
+- **Every gradient carries the flat color it degrades to.** Outlook's Word
+  engine ignores `background-image` outright, so a gradient alone renders as
+  nothing — white text on white for the header and the status banner.
+  `TestPreview_EveryGradientKeepsASolidFallback` scans every inlined style for
+  the pair.
 - **The design is light-only, and says so.** `color-scheme: light only` plus the
   matching meta tags stop Apple Mail / Outlook.com / Gmail-Android from
   auto-inverting the palette — which recolors the status banner that carries the

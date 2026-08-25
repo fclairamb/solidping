@@ -384,9 +384,12 @@ func TestBranding_HelperClassesWinOverTheGenericContentRules(t *testing.T) {
 		"Checks": []map[string]any{{"Name": "API", "HasData": true, "AvailabilityPct": "99.9"}},
 	})
 	r.NoError(err)
-	// The section subhead keeps its own size, not the generic .content h2 19px.
+	// The section subhead keeps its own size and spacing, not the generic
+	// .content h2 ones, and its accent rule survives the inlining.
 	r.Contains(report, "font-size:16px")
-	r.Contains(report, "margin:24px 0 8px")
+	r.Contains(report, "margin:26px 0 10px")
+	r.Contains(report, "border-left:3px solid #0072d5")
+	r.NotContains(report, "margin:0 0 16px;font-size:16px")
 
 	_, update, _, err := formatter.Format("status-subscriber-update.html", map[string]any{
 		"Subject": "s", "Label": "New incident", "Title": "T", "BodyMarkdown": "B",

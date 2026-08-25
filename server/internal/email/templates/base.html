@@ -36,10 +36,14 @@
         table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
         img { border: 0; outline: none; -ms-interpolation-mode: bicubic; }
         .wrapper { width: 100%; background-color: #f0f4f8; padding: 32px 12px; }
-        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(15,26,36,0.05), 0 2px 4px -2px rgba(15,26,36,0.05); }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e4e9ef; box-shadow: 0 1px 2px rgba(15,26,36,0.04), 0 12px 28px -8px rgba(15,26,36,0.14), 0 4px 10px -4px rgba(15,26,36,0.06); }
         /* Header: clean dark navy band matching dashboard chrome */
-        .header { background-color: #0f1a24; padding: 20px 32px; text-align: left; }
-        .header-logo { color: #ffffff; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
+        /* Every gradient in this file is paired with the background-color it
+           degrades to: Outlook's Word engine ignores background-image outright,
+           and a gradient without a solid fallback there means white text on
+           white. */
+        .header { background-color: #0f1a24; background-image: linear-gradient(135deg, #16273a 0%, #0f1a24 55%, #0a121a 100%); padding: 22px 32px; text-align: left; }
+        .header-logo { color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: -0.015em; text-decoration: none; }
         /* Logo images are remote <img> with a text alt — many clients block
            remote images by default, and the alt (plus, for SolidPing mail, the
            wordmark next to it) keeps the header legible when they do. */
@@ -52,39 +56,40 @@
         /* Accent rule under the header, shown on mail that carries no status
            banner. Height comes from the spacer cell's font-size/line-height
            rather than CSS height, which Outlook ignores on a <td>. */
-        .accent-bar { background-color: #0072d5; font-size: 0; line-height: 0; height: 3px; }
+        .accent-bar { background-color: #0072d5; background-image: linear-gradient(90deg, #0072d5 0%, #2b9bf4 45%, #da1d69 100%); font-size: 0; line-height: 0; height: 3px; }
         /* Status banner — full-width crisp status indicator */
-        .status-banner { padding: 12px 32px; text-align: left; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+        .status-banner { padding: 14px 32px; text-align: left; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+        .status-dot { font-size: 15px; line-height: 1; padding-right: 9px; opacity: 0.85; }
         .status-banner a { color: inherit; text-decoration: underline; }
-        .status-down { background-color: #dc2626; color: #ffffff !important; }
-        .status-recovered { background-color: #16a34a; color: #ffffff !important; }
-        .status-escalated { background-color: #d97706; color: #ffffff !important; }
-        .status-reopened { background-color: #ea580c; color: #ffffff !important; }
-        .status-comment { background-color: #475569; color: #ffffff !important; }
-        .status-acknowledged { background-color: #0284c7; color: #ffffff !important; }
+        .status-down { background-color: #dc2626; background-image: linear-gradient(135deg, #ef4444 0%, #dc2626 55%, #b91c1c 100%); color: #ffffff !important; }
+        .status-recovered { background-color: #16a34a; background-image: linear-gradient(135deg, #22c55e 0%, #16a34a 55%, #15803d 100%); color: #ffffff !important; }
+        .status-escalated { background-color: #d97706; background-image: linear-gradient(135deg, #f59e0b 0%, #d97706 55%, #b45309 100%); color: #ffffff !important; }
+        .status-reopened { background-color: #ea580c; background-image: linear-gradient(135deg, #fb923c 0%, #ea580c 55%, #c2410c 100%); color: #ffffff !important; }
+        .status-comment { background-color: #475569; background-image: linear-gradient(135deg, #64748b 0%, #475569 55%, #334155 100%); color: #ffffff !important; }
+        .status-acknowledged { background-color: #0284c7; background-image: linear-gradient(135deg, #0ea5e9 0%, #0284c7 55%, #0369a1 100%); color: #ffffff !important; }
         .content { padding: 32px; color: #1e293b; font-size: 15px; }
-        .content h1 { margin: 0 0 16px; font-size: 22px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.3; }
+        .content h1 { margin: 0 0 14px; font-size: 24px; font-weight: 700; color: #0f172a; letter-spacing: -0.03em; line-height: 1.25; }
         .content h2 { margin: 0 0 16px; font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; line-height: 1.35; }
         .content p { margin: 0 0 16px; }
         .content a { color: #0072d5; text-decoration: none; font-weight: 500; }
         .content a:hover { text-decoration: underline; }
         /* Helper classes */
-        .content h2.section-title { margin: 24px 0 8px; font-size: 16px; font-weight: 700; color: #0f172a; }
+        .content h2.section-title { margin: 26px 0 10px; padding-left: 10px; border-left: 3px solid #0072d5; font-size: 16px; font-weight: 700; color: #0f172a; line-height: 1.25; }
         .content p.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; margin: 0 0 6px; }
         .content .prose { white-space: pre-wrap; margin: 0 0 16px; }
-        .quote { margin: 16px 0; padding: 12px 16px; border-left: 4px solid #0072d5; background-color: #f8fafc; color: #1e293b; white-space: pre-wrap; border-radius: 0 6px 6px 0; }
+        .quote { margin: 18px 0; padding: 14px 18px; border-left: 4px solid #0072d5; background-color: #f8fafc; background-image: linear-gradient(180deg, #fbfcfd 0%, #f1f5f9 100%); color: #1e293b; white-space: pre-wrap; border-radius: 0 10px 10px 0; }
         .cta-wrap { margin: 20px 0 12px; }
         .actions-table { margin: 20px 0 12px; }
         .action-cell { padding-right: 12px; padding-bottom: 8px; vertical-align: middle; }
         /* Bulletproof table-based buttons */
         .btn-table { border-collapse: separate; }
-        .btn-table td { border-radius: 6px; text-align: center; }
-        .btn { display: inline-block; padding: 11px 22px; text-decoration: none; font-weight: 600; font-size: 14px; border-radius: 6px; mso-padding-alt: 0; }
-        .btn-primary td { background-color: #0072d5; }
+        .btn-table td { border-radius: 8px; text-align: center; }
+        .btn { display: inline-block; padding: 12px 24px; text-decoration: none; font-weight: 600; font-size: 14px; letter-spacing: 0.01em; border-radius: 8px; mso-padding-alt: 0; }
+        .btn-primary td { background-color: #0072d5; background-image: linear-gradient(180deg, #2b8ee6 0%, #0072d5 100%); box-shadow: 0 2px 5px -1px rgba(0,114,213,0.45); }
         .btn-primary a.btn { color: #ffffff !important; }
-        .btn-success td { background-color: #16a34a; }
+        .btn-success td { background-color: #16a34a; background-image: linear-gradient(180deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 2px 5px -1px rgba(22,163,74,0.42); }
         .btn-success a.btn { color: #ffffff !important; }
-        .btn-secondary td { background-color: #f8fafc; border: 1px solid #cbd5e1; }
+        .btn-secondary td { background-color: #ffffff; background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; box-shadow: 0 1px 2px rgba(15,26,36,0.06); }
         .btn-secondary a.btn { color: #334155 !important; }
         /* Legacy single-<a> CTA classes */
         .cta { display: inline-block; padding: 11px 22px; background-color: #0072d5; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; }
@@ -95,10 +100,10 @@
            ragged right edge with no bottom rule. Separate + zero spacing draws
            the full rounded box and clips the label column's grey at the
            corners. */
-        .details-table { width: 100%; margin: 16px 0 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
-        .details-table td { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .details-table { width: 100%; margin: 18px 0 22px; border: 1px solid #e4e9ef; border-radius: 12px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
+        .details-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #eef2f6; vertical-align: middle; }
         .details-table tr:last-child td { border-bottom: none; }
-        .details-table td.label { color: #64748b; width: 34%; background-color: #f8fafc; font-weight: 500; border-right: 1px solid #f1f5f9; }
+        .details-table td.label { color: #64748b; width: 34%; background-color: #f8fafc; background-image: linear-gradient(180deg, #fbfcfd 0%, #f4f7fa 100%); font-weight: 600; font-size: 13px; border-right: 1px solid #eef2f6; }
         .details-table td.value { color: #0f172a; font-weight: 500; }
         /* <th> falls back to the label styling: a browser's default <th> is
            centered, bold and unpadded, which silently wrecks the two-column
@@ -108,8 +113,13 @@
         .details-table th { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; text-align: left; color: #64748b; width: 34%; background-color: #f8fafc; font-weight: 500; border-right: 1px solid #f1f5f9; }
         .details-table tr:last-child th { border-bottom: none; }
         /* Headline figure — one number that carries the mail (report totals). */
-        .metric { margin: 16px 0 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #f8fafc; padding: 20px 24px; text-align: center; border-collapse: separate; border-spacing: 0; }
-        .metric-value { display: block; font-size: 34px; line-height: 1.15; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; }
+        .metric { margin: 18px 0 22px; border: 1px solid #e4e9ef; border-radius: 12px; background-color: #f8fafc; background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%); padding: 22px 24px; text-align: center; border-collapse: separate; border-spacing: 0; box-shadow: inset 0 1px 0 #ffffff; }
+        .metric-value { display: block; font-size: 36px; line-height: 1.12; font-weight: 700; color: #0f172a; letter-spacing: -0.03em; }
+        /* State color on the figure itself — the one number the mail is about
+           should read as good or bad before a word of it is. */
+        .metric-value.is-bad { color: #b91c1c; }
+        .metric-value.is-good { color: #15803d; }
+        .metric-value.is-warn { color: #b45309; }
         .metric-label { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; margin-top: 6px; }
         /* Inline state pill, e.g. an SLO's health next to its attainment. */
         .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -125,9 +135,10 @@
            never competing with the facts a human acts on. */
         .content p.footnote { font-size: 12px; color: #94a3b8; margin: 20px 0 0; padding-top: 14px; border-top: 1px solid #f1f5f9; line-height: 1.5; }
         .content p.footnote .mono { font-size: 12px; color: #94a3b8; }
-        .footer { padding: 24px 32px; background-color: #f8fafc; color: #64748b; font-size: 12px; text-align: center; border-top: 1px solid #e2e8f0; line-height: 1.6; }
+        .footer { padding: 26px 32px; background-color: #f8fafc; background-image: linear-gradient(180deg, #ffffff 0%, #f4f7fa 100%); color: #64748b; font-size: 12px; text-align: center; border-top: 1px solid #eef2f6; line-height: 1.6; }
         .footer a { color: #475569; text-decoration: underline; }
         .footer p { margin: 0 0 8px; }
+        .footer-brand { display: block; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eef2f6; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
         .footer p:last-child { margin: 0; }
         @media (max-width: 480px) {
             .content { padding: 24px 20px; }
@@ -237,6 +248,9 @@
                             <p>You received this email because someone used your address with SolidPing.<br>
                             If this wasn't you, you can safely ignore it.</p>
                             {{end}}
+                            {{- /* Product signature. Suppressed for white-label
+                                 mail, which by definition must not name us. */ -}}
+                            {{if not (field . "HideBranding")}}<span class="footer-brand">SolidPing &middot; uptime monitoring</span>{{end}}
                         </td>
                     </tr>
                 </table>
@@ -264,6 +278,6 @@
      invoking this partial: {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Down"}}{{end}} */}}
 {{define "statusbanner-render"}}
 <tr>
-    <td class="status-banner status-{{.Variant}}">{{.Label}}</td>
+    <td class="status-banner status-{{.Variant}}"><span class="status-dot">&#9679;</span>{{.Label}}</td>
 </tr>
 {{end}}

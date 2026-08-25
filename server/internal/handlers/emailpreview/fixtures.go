@@ -294,7 +294,7 @@ func uptimeReportFixture() map[string]any {
 		keyAvailability:   "99.950",
 		"CheckCount":      2,
 		"IncidentCount":   3,
-		"LongestIncident": "42m 0s",
+		"LongestIncident": "42m",
 		"TotalDowntime":   "1h 5m",
 		"Checks": []map[string]any{
 			{keyName: fixtureCheckName, keyHasData: true, keyAvailability: "99.980"},

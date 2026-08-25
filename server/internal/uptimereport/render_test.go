@@ -20,7 +20,7 @@ func sampleData() *uptimereport.Data {
 		AvailabilityPct: "99.950",
 		CheckCount:      2,
 		IncidentCount:   3,
-		LongestIncident: "42m 0s",
+		LongestIncident: "42m",
 		TotalDowntime:   "1h 5m",
 		Checks: []uptimereport.CheckRow{
 			{Name: "Production API", HasData: true, AvailabilityPct: "99.980"},
@@ -97,7 +97,7 @@ func TestUptimeReportRendersRealContent(t *testing.T) {
 		r.Contains(body, "Healthy")
 		r.Contains(body, "21m 30s")
 		// Incident context.
-		r.Contains(body, "42m 0s")
+		r.Contains(body, "42m")
 		// Bulk-mail footer.
 		r.Contains(body, "https://solidping.example/unsubscribe?token=abc")
 	}

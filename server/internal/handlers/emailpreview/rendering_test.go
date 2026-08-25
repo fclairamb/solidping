@@ -184,3 +184,41 @@ func TestPreview_IncidentUIDIsAReferenceNotAFact(t *testing.T) {
 		})
 	}
 }
+
+// styleAttrRE captures every inlined style attribute in a rendered mail.
+var styleAttrRE = regexp.MustCompile(`style="([^"]*)"`)
+
+// TestPreview_EveryGradientKeepsASolidFallback guards the polish pass.
+//
+// Outlook's Word rendering engine ignores background-image outright. A gradient
+// declared without the background-color it degrades to therefore renders as
+// nothing — which for the header and the status banner means white text on a
+// white background, i.e. an incident alert whose severity color, and in the
+// header its entire content, silently disappears for a large share of corporate
+// readers. Every gradient in base.html is paired with a flat color; this is
+// what stops the next one from not being.
+func TestPreview_EveryGradientKeepsASolidFallback(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t)
+
+	for _, tmpl := range shippedTemplates(t) {
+		t.Run(tmpl, func(t *testing.T) {
+			t.Parallel()
+
+			rec := doGet(t, router, "/api/mgmt/email-preview/"+tmpl)
+			require.Equal(t, http.StatusOK, rec.Code)
+
+			for _, match := range styleAttrRE.FindAllStringSubmatch(rec.Body.String(), -1) {
+				style := match[1]
+				if !strings.Contains(style, "background-image:linear-gradient") {
+					continue
+				}
+
+				require.Contains(t, style, "background-color:",
+					"%s declares a gradient with no solid fallback — it renders as nothing in Outlook: %s",
+					tmpl, style)
+			}
+		})
+	}
+}
