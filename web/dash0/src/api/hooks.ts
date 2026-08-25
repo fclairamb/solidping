@@ -1477,6 +1477,18 @@ export function useResultTiers(
     isLoading: queries.some((q) => q.isLoading),
     isFetching: queries.some((q) => q.isFetching),
     error: queries.find((q) => q.error)?.error ?? null,
+    /** True while this pass has not settled — broader than `isLoading`,
+     * which in react-query v5 is `isPending && isFetching` and so reads
+     * `false` for a query that is disabled (held back by `enabled`) or has
+     * not started fetching yet, even though it plainly has not resolved.
+     * `[].some(...)` is also vacuously `false`, so a tier list that has not
+     * been populated yet must not be mistaken for "settled" either — the
+     * `tiers.length > 0 && queries.length === 0` guard exists for that,
+     * even though with `useQueries` mapping 1:1 over `tiers` it can never
+     * actually diverge from `queries.some(...)` today. */
+    isPending:
+      queries.some((q) => q.isPending) ||
+      (tiers.length > 0 && queries.length === 0),
   };
 }
 
@@ -1586,6 +1598,18 @@ export function useChartWindowResults(
     rawError: raw.error,
     /** True while the seam has not arrived yet — the progressive-render phase. */
     rawPending: raw.isLoading,
+    /**
+     * True when no rows have merged yet AND at least one pass has not
+     * settled. Distinct from `isLoading` (pass 1 only) and `rawPending`
+     * (pass 2's own `isLoading`, which reads `false` while pass 2 is
+     * disabled/held back behind pass 1): a caller that renders a terminal
+     * "no data" state off `chartData.length === 0` must gate it on THIS
+     * flag instead, or it flashes that message during the window between
+     * pass 1 settling empty and pass 2 (now enabled) actually resolving —
+     * see spec 2026-08-25-03. Once both passes have genuinely settled with
+     * nothing, this is `false` and the empty state is honest.
+     */
+    isEmptyPending: data.data.length === 0 && (rollup.isPending || raw.isPending),
   };
 }
 
