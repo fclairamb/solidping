@@ -8,7 +8,14 @@
  */
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  configure,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -20,6 +27,50 @@ vi.mock("./client", () => ({
 
 const { useChartWindowResults } = await import("./hooks");
 const { getStartFor } = await import("@/lib/chart-window");
+
+/**
+ * Every `waitFor` in this file gets the budget the poll-tick assertion used to
+ * carry alone as `{ timeout: 3000 }`.
+ *
+ * Under full-suite parallel load a single jsdom test can take several times its
+ * solo wall time, and that exposure is identical at every call site here — so it
+ * is set once rather than decorated onto whichever assertion lost the race most
+ * recently. This is a deadline, not a delay: a satisfied predicate still returns
+ * on the first poll, so passing runs are not slowed by it.
+ *
+ * It is deliberately NOT the fix for the flake this file was failing on. That
+ * one was an assertion that could never become true (see FROZEN_NOW); a bigger
+ * deadline only makes such a failure slower, never green.
+ */
+configure({ asyncUtilTimeout: 3000 });
+
+/**
+ * The clock is frozen for the whole suite.
+ *
+ * Both the fixtures and the expectations are derived from `Date.now()` — the
+ * rollup buckets, the seam the fixture implies, and `getStartFor("month")` —
+ * but they are evaluated at *different* moments: the fixture when the hook
+ * issues the request, the expectation when the assertion runs. On a real clock
+ * every millisecond that elapses in between is a chance for the two to disagree,
+ * and the failure mode is not a slow test but an assertion that can never pass:
+ *
+ * - `rawRows()` sampled `Date.now()` once per region, so a millisecond boundary
+ *   crossed mid-loop gave two of the three rows a later `periodStart`.
+ *   `mergeResultTiers` sorts `periodStart DESC, uid DESC`, so 1 ms permanently
+ *   reorders the merged series and `toBe("r-us,r-eu,r-ap")` becomes
+ *   unsatisfiable — a guaranteed `waitFor` timeout, which is exactly the
+ *   ~1019 ms `checkCallback` failure this file was reported with. Measured at
+ *   ~0.03 % of calls on an idle machine, and far more under load.
+ * - `getStartFor("month")` is `startOfMinute(now) - 30 d`, so re-deriving it in
+ *   an assertion straddles a minute boundary roughly once per 1000 runs.
+ * - `expectedSeam()` rebuilds the rollup fixture from `Date.now()` and has the
+ *   same exposure across an hour boundary.
+ *
+ * `toFake: ["Date"]` freezes Date and Date only: `setTimeout`/`setInterval` stay
+ * real, so react-query's poll interval still fires and `@testing-library`'s
+ * `waitFor` keeps its real-timer path.
+ */
+const FROZEN_NOW = new Date(Date.UTC(2026, 7, 22, 12, 34, 56, 789));
 
 const ONE_MINUTE = 60_000;
 const ONE_HOUR = 3_600_000;
@@ -67,12 +118,17 @@ function expectedSeam(lagHours: number): string {
   return rollupRows(lagHours)[0].periodEnd;
 }
 
+/** Three raw rows at ONE instant — sampled once, not once per region. The
+ * merged order the tests assert (`r-us,r-eu,r-ap`) is the `uid DESC` tie-break,
+ * which only holds while the three share a `periodStart`. */
 function rawRows() {
+  const at = new Date(Date.now() - ONE_MINUTE).toISOString();
+
   return REGIONS.map((region) => ({
     uid: `r-${region}`,
     region,
     periodType: "raw",
-    periodStart: new Date(Date.now() - ONE_MINUTE).toISOString(),
+    periodStart: at,
     durationMs: 120,
   }));
 }
@@ -151,11 +207,16 @@ function serve(lagHours: number, opts?: { rollup?: unknown[]; raw?: () => Promis
 
 describe("useChartWindowResults", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(FROZEN_NOW);
     issued = [];
     mocks.apiFetch.mockReset();
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it("issues one rollup page and one raw page, with raw bounded to the seam", async () => {
     serve(1);
@@ -283,10 +344,10 @@ describe("useChartWindowResults", () => {
     // re-render, a minute tick in between would silently re-key the raw query
     // and issue a second request for the same window — and would desynchronise
     // the chart from the route, which is the cache hit asserted above.
-    vi.useFakeTimers({ toFake: ["Date"] });
+    // The clock is already frozen by beforeEach; this test only moves it.
     vi.setSystemTime(new Date(Date.UTC(2026, 7, 22, 12, 0, 59, 500)));
 
-    try {
+    {
       // Brand-new check: no seam, so the raw window IS the window bound — the
       // branch where a re-derived bound is observable on the wire.
       serve(1, { rollup: [] });
@@ -316,8 +377,6 @@ describe("useChartWindowResults", () => {
       expect(rawRequests()).toHaveLength(1);
       expect(rollupRequests()).toHaveLength(1);
       expect(rawRequests()[0].get("periodStartAfter")).toBe(windowStart);
-    } finally {
-      vi.useRealTimers();
     }
   });
 
@@ -329,9 +388,8 @@ describe("useChartWindowResults", () => {
       wrapper: wrapper(newClient()),
     });
 
-    await waitFor(() => expect(rawRequests().length).toBeGreaterThanOrEqual(3), {
-      timeout: 3000,
-    });
+    // (The 3 s budget this call used to carry inline is now the file default.)
+    await waitFor(() => expect(rawRequests().length).toBeGreaterThanOrEqual(3));
     expect(rollupRequests()).toHaveLength(1);
   });
 });
