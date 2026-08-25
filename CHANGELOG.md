@@ -5,6 +5,7 @@
 
 ### Bug Fixes
 
+* **dash0:** the response-time chart no longer says "No data available" while it is still loading — on first paint and on every day → week → month switch. `useChartWindowResults` gained an `isEmptyPending` signal, so the terminal empty state is gated on the whole two-pass window having settled rather than on pass 1 alone, while the progressive render keeps drawing rollups in the very same DOM node as raw merges in. The chart-window suite is also frozen against the wall clock instead of racing it: a fixture sampling `Date.now()` once per region could straddle a millisecond boundary and reorder the merged series, turning one assertion unsatisfiable and its `waitFor` into a guaranteed timeout ([#255](https://github.com/fclairamb/solidping/issues/255)) ([2175fd4](https://github.com/fclairamb/solidping/commit/2175fd456cfe05a9d1335284a6b5819d62026b34))
 * **deps:** update github.com/dop251/goja digest to 58e940e ([#253](https://github.com/fclairamb/solidping/issues/253)) ([27a5915](https://github.com/fclairamb/solidping/commit/27a59157cb037e8a881c6b729e6408909b03a453))
 
 ## [0.18.0](https://github.com/fclairamb/solidping/compare/v0.17.0...v0.18.0) (2026-08-25)
