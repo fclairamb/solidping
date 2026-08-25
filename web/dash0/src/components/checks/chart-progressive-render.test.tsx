@@ -79,6 +79,10 @@ function state(rows: unknown[], extra: Record<string, unknown> = {}) {
     error: null,
     rawError: null,
     rawPending: false,
+    // Defaults to "settled": most cases in this file are asserting about a
+    // pass that has already resolved. Cases about the loading/empty flash
+    // (spec 2026-08-25-03) override this explicitly.
+    isEmptyPending: false,
     ...extra,
   };
 }
@@ -127,6 +131,8 @@ describe("progressive chart render", () => {
     // Drawn from rollups alone — not a skeleton, not "no data".
     const wrapper = screen.getByTestId("response-time-chart-wrapper");
     expect(wrapper).toBeTruthy();
+    expect(view.container.querySelector(".animate-pulse")).toBeNull();
+    expect(screen.queryByTestId("response-time-chart-no-data")).toBeNull();
     // The zoom control and the pinned box are both live before raw arrives.
     expect(screen.getByText("Reset zoom")).toBeTruthy();
     expect(screen.getByTestId("pinned-result-box")).toBeTruthy();
@@ -150,6 +156,8 @@ describe("progressive chart render", () => {
     // The very same DOM node: no unmount, no remount, so nothing that lives in
     // the chart's own state (zoom drag, hover) could have been reset.
     expect(screen.getByTestId("response-time-chart-wrapper")).toBe(wrapper);
+    expect(view.container.querySelector(".animate-pulse")).toBeNull();
+    expect(screen.queryByTestId("response-time-chart-no-data")).toBeNull();
     expect(screen.getByText("Reset zoom")).toBeTruthy();
     expect(screen.getByTestId("pinned-result-box")).toBeTruthy();
   });
@@ -172,5 +180,80 @@ describe("progressive chart render", () => {
     renderChart();
 
     expect(screen.queryByTestId("response-time-chart-raw-error")).toBeNull();
+  });
+
+  // Spec 2026-08-25-03: the check page's chart rendered a terminal, negative
+  // "No data available" during a phase that is really just "the answer isn't
+  // in yet" — pass 1 settled with zero rows, pass 2 (now enabled) still
+  // pending. `isEmptyPending` is the hook's honest answer to "is the window
+  // known to be empty, or do we simply not know yet".
+  //
+  // Deliberately NOT using renderChart()/its zoom props: a zoom (or
+  // full-range) pins the x-domain and boundary-clamps the series even with
+  // zero rows (response-time-chart.tsx:489, "still show the window and the
+  // Reset control"), so chartData is never actually empty in that mode —
+  // it would make chartData.length === 0 unreachable and the assertions
+  // below vacuous.
+  function renderUnzoomedChart(period: "day" | "week" = "day") {
+    return render(
+      <ResponseTimeChart
+        org="acme"
+        checkUid="check-1"
+        periodMs={ONE_MINUTE}
+        initialPeriod={period}
+      />,
+    );
+  }
+
+  it("shows the skeleton, not \"no data\", when pass 1 settled empty and pass 2 is still pending", () => {
+    mocks.useChartWindowResults.mockReturnValue(
+      state([], { rawPending: true, isEmptyPending: true }),
+    );
+    const view = renderUnzoomedChart();
+
+    expect(view.container.querySelector(".animate-pulse")).toBeTruthy();
+    expect(screen.queryByTestId("response-time-chart-no-data")).toBeNull();
+    expect(screen.queryByTestId("response-time-chart-wrapper")).toBeNull();
+  });
+
+  it("shows \"no data\" once the whole window has settled with nothing", () => {
+    // Positive control for the case above — without it, deleting the empty
+    // state entirely would make the previous test pass too.
+    mocks.useChartWindowResults.mockReturnValue(
+      state([], { isEmptyPending: false }),
+    );
+    renderUnzoomedChart();
+
+    expect(screen.getByTestId("response-time-chart-no-data")).toBeTruthy();
+    expect(screen.queryByTestId("response-time-chart-wrapper")).toBeNull();
+  });
+
+  it("shows the skeleton, not \"no data\", right after a range switch lands on a fresh pending-empty window", () => {
+    // Some data on screen (unzoomed, so this is real data, not a boundary
+    // clamp), raw still merging.
+    mocks.useChartWindowResults.mockReturnValue(
+      state(ROLLUPS, { rawPending: true }),
+    );
+    const view = renderUnzoomedChart("day");
+    expect(screen.getByTestId("response-time-chart-wrapper")).toBeTruthy();
+
+    // updateTimeRange (response-time-chart.tsx:415) re-keys BOTH query keys on
+    // every range switch, so nothing is cached under the new keys and the
+    // hook re-enters the sequence from scratch — including the empty-pass-1
+    // step this spec fixes.
+    mocks.useChartWindowResults.mockReturnValue(
+      state([], { rawPending: true, isEmptyPending: true }),
+    );
+    view.rerender(
+      <ResponseTimeChart
+        org="acme"
+        checkUid="check-1"
+        periodMs={ONE_MINUTE}
+        initialPeriod="week"
+      />,
+    );
+
+    expect(view.container.querySelector(".animate-pulse")).toBeTruthy();
+    expect(screen.queryByTestId("response-time-chart-no-data")).toBeNull();
   });
 });
