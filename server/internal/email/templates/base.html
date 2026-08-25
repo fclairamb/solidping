@@ -21,6 +21,15 @@
            SolidPing even before the logo image loads. */
         .header { background-color: #0f1a24; padding: 22px 32px; text-align: left; border-bottom: 3px solid #da1d69; }
         .header-logo { color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
+        /* Logo images are remote <img> with a text alt — many clients block
+           remote images by default, and the alt (plus, for SolidPing mail, the
+           wordmark next to it) keeps the header legible when they do. */
+        .header-mark { width: 34px; padding-right: 12px; vertical-align: middle; }
+        .header-name { vertical-align: middle; }
+        .header-logo-img { display: block; border: 0; outline: none; text-decoration: none; }
+        .header-org-logo { display: block; border: 0; outline: none; max-height: 40px; }
+        .header-attribution { vertical-align: middle; }
+        .header-wordmark { color: #b9c5d0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
         /* Status banner — a full-width background bar, not just colored text,
            so the state is legible even with images/CSS partially stripped. */
         .status-banner { padding: 14px 32px; text-align: left; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
@@ -87,7 +96,42 @@
                 <table class="container" role="presentation" width="600" cellpadding="0" cellspacing="0">
                     <tr>
                         <td class="header">
+                            {{- /* Branding, resolved here rather than per template.
+                                 Every key is read through the nil-tolerant "field"
+                                 helper so a struct-backed view model that does not
+                                 carry it renders empty instead of failing to execute
+                                 (see formatter.go's field(), and the trap written up
+                                 in supportreply.go).
+
+                                 OrgLogoURL   the sender's logo — the organization's
+                                              for operator mail, the STATUS PAGE's for
+                                              status-subscriber mail (a subscriber
+                                              opted into a page, not into an org).
+                                 BrandName    alt text / wordmark for that logo.
+                                 HideBranding white-label opt-in: no logo at all. */ -}}
+                            {{- $hideBranding := field . "HideBranding" -}}
+                            {{- $brandName := field . "BrandName" -}}
+                            {{- $orgLogo := absURL (field . "OrgLogoURL") -}}
+                            {{- $productLogo := productLogoURL -}}
+                            {{if $hideBranding}}
+                            {{- if $brandName}}<span class="header-logo">{{$brandName}}</span>{{end -}}
+                            {{else if $orgLogo}}
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td align="left"><img class="header-org-logo" src="{{$orgLogo}}" alt="{{if $brandName}}{{$brandName}}{{else}}Logo{{end}}" height="40"></td>
+                                    <td class="header-attribution" align="right"><span class="header-wordmark">sent by SolidPing</span></td>
+                                </tr>
+                            </table>
+                            {{else if $productLogo}}
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td class="header-mark"><img class="header-logo-img" src="{{$productLogo}}" alt="SolidPing" width="34" height="34"></td>
+                                    <td class="header-name"><span class="header-logo">SolidPing</span></td>
+                                </tr>
+                            </table>
+                            {{else}}
                             <span class="header-logo">SolidPing</span>
+                            {{end}}
                         </td>
                     </tr>
                     {{block "statusbanner" .}}{{end}}
@@ -98,14 +142,25 @@
                     </tr>
                     <tr>
                         <td class="footer">
-                            {{if .OrgName}}<p>{{.OrgName}} — sent by SolidPing</p>{{end}}
+                            {{- /* Every key the shared wrapper reads goes through the
+                                 nil-tolerant "field" helper, never through a direct
+                                 `.Field` access: html/template ERRORS on a missing
+                                 STRUCT field, and several view models in this repo
+                                 are structs rather than maps. A direct access here
+                                 breaks those templates at SEND time, invisibly. */ -}}
+                            {{- $footerOrgName := field . "OrgName" -}}
+                            {{- $dashboardURL := field . "DashboardURL" -}}
+                            {{- $docsURL := field . "DocsURL" -}}
+                            {{- $unsubscribeURL := field . "UnsubscribeURL" -}}
+                            {{- $unsubscribeCheckName := field . "UnsubscribeCheckName" -}}
+                            {{if and $footerOrgName (not (field . "HideBranding"))}}<p>{{$footerOrgName}} — sent by SolidPing</p>{{end}}
                             <p>
-                                {{if .DashboardURL}}<a href="{{.DashboardURL}}">Dashboard</a>{{end}}
-                                {{if and .DashboardURL .DocsURL}} &middot; {{end}}
-                                {{if .DocsURL}}<a href="{{.DocsURL}}">Docs</a>{{end}}
+                                {{if $dashboardURL}}<a href="{{$dashboardURL}}">Dashboard</a>{{end}}
+                                {{if and $dashboardURL $docsURL}} &middot; {{end}}
+                                {{if $docsURL}}<a href="{{$docsURL}}">Docs</a>{{end}}
                             </p>
-                            {{if .UnsubscribeURL}}
-                            <p><a href="{{.UnsubscribeURL}}">{{if .UnsubscribeCheckName}}Unsubscribe from alerts for {{.UnsubscribeCheckName}}{{else}}Unsubscribe from alerts{{end}}</a></p>
+                            {{if $unsubscribeURL}}
+                            <p><a href="{{$unsubscribeURL}}">{{if $unsubscribeCheckName}}Unsubscribe from alerts for {{$unsubscribeCheckName}}{{else}}Unsubscribe from alerts{{end}}</a></p>
                             {{else}}
                             <p>You received this email because someone used your address with SolidPing.<br>
                             If this wasn't you, you can safely ignore it.</p>

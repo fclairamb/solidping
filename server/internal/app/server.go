@@ -335,7 +335,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	emailSender := email.NewSender(&cfg.Email, slog.Default())
 	svcList.EmailSender = emailSender
 
-	emailFormatter, err := email.NewFormatter()
+	// The base URL is what makes the logo <img> in base.html absolute — the
+	// same base DashboardURL / DocsURL are built from, so an email never mixes
+	// two origins.
+	emailFormatter, err := email.NewFormatter(email.WithBaseURL(cfg.Server.BaseURL))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create email formatter: %w", err)
 	}

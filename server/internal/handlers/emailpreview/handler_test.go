@@ -33,7 +33,10 @@ func shippedTemplates(t *testing.T) []string {
 func newTestRouter(t *testing.T) *httpx.Router {
 	t.Helper()
 
-	formatter, err := email.NewFormatter()
+	// A base URL is configured so the preview exercises the same absolute-asset
+	// path the real send does (the logo <img> in base.html) rather than a
+	// degraded no-base-URL rendering nobody ever receives.
+	formatter, err := email.NewFormatter(email.WithBaseURL("https://preview.example"))
 	require.NoError(t, err)
 
 	handler := emailpreview.NewHandler(formatter, &config.Config{})
@@ -179,4 +182,24 @@ func TestPreviewIndex_ListsEveryTemplate(t *testing.T) {
 		r.True(row.HasText, "no plaintext part for %s", tmpl)
 		r.NotContains(row.Subject, "<no value>", "unresolved view-model key in %s subject", tmpl)
 	}
+}
+
+// TestPreview_RendersTheBrandedHeader pins that the preview shows the real
+// branded wrapper — the absolute logo URL and its text fallback — rather than
+// a stripped-down rendering. It is the surface stage 2 and 3 are iterated on,
+// so a preview that silently lost the header would defeat the whole point.
+func TestPreview_RendersTheBrandedHeader(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	router := newTestRouter(t)
+
+	rec := doGet(t, router, "/api/mgmt/email-preview/welcome.html")
+	r.Equal(http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	r.Contains(body, `src="https://preview.example/dash0/logo.png"`)
+	r.Contains(body, `alt="SolidPing"`)
+	// Premailer really ran: the class-based rules are inlined as style="…".
+	r.Contains(body, "background-color:#0f1a24")
 }

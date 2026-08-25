@@ -12,6 +12,7 @@ const (
 	fixtureIncidentUID    = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
 	fixtureIncidentNumber = 42
 	fixtureCheckName      = "Production API"
+	fixtureStatusPageName = "Acme Status"
 
 	keyOrgName      = "OrgName"
 	keyDashboardURL = "DashboardURL"
@@ -196,8 +197,8 @@ func pagingNudgeFixture() map[string]any {
 // (statussubscribers.Handler.sendConfirmMail).
 func statusSubscriberConfirmFixture() map[string]any {
 	return map[string]any{
-		keySubject:   "Confirm your subscription to Acme Status",
-		"PageName":   "Acme Status",
+		keySubject:   "Confirm your subscription to " + fixtureStatusPageName,
+		"PageName":   fixtureStatusPageName,
 		"ConfirmURL": "https://solidping.example/api/v1/public/status-subscribers/confirm?token=preview-token",
 	}
 }
@@ -207,12 +208,12 @@ func statusSubscriberConfirmFixture() map[string]any {
 // three kinds, distinguished by Label/Title/Subject.
 func statusSubscriberUpdateFixture() map[string]any {
 	return map[string]any{
-		keySubject:     "[Acme Status] New incident: Elevated error rates",
+		keySubject:     "[" + fixtureStatusPageName + "] New incident: Elevated error rates",
 		"Label":        "New incident",
 		"Title":        "Elevated error rates",
 		"BodyMarkdown": "We are investigating elevated error rates on the API.",
 		"LinkURL":      "https://solidping.example/status0/acme/acme-status",
-		"PageName":     "Acme Status",
+		"PageName":     fixtureStatusPageName,
 		"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/" +
 			"unsubscribe?token=preview-token",
 	}
@@ -344,7 +345,7 @@ func commentIncidentFixture() map[string]any {
 func customDomainDemotedFixture() map[string]any {
 	return map[string]any{
 		keyOrgName:       fixtureOrgName,
-		"StatusPageName": "Acme Status",
+		"StatusPageName": fixtureStatusPageName,
 		"Domain":         "status.acme.com",
 		"Diagnostic":     "CNAME lookup for status.acme.com returned NXDOMAIN",
 		"SettingsURL": "https://solidping.example/dash0/orgs/acme/status-pages/" +

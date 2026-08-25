@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"reflect"
 	"strings"
 
 	"github.com/vanng822/go-premailer/premailer"
@@ -20,22 +21,164 @@ var (
 	errDictKeyNotString = errors.New("dict: key is not a string")
 )
 
+// productLogoPath is the SolidPing logo served on every host, embedded from
+// res/logo.png via `make sync-brand-assets`. PNG rather than SVG on purpose:
+// SVG support in mail clients is patchy to non-existent.
+const productLogoPath = "/dash0/logo.png"
+
 // TemplateFormatter implements the Formatter interface using Go templates.
 type TemplateFormatter struct {
 	funcMap template.FuncMap
+	// baseURL is the server base URL — the same one DashboardURL / DocsURL are
+	// built from. Absolute asset URLs (the logo in base.html's header) are
+	// derived from it. Empty is legal: the templates then fall back to their
+	// text wordmark instead of rendering a broken image.
+	baseURL string
+}
+
+// Option configures a TemplateFormatter. Variadic rather than a new required
+// parameter so the many test constructions of a bare formatter keep compiling.
+type Option func(*TemplateFormatter)
+
+// WithBaseURL sets the server base URL used to build absolute asset URLs in
+// email bodies (logos). Pass config.Server.BaseURL — the same value that
+// produces the dashboard and docs links, so an email never mixes two origins.
+func WithBaseURL(baseURL string) Option {
+	return func(f *TemplateFormatter) {
+		f.baseURL = strings.TrimRight(baseURL, "/")
+	}
 }
 
 // NewFormatter creates a new template formatter.
-func NewFormatter() (*TemplateFormatter, error) {
-	funcMap := template.FuncMap{
+func NewFormatter(opts ...Option) (*TemplateFormatter, error) {
+	formatter := &TemplateFormatter{}
+
+	for _, opt := range opts {
+		opt(formatter)
+	}
+
+	formatter.funcMap = template.FuncMap{
 		"upper": strings.ToUpper,
 		"lower": strings.ToLower,
 		"dict":  dict,
+		"field": field,
+		// absURL and productLogoURL close over the formatter so templates never
+		// have to know the base URL — no view model carries it.
+		"absURL":         formatter.absoluteURL,
+		"productLogoURL": formatter.productLogoURL,
 	}
 
-	return &TemplateFormatter{
-		funcMap: funcMap,
-	}, nil
+	return formatter, nil
+}
+
+// productLogoURL returns the absolute URL of the SolidPing logo, or "" when no
+// base URL is configured (in which case base.html renders its text wordmark).
+func (f *TemplateFormatter) productLogoURL() string {
+	if f.baseURL == "" {
+		return ""
+	}
+
+	return f.baseURL + productLogoPath
+}
+
+// absoluteURL turns a stored logo reference into something an email client can
+// actually load. Organization and status-page logos are stored either as an
+// external "https://…" URL or as a site-relative "/pub/assets/<uid>" path, and
+// a relative path in an email is simply a broken image — mail clients have no
+// origin to resolve it against.
+//
+// Anything that is neither absolute-http(s) nor site-relative returns "",
+// which the templates render as "no logo" rather than as a broken image. That
+// also means a `javascript:` or `data:` value stored by a hostile admin can
+// never reach an <img src>.
+func (f *TemplateFormatter) absoluteURL(value any) string {
+	raw := strings.TrimSpace(stringify(value))
+	if raw == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://") {
+		return raw
+	}
+
+	if !strings.HasPrefix(raw, "/") || f.baseURL == "" {
+		return ""
+	}
+
+	return f.baseURL + raw
+}
+
+// stringify renders the handful of shapes a view-model value can arrive as
+// (string, *string, nil) as a plain string. Anything else yields "".
+func stringify(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	case *string:
+		if typed == nil {
+			return ""
+		}
+
+		return *typed
+	case fmt.Stringer:
+		return typed.String()
+	default:
+		return ""
+	}
+}
+
+// field looks a key up on a view model that may be either a map or a struct,
+// returning nil when it is absent.
+//
+// This exists to dodge the trap documented in supportreply.go: html/template
+// ERRORS on a missing struct field (while a missing map key is merely nil), and
+// the repo's view models are a mix of map[string]any and structs
+// (uptimereport.Data). A new `{{.OrgLogoURL}}` in base.html would therefore
+// break every struct-backed template until the field was added to each one —
+// silently, at send time. Every branding key base.html reads goes through this
+// helper instead, so a view model that does not carry it renders empty.
+func field(data any, name string) any {
+	if data == nil {
+		return nil
+	}
+
+	value := reflect.ValueOf(data)
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil
+		}
+
+		value = value.Elem()
+	}
+
+	// An if-chain rather than a switch on reflect.Kind: only two of the ~27
+	// kinds are meaningful here, and enumerating the rest to satisfy an
+	// exhaustiveness check would be noise.
+	if value.Kind() == reflect.Map {
+		if value.Type().Key().Kind() != reflect.String {
+			return nil
+		}
+
+		found := value.MapIndex(reflect.ValueOf(name).Convert(value.Type().Key()))
+		if !found.IsValid() {
+			return nil
+		}
+
+		return found.Interface()
+	}
+
+	if value.Kind() == reflect.Struct {
+		found := value.FieldByName(name)
+		if !found.IsValid() || !found.CanInterface() {
+			return nil
+		}
+
+		return found.Interface()
+	}
+
+	return nil
 }
 
 // dict builds a map[string]any from an alternating key/value argument list,
