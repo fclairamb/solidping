@@ -41,6 +41,7 @@
     "notAvailable": "Testwerkzeuge sind nur im Testmodus verfügbar (SP_RUNMODE=test)",
     "tabs": {
       "templates": "Vorlagen",
+      "emails": "E-Mails",
       "bulk": "Massenprüfungen",
       "generate": "Daten generieren",
       "reset": "Zurücksetzen"
@@ -119,6 +120,24 @@
       "customDelay": "Antwortverzögerung (ms)",
       "createCustom": "Benutzerdefinierte Prüfung erstellen",
       "createdCustom": "Benutzerdefinierte Prüfung erstellt"
+    },
+    "emails": {
+      "title": "E-Mail-Vorlagen",
+      "description": "Alle ausgelieferten E-Mail-Vorlagen, gerendert über den echten Formatter (inklusive CSS-Inlining).",
+      "listTitle": "Vorlagen",
+      "subjectLabel": "Betreff",
+      "noSubject": "(kein Betreff-Block)",
+      "noTextPart": "Kein Textteil",
+      "openRaw": "Roh öffnen",
+      "formatLabel": "Vorschauformat",
+      "formatHtml": "HTML",
+      "formatText": "Text",
+      "refresh": "Aktualisieren",
+      "retry": "Erneut versuchen",
+      "loading": "Wird geladen…",
+      "iframeTitle": "Vorschau von {{template}}",
+      "unavailableTitle": "E-Mail-Vorschau nicht verfügbar",
+      "unavailableBody": "Der Vorschau-Endpunkt existiert nur, wenn der Server mit SP_RUNMODE=test läuft."
     }
   },
   "command": {

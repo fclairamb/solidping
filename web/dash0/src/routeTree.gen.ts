@@ -65,6 +65,7 @@ import { Route as OrgsOrgAccountIndexRouteImport } from './routes/orgs/$org/acco
 import { Route as OrgsOrgTestTemplatesRouteImport } from './routes/orgs/$org/test.templates'
 import { Route as OrgsOrgTestResetRouteImport } from './routes/orgs/$org/test.reset'
 import { Route as OrgsOrgTestGenerateRouteImport } from './routes/orgs/$org/test.generate'
+import { Route as OrgsOrgTestEmailsRouteImport } from './routes/orgs/$org/test.emails'
 import { Route as OrgsOrgTestBulkRouteImport } from './routes/orgs/$org/test.bulk'
 import { Route as OrgsOrgStatusUpdatesNewRouteImport } from './routes/orgs/$org/status-updates.new'
 import { Route as OrgsOrgStatusUpdatesUpdateUidRouteImport } from './routes/orgs/$org/status-updates.$updateUid'
@@ -433,6 +434,11 @@ const OrgsOrgTestResetRoute = OrgsOrgTestResetRouteImport.update({
 const OrgsOrgTestGenerateRoute = OrgsOrgTestGenerateRouteImport.update({
   id: '/generate',
   path: '/generate',
+  getParentRoute: () => OrgsOrgTestRoute,
+} as any)
+const OrgsOrgTestEmailsRoute = OrgsOrgTestEmailsRouteImport.update({
+  id: '/emails',
+  path: '/emails',
   getParentRoute: () => OrgsOrgTestRoute,
 } as any)
 const OrgsOrgTestBulkRoute = OrgsOrgTestBulkRouteImport.update({
@@ -971,6 +977,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-updates/$updateUid': typeof OrgsOrgStatusUpdatesUpdateUidRouteWithChildren
   '/orgs/$org/status-updates/new': typeof OrgsOrgStatusUpdatesNewRoute
   '/orgs/$org/test/bulk': typeof OrgsOrgTestBulkRoute
+  '/orgs/$org/test/emails': typeof OrgsOrgTestEmailsRoute
   '/orgs/$org/test/generate': typeof OrgsOrgTestGenerateRoute
   '/orgs/$org/test/reset': typeof OrgsOrgTestResetRoute
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
@@ -1084,6 +1091,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/status-updates/$updateUid': typeof OrgsOrgStatusUpdatesUpdateUidRouteWithChildren
   '/orgs/$org/status-updates/new': typeof OrgsOrgStatusUpdatesNewRoute
   '/orgs/$org/test/bulk': typeof OrgsOrgTestBulkRoute
+  '/orgs/$org/test/emails': typeof OrgsOrgTestEmailsRoute
   '/orgs/$org/test/generate': typeof OrgsOrgTestGenerateRoute
   '/orgs/$org/test/reset': typeof OrgsOrgTestResetRoute
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
@@ -1223,6 +1231,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-updates/$updateUid': typeof OrgsOrgStatusUpdatesUpdateUidRouteWithChildren
   '/orgs/$org/status-updates/new': typeof OrgsOrgStatusUpdatesNewRoute
   '/orgs/$org/test/bulk': typeof OrgsOrgTestBulkRoute
+  '/orgs/$org/test/emails': typeof OrgsOrgTestEmailsRoute
   '/orgs/$org/test/generate': typeof OrgsOrgTestGenerateRoute
   '/orgs/$org/test/reset': typeof OrgsOrgTestResetRoute
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
@@ -1363,6 +1372,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates/$updateUid'
     | '/orgs/$org/status-updates/new'
     | '/orgs/$org/test/bulk'
+    | '/orgs/$org/test/emails'
     | '/orgs/$org/test/generate'
     | '/orgs/$org/test/reset'
     | '/orgs/$org/test/templates'
@@ -1476,6 +1486,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates/$updateUid'
     | '/orgs/$org/status-updates/new'
     | '/orgs/$org/test/bulk'
+    | '/orgs/$org/test/emails'
     | '/orgs/$org/test/generate'
     | '/orgs/$org/test/reset'
     | '/orgs/$org/test/templates'
@@ -1614,6 +1625,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-updates/$updateUid'
     | '/orgs/$org/status-updates/new'
     | '/orgs/$org/test/bulk'
+    | '/orgs/$org/test/emails'
     | '/orgs/$org/test/generate'
     | '/orgs/$org/test/reset'
     | '/orgs/$org/test/templates'
@@ -2071,6 +2083,13 @@ declare module '@tanstack/react-router' {
       path: '/generate'
       fullPath: '/orgs/$org/test/generate'
       preLoaderRoute: typeof OrgsOrgTestGenerateRouteImport
+      parentRoute: typeof OrgsOrgTestRoute
+    }
+    '/orgs/$org/test/emails': {
+      id: '/orgs/$org/test/emails'
+      path: '/emails'
+      fullPath: '/orgs/$org/test/emails'
+      preLoaderRoute: typeof OrgsOrgTestEmailsRouteImport
       parentRoute: typeof OrgsOrgTestRoute
     }
     '/orgs/$org/test/bulk': {
@@ -3104,6 +3123,7 @@ const OrgsOrgStatusUpdatesRouteWithChildren =
 
 interface OrgsOrgTestRouteChildren {
   OrgsOrgTestBulkRoute: typeof OrgsOrgTestBulkRoute
+  OrgsOrgTestEmailsRoute: typeof OrgsOrgTestEmailsRoute
   OrgsOrgTestGenerateRoute: typeof OrgsOrgTestGenerateRoute
   OrgsOrgTestResetRoute: typeof OrgsOrgTestResetRoute
   OrgsOrgTestTemplatesRoute: typeof OrgsOrgTestTemplatesRoute
@@ -3112,6 +3132,7 @@ interface OrgsOrgTestRouteChildren {
 
 const OrgsOrgTestRouteChildren: OrgsOrgTestRouteChildren = {
   OrgsOrgTestBulkRoute: OrgsOrgTestBulkRoute,
+  OrgsOrgTestEmailsRoute: OrgsOrgTestEmailsRoute,
   OrgsOrgTestGenerateRoute: OrgsOrgTestGenerateRoute,
   OrgsOrgTestResetRoute: OrgsOrgTestResetRoute,
   OrgsOrgTestTemplatesRoute: OrgsOrgTestTemplatesRoute,

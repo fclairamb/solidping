@@ -15,6 +15,7 @@ function TestToolsLayout() {
 
   const tabs = [
     { label: t("test.tabs.templates"), path: "/orgs/$org/test/templates" },
+    { label: t("test.tabs.emails"), path: "/orgs/$org/test/emails" },
     { label: t("test.tabs.bulk"), path: "/orgs/$org/test/bulk" },
     { label: t("test.tabs.generate"), path: "/orgs/$org/test/generate" },
     { label: t("test.tabs.reset"), path: "/orgs/$org/test/reset" },

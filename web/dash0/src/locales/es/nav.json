@@ -41,6 +41,7 @@
     "notAvailable": "Las herramientas de prueba solo están disponibles en modo de prueba (SP_RUNMODE=test)",
     "tabs": {
       "templates": "Plantillas",
+      "emails": "Correos",
       "bulk": "Comprobaciones en lote",
       "generate": "Generar datos",
       "reset": "Restablecer"
@@ -119,6 +120,24 @@
       "customDelay": "Retardo de respuesta (ms)",
       "createCustom": "Crear comprobación personalizada",
       "createdCustom": "Comprobación personalizada creada"
+    },
+    "emails": {
+      "title": "Plantillas de correo",
+      "description": "Todas las plantillas de correo publicadas, renderizadas con el formateador real (CSS en línea incluido).",
+      "listTitle": "Plantillas",
+      "subjectLabel": "Asunto",
+      "noSubject": "(sin bloque de asunto)",
+      "noTextPart": "Sin versión de texto",
+      "openRaw": "Abrir en bruto",
+      "formatLabel": "Formato de vista previa",
+      "formatHtml": "HTML",
+      "formatText": "Texto",
+      "refresh": "Actualizar",
+      "retry": "Reintentar",
+      "loading": "Cargando…",
+      "iframeTitle": "Vista previa de {{template}}",
+      "unavailableTitle": "Vista previa de correo no disponible",
+      "unavailableBody": "El endpoint de vista previa solo existe cuando el servidor se ejecuta con SP_RUNMODE=test."
     }
   },
   "command": {
