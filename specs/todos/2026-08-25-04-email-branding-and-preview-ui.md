@@ -147,3 +147,103 @@ handling, and do not let dark-mode considerations constrain the palette choice
 in stage 2. If the new palette happens to read acceptably in a dark client, that
 is a bonus, not a requirement — do not spend effort on it or write tests for it.
 A dedicated spec can follow once the palette has settled.
+
+## Implementation Plan
+
+Written 2026-08-25. Follows the three stages in the spec's order, and the
+prescriptive `## Resolved open questions` above (remote `<img>` + `alt`, status
+page branding + `hide_branding` for `status-subscriber-*`, no dark mode).
+
+### Stage 1 — preview index endpoint, fixture gap, dash0 page
+
+Backend (`server/internal/handlers/emailpreview/`):
+
+1. `fixtures.go` — add the three missing fixtures (`custom-domain-demoted.html`,
+   `incident-acknowledged.html`, `incident-comment.html`) and register them in
+   `fixtureBuilders`.
+2. `fixtures.go` — export `FixtureTemplateNames() []string` (sorted) so tests and
+   the index handler share one source of truth.
+3. `server/internal/email/supportreply.go` — export `ShippedTemplateNames()`
+   (today's unexported helper) so the preview package can enumerate the embedded
+   templates directory rather than keeping a hand-maintained list.
+4. `handler.go` — add `Index`: `GET /api/mgmt/email-preview` returning
+   `{"data": [{template, subject, hasText, previewUrl}]}` (REST convention:
+   wrapped, camelCase). Subjects come from the real `Format()` path, same as the
+   body preview.
+5. `server/internal/app/server.go` — register the index inside the existing
+   `RunMode == "test"` block, next to the per-template route.
+6. `server/internal/app/testapi_routes_gate_test.go` — add the index to
+   `testModeGatedRoutes` so the existing positive+negative gate test covers it.
+7. Tests (`handler_test.go`):
+   - drive the render-everything test off `email.ShippedTemplateNames()` instead
+     of a hardcoded list (this is the guard for the struct-view-model trap and
+     for stages 2/3);
+   - `TestEveryShippedTemplateHasFixture` — every file in `templates/` except
+     `base.html` has a fixture, so a future template cannot ship unpreviewable;
+   - `TestPreviewIndex_*` — index shape, `{"data": …}`, one row per template.
+
+Frontend (`web/dash0/`):
+
+8. New page `src/routes/orgs/$org/test.emails.tsx` under the existing
+   `/orgs/$org/test` layout — that layout is already gated on
+   `runMode === "test"` and already degrades gracefully, which is exactly the
+   gate the spec asks for. Template list on the left, subject + HTML/text toggle
+   + `<iframe>` preview on the right. Components come from the design reference
+   (`Card`, `Button`, `TabNav`, `PageHeader` patterns).
+9. `test.tsx` — add the tab; `src/api/hooks.ts` — add the index hook;
+   `src/locales/{en,fr,de,es}/nav.json` — add the strings in all four locales.
+
+### Stage 2 — branded CSS pass on `base.html`
+
+10. Rework the single `<style>` block onto the product palette taken from
+    `web/dash0/src/index.css` (`--primary` `#0072D5`, `--brand` crimson
+    `#DA1D69`, ink `#0F1A24`, wash `#F0F4F8`, border `#DDE2E7`, muted text
+    `#55606B`) while keeping the semantic status colors recognizable
+    (`status-down` red, `status-recovered` green, `status-escalated` /
+    `status-reopened` amber, `status-comment` slate, `status-acknowledged` blue).
+11. No markup modernization: table layout, 600px container, premailer inlining
+    and the bulletproof-button pattern all stay.
+12. Sweep the templates carrying extra inline styles so they inherit rather than
+    fight the new look: `incident-comment.html` (blockquote), `uptime-report.html`
+    (two `<h2 style=…>`), `status-subscriber-update.html` (label + body div) —
+    replaced by new `base.html` classes (`.quote`, `.section-title`,
+    `.eyebrow`, `.prose`).
+
+### Stage 3 — logos
+
+13. `server/internal/email/formatter.go` — `NewFormatter(opts ...Option)` plus
+    `WithBaseURL(...)`, wired from `server/internal/app/server.go` with
+    `cfg.Server.BaseURL` (the same base `DashboardURL` / `DocsURL` already use).
+    Three new template funcs:
+    - `productLogoURL` → `<base>/dash0/logo.png` (PNG, absolute), `""` with no base;
+    - `absURL v` → passes through `http(s)://…`, prefixes `/…` with the base;
+    - `field data "Name"` → **nil-tolerant** map-or-struct lookup, which is how
+      the struct-view-model trap (`supportreply.go:150-158`) is dodged: every new
+      key `base.html` reads goes through `field`, so a struct view model that
+      lacks the field renders empty instead of erroring.
+14. `base.html` header — `<img>` with an absolute `src` and a text `alt`
+    fallback, reading (all via `field`): `OrgLogoURL` (primary logo — the org's,
+    or the status page's for subscriber mail), `BrandName` (alt text / wordmark),
+    `HideBranding`. Falls back to the SolidPing logo, then to the existing text
+    wordmark. When `HideBranding` is set: no logo image and no SolidPing
+    attribution at all. **No CID, no change to `sender.go`'s MIME assembly.**
+15. Thread `OrgName` + `OrgLogoURL` where the org is already loaded:
+    - `notifications.Payload` gains `OrgName`/`OrgLogoURL`, filled by
+      `job_notification.go` (which already loads the org for `OrgSlug`), consumed
+      by `buildIncidentViewModel` → covers the six incident templates;
+    - `customdomain/alert.go`, `handlers/auth/service.go` (invitation),
+      `handlers/auth/membership_requests.go`, `handlers/members/provisioning.go`;
+    - `uptimereport.Data` gains an `OrgLogoURL` field (struct view model).
+    Account/security mail (registration, password reset/changed, welcome,
+    test-email) has no org context and deliberately stays SolidPing-branded.
+16. `status-subscriber-*`: branding comes from the **status page**, never the org.
+    `statusupdates.SubscriberUpdateEvent` and `statussubscribers.UpdateEvent` gain
+    `PageLogoURL` / `PageHideBranding` (both producers already hold the
+    `*models.StatusPage`); `SubscribeResult` gains the same for the confirm mail.
+    `HideBranding` true ⇒ no logo rendered.
+
+### QA
+
+`make build-backend lint-back test`; `make build-dash0`, `bun run lint`,
+`bun run test:unit` in `web/dash0`. Playwright E2E authored for the new page;
+run locally only if a `SP_RUNMODE=test` server is available.
