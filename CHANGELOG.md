@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/fclairamb/solidping/compare/v0.18.0...v0.18.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 58e940e ([#253](https://github.com/fclairamb/solidping/issues/253)) ([27a5915](https://github.com/fclairamb/solidping/commit/27a59157cb037e8a881c6b729e6408909b03a453))
+
 ## [0.18.0](https://github.com/fclairamb/solidping/compare/v0.17.0...v0.18.0) (2026-08-25)
 
 
