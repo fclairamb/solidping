@@ -23,10 +23,19 @@ Auth: super-admin
 Distribution of scheduling cost across checks/lanes — used to diagnose an
 unbalanced scheduler. Auth: super-admin
 
+### GET /api/mgmt/email-preview
+List every previewable email template, wrapped as `{ "data": [...] }`. Each row
+carries `template` (the file name, which is the `:template` path segment
+below), `subject` (rendered through the real formatter), `hasText` (whether the
+template ships a plaintext part), `previewUrl`, and `error` when that template
+failed to render with its fixture. Backs the dashboard's email catalog at
+`/dash0/orgs/:org/test/emails`. Registered only when `SP_RUNMODE=test`.
+Auth: public (test mode only)
+
 ### GET /api/mgmt/email-preview/:template
 Render an email template with sample data so it can be reviewed in a browser
-without sending anything. Registered only when `SP_RUNMODE=test`. Auth: public
-(test mode only)
+without sending anything. `?format=html` (default) or `?format=text`.
+Registered only when `SP_RUNMODE=test`. Auth: public (test mode only)
 
 ### POST /api/mgmt/report
 Submit an in-app bug report (multipart/form-data). Public endpoint, optional bearer token for user attribution. Body fields: `url` (required), `comment`, `org`, `annotations`, `context` (JSON), `screenshot` (file). Returns `{ uid }`. The screenshot is stored as a `File` (group `reports`) and a GitHub issue is created asynchronously when `app.github.*` is configured.
