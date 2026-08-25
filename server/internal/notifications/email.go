@@ -527,6 +527,12 @@ func (s *EmailSender) buildIncidentViewModel(
 	checkName string, payload *Payload, ackURL, unsubURL string,
 ) map[string]any {
 	viewModel := map[string]any{
+		// Branding: the org's name and logo, when the job runner could resolve
+		// them. base.html reads OrgLogoURL/BrandName through a nil-tolerant
+		// helper, so empty strings simply mean "wear the SolidPing logo".
+		"OrgName":        payload.OrgName,
+		"BrandName":      payload.OrgName,
+		"OrgLogoURL":     payload.OrgLogoURL,
 		"CheckName":      checkName,
 		"CheckType":      payload.Check.Type,
 		"CheckURL":       checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check),

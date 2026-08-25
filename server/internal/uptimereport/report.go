@@ -79,7 +79,13 @@ type SLORow struct {
 //
 //nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
 type Data struct {
-	OrgName     string `json:"OrgName"`
+	OrgName string `json:"OrgName"`
+	// BrandName and OrgLogoURL are the branding keys base.html reads (see
+	// email.ApplyOrgBranding). They live on the struct rather than being added
+	// to the map after the fact because this view model IS a struct: the
+	// report is marshaled into the email job's config and back.
+	BrandName   string `json:"BrandName,omitempty"`
+	OrgLogoURL  string `json:"OrgLogoURL,omitempty"`
 	PeriodLabel string `json:"PeriodLabel"`
 	ScopeLabel  string `json:"ScopeLabel"`
 	Timezone    string `json:"Timezone"`
@@ -137,6 +143,8 @@ func (b *Builder) Build(
 
 	data := &Data{
 		OrgName:     org.Name,
+		BrandName:   org.Name,
+		OrgLogoURL:  orgLogoURL(org),
 		PeriodLabel: periodLabel(schedule, window),
 		ScopeLabel:  scopeLabel(schedule, len(checks)),
 		Timezone:    schedule.Timezone,
@@ -461,4 +469,14 @@ func formatSignedDuration(seconds int64) string {
 	}
 
 	return formatDuration(seconds)
+}
+
+// orgLogoURL reads the org's logo, "" when it has none. base.html treats an
+// empty value as "wear the SolidPing logo".
+func orgLogoURL(org *models.Organization) string {
+	if org == nil || org.LogoURL == nil {
+		return ""
+	}
+
+	return *org.LogoURL
 }

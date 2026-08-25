@@ -134,3 +134,56 @@ func TestUptimeReportRendersNoDataHonestly(t *testing.T) {
 		r.NotContains(body, "API availability")
 	}
 }
+
+// TestUptimeReportRendersAsAStructDirectly is the struct-view-model guard the
+// branding work needs (see supportreply.go and formatter.go's field() helper):
+// html/template ERRORS on a missing STRUCT field, and uptimereport.Data is the
+// repo's real struct view model. Rendering it *without* the JSON round trip is
+// therefore the strictest form of the check — if base.html ever goes back to a
+// direct `.OrgLogoURL` / `.UnsubscribeCheckName` access, this fails.
+func TestUptimeReportRendersAsAStructDirectly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := email.NewFormatter(email.WithBaseURL("https://solidping.example"))
+	r.NoError(err)
+
+	data := sampleData()
+	data.BrandName = data.OrgName
+	data.OrgLogoURL = "/pub/assets/org-logo-uid"
+
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, data)
+	r.NoError(err)
+
+	// Branding really landed, so a passing test cannot mean "the header was
+	// skipped entirely".
+	r.Contains(html, "https://solidping.example/pub/assets/org-logo-uid")
+	r.Contains(html, "acme — sent by SolidPing")
+	r.NotContains(html, "<no value>")
+	r.NotContains(text, "<no value>")
+}
+
+// TestUptimeReportBrandingSurvivesTheJSONRoundTrip pins the same for the path
+// production actually takes — the view model is persisted as JSON on the email
+// job and read back as a map. A camelCase tag on the two new branding fields
+// would silently unbrand every digest, exactly like the OrgName bug this file
+// already guards against.
+func TestUptimeReportBrandingSurvivesTheJSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := email.NewFormatter(email.WithBaseURL("https://solidping.example"))
+	r.NoError(err)
+
+	data := sampleData()
+	data.BrandName = data.OrgName
+	data.OrgLogoURL = "/pub/assets/org-logo-uid"
+
+	_, html, _, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	r.NoError(err)
+
+	r.Contains(html, "https://solidping.example/pub/assets/org-logo-uid")
+	r.Contains(html, `alt="acme"`)
+}

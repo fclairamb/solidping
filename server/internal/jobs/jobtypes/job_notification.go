@@ -193,12 +193,16 @@ func (r *NotificationJobRun) buildPayload(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	connection *models.Integration, incident *models.Incident, check *models.Check,
 ) *notifications.Payload {
+	org := r.lookupOrgIdentity(ctx, jctx, log, connection.OrganizationUID)
+
 	return &notifications.Payload{
 		EventType:   r.config.EventType,
 		Incident:    incident,
 		Check:       check,
 		Integration: connection,
-		OrgSlug:     r.lookupOrgSlug(ctx, jctx, log, connection.OrganizationUID),
+		OrgSlug:     org.Slug,
+		OrgName:     org.Name,
+		OrgLogoURL:  org.LogoURL,
 		AppBaseURL:  appBaseURL(jctx),
 		// Resolved at send time, not at incident-open: the on-call rotation may
 		// have handed over since. Returns nil for every uncertain case, so a
@@ -211,21 +215,40 @@ func (r *NotificationJobRun) buildPayload(
 	}
 }
 
-// lookupOrgSlug resolves the organization slug so senders can build
-// user-facing URLs (email magic-link ack endpoint, Slack dashboard links).
+// lookupOrgIdentity resolves the organization slug (so senders can build
+// user-facing URLs: the email magic-link ack endpoint, Slack dashboard links),
+// plus the name and logo the email templates brand with. One lookup, three
+// values — the slug already required loading the whole row.
+//
 // A missing org is logged but does not fail the notification — recipients
-// still get notified, just without one-click links.
-func (r *NotificationJobRun) lookupOrgSlug(
+// still get notified, just without one-click links or org branding.
+func (r *NotificationJobRun) lookupOrgIdentity(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string,
-) string {
+) orgIdentity {
 	org, err := jctx.DBService.GetOrganization(ctx, orgUID)
-	if err != nil {
-		log.WarnContext(ctx, "Failed to load org slug for notification URLs",
+	if err != nil || org == nil {
+		log.WarnContext(ctx, "Failed to load org identity for notification URLs and branding",
 			"orgUid", orgUID, "error", err)
-		return ""
+
+		return orgIdentity{}
 	}
 
-	return org.Slug
+	identity := orgIdentity{Slug: org.Slug, Name: org.Name}
+	if org.LogoURL != nil {
+		identity.LogoURL = *org.LogoURL
+	}
+
+	return identity
+}
+
+// orgIdentity is what one org lookup yields for a notification: the slug that
+// builds user-facing URLs, plus the name and logo the email templates brand
+// with. The zero value is the "org could not be loaded" case — senders treat
+// every field as optional.
+type orgIdentity struct {
+	Slug    string
+	Name    string
+	LogoURL string
 }
 
 // appBaseURL returns the application base URL from the job context's app

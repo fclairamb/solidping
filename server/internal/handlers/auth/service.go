@@ -26,6 +26,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
@@ -3225,7 +3226,7 @@ func (s *Service) CreateInvitation(
 	expiresAt := time.Now().Add(ttl)
 
 	// Send invitation email
-	emailSent := s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, req.ExpiresIn, inviteURL)
+	emailSent := s.sendInvitationEmail(ctx, org, req.Email, inviterUID, req.Role, req.ExpiresIn, inviteURL)
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberInvited,
 		audit.Target{Type: auditTargetMember, Name: req.Email},
@@ -3782,7 +3783,8 @@ func maskEmail(email string) string {
 // surfaced to the inviter as InviteResponse.EmailSent, so the dashboard can
 // tell them whether the link is a convenience or their only channel.
 func (s *Service) sendInvitationEmail(
-	ctx context.Context, orgUID, recipientEmail, inviterUID, orgName, role, expiresIn, inviteURL string,
+	ctx context.Context, org *models.Organization,
+	recipientEmail, inviterUID, role, expiresIn, inviteURL string,
 ) bool {
 	if recipientEmail == "" {
 		return false
@@ -3790,15 +3792,15 @@ func (s *Service) sendInvitationEmail(
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	queued := s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
-		map[string]any{
-			emailKeyOrgName: orgName,
-			"Role":          role,
-			"InviterName":   inviterName,
-			"InviteURL":     inviteURL,
-			"ExpiresIn":     humanizeInviteExpiresIn(expiresIn),
-		},
-	)
+	viewModel := map[string]any{
+		"Role":        role,
+		"InviterName": inviterName,
+		"InviteURL":   inviteURL,
+		"ExpiresIn":   humanizeInviteExpiresIn(expiresIn),
+	}
+	email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+
+	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", viewModel)
 
 	return s.fullCfg.Email.Enabled && queued
 }

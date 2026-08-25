@@ -22,6 +22,15 @@ type Payload struct {
 	// OrgSlug is the organization slug used to build user-facing URLs (e.g.
 	// magic-link ack URLs). Populated by the notification job runner.
 	OrgSlug string
+	// OrgName is the organization's display name, used to brand the email
+	// footer ("<org> — sent by SolidPing"). Populated alongside OrgSlug — the
+	// job runner already loads the org row for the slug.
+	OrgName string
+	// OrgLogoURL is the organization's logo as stored on the org row: either an
+	// external https:// URL or a site-relative "/pub/assets/<uid>" path. The
+	// email formatter makes it absolute; other senders ignore it. Empty means
+	// "no org logo", and the email header then wears the SolidPing logo.
+	OrgLogoURL string
 	// AppBaseURL is the application base URL used to build user-facing dashboard
 	// links (e.g. Slack hyperlinks to the check and incident pages). Populated
 	// by the notification job runner from jctx.AppConfig.Server.BaseURL.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 )
 
 // Service errors.
@@ -76,6 +77,13 @@ type SubscriberUpdateEvent struct {
 	LinkURL             *string
 	PageName            string
 	IncidentUpdateCount int
+	// PageLogoURL is the STATUS PAGE's own logo (nil when it wears the
+	// SolidPing one). Subscriber mail is branded by the page, never by the
+	// organization behind it: a subscriber opted into the page.
+	PageLogoURL *string
+	// PageHideBranding is the page's white-label opt-in. True means the
+	// subscriber mail carries no logo and no SolidPing attribution at all.
+	PageHideBranding bool
 }
 
 // Service provides business logic for status update management.
@@ -391,6 +399,8 @@ func (s *Service) dispatchSubscriberNotification(
 		LinkURL:             update.LinkURL,
 		PageName:            page.Name,
 		IncidentUpdateCount: priorCount,
+		PageLogoURL:         statuspageassets.PublicURL(page.Settings.LogoFileUID()),
+		PageHideBranding:    page.Settings.HideBranding(),
 	}
 
 	// Detach from the request context (preserving its values) so the goroutine
