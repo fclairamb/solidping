@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0](https://github.com/fclairamb/solidping/compare/v0.17.0...v0.18.0) (2026-08-25)
+
+
+### Features
+
+* Discord bot, audit log, SLO burn-rate alerts, path tracing, support inbox, status-page branding & private pages ([#246](https://github.com/fclairamb/solidping/issues/246)) ([87b33d7](https://github.com/fclairamb/solidping/commit/87b33d70e126be02f3aef8275708310e415fcb6a))
+
+
+### Bug Fixes
+
+* **slack:** register the login callback in the prod manifest ([#251](https://github.com/fclairamb/solidping/issues/251)) ([32fae86](https://github.com/fclairamb/solidping/commit/32fae86cc55e78180e4febb53df03e5dbe394f59))
+
 ## [Unreleased]
 
 
