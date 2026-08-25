@@ -14,11 +14,11 @@
         <tr><td class="label">Resolved at</td><td class="value">{{.ResolvedAt}}</td></tr>
         {{if .Duration}}<tr><td class="label">Duration</td><td class="value">{{.Duration}}</td></tr>{{end}}
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
+        <tr><td class="label">Incident ID</td><td class="value"><span class="mono">{{.IncidentUID}}</span></td></tr>
     </table>
     <p class="meta">The budget that was spent is not returned — only the burn rate came back down.</p>
     {{if .IncidentURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</div>
     {{end}}
 {{end}}
 {{define "text"}}{{.SLOName}} stopped burning

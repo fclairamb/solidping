@@ -4,7 +4,7 @@
     <h1>You're invited to {{.OrgName}}</h1>
     <p>Hi,</p>
     <p>{{if .InviterName}}{{.InviterName}} has invited you{{else}}You've been invited{{end}} to join <strong>{{.OrgName}}</strong> on SolidPing as <strong>{{.Role}}</strong>.</p>
-    <p class="cta-wrap">{{template "button" dict "URL" .InviteURL "Label" "Accept invitation" "Variant" "success"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .InviteURL "Label" "Accept invitation" "Variant" "success"}}</div>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.InviteURL}}</p>
     <p class="meta">This invitation expires in {{.ExpiresIn}}. If you weren't expecting this, you can safely ignore this email.</p>

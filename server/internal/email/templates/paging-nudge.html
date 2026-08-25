@@ -3,7 +3,7 @@
 {{define "content"}}
     <p>Hi,</p>
     <p>An administrator of <strong>{{.OrgName}}</strong> asked you to set up how SolidPing should reach you when something breaks.</p>
-    <p class="cta-wrap">{{template "button" dict "URL" .NotificationsURL "Label" "Add and verify a contact" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .NotificationsURL "Label" "Add and verify a contact" "Variant" "primary"}}</div>
     <p>Until you verify a contact, alerts can only reach you by email.</p>
 {{end}}
 {{define "text"}}Hi,

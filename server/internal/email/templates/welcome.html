@@ -9,7 +9,7 @@
     <p>Thanks for joining SolidPing. We'll help you keep your services healthy and let you know the moment something goes wrong.</p>
     {{end}}
     {{if .DashboardURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open your dashboard" "Variant" "success"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open your dashboard" "Variant" "success"}}</div>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.DashboardURL}}</p>
     {{end}}

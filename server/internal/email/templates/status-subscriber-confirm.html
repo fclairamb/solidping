@@ -3,7 +3,7 @@
 {{define "content"}}
     <h1>Confirm your subscription</h1>
     <p>You asked to receive status updates for <strong>{{.PageName}}</strong>. Please confirm your email address to start receiving notifications.</p>
-    <p class="cta-wrap">{{template "button" dict "URL" .ConfirmURL "Label" "Confirm subscription" "Variant" "success"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .ConfirmURL "Label" "Confirm subscription" "Variant" "success"}}</div>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.ConfirmURL}}</p>
     <p class="meta">If you didn't request this, you can safely ignore this email.</p>

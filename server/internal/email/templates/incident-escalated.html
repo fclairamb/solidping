@@ -10,13 +10,21 @@
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
+        <tr><td class="label">Incident ID</td><td class="value"><span class="mono">{{.IncidentUID}}</span></td></tr>
     </table>
-    {{if .IncidentURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    {{if or .IncidentURL .AckURL}}
+    <table class="actions-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+            {{if .IncidentURL}}
+            <td class="action-cell">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</td>
+            {{end}}
+            {{if .AckURL}}
+            <td class="action-cell">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</td>
+            {{end}}
+        </tr>
+    </table>
     {{end}}
     {{if .AckURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</p>
     <p class="meta">This link is valid for 7 days. Following it confirms you have seen the incident.</p>
     {{end}}
 {{end}}

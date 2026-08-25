@@ -12,15 +12,13 @@
            clients have neither CSS custom properties nor oklch().
            Dark mode is deliberately out of scope (see the spec): there is no
            prefers-color-scheme block here on purpose. */
-        body { margin: 0; padding: 0; background-color: #f0f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e2b38; line-height: 1.55; }
+        body { margin: 0; padding: 0; background-color: #f0f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.55; }
         table { border-collapse: collapse; }
-        .wrapper { width: 100%; background-color: #f0f4f8; padding: 28px 12px; }
-        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #dde2e7; box-shadow: 0 1px 3px rgba(15,26,36,0.06); }
-        /* Header: product ink band closed by the brand crimson rule — the same
-           two colors the dashboard chrome uses, so a SolidPing email reads as
-           SolidPing even before the logo image loads. */
-        .header { background-color: #0f1a24; padding: 22px 32px; text-align: left; border-bottom: 3px solid #da1d69; }
-        .header-logo { color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
+        .wrapper { width: 100%; background-color: #f0f4f8; padding: 32px 12px; }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(15,26,36,0.05), 0 2px 4px -2px rgba(15,26,36,0.05); }
+        /* Header: clean dark navy band matching dashboard chrome */
+        .header { background-color: #0f1a24; padding: 20px 32px; text-align: left; }
+        .header-logo { color: #ffffff; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
         /* Logo images are remote <img> with a text alt — many clients block
            remote images by default, and the alt (plus, for SolidPing mail, the
            wordmark next to it) keeps the header legible when they do. */
@@ -29,72 +27,61 @@
         .header-logo-img { display: block; border: 0; outline: none; text-decoration: none; }
         .header-org-logo { display: block; border: 0; outline: none; max-height: 40px; }
         .header-attribution { vertical-align: middle; }
-        .header-wordmark { color: #b9c5d0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
-        /* Status banner — a full-width background bar, not just colored text,
-           so the state is legible even with images/CSS partially stripped. */
-        .status-banner { padding: 14px 32px; text-align: left; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+        .header-wordmark { color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+        /* Status banner — full-width crisp status indicator */
+        .status-banner { padding: 12px 32px; text-align: left; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
         .status-banner a { color: inherit; text-decoration: underline; }
-        .status-down { background-color: #cc1f2c; color: #ffffff !important; }
-        .status-recovered { background-color: #0e8f2a; color: #ffffff !important; }
-        .status-escalated { background-color: #b26a00; color: #ffffff !important; }
-        .status-reopened { background-color: #b26a00; color: #ffffff !important; }
-        .status-comment { background-color: #3d4a57; color: #ffffff !important; }
-        .status-acknowledged { background-color: #0072d5; color: #ffffff !important; }
-        .content { padding: 32px; color: #1e2b38; font-size: 16px; }
-        .content h1 { margin: 0 0 16px; font-size: 22px; font-weight: 700; color: #0f1a24; letter-spacing: -0.01em; }
-        .content h2 { margin: 0 0 16px; font-size: 19px; font-weight: 700; color: #0f1a24; letter-spacing: -0.01em; }
+        .status-down { background-color: #dc2626; color: #ffffff !important; }
+        .status-recovered { background-color: #16a34a; color: #ffffff !important; }
+        .status-escalated { background-color: #d97706; color: #ffffff !important; }
+        .status-reopened { background-color: #ea580c; color: #ffffff !important; }
+        .status-comment { background-color: #475569; color: #ffffff !important; }
+        .status-acknowledged { background-color: #0284c7; color: #ffffff !important; }
+        .content { padding: 32px; color: #1e293b; font-size: 15px; }
+        .content h1 { margin: 0 0 16px; font-size: 22px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.3; }
+        .content h2 { margin: 0 0 16px; font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; line-height: 1.35; }
         .content p { margin: 0 0 16px; }
-        .content a { color: #0072d5; }
-        /* The three helper classes below are written as `.content <tag>.<class>`
-           rather than as a bare class on purpose: `.content h2` / `.content p`
-           above are more specific than a lone class, and premailer resolves
-           specificity exactly like a browser — a bare `.section-title` would
-           lose its font-size and margins to the generic rule. */
-        /* section-title is the in-body subhead (uptime report's "Per check" /
-           "Objectives"). A class rather than a per-template inline style so a
-           palette change lands everywhere at once. */
-        .content h2.section-title { margin: 24px 0 8px; font-size: 16px; font-weight: 700; color: #0f1a24; }
-        /* eyebrow is the small uppercase kicker above a title (status
-           subscriber updates: "New incident" / "Resolved"). */
-        .content p.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #55606b; margin: 0 0 6px; }
-        /* prose preserves author-entered line breaks (status update bodies). */
+        .content a { color: #0072d5; text-decoration: none; font-weight: 500; }
+        .content a:hover { text-decoration: underline; }
+        /* Helper classes */
+        .content h2.section-title { margin: 24px 0 8px; font-size: 16px; font-weight: 700; color: #0f172a; }
+        .content p.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; margin: 0 0 6px; }
         .content .prose { white-space: pre-wrap; margin: 0 0 16px; }
-        /* quote is the quoted-body block (incident comments). */
-        .quote { margin: 16px 0; padding: 12px 16px; border-left: 4px solid #0072d5; background-color: #f4f7fa; color: #1e2b38; white-space: pre-wrap; }
-        .cta-wrap { padding: 8px 0 4px; }
-        /* Bulletproof table-based button — renders correctly in Outlook's Word
-           rendering engine, which ignores padding/border-radius on <a>. */
+        .quote { margin: 16px 0; padding: 12px 16px; border-left: 4px solid #0072d5; background-color: #f8fafc; color: #1e293b; white-space: pre-wrap; border-radius: 0 6px 6px 0; }
+        .cta-wrap { margin: 20px 0 12px; }
+        .actions-table { margin: 20px 0 12px; }
+        .action-cell { padding-right: 12px; padding-bottom: 8px; vertical-align: middle; }
+        /* Bulletproof table-based buttons */
         .btn-table { border-collapse: separate; }
         .btn-table td { border-radius: 6px; text-align: center; }
-        .btn { display: inline-block; padding: 12px 28px; color: #ffffff !important; text-decoration: none; font-weight: 600; font-size: 15px; border-radius: 6px; }
+        .btn { display: inline-block; padding: 11px 22px; text-decoration: none; font-weight: 600; font-size: 14px; border-radius: 6px; }
         .btn-primary td { background-color: #0072d5; }
-        .btn-success td { background-color: #0e8f2a; }
-        .btn-secondary td { background-color: #55606b; }
-        /* Legacy single-<a> CTA classes — kept for templates authored before
-           the table-based button partial existed. New content should prefer
-           the "button" partial (see bottom of this file) for Outlook-safe
-           rendering. */
-        .cta { display: inline-block; padding: 12px 28px; background-color: #0072d5; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; }
-        .cta-success { background-color: #0e8f2a; }
-        .details-table { width: 100%; margin: 4px 0 20px; border: 1px solid #dde2e7; border-radius: 6px; overflow: hidden; }
-        .details-table td { padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #eef2f6; }
+        .btn-primary a.btn { color: #ffffff !important; }
+        .btn-success td { background-color: #16a34a; }
+        .btn-success a.btn { color: #ffffff !important; }
+        .btn-secondary td { background-color: #f8fafc; border: 1px solid #cbd5e1; }
+        .btn-secondary a.btn { color: #334155 !important; }
+        /* Legacy single-<a> CTA classes */
+        .cta { display: inline-block; padding: 11px 22px; background-color: #0072d5; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; }
+        .cta-success { background-color: #16a34a; }
+        .details-table { width: 100%; margin: 16px 0 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+        .details-table td { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
         .details-table tr:last-child td { border-bottom: none; }
-        .details-table td.label { color: #55606b; width: 40%; background-color: #f7f9fc; }
-        .details-table td.value { color: #1e2b38; font-weight: 500; }
-        .fallback { font-size: 13px; color: #3d4a57; word-break: break-all; padding: 8px 12px; background-color: #f4f7fa; border: 1px solid #dde2e7; border-radius: 4px; font-family: 'SF Mono', Menlo, Consolas, monospace; }
-        .meta { font-size: 13px; color: #55606b; margin-top: 24px; }
-        /* Same specificity story as the helpers above: without this, `.content p`
-           re-declares the margin shorthand after .meta's margin-top and the
-           note loses its separation from the block above it. */
-        .content p.meta { margin: 24px 0 16px; }
-        .footer { padding: 20px 32px 28px; background-color: #f7f9fc; color: #55606b; font-size: 12px; text-align: center; border-top: 1px solid #e6ebf0; }
-        .footer a { color: #3d4a57; text-decoration: underline; }
+        .details-table td.label { color: #64748b; width: 34%; background-color: #f8fafc; font-weight: 500; border-right: 1px solid #f1f5f9; }
+        .details-table td.value { color: #0f172a; font-weight: 500; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569; }
+        .fallback { font-size: 13px; color: #334155; word-break: break-all; padding: 8px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+        .meta { font-size: 13px; color: #64748b; margin-top: 16px; line-height: 1.5; }
+        .content p.meta { margin: 16px 0 16px; }
+        .footer { padding: 24px 32px; background-color: #f8fafc; color: #64748b; font-size: 12px; text-align: center; border-top: 1px solid #e2e8f0; line-height: 1.6; }
+        .footer a { color: #475569; text-decoration: underline; }
         .footer p { margin: 0 0 8px; }
         @media (max-width: 480px) {
             .content { padding: 24px 20px; }
             .header { padding: 18px 20px; }
             .status-banner { padding: 12px 20px; }
-            .footer { padding: 16px 20px 20px; }
+            .footer { padding: 20px 20px; }
+            .details-table td.label { width: 40%; }
         }
     </style>
 </head>

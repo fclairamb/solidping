@@ -37,7 +37,7 @@
     {{end}}
 
     {{if .DashboardURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open dashboard" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open dashboard" "Variant" "primary"}}</div>
     {{end}}
 {{end}}
 {{define "text"}}{{.OrgName}} uptime report — {{.PeriodLabel}}{{if .Timezone}} ({{.Timezone}}){{end}}

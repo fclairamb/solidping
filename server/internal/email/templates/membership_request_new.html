@@ -8,7 +8,7 @@
     <p class="fallback">{{.Message}}</p>
     {{end}}
     {{if .RequestsURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" "Review pending requests" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" "Review pending requests" "Variant" "primary"}}</div>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.RequestsURL}}</p>
     {{end}}

@@ -6,7 +6,7 @@
     {{if eq .Decision "approved"}}
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing has been approved. You're now a member with role <strong>{{.Role}}</strong>.</p>
     {{if .DashboardURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</div>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.DashboardURL}}</p>
     {{end}}
