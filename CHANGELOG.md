@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.2](https://github.com/fclairamb/solidping/compare/v0.18.1...v0.18.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#256](https://github.com/fclairamb/solidping/issues/256)) ([4c114c0](https://github.com/fclairamb/solidping/commit/4c114c0a80b2267d7702f1cf1ca0dd1c52729691))
+* **deps:** update go dependencies (non-major) ([#260](https://github.com/fclairamb/solidping/issues/260)) ([441eb21](https://github.com/fclairamb/solidping/commit/441eb21d3343a7d175362002cfec4894335ee677))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.32.39 ([#261](https://github.com/fclairamb/solidping/issues/261)) ([f4daee9](https://github.com/fclairamb/solidping/commit/f4daee9714bb903a97d8ee0b0a4c21eb9a848ab7))
+* **deps:** update module github.com/posthog/posthog-go to v1.24.1 ([#259](https://github.com/fclairamb/solidping/issues/259)) ([b7074c5](https://github.com/fclairamb/solidping/commit/b7074c563161dc1fb0f996c879fa87d2062fdd5a))
+* **email:** brand the transactional email rendering and add a dev-only preview ([#258](https://github.com/fclairamb/solidping/issues/258)) ([b55b8b4](https://github.com/fclairamb/solidping/commit/b55b8b45c5d9cf2613740f937889d8513dbdcfca))
+
 ## [0.18.1](https://github.com/fclairamb/solidping/compare/v0.18.0...v0.18.1) (2026-08-25)
 
 
