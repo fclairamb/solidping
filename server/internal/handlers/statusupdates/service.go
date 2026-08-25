@@ -42,6 +42,15 @@ var (
 	ErrInvalidLinkURL = errors.New("link URL must be a valid http or https URL")
 	// ErrCheckUIDMismatch is returned when checkUID does not match the incident's check.
 	ErrCheckUIDMismatch = errors.New("check does not match the incident's check")
+	// ErrSectionUIDRequired is returned when sectionUid is explicitly set to "" on update —
+	// "" is never a legal UID; send null to clear the field instead.
+	ErrSectionUIDRequired = errors.New("sectionUid must not be empty; send null to clear it")
+	// ErrCheckUIDRequired is returned when checkUid is explicitly set to "" on update —
+	// "" is never a legal UID; send null to clear the field instead.
+	ErrCheckUIDRequired = errors.New("checkUid must not be empty; send null to clear it")
+	// ErrIncidentUIDRequired is returned when incidentUid is explicitly set to "" on update —
+	// "" is never a legal UID; send null to clear the field instead.
+	ErrIncidentUIDRequired = errors.New("incidentUid must not be empty; send null to clear it")
 )
 
 const (
@@ -117,13 +126,30 @@ type CreateStatusUpdateRequest struct {
 }
 
 // UpdateStatusUpdateRequest represents a request to update a status update (all fields optional).
+//
+// SectionUID, CheckUID, IncidentUID and LinkURL are presence-aware nullable
+// fields: a plain *string cannot tell an omitted key from an explicit `null`
+// (both decode to nil), so the handler additionally probes the raw request
+// body and populates the matching *Set flag. Semantics for each of the four:
+//   - key absent (Set=false): leave the column untouched.
+//   - key present, value null (Set=true, pointer nil): clear the column (NULL).
+//   - key present, value "" (Set=true, pointer to ""): clear for LinkURL;
+//     VALIDATION_ERROR for the three UID fields ("" is never a legal UID).
+//   - key present, non-empty value: validate and set.
 type UpdateStatusUpdateRequest struct {
-	SectionUID   *string    `json:"sectionUid,omitempty"`
-	CheckUID     *string    `json:"checkUid,omitempty"`
-	IncidentUID  *string    `json:"incidentUid,omitempty"`
+	SectionUID  *string `json:"sectionUid,omitempty"`
+	CheckUID    *string `json:"checkUid,omitempty"`
+	IncidentUID *string `json:"incidentUid,omitempty"`
+	LinkURL     *string `json:"linkUrl,omitempty"`
+	// *Set fields are populated by the handler from the raw body, NOT from
+	// JSON decode (a bare *string can't distinguish absent from null).
+	SectionUIDSet  bool `json:"-"`
+	CheckUIDSet    bool `json:"-"`
+	IncidentUIDSet bool `json:"-"`
+	LinkURLSet     bool `json:"-"`
+
 	Title        *string    `json:"title,omitempty"`
 	BodyMarkdown *string    `json:"bodyMarkdown,omitempty"`
-	LinkURL      *string    `json:"linkUrl,omitempty"`
 	Kind         *string    `json:"kind,omitempty"`
 	PublishedAt  *time.Time `json:"publishedAt,omitempty"`
 }
@@ -428,6 +454,137 @@ func (s *Service) GetStatusUpdate(
 	return toResponse(update), nil
 }
 
+// clearIfEmpty treats an explicit empty string as "clear" (nil) — a browser
+// input yields "" rather than null, so linkUrl's clear affordance must accept
+// both. A nil pointer (already meaning "clear") passes through unchanged.
+func clearIfEmpty(value *string) *string {
+	if value != nil && *value == "" {
+		return nil
+	}
+
+	return value
+}
+
+// requireNonEmptyUID normalizes a presence-aware UID field: nil means "clear"
+// (returned as nil), a non-nil pointer to "" is never a legal UID and is
+// rejected with requiredErr (send null to clear instead), and a non-nil
+// pointer to a real value passes through for the caller to validate.
+func requireNonEmptyUID(value *string, requiredErr error) (*string, error) {
+	if value == nil {
+		return nil, nil //nolint:nilnil // nil value + nil error is "clear the field", not a failure
+	}
+
+	if *value == "" {
+		return nil, requiredErr
+	}
+
+	return value, nil
+}
+
+// loadPageForUpdateValidation fetches the status page owning update, scoped to
+// orgUID, for validating a set-a-value sectionUid/checkUid against it.
+func (s *Service) loadPageForUpdateValidation(
+	ctx context.Context, orgUID string, update *models.StatusUpdate,
+) (*models.StatusPage, error) {
+	page, err := s.db.GetStatusPage(ctx, orgUID, update.StatusPageUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrStatusPageNotFound
+		}
+
+		return nil, err
+	}
+
+	if page.OrganizationUID != orgUID {
+		return nil, ErrStatusPageForbidden
+	}
+
+	return page, nil
+}
+
+// applySectionUpdate handles the presence-aware sectionUid field: nil clears
+// it, a non-empty value is validated as a section of page.
+func (s *Service) applySection(
+	ctx context.Context, page *models.StatusPage, update *models.StatusUpdate, req *UpdateStatusUpdateRequest,
+) error {
+	sectionUID, err := requireNonEmptyUID(req.SectionUID, ErrSectionUIDRequired)
+	if err != nil {
+		return err
+	}
+
+	if sectionUID != nil {
+		section, sectErr := s.db.GetStatusPageSection(ctx, page.UID, *sectionUID)
+		if sectErr != nil || section == nil {
+			return ErrSectionNotFound
+		}
+	}
+
+	update.SectionUID = sectionUID
+
+	return nil
+}
+
+// applyCheck handles the presence-aware checkUid field: nil clears it, a
+// non-empty value is validated as a check resource of page.
+func (s *Service) applyCheck(
+	ctx context.Context, page *models.StatusPage, update *models.StatusUpdate, req *UpdateStatusUpdateRequest,
+) error {
+	checkUID, err := requireNonEmptyUID(req.CheckUID, ErrCheckUIDRequired)
+	if err != nil {
+		return err
+	}
+
+	if checkUID != nil {
+		if err := s.validateCheckOnPage(ctx, page.UID, *checkUID); err != nil {
+			return err
+		}
+	}
+
+	update.CheckUID = checkUID
+
+	return nil
+}
+
+// applySectionAndCheck handles the presence-aware sectionUid/checkUid fields
+// on UpdateStatusUpdate. Clearing one never implicitly clears the other — the
+// client decides each independently. The owning status page is fetched at
+// most once, only when a non-empty value needs validating against it.
+func (s *Service) applySectionAndCheck(
+	ctx context.Context, orgUID string, update *models.StatusUpdate, req *UpdateStatusUpdateRequest,
+) error {
+	if !req.SectionUIDSet && !req.CheckUIDSet {
+		return nil
+	}
+
+	needsPage := (req.SectionUIDSet && req.SectionUID != nil && *req.SectionUID != "") ||
+		(req.CheckUIDSet && req.CheckUID != nil && *req.CheckUID != "")
+
+	var page *models.StatusPage
+
+	if needsPage {
+		loaded, err := s.loadPageForUpdateValidation(ctx, orgUID, update)
+		if err != nil {
+			return err
+		}
+
+		page = loaded
+	}
+
+	if req.SectionUIDSet {
+		if err := s.applySection(ctx, page, update, req); err != nil {
+			return err
+		}
+	}
+
+	if req.CheckUIDSet {
+		if err := s.applyCheck(ctx, page, update, req); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // UpdateStatusUpdate applies a partial update to a status update.
 //
 //nolint:funlen // patching optional fields requires many checks
@@ -477,24 +634,25 @@ func (s *Service) UpdateStatusUpdate( //nolint:cyclop // patching optional field
 		update.BodyMarkdown = *req.BodyMarkdown
 	}
 
-	if req.LinkURL != nil {
-		if err := validateLinkURL(req.LinkURL); err != nil {
+	if req.LinkURLSet {
+		update.LinkURL = clearIfEmpty(req.LinkURL)
+
+		if err := validateLinkURL(update.LinkURL); err != nil {
 			return StatusUpdateResponse{}, err
 		}
-
-		update.LinkURL = req.LinkURL
 	}
 
-	if req.SectionUID != nil {
-		update.SectionUID = req.SectionUID
+	if err := s.applySectionAndCheck(ctx, org.UID, update, req); err != nil {
+		return StatusUpdateResponse{}, err
 	}
 
-	if req.CheckUID != nil {
-		update.CheckUID = req.CheckUID
-	}
+	if req.IncidentUIDSet {
+		incidentUID, iErr := requireNonEmptyUID(req.IncidentUID, ErrIncidentUIDRequired)
+		if iErr != nil {
+			return StatusUpdateResponse{}, iErr
+		}
 
-	if req.IncidentUID != nil {
-		update.IncidentUID = req.IncidentUID
+		update.IncidentUID = incidentUID
 	}
 
 	if req.PublishedAt != nil {

@@ -7,13 +7,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
-	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // Error codes for logo operations.
 const (
-	errCodeLogoNotFound base.ErrorCode = "LOGO_NOT_FOUND"
 	errCodeLogoTooLarge base.ErrorCode = "LOGO_TOO_LARGE"
 )
 
@@ -104,33 +102,6 @@ func (h *Handler) Delete(writer http.ResponseWriter, req *http.Request) error {
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, newResponse(org))
-}
-
-// PublicGet handles GET /pub/org-logos/:uid — unsigned and unauthenticated.
-//
-// There is no signature to check because the authorization is state-based: the
-// service only opens a file that is the current logo of a live organization. A
-// logo that has been replaced, cleared, or whose org was deleted stops
-// resolving here immediately.
-func (h *Handler) PublicGet(writer http.ResponseWriter, req *http.Request) error {
-	file, body, err := h.svc.OpenLogo(req.Context(), httpx.Param(req, "uid"))
-	if err != nil {
-		if errors.Is(err, ErrLogoNotFound) {
-			return h.WriteError(writer, http.StatusNotFound, errCodeLogoNotFound, "Logo not found")
-		}
-
-		return h.WriteInternalError(writer, req, err)
-	}
-
-	defer func() { _ = body.Close() }()
-
-	// Short cache: the URL changes on every upload (it embeds the file UID), so
-	// this only bounds staleness for a logo cleared without replacement.
-	writer.Header().Set("Cache-Control", "public, max-age=300")
-
-	// files.WriteContent is the single place that sets nosniff and refuses to
-	// serve anything but a raster image inline — the SVG-XSS guard.
-	return files.WriteContent(writer, file.MimeType, file.Name, body)
 }
 
 // uploaderUID returns the authenticated user's UID for the file's createdBy

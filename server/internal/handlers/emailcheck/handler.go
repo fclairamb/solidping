@@ -62,6 +62,19 @@ const (
 // charted as if it were real.
 const maxSaneDeliveryLatency = 24 * time.Hour
 
+// resultDedupWindow bounds the idempotency lookup that keeps one inbound email
+// from minting several raw results (spec 2026-08-22-01, layer 3). There is no
+// unique index to lean on — no migration was allowed — so the guard is a query
+// over `output.messageId`, and the window is what keeps that query inside the
+// check's recent-results range instead of its whole history.
+//
+// Seven days is far longer than any plausible duplicate delivery (replicas
+// racing the same mailbox are milliseconds apart; a crash-recovery re-scan
+// looks back 24 h) and still short enough that the scan stays bounded. A
+// Message-ID older than this reappearing is not a duplicate of a live signal —
+// it is a replayed mail, and recording it is the right answer.
+const resultDedupWindow = 7 * 24 * time.Hour
+
 // recipientPattern captures the 48-hex token and an optional +status suffix
 // from the local part of the recipient address.
 var recipientPattern = regexp.MustCompile(`^([0-9a-f]{48})(?:\+(up|down|error|running))?@`)
@@ -102,13 +115,33 @@ func NewHandler(
 	}
 }
 
+// ClaimsEmail reports whether this handler would act on the email, with no
+// side effects — the manager calls it to decide which inbox messages to claim
+// (move to Processed) *before* any handler runs (spec 2026-08-22-01, layer 1).
+//
+// The predicate is deliberately the cheap, purely syntactic half of
+// HandleEmail: a recipient whose local part is a 48-hex token. It does not hit
+// the database to confirm the token resolves to a live check, because
+// HandleEmail's answer for an unresolvable token is OutcomeRejected — "claim
+// it and file it away" — not "leave it in the inbox". Claiming and then
+// rejecting is exactly the intended path for those.
+//
+//nolint:gocritic // jmap.Handler interface passes Email by value
+func (h *Handler) ClaimsEmail(email jmap.Email) bool {
+	token, _, _ := h.extractTokenAndStatus(&email)
+
+	return token != ""
+}
+
 // HandleEmail tries to resolve the email to a configured check. Returns
 // OutcomeIgnored when no token is found in any recipient, OutcomeProcessed
 // once a result has been recorded, and OutcomeRejected if the token format
 // matches but no check exists (the email cannot ever succeed).
 //
 //nolint:gocritic // jmap.Handler interface passes Email by value
-func (h *Handler) HandleEmail(ctx context.Context, _ *jmap.Mailboxes, email jmap.Email) (jmap.Outcome, error) {
+func (h *Handler) HandleEmail(
+	ctx context.Context, _ *jmap.Mailboxes, email jmap.Email, origin jmap.Origin,
+) (jmap.Outcome, error) {
 	token, status, recipient := h.extractTokenAndStatus(&email)
 	if token == "" {
 		return jmap.OutcomeIgnored, nil
@@ -124,7 +157,7 @@ func (h *Handler) HandleEmail(ctx context.Context, _ *jmap.Mailboxes, email jmap
 		return jmap.OutcomeRejected, nil
 	}
 
-	if err := h.recordResult(ctx, check, &email, status); err != nil {
+	if err := h.recordResult(ctx, check, &email, status, origin); err != nil {
 		return jmap.OutcomeIgnored, err
 	}
 
@@ -290,7 +323,62 @@ func defaultMessage(s string) string {
 // Callers shouldn't hit this — it's a defensive guard for tests.
 var ErrCheckMissing = errors.New("check is required")
 
-func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *jmap.Email, status string) error {
+// alreadyRecorded is the idempotency backstop (spec 2026-08-22-01, layer 3).
+// The mailbox claim (layer 1) and the single-consumer lock (layer 2) already
+// make a duplicate unlikely; this is what makes "exactly one result per email"
+// true rather than likely, and it is what licenses the crash-recovery re-scan
+// to replay recently-processed messages at all.
+//
+// It reports whether the insert must be SKIPPED, and the two arrival paths
+// resolve an unanswerable question in opposite directions — which is the whole
+// reason origin is threaded down here:
+//
+//   - jmap.OriginInbox (fresh, just-claimed mail) fails OPEN. A missing
+//     Message-ID, or a lookup that errors, records anyway: layers 1 and 2 make
+//     a duplicate unlikely on this path, and dropping a live signal from a
+//     genuine inbound email is the worse failure.
+//   - jmap.OriginRescan (crash-recovery replay of the Processed mailbox) fails
+//     CLOSED. Every message on that path may already have a result and the
+//     path repeats on every reconnect, so recording without a positive
+//     "not seen before" would turn the repair pass into a duplicate generator —
+//     up to one extra row per message per reconnect. Skipping costs at most the
+//     signal from one email that really was stranded.
+func (h *Handler) alreadyRecorded(
+	ctx context.Context, orgUID, checkUID, messageID string, origin jmap.Origin,
+) bool {
+	strict := origin == jmap.OriginRescan
+
+	if messageID == "" {
+		if strict {
+			h.logger.WarnContext(ctx, "re-scan skipped an email with no Message-ID; cannot prove it is new",
+				"check_uid", checkUID)
+		}
+
+		return strict
+	}
+
+	seen, err := h.db.HasRawResultWithMessageID(
+		ctx, orgUID, checkUID, messageID, time.Now().Add(-resultDedupWindow),
+	)
+	if err != nil {
+		h.logger.WarnContext(ctx, "email dedup lookup failed",
+			"check_uid", checkUID, "messageId", messageID,
+			"origin", origin, "recorded", !strict, "error", err)
+
+		return strict
+	}
+
+	if seen {
+		h.logger.DebugContext(ctx, "duplicate inbound email ignored",
+			"check_uid", checkUID, "messageId", messageID)
+	}
+
+	return seen
+}
+
+func (h *Handler) recordResult(
+	ctx context.Context, check *models.Check, email *jmap.Email, status string, origin jmap.Origin,
+) error {
 	if check == nil {
 		return ErrCheckMissing
 	}
@@ -312,6 +400,10 @@ func (h *Handler) recordResult(ctx context.Context, check *models.Check, email *
 	messageID := ""
 	if len(email.MessageID) > 0 {
 		messageID = email.MessageID[0]
+	}
+
+	if h.alreadyRecorded(ctx, check.OrganizationUID, check.UID, messageID, origin) {
+		return nil
 	}
 
 	output := models.JSONMap{

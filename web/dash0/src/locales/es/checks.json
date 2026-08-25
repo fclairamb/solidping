@@ -26,9 +26,20 @@
     "up": "Activo",
     "down": "Caído",
     "warning": "Advertencia",
+    "created": "Pendiente",
     "degraded": "Degradado",
     "abandoned": "Abandonado",
     "unknown": "Desconocido"
+  },
+  "statusFilter": {
+    "all": "Todos los estados",
+    "count": "{{count}} estados",
+    "plusOne": "{{label}} +{{count}}"
+  },
+  "typeFilter": {
+    "all": "Todos los tipos",
+    "count": "{{count}} tipos",
+    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} activos",
@@ -92,18 +103,21 @@
       "solidping": "Exportación de SolidPing (JSON/YAML)",
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (token de API)",
-      "uptime-kuma": "Uptime Kuma (copia de seguridad JSON)"
+      "uptime-kuma": "Uptime Kuma (copia de seguridad JSON)",
+      "uptimerobot": "UptimeRobot (JSON de getMonitors)"
     },
     "importSourceHelp": {
       "solidping": "Un documento generado con el botón Exportar, en JSON o YAML.",
       "gatus": "Pega o sube tu config.yaml de Gatus: la lista endpoints: se convierte en checks.",
       "betterstack": "Leemos tus monitores y heartbeats desde la API de Better Stack y los convertimos.",
-      "uptime-kuma": "Uptime Kuma 1.x: Ajustes → Copia de seguridad → Exportar JSON. La versión 2.x ya no ofrece esta exportación."
+      "uptime-kuma": "Uptime Kuma 1.x: Ajustes → Copia de seguridad → Exportar JSON. La versión 2.x ya no ofrece esta exportación.",
+      "uptimerobot": "Pega el JSON de la llamada getMonitors de la API v2 de UptimeRobot: consulta la documentación para el comando curl exacto."
     },
     "importPlaceholder": {
       "solidping": "Pega el documento JSON o YAML exportado…",
       "gatus": "Pega tu config.yaml de Gatus…",
-      "uptime-kuma": "Pega la copia de seguridad JSON de Uptime Kuma…"
+      "uptime-kuma": "Pega la copia de seguridad JSON de Uptime Kuma…",
+      "uptimerobot": "Pega el JSON getMonitors de UptimeRobot…"
     },
     "importPayload": "Configuración",
     "importUpload": "Subir un archivo",
@@ -182,7 +196,7 @@
     "labelValue": "Valor",
     "addLabel": "Añadir etiqueta",
     "flapping": "Inestabilidad (flapping)",
-    "flappingHelp": "Cómo se gestiona una comprobación que se recupera y falla repetidamente — deduplica cortes breves y exige mayor estabilidad antes de resolver una comprobación inestable.",
+    "flappingHelp": "Deduplica cortes breves y exige mayor estabilidad antes de resolver una comprobación inestable.",
     "confirmationPeriod": "Período de confirmación",
     "confirmationPeriodHelp": "Esperar este tiempo después del primer fallo antes de abrir un incidente. 0 = abrir inmediatamente.",
     "escalationThreshold": "Umbral de escalada",
@@ -200,13 +214,16 @@
     "periodImmediateOpen": "Abre un incidente inmediatamente en el primer fallo.",
     "periodImmediateResolve": "Resuelve el incidente inmediatamente en el primer éxito.",
     "reopenCooldown": "Multiplicador de espera de reapertura",
-    "reopenCooldownHelp": "Si la comprobación vuelve a fallar poco después de recuperarse, se vincula al mismo incidente en lugar de alertar de nuevo. Ventana = N × intervalo de comprobación (mín. 2 min, máx. 30 min). 0 = abrir siempre un nuevo incidente.",
+    "reopenCooldownHelp": "Una recaída dentro de esta ventana se vincula al incidente anterior en lugar de alertar de nuevo.",
+    "reopenCooldownOff": "desactivado — abre siempre un nuevo incidente",
+    "reopenCooldownCapped": "= {{duration}} (limitado, desde {{raw}})",
+    "reopenCooldownFloored": "= {{duration}} (mínimo, desde {{raw}})",
     "flappingWindow": "Ventana de inestabilidad (segundos)",
-    "flappingWindowHelp": "Si una comprobación oscila repetidamente dentro de esta ventana, exigir mayor estabilidad antes de cada resolución. 0 = desactivado.",
+    "flappingWindowHelp": "Las interrupciones dentro de esta ventana aumentan el tiempo de recuperación requerido. 0 = desactivado.",
     "flapBackoffFactor": "Factor de incremento",
-    "flapBackoffFactorHelp": "Cada oscilación multiplica el tiempo de recuperación requerido por este valor. 1 = desactivado (recuperación constante).",
+    "flapBackoffFactorHelp": "Cada oscilación multiplica la recuperación requerida por este valor. 1 = desactivado.",
     "maxRecoveryMultiplier": "Multiplicador de recuperación máx.",
-    "maxRecoveryMultiplierHelp": "Límite — la recuperación requerida nunca supera este múltiplo del período de recuperación base.",
+    "maxRecoveryMultiplierHelp": "La recuperación requerida nunca supera este múltiplo del período de recuperación base.",
     "saveChanges": "Guardar cambios",
     "creating": "Creando...",
     "urlRequired": "La URL es obligatoria",
@@ -214,7 +231,12 @@
     "portRequired": "El puerto es obligatorio",
     "domainRequired": "El dominio es obligatorio",
     "topic": "Tema",
-    "tls": "TLS"
+    "tls": "TLS",
+    "tracerouteOnFailure": "Traceroute ante fallo de red",
+    "tracerouteInherit": "Heredar el valor de la organización",
+    "tracerouteOn": "Capturar siempre",
+    "tracerouteOff": "No capturar nunca",
+    "tracerouteOnFailureHelp": "Cuando este check caiga porque no se pudo ALCANZAR el destino (tiempo de conexión agotado, rechazo, pérdida ICMP, handshake TLS colgado), captura un traceroute estilo MTR y adjúntalo a la incidencia. Los fallos de aplicación como HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo activan: el servidor respondió, así que la ruta está bien."
   },
   "types": {
     "http": "HTTP",
@@ -225,8 +247,8 @@
     "icmpDescription": "Haga ping a hosts vía ICMP",
     "dns": "DNS",
     "dnsDescription": "Monitorice la resolución DNS",
-    "ssl": "SSL",
-    "sslDescription": "Compruebe la validez de certificados SSL",
+    "ssl": "TLS",
+    "sslDescription": "Compruebe la validez de certificados TLS",
     "domain": "Dominio",
     "domainDescription": "Monitorice la caducidad de dominios",
     "heartbeat": "Heartbeat",
@@ -380,7 +402,8 @@
       "dotClickToClose": "Haga clic para cerrar",
       "resetZoom": "Restablecer zoom",
       "zoomHint": "Arrastra sobre el gráfico para ampliar un intervalo de tiempo",
-      "zoomHintReset": "Zoom activo: arrastra para ajustar o haz doble clic para restablecer"
+      "zoomHintReset": "Zoom activo: arrastra para ajustar o haz doble clic para restablecer",
+      "rawUnavailable": "Puntos recientes no disponibles: solo datos agregados"
     },
     "resultBox": {
       "close": "Cerrar",
@@ -475,6 +498,9 @@
     "checkInterval": "Intervalo de comprobación",
     "regionsLabel": "Regiones",
     "statusLabel": "Estado",
+    "flapping": "Inestabilidad",
+    "flappingSummary": "Interrupción n.º {{count}} dentro de {{window}} — recuperación requerida ×{{multiplier}} = {{effective}}",
+    "flappingSummaryImmediate": "Interrupción n.º {{count}} dentro de {{window}} — se resuelve de inmediato",
     "labelsLabel": "Etiquetas",
     "lastResult": "Último resultado",
     "lastResultDescription": "Última ejecución de la comprobación",

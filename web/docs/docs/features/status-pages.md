@@ -89,10 +89,99 @@ Status pages are managed per organization from the dashboard (**Settings → Sta
 | Show Response Time | Display per-check response-time history |
 | History Days | Size of the lookback window (default 90 days) |
 | Language | Locale used for date formatting on the public page |
+| Visibility | `Public`, `Private` (hidden entirely) or `Password protected` (see below) |
+| Logo / Favicon | Your own brand assets, replacing the SolidPing mark (see below) |
+| Hide "Powered by SolidPing" | White-label the footer, when your plan includes it (see below) |
 | Custom CSS | Your own stylesheet, applied to the public page (see below) |
 | Auto-publish incidents | Turn monitoring incidents into public incidents automatically (see below) |
 | Publication delay | Debounce before an incident goes public (default 60 s) |
 | When the incident resolves | `always` / `if_untouched` / `never` |
+
+## Branding
+
+A status page can wear your brand rather than ours.
+
+### Logo and favicon
+
+Upload them from **Status page → Edit → Branding**:
+
+- **Logo** — PNG, JPEG, WebP, GIF or SVG, up to 1 MB. When set, it *replaces*
+  the SolidPing mark in the page header rather than sitting next to it.
+- **Favicon** — ICO, PNG, WebP, GIF or SVG, up to 256 KB. It applies on your
+  custom domain too, not just on the SolidPing-hosted URL.
+
+Both are served from a stable public URL you can paste anywhere. That URL stops
+working the moment the asset is **replaced**, **removed**, or the page is
+**deleted**.
+
+:::caution Disabling a page does not hide its logo
+
+Turning a page off — or setting it to **private** or **password** — takes the
+*page* offline, but the logo and favicon URLs keep resolving. They are stable,
+unguessable links to an image, not to anything about your monitoring, and on a
+password-protected page the logo is what visitors see above the prompt anyway.
+
+To take an uploaded image offline, **clear it** (or replace it). Disabling the
+page is not enough.
+
+:::
+
+The `sp-logo` CSS hook still applies to an uploaded logo, so existing custom CSS
+keeps working.
+
+### White label
+
+Turning on **Hide "Powered by SolidPing"** removes the footer link from the
+public page. It takes effect when your plan includes white labelling — on a
+self-hosted instance that is always, and on SolidPing Cloud it comes with a paid
+plan. The setting is stored either way, so upgrading applies it immediately with
+nothing to re-tick. The version line stays: it is information about the
+instance, not an advertisement, and support answers depend on it.
+
+## Private and password-protected pages
+
+Visibility has three settings:
+
+| Setting | What visitors see |
+|---|---|
+| **Public** | Anyone with the link sees the page. |
+| **Private** | The page is hidden entirely — its public URLs answer exactly as if the page did not exist. |
+| **Password protected** | The page asks for a password, then shows normally. |
+
+**Password protected** is the one to use for a status page you share with
+customers but not with the internet. Set a password (at least 6 characters) and
+send it to the people who should see the page.
+
+A visitor who opens the page gets a single password field. Once they enter it,
+their browser holds an unlock for 12 hours — on that hostname only, so an unlock
+obtained on your custom domain never travels anywhere else. Everything the page
+exposes is gated behind it: the page itself, the incident history, the Atom feed,
+the summary endpoint, the badge, and the subscribe form.
+
+Two things worth knowing:
+
+- **Changing the password signs everyone out immediately.** There is no separate
+  revocation step; the previous password's unlocks simply stop working.
+- **People already subscribed keep receiving notifications.** Locking a page down
+  gates who can *look* at it, never who has already opted into updates.
+
+Wrong-password attempts are rate-limited, so the password does not have to be
+long enough to survive a brute-force script on its own.
+
+## Caching
+
+A **public** page is served with `Cache-Control: public, max-age=60` (the Atom
+feed gets 300 s), so browsers, CDNs and corporate proxies can absorb the traffic
+spike that arrives exactly when your infrastructure is already having a bad day.
+A status change still surfaces within a minute.
+
+A **private** or **password-protected** page is served with `Cache-Control:
+private, no-store` instead, on every one of its public URLs — the page, the
+summary, the badge, the incident history, the feed — so no shared cache
+anywhere retains its body.
+That stays true after a visitor unlocks it: the unlock belongs to that visitor,
+not to the proxy in front of them. The "not found" answers are `no-store` too,
+so a cache cannot be probed for which pages exist.
 
 ## Incidents
 
@@ -377,11 +466,72 @@ The stylesheet is stored verbatim and rendered as a text node inside a
 
 ## Subscribers
 
-Visitors can subscribe to a status page to be notified of incidents by email:
+A status page can notify people and systems on three channels: **email**,
+**webhook** and **Slack**.
+
+### Email — self-serve
+
+Visitors subscribe themselves from the page:
 
 - **Double opt-in** — a confirmation link is emailed before any updates are sent.
 - Subscribers can unsubscribe at any time via a link in every message.
 - The subscriber list is admin-only; addresses are redacted in API responses.
+
+### Webhook and Slack — you set these up
+
+Webhook and Slack deliveries are registered by *you*, from **Status page → Edit
+→ Subscribers**, not by visitors. That is deliberate: an incoming-webhook URL is
+a credential, and there is no way to check that a visitor pasting one actually
+owns the channel it posts to. The public subscribe form says so, so nobody goes
+looking for a control that is not there.
+
+Add one by choosing the channel and pasting the delivery URL:
+
+- **Slack** — an [incoming webhook](https://api.slack.com/messaging/webhooks)
+  URL (`https://hooks.slack.com/services/…`). Updates arrive as a Slack message.
+- **Webhook** — any `https` endpoint of yours. It receives a JSON POST:
+
+  ```json
+  {
+    "event": "status_update.published",
+    "statusPageUid": "…",
+    "pageName": "Acme Status",
+    "incidentUid": "…",
+    "kind": "info",
+    "title": "Database degraded",
+    "bodyMarkdown": "We are investigating.",
+    "publishedAt": "2026-08-21T09:00:00Z"
+  }
+  ```
+
+  The payload carries only what the public page already shows — never probe
+  output, check identifiers or internal hostnames.
+
+**Signed deliveries.** Every webhook POST carries an HMAC-SHA256 signature so
+your receiver can prove it came from SolidPing:
+
+| Header | Value |
+|---|---|
+| `X-SP-Signature` | `v1,<base64 HMAC>` |
+| `X-SP-Timestamp` | Unix seconds, part of the signed string |
+| `X-SP-Key-Id` | `status-page-subscriber` |
+
+The signed string is `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`.
+
+You can paste your own signing secret when adding the subscription — useful if
+your receiver already verifies a secret you control. Leave the field empty and
+SolidPing generates one and **shows it to you once, right after you add the
+delivery**. Copy it then: it is stored encrypted and is never displayed again,
+so losing it means removing the subscription and adding it back.
+
+**Your URL stays secret.** It is stored encrypted, and the dashboard and API only
+ever show a masked form of it — enough to tell two webhooks apart, useless to
+anyone who gets hold of a response.
+
+**Broken endpoints stop being retried.** After five consecutive failed
+deliveries the subscription is disabled, and an audit event records that it was
+and why. One successful delivery resets the counter, so a receiver that blips
+during a deploy is never disabled.
 
 ## Feeds
 
@@ -400,7 +550,7 @@ For integrators who just want "is this service up right now?" without the full p
 }
 ```
 
-It's public (no authentication), sets `Cache-Control: public, max-age=60`, and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
+It's public (no authentication), caches like the page it summarizes (see [Caching](#caching)), and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
 
 ## Badge
 
@@ -410,7 +560,7 @@ It's public (no authentication), sets `Cache-Control: public, max-age=60`, and c
 ![Status](https://your-solidping-instance/api/v1/status-pages/default/main/badge)
 ```
 
-It's public, sets `Cache-Control: public, max-age=60`, and applies the same visibility gate and rollup as the summary endpoint above, so the badge can never disagree with the status page. Colors follow the rollup status: green (operational), yellow (degraded), red (down), blue (maintenance), gray (unknown). Customize with `label`, `style` (`flat` or `flat-square`), `minWidth`, and `width` query parameters, matching the per-check badges.
+It's public, caches like the page it reflects (see [Caching](#caching)), and applies the same visibility gate and rollup as the summary endpoint above, so the badge can never disagree with the status page. Colors follow the rollup status: green (operational), yellow (degraded), red (down), blue (maintenance), gray (unknown). Customize with `label`, `style` (`flat` or `flat-square`), `minWidth`, and `width` query parameters, matching the per-check badges.
 
 ## Embeddable Live Widget
 

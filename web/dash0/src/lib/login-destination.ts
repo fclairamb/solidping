@@ -127,6 +127,43 @@ export function deviceVerificationReturnTo(
 }
 
 /**
+ * Query params a failed provider callback appends to the SPA URL
+ * (server/internal/handlers/auth/*.go redirectWithError).
+ */
+const OAUTH_ERROR_PARAMS = ["error", "error_description"];
+
+/**
+ * Strips `error` / `error_description` from a relative in-app path.
+ *
+ * A failed OAuth callback lands the browser on `…?error=…&error_description=…`;
+ * that URL is then captured as `returnTo` by the 401 bounce and handed straight
+ * back to `/api/v1/auth/{provider}/login?redirect_uri=…`. Without this, every
+ * retry nests the previous attempt's error params one URL-encoding deeper —
+ * the compounding `redirect_uri` seen in the 2026-08-24 Discord HAR.
+ *
+ * Everything else survives untouched: other query params keep their order and
+ * repeated values, the hash is preserved, and a query string left empty loses
+ * its `?` rather than becoming a bare trailing one. Operates on the string
+ * directly (never `new URL(...)`) so a relative path stays relative and no
+ * origin is ever invented for it.
+ */
+export function stripOAuthErrorParams(path: string): string {
+  const hashAt = path.indexOf("#");
+  const hash = hashAt === -1 ? "" : path.slice(hashAt);
+  const withoutHash = hashAt === -1 ? path : path.slice(0, hashAt);
+
+  const queryAt = withoutHash.indexOf("?");
+  if (queryAt === -1) return path;
+
+  const pathname = withoutHash.slice(0, queryAt);
+  const params = new URLSearchParams(withoutHash.slice(queryAt + 1));
+  for (const name of OAUTH_ERROR_PARAMS) params.delete(name);
+
+  const query = params.toString();
+  return `${pathname}${query ? `?${query}` : ""}${hash}`;
+}
+
+/**
  * True when `returnTo` is a same-origin relative path pointing at an in-app
  * org route under the app base path. Rejects absolute URLs (`https://…`),
  * protocol-relative (`//host`) and backslash-obfuscated (`/\host`) forms so

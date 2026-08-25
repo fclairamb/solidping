@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -184,7 +183,7 @@ func (h *SAMLHandler) handleSAMLError(
 		description = "SAML provider is not configured"
 	default:
 		code = OAuthCodeFailed
-		description = fmt.Sprintf("SAML login failed: %v", err)
+		description = logOAuthFailure(req, "saml", err)
 	}
 
 	return h.redirectWithError(writer, req, redirectURI, code, description)

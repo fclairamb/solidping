@@ -31,6 +31,12 @@ const (
 	// so keeping them in their own group makes "what is world-readable" a
 	// storage-level question, not a per-row one.
 	GroupTypeOrgLogos GroupType = "org-logos"
+	// GroupTypeStatusPageAssets holds per-status-page brand assets — the
+	// uploaded logo and favicon (spec 2026-08-21-07). Same reasoning as
+	// GroupTypeOrgLogos: these blobs are served over an unsigned public route,
+	// so "what is world-readable" stays a storage-level question rather than a
+	// per-row one.
+	GroupTypeStatusPageAssets GroupType = "status-page-assets"
 )
 
 // FileMetadata is the small bag of attributes a backend may need to write

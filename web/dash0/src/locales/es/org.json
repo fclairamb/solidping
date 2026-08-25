@@ -43,6 +43,12 @@
       "confirmInputLabel": "Escriba {{org}} para confirmar",
       "confirmAction": "Eliminar organización",
       "deleted": "Organización {{org}} eliminada"
+    },
+    "traceroute": {
+      "title": "Diagnóstico de la ruta de red",
+      "description": "Cuando un check caiga porque no se pudo ALCANZAR su destino, captura un traceroute estilo MTR y adjúntalo a la incidencia.",
+      "label": "Traceroute ante fallo de red",
+      "help": "Se aplica a todos los checks configurados como «heredar». Solo los fallos de alcanzabilidad activan una captura: tiempos de conexión agotados, rechazos, pérdida ICMP, handshakes TLS colgados. Un HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo hacen, porque el servidor respondió. Los trazados se ejecutan después de que el resultado fallido ya se haya reportado y están limitados por organización: nunca retrasan una incidencia ni inundan un apagón masivo."
     }
   },
   "usage": {
@@ -64,7 +70,11 @@
       "runaway": "Se rechazaron {{count}} mensaje(s) porque se alcanzó el límite de SMS de esta instancia ({{limit}}/hora). Se están perdiendo alertas en toda la instancia — avisa a tu operador.",
       "country": "Se rechazaron {{count}} mensaje(s) porque el país de destino no está en la lista permitida de esta instancia ({{countries}})."
     },
-    "slos": "Objetivos de nivel de servicio"
+    "slos": "Objetivos de nivel de servicio",
+    "whiteLabel": "Marca blanca",
+    "included": "Incluida",
+    "notIncluded": "No incluida",
+    "whiteLabelHint": "Permite que una página de estado oculte el pie «Con tecnología de SolidPing»."
   },
   "ai": {
     "title": "Asistentes de IA",
@@ -154,6 +164,9 @@
     "inviteMember": "Invitar a un miembro",
     "sendDescription": "Envíe una invitación para unirse a esta organización",
     "invitationCreated": "Invitación creada. Comparta este enlace:",
+    "emailSentTo": "Se ha enviado un correo de invitación a {{email}}.",
+    "shareLinkFallback": "O comparta este enlace directamente:",
+    "emailNotConfigured": "El envío de correo no está configurado en esta instancia; comparta este enlace con el destinatario.",
     "sendInvitation": "Enviar invitación",
     "sending": "Enviando...",
     "pendingTitle": "Invitaciones pendientes",

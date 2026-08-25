@@ -5,10 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // Handler handles HTTP requests for events.
@@ -36,10 +38,63 @@ func (h *Handler) ListEvents(writer http.ResponseWriter, req *http.Request) erro
 		Size: 20, // Default size
 	}
 
-	// Parse eventType filter (comma-separated)
+	opts.Caller = callerFrom(req)
+
+	// Parse eventType filter (comma-separated, exact match)
 	if typeParam := query.Get("eventType"); typeParam != "" {
-		opts.EventTypes = strings.Split(typeParam, ",")
+		opts.EventTypes = splitCSV(typeParam)
 	}
+
+	// Parse type filter (comma-separated FAMILY prefixes, e.g. ?type=auth,member).
+	// Deliberately a separate parameter from eventType rather than an overload
+	// of it: "auth" is not an event type, and silently prefix-matching an exact
+	// filter would make `?eventType=check.created` also admit a future
+	// `check.created_from_template`.
+	if familyParam := query.Get("type"); familyParam != "" {
+		opts.EventTypePrefixes = splitCSV(familyParam)
+	}
+
+	// Parse actorUserUid (spec name) / actorUid (alias). The COLUMN is
+	// actor_uid; the spec calls the concept actor_user_uid. Both spellings are
+	// accepted so neither name is a trap.
+	if actorUID := firstNonEmpty(query.Get("actorUserUid"), query.Get("actorUid")); actorUID != "" {
+		opts.ActorUID = &actorUID
+	}
+
+	// Target identity lives in the redacted payload (target_uid /
+	// target_type), so these are payload predicates rather than column ones —
+	// the target is polymorphic across checks, policies, tokens and members.
+	if targetUID := query.Get("targetUid"); targetUID != "" {
+		opts.TargetUID = &targetUID
+	}
+
+	if targetType := query.Get("targetType"); targetType != "" {
+		opts.TargetType = &targetType
+	}
+
+	// `target` is the operator-facing free-text box: an exact UID or part of
+	// the target's captured name. `targetUid` above stays exact, for API
+	// consumers that already hold the identifier.
+	if target := strings.TrimSpace(query.Get("target")); target != "" {
+		opts.TargetSearch = &target
+	}
+
+	// Honored for org admins/owners only — the service drops it otherwise,
+	// so the filter cannot be used as an oracle for a column the caller is not
+	// allowed to read.
+	if sourceIP := query.Get("sourceIp"); sourceIP != "" {
+		opts.SourceIP = &sourceIP
+	}
+
+	since, until, err := parseTimeRange(query)
+	if err != nil {
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Invalid since/until parameter", err)
+	}
+
+	opts.Since = since
+	opts.Until = until
 
 	// Parse checkUid filter
 	if checkUID := query.Get("checkUid"); checkUID != "" {
@@ -83,6 +138,7 @@ func (h *Handler) ListIncidentEvents(writer http.ResponseWriter, req *http.Reque
 	opts := ListEventsOptions{
 		IncidentUID: &incidentUID,
 		Size:        20, // Default size
+		Caller:      callerFrom(req),
 	}
 
 	// Parse cursor
@@ -117,6 +173,7 @@ func (h *Handler) ListCheckEvents(writer http.ResponseWriter, req *http.Request)
 	opts := ListEventsOptions{
 		CheckUID: &checkUID,
 		Size:     20, // Default size
+		Caller:   callerFrom(req),
 	}
 
 	// Parse cursor
@@ -148,4 +205,79 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// callerFrom extracts the authenticated principal for the visibility gate. An
+// unauthenticated request yields the zero Caller, which is treated as
+// non-admin — these routes are behind RequireAuth, so that path is defensive
+// rather than reachable.
+func callerFrom(req *http.Request) Caller {
+	user, ok := middleware.GetUserFromContext(req.Context())
+	if !ok || user == nil {
+		return Caller{}
+	}
+
+	return Caller{UserUID: user.UID, SuperAdmin: user.SuperAdmin}
+}
+
+// splitCSV splits a comma-separated parameter and drops empty entries, so
+// "auth,,member" and a trailing comma do not produce a filter on "".
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+
+	return ""
+}
+
+// parseTimeRange reads the since/until window. Both are RFC3339; either may be
+// omitted. They were declared on the options struct and the filter from the
+// start but never actually parsed, so a time-bounded audit query silently
+// returned the whole trail.
+func parseTimeRange(query map[string][]string) (*time.Time, *time.Time, error) {
+	get := func(key string) string {
+		if values, ok := query[key]; ok && len(values) > 0 {
+			return values[0]
+		}
+
+		return ""
+	}
+
+	var since, until *time.Time
+
+	if raw := get("since"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		since = &parsed
+	}
+
+	if raw := get("until"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		until = &parsed
+	}
+
+	return since, until, nil
 }

@@ -155,6 +155,7 @@ function DiscoveryIndexPage() {
         icon={Network}
         title={t("title")}
         description={t("subtitle")}
+        docsHref="/docs/features/discovery"
         className="flex-wrap"
         actions={
           <>

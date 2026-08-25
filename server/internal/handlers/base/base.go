@@ -30,17 +30,24 @@ const (
 	ErrorCodeIntegrationNotFound  ErrorCode = "INTEGRATION_NOT_FOUND"
 	// ErrorCodeChannelNotFound is the prior name of ErrorCodeIntegrationNotFound,
 	// kept as a deprecated alias for one release cycle. PR-E removes it.
-	ErrorCodeChannelNotFound           ErrorCode = ErrorCodeIntegrationNotFound
-	ErrorCodeInvalidCredentials        ErrorCode = "INVALID_CREDENTIALS"
-	ErrorCodeInvalidToken              ErrorCode = "INVALID_TOKEN"
-	ErrorCodeNoToken                   ErrorCode = "NO_TOKEN"
-	ErrorCodeInvalidOrg                ErrorCode = "INVALID_ORG"
-	ErrorCodeTokenNotFound             ErrorCode = "TOKEN_NOT_FOUND"
-	ErrorCodeOAuthFailed               ErrorCode = "OAUTH_FAILED"
-	ErrorCodeInvalidState              ErrorCode = "INVALID_STATE"
-	ErrorCodeEmailNotVerified          ErrorCode = "EMAIL_NOT_VERIFIED"
-	ErrorCodeTokenExchangeFailed       ErrorCode = "TOKEN_EXCHANGE_FAILED"
-	ErrorCodeStatusPageNotFound        ErrorCode = "STATUS_PAGE_NOT_FOUND"
+	ErrorCodeChannelNotFound     ErrorCode = ErrorCodeIntegrationNotFound
+	ErrorCodeInvalidCredentials  ErrorCode = "INVALID_CREDENTIALS"
+	ErrorCodeInvalidToken        ErrorCode = "INVALID_TOKEN"
+	ErrorCodeNoToken             ErrorCode = "NO_TOKEN"
+	ErrorCodeInvalidOrg          ErrorCode = "INVALID_ORG"
+	ErrorCodeTokenNotFound       ErrorCode = "TOKEN_NOT_FOUND"
+	ErrorCodeOAuthFailed         ErrorCode = "OAUTH_FAILED"
+	ErrorCodeInvalidState        ErrorCode = "INVALID_STATE"
+	ErrorCodeEmailNotVerified    ErrorCode = "EMAIL_NOT_VERIFIED"
+	ErrorCodeTokenExchangeFailed ErrorCode = "TOKEN_EXCHANGE_FAILED"
+	ErrorCodeStatusPageNotFound  ErrorCode = "STATUS_PAGE_NOT_FOUND"
+	// ErrorCodeStatusPageLocked accompanies the 401 a password-protected
+	// status page answers with until the visitor unlocks it (spec
+	// 2026-08-21-07). It is deliberately NOT ErrorCodeUnauthorized: status0
+	// keys the unlock form off this exact code, and conflating it with a
+	// session problem would send the visitor to a login page they have no
+	// account for.
+	ErrorCodeStatusPageLocked          ErrorCode = "STATUS_PAGE_LOCKED"
 	ErrorCodeStatusPageSectionNotFound ErrorCode = "STATUS_PAGE_SECTION_NOT_FOUND"
 	ErrorCodeCheckGroupNotFound        ErrorCode = "CHECK_GROUP_NOT_FOUND"
 	ErrorCodeSeverityNotFound          ErrorCode = "SEVERITY_NOT_FOUND"
@@ -91,6 +98,14 @@ const (
 	// deliberately distinct from INVALID_CREDENTIALS so the dashboard can point
 	// the error at the current-password field instead of the whole form.
 	ErrorCodeInvalidCurrentPassword ErrorCode = "INVALID_CURRENT_PASSWORD"
+	// ErrorCodePasswordChangeRequired accompanies the 403 every authenticated
+	// surface returns while the caller's account carries
+	// users.must_change_password (spec 2026-08-23-04). It is deliberately NOT
+	// ErrorCodeForbidden: a client that cannot tell the two apart shows a dead
+	// "Permission denied" screen, when the correct behavior is to route the
+	// user to the password-rotation form — which is still reachable and is the
+	// one action that clears the condition.
+	ErrorCodePasswordChangeRequired ErrorCode = "PASSWORD_CHANGE_REQUIRED"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

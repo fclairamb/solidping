@@ -165,6 +165,9 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 	case eventTypeIncidentComment:
 		title = commentTitle(payload)
 		subtitle = commentAuthor(payload.Comment)
+	case eventTypeIncidentAcknowledged:
+		title = ackTitle(payload)
+		subtitle = ackSentence(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		subtitle = "An incident update occurred"
@@ -195,6 +198,18 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 		widgets = append(widgets, googleChatWidget{
 			DecoratedText: &googleChatDecoratedText{TopLabel: fieldLabelComment, Text: commentText(payload.Comment)},
 		})
+	case eventTypeIncidentAcknowledged:
+		widgets = append(widgets, googleChatWidget{
+			DecoratedText: &googleChatDecoratedText{
+				TopLabel: fieldLabelAcknowledgedBy, Text: ackActor(payload.Acknowledgment),
+			},
+		})
+
+		if via := ackViaName(payload.Acknowledgment); via != "" {
+			widgets = append(widgets, googleChatWidget{
+				DecoratedText: &googleChatDecoratedText{TopLabel: fieldLabelVia, Text: via},
+			})
+		}
 	case eventTypeIncidentResolved:
 		if payload.Incident.ResolvedAt != nil {
 			duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)

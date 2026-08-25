@@ -115,7 +115,7 @@ Mechanics worth knowing before you touch an existing file:
 **organizations** - Multi-tenant structure for isolating monitoring resources
 - `uid` (uuid) - Primary key
 - `slug` (text) - URL-friendly unique identifier (3-20 chars, alphanumeric + hyphens)
-- `logo_url` / `logo_file_uid` - Optional org logo: an external http(s) URL, or `/pub/org-logos/<file uid>` for an upload (owner-only `PATCH /api/v1/orgs/:org` and `POST /api/v1/orgs/:org/logo`)
+- `logo_url` / `logo_file_uid` - Optional org logo: an external http(s) URL, or `/pub/assets/<file uid>` for an upload (owner-only `PATCH /api/v1/orgs/:org` and `POST /api/v1/orgs/:org/logo`). The uploaded blob is public because its file row carries the topic `organizations/<org uid>/logo` — see `internal/handlers/files/publictopics.go`
 - Soft delete support via `deleted_at`
 
 **organization_previous_slugs** - Rename aliases. A renamed org keeps answering on its old slug: lookups fall back to this table and permanently redirect (301 GET/HEAD, 308 otherwise) to the current slug, across the API, status pages, badges, the embed widget and the dash0/status0 SPA URLs. A live `organizations.slug` always wins over an alias, and an alias is released the moment another org claims the slug. A soft-deleted org is never reachable through an alias — its slug 404s immediately (spec 2026-08-08-11). See `wiki/api-specification/orgs.md`.
@@ -288,7 +288,7 @@ The easiest way to test the API is to get a JWT token and save it to a file:
 ```bash
 # 1. Login and save token to file (org is optional in body)
 curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"org":"default","email":"admin@solidping.com","password":"solidpass"}' \
+  -d '{"org":"default","email":"admin@solidping.io","password":"solidpass"}' \
   'http://localhost:4000/api/v1/auth/login' \
   | jq -r '.accessToken' > /tmp/token.txt
 
@@ -359,9 +359,23 @@ curl -s -H "Authorization: Bearer eyJhbGci..." 'http://localhost:4000/api/v1/org
 ```
 
 ### Default Credentials
-- **Email**: `admin@solidping.com`
+- **Email**: `admin@solidping.io`
 - **Password**: `solidpass`
 - **Organization**: `default`
+
+On a **fresh database** this account is seeded with `must_change_password`, so
+the login above succeeds but every other endpoint answers `403` /
+`PASSWORD_CHANGE_REQUIRED` until you rotate:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"currentPassword":"solidpass","newPassword":"something-else"}' \
+  'http://localhost:4000/api/v1/auth/change-password'
+```
+
+The flag is a general user-level capability (`internal/handlers/auth/password_rotation.go`),
+enforced in `RequireAuth`, `RequireMCPAuth` and the realtime WebSocket handshake —
+not a special case for the seeded admin. Test mode (`test@test.com`) is not flagged.
 
 ### Troubleshooting
 - If token expires, re-run the login command to get a fresh token

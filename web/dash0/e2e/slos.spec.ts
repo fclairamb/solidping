@@ -382,6 +382,108 @@ test.describe("SLOs", () => {
     await expect(header.getByText(FIXTURE_NAME, { exact: true })).toBeVisible();
   });
 
+  // Coverage for spec 2026-08-21-08: burn-rate alert policies on SLO detail.
+  test("the alerting section ships both built-in policies, disabled, with tunable thresholds", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(`orgs/test/slos/${FIXTURE_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    const card = page.getByTestId("slo-alerting-card");
+    await expect(card).toBeVisible();
+
+    const fast = page.getByTestId("slo-alert-policy-fast");
+    const slow = page.getByTestId("slo-alert-policy-slow");
+    await expect(fast).toBeVisible();
+    await expect(slow).toBeVisible();
+
+    // The SRE-workbook defaults, rendered rather than hidden behind an edit
+    // form: an operator must be able to see what would page them.
+    await expect(fast).toContainText("14.4x");
+    await expect(slow).toContainText("6x");
+
+    // Alerting is opt-in. A freshly seeded objective must page nobody, and
+    // nothing may be firing on a healthy 99.950% fixture.
+    await expect(page.getByTestId("slo-alert-toggle-fast")).toHaveAttribute(
+      "data-state",
+      "unchecked",
+    );
+    await expect(page.getByTestId("slo-alert-firing")).toHaveCount(0);
+    await expect(page.getByTestId("slo-detail-burning")).toHaveCount(0);
+
+    // Thresholds are editable, on a DEDICATED ROUTE rather than inline.
+    await expect(page.getByTestId("slo-alert-policy-form")).toHaveCount(0);
+    await page.getByTestId("slo-alert-edit-fast").click();
+    await page.waitForURL(/\/alert-policies\/[0-9a-f-]{36}$/, { timeout: 10000 });
+
+    const form = page.getByTestId("slo-alert-policy-form");
+    await expect(form).toBeVisible();
+    await expect(page.getByTestId("policy-long-window")).toHaveValue("60");
+    await expect(page.getByTestId("policy-short-window")).toHaveValue("5");
+    await expect(page.getByTestId("policy-threshold")).toHaveValue("14.4");
+
+    // A short window longer than the long one makes the multiwindow rule
+    // meaningless, so the form refuses to submit it rather than round-tripping
+    // a 400.
+    await page.getByTestId("policy-short-window").fill("600");
+    await expect(page.getByTestId("policy-windows-error")).toBeVisible();
+    await expect(page.getByTestId("policy-save")).toBeDisabled();
+
+    await page.getByTestId("policy-short-window").fill("10");
+    await page.getByTestId("policy-threshold").fill("20");
+    await expect(page.getByTestId("policy-save")).toBeEnabled();
+    await page.getByTestId("policy-save").click();
+
+    await page.waitForURL(/\/slos\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await expect(page.getByTestId("slo-alert-policy-fast")).toContainText("20x");
+  });
+
+  test("enabling a policy from the detail page persists", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto(`orgs/test/slos/${FIXTURE_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    const toggle = page.getByTestId("slo-alert-toggle-slow");
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("data-state", "checked");
+
+    // Read it back through the API rather than trusting optimistic UI.
+    await expect
+      .poll(async () => {
+        const resp = await page.request.get(
+          `${API_BASE}/api/v1/orgs/test/slos/${FIXTURE_UID}/alert-policies`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const body = await resp.json();
+        return body.data.find((p: { kind: string }) => p.kind === "slow").enabled;
+      }, { timeout: 10000 })
+      .toBe(true);
+
+    // Put it back so the fixture stays as the other tests expect it.
+    await page.request.patch(
+      `${API_BASE}/api/v1/orgs/test/slos/${FIXTURE_UID}/alert-policies/` +
+        (await (async () => {
+          const resp = await page.request.get(
+            `${API_BASE}/api/v1/orgs/test/slos/${FIXTURE_UID}/alert-policies`,
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          const body = await resp.json();
+          return body.data.find((p: { kind: string }) => p.kind === "slow").uid;
+        })()),
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { enabled: false },
+      },
+    );
+  });
+
   test("the covered check shows an SLO chip on its detail page", async ({
     authenticatedPage,
   }) => {

@@ -298,6 +298,19 @@ func effectiveRetentionRawHours(retentionRawHours int) int {
 	return retentionRawHours
 }
 
+// RawTierStart is the exported form of rawTierStart, for readers outside this
+// package that must bound a raw-tier query by exactly the same clamp — today
+// the status page's response-time fetch (spec 2026-08-22-05). It is exported
+// rather than reimplemented so there is still ONE raw bound in the system: the
+// clamp is what keeps raw and rollups disjoint, and a second copy that drifted
+// would either drop raw rows no rollup covers yet or double-count the overlap.
+//
+// retentionRawHours must come from systemconfig (see each service's
+// uptimebarHints), never from the koanf field alone.
+func RawTierStart(windowStart, now time.Time, retentionRawHours int) time.Time {
+	return rawTierStart(windowStart, now, retentionRawHours)
+}
+
 // rawTierStart clamps the raw-tier query's lower bound to
 // max(windowStart, now-(RetentionRaw+rawClampMargin)).
 //

@@ -326,3 +326,154 @@ func TestNoTXTSurfaceRemains(t *testing.T) {
 		}
 	}
 }
+
+// TestDiagnoseRecordsWhatItSaw covers the diagnosability directive of spec
+// 2026-08-23-03. A bare false has meant, at various times, a wrong CNAME, an
+// NXDOMAIN, an installation with no CNAME target configured, and a page checked
+// in the wrong mode — and telling them apart required shell access to the pod.
+func TestDiagnoseRecordsWhatItSaw(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mismatch names both sides", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "elsewhere.example.net.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "cname.solidping.io", ModeShared)
+		r.False(diag.OK)
+		r.Equal("cname.solidping.io", diag.Expected)
+		r.Equal("elsewhere.example.net", diag.Resolved)
+		r.Equal(ModeShared, diag.Mode)
+		r.Contains(diag.String(), "expected=cname.solidping.io")
+		r.Contains(diag.String(), "resolved=elsewhere.example.net")
+	})
+
+	t.Run("lookup error is preserved", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "", errTestLookup
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "cname.solidping.io", ModeShared)
+		r.False(diag.OK)
+		r.ErrorIs(diag.Err, errTestLookup)
+		r.Contains(diag.String(), "error=")
+	})
+
+	t.Run("no configured target says so instead of blaming DNS", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		called := false
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			called = true
+
+			return "cname.solidping.io.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "", ModeShared)
+		r.False(diag.OK)
+		r.False(called, "DNS is never consulted when nothing could have matched")
+		r.Contains(diag.String(), "no CNAME target configured")
+	})
+
+	t.Run("token mode records the per-page target", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "spabc.cname.solidping.io.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "solidping.io", ModeToken)
+		r.True(diag.OK)
+		r.Contains(diag.String(), "mode=token")
+		r.Contains(diag.String(), "expected=spabc.cname.solidping.io")
+	})
+}
+
+// TestChainedTargetVsFlattenedAnswer pins the two halves of the
+// "verification fails while DNS resolves correctly" report investigated in
+// spec 2026-08-23-05.
+//
+// The instance's own CNAME target can itself be a CNAME
+// ("solidping.io CNAME edge.example.net"). Go's pure resolver keeps the FIRST
+// CNAME of the chain, so the verifier sees the target the customer actually
+// published and MUST pass. If a resolver instead hands back the flattened tail,
+// that is a real mismatch and MUST be reported as one — naming the tail in
+// resolved=, never silently accepted.
+func TestChainedTargetVsFlattenedAnswer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first hop of a chained target verifies", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		// What the pure-Go resolver returns: the customer's own first hop,
+		// even though solidping.io is itself a CNAME to edge.example.net.
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "solidping.io.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "solidping.io", ModeShared)
+		r.True(diag.OK, "an intermediate hop in the instance target must not break verification")
+		r.Equal("solidping.io", diag.Resolved)
+		r.Contains(diag.String(), "ok=true")
+	})
+
+	t.Run("flattened tail is a diagnosed mismatch, not a silent pass", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		// What a flattening resolver would return: the end of the chain.
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "edge.example.net.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "solidping.io", ModeShared)
+		r.False(diag.OK)
+		r.Equal("edge.example.net", diag.Resolved)
+		r.Contains(diag.String(), "expected=solidping.io")
+		r.Contains(diag.String(), "resolved=edge.example.net")
+		r.NotContains(diag.String(), "error=", "a mismatch must not masquerade as a transport fault")
+	})
+
+	t.Run("transport fault is told apart from a mismatch", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		// The actual cause found on the affected instance: an intermittent
+		// resolver timeout. It must carry error= and leave resolved= empty, so
+		// an operator can tell it from a wrong record without a shell.
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "", errTestLookup
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "solidping.io", ModeShared)
+		r.False(diag.OK)
+		r.Empty(diag.Resolved)
+		r.Contains(diag.String(), "resolved=<none>")
+		r.Contains(diag.String(), "error=")
+	})
+
+	t.Run("token mode still refuses the plain shared target", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		// The non-goal guard: nothing in this investigation may widen what
+		// verifies. In token mode the plain instance target stays a failure.
+		v := &Verifier{LookupCNAME: func(context.Context, string) (string, error) {
+			return "solidping.io.", nil
+		}}
+
+		diag := v.Diagnose(t.Context(), "status.acme.com", "spabc", "solidping.io", ModeToken)
+		r.False(diag.OK)
+		r.Equal("spabc.cname.solidping.io", diag.Expected)
+		r.Equal("solidping.io", diag.Resolved)
+	})
+}

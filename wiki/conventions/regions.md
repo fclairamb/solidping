@@ -58,8 +58,8 @@ baked in at *write* time into five denormalized places
 `results.region`), while private matching is exact-equality only. Renaming an
 org therefore left every one of those copies stale, and the regions API started
 advertising a *new* string no agent was bound to — so every check created after
-the rename sat in `validating` forever, silently. Observed live on
-solidping.k8xp.com after `acmetech` → `acme` (spec
+the rename sat in `validating` forever, silently. Observed live on a
+production deployment after `acmetech` → `acme` (spec
 `2026-08-13-01-org-rename-private-region-routing`).
 
 Deriving identity beats repairing it: every row that carries a region already

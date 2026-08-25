@@ -332,7 +332,7 @@ func checksEventsAction(ctx context.Context, cmd *cli.Command) error {
 		}
 		eventType := ""
 		if event.EventType != nil {
-			eventType = string(*event.EventType)
+			eventType = *event.EventType
 		}
 		actor := ""
 		if event.ActorType != nil {

@@ -3,7 +3,9 @@ package statussubscribers
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -68,24 +70,44 @@ type UpdateEvent struct {
 	IncidentUpdateCount int
 }
 
-// Notifier fans a published status update out to confirmed subscribers by email.
+// Notifier fans a published status update out to confirmed subscribers, on
+// whichever channel each one registered: email, an HMAC-signed webhook, or a
+// Slack incoming webhook.
 type Notifier struct {
 	db        db.Service
 	sender    email.Sender
 	formatter email.Formatter
 	baseURL   string
 	logger    *slog.Logger
+	// creds opens the encrypted delivery endpoints. nil is legal (self-hosted
+	// with no master key); plaintext envelopes still open.
+	creds credentials.Service
+	// httpClient delivers webhook/slack payloads. Injectable so tests can
+	// point it at an httptest server.
+	httpClient *http.Client
 }
 
 // NewNotifier builds a subscriber fan-out notifier.
 func NewNotifier(
-	dbService db.Service, sender email.Sender, formatter email.Formatter, baseURL string, logger *slog.Logger,
+	dbService db.Service, sender email.Sender, formatter email.Formatter, baseURL string,
+	logger *slog.Logger, creds credentials.Service,
 ) *Notifier {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return &Notifier{db: dbService, sender: sender, formatter: formatter, baseURL: baseURL, logger: logger}
+	return &Notifier{
+		db: dbService, sender: sender, formatter: formatter, baseURL: baseURL,
+		logger: logger, creds: creds,
+		httpClient: &http.Client{Timeout: deliveryTimeout},
+	}
+}
+
+// SetHTTPClient overrides the delivery client. Test seam only.
+func (n *Notifier) SetHTTPClient(client *http.Client) {
+	if client != nil {
+		n.httpClient = client
+	}
 }
 
 // notify sends one mail wave for the update to all confirmed page-scoped
@@ -93,7 +115,7 @@ func NewNotifier(
 // are logged, never returned — fan-out must never fail the originating status
 // update. Safe to call from a goroutine.
 func (n *Notifier) notify(ctx context.Context, event *UpdateEvent) {
-	if n == nil || n.sender == nil || n.formatter == nil {
+	if n == nil {
 		return
 	}
 
@@ -112,11 +134,33 @@ func (n *Notifier) notify(ctx context.Context, event *UpdateEvent) {
 	kind := mailKindForUpdate(event)
 
 	for _, sub := range subs {
-		n.sendOne(ctx, sub, event, kind)
+		// A subscriber the circuit breaker disabled is skipped but NOT deleted:
+		// the row is the operator's only record that the endpoint broke.
+		if sub.DisabledAt != nil {
+			continue
+		}
+
+		switch sub.Channel {
+		case models.SubscriberChannelWebhook, models.SubscriberChannelSlack:
+			n.deliverEndpoint(ctx, sub, event)
+		case models.SubscriberChannelEmail:
+			// An instance with no mailer configured still delivers webhooks;
+			// only the email leg is skipped.
+			if n.sender == nil || n.formatter == nil {
+				continue
+			}
+
+			n.sendOne(ctx, sub, event, kind)
+		default:
+			// An unknown channel is a row written by a NEWER version of the
+			// server than this process. Skipping is right; silence is not.
+			n.logger.WarnContext(ctx, "status subscriber fan-out: unknown channel, skipping",
+				"subscriberUid", sub.UID, "channel", string(sub.Channel))
+		}
 	}
 }
 
-// sendOne renders and sends a single subscriber message. Emails are PII, so the
+// sendOne renders and sends a single subscriber EMAIL message. Emails are PII, so the
 // recipient address is never logged in clear — only the subscriber UID.
 func (n *Notifier) sendOne(
 	ctx context.Context, sub *models.StatusPageSubscriber, event *UpdateEvent, kind MailKind,
@@ -149,10 +193,11 @@ func (n *Notifier) sendOne(
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{sub.Email}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{sub.EmailAddress()}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("status-subscriber-update.html"),
 	}
 
 	if _, err := n.sender.Send(ctx, msg); err != nil {

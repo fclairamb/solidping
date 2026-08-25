@@ -50,7 +50,7 @@ Tracks periods when a check is down.
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations |
 | check_uid | uuid | FK to checks |
-| check_group_uid | uuid | FK to check_groups (NULL = traditional per-check incident) |
+| check_group_uid | uuid | FK to check_groups. **HISTORICAL ONLY** — always NULL on new rows since v0.18.0 (spec 2026-08-24-14) |
 | region | text | Region where incident occurred |
 | state | smallint | 1=active, 2=resolved |
 | started_at | timestamptz | When failures started |
@@ -79,13 +79,29 @@ Tracks periods when a check is down.
 - `acknowledged_by` → users(uid)
 - `caused_by_incident_uid` → incidents(uid) (self-reference)
 
-**Indexes**: unique on (organization_uid, check_group_uid) where state = 1 and check_group_uid is not null and not deleted — at most one active group incident per group.
+**Indexes**: unique on (organization_uid, check_group_uid) where state = 1 and check_group_uid is not null and not deleted — at most one active group incident per group. Vestigial since v0.18.0: nothing writes a non-NULL `check_group_uid` any more, so the partial index covers no live rows.
+
+**Group incidents are historical.** Until v0.18.0 an outage on a check that
+belonged to a check group was folded into ONE incident keyed to whichever member
+failed *first*, with the others recorded in `incident_member_checks`. That
+hid the later members' failures from their own check pages, let them inherit a
+stale incident's escalation state, and — because dependency rollup matches
+parents on `incidents.check_uid` — made a grouped check unusable as a rollup
+parent unless it happened to fail first. Incidents are now always per-check; the
+consolidated "N/M checks down" view is rebuilt at read time (dash0) and at the
+publication layer (status pages). Existing rows are kept verbatim and still
+render. The v0.18.0 migration closed every group incident that was still active,
+since no code remains that could.
 
 ---
 
 ### incident_member_checks
 Per-member state inside a group incident: which checks joined the rollup and
 whether each is still failing.
+
+**Historical only** — the table is read (members still render on old incidents)
+but gains no new rows since v0.18.0. See the note on `incidents.check_group_uid`
+above.
 
 | Column | Type | Description |
 |--------|------|-------------|

@@ -6,6 +6,7 @@ import {
   iconToneClassName,
 } from "@/components/shared/check-type-identity";
 import { checkTypeDocsAnchors } from "@/components/shared/check-type-docs-anchors";
+import { checkTypes } from "@/components/shared/check-form";
 import type { CheckType } from "@/components/checks/form/types/common";
 
 // ALL_CHECK_TYPES is the drift guard for the `CheckType` union itself: a
@@ -175,5 +176,27 @@ describe("iconToneClassName", () => {
 
   it("returns empty for the fallback's empty tone", () => {
     expect(iconToneClassName("")).toBe("");
+  });
+});
+
+describe("check-form's type picker labels match the canonical identity", () => {
+  // check-form.tsx's `checkTypes` array is the new-check type picker's own
+  // list (value/label/description) — a second, independently hand-maintained
+  // label source alongside CHECK_TYPE_IDENTITY. The picker already sources
+  // its icon from CHECK_TYPE_IDENTITY (via CheckTypeIcon) for every row, so a
+  // label that disagrees with the identity map is drift, not a deliberate
+  // second naming — pin every SHARED type (present in both sources) to the
+  // same label so it can't silently diverge again (spec 2026-08-24-04 found
+  // exactly one: check-form.tsx said "SSL", CHECK_TYPE_IDENTITY said "TLS").
+  it.each(checkTypes.filter((ct) => CHECK_TYPE_IDENTITY[ct.value]))(
+    "%s's picker label matches its CHECK_TYPE_IDENTITY label",
+    (ct) => {
+      expect(ct.label).toBe(CHECK_TYPE_IDENTITY[ct.value]?.label);
+    },
+  );
+
+  it("actually compared a non-trivial number of shared types", () => {
+    const shared = checkTypes.filter((ct) => CHECK_TYPE_IDENTITY[ct.value]);
+    expect(shared.length).toBeGreaterThan(30);
   });
 });

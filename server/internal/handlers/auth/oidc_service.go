@@ -303,7 +303,7 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user)
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodOIDC))
 	if err != nil {
 		return nil, err
 	}
@@ -372,8 +372,24 @@ func claimString(claims map[string]any, key string) string {
 func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcUserInfo) (*models.User, error) {
 	// Check by OIDC subject first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeOIDC, userInfo.Subject)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
 	if err == nil && provider != nil {
-		return s.db.GetUser(ctx, provider.UserUID)
+		// A link pointing at a soft-deleted user is stale: it is cleared
+		// and we fall through to the email lookup / create path rather
+		// than failing this login (and every later one) forever.
+		user, resolveErr := resolveLinkedUser(ctx, s.db, models.ProviderTypeOIDC, userInfo.Subject, provider)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if user != nil {
+			return user, nil
+		}
+
+		provider = nil
 	}
 
 	// Check by email

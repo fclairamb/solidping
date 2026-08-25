@@ -1,0 +1,676 @@
+package attachments
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/nettrace"
+)
+
+const uploadPath = "/api/v1/agent/attachments"
+
+// nonceCounter makes every generated nonce unique across the package's tests.
+//
+//nolint:gochecknoglobals // test-only counter
+var nonceCounter atomic.Uint64
+
+// signedAgent is an enrolled agent plus the private key needed to sign for it.
+type signedAgent struct {
+	agent *models.Agent
+	priv  ed25519.PrivateKey
+}
+
+// enrollAgent creates an active agent row bound to `region`, owned by `orgUID`
+// (empty for a system agent), and returns it with its signing key.
+func enrollAgent(ctx context.Context, t *testing.T, dbSvc db.Service, orgUID, region string) *signedAgent {
+	t.Helper()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	pubB64 := base64.StdEncoding.EncodeToString(pub)
+
+	// Enroll through the real path (token -> EnrollAgent) rather than
+	// inserting a row: the agent identity this endpoint authenticates against
+	// is the one enrollment produces, and a hand-built row could drift from it.
+	rawToken, tokenHash, err := agents.GenerateEnrollmentToken()
+	require.NoError(t, err)
+	require.NotEmpty(t, rawToken)
+
+	var token *models.AgentEnrollmentToken
+	if orgUID == "" {
+		token = models.NewSystemAgentEnrollmentToken(region, tokenHash, time.Now().Add(time.Hour), nil)
+	} else {
+		token = models.NewAgentEnrollmentToken(orgUID, region, tokenHash, time.Now().Add(time.Hour), nil)
+	}
+
+	require.NoError(t, dbSvc.CreateAgentEnrollmentToken(ctx, token))
+
+	agent, err := dbSvc.EnrollAgent(ctx, tokenHash, "agent", pubB64, "age1fake", agents.KeyFingerprint(pubB64))
+	require.NoError(t, err)
+
+	return &signedAgent{agent: agent, priv: priv}
+}
+
+// signedRequest builds a POST with valid signed headers for this agent.
+func (s *signedAgent) signedRequest(
+	ctx context.Context, t *testing.T, topic string, body []byte,
+) *http.Request {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, uploadPath+"?topic="+topic, bytes.NewReader(body))
+
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+
+	// A fresh nonce per request: the endpoint's replay guard is real, and two
+	// requests built in the same second would otherwise collide and make an
+	// unrelated assertion fail as a 401.
+	s.sign(req, timestamp, "nonce-"+strconv.FormatUint(nonceCounter.Add(1), 10))
+
+	return req
+}
+
+// sign stamps the four signed headers onto a request.
+func (s *signedAgent) sign(req *http.Request, timestamp, nonce string) {
+	challenge := agents.SignatureChallenge(req.Method, req.URL.Path, timestamp, nonce)
+	signature := base64.StdEncoding.EncodeToString(ed25519.Sign(s.priv, challenge))
+
+	req.Header.Set(headerAgentUID, s.agent.UID)
+	req.Header.Set(headerTimestamp, timestamp)
+	req.Header.Set(headerNonce, nonce)
+	req.Header.Set(headerSignature, signature)
+}
+
+// uploadFixture is one wired-up endpoint plus the data an upload needs.
+//
+// ctx is a FUNCTION rather than a field: t.Context() is cheap, and storing a
+// context on a struct is the pattern the containedctx linter (rightly) flags.
+type uploadFixture struct {
+	ctx      func() context.Context
+	db       db.Service
+	svc      *Service
+	handler  *Handler
+	org      *models.Organization
+	incident *models.Incident
+	check    *models.Check
+}
+
+func setupUploadTest(t *testing.T) *uploadFixture {
+	t.Helper()
+
+	ctx, dbService, svc, org := setupAttachmentsTest(t)
+
+	check := models.NewCheck(org.UID, "api", "browser")
+	check.Regions = []string{"eu-west"}
+	require.NoError(t, dbService.CreateCheck(ctx, check))
+
+	incident := models.NewIncident(org.UID, check.UID, time.Now(), "api is down")
+	require.NoError(t, dbService.CreateIncident(ctx, incident))
+
+	cfg := &config.Config{}
+	cfg.Auth.JWTSecret = "test-secret"
+
+	handler := NewHandler(svc, dbService, cfg)
+	// In-memory replay guard: the sqlite test DB has the agent_nonces table,
+	// but an in-process cache keeps the test's intent (replay is refused)
+	// independent of the store's schema.
+	handler.SetNonceGuard(agents.NewNonceCache())
+
+	return &uploadFixture{
+		ctx: func() context.Context { return ctx },
+		db:  dbService, svc: svc, handler: handler,
+		org: org, incident: incident, check: check,
+	}
+}
+
+// serve runs the handler and returns the recorder.
+func (f *uploadFixture) serve(t *testing.T, req *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	require.NoError(t, f.handler.Upload(rec, req))
+
+	return rec
+}
+
+// TestAgentUploadHappyPath is the positive control every rejection test below
+// depends on: a correctly signed agent, serving the incident's region, gets a
+// 201 and a real stored attachment.
+func TestAgentUploadHappyPath(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	rec := f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("agent-capture")))
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var resp UploadResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.NotEmpty(resp.FileUID)
+
+	stored, err := f.db.GetFile(f.ctx(), f.org.UID, resp.FileUID)
+	r.NoError(err)
+	r.NotNil(stored.Topic)
+	r.Equal(topic, *stored.Topic)
+	r.Equal("image/png", stored.MimeType)
+}
+
+// TestAgentUploadRejectsBadSignature covers the authentication surface: missing
+// headers, a signature from the wrong key, a stale timestamp, a revoked agent,
+// and an unknown agent uid. Each must be a 401 and must store nothing.
+//
+// one per-agent rate limiter; running them in parallel would make an assertion
+// about a 401 depend on which subtest happened to consume the nonce first.
+//
+//nolint:paralleltest,tparallel // the subtests share one in-memory database and
+func TestAgentUploadRejectsBadSignature(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	t.Run("no headers", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(f.ctx(), http.MethodPost,
+			uploadPath+"?topic="+topic, bytes.NewReader(pngBytes("x")))
+		r.Equal(http.StatusUnauthorized, f.serve(t, req).Code)
+	})
+
+	t.Run("signature from another key", func(t *testing.T) {
+		imposter := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+
+		req := agent.signedRequest(f.ctx(), t, topic, pngBytes("x"))
+		// Re-sign with the imposter's key while keeping the victim's agent uid.
+		challenge := agents.SignatureChallenge(req.Method, req.URL.Path,
+			req.Header.Get(headerTimestamp), req.Header.Get(headerNonce))
+		req.Header.Set(headerSignature,
+			base64.StdEncoding.EncodeToString(ed25519.Sign(imposter.priv, challenge)))
+
+		r.Equal(http.StatusUnauthorized, f.serve(t, req).Code)
+	})
+
+	t.Run("stale timestamp", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(f.ctx(), http.MethodPost,
+			uploadPath+"?topic="+topic, bytes.NewReader(pngBytes("x")))
+		stale := time.Now().Add(-2 * agents.DefaultClockSkew).UTC().Format(time.RFC3339)
+		agent.sign(req, stale, "stale-nonce")
+
+		r.Equal(http.StatusUnauthorized, f.serve(t, req).Code)
+	})
+
+	t.Run("revoked agent", func(t *testing.T) {
+		revoked := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+		r.NoError(f.db.RevokeAgent(f.ctx(), f.org.UID, revoked.agent.UID))
+
+		r.Equal(http.StatusUnauthorized,
+			f.serve(t, revoked.signedRequest(f.ctx(), t, topic, pngBytes("x"))).Code)
+	})
+
+	t.Run("unknown agent uid", func(t *testing.T) {
+		req := agent.signedRequest(f.ctx(), t, topic, pngBytes("x"))
+		req.Header.Set(headerAgentUID, "00000000-0000-0000-0000-000000000000")
+
+		r.Equal(http.StatusUnauthorized, f.serve(t, req).Code)
+	})
+}
+
+// TestAgentUploadRejectsReplay proves the nonce guard: the SAME bytes, headers
+// and signature presented twice succeed once and fail once.
+func TestAgentUploadRejectsReplay(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	const nonce = "replay-me"
+
+	build := func() *http.Request {
+		req := httptest.NewRequestWithContext(f.ctx(), http.MethodPost,
+			uploadPath+"?topic="+topic, bytes.NewReader(pngBytes("replay")))
+		agent.sign(req, timestamp, nonce)
+
+		return req
+	}
+
+	r.Equal(http.StatusCreated, f.serve(t, build()).Code)
+	r.Equal(http.StatusUnauthorized, f.serve(t, build()).Code,
+		"a captured signature must not work a second time")
+}
+
+// TestAgentUploadRejectsForeignAndMalformedTopics is the authorization surface.
+// The org is NEVER taken from the request, so these are the cases where a
+// caller tries to take it anyway.
+func TestAgentUploadRejectsForeignAndMalformedTopics(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	other := models.NewOrganization("acmetwo", "Acme Two")
+	r.NoError(f.db.CreateOrganization(f.ctx(), other))
+
+	foreignAgent := enrollAgent(f.ctx(), t, f.db, other.UID, "eu-west")
+	wrongRegionAgent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "us-east")
+	goodAgent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	r.Equal(http.StatusForbidden,
+		f.serve(t, foreignAgent.signedRequest(f.ctx(), t, topic, pngBytes("x"))).Code,
+		"another org's agent must not attach to this incident")
+
+	r.Equal(http.StatusForbidden,
+		f.serve(t, wrongRegionAgent.signedRequest(f.ctx(), t, topic, pngBytes("x"))).Code,
+		"an agent whose region does not serve the check must be refused")
+
+	r.Equal(http.StatusForbidden,
+		f.serve(t, goodAgent.signedRequest(f.ctx(), t,
+			IncidentScreenshotTopic("11111111-1111-1111-1111-111111111111"), pngBytes("x"))).Code,
+		"an incident that does not exist must be refused")
+
+	r.Equal(http.StatusForbidden,
+		f.serve(t, goodAgent.signedRequest(f.ctx(), t,
+			"checks/"+f.check.UID+"/screenshot", pngBytes("x"))).Code,
+		"an entity with no registered authorizer must fail closed")
+
+	r.Equal(http.StatusBadRequest,
+		f.serve(t, goodAgent.signedRequest(f.ctx(), t, "incidents..screenshot", pngBytes("x"))).Code,
+		"a malformed topic is a bad request")
+}
+
+// TestAgentUploadRejectsBadBodies covers the payload gates: a mime mismatch and
+// an oversize body, both after a successful authorization so the rejection is
+// unambiguously about the body.
+func TestAgentUploadRejectsBadBodies(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	// A declared image/png that is not one: sniffing is what catches this.
+	req := agent.signedRequest(f.ctx(), t, topic, []byte("PK\x03\x04 this is a zip"))
+	req.Header.Set("Content-Type", "image/png")
+	r.Equal(http.StatusUnsupportedMediaType, f.serve(t, req).Code)
+
+	oversize := append(pngBytes(""), make([]byte, MaxAttachmentBytes)...)
+	r.Equal(http.StatusRequestEntityTooLarge,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, oversize)).Code)
+
+	r.Equal(http.StatusBadRequest,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, nil)).Code,
+		"an empty body is a bad request")
+}
+
+// TestAgentUploadRateLimited pins the per-agent cap, and that it is PER AGENT:
+// one agent burning its window must not lock another one out.
+func TestAgentUploadRateLimited(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	limiter := newAgentRateLimiter(time.Minute, 3)
+	now := time.Now()
+
+	r.True(limiter.allow("a", now))
+	r.True(limiter.allow("a", now))
+	r.True(limiter.allow("a", now))
+	r.False(limiter.allow("a", now), "the fourth in the window is refused")
+
+	r.True(limiter.allow("b", now), "the cap is per agent, not global")
+
+	r.True(limiter.allow("a", now.Add(time.Minute)), "the window rolls")
+}
+
+// TestAgentUploadCreatesNoRowForAnUnknownIncident is the invariant behind the
+// §7 decision that there is no "unreferenced agent blob" class to sweep.
+//
+// The claim is that an attachment cannot be BORN unreferenced: the only wire
+// path that writes one refuses unless the topic authorizer resolves a live
+// incident. A 403 alone would not prove that — the refusal has to happen before
+// anything is written, otherwise a rejected upload could still leave a row (and
+// a blob) behind with a topic pointing at nothing.
+//
+// So this asserts on the `files` table, not on the status code, and pairs it
+// with a positive control proving the identical request shape DOES create a row
+// when the incident exists.
+func TestAgentUploadCreatesNoRowForAnUnknownIncident(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+
+	countFiles := func() int {
+		_, total, err := f.db.ListFiles(f.ctx(), f.org.UID, models.ListFilesFilter{})
+		r.NoError(err)
+
+		return int(total)
+	}
+
+	r.Zero(countFiles(), "the fixture starts with no files")
+
+	ghost := IncidentScreenshotTopic("11111111-1111-1111-1111-111111111111")
+	r.Equal(http.StatusForbidden,
+		f.serve(t, agent.signedRequest(f.ctx(), t, ghost, pngBytes("ghost"))).Code)
+
+	r.Zero(countFiles(),
+		"a refused upload must leave no row: that is what makes an unreferenced attachment impossible")
+
+	// Positive control: same agent, same bytes, a topic naming a LIVE incident.
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t,
+			IncidentScreenshotTopic(f.incident.UID), pngBytes("real"))).Code)
+	r.Equal(1, countFiles())
+}
+
+// TestAgentUploadReplacesTheSameTopic pins replace-on-write on the AGENT path.
+//
+// A topic names one current artifact, not a log. Without the replace, an agent
+// retrying an upload (or capturing on consecutive relapses) would stack live
+// rows that the incident card renders one under another — bounded only by the
+// rate limiter, and unreachable by the GC sweep for as long as the incident
+// exists, since every one of them points at a perfectly live incident.
+func TestAgentUploadReplacesTheSameTopic(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	first := f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("first")))
+	r.Equal(http.StatusCreated, first.Code)
+
+	second := f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("second")))
+	r.Equal(http.StatusCreated, second.Code)
+
+	var firstResp, secondResp UploadResponse
+	r.NoError(json.Unmarshal(first.Body.Bytes(), &firstResp))
+	r.NoError(json.Unmarshal(second.Body.Bytes(), &secondResp))
+	r.NotEqual(firstResp.FileUID, secondResp.FileUID)
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 1, "the second upload must retire the first, not stack on it")
+	r.Equal(secondResp.FileUID, live[0].UID)
+
+	_, err = f.db.GetFile(f.ctx(), f.org.UID, firstResp.FileUID)
+	r.Error(err, "the superseded attachment is soft-deleted")
+}
+
+// TestAgentUploadReplaceIsScopedToTheExactTopic is the negative that keeps the
+// replace from becoming a per-incident wipe: a different KIND on the same
+// incident is a different artifact and must survive a screenshot upload.
+//
+// This matters because the kind segment is a bare word — reaping the screenshot
+// topic as a PREFIX would also take the path capture, `har`, and anything else
+// a later spec hangs off the same incident.
+func TestAgentUploadReplaceIsScopedToTheExactTopic(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	// A sibling artifact on the same incident: the path capture (spec
+	// 2026-08-21-10), which is a real second kind rather than a hypothetical.
+	sibling := IncidentTracerouteTopic(f.incident.UID)
+	siblingUID, err := f.svc.Put(f.ctx(), f.org.UID, sibling, "trace.json", tracerouteBytes(t), nil)
+	r.NoError(err)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentScreenshotTopic(f.incident.UID)
+
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("onset"))).Code)
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, pngBytes("onset-again"))).Code)
+
+	stored, err := f.db.GetFile(f.ctx(), f.org.UID, siblingUID)
+	r.NoError(err, "a different kind on the same incident must survive the replace")
+	r.NotNil(stored)
+}
+
+// tracerouteBytes builds a minimal valid path capture, which is what the
+// traceroute kind's sniff accepts (see sniffMime: the bytes must PARSE as a
+// capture, not merely be JSON).
+func tracerouteBytes(t *testing.T) []byte {
+	t.Helper()
+
+	capture := &nettrace.Capture{
+		Mode:                nettrace.ModeICMPRaw,
+		HopAddressesVisible: true,
+		Host:                "acme.com",
+		Address:             "192.0.2.10",
+		Family:              "ipv4",
+		Hops:                []nettrace.Hop{{TTL: 1, Address: "10.0.0.1", Sent: 3, Received: 3}},
+	}
+
+	body, err := capture.Marshal()
+	require.NoError(t, err)
+
+	return body
+}
+
+// TestAgentUploadAcceptsAPathCaptureUnderTheTracerouteKind is the traceroute
+// kind's end of the agent upload path (spec 2026-08-21-10): the SAME endpoint,
+// the SAME signature, a different kind — which is exactly what the generic
+// attachment rail was built for.
+func TestAgentUploadAcceptsAPathCaptureUnderTheTracerouteKind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentTracerouteTopic(f.incident.UID)
+
+	rec := f.serve(t, agent.signedRequest(f.ctx(), t, topic, tracerouteBytes(t)))
+	r.Equal(http.StatusCreated, rec.Code)
+
+	var resp UploadResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.NotEmpty(resp.FileUID)
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 1)
+	r.Equal(KindTraceroute, live[0].Kind)
+	// The media type is SNIFFED from the bytes, never taken from the header.
+	r.Equal("application/json", live[0].MimeType)
+	r.Equal(TriggerAgentUpload, live[0].Trigger)
+}
+
+// TestAgentUploadRefusesJunkUnderTheTracerouteKind: for this kind "is it JSON"
+// is not a good enough sniff. The bytes come off the wire from an agent, and a
+// blob the dashboard cannot render is worse stored than refused.
+func TestAgentUploadRefusesJunkUnderTheTracerouteKind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentTracerouteTopic(f.incident.UID)
+
+	for name, body := range map[string][]byte{
+		"a png":             pngBytes("not-a-trace"),
+		"arbitrary json":    []byte(`{"hello":"world"}`),
+		"a json array":      []byte(`[]`),
+		"json with extras":  []byte(`{"version":1,"mode":"icmp","address":"1.2.3.4","family":"ipv4","hops":[],"exec":"rm"}`),
+		"a truncated blob":  []byte(`{"version":1,"mode":"icmp",`),
+		"an unknown schema": []byte(`{"version":99,"mode":"icmp","address":"1.2.3.4","family":"ipv4","hops":[]}`),
+	} {
+		rec := f.serve(t, agent.signedRequest(f.ctx(), t, topic, body))
+		r.Equal(http.StatusUnsupportedMediaType, rec.Code, "%s must be refused", name)
+	}
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Empty(live, "a refused upload must write no row at all")
+
+	// Positive control: the same agent, the same topic, real capture bytes.
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, tracerouteBytes(t))).Code)
+}
+
+// TestTheKindDecidesTheMediaType is the containment property of a per-kind
+// sniff: adding JSON as an accepted type for traceroutes must NOT make JSON
+// acceptable as a screenshot, and PNG must not become acceptable as a trace.
+func TestTheKindDecidesTheMediaType(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+
+	r.Equal(http.StatusUnsupportedMediaType,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentScreenshotTopic(f.incident.UID), tracerouteBytes(t))).Code,
+		"a path capture must not be accepted as a screenshot")
+
+	r.Equal(http.StatusUnsupportedMediaType,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentTracerouteTopic(f.incident.UID), pngBytes("shot"))).Code,
+		"a PNG must not be accepted as a path capture")
+
+	// Positive control: each kind accepts its own bytes.
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentScreenshotTopic(f.incident.UID), pngBytes("shot"))).Code)
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(
+			f.ctx(), t, IncidentTracerouteTopic(f.incident.UID), tracerouteBytes(t))).Code)
+
+	// And both survive side by side: the incident listing is by PREFIX, so a
+	// second kind on the same incident surfaces rather than replacing the first.
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 2)
+
+	kinds := map[string]bool{}
+	for _, row := range live {
+		kinds[row.Kind] = true
+	}
+
+	r.True(kinds[KindScreenshot])
+	r.True(kinds[KindTraceroute])
+}
+
+// TestAgentUploadStampsTheProbingRegion is the vantage-point guarantee for a
+// deported capture (spec 2026-08-21-10).
+//
+// It matters most exactly where it was missing: on a private-location incident,
+// "which agent's path is this?" IS the question, and a capture with no region
+// answers it with a blank. The value must come from the agent's ENROLLED ROW,
+// never from the upload, and it must land in the capture JSON — which is what
+// the dashboard reads — as well as in the attachment's details.
+func TestAgentUploadStampsTheProbingRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setupUploadTest(t)
+
+	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
+	topic := IncidentTracerouteTopic(f.incident.UID)
+
+	// The uploaded capture carries NO region, exactly as the agent sends it.
+	uploaded := tracerouteBytes(t)
+
+	parsedBefore, err := nettrace.ParseCapture(uploaded)
+	r.NoError(err)
+	r.Empty(parsedBefore.Region, "the agent must not claim a region of its own")
+
+	r.Equal(http.StatusCreated,
+		f.serve(t, agent.signedRequest(f.ctx(), t, topic, uploaded)).Code)
+
+	live, err := f.svc.ListIncidentAttachments(f.ctx(), f.org.UID, f.incident.UID)
+	r.NoError(err)
+	r.Len(live, 1)
+	r.Equal("eu-west", live[0].Region, "the details bag must record the agent's region")
+
+	// And the stored BYTES carry it, because that is where the dashboard reads
+	// the region from — an attachment-only stamp would still render a blank.
+	stored, err := readStoredAttachment(f, live[0].UID)
+	r.NoError(err)
+
+	capture, err := nettrace.ParseCapture(stored)
+	r.NoError(err)
+	r.Equal("eu-west", capture.Region)
+
+	// Trigger stays empty on the capture: the server knows how it arrived, not
+	// whether it opened or reopened the incident. The details bag says how.
+	r.Empty(capture.Trigger)
+	r.Equal(TriggerAgentUpload, live[0].Trigger)
+}
+
+// TestStampTracerouteRegionLeavesUnparseableBytesAlone: the media sniff is the
+// one place that decides what is acceptable. Stamping must not become a second,
+// slightly different gate that the two could disagree on.
+func TestStampTracerouteRegionLeavesUnparseableBytesAlone(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	junk := []byte("not a capture")
+	r.Equal(junk, StampTracerouteRegion(junk, "eu-west"))
+
+	// And an empty region is a no-op rather than an erasure.
+	valid := tracerouteBytes(t)
+	r.Equal(valid, StampTracerouteRegion(valid, ""))
+}
+
+// readStoredAttachment reads an attachment's bytes back out of storage.
+//
+// A TEST HELPER RATHER THAN A SERVICE METHOD, deliberately: production never
+// needs the bytes — every consumer gets a signed URL and fetches them itself —
+// so an exported reader with no caller would be API surface maintained for the
+// benefit of one assertion. It lives here because the assertion it serves is
+// the important one: that the region is stamped into the STORED artifact, not
+// merely into the metadata beside it.
+func readStoredAttachment(f *uploadFixture, fileUID string) ([]byte, error) {
+	file, err := f.db.GetFile(f.ctx(), f.org.UID, fileUID)
+	if err != nil {
+		return nil, err
+	}
+
+	reader, err := f.svc.files.OpenContent(f.ctx(), file)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = reader.Close() }()
+
+	return ReadCapped(reader)
+}

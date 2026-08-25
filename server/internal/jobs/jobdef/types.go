@@ -32,6 +32,14 @@ const (
 	// unhandled" — so without this job the on-call engineer is paged and then
 	// never told the incident ended. V1 covers Telegram (spec 2026-08-14-01).
 	JobTypeIncidentResolutionNotice JobType = "incident_resolution_notice"
+	// JobTypeIncidentAckNotice tells the PEOPLE who were paged for an incident
+	// that a teammate has taken it. Exact counterpart of
+	// JobTypeIncidentResolutionNotice, and it exists for the same reason: the
+	// escalation step is the only thing that ever reaches a person contact, and
+	// it stops firing the moment the incident is acknowledged — so without this
+	// job everyone who was woken up is left assuming the page is still
+	// unclaimed. V1 covers Telegram (spec 2026-08-24-01).
+	JobTypeIncidentAckNotice JobType = "incident_ack_notice"
 	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
 	// records suggested checks in the discovered_checks table (grouped by IP) for
 	// operator review and promotion.
@@ -63,6 +71,16 @@ const (
 	// (stage 2), so the jobs table stops growing unbounded. Global, self-
 	// rescheduling daily; its own terminal rows self-clean (spec 2026-07-11-17).
 	JobTypeJobsCleanup JobType = "jobs_cleanup"
+
+	// JobTypeEventsCleanup enforces audit retention on the events table
+	// (spec 2026-08-21-09): a daily, self-rescheduling, batched delete of rows
+	// older than audit.retention_days (default 365). Before this the table had
+	// no retention at all, which stopped being survivable once every login and
+	// config change started landing in it.
+	JobTypeEventsCleanup JobType = "events_cleanup"
+	// JobTypeSupportCleanup purges closed support threads past the retention
+	// window (spec 2026-08-22-02). Message bodies are personal data.
+	JobTypeSupportCleanup JobType = "support_cleanup"
 	// JobTypeCustomDomainVerify re-runs the ownership (TXT) check for every
 	// status page with a custom domain, clearing verification after repeated
 	// failures (domain release/takeover protection). Global, self-rescheduling
@@ -101,6 +119,27 @@ const (
 	// arbitrary stored addresses, so a public creation endpoint for it would
 	// be a spam primitive with extra steps.
 	JobTypeUptimeReport JobType = "uptime_report"
+	// JobTypeSLOBurnEval evaluates every enabled SLO burn-rate alert policy
+	// (spec 2026-08-21-08). Global and self-rescheduling every minute: a burn
+	// alert whose whole point is "you are spending the month in an afternoon"
+	// is worthless at hourly resolution.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes — it opens incidents
+	// and therefore pages people.
+	JobTypeSLOBurnEval JobType = "slo_burn_eval"
+	// JobTypePlatformWatchdog is the hourly internal watchdog (spec
+	// 2026-08-24-10): it evaluates the platform's own vitals — dark regions
+	// with assigned work, a collapse in fleet execution rate, active incidents
+	// frozen because their check stopped running — and reports the state
+	// TRANSITIONS to a configured operator list through those operators' own
+	// notification routes.
+	//
+	// It exists because every other alerting path in solidping is check-level,
+	// which means the worst failure mode of a monitoring product (going blind)
+	// is exactly the one that produces zero signal. Self-rescheduling like the
+	// snooze sweep; never publicly creatable — it reports on the instance, not
+	// on an org.
+	JobTypePlatformWatchdog JobType = "platform_watchdog"
 )
 
 // publiclyCreatableJobTypes is the allowlist of job types that may be enqueued

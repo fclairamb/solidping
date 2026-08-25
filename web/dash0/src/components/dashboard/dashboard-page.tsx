@@ -3,7 +3,7 @@
 // counting `checksQuery.data` was silently wrong for every org with more checks
 // than that (GitHub issue #172). The checks query below is still issued, but
 // only to render the "Checks at a glance" ROWS — never to derive a number.
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import {
@@ -12,12 +12,14 @@ import {
   ArrowRight,
   CheckCircle,
   Clock,
+  Layers,
   LayoutDashboard,
   ListChecks,
   RefreshCw,
   TrendingUp,
 } from "lucide-react";
 import {
+  useCheckGroups,
   useCheckStats,
   useChecks,
   useEvents,
@@ -29,6 +31,11 @@ import {
   type IncidentDetail,
   type OrgResult,
 } from "@/api/hooks";
+import {
+  groupHeaderCounts,
+  groupIncidentsByCheckGroup,
+  type IncidentGroupRow,
+} from "@/lib/incident-grouping";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CHECKS_LIST_POLL_MS,
@@ -143,9 +150,7 @@ function orderChecksForGlance(checks: Check[]): Check[] {
     });
 
   const rest = checks.filter((c) => !isAttentionStatus(effectiveStatus(c)));
-  const healthyEnabled = rest
-    .filter((c) => c.enabled !== false)
-    .sort(byName);
+  const healthyEnabled = rest.filter((c) => c.enabled !== false).sort(byName);
   const disabled = rest.filter((c) => c.enabled === false).sort(byName);
 
   return [...attention, ...healthyEnabled, ...disabled].slice(0, GLANCE_LIMIT);
@@ -214,7 +219,10 @@ function weightedAvailability(results: OrgResult[]): number | null {
   let totalChecks = 0;
   let successfulChecks = 0;
   for (const r of results) {
-    if (typeof r.totalChecks === "number" && typeof r.successfulChecks === "number") {
+    if (
+      typeof r.totalChecks === "number" &&
+      typeof r.successfulChecks === "number"
+    ) {
       totalChecks += r.totalChecks;
       successfulChecks += r.successfulChecks;
     }
@@ -365,7 +373,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     latestUpdate > 0
       ? tickNow - latestUpdate < 5_000
         ? t("justUpdated")
-        : t("updatedAgo", { time: formatRelative(new Date(latestUpdate), tickNow) })
+        : t("updatedAgo", {
+            time: formatRelative(new Date(latestUpdate), tickNow),
+          })
       : "";
 
   return (
@@ -390,7 +400,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               disabled={isRefetching}
               aria-label={t("refresh")}
             >
-              <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+              />
             </Button>
           </div>
         }
@@ -403,7 +415,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
         <EmptyStateOnboarding org={org} />
       ) : (
         <>
-          <FirstResultCelebration org={org} checks={checks} totalChecks={totalChecksCount} />
+          <FirstResultCelebration
+            org={org}
+            checks={checks}
+            totalChecks={totalChecksCount}
+          />
           <OverallStatusBanner
             allGreen={downCount === 0 && incidentsCount === 0}
             hardDownCount={hardDownCount}
@@ -440,7 +456,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             <div className="block" data-testid="kpi-tile-availability">
               <KpiTile
                 label="24h Availability"
-                value={availabilityPct === null ? "100%" : `${availabilityPct.toFixed(2)}%`}
+                value={
+                  availabilityPct === null
+                    ? "100%"
+                    : `${availabilityPct.toFixed(2)}%`
+                }
                 icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
                 badge={
                   <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
@@ -485,7 +505,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             <Link
               to="/orgs/$org/incidents"
               params={{ org }}
-              search={{ state: "active" as const, showSuppressed: undefined }}
+              search={{
+                state: "active" as const,
+                showSuppressed: undefined,
+                checkUid: undefined,
+              }}
               className="block"
               data-testid="kpi-tile-incidents"
             >
@@ -508,8 +532,14 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                     </span>
                   )
                 }
-                valueClassName={incidentsCount > 0 ? "text-amber-600 dark:text-amber-500" : undefined}
-                sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
+                valueClassName={
+                  incidentsCount > 0
+                    ? "text-amber-600 dark:text-amber-500"
+                    : undefined
+                }
+                sub={
+                  incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined
+                }
                 className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
@@ -519,6 +549,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             <ActiveIncidentsList
               org={org}
               incidents={incidents}
+              checks={checks}
               isError={!!incidentsQuery.error}
               onRetry={() => incidentsQuery.refetch()}
               tickNow={tickNow}
@@ -671,7 +702,9 @@ function OverallStatusBanner({
                 {t("banner.allGreenSub", {
                   count: checksCount,
                   availability:
-                    availabilityPct === null ? "100" : availabilityPct.toFixed(2),
+                    availabilityPct === null
+                      ? "100"
+                      : availabilityPct.toFixed(2),
                 })}
               </span>
             </div>
@@ -749,7 +782,15 @@ interface KpiTileProps {
   className?: string;
 }
 
-function KpiTile({ label, value, icon, sub, badge, valueClassName, className }: KpiTileProps) {
+function KpiTile({
+  label,
+  value,
+  icon,
+  sub,
+  badge,
+  valueClassName,
+  className,
+}: KpiTileProps) {
   return (
     <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -818,23 +859,29 @@ function ChecksGlanceList({
     <Card data-testid="checks-glance">
       <CardHeader className="flex flex-row items-center justify-between py-4">
         <div>
-          <CardTitle className="text-base font-semibold">{t("glance.title")}</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            {t("glance.title")}
+          </CardTitle>
           <CardDescription className="text-xs text-muted-foreground mt-0.5">
             Fleet health preview and live response telemetry
           </CardDescription>
         </div>
-        <Button asChild variant="ghost" size="sm" className="text-xs font-medium gap-1 text-primary">
-          <Link
-            to="/orgs/$org/checks"
-            params={{ org }}
-          >
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="text-xs font-medium gap-1 text-primary"
+        >
+          <Link to="/orgs/$org/checks" params={{ org }}>
             View all ({totalCount}) <ArrowRight className="h-3 w-3" />
           </Link>
         </Button>
       </CardHeader>
       <CardContent className="p-0">
         {isError ? (
-          <div className="p-6"><SectionError onRetry={onRetry} /></div>
+          <div className="p-6">
+            <SectionError onRetry={onRetry} />
+          </div>
         ) : (
           <div className="divide-y border-t">
             {checks.map((check) => {
@@ -842,7 +889,8 @@ function ChecksGlanceList({
               const isDisabled = check.enabled === false;
               const needsAttention = isAttentionStatus(status);
               const uptime = uptimeByCheck[check.uid];
-              const latencyMs = uptime?.latestDurationMs ?? check.lastResult?.durationMs;
+              const latencyMs =
+                uptime?.latestDurationMs ?? check.lastResult?.durationMs;
               const checkType = check.type || "http";
 
               return (
@@ -850,7 +898,11 @@ function ChecksGlanceList({
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
-                    search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
+                    search={{
+                      graphPeriod: undefined,
+                      graphFull: undefined,
+                      region: undefined,
+                    }}
                     className={`flex items-center gap-3 px-4 sm:px-6 py-3 hover:bg-accent/40 transition-colors ${
                       isDisabled ? "opacity-60" : ""
                     }`}
@@ -865,10 +917,10 @@ function ChecksGlanceList({
                             isDisabled
                               ? "bg-muted-foreground/50"
                               : status === "up"
-                              ? "bg-emerald-500"
-                              : status === "warning"
-                              ? "bg-amber-500"
-                              : "bg-destructive"
+                                ? "bg-emerald-500"
+                                : status === "warning"
+                                  ? "bg-amber-500"
+                                  : "bg-destructive"
                           }`}
                         />
                       </span>
@@ -897,7 +949,9 @@ function ChecksGlanceList({
                         />
                       ) : (
                         <div className="h-4 w-full rounded bg-muted/40 flex items-center justify-center">
-                          <span className="text-[10px] text-muted-foreground/60 font-mono">24h telemetry active</span>
+                          <span className="text-[10px] text-muted-foreground/60 font-mono">
+                            24h telemetry active
+                          </span>
                         </div>
                       )}
                     </div>
@@ -909,14 +963,16 @@ function ChecksGlanceList({
                             latencyMs < 50
                               ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
                               : latencyMs < 250
-                              ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20"
-                              : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
+                                ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20"
+                                : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
                           }`}
                         >
                           {Math.round(latencyMs)}ms
                         </span>
                       ) : (
-                        <span className="text-xs font-mono text-muted-foreground">—</span>
+                        <span className="text-xs font-mono text-muted-foreground">
+                          —
+                        </span>
                       )}
 
                       {needsAttention && check.lastStatusChange?.time ? (
@@ -944,16 +1000,37 @@ function ChecksGlanceList({
           className="text-xs font-medium text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 transition-colors"
           data-testid="checks-glance-footer"
         >
-          {t("glance.footer", { count: totalCount })} <ArrowRight className="h-3 w-3 ml-0.5" />
+          {t("glance.footer", { count: totalCount })}{" "}
+          <ArrowRight className="h-3 w-3 ml-0.5" />
         </Link>
       </CardFooter>
     </Card>
   );
 }
 
+/**
+ * The plain, non-interactive grouping header label — "RabbitMQ — 2/6 down".
+ *
+ * Not collapsible, by decision: there is no per-group open/closed state worth
+ * persisting across filters and pagination, and the incidents list renders the
+ * same header the same way.
+ */
+function groupHeaderLabel(
+  row: IncidentGroupRow,
+  t: (key: string, opts: Record<string, unknown>) => string,
+): string {
+  const { down, total } = groupHeaderCounts(row);
+
+  return total === undefined
+    ? t("group.header", { name: row.group!.name, down })
+    : t("group.headerWithTotal", { name: row.group!.name, down, total });
+}
+
 interface ActiveIncidentsListProps {
   org: string;
   incidents: IncidentDetail[];
+  /** Reused from the page's own query purely to map checkUid → check group. */
+  checks: Check[];
   isError: boolean;
   onRetry: () => void;
   tickNow: number;
@@ -962,11 +1039,20 @@ interface ActiveIncidentsListProps {
 function ActiveIncidentsList({
   org,
   incidents,
+  checks,
   isError,
   onRetry,
   tickNow,
 }: ActiveIncidentsListProps) {
   const { t } = useTranslation("dashboard");
+  const { t: tIncidents } = useTranslation("incidents");
+
+  // Read-time aggregation (spec 2026-08-24-14): incidents are per-check, and
+  // the "RabbitMQ — 2/6 down" consolidation is rebuilt here rather than baked
+  // into the row. Same grouping helper the incidents list uses, so the two
+  // surfaces cannot drift.
+  const { data: checkGroups } = useCheckGroups(org);
+  const rows = groupIncidentsByCheckGroup(incidents, checks, checkGroups);
 
   return (
     <Card data-testid="active-incidents">
@@ -983,34 +1069,51 @@ function ActiveIncidentsList({
           </div>
         ) : (
           <ul className="divide-y">
-            {incidents.map((incident) => (
-              <li key={incident.uid}>
-                <Link
-                  to="/orgs/$org/incidents/$incidentUid"
-                  params={{ org, incidentUid: incident.uid! }}
-                  className="flex items-center justify-between gap-3 py-3 hover:bg-accent/50 -mx-2 px-2 rounded transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">
-                        {incident.title || t("activeIncidents.untitled")}
-                      </div>
-                      {incident.checkName ? (
-                        <div className="text-xs text-muted-foreground truncate">
-                          {incident.checkName}
+            {rows.map((row) => (
+              <Fragment key={row.key}>
+                {row.group ? (
+                  <li
+                    className="flex items-center gap-2 pt-3 pb-1 text-xs font-semibold text-muted-foreground"
+                    data-testid="incident-group-header"
+                    data-check-group-uid={row.group.uid}
+                  >
+                    <Layers className="h-3.5 w-3.5 shrink-0" />
+                    <span>{groupHeaderLabel(row, tIncidents)}</span>
+                  </li>
+                ) : null}
+                {row.incidents.map((incident) => (
+                  <li key={incident.uid}>
+                    <Link
+                      to="/orgs/$org/incidents/$incidentUid"
+                      params={{ org, incidentUid: incident.uid! }}
+                      className="flex items-center justify-between gap-3 py-3 hover:bg-accent/50 -mx-2 px-2 rounded transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">
+                            {incident.title || t("activeIncidents.untitled")}
+                          </div>
+                          {incident.checkName ? (
+                            <div className="text-xs text-muted-foreground truncate">
+                              {incident.checkName}
+                            </div>
+                          ) : null}
                         </div>
+                      </div>
+                      {incident.startedAt ? (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                          <Clock className="h-3 w-3" />
+                          {formatRelative(
+                            new Date(incident.startedAt),
+                            tickNow,
+                          )}
+                        </span>
                       ) : null}
-                    </div>
-                  </div>
-                  {incident.startedAt ? (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                      <Clock className="h-3 w-3" />
-                      {formatRelative(new Date(incident.startedAt), tickNow)}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
+                    </Link>
+                  </li>
+                ))}
+              </Fragment>
             ))}
           </ul>
         )}
@@ -1019,7 +1122,11 @@ function ActiveIncidentsList({
         <Link
           to="/orgs/$org/incidents"
           params={{ org }}
-          search={{ state: "active" as const, showSuppressed: undefined }}
+          search={{
+            state: "active" as const,
+            showSuppressed: undefined,
+            checkUid: undefined,
+          }}
           className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
         >
           {t("activeIncidents.footer")}
@@ -1077,7 +1184,9 @@ function RecentActivityList({
                   key={event.uid}
                   className="flex items-center gap-3 py-3 text-sm"
                 >
-                  <span className="shrink-0">{getEventIcon(event.eventType)}</span>
+                  <span className="shrink-0">
+                    {getEventIcon(event.eventType)}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="truncate">
                       {getEventLabel(event.eventType, tEvents)}
@@ -1097,7 +1206,11 @@ function RecentActivityList({
                           <Link
                             to="/orgs/$org/checks/$checkUid"
                             params={{ org, checkUid: event.checkUid }}
-                            search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
+                            search={{
+                              graphPeriod: undefined,
+                              graphFull: undefined,
+                              region: undefined,
+                            }}
                             className="text-primary hover:underline"
                           >
                             {checkName ?? tEvents("links.check")}

@@ -41,8 +41,9 @@ const recoveryPeriodSeconds = 300
 // are about the recovery *clock*, not the backoff math, which
 // TestRecoveryElapsedFlapAware already covers.
 //
-// grouped=true also creates a check group and attaches the check to it, which
-// routes every result through the group state machine instead.
+// grouped=true also creates a check group and attaches the check to it. Since
+// spec 2026-08-24-14 that must change nothing about the incident lifecycle —
+// which is exactly what the grouped variants of these tests pin.
 func newRecoverySetup(t *testing.T, grouped bool) *recoverySetup {
 	t.Helper()
 	ctx := t.Context()
@@ -425,10 +426,11 @@ func TestZeroRecoveryPeriodStillResolvesImmediately(t *testing.T) {
 		"recovery=0 means resolve on the first success, by design")
 }
 
-// TestGroupIncidentDoesNotResolveOnFirstSuccess replays the regression on the
-// group state machine, which reads the very same per-check recovery clock via
-// handleGroupSuccess.
-func TestGroupIncidentDoesNotResolveOnFirstSuccess(t *testing.T) {
+// TestGroupedCheckIncidentDoesNotResolveOnFirstSuccess replays the regression
+// for a check that belongs to a check group. Since spec 2026-08-24-14 a
+// grouped check takes the ordinary per-check state machine, so this also pins
+// that group membership no longer changes the incident's identity.
+func TestGroupedCheckIncidentDoesNotResolveOnFirstSuccess(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	s := newRecoverySetup(t, true)
@@ -436,8 +438,9 @@ func TestGroupIncidentDoesNotResolveOnFirstSuccess(t *testing.T) {
 	// --- Group incident #1: open, recover, resolve.
 	s.submit(t, models.ResultStatusDown)
 	inc1 := s.activeIncident(t)
-	r.NotNil(inc1, "the failure opens a group incident")
-	r.NotNil(inc1.CheckGroupUID, "routed through the group state machine")
+	r.NotNil(inc1, "the failure opens an incident")
+	r.Nil(inc1.CheckGroupUID, "a grouped check opens a PER-CHECK incident")
+	r.Equal(s.check.UID, inc1.CheckUID)
 
 	s.clk.Advance(30 * time.Second)
 	s.submit(t, models.ResultStatusUp)
@@ -445,25 +448,25 @@ func TestGroupIncidentDoesNotResolveOnFirstSuccess(t *testing.T) {
 
 	s.clk.Advance(recoveryPeriodSeconds * time.Second)
 	s.submit(t, models.ResultStatusUp)
-	r.False(s.hasActiveIncident(t), "the group incident resolves once its member recovers")
+	r.False(s.hasActiveIncident(t), "the incident resolves once the check recovers")
 	r.NotNil(s.reload(t).FirstSuccessSinceFailureAt, "the stale clock survives the resolve")
 
-	// --- Group incident #2, past the reopen cooldown.
+	// --- Incident #2, past the reopen cooldown.
 	s.clk.Advance(30 * time.Minute)
 	s.submit(t, models.ResultStatusDown)
 	inc2 := s.activeIncident(t)
 	r.NotNil(inc2)
-	r.NotEqual(inc1.UID, inc2.UID, "past the cooldown this is a fresh group incident")
+	r.NotEqual(inc1.UID, inc2.UID, "past the cooldown this is a fresh incident")
 	r.Nil(s.reload(t).FirstSuccessSinceFailureAt,
-		"opening a group incident must clear the previous recovery clock too")
+		"opening an incident for a grouped check must clear the previous recovery clock too")
 
 	s.clk.Advance(30 * time.Second)
 	s.submit(t, models.ResultStatusUp)
 	r.True(s.hasActiveIncident(t),
-		"first success must NOT resolve the second group incident")
+		"first success must NOT resolve the second incident")
 
 	s.clk.Advance(recoveryPeriodSeconds * time.Second)
 	s.submit(t, models.ResultStatusUp)
 	r.False(s.hasActiveIncident(t),
-		"the second group incident resolves at firstSuccess + recovery")
+		"the second incident resolves at firstSuccess + recovery")
 }

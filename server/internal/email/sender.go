@@ -75,6 +75,12 @@ func (s *SMTPSender) Send(ctx context.Context, msg *Message) (*SendResult, error
 
 // buildMessage creates a go-mail message from our Message struct.
 func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
+	// The instance support Reply-To and its notice are applied here rather than
+	// at every call site: one place to audit, and a caller cannot forget it.
+	// It is a no-op unless the message explicitly opted in AND the instance has
+	// a support mailbox configured. See applySupportReply.
+	applySupportReply(msg, s.config.ReplyTo)
+
 	mailMsg := mail.NewMsg()
 
 	// Identify ourselves; otherwise go-mail stamps "go-mail vX.Y.Z" as X-Mailer.
@@ -91,8 +97,32 @@ func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
 	mailMsg.Subject(msg.Subject)
 	s.setBody(mailMsg, msg)
 	setListUnsubscribeHeaders(mailMsg, msg)
+	setAutomationHeaders(mailMsg, msg)
 
 	return mailMsg, nil
+}
+
+// headerAutoSubmitted is RFC 3834's Auto-Submitted. go-mail has no constant for
+// it, so it is spelled out here.
+const headerAutoSubmitted = "Auto-Submitted"
+
+// HeaderSupportMirror is the private marker stamped on support-inbox mirror
+// notifications (spec 2026-08-22-02). It exists so a future inbound-email
+// capture can recognize our own mail and skip it instead of re-capturing it,
+// mirroring it again, and looping forever. Exported because the skip lives in a
+// different package than the stamp.
+const HeaderSupportMirror = "X-SolidPing-Support-Mirror"
+
+// setAutomationHeaders stamps the machine-generated markers. Both are opt-in
+// booleans on Message, so ordinary mail is untouched.
+func setAutomationHeaders(mailMsg *mail.Msg, msg *Message) {
+	if msg.AutoSubmitted {
+		mailMsg.SetGenHeader(headerAutoSubmitted, "auto-generated")
+	}
+
+	if msg.SupportMirror {
+		mailMsg.SetGenHeader(HeaderSupportMirror, "1")
+	}
 }
 
 // setListUnsubscribeHeaders sets RFC 2369 List-Unsubscribe and RFC 8058

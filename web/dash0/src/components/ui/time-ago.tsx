@@ -60,9 +60,11 @@ export interface TimeAgoProps {
    * "tooltip" (default): compact relative text ("46m ago"), absolute time
    * revealed on hover/tap. Use for dense lists (incidents index, jobs).
    *
-   * "inline": absolute time shown inline ("09:31:07 UTC · 46m ago") instead
-   * of hidden behind hover — for pages where the operator compares several
-   * timestamps at once (incident detail: timeline, comments, header).
+   * "inline": absolute time shown inline in the browser's LOCAL time
+   * ("11:31:07 CEST · 46m ago") instead of hidden behind hover — for pages
+   * where the operator compares several timestamps at once (incident
+   * detail: timeline, comments, header). UTC stays one step away, in the
+   * hover tooltip and the click-to-copy payload.
    */
   variant?: "tooltip" | "inline";
   className?: string;

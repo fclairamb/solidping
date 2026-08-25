@@ -56,6 +56,48 @@
     "burndownEmpty": "Der Zeitraum hat gerade erst begonnen — noch keine Punkte.",
     "burndownIdeal": "Ideales Tempo"
   },
+  "alerting": {
+    "title": "Alarmierung",
+    "subtitle": "Die Rufbereitschaft alarmieren, wenn das Fehlerbudget zu schnell verbrannt wird. Beide Fenster müssen den Schwellwert überschreiten, damit eine bereits beendete Spitze nicht alarmiert.",
+    "empty": "Noch keine Alarmrichtlinien",
+    "enable": "Aktiviert",
+    "enabled": "Alarmrichtlinie aktiviert",
+    "disabled": "Alarmrichtlinie deaktiviert",
+    "toggleFailed": "Alarmrichtlinie konnte nicht aktualisiert werden",
+    "firing": "Ausgelöst",
+    "burning": "Verbrennt",
+    "rule": "Löst über {{threshold}} in {{long}} aus, bestätigt über {{short}}",
+    "longBurn": "Verbrauch ({{window}})",
+    "shortBurn": "Verbrauch ({{window}})",
+    "threshold": "Schwellwert",
+    "minSamples": "Min. Messungen",
+    "inconclusive": "Zu wenig Daten: {{long}} und {{short}} Messungen in den beiden Fenstern, {{min}} erforderlich. Ein unschlüssiges Fenster löst nie aus.",
+    "resolving": "Beide Fenster liegen unter dem Schwellwert — der Alarm wird aufgelöst, sobald das ein volles kurzes Fenster lang anhält.",
+    "viewIncident": "Vorfall ansehen",
+    "viewIncidentNumbered": "Vorfall #{{number}} ansehen",
+    "editThresholds": "Schwellwerte bearbeiten",
+    "saved": "Alarmrichtlinie aktualisiert",
+    "saveFailed": "Alarmrichtlinie konnte nicht aktualisiert werden",
+    "formSubtitle": "Einstellen, wann diese Richtlinie alarmiert. Beide Fenster müssen den Schwellwert überschreiten.",
+    "enableHelp": "Alarmierung ist opt-in. Eine deaktivierte Richtlinie wird nie ausgewertet.",
+    "longWindow": "Langes Fenster (Minuten)",
+    "longWindowHelp": "Belegt, dass der Verbrauch signifikant ist. Auf 7 Tage begrenzt.",
+    "shortWindow": "Kurzes Fenster (Minuten)",
+    "shortWindowHelp": "Belegt, dass es noch andauert. Muss kürzer als das lange Fenster sein.",
+    "windowsInvalid": "Das kurze Fenster muss größer als 0 und nicht länger als das lange Fenster sein (max. 7 Tage).",
+    "thresholdHelp": "Verbrauchsfaktor. 1x verbraucht das Monatsbudget genau bis Monatsende.",
+    "minSamplesHelp": "Ein Fenster mit weniger Messungen ist unschlüssig und löst nie aus.",
+    "severityLabel": "Schweregrad",
+    "severityHelp": "Erscheint im Vorfalltitel und in jeder Benachrichtigung. Das Kanal-Routing kommt weiterhin aus der Eskalationsrichtlinie.",
+    "kind": {
+      "fast": "Schneller Verbrauch",
+      "slow": "Langsamer Verbrauch"
+    },
+    "severity": {
+      "critical": "Kritisch",
+      "warning": "Warnung"
+    }
+  },
   "form": {
     "newTitle": "Neues Ziel",
     "editTitle": "Ziel bearbeiten",
@@ -122,6 +164,7 @@
     "test": "Test an mich senden",
     "testSent": "Testbericht an Ihre Adresse eingereiht",
     "testFailed": "Testbericht konnte nicht gesendet werden",
+    "testSuppressed": "Sie haben sich von dieser Adresse abgemeldet und können keinen Testversand empfangen",
     "form": {
       "newTitle": "Neuer Verfügbarkeitsbericht",
       "editTitle": "Verfügbarkeitsbericht bearbeiten",

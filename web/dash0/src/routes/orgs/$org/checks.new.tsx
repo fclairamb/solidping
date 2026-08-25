@@ -60,12 +60,19 @@ function parseLabels(value: unknown): Record<string, string> | undefined {
 
 export const Route = createFileRoute("/orgs/$org/checks/new")({
   validateSearch: (search: Record<string, unknown>) => ({
-    checkType: typeof search.checkType === "string" ? search.checkType : undefined,
-    checkPeriod: typeof search.checkPeriod === "string" ? parseInt(search.checkPeriod) : undefined,
-    checkName: typeof search.checkName === "string" ? search.checkName : undefined,
-    checkSlug: typeof search.checkSlug === "string" ? search.checkSlug : undefined,
+    checkType:
+      typeof search.checkType === "string" ? search.checkType : undefined,
+    checkPeriod:
+      typeof search.checkPeriod === "string"
+        ? parseInt(search.checkPeriod)
+        : undefined,
+    checkName:
+      typeof search.checkName === "string" ? search.checkName : undefined,
+    checkSlug:
+      typeof search.checkSlug === "string" ? search.checkSlug : undefined,
     httpUrl: typeof search.httpUrl === "string" ? search.httpUrl : undefined,
-    httpMethod: typeof search.httpMethod === "string" ? search.httpMethod : undefined,
+    httpMethod:
+      typeof search.httpMethod === "string" ? search.httpMethod : undefined,
     host: typeof search.host === "string" ? search.host : undefined,
     port: typeof search.port === "string" ? parseInt(search.port) : undefined,
     url: typeof search.url === "string" ? search.url : undefined,
@@ -112,7 +119,9 @@ function CheckNewPage() {
         type: search.checkType as Check["type"] | undefined,
         name: search.checkName,
         slug: search.checkSlug,
-        period: search.checkPeriod ? secondsToHMS(search.checkPeriod) : undefined,
+        period: search.checkPeriod
+          ? secondsToHMS(search.checkPeriod)
+          : undefined,
         checkGroupUid: groupUid,
         regions: search.region,
         labels: parseLabels(search.label),
@@ -130,7 +139,9 @@ function CheckNewPage() {
           ...(search.expectedStatus !== undefined && {
             expectedStatus: search.expectedStatus,
           }),
-          ...(search.timeout !== undefined && { timeout: `${search.timeout}s` }),
+          ...(search.timeout !== undefined && {
+            timeout: `${search.timeout}s`,
+          }),
         },
       }
     : undefined;
@@ -173,9 +184,14 @@ function CheckNewPage() {
           period: data.period,
           config: data.config ?? {},
           regions: data.regions,
-          ...(data.regionSpread !== undefined ? { regionSpread: data.regionSpread } : {}),
+          ...(data.regionSpread !== undefined
+            ? { regionSpread: data.regionSpread }
+            : {}),
           ...(data.escalationPolicyUid
             ? { escalationPolicyUid: data.escalationPolicyUid }
+            : {}),
+          ...(data.tracerouteOnFailure
+            ? { tracerouteOnFailure: data.tracerouteOnFailure }
             : {}),
           ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
@@ -191,7 +207,10 @@ function CheckNewPage() {
               `/api/v1/orgs/${org}/checks/${check.uid}/dependencies`,
               {
                 method: "POST",
-                body: JSON.stringify({ parentCheckUid: parentUid, kind: "hard" }),
+                body: JSON.stringify({
+                  parentCheckUid: parentUid,
+                  kind: "hard",
+                }),
               },
             );
           }
@@ -200,7 +219,11 @@ function CheckNewPage() {
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: check.uid },
-          search: { graphPeriod: undefined, graphFull: undefined, region: undefined },
+          search: {
+            graphPeriod: undefined,
+            graphFull: undefined,
+            region: undefined,
+          },
         });
       }}
     />

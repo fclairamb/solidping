@@ -18,6 +18,7 @@
   "designReference": "Design Reference",
   "new": "New",
   "edit": "Edit",
+  "register": "Register",
   "promote": "Promote",
   "profile": "Profile",
   "security": "Security",
@@ -30,6 +31,7 @@
   "invitations": "Invitations",
   "requests": "Requests",
   "usage": "Usage",
+  "privateLocations": "Private locations",
   "ai": "AI assistants",
   "settings": "Settings",
   "web": "Web",
@@ -138,5 +140,6 @@
     "aiDescription": "Connect AI assistants via MCP"
   },
   "slos": "SLOs",
-  "reportSchedules": "Uptime reports"
+  "reportSchedules": "Uptime reports",
+  "audit": "Audit"
 }

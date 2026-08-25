@@ -195,6 +195,9 @@ func (s *Service) ListOrgMembershipRequests(
 			DecidedAt: request.DecidedAt,
 		}
 		if request.User != nil {
+			// Deliberately a literal, not newUserInfo: this describes the
+			// REQUESTER to an org admin, and a third party's pending
+			// forced-rotation state is none of the viewer's business.
 			view.User = UserInfo{
 				UID:       request.User.UID,
 				Email:     request.User.Email,

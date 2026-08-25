@@ -225,6 +225,9 @@ func (s *Service) FindActiveIncidentsForChecksInWindow(
 
 	err := s.db.NewSelect().
 		Model(&incidents).
+		// Check incidents only: rolling a real outage up under a burn alert
+		// would suppress its paging on the strength of a budget statistic.
+		Where("kind = ?", models.IncidentKindCheck).
 		Where("check_uid IN (?)", bun.List(checkUIDs)).
 		Where("state = ?", models.IncidentStateActive).
 		Where("paging_suppressed = ?", false).
@@ -238,4 +241,33 @@ func (s *Service) FindActiveIncidentsForChecksInWindow(
 	}
 
 	return incidents, nil
+}
+
+// AttachIncidentToRollupParent attaches a child incident to a hard-parent
+// incident, guarded on the child still being active and NOT already
+// suppressed — see the postgres twin for why the guard is load-bearing.
+// Returns true when this call performed the update.
+func (s *Service) AttachIncidentToRollupParent(
+	ctx context.Context, childIncidentUID, parentIncidentUID string,
+) (bool, error) {
+	res, err := s.db.NewUpdate().
+		Model((*models.Incident)(nil)).
+		Set("caused_by_incident_uid = ?", parentIncidentUID).
+		Set("paging_suppressed = ?", true).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", childIncidentUID).
+		Where("paging_suppressed = ?", false).
+		Where("state = ?", models.IncidentStateActive).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("attach incident to rollup parent: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("attach incident to rollup parent rows affected: %w", err)
+	}
+
+	return affected > 0, nil
 }

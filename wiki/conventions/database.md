@@ -6,6 +6,41 @@
 - Soft deletes: `deleted_at` timestamp, never hard delete
 - Audit trail: `created_at` and `updated_at` timestamps
 
+# Column or `settings` JSON? (spec 2026-08-22-03)
+
+Several tables carry a typed JSON `settings` column (`status_pages.settings`
+decodes into `models.StatusPageSettings`). New per-entity knobs keep landing as
+columns anyway, one migration section, one bun tag and one `Set(...)` branch per
+dialect at a time, because the rule was never written down. It is:
+
+> A per-entity knob read **only while rendering** belongs in `settings`.
+> A field that is **filtered, joined, uniquely constrained, resolved by an
+> external lookup, or is a credential** belongs in a column.
+
+Worked example, `status_pages`:
+
+| Field | Home | Why |
+|---|---|---|
+| `settings.availability.*`, `settings.branding.*` | JSON | read only while rendering the page |
+| `visibility`, `enabled` | column | filtered in every list query |
+| `custom_domain*` | column | globally unique, resolved by `Host` on every request |
+| `password_hash` | column | a credential, read on the auth path, never serialized |
+| `custom_css` | column | *grandfathered* — released, behaviourally identical either way, and moving it is a backfill over released rows for zero behaviour change |
+
+Two consequences worth stating, because they are what makes the JSON side safe:
+
+- **Never read-modify-write the whole column in Go** to change one section. That
+  clobbers a concurrent write to a sibling section. Merge in SQL:
+  Postgres `settings || jsonb_build_object('<section>', coalesce(settings->'<section>', '{}'::jsonb) || ?::jsonb)`
+  (`||` is shallow, so the nesting is load-bearing), SQLite
+  `json_patch(settings, ?)` (RFC 7386, already recursive).
+- **The two dialects disagree on a null**: `json_patch` REMOVES the key, `||`
+  STORES `null`. They agree on what it decodes to. Pin that with a parity test
+  rather than trusting it.
+
+A knob that later needs an index is a knob that stopped being render-only —
+promote it to a column then, with a backfill, rather than pre-paying for it.
+
 # Indexes conventions
 Indexes should have the name `${table}_${columns}_idx`, the columns should not contain `_uid`.
 So for example `incidents_organization`.
@@ -154,9 +189,19 @@ numbered one instead, written to be idempotent so it is a no-op on databases
 that already got the DDL. (A self-healing migration numbered `014` once did
 this for a rewritten 013; it was withdrawn before release in favor of repairing
 the few affected dev databases by hand — pre-release, hand repair beats
-shipping a permanent migration. `014_v0_17_0` today is the consolidated
-v0.17.0 migration, unrelated to that draft; see the consolidation rule above
-for why reusing the number is safe here and what it costs dev databases.)
+shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
+migration, unrelated to that draft; see the consolidation rule above for why
+reusing the number is safe here and what it costs dev databases.)
+
+**The current unreleased target is `015_v0_18_0`.** v0.17.0 shipped, so `014`
+is frozen: everything this cycle produces is appended to `015_v0_18_0.up.sql` /
+`.down.sql` (both dialects) instead. That number is unreleased, so it costs dev
+databases nothing — a database that already ran `014` simply picks `015` up as
+the next unapplied migration, with no reset, no hand-apply and no
+`solidping migrate repair`. Check the latest `vX.Y.Z` tag before appending to a
+migration, not the previous cycle's habit: `015` acquired its first section
+only after a change had already been written into `014` on the stale belief
+that v0.17.0 was still pending.
 
 ## Development workflow
 
@@ -169,3 +214,36 @@ During a release cycle developers add scratch migrations as needed (e.g., `002_a
 5. Run `make test` to confirm both backends pass.
 
 See `.claude/skills/database.md` for the full SQL style guide.
+
+## Advisory-lock keys
+
+Postgres session advisory locks are how SolidPing makes a supervisor run on at
+most one replica (the JMAP inbox consumer is the first — spec 2026-08-22-01).
+The helper is `server/internal/db/dblock`, and **that package's doc comment is
+the authoritative key registry** — this section only points at it and states
+the rules.
+
+- Keys are **hand-allocated**, never hashed from a string. A hash collision
+  between two unrelated features would show up as one of them mysteriously
+  never running; a hand-allocated number cannot collide, and `grep 0x5001…`
+  finds every user of it.
+- Numbering is `0x5001_0000 + <sequence>`. `0x5001` reads as "SP 01" and
+  namespaces our keys away from anything else sharing the database.
+- Always the **single-argument bigint** form of `pg_advisory_lock`, so the
+  whole key space is one flat registry rather than two overlapping ones.
+- **Never reuse a retired number.** During a rolling deploy an old pod may
+  still hold the key its version assigned to a removed feature; a new pod
+  reusing it for something else would be excluded by a lock that has nothing
+  to do with it.
+- Take the lock on a **dedicated, long-lived connection**. Session advisory
+  locks are released the instant their connection closes, so a lock taken
+  through the pool is dropped invisibly the moment that connection is recycled.
+  `dblock` pins a `bun.Conn` for the lifetime of the work and pings it, which
+  costs one pool slot on the holder — budget for it (see
+  `project_solidping_dev_pg_pool_budget`-style pool sizing).
+- **A lock is never the correctness mechanism.** Holders lose locks (dead
+  connection, paused process) before they notice, so two copies of the work can
+  briefly overlap. Whatever runs under `dblock.RunExclusive` must still be safe
+  when it does.
+- On SQLite there is one process by construction: `dblock` skips the lock and
+  runs the work directly.

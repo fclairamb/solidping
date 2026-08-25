@@ -16,7 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
@@ -27,12 +29,14 @@ const orgProfileTestPassword = "profile-test-pass"
 // admin, both with password logins, so the owner-only gate can be probed from
 // both sides over real HTTP.
 type profileEnv struct {
-	t        *testing.T
-	ts       *httptest.Server
-	client   *http.Client
-	orgSlug  string
-	ownerJWT string
-	adminJWT string
+	t         *testing.T
+	ts        *httptest.Server
+	client    *http.Client
+	orgSlug   string
+	orgUID    string
+	dbService db.Service
+	ownerJWT  string
+	adminJWT  string
 }
 
 func newProfileEnv(t *testing.T) *profileEnv {
@@ -64,7 +68,7 @@ func newProfileEnv(t *testing.T) *profileEnv {
 	r.NoError(server.dbService.CreateOrganization(ctx, org))
 
 	env := &profileEnv{
-		t: t, ts: ts, orgSlug: org.Slug,
+		t: t, ts: ts, orgSlug: org.Slug, orgUID: org.UID, dbService: server.dbService,
 		client: &http.Client{
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
@@ -308,4 +312,72 @@ func TestOrgLogoUploadValidationAndServing(t *testing.T) {
 	gone := env.do(http.MethodGet, svgURL, "", "", nil)
 	defer func() { _ = gone.Body.Close() }()
 	r.Equal(http.StatusNotFound, gone.StatusCode)
+}
+
+// TestOrgLogoLegacyRouteIsRetired pins the decision in spec 2026-08-22-03's
+// resolved question 1: /pub/org-logos/ is not kept alive alongside the generic
+// route. Leaving it registered would leave a second copy of the pattern — and
+// a second access check to keep in step — which is the thing the spec removes.
+func TestOrgLogoLegacyRouteIsRetired(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newProfileEnv(t)
+
+	png := env.uploadLogo(env.ownerJWT, "logo.png", "image/png", []byte("\x89PNG\r\n\x1a\nfake"))
+	defer func() { _ = png.Body.Close() }()
+	r.Equal(http.StatusOK, png.StatusCode)
+
+	var uploaded struct {
+		LogoURL *string `json:"logoUrl"`
+	}
+
+	r.NoError(json.NewDecoder(png.Body).Decode(&uploaded))
+	r.NotNil(uploaded.LogoURL)
+	r.True(strings.HasPrefix(*uploaded.LogoURL, files.PublicAssetPathPrefix),
+		"an uploaded logo must be addressed by the generic public asset route: %s", *uploaded.LogoURL)
+
+	fileUID := strings.TrimPrefix(*uploaded.LogoURL, files.PublicAssetPathPrefix)
+
+	// Positive control: the new route serves it.
+	served := env.do(http.MethodGet, *uploaded.LogoURL, "", "", nil)
+	defer func() { _ = served.Body.Close() }()
+	r.Equal(http.StatusOK, served.StatusCode)
+
+	// The route is unregistered, so what answers is whatever catches unknown
+	// paths — never the image. Asserting on the CONTENT TYPE rather than the
+	// status is what makes this test independent of the SPA fallback's shape.
+	legacy := env.do(http.MethodGet, "/pub/org-logos/"+fileUID, "", "", nil)
+	defer func() { _ = legacy.Body.Close() }()
+	r.NotEqual("image/png", legacy.Header.Get("Content-Type"),
+		"the bespoke org-logo route must be gone, not still streaming blobs")
+}
+
+// TestPublicAssetRouteRefusesANonAllowlistedFile is the closed-allowlist
+// property at the HTTP layer: a perfectly real, live file that is not an
+// allowlisted attachment must 404 on the unsigned route, not stream.
+func TestPublicAssetRouteRefusesANonAllowlistedFile(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newProfileEnv(t)
+
+	// A file with no topic at all — the shape every ordinary upload has.
+	plain := models.NewFile(env.orgUID, "secret.png", "image/png", "local://x", 10, nil)
+	r.NoError(env.dbService.CreateFile(t.Context(), plain))
+
+	resp := env.do(http.MethodGet, files.PublicAssetPathPrefix+plain.UID, "", "", nil)
+	defer func() { _ = resp.Body.Close() }()
+	r.Equal(http.StatusNotFound, resp.StatusCode, "a file with no attachment topic is private")
+
+	// ...and one with a real but NON-public topic (an incident screenshot is
+	// org-operational evidence, which must never be served unsigned).
+	shot := models.NewFile(env.orgUID, "shot.png", "image/png", "local://x", 10, nil)
+	topic := "incidents/" + plain.UID + "/screenshot"
+	shot.Topic = &topic
+	r.NoError(env.dbService.CreateFile(t.Context(), shot))
+
+	shotResp := env.do(http.MethodGet, files.PublicAssetPathPrefix+shot.UID, "", "", nil)
+	defer func() { _ = shotResp.Body.Close() }()
+	r.Equal(http.StatusNotFound, shotResp.StatusCode, "an incident screenshot is not a public asset")
 }

@@ -43,6 +43,12 @@
       "confirmInputLabel": "Saisissez {{org}} pour confirmer",
       "confirmAction": "Supprimer l'organisation",
       "deleted": "Organisation {{org}} supprimée"
+    },
+    "traceroute": {
+      "title": "Diagnostics du chemin réseau",
+      "description": "Quand un check tombe parce que sa cible n'a pas pu être JOINTE, capturer un traceroute façon MTR et l'attacher à l'incident.",
+      "label": "Traceroute en cas de panne réseau",
+      "help": "S'applique à tous les checks réglés sur « hériter ». Seuls les échecs d'accessibilité déclenchent une capture : timeouts de connexion, refus, perte ICMP, handshakes TLS bloqués. Un HTTP 5xx, un mot-clé absent ou un certificat qui expire, jamais — le serveur a répondu. Les traces s'exécutent après que le résultat en échec a déjà été rapporté et sont limitées par organisation : elles ne retardent jamais un incident et n'inondent pas une panne massive."
     }
   },
   "usage": {
@@ -64,7 +70,11 @@
       "runaway": "{{count}} message(s) ont été refusés car le plafond SMS de cette instance ({{limit}}/heure) a été atteint. Des alertes sont perdues pour toute l'instance — prévenez votre opérateur.",
       "country": "{{count}} message(s) ont été refusés car le pays de destination ne figure pas dans la liste autorisée de cette instance ({{countries}})."
     },
-    "slos": "Objectifs de niveau de service"
+    "slos": "Objectifs de niveau de service",
+    "whiteLabel": "Marque blanche",
+    "included": "Incluse",
+    "notIncluded": "Non incluse",
+    "whiteLabelHint": "Permet à une page de statut de masquer le pied de page « Propulsé par SolidPing »."
   },
   "ai": {
     "title": "Assistants IA",
@@ -154,6 +164,9 @@
     "inviteMember": "Inviter un membre",
     "sendDescription": "Envoyer une invitation à rejoindre cette organisation",
     "invitationCreated": "Invitation créée. Partagez ce lien :",
+    "emailSentTo": "Un e-mail d'invitation a été envoyé à {{email}}.",
+    "shareLinkFallback": "Ou partagez ce lien directement :",
+    "emailNotConfigured": "L'envoi d'e-mails n'est pas configuré sur cette instance — partagez ce lien avec le destinataire.",
     "sendInvitation": "Envoyer l'invitation",
     "sending": "Envoi...",
     "pendingTitle": "Invitations en attente",

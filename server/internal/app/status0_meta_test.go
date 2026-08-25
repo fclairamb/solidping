@@ -272,6 +272,18 @@ func setupStatus0MetaServer(t *testing.T) (context.Context, *Server) {
 	})
 	r.NoError(err)
 
+	// Password-protected page: must ALSO serve the generic head. This one is
+	// load-bearing for caching (spec 2026-08-22-06) — status0MetaForPath runs
+	// without the request's unlock grant, so statuspagelock.Allows denies by
+	// default and no gated page's name reaches the shell. That is precisely why
+	// the path-based shell stays a single shared-cacheable artifact while its
+	// custom-domain twin, which DOES inject unconditionally, must not.
+	_, err = svc.CreateStatusPage(ctx, org.Slug, &statuspages.CreateStatusPageRequest{
+		Name: "Acme Password Secret", Slug: "locked",
+		Visibility: strPtr("password"), Password: strPtr("correct-horse"),
+	})
+	r.NoError(err)
+
 	return ctx, &Server{statusPagesService: svc}
 }
 
@@ -296,6 +308,7 @@ func TestStatus0MetaForPath_NoExistenceLeak(t *testing.T) {
 		{name: "unknown slug", reqPath: "/acme/nope", wantOK: false},
 		{name: "disabled page", reqPath: "/acme/disabled", wantOK: false},
 		{name: "private page", reqPath: "/acme/private", wantOK: false},
+		{name: "password page", reqPath: "/acme/locked", wantOK: false},
 	}
 
 	for _, testCase := range cases {
@@ -331,6 +344,7 @@ func TestStatus0MetaForPath_NoExistenceLeak(t *testing.T) {
 				r.Equal(status0MetaGenericDoc, served)
 				r.NotContains(served, status0MetaPublicPageName)
 				r.NotContains(served, "Secret")
+				r.NotContains(served, "Password")
 			}
 		})
 	}

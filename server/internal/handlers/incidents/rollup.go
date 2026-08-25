@@ -41,11 +41,193 @@ func (s *Service) applyRollup(
 	incident.CausedByIncidentUID = &rootUID
 	incident.PagingSuppressed = suppressed
 
-	slog.DebugContext(ctx, "Rolling up incident under parent",
+	// INFO, not DEBUG: "why did this incident not page?" is the first question
+	// asked during an outage post-mortem, and answering it used to require
+	// re-running production at debug level (spec 2026-08-24-15).
+	slog.InfoContext(ctx, "Rolling up incident under parent",
 		"childIncidentUid", incident.UID,
+		"childCheckUid", check.UID,
 		"rootIncidentUid", rootUID,
 		"depth", depth,
 	)
+}
+
+// rollUpExistingChildren is the FORWARD mirror of applyRollup, and the fix for
+// the ordering that actually happens in production: a core service's own probe
+// routinely confirms AFTER the consumers that depend on it, so by the time the
+// parent's incident opens its dependents are already open, already
+// un-suppressed, and already paging. applyRollup only ever looks backward, at
+// child-open time, so nothing revisited them.
+//
+// Called when an incident OPENS (created or reopened) for `parentCheck`: walks
+// hard descendants downward — same BFS shape and depth cap as findRollupRoot —
+// and attaches every active, non-suppressed check incident whose own
+// correlation window still contains the parent's onset.
+//
+// `onset` is passed explicitly rather than read off the incident because a
+// REOPENED incident keeps its original started_at; the relapse's period start
+// is the onset that matters for correlation.
+//
+// Best-effort: any error is logged and stops the walk. Never blocks the
+// incident-open path on dependency-graph queries.
+func (s *Service) rollUpExistingChildren(
+	ctx context.Context, parentCheck *models.Check, parent *models.Incident, onset time.Time,
+) {
+	if parent == nil || parentCheck == nil {
+		return
+	}
+
+	type node struct {
+		checkUID string
+		depth    int
+	}
+
+	visited := map[string]int{parentCheck.UID: 0}
+	queue := []node{{checkUID: parentCheck.UID, depth: 0}}
+
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+
+		if cur.depth >= rollupDepthCap {
+			continue
+		}
+
+		children, err := s.db.ListCheckDependencyChildren(ctx, cur.checkUID)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to list children during forward rollup walk",
+				"checkUid", cur.checkUID, "error", err)
+
+			return
+		}
+
+		hardChildren := make([]string, 0, len(children))
+
+		for _, dep := range children {
+			if dep.Kind != models.CheckDependencyKindHard {
+				continue
+			}
+
+			if _, ok := visited[dep.ChildCheckUID]; ok {
+				continue
+			}
+
+			visited[dep.ChildCheckUID] = cur.depth + 1
+			hardChildren = append(hardChildren, dep.ChildCheckUID)
+			queue = append(queue, node{checkUID: dep.ChildCheckUID, depth: cur.depth + 1})
+		}
+
+		if len(hardChildren) == 0 {
+			continue
+		}
+
+		s.attachChildrenAtLevel(ctx, parent, onset, hardChildren, visited)
+	}
+}
+
+// attachChildrenAtLevel resolves one BFS level's hard children to their open
+// incidents and attaches the ones still inside their own correlation window.
+//
+// The window belongs to the CHILD (max(2 * its period, 5min)), so children with
+// different periods need different bounds — they are grouped by window and each
+// group reuses the very same query the backward path uses, with
+// `until = parent onset` instead of `until = child onset`. One correlation
+// rule, one query, two directions.
+func (s *Service) attachChildrenAtLevel(
+	ctx context.Context, parent *models.Incident, onset time.Time,
+	hardChildren []string, visited map[string]int,
+) {
+	checks, err := s.db.GetChecksByUIDs(ctx, parent.OrganizationUID, hardChildren)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to load child checks during forward rollup walk",
+			"error", err)
+
+		return
+	}
+
+	// Deterministic grouping: first-appearance order, never map order.
+	var windows []time.Duration
+
+	grouped := make(map[time.Duration][]string, len(hardChildren))
+
+	for _, uid := range hardChildren {
+		child, ok := checks[uid]
+		if !ok || child == nil {
+			continue
+		}
+
+		window := correlationWindow(child)
+		if _, seen := grouped[window]; !seen {
+			windows = append(windows, window)
+		}
+
+		grouped[window] = append(grouped[window], uid)
+	}
+
+	for _, window := range windows {
+		incidents, err := s.db.FindActiveIncidentsForChecksInWindow(
+			ctx, grouped[window], onset.Add(-window), onset,
+		)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to query child incidents during forward rollup walk",
+				"error", err)
+
+			return
+		}
+
+		for _, child := range incidents {
+			if child.UID == parent.UID {
+				continue
+			}
+
+			s.attachChildToRollupParent(ctx, child, parent, visited[child.CheckUID])
+		}
+	}
+}
+
+// attachChildToRollupParent performs the guarded attachment and, only if this
+// call is the one that flipped the row, records it. The guard lives in the
+// UPDATE's WHERE clause (paging_suppressed = FALSE), so a forward walk racing
+// the child's own backward evaluation converges on one attachment and one
+// event instead of two.
+func (s *Service) attachChildToRollupParent(
+	ctx context.Context, child, parent *models.Incident, depth int,
+) {
+	attached, err := s.db.AttachIncidentToRollupParent(ctx, child.UID, parent.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to attach child incident to rollup parent",
+			"childIncidentUid", child.UID, "parentIncidentUid", parent.UID, "error", err)
+
+		return
+	}
+
+	if !attached {
+		// Lost the race (or the child moved on): somebody else already owns
+		// this attachment and already emitted its event.
+		return
+	}
+
+	parentUID := parent.UID
+	child.CausedByIncidentUID = &parentUID
+	child.PagingSuppressed = true
+
+	slog.InfoContext(ctx, "Retroactively rolled up child incident under a late-confirming parent",
+		"childIncidentUid", child.UID,
+		"childCheckUid", child.CheckUID,
+		"parentIncidentUid", parent.UID,
+		"parentCheckUid", parent.CheckUID,
+		"depth", depth,
+	)
+
+	if err := s.emitEvent(ctx, child.OrganizationUID, models.EventTypeIncidentRolledUp, child, models.JSONMap{
+		keyCheckUID:          child.CheckUID,
+		keyParentIncidentUID: parent.UID,
+		keyParentCheckUID:    parent.CheckUID,
+		keyRollupDepth:       depth,
+	}); err != nil {
+		slog.WarnContext(ctx, "Failed to emit rollup event",
+			"childIncidentUid", child.UID, "error", err)
+	}
 }
 
 // findRollupRoot walks parents BFS up to depthCap, restricting to fully-hard

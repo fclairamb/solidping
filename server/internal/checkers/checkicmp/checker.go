@@ -237,9 +237,35 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		if result.Output[checkerdef.OutputKeyError] == nil {
 			result.Output[checkerdef.OutputKeyError] = "no successful ping responses"
 		}
+
+		// TOTAL loss only. Partial loss is degraded reachability, not a
+		// reachability FAILURE — the target answered, and the check is up.
+		result.SetNetworkFailure(checkerdef.NewNetworkFailure(
+			icmpFailureClass(results), cfg.Host, ip.String(), 0))
 	}
 
 	return &result, nil
+}
+
+// icmpFailureClass distinguishes "nothing came back" from "something told us
+// the destination is unreachable".
+//
+// It matters for reading the trace afterwards: silence usually means the trace
+// will also stop somewhere short of the target, while an explicit unreachable
+// means a router made a decision and the trace should show which one.
+func icmpFailureClass(results []pingResult) string {
+	for idx := range results {
+		if results[idx].Error == nil {
+			continue
+		}
+
+		switch checkerdef.ClassifyDialError(results[idx].Error, false) {
+		case checkerdef.NetFailureNetworkUnreachable, checkerdef.NetFailureHostUnreachable:
+			return checkerdef.NetFailureICMPUnreachable
+		}
+	}
+
+	return checkerdef.NetFailureICMPTimeout
 }
 
 // pingResult represents the result of a single ICMP ping attempt.

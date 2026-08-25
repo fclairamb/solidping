@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,18 +21,30 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { AvailabilitySettings, StatusPage, StatusPagePeriod } from "@/api/hooks";
+import type {
+  AvailabilitySettings,
+  StatusPage,
+  StatusPagePeriod,
+  StatusPageVisibility,
+} from "@/api/hooks";
 
 interface StatusPageFormData {
   name: string;
   slug: string;
   description: string;
-  visibility: "public" | "private";
+  visibility: StatusPageVisibility;
   isDefault: boolean;
   enabled: boolean;
   showAvailability: boolean;
   showResponseTime: boolean;
   historyPeriod: StatusPagePeriod;
+  // White-label opt-in (spec 2026-08-21-07). Stored whether or not the org is
+  // entitled, so an upgrade takes effect without the operator re-ticking it.
+  hideBranding: boolean;
+  // Write-only unlock password (spec 2026-08-21-07). undefined = leave the
+  // stored one alone; a string sets/replaces it. It is never read back, so the
+  // field always starts empty on the edit form.
+  password?: string;
   // Incident auto-publication (spec 2026-08-19-08).
   autoPublish: boolean;
   autoPublishDelaySeconds: number;
@@ -55,11 +68,12 @@ export function StatusPageForm({
   onSubmit: (data: StatusPageFormData) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation("statusPages");
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
   const [description, setDescription] = useState(initialData?.description || "");
-  const [visibility, setVisibility] = useState<"public" | "private">(
+  const [visibility, setVisibility] = useState<StatusPageVisibility>(
     initialData?.visibility || "public"
   );
   const [isDefault, setIsDefault] = useState(initialData?.isDefault || false);
@@ -69,6 +83,12 @@ export function StatusPageForm({
   const [historyPeriod, setHistoryPeriod] = useState<StatusPagePeriod>(
     initialData?.historyPeriod ?? "90d"
   );
+  const [hideBranding, setHideBranding] = useState(
+    initialData?.hideBranding ?? false
+  );
+  // Always starts empty: the server never returns the password (only
+  // `hasPassword`), so pre-filling anything here would be a fiction.
+  const [password, setPassword] = useState("");
   // Auto-publish. A NEW page defaults to on; an existing page shows whatever
   // the server says, which for pages created before this feature is off — the
   // migration deliberately did not opt anyone in retroactively.
@@ -130,6 +150,11 @@ export function StatusPageForm({
       showAvailability,
       showResponseTime,
       historyPeriod,
+      hideBranding,
+      // Send the password only when the operator typed one. An empty field on
+      // an already-protected page means "leave it as it is", NOT "clear it" —
+      // clearing is done by switching the page off `password` visibility.
+      password: password.trim() === "" ? undefined : password,
       autoPublish,
       // An unparseable or blank delay falls back to the documented default
       // rather than sending NaN, which the API would reject with a validation
@@ -205,17 +230,56 @@ export function StatusPageForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="visibility">Visibility</Label>
-            <Select value={visibility} onValueChange={(v) => setVisibility(v as "public" | "private")}>
+            <Label htmlFor="visibility">{t("visibilityField.label")}</Label>
+            <Select value={visibility} onValueChange={(v) => setVisibility(v as StatusPageVisibility)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="public">Public</SelectItem>
-                <SelectItem value="private">Private</SelectItem>
+                <SelectItem value="public">{t("visibilityField.public")}</SelectItem>
+                <SelectItem value="private">{t("visibilityField.private")}</SelectItem>
+                <SelectItem value="password">{t("visibilityField.password")}</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {visibility === "private"
+                ? t("visibilityField.privateHint")
+                : visibility === "password"
+                  ? t("visibilityField.passwordHint")
+                  : t("visibilityField.publicHint")}
+            </p>
           </div>
+
+          {/* The password field appears only for the visibility that uses it.
+              On a page that already has one it is optional — the placeholder
+              says so — because the server keeps the stored hash when the field
+              is left empty, and re-typing a shared secret to save an unrelated
+              setting would be a trap. */}
+          {visibility === "password" && (
+            <div className="space-y-2">
+              <Label htmlFor="status-page-password">
+                {t("visibilityField.passwordLabel")}
+              </Label>
+              <Input
+                id="status-page-password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required={!initialData?.hasPassword}
+                minLength={6}
+                placeholder={
+                  initialData?.hasPassword
+                    ? t("visibilityField.passwordKeepPlaceholder")
+                    : t("visibilityField.passwordPlaceholder")
+                }
+                data-testid="status-page-password-field"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("visibilityField.passwordFieldHint")}
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -225,6 +289,34 @@ export function StatusPageForm({
               </p>
             </div>
             <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+          </div>
+
+          {/* White label (spec 2026-08-21-07). The toggle is NEVER disabled,
+              even when the org is not entitled: the flag is stored either way,
+              so upgrading a plan takes effect without anyone coming back here.
+              The note below is what explains that the setting is currently
+              inert — an entitlement is a billing state, not a form error. */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="hide-branding">{t("branding.hideBranding")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("branding.hideBrandingHint")}
+              </p>
+              {hideBranding && initialData?.whiteLabelAllowed === false && (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="white-label-locked-note"
+                >
+                  {t("branding.hideBrandingLocked")}
+                </p>
+              )}
+            </div>
+            <Switch
+              id="hide-branding"
+              checked={hideBranding}
+              onCheckedChange={setHideBranding}
+              data-testid="hide-branding-switch"
+            />
           </div>
 
           {mode === "edit" && (

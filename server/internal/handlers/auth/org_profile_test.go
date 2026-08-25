@@ -297,7 +297,7 @@ func TestUpdateOrgProfileValidation(t *testing.T) {
 		{
 			name: "relative logo url",
 			req: func() UpdateOrgProfileRequest {
-				u := "/pub/org-logos/00000000-0000-0000-0000-000000000000"
+				u := "/pub/assets/00000000-0000-0000-0000-000000000000"
 
 				return UpdateOrgProfileRequest{LogoURL: &u, LogoURLSet: true}
 			},

@@ -7,7 +7,7 @@
     <p class="cta-wrap">{{template "button" dict "URL" .InviteURL "Label" "Accept invitation" "Variant" "success"}}</p>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.InviteURL}}</p>
-    <p class="meta">This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.</p>
+    <p class="meta">This invitation expires in {{.ExpiresIn}}. If you weren't expecting this, you can safely ignore this email.</p>
 {{end}}
 {{define "text"}}You're invited to {{.OrgName}}
 
@@ -18,5 +18,5 @@ Hi,
 Accept your invitation:
 {{.InviteURL}}
 
-This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.
+This invitation expires in {{.ExpiresIn}}. If you weren't expecting this, you can safely ignore this email.
 {{end}}

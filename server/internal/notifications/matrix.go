@@ -233,6 +233,9 @@ func (s *MatrixSender) buildContent(payload *Payload) (string, string) {
 	case eventTypeIncidentComment:
 		title = commentTitle(payload)
 		lines = []string{commentPlainBody(payload)}
+	case eventTypeIncidentAcknowledged:
+		title = ackTitle(payload)
+		lines = []string{ackPlainBody(payload), "Escalation has stopped; the incident is still open."}
 	default:
 		title = "[UPDATE] " + checkName
 		lines = []string{"An incident update occurred for " + checkName}

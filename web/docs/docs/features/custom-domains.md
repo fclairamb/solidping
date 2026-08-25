@@ -22,8 +22,10 @@ A custom domain is:
   Let's Encrypt certificate on the first HTTPS request and renews it for you.
   If you prefer, TLS can still be terminated by your own reverse proxy — see
   [Alternative: an external TLS proxy](#alternative-an-external-tls-proxy).
-- **Periodically re-verified.** SolidPing re-checks the `CNAME` every few hours
-  and stops serving the domain if it is released or transferred.
+- **Periodically re-verified.** SolidPing re-checks the `CNAME` every few hours.
+  A transient DNS fault is tolerated for days without interrupting your page,
+  and the domain recovers on its own; only a domain that stays unreachable for
+  days stops being served.
 
 Only **verified, enabled, public** pages are served on a custom host. Everything
 else on that host — the operator dashboard, docs, the rest of the API — returns
@@ -238,28 +240,48 @@ Terminate at the edge using the same `allowed` endpoint — a Caddy sidecar with
 ## Verification & takeover protection
 
 After the first successful verification, a background job re-runs the `CNAME`
-check every 6 hours. If the record disappears or changes (the domain was
-released or transferred away), the check fails; after **3 consecutive failures**
-SolidPing clears the verification. Serving stops, certificate renewal stops, and
-the `allowed` endpoint starts answering `404`. Restore the `CNAME` and click
-**Verify** again to bring it back.
+check every 6 hours and moves the domain through four states:
 
-"Serving stops" is enforced at the TLS handshake, not merely in the router: a
-hostname that is neither one of the installation's own hosts nor a currently
-verified, enabled, public custom domain is refused before a certificate is
-handed out — **including one already issued and cached**. Without that, an
-unmapped hostname would keep completing handshakes until its certificate
-expired, and with no mapping left to scope it, the request would fall through
-to the installation's own-host routing and serve the dashboard on a domain you
-no longer control. Clearing or changing a custom domain also deletes its
-certificate and private key from `tls_storage`.
+| State | Served? | What it means |
+| --- | --- | --- |
+| **Pending** | no | Configured, never verified. Only an explicit **Verify** promotes it. |
+| **Active** | yes | Verified and healthy. |
+| **Grace** | **yes** | Re-checks have failed 3 times in a row (~18 hours). The page keeps serving; the dashboard shows a *DNS re-check failing* warning with the last diagnostic. |
+| **Demoted** | no | Re-checks failed 12 times in a row (~3 days). Serving stops, certificate renewal stops, and the `allowed` endpoint answers `404`. |
 
-The decision is memoized for 30 seconds, so a domain you remove can still be
-served for up to that long. Only *positive* answers are cached: a domain you
-have just verified starts serving on the very next request.
+Grace exists because the two things one counter used to conflate are not the
+same: a DNS blip is common and temporary, a released or transferred domain is
+rare and permanent. Reacting to the first as if it were the second took status
+pages offline for hours of resolver trouble.
 
-The re-verification sweep only ever *demotes*: it never promotes an unverified
-domain on its own — that always takes an explicit **Verify**.
+**Recovery is automatic.** Once the `CNAME` resolves correctly again, a demoted
+domain is re-promoted after **3 consecutive successful checks** — provided
+SolidPing is still holding an unexpired certificate for it. You can always skip
+the wait by clicking **Verify**. A domain that has *never* verified is never
+promoted automatically: the first verification is always an explicit action.
+
+**A hard demotion notifies you.** It writes a
+`statuspage.custom_domain.demoted` event to the organization's activity feed
+and emails every owner and admin, so a dark status page is not discovered by
+your customers during an outage. Entering *grace* is deliberately silent — the
+page is still serving.
+
+**A domain that is no longer served fails legibly, not at the TLS layer.** If
+SolidPing still holds a valid certificate for the hostname, the handshake
+completes and the visitor gets a plain "status page unavailable" page (`503`)
+naming the host. It never returns a browser security interstitial, and it never
+serves the operator dashboard on a hostname you no longer control. A hostname
+SolidPing holds no certificate for is still refused outright at the handshake —
+that refusal is what protects Let's Encrypt's failed-validation rate limit from
+a hostile SNI scan.
+
+Clearing or changing a custom domain deletes its certificate and private key
+from `tls_storage`, so no live key is left for a hostname someone else may now
+control.
+
+The serving decision is memoized for 30 seconds, so a domain you remove can
+still be served for up to that long. Only *positive* answers are cached: a
+domain you have just verified starts serving on the very next request.
 
 The custom-domain column is **globally unique** among live pages, so two
 organizations can never both hold the same hostname at once; a conflicting

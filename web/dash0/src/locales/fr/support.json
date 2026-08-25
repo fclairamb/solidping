@@ -1,0 +1,57 @@
+{
+  "title": "Boîte de support",
+  "subtitle": "Messages humains capturés depuis les canaux bots. Au niveau de l'instance, réservé aux super-admins.",
+  "empty": "Aucun message de support pour l'instant.",
+  "emptyFiltered": "Aucun fil ne correspond à ces filtres.",
+  "search": "Rechercher un expéditeur ou un sujet",
+  "allChannels": "Tous les canaux",
+  "allStatuses": "Tous les statuts",
+  "backToInbox": "Retour à la boîte de réception",
+  "sections": {
+    "active": "Actifs",
+    "activeHelp": "Fils ouverts ou en attente auxquels on peut encore répondre.",
+    "expired": "Fenêtre de réponse expirée",
+    "expiredHelp": "Toujours sans réponse, mais le canal n'accepte plus de réponse libre.",
+    "closed": "Clôturés",
+    "closedHelp": "Traités. Purgés après la période de rétention."
+  },
+  "status": {
+    "open": "Ouvert",
+    "pending": "En attente",
+    "closed": "Clôturé",
+    "label": "Statut"
+  },
+  "thread": {
+    "unread_one": "{{count}} non lu",
+    "unread_other": "{{count}} non lus",
+    "lastMessage": "Dernier message",
+    "attribution": "Attribué à",
+    "attributionHelp": "Une indication sur l'auteur présumé. Cela ne donne aucun accès à cette organisation.",
+    "noAttribution": "Expéditeur non attribué",
+    "truncated": "Ce message a été tronqué lors de son enregistrement.",
+    "inbound": "Eux",
+    "outbound": "Nous",
+    "deliveryFailed": "Échec de l'envoi",
+    "noMessages": "Ce fil ne contient aucun message."
+  },
+  "window": {
+    "open": "Fenêtre de réponse ouverte",
+    "expired": "Fenêtre de réponse fermée",
+    "expiresAt": "Réponses libres possibles jusqu'à {{time}}",
+    "costsMoney": "Chaque réponse est facturée"
+  },
+  "reply": {
+    "placeholder": "Écrire une réponse…",
+    "send": "Envoyer la réponse",
+    "sending": "Envoi…",
+    "sent": "Réponse envoyée",
+    "failed": "Impossible d'envoyer la réponse",
+    "disabledNoAdapter": "Ce canal n'a pas d'adaptateur de réponse sur cette instance.",
+    "costWarning": "Ce canal est facturé par segment. Les réponses passent par les mêmes garde-fous de dépense que les alertes."
+  },
+  "actions": {
+    "markPending": "Marquer en attente",
+    "reopen": "Rouvrir",
+    "close": "Clôturer le fil"
+  }
+}

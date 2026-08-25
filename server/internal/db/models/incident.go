@@ -25,6 +25,22 @@ const (
 	ResolutionTypeExpired = "expired"
 )
 
+// Incident kinds. `kind` discriminates what an incident row is ABOUT. It is a
+// discriminator, not a category: everything downstream (notification fan-out,
+// escalation policies, ack/snooze/resolve, the timeline) is deliberately
+// identical for both, which is the whole reason burn alerts are incidents
+// rather than a parallel object.
+const (
+	// IncidentKindCheck is a failing check — the original and default meaning,
+	// so every pre-existing row keeps it with no backfill.
+	IncidentKindCheck = "check"
+	// IncidentKindSLOBurn is an SLO error-budget burn-rate alert (spec
+	// 2026-08-21-08). It carries SLOUID + SLOAlertPolicyUID, and a
+	// representative check in CheckUID purely so channel resolution and
+	// escalation-policy resolution have an anchor to work from.
+	IncidentKindSLOBurn = "slo_burn"
+)
+
 // Incident represents a period when a check was down.
 type Incident struct {
 	UID string `bun:"uid,pk,type:varchar(36)"`
@@ -50,19 +66,32 @@ type Incident struct {
 	SnoozeReason    *string       `bun:"snooze_reason"`
 	FailureCount    int           `bun:"failure_count,notnull,default:1"`
 	RelapseCount    int           `bun:"relapse_count,notnull,default:0"`
-	LastReopenedAt  *time.Time    `bun:"last_reopened_at"`
-	Title           *string       `bun:"title"`
-	Description     *string       `bun:"description"`
-	Details         JSONMap       `bun:"details,type:jsonb,nullzero"`
+	// FlapLevel is the check's FlapCount at the moment this incident opened
+	// or last reopened (spec 2026-08-24-05) — the "at what flap level did
+	// this page fire" record. 0 = not flapping (first outage in the rolling
+	// window). Unlike checks.flap_count this is a point-in-time snapshot, not
+	// a live value, so it never needs lazy-reset handling.
+	FlapLevel      int        `bun:"flap_level,notnull,default:0"`
+	LastReopenedAt *time.Time `bun:"last_reopened_at"`
+	Title          *string    `bun:"title"`
+	Description    *string    `bun:"description"`
+	Details        JSONMap    `bun:"details,type:jsonb,nullzero"`
 	// CheckGroupUID is set on group incidents — NULL keeps the existing per-check semantics.
 	CheckGroupUID *string `bun:"check_group_uid"`
 	// CausedByIncidentUID points to the root-cause incident this one was rolled up under.
 	CausedByIncidentUID *string `bun:"caused_by_incident_uid"`
 	// PagingSuppressed gates notifications and escalation: TRUE = skip.
-	PagingSuppressed bool       `bun:"paging_suppressed,notnull,default:false"`
-	CreatedAt        time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt        time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt        *time.Time `bun:"deleted_at"`
+	PagingSuppressed bool `bun:"paging_suppressed,notnull,default:false"`
+	// Kind is IncidentKindCheck or IncidentKindSLOBurn.
+	Kind string `bun:"kind,notnull,default:'check'"`
+	// SLOUID / SLOAlertPolicyUID bind a burn incident to what produced it.
+	// Both are NULL on a check incident. Both are `on delete set null`: losing
+	// the SLO must not erase the record of the pages it sent.
+	SLOUID            *string    `bun:"slo_uid"`
+	SLOAlertPolicyUID *string    `bun:"slo_alert_policy_uid"`
+	CreatedAt         time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt         time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt         *time.Time `bun:"deleted_at"`
 }
 
 // NewIncident creates a new incident with generated UID.
@@ -73,6 +102,7 @@ func NewIncident(orgUID, checkUID string, startedAt time.Time, title string) *In
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,
 		CheckUID:        checkUID,
+		Kind:            IncidentKindCheck,
 		State:           IncidentStateActive,
 		StartedAt:       startedAt,
 		FailureCount:    1,
@@ -98,6 +128,7 @@ type IncidentUpdate struct {
 	SnoozeReason        *string
 	FailureCount        *int
 	RelapseCount        *int
+	FlapLevel           *int
 	LastReopenedAt      *time.Time
 	Title               *string
 	Description         *string
@@ -144,10 +175,16 @@ type ListIncidentsFilter struct {
 	CheckGroupUID   string          // Optional: filter to group incidents on this group
 	MemberCheckUID  string          // Optional: incidents that contain this check (per-check or group member)
 	States          []IncidentState // Optional: filter by states (active, resolved)
-	Since           *time.Time      // Optional: incidents started after this time
-	Until           *time.Time      // Optional: incidents started before this time
-	HideSuppressed  bool            // Optional: hide rolled-up (paging-suppressed) incidents
-	CausedByUID     string          // Optional: only incidents whose caused_by_incident_uid equals this
+	// Kinds restricts to these incident kinds. EMPTY MEANS ALL, on purpose:
+	// the dashboard's incident list is meant to show burn alerts alongside
+	// check outages. Callers that compute DOWNTIME from incidents (availability,
+	// SLO status, uptime reports) pass IncidentKindCheck, or a burn alert would
+	// count as downtime against the very objective that produced it.
+	Kinds          []string
+	Since          *time.Time // Optional: incidents started after this time
+	Until          *time.Time // Optional: incidents started before this time
+	HideSuppressed bool       // Optional: hide rolled-up (paging-suppressed) incidents
+	CausedByUID    string     // Optional: only incidents whose caused_by_incident_uid equals this
 	// AckedOnly returns only incidents with non-NULL acknowledged_at (and
 	// expired snoozes, since snoozed-but-expired is just acked again). Set by
 	// the handler when ?state=acked is requested.

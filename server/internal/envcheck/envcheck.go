@@ -1,6 +1,6 @@
 // Package envcheck warns about SP_*-prefixed environment variables that no
 // recognized configuration key binds, so a typo'd setting is surfaced at
-// startup instead of silently becoming a no-op (the k8xp
+// startup instead of silently becoming a no-op (the
 // SP_RATE_LIMITING_TRUSTED_PROXIES incident, which should have been
 // SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES).
 //

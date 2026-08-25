@@ -333,4 +333,151 @@ test.describe("Incidents", () => {
     );
     await expect(page.getByRole("heading", { level: 1 })).toContainText(refText);
   });
+
+  // Fixture checks/incidents seeded by
+  // server/test/testdata/testdata.go#createTestFailureResponseCaptures —
+  // three checks, each with exactly one active incident named "<Check> is
+  // down", so filtering to one check has an unambiguous negative control:
+  // any row for a *different* check must be absent, not merely "fewer rows".
+  const capturedCheckSlug = "captured-check";
+  const capturedCheckUid = "00000000-0000-0000-0000-000000000016";
+  const capturedCheckIncidentTitle = "Captured Check is down";
+  const otherCheckSlug = "captured-truncated-check";
+  const otherCheckIncidentTitle = "Captured Truncated Check is down";
+
+  test("picking a check from the dropdown narrows the list and updates the URL", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Establish the negative control on a FILTERED view first: prove the other
+    // check's incident exists in the dataset at all, so the `not.toBeVisible()`
+    // below means "the filter removed it", not "it was never reachable".
+    //
+    // Do NOT assert this on the unfiltered `?state=all` list. That list is
+    // `ORDER BY started_at DESC` capped at `size: 50` (incidents.index.tsx),
+    // and these fixture incidents are seeded at server start — i.e. they are
+    // the OLDEST rows. In a full suite run the preceding tests create enough
+    // newer incidents to push the fixtures past row 50, so an unfiltered
+    // visibility assertion passes when this file runs alone and fails at
+    // ~test 330/595 in CI.
+    await page.goto(
+      `orgs/test/incidents?state=all&checkUid=${otherCheckSlug}`,
+    );
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText(otherCheckIncidentTitle)).toBeVisible();
+
+    // Now exercise the actual behavior under test: picking a check from the
+    // dropdown on an unfiltered list.
+    await page.goto("orgs/test/incidents?state=all");
+    await page.waitForLoadState("networkidle");
+
+    const picker = page.getByTestId("incidents-check-filter");
+    await picker.click();
+    await page.getByPlaceholder("Search checks…").fill(capturedCheckSlug);
+    await page.getByTestId(`check-picker-option-${capturedCheckSlug}`).click();
+
+    await page.waitForURL(new RegExp(`checkUid=${capturedCheckUid}`), {
+      timeout: 10000,
+    });
+
+    // The picker now labels the active filter, and only the matching
+    // incident remains — the other check's row is gone, not just outnumbered.
+    await expect(picker).toContainText("Captured Check");
+    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
+    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+  });
+
+  test("the check filter and the state filter never clear each other", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Start with an explicit, non-default state filter already in the URL.
+    await page.goto("orgs/test/incidents?state=active");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("incidents-state-filter")).toContainText(
+      "Active Only",
+    );
+
+    const picker = page.getByTestId("incidents-check-filter");
+    await picker.click();
+    await page.getByPlaceholder("Search checks…").fill(capturedCheckSlug);
+    await page.getByTestId(`check-picker-option-${capturedCheckSlug}`).click();
+    await page.waitForURL(new RegExp(`checkUid=${capturedCheckUid}`), {
+      timeout: 10000,
+    });
+
+    // Picking a check must not have reset the state filter back to "all"
+    // (the item-4 regression: a wholesale `search: {...}` write silently
+    // drops every sibling param).
+    expect(page.url()).toContain("state=active");
+    await expect(page.getByTestId("incidents-state-filter")).toContainText(
+      "Active Only",
+    );
+
+    // Now flip the state filter and confirm the check filter survives too.
+    await page.getByTestId("incidents-state-filter").click();
+    await page.getByRole("option", { name: "All Incidents" }).click();
+    await page.waitForURL(/state=all/, { timeout: 10000 });
+    expect(page.url()).toContain(`checkUid=${capturedCheckUid}`);
+    await expect(picker).toContainText("Captured Check");
+  });
+
+  test("a cold reload of a checkUid deep-link applies and labels the filter on first render", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(`orgs/test/incidents?state=all&checkUid=${capturedCheckUid}`);
+    await page.waitForLoadState("networkidle");
+
+    const picker = page.getByTestId("incidents-check-filter");
+    await expect(picker).toContainText("Captured Check");
+    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
+    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+
+    // Reload cold (a fresh navigation, no client-side router state to fall
+    // back on) — this is the regression this layout route has hit before.
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+
+    await expect(picker).toContainText("Captured Check");
+    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
+    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+  });
+
+  test("a checkUid deep-link given as a slug resolves the same as a uid", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(`orgs/test/incidents?state=all&checkUid=${capturedCheckSlug}`);
+    await page.waitForLoadState("networkidle");
+
+    const picker = page.getByTestId("incidents-check-filter");
+    await expect(picker).toContainText("Captured Check");
+    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
+    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+  });
+
+  test("an empty check filter result names the check, not the whole org", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // A resolved-only filter on a check with no resolved incidents (the
+    // fixture check only has an active one) yields an empty, filtered table.
+    await page.goto(
+      `orgs/test/incidents?state=resolved&checkUid=${capturedCheckUid}`,
+    );
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.getByRole("heading", { name: "No incidents found" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("No incidents found for this check"),
+    ).toBeVisible();
+  });
 });

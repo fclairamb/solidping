@@ -14,11 +14,15 @@
   "allOperational": "All systems are operational",
   "noResolved": "No resolved incidents yet",
   "noIncidents": "No incidents have been recorded",
+  "noIncidentsForCheck": "No incidents found for this check",
   "noIncidentsFound": "No incidents found",
   "incidentNotFound": "Incident not found",
   "backToIncidents": "Back to Incidents",
   "filterByState": "Filter by state",
+  "filterByCheck": "Filter by check",
   "relapse": "{{count}}x relapse",
+  "flapping": "flapping ×{{count}}",
+  "flappingHint": "Opened at flap level {{count}} — adaptive recovery escalated the required stability before this incident's auto-resolve.",
   "active": "Active",
   "resolved": "Resolved",
   "reopened": "Reopened",
@@ -66,7 +70,8 @@
   "stateBadges": {
     "acked": "Acked",
     "snoozed": "Snoozed",
-    "snoozedUntil": "Snoozed until {{time}}"
+    "snoozedUntil": "Snoozed until {{time}}",
+    "ackedBy": "Acked by {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Acknowledged",
@@ -113,6 +118,44 @@
       "truncated": "Body truncated to {{shown}} of {{total}}.",
       "binary": "Body not stored: it is binary or not valid UTF-8. Metadata only — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "an unknown size"
+    },
+    "screenshot": {
+      "title": "Screenshot at failure detection",
+      "description": "What the page looked like when this check reported the failure. Captured a moment AFTER detection, from one region — treat it as evidence, not as the failing frame itself.",
+      "alt": "Screenshot of the page captured when the incident opened",
+      "caption": "Captured {{capturedAt}} from {{region}}, shortly after failure detection.",
+      "unknownTime": "at an unknown time",
+      "unknownRegion": "an unknown region"
+    },
+    "traceroute": {
+      "title": "Network path at failure",
+      "description": "An MTR-style traceroute taken right after this incident opened, from the probing region toward the address the failing check dialed.",
+      "loadFailed": "The path capture could not be loaded. Its download link is short-lived — reload the incident to sign a fresh one.",
+      "modes": {
+        "icmp": "ICMP (privileged)",
+        "icmp-udp": "ICMP (unprivileged)",
+        "tcp": "TCP (reachability only)"
+      },
+      "target": "Target: {{target}}",
+      "region": "Probed from {{region}}",
+      "rounds": "{{rounds}} rounds",
+      "tcpModeNotice": "This host could not open an ICMP socket, so the path was probed with plain TCP connects. That measures how far the packets got, but it cannot show which routers are in between — a blank hop here means \"not observable\", not \"no reply\".",
+      "truncated": "The time budget ran out before the trace reached the target. What is shown is real, but it is not the whole path.",
+      "incomplete": "The trace never reached the target. The last hop that answered is where the path stops working.",
+      "columns": {
+        "hop": "#",
+        "host": "Host",
+        "loss": "Loss",
+        "avg": "Avg RTT"
+      },
+      "noReply": "no reply",
+      "notObservable": "not observable in this mode",
+      "extraPaths": "+{{count}} more",
+      "targetBadge": "target",
+      "unreachableBadge": "unreachable",
+      "lossValue": "{{pct}}%",
+      "msValue": "{{ms}} ms",
+      "caption": "Captured at {{startedAt}}, in {{durationMs}} ms — after the failing probe was already reported, so it never delayed the incident."
     }
   },
   "timeline": {
@@ -122,7 +165,16 @@
     "acknowledged": "Acknowledged",
     "escalated": "Escalated",
     "reopenedRelapse": "Reopened (relapse #{{count}})",
-    "resolved": "Resolved"
+    "resolved": "Resolved",
+    "acknowledgedBy": "by {{name}}",
+    "acknowledgedByVia": "by {{name}} via {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "email",
+      "phone": "phone"
+    }
   },
   "eventLog": {
     "title": "Event Log",
@@ -162,5 +214,9 @@
     "showRolledUp": "Show rolled-up incidents",
     "pagingSuppressed": "paging suppressed",
     "rolledUpInactive": "rolled up"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} down",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} down"
   }
 }

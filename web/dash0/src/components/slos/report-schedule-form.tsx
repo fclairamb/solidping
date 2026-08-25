@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Mail } from "lucide-react";
+import { Mail, Send } from "lucide-react";
 
 import type { CreateReportScheduleRequest, ReportFrequency, ReportSchedule } from "@/api/hooks";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
@@ -20,6 +20,9 @@ export interface ReportScheduleFormProps {
   isPending?: boolean;
   onSubmit: (request: CreateReportScheduleRequest) => void;
   onCancel: () => void;
+  /** Edit mode only: sends a test digest for the saved schedule. */
+  onSendTest?: () => void;
+  testPending?: boolean;
 }
 
 /**
@@ -34,6 +37,8 @@ export function ReportScheduleForm({
   isPending,
   onSubmit,
   onCancel,
+  onSendTest,
+  testPending,
 }: ReportScheduleFormProps) {
   const { t } = useTranslation("slos");
 
@@ -188,6 +193,18 @@ export function ReportScheduleForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           {t("reports.form.cancel")}
         </Button>
+        {onSendTest && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={testPending}
+            onClick={onSendTest}
+            data-testid="report-test"
+          >
+            <Send className="mr-1.5 h-4 w-4" />
+            {t("reports.test")}
+          </Button>
+        )}
       </div>
     </form>
   );

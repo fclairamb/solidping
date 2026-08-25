@@ -53,7 +53,7 @@ const ERROR_BOUNDARY_TEXT = "Something went wrong!";
  * (CI) seeds `test` instead, so probe rather than hardcode.
  */
 const ORG_LOGINS = [
-  { org: "default", email: "admin@solidping.com", password: "solidpass" },
+  { org: "default", email: "admin@solidping.io", password: "solidpass" },
   { org: "test", email: "test@test.com", password: "test" },
 ];
 

@@ -117,7 +117,26 @@
     "removed": "Abonnent entfernt",
     "removeError": "Entfernen des Abonnenten fehlgeschlagen",
     "removeConfirmTitle": "Abonnent entfernen?",
-    "removeConfirmDescription": "Dieser Abonnent erhält keine Benachrichtigungen mehr. Er kann sich über die öffentliche Statusseite erneut anmelden."
+    "removeConfirmDescription": "Dieser Abonnent erhält keine Benachrichtigungen mehr. Er kann sich über die öffentliche Statusseite erneut anmelden.",
+    "destination": "Ziel",
+    "channel": "Kanal",
+    "disabled": "Deaktiviert",
+    "channels": {
+      "email": "E-Mail",
+      "webhook": "Webhook",
+      "slack": "Slack"
+    },
+    "addEndpoint": "Webhook- oder Slack-Zustellung hinzufügen",
+    "addEndpointHint": "Wird hier eingerichtet, nicht auf der öffentlichen Seite: das öffentliche Formular akzeptiert nur E-Mail-Adressen, denn eine von Besuchern eingefügte Webhook-URL lässt sich nicht verifizieren. Zustellungen werden signiert und nach wiederholten Fehlern automatisch gestoppt.",
+    "url": "Zustell-URL",
+    "add": "Hinzufügen",
+    "endpointAdded": "Zustellung hinzugefügt",
+    "endpointAddError": "Zustellung konnte nicht hinzugefügt werden",
+    "signingSecret": "Signatur-Secret (optional)",
+    "signingSecretPlaceholder": "Leer lassen, um eines zu generieren",
+    "signingSecretHint": "Signiert jede Zustellung (HMAC-SHA256), damit Ihr Empfänger prüfen kann, dass sie von SolidPing stammt.",
+    "signingSecretIssued": "Kopieren Sie dieses Signatur-Secret jetzt — es wird nur einmal angezeigt und lässt sich später nicht abrufen.",
+    "signingSecretSaved": "Gespeichert"
   },
   "customDomain": {
     "title": "Eigene Domain",
@@ -131,6 +150,11 @@
     "verifying": "Überprüfung…",
     "verified": "Verifiziert",
     "unverified": "Nicht verifiziert",
+    "degraded": "DNS-Prüfung schlägt fehl",
+    "degradedTitle": "Die erneute DNS-Prüfung der Domain schlägt fehl",
+    "degradedDescription": "Ihre Statusseite wird weiterhin über diese Domain ausgeliefert, aber die regelmäßige DNS-Prüfung ist mehrfach hintereinander fehlgeschlagen. Korrigieren Sie den CNAME-Eintrag, dann erholt sich die Domain von selbst — hält der Fehler mehrere Tage an, wird die Seite hier nicht mehr ausgeliefert.",
+    "demotedTitle": "Diese Domain liefert Ihre Statusseite nicht mehr aus",
+    "demotedDescription": "Die DNS-Prüfung ist mehrere Tage in Folge fehlgeschlagen, daher wird die Seite über diese Domain nicht mehr ausgeliefert. Korrigieren Sie den CNAME-Eintrag und klicken Sie auf Überprüfen — oder warten Sie ab: sobald DNS wieder korrekt auflöst, wird die Domain nach einigen erfolgreichen Prüfungen automatisch wiederhergestellt.",
     "certIssued": "HTTPS aktiv",
     "certError": "HTTPS fehlgeschlagen",
     "certPending": "HTTPS ausstehend",
@@ -234,5 +258,35 @@
     "updated": "Statusseite erfolgreich aktualisiert",
     "deleted": "Statusseite erfolgreich gelöscht",
     "deleteFailed": "Löschen der Statusseite fehlgeschlagen"
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "Logo und Favicon dieser Statusseite. Ein hochgeladenes Logo ersetzt die SolidPing-Marke im Seitenkopf.",
+    "logo": "Logo",
+    "logoHint": "PNG, JPEG, WebP, GIF oder SVG, bis 1 MB. Wird im Kopfbereich der Statusseite gezeigt.",
+    "favicon": "Favicon",
+    "faviconHint": "ICO, PNG, WebP, GIF oder SVG, bis 256 KB. Wird im Browser-Tab gezeigt, auch auf einer eigenen Domain.",
+    "upload": "Hochladen",
+    "replace": "Ersetzen",
+    "remove": "Entfernen",
+    "uploaded": "Bild aktualisiert",
+    "removed": "Bild entfernt",
+    "unexpectedError": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
+    "hideBranding": "„Powered by SolidPing“ ausblenden",
+    "hideBrandingHint": "Entfernt den SolidPing-Link aus der Fußzeile der öffentlichen Seite.",
+    "hideBrandingLocked": "White-Labeling ist in Ihrem aktuellen Tarif nicht enthalten. Die Einstellung wird gespeichert und wirkt, sobald der Tarif sie enthält."
+  },
+  "visibilityField": {
+    "label": "Sichtbarkeit",
+    "public": "Öffentlich",
+    "private": "Privat",
+    "password": "Passwortgeschützt",
+    "publicHint": "Jede Person mit dem Link kann diese Seite sehen.",
+    "privateHint": "Die Seite ist vollständig verborgen — öffentliche URLs antworten, als gäbe es sie nicht.",
+    "passwordHint": "Besucher müssen ein Passwort eingeben, um die Seite zu sehen.",
+    "passwordLabel": "Seitenpasswort",
+    "passwordPlaceholder": "Mindestens 6 Zeichen",
+    "passwordKeepPlaceholder": "Leer lassen, um das aktuelle Passwort zu behalten",
+    "passwordFieldHint": "Teilen Sie es mit den Berechtigten. Eine Änderung sperrt sofort alle aus."
   }
 }

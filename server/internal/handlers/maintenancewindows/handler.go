@@ -200,7 +200,7 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Re
 		})
 	case errors.Is(err, ErrInvalidRecurrence):
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "recurrence", Message: "Recurrence must be none, daily, weekly, or monthly"},
+			{Name: fieldRecurrence, Message: "Recurrence must be none, daily, weekly, or monthly"},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)
@@ -222,7 +222,7 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 		})
 	case errors.Is(err, ErrInvalidRecurrence):
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "recurrence", Message: "Recurrence must be none, daily, weekly, or monthly"},
+			{Name: fieldRecurrence, Message: "Recurrence must be none, daily, weekly, or monthly"},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)

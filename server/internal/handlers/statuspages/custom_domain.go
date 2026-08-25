@@ -12,8 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/customdomain"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/domainverify"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 // Custom-domain tuning constants.
@@ -146,6 +148,17 @@ func (s *Service) enrichCustomDomain(resp *StatusPageResponse, page *models.Stat
 		resp.CustomDomainStatus = "unverified"
 	}
 
+	// The lifecycle state is the richer answer: "verified" hides the difference
+	// between a healthy domain and one that is still serving only because it is
+	// inside its grace window, and that difference is the operator's whole
+	// warning that something needs fixing before the page goes dark.
+	resp.CustomDomainState = customdomain.Normalize(
+		customdomain.State{Lifecycle: page.CustomDomainState, VerifiedAt: page.CustomDomainVerifiedAt},
+		true, page.CustomDomainCheckedAt != nil,
+	).Lifecycle
+	resp.CustomDomainDegradedSince = page.CustomDomainGraceSince
+	resp.CustomDomainLastCheck = page.CustomDomainLastCheck
+
 	token := ""
 	if page.CustomDomainToken != nil {
 		token = *page.CustomDomainToken
@@ -231,6 +244,11 @@ func (s *Service) setCustomDomain(
 		VerifiedAt: nil,
 		CheckedAt:  nil,
 		Failures:   0,
+		// A brand-new (or re-pointed) domain starts in `pending`: configured,
+		// never verified, and NOT eligible for the sweep's automatic
+		// re-promotion. Only a domain that was ours before may earn its way
+		// back on its own.
+		State: models.CustomDomainStatePending,
 	}
 
 	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
@@ -297,25 +315,22 @@ func (s *Service) VerifyCustomDomain(
 		token = *page.CustomDomainToken
 	}
 
-	verified := s.verifier.Verify(ctx, *page.CustomDomain, token, s.cnameTarget(), s.cnameMode())
+	diag := s.verifier.Diagnose(ctx, *page.CustomDomain, token, s.cnameTarget(), s.cnameMode())
 
 	now := time.Now()
-	update := &models.StatusPageCustomDomainUpdate{
-		Domain:    page.CustomDomain,
-		Token:     page.CustomDomainToken,
-		CheckedAt: &now,
-	}
-
-	if verified {
-		update.VerifiedAt = &now
-		update.Failures = 0
-	} else {
-		update.VerifiedAt = nil
-		update.Failures = page.CustomDomainFailures
-	}
+	update, hardDemoted := customDomainVerifyUpdate(page, &diag, now)
 
 	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
 		return StatusPageResponse{}, writeErr
+	}
+
+	// A hard demotion reached by clicking Verify takes the page just as dark as
+	// one the sweep reaches on its own, so it alerts identically. Requirement 4
+	// of spec 2026-08-23-03 says "alert the operator on hard demotion" without
+	// qualifying the path — and the admin who clicked is not necessarily the
+	// only person who needs to know.
+	if hardDemoted {
+		customdomain.AlertDemoted(ctx, s.demotionAlertDeps(), page, update.Failures, diag.String())
 	}
 
 	updated, err := s.db.GetStatusPage(ctx, org.UID, page.UID)
@@ -325,8 +340,79 @@ func (s *Service) VerifyCustomDomain(
 
 	response := convertPageToResponse(updated)
 	s.enrichCustomDomain(&response, updated)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, org.UID))
 
 	return response, nil
+}
+
+// customDomainVerifyUpdate turns one synchronous verification into the columns
+// to write.
+//
+// A PASS promotes immediately and unconditionally: this is an operator with
+// dashboard access saying "this domain is mine", which is the one action the
+// automatic sweep is deliberately not allowed to take on its own.
+//
+// A FAILURE goes through the SAME lifecycle transition the sweep uses. It used
+// to clear custom_domain_verified_at outright, which meant an admin who clicked
+// Verify during a DNS blip took their own live status page dark instantly —
+// the sweep would only have moved it into grace. Two code paths disagreeing
+// about when a page stops being served is how a status page goes dark for a
+// reason nobody can reconstruct afterwards.
+func customDomainVerifyUpdate(
+	page *models.StatusPage, diag *domainverify.Diagnosis, now time.Time,
+) (*models.StatusPageCustomDomainUpdate, bool) {
+	summary := diag.String()
+
+	update := &models.StatusPageCustomDomainUpdate{
+		Domain:    page.CustomDomain,
+		Token:     page.CustomDomainToken,
+		CheckedAt: &now,
+		LastCheck: &summary,
+	}
+
+	if diag.OK {
+		update.VerifiedAt = &now
+		update.Failures = 0
+		update.Successes = 0
+		update.State = models.CustomDomainStateActive
+
+		return update, false
+	}
+
+	current := customdomain.Normalize(
+		customdomain.State{
+			Lifecycle:  page.CustomDomainState,
+			VerifiedAt: page.CustomDomainVerifiedAt,
+			Failures:   page.CustomDomainFailures,
+			Successes:  page.CustomDomainSuccesses,
+			GraceSince: page.CustomDomainGraceSince,
+		},
+		true, page.CustomDomainCheckedAt != nil,
+	)
+
+	outcome := customdomain.Next(current, customdomain.Observation{Now: now})
+
+	update.VerifiedAt = outcome.VerifiedAt
+	update.Failures = outcome.Failures
+	update.Successes = outcome.Successes
+	update.State = outcome.Lifecycle
+	update.GraceSince = outcome.GraceSince
+
+	return update, outcome.HardDemoted
+}
+
+// demotionAlertDeps builds the alert's dependencies from the service's own
+// wiring. A Service with no job service (the MCP handler, most tests) still
+// records the audit event — the fact is never lost just because mail is not
+// wired.
+func (s *Service) demotionAlertDeps() customdomain.AlertDeps {
+	deps := customdomain.AlertDeps{DB: s.db, Jobs: s.jobs} //nolint:exhaustruct // logger defaults
+
+	if s.cfg != nil {
+		deps.BaseURL = s.cfg.Server.BaseURL
+	}
+
+	return deps
 }
 
 // CustomDomainServable reports whether a domain currently resolves to a
@@ -343,7 +429,10 @@ func (s *Service) CustomDomainServable(ctx context.Context, domain string) bool 
 		return false
 	}
 
-	return page.CustomDomainVerifiedAt != nil && page.Enabled && page.Visibility == visibilityPublic
+	// A password-protected page still needs a certificate on its custom
+	// domain: the unlock form is served over that hostname, and refusing the
+	// cert would make the page unreachable rather than protected.
+	return page.CustomDomainVerifiedAt != nil && statuspagelock.Visible(page)
 }
 
 // isUniqueViolation reports whether an error looks like a unique-constraint

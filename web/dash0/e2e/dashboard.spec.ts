@@ -289,7 +289,7 @@ test.describe("Dashboard", () => {
 
     // Creating the first check emits org.activation.first_check_created, which
     // surfaces in the dashboard's recent-activity feed with its description.
-    await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
+    const created = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
       headers: { Authorization: `Bearer ${token}` },
       data: {
         name: "Activation feed probe",
@@ -297,6 +297,16 @@ test.describe("Dashboard", () => {
         config: { url: "https://example.com" },
       },
     });
+    // Asserted, not fire-and-forget: an unchecked creation turns a server-side
+    // failure into "the activity link never appeared", 5000 ms and one
+    // screenshot later, with nothing pointing at the POST. (It was exactly
+    // that: the auto-slug ladder ran out of "-N" suffixes once the suite had
+    // accumulated 99 example.com checks in the shared test org, and this
+    // creation 500'd.)
+    expect(
+      created.status(),
+      `POST /checks -> ${await created.text()}`,
+    ).toBeLessThan(300);
 
     await page.goto("orgs/test");
     await page.waitForLoadState("networkidle");

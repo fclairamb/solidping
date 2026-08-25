@@ -3,6 +3,8 @@ package checkbrowser
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +14,26 @@ import (
 )
 
 const microsecondsPerMilli = 1000.0
+
+// MaxScreenshotBytes caps a single captured PNG (spec 2026-08-21-01).
+//
+// Deliberately far below files.MaxFileSize (25 MB): a full-page PNG of a real
+// site is tens to a few hundred KB, so anything past 4 MiB is a pathological
+// page (an enormous infinite-scroll canvas, a print-stylesheet poster) whose
+// capture is worth less than the storage and transfer it costs. An over-cap
+// capture is DROPPED, never truncated — a half-written PNG is not an image,
+// it is a corrupt file that renders as a broken icon three days later.
+const MaxScreenshotBytes = 4 * 1024 * 1024
+
+// screenshotTimeout time-boxes the capture. The capture runs AFTER the verdict
+// is decided, so this budget can never delay or change a check's outcome; it
+// exists so a wedged renderer cannot hold a browser slot open indefinitely.
+const screenshotTimeout = 5 * time.Second
+
+// screenshotQuality is chromedp.FullScreenshot's quality argument. It is
+// ignored for PNG (lossless) and only matters if this ever switches to JPEG;
+// 90 is the conventional value to pass.
+const screenshotQuality = 90
 
 // MaxConcurrentBrowsers caps simultaneous browser executions per worker
 // process, on BOTH the remote and the exec path.
@@ -40,6 +62,13 @@ type BrowserChecker struct {
 	session func(
 		ctx context.Context, cfg *BrowserConfig, start time.Time, metrics, output map[string]any,
 	) *checkerdef.Result
+
+	// screenshot replaces the real chromedp capture, for tests only. Nil in
+	// production, where captureScreenshot falls back to fullScreenshot. It is
+	// a separate seam from `session` on purpose: a test needs to drive the
+	// capture decision (opted in? failing? over cap? errored?) without also
+	// having to fake a browser session that produces the right verdict.
+	screenshot func(ctx context.Context) ([]byte, error)
 }
 
 // acquireSlot waits for one of the MaxConcurrentBrowsers slots, giving up when
@@ -93,8 +122,26 @@ func (c *BrowserChecker) Execute(
 
 	timeout := cfg.resolveTimeout()
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// TWO nested budgets, and the distinction is load-bearing.
+	//
+	// The SESSION bounds the browser itself and outlives the probe by exactly
+	// the screenshot budget when a capture is configured, because the shot has
+	// to be taken while the tab is still alive. The PROBE keeps the check's
+	// own timeout exactly as it was, so a capture never buys the target extra
+	// time to answer in.
+	//
+	// Both descend from the caller's ctx, so a worker shutdown still tears the
+	// whole thing down — nothing here is ever detached from cancellation.
+	sessionBudget := timeout
+	if cfg.Screenshot {
+		sessionBudget += screenshotTimeout
+	}
+
+	sessionCtx, cancelSession := context.WithTimeout(ctx, sessionBudget)
+	defer cancelSession()
+
+	probeCtx, cancelProbe := context.WithTimeout(sessionCtx, timeout)
+	defer cancelProbe()
 
 	start := time.Now()
 
@@ -106,7 +153,7 @@ func (c *BrowserChecker) Execute(
 	// The cap is enforced here, around the whole session, and the wait counts
 	// against the check's own timeout — an execution that never gets a slot
 	// reports a timeout rather than queueing invisibly.
-	release, acquired := acquireSlot(ctx)
+	release, acquired := acquireSlot(probeCtx)
 	if !acquired {
 		output["error"] = "timed out waiting for a free browser slot " +
 			"(at most 4 browser checks run at a time on one worker)"
@@ -121,7 +168,7 @@ func (c *BrowserChecker) Execute(
 
 	defer release()
 
-	result := c.runBrowser(ctx, cfg, start, metrics, output)
+	result := c.runBrowser(sessionCtx, probeCtx, cfg, start, metrics, output)
 
 	recordOutcome(result.Status)
 
@@ -146,8 +193,15 @@ func recordOutcome(status checkerdef.Status) {
 	}
 }
 
+// runBrowser drives one execution.
+//
+// sessionCtx bounds the BROWSER (probe timeout plus the screenshot budget);
+// probeCtx bounds the PROBE (the check's own timeout). The browser is built on
+// the former and the navigation on the latter, which is what leaves a live tab
+// to photograph after a probe that timed out or failed.
 func (c *BrowserChecker) runBrowser(
-	ctx context.Context,
+	sessionCtx context.Context,
+	probeCtx context.Context,
 	cfg *BrowserConfig,
 	start time.Time,
 	metrics map[string]any,
@@ -160,7 +214,7 @@ func (c *BrowserChecker) runBrowser(
 		// "our sidecar is down" from being reported as "the customer's site is
 		// down": once the endpoint answers, every later failure is genuinely
 		// about the target.
-		if err := probeCDP(ctx, current.CDPURL); err != nil {
+		if err := probeCDP(probeCtx, current.CDPURL); err != nil {
 			return infraResult(
 				"cannot reach the remote Chrome (CDP) endpoint "+current.CDPURL+": "+err.Error()+
 					" — check that the headless-shell sidecar is running and that "+
@@ -171,16 +225,164 @@ func (c *BrowserChecker) runBrowser(
 	}
 
 	if c.session != nil {
-		return c.session(ctx, cfg, start, metrics, output)
+		result := c.session(probeCtx, cfg, start, metrics, output)
+		c.captureScreenshot(sessionCtx, cfg, result)
+
+		return result
 	}
 
-	allocCtx, allocCancel := allocator(ctx, current)
+	allocCtx, allocCancel := allocator(sessionCtx, current)
 	defer allocCancel()
 
 	browserCtx, browserCancel := browserContext(allocCtx, current)
 	defer browserCancel()
 
-	return c.navigateAndCheck(browserCtx, cfg, start, metrics, output)
+	// The probe's deadline, re-applied as a CHILD of the live browser context.
+	// A child expiring fails the navigation WITHOUT tearing the browser down,
+	// which is what leaves something to photograph — and, unlike a detached
+	// context, keeps every context chromedp sees one that it owns.
+	navCtx, navCancel := withProbeDeadline(browserCtx, probeCtx)
+	defer navCancel()
+
+	result := c.navigateAndCheck(navCtx, cfg, start, metrics, output)
+
+	// Capture here, not inside the verdict paths: this is the last point at
+	// which the browser context is still alive (the defers above run when this
+	// function returns), and it is the ONE place every failing path funnels
+	// through — a new verdict branch cannot forget to capture.
+	c.captureScreenshot(browserCtx, cfg, result)
+
+	return result
+}
+
+// captureScreenshot hangs a PNG of the failing page on the result, when the
+// check opted in. Best-effort by construction: it runs AFTER the verdict is
+// decided and mutates only Diagnostics, so no outcome of this function — a
+// capture error, an over-cap image, a dead browser — can change whether the
+// check is reported up or down. That is the whole safety argument, and it is
+// why this is a void function with no error return to ignore.
+func (c *BrowserChecker) captureScreenshot(
+	ctx context.Context, cfg *BrowserConfig, result *checkerdef.Result,
+) {
+	if !cfg.Screenshot || result == nil || !capturableStatus(result.Status) {
+		return
+	}
+
+	capture := c.screenshot
+	if capture == nil {
+		capture = fullScreenshot
+	}
+
+	// A plain child of the still-live SESSION context.
+	//
+	// NEVER context.WithoutCancel here, however tempting: the common
+	// capture-worthy failure is the check timing out, but detaching the
+	// capture from the lifecycle chromedp manages lets it race the allocator's
+	// teardown and panic the whole process. The session budget in Execute is
+	// what guarantees there is time left on this context instead.
+	shotCtx, cancel := context.WithTimeout(ctx, screenshotTimeout)
+	defer cancel()
+
+	png, err := capture(shotCtx)
+	if err != nil {
+		slog.WarnContext(ctx, "browser check: screenshot capture failed",
+			"url", cfg.URL, "error", err)
+
+		return
+	}
+
+	if len(png) == 0 {
+		return
+	}
+
+	if len(png) > MaxScreenshotBytes {
+		slog.WarnContext(ctx, "browser check: screenshot dropped, over cap",
+			"url", cfg.URL, "bytes", len(png), "cap", MaxScreenshotBytes)
+
+		return
+	}
+
+	if result.Diagnostics == nil {
+		result.Diagnostics = &checkerdef.Diagnostics{}
+	}
+
+	result.Diagnostics.Screenshot = &checkerdef.Screenshot{
+		PNG:        png,
+		CapturedAt: time.Now(),
+	}
+}
+
+// capturableStatus reports whether a verdict is worth a screenshot.
+//
+// StatusError is excluded on purpose: from this checker it means "no browser
+// to drive" (Chrome missing, CDP endpoint unreachable), so there is no page to
+// photograph and the attempt would only log noise. Down and Timeout are the
+// two verdicts where a real tab really did look at the target.
+func capturableStatus(status checkerdef.Status) bool {
+	return status == checkerdef.StatusDown || status == checkerdef.StatusTimeout
+}
+
+// withProbeDeadline re-applies probeCtx's deadline onto a child of parent.
+// Falls back to a plain cancelable child when the probe carries no deadline,
+// which only happens if a caller hands in an unbounded context.
+func withProbeDeadline(
+	parent context.Context, probeCtx context.Context,
+) (context.Context, context.CancelFunc) {
+	if deadline, ok := probeCtx.Deadline(); ok {
+		return context.WithDeadline(parent, deadline)
+	}
+
+	return context.WithCancel(parent)
+}
+
+// errNoBrowserAllocated marks a capture skipped because no browser was ever
+// attached to the context. See browserWasAllocated for why that is not merely
+// pointless but dangerous.
+var errNoBrowserAllocated = errors.New("no browser was allocated for this execution")
+
+// browserWasAllocated reports whether a browser is actually attached to this
+// chromedp context.
+//
+// This guard is NOT an optimization — it prevents a crash that takes the whole
+// server down. chromedp's `Run` funnels through `initContextBrowser`, which
+// calls `Allocator.Allocate` **whenever `c.Browser == nil`**, and
+// `ExecAllocator.Allocate` in turn arms a goroutine that does
+// `close(c.allocated)` once the Chrome process exits.
+//
+// So when the probe's own Run fails AFTER that goroutine is armed but BEFORE
+// `c.Browser` is set — a Chrome that starts and then fails its CDP handshake,
+// which is exactly what a sandbox-restricted CI runner produces — the context
+// is left with a nil Browser and an already-closing `allocated` channel. A
+// second Run on it allocates again and closes that channel a second time:
+//
+//	panic: close of closed channel
+//	chromedp.(*ExecAllocator).Allocate.func2()
+//
+// That panic happens on a goroutine chromedp owns, so no recover() of ours can
+// contain it. Not calling Run at all is the only reliable defense, and it
+// costs nothing real: a context with no browser has no page worth capturing.
+func browserWasAllocated(ctx context.Context) bool {
+	chromeCtx := chromedp.FromContext(ctx)
+
+	return chromeCtx != nil && chromeCtx.Browser != nil
+}
+
+// fullScreenshot is the production capture: a full-page PNG of the current tab.
+func fullScreenshot(ctx context.Context) ([]byte, error) {
+	// The guard sits immediately before the only chromedp.Run this package
+	// makes outside the probe itself, because making that call is precisely
+	// the hazard — see browserWasAllocated.
+	if !browserWasAllocated(ctx) {
+		return nil, errNoBrowserAllocated
+	}
+
+	var buf []byte
+
+	if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, screenshotQuality)); err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }
 
 // allocator builds the chromedp allocator for the configured backend: a remote

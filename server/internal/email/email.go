@@ -30,6 +30,31 @@ type Message struct {
 	// offer a one-click unsubscribe button that POSTs to ListUnsubscribeURL
 	// with no user-visible page.
 	ListUnsubscribePostOneClick bool
+	// SupportReplyable is an explicit OPT-IN to the instance support Reply-To
+	// (spec 2026-08-22-02). When true AND the instance has EmailConfig.ReplyTo
+	// configured, the message gets that address as its Reply-To (unless it
+	// already carries an explicit one) plus a short "you can reply to this
+	// email" notice in both bodies.
+	//
+	// It is an opt-IN, not an opt-out, and that direction is the whole point:
+	// Go's zero value then means "no Reply-To", so a security email nobody
+	// remembered to classify is silently SAFE rather than silently inviting a
+	// human to reply to a password-reset mail with a credential in it. The
+	// cost — a new notification template silently losing the notice — is paid
+	// by TestSupportReplyableClassification, which fails the build the moment
+	// a template exists without an explicit classification.
+	SupportReplyable bool
+	// AutoSubmitted, when true, stamps RFC 3834 `Auto-Submitted:
+	// auto-generated`. Set on machine-generated mail that must never trigger
+	// an automatic response or be re-ingested as a human message.
+	AutoSubmitted bool
+	// SupportMirror, when true, stamps the private `X-SolidPing-Support-Mirror: 1`
+	// marker. It identifies our own support-inbox mirror notifications so a
+	// future inbound-email capture can skip them instead of re-capturing them
+	// into an infinite mail loop. Writing the marker now, while nothing reads
+	// it, is what makes that later feature safe — retrofitting it means the
+	// loop ships first.
+	SupportMirror bool
 }
 
 // Sender handles email delivery.

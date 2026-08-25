@@ -28,6 +28,15 @@ const WorkerHostnameMaxLen = 15
 
 var workerSlugRegexp = regexp.MustCompile(WorkerSlugPattern)
 
+// nonSlugCharRegexp matches any character illegal in a worker slug. It is used
+// to substitute (never strip) the offending run of characters with a single
+// dash — see sanitizeHostnameSlug.
+var nonSlugCharRegexp = regexp.MustCompile(`[^a-z0-9-]+`)
+
+// dashRunRegexp collapses runs of dashes produced by nonSlugCharRegexp
+// substitutions (or already present in the hostname) into a single dash.
+var dashRunRegexp = regexp.MustCompile(`-+`)
+
 // unknownHostname is the placeholder used when os.Hostname() fails. Historic
 // value, preserved so the derived slug is unchanged.
 const unknownHostname = "unknown"
@@ -60,6 +69,11 @@ type WorkerIdentity struct {
 	// and got cut — which silently collapses two workers onto one row when their
 	// hostnames share a prefix.
 	Truncated bool
+	// Sanitized reports that the (lowercased, truncated) hostname contained
+	// characters outside [a-z0-9-] and had to be substituted to build Slug —
+	// which silently collapses two workers onto one row when their hostnames
+	// only differ by such characters (e.g. "host-002.lan" and "host-002-lan").
+	Sanitized bool
 }
 
 // WorkerIdentity resolves this node's worker identity: the SP_NODE_NAME
@@ -89,12 +103,49 @@ func resolveWorkerIdentity(override string, hostnameFn func() (string, error)) W
 		truncated = true
 	}
 
+	lowered := strings.ToLower(hostname)
+	slug := sanitizeHostnameSlug(lowered)
+
 	return WorkerIdentity{
-		Slug:      strings.ToLower(hostname),
+		Slug:      slug,
 		Name:      hostname,
 		Hostname:  raw,
 		Truncated: truncated,
+		Sanitized: slug != lowered,
 	}
+}
+
+// sanitizeHostnameSlug turns a lowercased, length-truncated hostname into a
+// value that stands a chance of matching WorkerSlugPattern: every run of
+// characters outside [a-z0-9-] is substituted with a single dash (never
+// stripped — "host-002.lan" becomes "host-002-lan", not "host-002lan", which
+// is what an operator reading the slug would predict), then runs of dashes
+// are collapsed and the result is trimmed of leading/trailing dashes (avoids
+// "host--002" and dangling dashes left by truncation).
+//
+// A hostname that already matches WorkerSlugPattern short-circuits and is
+// returned untouched. This is not just an optimization: WorkerSlugPattern
+// permits trailing dashes and internal dash runs (e.g. a 15-char truncation
+// landing mid-word as "my-worker-node-", or a genuine "db--primary--x1"),
+// so collapsing/trimming unconditionally would rewrite slugs that already
+// validate and are already registered today — silently moving an existing
+// deployment's `workers` row. The collapse/trim steps below exist only to
+// clean up residue *introduced by substitution* (a run of illegal characters
+// becoming a run of dashes, or truncation landing right after one), so they
+// must never run on a hostname that never needed substitution in the first
+// place. The pathological residue that remains after substitution (starts
+// with a digit, shorter than 3 chars, or empty after collapsing) is left for
+// Validate() to reject with its existing actionable error — sanitizing is
+// not a promise that the result is valid.
+func sanitizeHostnameSlug(hostname string) string {
+	if workerSlugRegexp.MatchString(hostname) {
+		return hostname
+	}
+
+	sanitized := nonSlugCharRegexp.ReplaceAllString(hostname, "-")
+	sanitized = dashRunRegexp.ReplaceAllString(sanitized, "-")
+
+	return strings.Trim(sanitized, "-")
 }
 
 // Validate checks the effective slug against the database CHECK constraint and
@@ -132,5 +183,24 @@ func (i WorkerIdentity) WarnIfTruncated(ctx context.Context, logger *slog.Logger
 		"hostname", i.Hostname,
 		"slug", i.Slug,
 		"maxLength", WorkerHostnameMaxLen,
+	)
+}
+
+// WarnIfSanitized logs a WARN when the hostname contained characters outside
+// [a-z0-9-] and had to be substituted to build the worker slug. Two hosts
+// that only differ by such characters (e.g. "host-002.lan" and
+// "host-002-lan") otherwise collapse onto a single upsert-by-slug `workers`
+// row and silently fight over it.
+func (i WorkerIdentity) WarnIfSanitized(ctx context.Context, logger *slog.Logger) {
+	if !i.Sanitized || logger == nil {
+		return
+	}
+
+	logger.WarnContext(ctx,
+		"Worker hostname contained characters outside the worker slug alphabet "+
+			"and was sanitized; hosts that only differ by such characters collapse "+
+			"onto the same workers row — set SP_NODE_NAME to pin an identity",
+		"hostname", i.Hostname,
+		"slug", i.Slug,
 	)
 }

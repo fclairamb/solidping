@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
@@ -103,8 +105,10 @@ var (
 	ErrNoAgentsToSealTo = errors.New("no active agent to seal credentials to")
 	// ErrSlugConflict is returned when a slug already exists.
 	ErrSlugConflict = errors.New("slug already exists")
-	// ErrSlugGenerationFailed is returned when a unique slug cannot be generated.
-	ErrSlugGenerationFailed = errors.New("could not generate unique slug after 99 attempts")
+	// ErrSlugGenerationFailed is returned when a unique slug cannot be
+	// generated — after the readable "-2".."-99" ladder AND the random
+	// discriminator fallback have all come back taken.
+	ErrSlugGenerationFailed = errors.New("could not generate a unique slug")
 	// ErrInvalidSlugFormat is returned when a slug has an invalid format (e.g., looks like a UUID).
 	ErrInvalidSlugFormat = errors.New("invalid slug format")
 	// ErrInvalidCursor is returned when the cursor parameter is malformed.
@@ -384,6 +388,11 @@ type Service struct {
 	// checkStatsTTL overrides defaultCheckStatsTTL. Zero = use the default;
 	// only tests set it.
 	checkStatsTTL time.Duration
+	// now is the injectable clock RegionHealth reads "now" through (spec
+	// 2026-08-24-09), so tests can pin it and assert the exact liveness
+	// boundary instead of racing a live wall clock. Defaults to time.Now in
+	// NewService; only tests override it, via SetRegionHealthNowForTest.
+	now func() time.Time
 }
 
 // NewService creates a new checks service. entSvc enforces the MaxChecks
@@ -401,6 +410,7 @@ func NewService(
 		regions:       regions.NewService(dbService),
 		creds:         creds,
 		entitlements:  entSvc,
+		now:           time.Now,
 	}
 }
 
@@ -731,11 +741,32 @@ type CheckResponse struct {
 	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
 	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
 
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`.
+	//
+	// A TRI-STATE STRING RATHER THAN A NULLABLE BOOLEAN, and that is a
+	// deliberate API choice. Over PATCH a `*bool` cannot express "put this
+	// check back to inheriting": an explicit JSON `null` and an absent field
+	// both decode to nil, so the third state would be unreachable from the
+	// dashboard. The column underneath is still a nullable boolean.
+	//
+	// ALWAYS EMITTED on read (never omitempty) — a missing field would send
+	// the form back to guessing which of the three states it is looking at.
+	TracerouteOnFailure string `json:"tracerouteOnFailure"`
+
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindowSeconds    int  `json:"flappingWindowSeconds"`
 	FlapBackoffFactor        int  `json:"flapBackoffFactor"`
 	MaxRecoveryMultiplier    int  `json:"maxRecoveryMultiplier"`
+
+	// FlapState is the check's LIVE adaptive-recovery state (spec
+	// 2026-08-24-05) — the effective (lazy-reset-aware) counterpart of the
+	// raw flapping_window_seconds/flap_backoff_factor/max_recovery_multiplier
+	// config above. Omitted when the flapping feature is off for this check,
+	// or when no flap state has accumulated (no outage yet, or the rolling
+	// window has since lapsed).
+	FlapState *FlapStateResponse `json:"flapState,omitempty"`
 
 	// Wall-clock incident-tracking periods (seconds), per spec 2026-05-08-02.
 	// 0 means "open / resolve immediately on first signal".
@@ -752,6 +783,24 @@ type CheckResponse struct {
 	// responses never carry it — and omitted until the check's first run
 	// produces a cost signal.
 	Scheduling *CheckSchedulingResponse `json:"scheduling,omitempty"`
+}
+
+// FlapStateResponse surfaces a check's live adaptive-recovery (flapping)
+// state (spec 2026-08-24-05). FlapCount and EffectiveRecoveryPeriodSeconds
+// are both computed as of "now" via models.Check.EffectiveFlapCount /
+// EffectiveRecoveryPeriodAt — the lazy-reset-aware values, never the raw
+// (possibly stale) flap_count column.
+type FlapStateResponse struct {
+	// FlapCount is the number of outages counted inside the current rolling
+	// flapping window. 1 means "2nd outage within the window" (the first
+	// outage that actually counts as a flap) — see models.Check.FlapCount.
+	FlapCount int `json:"flapCount"`
+	// LastOutageAt is the wall-clock of the most recent outage onset that
+	// counted against the window.
+	LastOutageAt *time.Time `json:"lastOutageAt,omitempty"`
+	// EffectiveRecoveryPeriodSeconds is the stability currently required
+	// before an open incident on this check auto-resolves, given FlapCount.
+	EffectiveRecoveryPeriodSeconds int `json:"effectiveRecoveryPeriodSeconds"`
 }
 
 // CheckSchedulingResponse surfaces the scheduler's per-check telemetry on the
@@ -1174,6 +1223,12 @@ type CreateCheckRequest struct {
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
 
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`. Absent leaves it unchanged
+	// (create: inherit); `inherit` is what puts a check that had an explicit
+	// answer back under the org default.
+	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
@@ -1368,6 +1423,15 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// Set adaptive resolution / flapping settings.
 	check.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 
+	if req.TracerouteOnFailure != nil {
+		value, ok := parseTraceroutePolicy(*req.TracerouteOnFailure)
+		if !ok {
+			return CheckResponse{}, errInvalidTraceroutePolicy
+		}
+
+		check.TracerouteOnFailure = value
+	}
+
 	if vErr := validateFlappingFields(
 		req.FlappingWindowSeconds, req.FlapBackoffFactor, req.MaxRecoveryMultiplier,
 	); vErr != nil {
@@ -1551,6 +1615,12 @@ type UpdateCheckRequest struct {
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
 
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`. Absent leaves it unchanged
+	// (create: inherit); `inherit` is what puts a check that had an explicit
+	// answer back under the org default.
+	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
@@ -1581,6 +1651,10 @@ type UpsertCheckRequest struct {
 	// 2026-05-08-02. 0 means "open / resolve immediately on first signal".
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
+
+	// TracerouteOnFailure is the per-check path-trace policy: `inherit`, `on`
+	// or `off`. nil leaves it unchanged.
+	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
 
 	// Adaptive resolution / flapping settings. nil leaves the value untouched
 	// (create → system default; update → unchanged).
@@ -1707,6 +1781,19 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, applyErr
 		}
 	}
+	if req.TracerouteOnFailure != nil {
+		value, ok := parseTraceroutePolicy(*req.TracerouteOnFailure)
+		if !ok {
+			return CheckResponse{}, errInvalidTraceroutePolicy
+		}
+
+		// nil is the INHERIT answer, and it has to travel as an explicit clear
+		// rather than as "no change" — otherwise a check could be moved onto an
+		// explicit on/off and never moved back.
+		update.TracerouteOnFailure = value
+		update.ClearTracerouteOnFailure = value == nil
+	}
+
 	if req.ReopenCooldownMultiplier != nil {
 		update.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 	}
@@ -1900,6 +1987,7 @@ func (s *Service) UpsertCheck(
 			Labels:                    &req.Labels,
 			ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 			RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+			TracerouteOnFailure:       req.TracerouteOnFailure,
 			ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     req.FlappingWindowSeconds,
 			FlapBackoffFactor:         req.FlapBackoffFactor,
@@ -1936,6 +2024,7 @@ func (s *Service) UpsertCheck(
 		Labels:                    req.Labels,
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+		TracerouteOnFailure:       req.TracerouteOnFailure,
 		ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
@@ -2218,16 +2307,17 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return fmt.Errorf("failed to delete check: %w", err)
 	}
 
-	// Emit check.deleted event
-	event := models.NewEvent(org.UID, models.EventTypeCheckDeleted, models.ActorTypeUser)
+	// Emit check.deleted event (actor-attributed — see emitEvent).
+	event := audit.NewEvent(ctx, org.UID, models.EventTypeCheckDeleted,
+		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
+		models.JSONMap{
+			eventPayloadCheckUIDKey:  check.UID,
+			"check_slug":             check.Slug,
+			"check_name":             check.Name,
+			"check_type":             check.Type,
+			"active_incidents_count": activeIncidentCount,
+		})
 	event.CheckUID = &check.UID
-	event.Payload = models.JSONMap{
-		eventPayloadCheckUIDKey:  check.UID,
-		"check_slug":             check.Slug,
-		"check_name":             check.Name,
-		"check_type":             check.Type,
-		"active_incidents_count": activeIncidentCount,
-	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
@@ -2298,7 +2388,7 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 
 		// Slug was auto-generated, find a unique one by appending numbers
 		baseSlug := slug
-		for i := 2; i <= 99; i++ { // Try up to 99 (fits in 2 chars)
+		for i := 2; i <= maxNumericSlugSuffix; i++ { // Try up to 99 (fits in 2 chars)
 			suffix := fmt.Sprintf("-%d", i)
 			// Ensure base + suffix doesn't exceed max length
 			maxBaseLen := maxSlugLength - len(suffix)
@@ -2324,11 +2414,91 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 			}
 		}
 
-		// Couldn't find unique slug after 99 attempts
-		return "", ErrSlugGenerationFailed
+		// The readable numeric ladder is exhausted: this org already has 99
+		// checks sharing this base slug. That is a perfectly ordinary shape —
+		// an auto-generated slug derives from the check's TARGET, not its
+		// name, so 100 checks on `api.acme.com` all want `http-api-acme-com` —
+		// and it used to end in a 500. Fall back to a short random
+		// discriminator rather than refusing the write: the slug stops being
+		// pretty, but creating the 100th check on a host is a legitimate
+		// operation and must succeed.
+		return s.randomSuffixedSlug(ctx, orgUID, slug)
 	}
 
 	return slug, nil
+}
+
+// maxNumericSlugSuffix is the last readable "-N" suffix ensureUniqueSlug will
+// try before switching to a random discriminator. Two digits keeps the slug
+// short and the ladder scannable; it is a formatting choice, not a ceiling on
+// how many checks may share a base slug (randomSuffixedSlug carries past it).
+const maxNumericSlugSuffix = 99
+
+// slugRandomSuffixAttempts bounds the random-discriminator fallback. Each try
+// draws slugRandomSuffixLen base36 characters (~2.2 billion values), so a
+// single collision is already implausible; the retries exist so that a
+// pathological run of collisions degrades into another attempt instead of an
+// error, and the bound exists so the loop cannot hold a request open forever
+// if the lookup itself keeps reporting "taken".
+const slugRandomSuffixAttempts = 8
+
+// slugRandomSuffixLen is the number of base36 characters in the random
+// discriminator. 6 is short enough to stay readable and wide enough that the
+// birthday bound is irrelevant at any plausible per-org check count.
+const slugRandomSuffixLen = 6
+
+// slugRandomAlphabet is deliberately [a-z0-9] only, so a suffixed slug still
+// satisfies slugRegex.
+const slugRandomAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+// randomSuffix draws a slugRandomSuffixLen-character base36 string from the
+// crypto RNG. crypto/rand rather than math/rand so concurrent creations in the
+// same process cannot be handed correlated suffixes from a shared seed — the
+// collision this fallback exists to break is precisely the concurrent one.
+func randomSuffix() (string, error) {
+	buf := make([]byte, slugRandomSuffixLen)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+
+	out := make([]byte, slugRandomSuffixLen)
+	for i, b := range buf {
+		out[i] = slugRandomAlphabet[int(b)%len(slugRandomAlphabet)]
+	}
+
+	return string(out), nil
+}
+
+// randomSuffixedSlug appends a random discriminator to baseSlug until it finds
+// one no check in the org holds. Used only once the numeric ladder in
+// ensureUniqueSlug is exhausted.
+func (s *Service) randomSuffixedSlug(ctx context.Context, orgUID, baseSlug string) (string, error) {
+	const maxSlugLength = 50
+
+	// Reserve room for "-" + the suffix.
+	trimmed := strings.TrimRight(baseSlug, "-")
+	if maxBaseLen := maxSlugLength - slugRandomSuffixLen - 1; len(trimmed) > maxBaseLen {
+		trimmed = strings.TrimRight(trimmed[:maxBaseLen], "-")
+	}
+
+	for range slugRandomSuffixAttempts {
+		suffix, err := randomSuffix()
+		if err != nil {
+			return "", err
+		}
+
+		candidateSlug := trimmed + "-" + suffix
+
+		existing, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, candidateSlug)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		if existing == nil {
+			return candidateSlug, nil
+		}
+	}
+
+	return "", ErrSlugGenerationFailed
 }
 
 // checkSlugStallAttempts bounds how many CONSECUTIVE inserts the slug loop may
@@ -2346,9 +2516,10 @@ func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, use
 //
 // A stall is the genuinely pathological case: the re-read handed back the very
 // slug that just failed, so retrying it can only fail identically. Termination
-// does not rest on this constant alone — ensureUniqueSlug itself gives up after
-// the "-99" suffix — but a bounded stall keeps a spinning loop from holding a
-// request open while it re-reads the same answer forever.
+// does not rest on this constant alone — ensureUniqueSlug itself is bounded
+// (the numeric ladder, then slugRandomSuffixAttempts draws) — but a bounded
+// stall keeps a spinning loop from holding a request open while it re-reads
+// the same answer forever.
 const checkSlugStallAttempts = 8
 
 // insertCheckResolvingSlugRace inserts a check, re-resolving an auto-generated
@@ -2460,6 +2631,21 @@ func (s *Service) ReconcileStaleJobSchedules(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("list checks with stale job periods: %w", err)
 	}
 
+	// Stale REGIONS are the symmetric drift and are healed by the very same
+	// reconcile (spec 2026-08-24-08). Renaming a region's slug — an
+	// SP_NODE_REGION / SP_REGIONS change, no check ever edited — leaves every
+	// materialized job under the old spelling, and the claim predicate matches
+	// worker region against job region by prefix, so those jobs become
+	// unclaimable by every worker, forever and silently. Detecting them at boot
+	// means that class of incident self-heals on the next deploy even if the
+	// operator never calls POST /system/regions/migrate.
+	staleRegions, err := s.db.ListChecksWithStaleJobRegions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list checks with stale job regions: %w", err)
+	}
+
+	stale = mergeChecksByUID(stale, staleRegions)
+
 	for _, check := range stale {
 		// relevel=false: the stale jobs are detected by their mismatched period,
 		// which already forces the phase recompute; correct jobs are untouched.
@@ -2469,6 +2655,28 @@ func (s *Service) ReconcileStaleJobSchedules(ctx context.Context) (int, error) {
 	}
 
 	return len(stale), nil
+}
+
+// mergeChecksByUID unions two check slices, keeping first-seen order and
+// reconciling each check at most once — a check whose jobs drifted on BOTH
+// period and region appears in both queries.
+func mergeChecksByUID(first, second []*models.Check) []*models.Check {
+	seen := make(map[string]bool, len(first)+len(second))
+	out := make([]*models.Check, 0, len(first)+len(second))
+
+	for _, list := range [][]*models.Check{first, second} {
+		for _, check := range list {
+			if seen[check.UID] {
+				continue
+			}
+
+			seen[check.UID] = true
+
+			out = append(out, check)
+		}
+	}
+
+	return out
 }
 
 // reconcileCheckJobs ensures the check_jobs match the check's current regions
@@ -2750,6 +2958,26 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		ConfirmationPeriodSeconds: check.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 		EscalationPolicyUID:       check.EscalationPolicyUID,
+		TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
+		FlapState:                 buildFlapStateResponse(check, time.Now()),
+	}
+}
+
+// buildFlapStateResponse computes the check's live flapState block (spec
+// 2026-08-24-05), or nil when there is nothing to report: an effective flap
+// count of 0 covers both "the flapping feature is off for this check" and
+// "no flap state has accumulated" (never happened, or the rolling window has
+// since lapsed — see models.Check.EffectiveFlapCount, the lazy-reset trap).
+func buildFlapStateResponse(check *models.Check, now time.Time) *FlapStateResponse {
+	effectiveCount := check.EffectiveFlapCount(now)
+	if effectiveCount == 0 {
+		return nil
+	}
+
+	return &FlapStateResponse{
+		FlapCount:                      effectiveCount,
+		LastOutageAt:                   check.LastOutageAt,
+		EffectiveRecoveryPeriodSeconds: int(check.EffectiveRecoveryPeriodAt(now) / time.Second),
 	}
 }
 
@@ -2866,14 +3094,19 @@ func (s *Service) emitEvent(
 	eventType models.EventType,
 	check *models.Check,
 ) error {
-	event := models.NewEvent(orgUID, eventType, models.ActorTypeUser)
+	// Built through internal/audit so a check event carries the same actor
+	// identity (user/token, source IP, user agent) as every other audit event.
+	// Before spec 2026-08-21-09 these rows hardcoded actor_type=user and never
+	// set actor_uid at all, so "who deleted this check?" had no answer.
+	event := audit.NewEvent(ctx, orgUID, eventType,
+		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
+		models.JSONMap{
+			eventPayloadCheckUIDKey: check.UID,
+			"check_slug":            check.Slug,
+			"check_name":            check.Name,
+			"check_type":            check.Type,
+		})
 	event.CheckUID = &check.UID
-	event.Payload = models.JSONMap{
-		eventPayloadCheckUIDKey: check.UID,
-		"check_slug":            check.Slug,
-		"check_name":            check.Name,
-		"check_type":            check.Type,
-	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		return fmt.Errorf("failed to create event: %w", err)
@@ -2934,24 +3167,33 @@ type ExportCheck struct {
 	// PreviousSlug, when set on an apply manifest, makes a slug rename
 	// reconcile in place (rather than delete+create). Ignored by export and
 	// import; only the apply reconcile path consults it.
-	PreviousSlug              string               `json:"previousSlug,omitempty"`
-	Description               string               `json:"description,omitempty"`
-	Type                      string               `json:"type"`
-	Config                    map[string]any       `json:"config"`
-	Regions                   []string             `json:"regions,omitempty"`
-	Labels                    map[string]string    `json:"labels,omitempty"`
-	Enabled                   bool                 `json:"enabled"`
-	Internal                  bool                 `json:"internal,omitempty"`
-	Period                    string               `json:"period,omitempty"`
-	Group                     string               `json:"group,omitempty"`
-	ConfirmationPeriodSeconds *int                 `json:"confirmationPeriodSeconds,omitempty"`
-	EscalationThreshold       *int                 `json:"escalationThreshold,omitempty"`
-	RecoveryPeriodSeconds     *int                 `json:"recoveryPeriodSeconds,omitempty"`
-	ReopenCooldownMultiplier  *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindowSeconds     *int                 `json:"flappingWindowSeconds,omitempty"`
-	FlapBackoffFactor         *int                 `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier     *int                 `json:"maxRecoveryMultiplier,omitempty"`
-	DependsOn                 []ExportedDependency `json:"dependsOn,omitempty"`
+	PreviousSlug              string            `json:"previousSlug,omitempty"`
+	Description               string            `json:"description,omitempty"`
+	Type                      string            `json:"type"`
+	Config                    map[string]any    `json:"config"`
+	Regions                   []string          `json:"regions,omitempty"`
+	Labels                    map[string]string `json:"labels,omitempty"`
+	Enabled                   bool              `json:"enabled"`
+	Internal                  bool              `json:"internal,omitempty"`
+	Period                    string            `json:"period,omitempty"`
+	Group                     string            `json:"group,omitempty"`
+	ConfirmationPeriodSeconds *int              `json:"confirmationPeriodSeconds,omitempty"`
+	EscalationThreshold       *int              `json:"escalationThreshold,omitempty"`
+	RecoveryPeriodSeconds     *int              `json:"recoveryPeriodSeconds,omitempty"`
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`, absent meaning `inherit`.
+	//
+	// IT MUST TRAVEL. An operator who set `off` on a check probing somebody
+	// else's network is expressing a POLICY, and a round-trip that silently
+	// dropped it would resolve back to the org default — which is ON. An
+	// explicit opt-out quietly becoming an opt-in on restore, with no diff to
+	// notice, is the worst direction this field could fail in.
+	TracerouteOnFailure      string               `json:"tracerouteOnFailure,omitempty"`
+	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindowSeconds    *int                 `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int                 `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int                 `json:"maxRecoveryMultiplier,omitempty"`
+	DependsOn                []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // ExportedDependency mirrors an edge in slug-keyed form. Slug-keyed because
@@ -3076,6 +3318,7 @@ func (s *Service) ExportChecks(
 			ConfirmationPeriodSeconds: intPtr(check.ConfirmationPeriodSeconds),
 			EscalationThreshold:       intPtr(check.EscalationThreshold),
 			RecoveryPeriodSeconds:     intPtr(check.RecoveryPeriodSeconds),
+			TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
 			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     intPtr(check.FlappingWindowSeconds),
 			FlapBackoffFactor:         intPtr(check.FlapBackoffFactor),
@@ -3557,12 +3800,32 @@ func (s *Service) importSingleCheck(
 		upsertReq.Period = &exportedCheck.Period
 	}
 
+	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
+
 	_, _, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
 	if upsertErr != nil {
 		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: upsertErr.Error()}
 	}
 
 	return created, nil
+}
+
+// importedTraceroutePolicy resolves a document's path-trace field to something
+// always sent on the upsert.
+//
+// Absent means `inherit`, which is what an omitted field would resolve to
+// anyway — but sending it EXPLICITLY is what makes a re-import idempotent for a
+// check that had been moved off `inherit` and is now being moved back. An
+// import that "leaves it unchanged" would make the applied state depend on
+// whatever the check happened to be before, which is the opposite of what
+// applying a manifest means.
+func importedTraceroutePolicy(value string) *string {
+	policy := value
+	if policy == "" {
+		policy = TraceroutePolicyInherit
+	}
+
+	return &policy
 }
 
 // CloneCheckRequest carries the optional overrides for the clone endpoint.
@@ -3703,6 +3966,7 @@ func (s *Service) cloneBuildCheck(
 	clone.ConfirmationPeriodSeconds = source.ConfirmationPeriodSeconds
 	clone.EscalationThreshold = source.EscalationThreshold
 	clone.RecoveryPeriodSeconds = source.RecoveryPeriodSeconds
+	clone.TracerouteOnFailure = source.TracerouteOnFailure
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.FlappingWindowSeconds = source.FlappingWindowSeconds
 	clone.FlapBackoffFactor = source.FlapBackoffFactor
@@ -4263,4 +4527,67 @@ func (s *Service) applyConfigPatch(
 	}
 
 	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
+}
+
+// checkDisplayName is the check's name for the audit trail, falling back to
+// its slug when the optional name is unset.
+func checkDisplayName(check *models.Check) string {
+	if check.Name != nil && *check.Name != "" {
+		return *check.Name
+	}
+
+	if check.Slug != nil {
+		return *check.Slug
+	}
+
+	return ""
+}
+
+// Traceroute policy wire values (spec 2026-08-21-10). The column is a nullable
+// boolean; these are its three states named so a PATCH can reach all of them.
+const (
+	// TraceroutePolicyInherit defers to the org default.
+	TraceroutePolicyInherit = "inherit"
+	// TraceroutePolicyOn always traces this check's network failures.
+	TraceroutePolicyOn = "on"
+	// TraceroutePolicyOff never traces this check, whatever the org says.
+	TraceroutePolicyOff = "off"
+)
+
+// errInvalidTraceroutePolicy rejects anything outside the three-value set. It
+// is listed in isCheckFieldValidationError so a bad value is a 400, not a 500.
+var errInvalidTraceroutePolicy = errors.New(
+	"tracerouteOnFailure must be one of: " +
+		TraceroutePolicyInherit + ", " + TraceroutePolicyOn + ", " + TraceroutePolicyOff,
+)
+
+// parseTraceroutePolicy maps a wire value to the column. The nil return is the
+// INHERIT state, not a failure — ok is what reports validity.
+func parseTraceroutePolicy(value string) (*bool, bool) {
+	switch value {
+	case TraceroutePolicyInherit, "":
+		return nil, true
+	case TraceroutePolicyOn:
+		enabled := true
+
+		return &enabled, true
+	case TraceroutePolicyOff:
+		disabled := false
+
+		return &disabled, true
+	default:
+		return nil, false
+	}
+}
+
+// renderTraceroutePolicy maps the column back to its wire value.
+func renderTraceroutePolicy(value *bool) string {
+	switch {
+	case value == nil:
+		return TraceroutePolicyInherit
+	case *value:
+		return TraceroutePolicyOn
+	default:
+		return TraceroutePolicyOff
+	}
 }

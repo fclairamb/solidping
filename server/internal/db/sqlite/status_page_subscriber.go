@@ -162,6 +162,24 @@ func (s *Service) ResubscribeSubscriber(
 	return err
 }
 
+// UpdateSubscriberDelivery records the outcome of a webhook/Slack delivery:
+// the consecutive-failure counter and, when the circuit breaker trips, the
+// disable timestamp. disabledAt nil CLEARS the column, so a re-enable goes
+// through the same call.
+func (s *Service) UpdateSubscriberDelivery(
+	ctx context.Context, uid string, failureCount int, disabledAt *time.Time,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.StatusPageSubscriber)(nil)).
+		Set("failure_count = ?", failureCount).
+		Set("disabled_at = ?", disabledAt).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+
+	return err
+}
+
 // SoftDeleteSubscriber sets deleted_at on a subscriber (unsubscribe).
 func (s *Service) SoftDeleteSubscriber(ctx context.Context, uid string) error {
 	_, err := s.db.NewUpdate().

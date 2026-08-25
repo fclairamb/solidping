@@ -26,9 +26,20 @@
     "up": "Up",
     "down": "Down",
     "warning": "Warning",
+    "created": "Pending",
     "degraded": "Degraded",
     "abandoned": "Abandoned",
     "unknown": "Unknown"
+  },
+  "statusFilter": {
+    "all": "All statuses",
+    "count": "{{count}} statuses",
+    "plusOne": "{{label}} +{{count}}"
+  },
+  "typeFilter": {
+    "all": "All types",
+    "count": "{{count}} types",
+    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} up",
@@ -92,18 +103,21 @@
       "solidping": "SolidPing export (JSON/YAML)",
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (API token)",
-      "uptime-kuma": "Uptime Kuma (backup JSON)"
+      "uptime-kuma": "Uptime Kuma (backup JSON)",
+      "uptimerobot": "UptimeRobot (getMonitors JSON)"
     },
     "importSourceHelp": {
       "solidping": "A document produced by the Export button, in JSON or YAML.",
       "gatus": "Paste or upload your Gatus config.yaml — the endpoints: list is converted into checks.",
       "betterstack": "We fetch your monitors and heartbeats from the Better Stack API and convert them.",
-      "uptime-kuma": "Uptime Kuma 1.x: Settings → Backup → Export JSON. Version 2.x no longer offers this export."
+      "uptime-kuma": "Uptime Kuma 1.x: Settings → Backup → Export JSON. Version 2.x no longer offers this export.",
+      "uptimerobot": "Paste the JSON from UptimeRobot's API v2 getMonitors call — see the docs for the exact curl command."
     },
     "importPlaceholder": {
       "solidping": "Paste the exported JSON or YAML document…",
       "gatus": "Paste your Gatus config.yaml…",
-      "uptime-kuma": "Paste your Uptime Kuma backup JSON…"
+      "uptime-kuma": "Paste your Uptime Kuma backup JSON…",
+      "uptimerobot": "Paste your UptimeRobot getMonitors JSON…"
     },
     "importPayload": "Configuration",
     "importUpload": "Upload a file",
@@ -182,7 +196,7 @@
     "labelValue": "Value",
     "addLabel": "Add Label",
     "flapping": "Flapping",
-    "flappingHelp": "How a check that recovers and fails repeatedly is handled — de-duplicate short blips and require longer stability before resolving a flapping check.",
+    "flappingHelp": "De-duplicate short blips and require longer stability before resolving a check that keeps flapping.",
     "confirmationPeriod": "Confirmation Period",
     "confirmationPeriodHelp": "Wait this long after the first failure before opening an incident. 0 = open immediately.",
     "escalationThreshold": "Escalation Threshold",
@@ -200,13 +214,16 @@
     "periodImmediateOpen": "Opens an incident immediately on the first failure.",
     "periodImmediateResolve": "Resolves the incident immediately on the first success.",
     "reopenCooldown": "Reopen Cooldown Multiplier",
-    "reopenCooldownHelp": "If the check fails again shortly after recovering, reattach it to the same incident instead of paging again. Window = N × check interval (min 2 min, max 30 min). 0 = always open a new incident.",
+    "reopenCooldownHelp": "A relapse inside this window reattaches to the previous incident instead of paging again.",
+    "reopenCooldownOff": "off — always opens a new incident",
+    "reopenCooldownCapped": "= {{duration}} (capped, from {{raw}})",
+    "reopenCooldownFloored": "= {{duration}} (floor, from {{raw}})",
     "flappingWindow": "Flapping Window (seconds)",
-    "flappingWindowHelp": "If a check flaps repeatedly within this window, require longer stability before each resolve. 0 = off.",
+    "flappingWindowHelp": "Outages within this window escalate the required recovery time. 0 = off.",
     "flapBackoffFactor": "Backoff Factor",
-    "flapBackoffFactorHelp": "Each flap multiplies the required recovery time by this. 1 = off (constant recovery).",
+    "flapBackoffFactorHelp": "Each flap multiplies the required recovery by this. 1 = off.",
     "maxRecoveryMultiplier": "Max Recovery Multiplier",
-    "maxRecoveryMultiplierHelp": "Cap — required recovery never exceeds this × the base recovery period.",
+    "maxRecoveryMultiplierHelp": "Required recovery never exceeds this × the base recovery period.",
     "saveChanges": "Save Changes",
     "creating": "Creating...",
     "urlRequired": "URL is required",
@@ -214,7 +231,12 @@
     "portRequired": "Port is required",
     "domainRequired": "Domain is required",
     "topic": "Topic",
-    "tls": "TLS"
+    "tls": "TLS",
+    "tracerouteOnFailure": "Traceroute on network failure",
+    "tracerouteInherit": "Inherit organization default",
+    "tracerouteOn": "Always capture",
+    "tracerouteOff": "Never capture",
+    "tracerouteOnFailureHelp": "When this check goes down because the target could not be REACHED (connect timeout, refusal, ICMP loss, TLS handshake stall), capture an MTR-style path trace and attach it to the incident. Application-level failures such as HTTP 5xx, a keyword mismatch or an expiring certificate never trigger one — the server answered, so the path is fine."
   },
   "types": {
     "http": "HTTP",
@@ -225,8 +247,8 @@
     "icmpDescription": "Ping hosts via ICMP",
     "dns": "DNS",
     "dnsDescription": "Monitor DNS resolution",
-    "ssl": "SSL",
-    "sslDescription": "Check SSL certificate validity",
+    "ssl": "TLS",
+    "sslDescription": "Check TLS certificate validity",
     "domain": "Domain",
     "domainDescription": "Monitor domain expiration",
     "heartbeat": "Heartbeat",
@@ -425,7 +447,8 @@
       "dotClickToClose": "Click to close",
       "resetZoom": "Reset zoom",
       "zoomHint": "Drag across the chart to zoom into a time range",
-      "zoomHintReset": "Zoomed in — drag to refine, or double-click to reset"
+      "zoomHintReset": "Zoomed in — drag to refine, or double-click to reset",
+      "rawUnavailable": "Latest points unavailable — showing aggregated data only"
     },
     "resultBox": {
       "close": "Close",
@@ -520,6 +543,9 @@
     "checkInterval": "Check Interval",
     "regionsLabel": "Regions",
     "statusLabel": "Status",
+    "flapping": "Flapping",
+    "flappingSummary": "Outage #{{count}} within {{window}} — required recovery ×{{multiplier}} = {{effective}}",
+    "flappingSummaryImmediate": "Outage #{{count}} within {{window}} — resolves immediately",
     "labelsLabel": "Labels",
     "lastResult": "Last Result",
     "lastResultDescription": "Most recent check execution",

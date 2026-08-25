@@ -117,7 +117,26 @@
     "removed": "Suscriptor eliminado",
     "removeError": "Error al eliminar el suscriptor",
     "removeConfirmTitle": "¿Eliminar suscriptor?",
-    "removeConfirmDescription": "Este suscriptor dejará de recibir notificaciones. Podrá volver a suscribirse desde la página de estado pública."
+    "removeConfirmDescription": "Este suscriptor dejará de recibir notificaciones. Podrá volver a suscribirse desde la página de estado pública.",
+    "destination": "Destino",
+    "channel": "Canal",
+    "disabled": "Desactivada",
+    "channels": {
+      "email": "Correo",
+      "webhook": "Webhook",
+      "slack": "Slack"
+    },
+    "addEndpoint": "Añadir una entrega por webhook o Slack",
+    "addEndpointHint": "Se configura aquí, no en la página pública: el formulario público solo acepta correos, porque no se puede verificar a un visitante que pega una URL de webhook. Las entregas van firmadas y se detienen automáticamente tras fallos repetidos.",
+    "url": "URL de entrega",
+    "add": "Añadir",
+    "endpointAdded": "Entrega añadida",
+    "endpointAddError": "No se ha podido añadir la entrega",
+    "signingSecret": "Secreto de firma (opcional)",
+    "signingSecretPlaceholder": "Déjalo vacío para generar uno",
+    "signingSecretHint": "Firma cada entrega (HMAC-SHA256) para que tu receptor pueda verificar que viene de SolidPing.",
+    "signingSecretIssued": "Copia ahora este secreto de firma: se muestra una sola vez y no podrá recuperarse.",
+    "signingSecretSaved": "Ya lo he guardado"
   },
   "customDomain": {
     "title": "Dominio personalizado",
@@ -131,6 +150,11 @@
     "verifying": "Verificando…",
     "verified": "Verificado",
     "unverified": "Sin verificar",
+    "degraded": "Comprobación DNS fallando",
+    "degradedTitle": "La reverificación DNS del dominio está fallando",
+    "degradedDescription": "Tu página de estado se sigue sirviendo en este dominio, pero la comprobación DNS periódica ha fallado varias veces seguidas. Corrige el registro CNAME y se recuperará por sí solo; si el fallo persiste unos días, la página dejará de servirse aquí.",
+    "demotedTitle": "Este dominio ya no sirve tu página de estado",
+    "demotedDescription": "La comprobación DNS falló varios días seguidos, por lo que la página dejó de servirse en este dominio. Corrige el registro CNAME y pulsa Verificar, o déjalo: en cuanto el DNS vuelva a resolver correctamente, el dominio se restaura automáticamente tras unas cuantas comprobaciones correctas.",
     "certIssued": "HTTPS activo",
     "certError": "Error de HTTPS",
     "certPending": "HTTPS pendiente",
@@ -234,5 +258,35 @@
     "updated": "Página de estado actualizada correctamente",
     "deleted": "Página de estado eliminada correctamente",
     "deleteFailed": "Error al eliminar la página de estado"
+  },
+  "branding": {
+    "title": "Personalización",
+    "description": "El logotipo y el favicon de esta página de estado. Un logotipo subido sustituye la marca de SolidPing en la cabecera.",
+    "logo": "Logotipo",
+    "logoHint": "PNG, JPEG, WebP, GIF o SVG, hasta 1 MB. Se muestra en la cabecera de la página.",
+    "favicon": "Favicon",
+    "faviconHint": "ICO, PNG, WebP, GIF o SVG, hasta 256 KB. Se muestra en la pestaña del navegador, incluso en un dominio propio.",
+    "upload": "Subir",
+    "replace": "Reemplazar",
+    "remove": "Eliminar",
+    "uploaded": "Imagen actualizada",
+    "removed": "Imagen eliminada",
+    "unexpectedError": "Algo ha salido mal. Inténtalo de nuevo.",
+    "hideBranding": "Ocultar «Con tecnología de SolidPing»",
+    "hideBrandingHint": "Elimina el enlace a SolidPing del pie de la página pública.",
+    "hideBrandingLocked": "La marca blanca no está incluida en tu plan actual. El ajuste se guarda y se aplicará en cuanto el plan lo incluya."
+  },
+  "visibilityField": {
+    "label": "Visibilidad",
+    "public": "Pública",
+    "private": "Privada",
+    "password": "Protegida con contraseña",
+    "publicHint": "Cualquiera con el enlace puede ver esta página.",
+    "privateHint": "La página queda totalmente oculta: las URL públicas responden como si no existiera.",
+    "passwordHint": "Los visitantes deben introducir una contraseña para ver la página.",
+    "passwordLabel": "Contraseña de la página",
+    "passwordPlaceholder": "Al menos 6 caracteres",
+    "passwordKeepPlaceholder": "Déjalo vacío para conservar la contraseña actual",
+    "passwordFieldHint": "Compártela con quienes deban ver la página. Cambiarla cierra el acceso a todos de inmediato."
   }
 }

@@ -383,7 +383,7 @@ func TestCreateCheckAutoSlugLength(t *testing.T) {
 
 	// Create check with a long URL and no explicit slug — slug should be auto-generated
 	config := map[string]any{
-		"url": "https://solidping.k8xp.com/api/v1/fake",
+		"url": "https://app.example.com/api/v1/fake",
 	}
 
 	createResult, err := apiClient.CreateCheckWithResponse(ctx, TestOrgSlug, client.CreateCheckJSONRequestBody{

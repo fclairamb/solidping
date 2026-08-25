@@ -167,6 +167,40 @@ func safeInlineMIME(mimeType string) bool {
 	}
 }
 
+// PublicAssetGet handles GET /pub/assets/:uid (and the status-page alias) —
+// unsigned and unauthenticated.
+//
+// There is no signature to check because authorization comes from the file's
+// own attachment topic: Service.GetPublicFile serves a LIVE row whose topic is
+// on the closed allowlist, and nothing else. Replacing or clearing an asset
+// soft-deletes its row and stops this route serving it in the same write;
+// deleting the owning entity reaps the topic prefix.
+func (h *Handler) PublicAssetGet(writer http.ResponseWriter, req *http.Request) error {
+	file, err := h.svc.GetPublicFile(req.Context(), httpx.Param(req, "uid"))
+	if err != nil {
+		if errors.Is(err, ErrFileNotFound) {
+			return h.WriteError(writer, http.StatusNotFound, errCodeFileNotFound, "File not found")
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	body, err := h.svc.OpenContent(req.Context(), file)
+	if err != nil {
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	defer func() { _ = body.Close() }()
+
+	// Short cache: the URL changes on every upload (it embeds the file UID), so
+	// this only bounds staleness for an asset cleared without replacement.
+	writer.Header().Set("Cache-Control", "public, max-age=300")
+
+	// WriteContent is the single place that sets nosniff and refuses to serve
+	// anything but a raster image inline — the SVG-XSS guard.
+	return WriteContent(writer, file.MimeType, file.Name, body)
+}
+
 // WriteContent streams a stored file with hardened response headers. Exported
 // so every route that serves user-uploaded bytes (org logos included) shares
 // exactly one set of security headers.

@@ -43,6 +43,14 @@ const (
 	KeyEmailInsecure            ParameterKey = "email.insecure_skip_verify"
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
 	KeyEmailProtocol            ParameterKey = "email.protocol"
+	// KeyEmailReplyTo is the instance support mailbox (spec 2026-08-22-02).
+	// Empty means the whole support-reply feature is off: no Reply-To header,
+	// no "you can reply" notice, no inbound-message mirror.
+	KeyEmailReplyTo ParameterKey = "email.reply_to"
+	// KeySupportRetentionDays is how long a CLOSED support thread is kept
+	// before the retention sweep purges it and its messages. 0 or negative
+	// means keep forever, a supported choice for an operator under legal hold.
+	KeySupportRetentionDays ParameterKey = "support.retention_days"
 
 	// KeySessionMaxDuration is the global (system-wide) hard cap on session
 	// lifetime in seconds, measured from login (spec
@@ -81,6 +89,8 @@ const (
 	KeyDiscordClientSecret      ParameterKey = "auth.discord.client_secret"
 	KeyDiscordBotToken          ParameterKey = "auth.discord.bot_token"
 	KeyDiscordRedirectURL       ParameterKey = "auth.discord.redirect_url"
+	KeyDiscordPublicKey         ParameterKey = "auth.discord.public_key"
+	KeyDiscordGatewayEnabled    ParameterKey = "auth.discord.gateway_enabled"
 	KeyGoogleEnabled            ParameterKey = "auth.google.enabled"
 	KeyGitHubEnabled            ParameterKey = "auth.github.enabled"
 	KeyGitLabEnabled            ParameterKey = "auth.gitlab.enabled"
@@ -107,6 +117,12 @@ const (
 	// KeyPerfJobsHardDeleteHours after that (stage 2). Defaults 48 / 24.
 	KeyPerfJobsSoftDeleteHours ParameterKey = "performance.jobs_soft_delete_hours"
 	KeyPerfJobsHardDeleteHours ParameterKey = "performance.jobs_hard_delete_hours"
+
+	// KeyAuditRetentionDays is how many days the security/configuration audit
+	// trail is kept (spec 2026-08-21-09). Resolved at job-run time by the same
+	// env → global DB parameter → koanf → default precedence as the perf keys
+	// above (jobtypes.resolveRetentionTier). Default 365; 0 disables the sweep.
+	KeyAuditRetentionDays ParameterKey = "audit.retention_days"
 
 	// Generic OAuth2/OIDC provider keys (spec 2026-07-08-08, part 1). Global-only,
 	// single instance — see config.OIDCOAuthConfig.
@@ -481,6 +497,16 @@ func getKnownParameters() []ParameterDefinition {
 			},
 		},
 		{
+			Key:    KeyEmailReplyTo,
+			EnvVar: "SP_EMAIL_REPLY_TO",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Email.ReplyTo = v
+				}
+			},
+		},
+		{
 			Key:    KeyGoogleClientID,
 			EnvVar: "SP_GOOGLE_CLIENT_ID",
 			Secret: false,
@@ -765,6 +791,28 @@ func getKnownParameters() []ParameterDefinition {
 				if v, ok := value.(string); ok {
 					cfg.Discord.RedirectURL = v
 				}
+			},
+		},
+		{
+			// The application's Ed25519 public key. NOT secret: it is a public
+			// verification key Discord publishes on the app's own settings
+			// page, and the dashboard needs to render it so an operator can
+			// tell at a glance whether the value matches their Discord app.
+			Key:    KeyDiscordPublicKey,
+			EnvVar: "SP_DISCORD_PUBLIC_KEY",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Discord.PublicKey = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyDiscordGatewayEnabled,
+			EnvVar: "SP_DISCORD_GATEWAY_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Discord.GatewayEnabled = parseBool(value, cfg.Discord.GatewayEnabled)
 			},
 		},
 		{

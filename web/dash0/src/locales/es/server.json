@@ -13,7 +13,8 @@
     "agents": "Agentes",
     "aggregation": "Agregación",
     "slack": "Slack",
-    "analytics": "Analítica"
+    "analytics": "Analítica",
+    "discord": "Discord"
   },
   "aggregation": {
     "title": "Agregación",
@@ -313,5 +314,32 @@
     "envOverride": "Definido por el entorno",
     "envOverrideHelp": "Este valor procede de una variable de entorno, que tiene prioridad sobre cualquier valor guardado aquí.",
     "whatIsSent": "Qué se envía: cinco eventos de producto (organización creada, usuario registrado, check creado, integración conectada, página de estado publicada), identificados por los UUID de organización y usuario. Nunca se envía: direcciones de correo, objetivos de los checks, nombres de host, URL, contenido de incidencias ni ningún texto que hayas escrito."
+  },
+  "discord": {
+    "title": "Discord",
+    "subtitle": "Configure the SolidPing Discord bot: interaction signature verification and the inbound Gateway.",
+    "notEnabledHint": "Discord is disabled on this instance. Enable it under Authentication first.",
+    "bot": {
+      "title": "Discord bot",
+      "description": "The public key verifies Discord's signed interaction requests. The Gateway is a separate outgoing WebSocket that carries everything a human types at the bot.",
+      "publicKeyLabel": "Application public key",
+      "publicKeyHelp": "Copy it from the Discord Developer Portal → your application → General Information. Without it, every interaction is rejected and buttons and slash commands do nothing.",
+      "gatewayEnableLabel": "Enable the Discord Gateway (inbound messages)",
+      "intentHint": "The Gateway needs the privileged MESSAGE_CONTENT intent, enabled under Bot → Privileged Gateway Intents. Discord grants it freely below 100 servers and requires a review above that. Without it the bot connects but every message arrives empty, so thread comments and mention commands silently do nothing.",
+      "restartHint": "Changing these takes effect on the next server restart."
+    },
+    "status": {
+      "title": "Gateway status",
+      "description": "Live state of the outgoing Discord Gateway connection.",
+      "connection": "Connection",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "guilds_one": "{{count}} server",
+      "guilds_other": "{{count}} servers",
+      "lastConnected": "Last connected",
+      "lastError": "Last error",
+      "noError": "None",
+      "never": "Never"
+    }
   }
 }

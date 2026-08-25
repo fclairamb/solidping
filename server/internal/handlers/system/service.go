@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
+	"github.com/fclairamb/solidping/server/internal/watchdog"
 )
 
 // Errors for system parameter operations.
@@ -149,39 +150,68 @@ func (s *Service) ListActivationFunnel(ctx context.Context) (*ActivationFunnelRe
 		}
 
 		for _, event := range events {
-			occurredAt := event.CreatedAt
-			switch event.EventType {
-			case models.EventTypeOrgActivationSignupCompleted:
-				row.SignupAt = &occurredAt
-			case models.EventTypeOrgActivationFirstCheckCreated:
-				row.FirstCheckAt = &occurredAt
-			case models.EventTypeOrgActivationFirstResultReceived:
-				row.FirstResultAt = &occurredAt
-			case models.EventTypeOrgActivationFirstNotificationConfigured:
-				row.FirstNotifierAt = &occurredAt
-			case models.EventTypeOrgActivationFirstIncidentPaged:
-				row.FirstIncidentAt = &occurredAt
-			case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
-				models.EventTypeCheckDeleted,
-				models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
-				models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
-				models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
-				models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
-				models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
-				models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
-				models.EventTypeStatusUpdateDeleted,
-				models.EventTypeStatusPageIncidentPublished,
-				models.EventTypeStatusPageIncidentUpdated,
-				models.EventTypeStatusPageIncidentResolved:
-				// Filter only requested activation events; these branches
-				// are unreachable but exhaustive lint requires them.
-			}
+			applyActivationEvent(row, event)
 		}
 
 		rows = append(rows, row)
 	}
 
 	return &ActivationFunnelResponse{Data: rows}, nil
+}
+
+// applyActivationEvent stamps one activation milestone onto a funnel row.
+// Split out of ListActivationFunnel because the switch must enumerate every
+// event type in the product (exhaustive lint), so it grows with families that
+// have nothing to do with activation.
+func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
+	occurredAt := event.CreatedAt
+
+	switch event.EventType {
+	case models.EventTypeOrgActivationSignupCompleted:
+		row.SignupAt = &occurredAt
+	case models.EventTypeOrgActivationFirstCheckCreated:
+		row.FirstCheckAt = &occurredAt
+	case models.EventTypeOrgActivationFirstResultReceived:
+		row.FirstResultAt = &occurredAt
+	case models.EventTypeOrgActivationFirstNotificationConfigured:
+		row.FirstNotifierAt = &occurredAt
+	case models.EventTypeOrgActivationFirstIncidentPaged:
+		row.FirstIncidentAt = &occurredAt
+	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
+		models.EventTypeCheckDeleted,
+		models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
+		models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
+		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
+		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
+		models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
+		models.EventTypeIncidentRolledUp,
+		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
+		models.EventTypeStatusUpdateDeleted,
+		models.EventTypeStatusPageIncidentPublished,
+		models.EventTypeStatusPageIncidentUpdated,
+		models.EventTypeStatusPageIncidentResolved,
+		models.EventTypeStatusSubscriberDisabled,
+		models.EventTypeStatusPageCustomDomainDemoted,
+		models.EventTypeAuthLoginSucceeded, models.EventTypeAuthLoginFailed,
+		models.EventTypeAuthLogout,
+		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,
+		models.EventTypeAuthTokenMisuse,
+		models.EventTypeMemberInvited, models.EventTypeMemberJoined,
+		models.EventTypeMemberRemoved, models.EventTypeMemberRoleChanged,
+		models.EventTypeIntegrationCreated, models.EventTypeIntegrationUpdated,
+		models.EventTypeIntegrationDeleted,
+		models.EventTypeEscalationPolicyCreated, models.EventTypeEscalationPolicyUpdated,
+		models.EventTypeEscalationPolicyDeleted,
+		models.EventTypeOnCallScheduleCreated, models.EventTypeOnCallScheduleUpdated,
+		models.EventTypeOnCallScheduleDeleted,
+		models.EventTypeStatusPageCreated, models.EventTypeStatusPageUpdated,
+		models.EventTypeStatusPageDeleted,
+		models.EventTypeMaintenanceWindowCreated, models.EventTypeMaintenanceWindowUpdated,
+		models.EventTypeMaintenanceWindowDeleted,
+		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated:
+		// Filter only requested activation events; these branches
+		// are unreachable but exhaustive lint requires them.
+	}
 }
 
 // ListParameters returns all system parameters with secrets masked.
@@ -231,6 +261,15 @@ func (s *Service) SetParameter(ctx context.Context, key string, value any, secre
 
 	if systemconfig.IsAggregationRetentionKey(key) {
 		if err := systemconfig.ValidateAggregationRetentionParameter(key, value); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
+		}
+	}
+
+	// The platform watchdog is an alerting path of last resort: a value it
+	// cannot decode would only surface as a failing hourly job nobody reads.
+	// Reject it here, while the operator is still looking at the request.
+	if key == watchdog.ParamPlatformWatchdog {
+		if err := watchdog.ValidateParameter(value); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
 		}
 	}
@@ -344,10 +383,11 @@ func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailRe
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{recipient}},
-		Subject:    subject,
-		Text:       textBody,
-		HTML:       htmlBody,
+		Recipients:       email.Recipients{To: []string{recipient}},
+		Subject:          subject,
+		Text:             textBody,
+		HTML:             htmlBody,
+		SupportReplyable: email.SupportReplyable("test-email.html"),
 	}
 
 	result, err := sender.Send(ctx, msg)
@@ -417,6 +457,13 @@ func (s *Service) buildEmailConfig(ctx context.Context) (*config.EmailConfig, er
 
 	if v, ok := paramMap["email.protocol"].(string); ok {
 		cfg.Protocol = v
+	}
+
+	// The support mailbox travels with the rest of the SMTP settings so the
+	// "send a test email" button exercises the real Reply-To an operator has
+	// configured, rather than a silently different one (spec 2026-08-22-02).
+	if v, ok := paramMap["email.reply_to"].(string); ok {
+		cfg.ReplyTo = v
 	}
 
 	if v, ok := paramMap["email.insecure_skip_verify"].(bool); ok {

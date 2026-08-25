@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -49,6 +51,11 @@ const (
 	// /comment command. Unlike Slack, the author is a verified linked contact,
 	// so the comment is attributed to their SolidPing user via ActorUID.
 	CommentSourceTelegram = "telegram"
+	// CommentSourceDiscord marks a comment ingested from a Discord thread
+	// reply or posted with the bot's `comment` command. Like Slack (and unlike
+	// Telegram) the author usually has no SolidPing user, so attribution lives
+	// on the payload and ActorUID stays empty.
+	CommentSourceDiscord = "discord"
 )
 
 // Comment event payload keys. camelCase to match the wire shape the dashboard
@@ -63,6 +70,10 @@ const (
 	payloadKeySlackTs       = "slackTs"
 	payloadKeyTelegramChat  = "telegramChatId"
 	payloadKeyCommentAuthor = "authorName"
+	payloadKeyDiscordUserID = "discordUserId"
+	payloadKeyDiscordUser   = "discordUserName"
+	payloadKeyDiscordGuild  = "discordGuildId"
+	payloadKeyDiscordMsgID  = "discordMessageId"
 )
 
 // MaxSnoozeDuration caps how long an operator can silence an incident in a
@@ -98,7 +109,98 @@ const (
 	keyEscalationThreshold        = "escalation_threshold"
 	keyRelapseCount               = "relapse_count"
 	keyEffectiveRecoveryThreshold = "effective_recovery_threshold"
+	keyParentIncidentUID          = "parent_incident_uid"
+	keyParentCheckUID             = "parent_check_uid"
+	keyRollupDepth                = "rollup_depth"
 )
+
+// AttachmentStore is the attachment side of the incident lifecycle (spec
+// 2026-08-21-01). Like PublicationHook it is a deliberately small interface so
+// this package never imports the files/attachment services — the dependency
+// runs the other way, and the incident state machine must not be able to fail
+// because a screenshot could not be written.
+//
+// Every call is best-effort at the call site: a missing screenshot is a
+// papercut, a missing incident is an outage nobody is paged for.
+type AttachmentStore interface {
+	// PutIncidentScreenshot stores (replacing any previous one) the PNG
+	// capture that is this incident's current onset evidence.
+	PutIncidentScreenshot(
+		ctx context.Context, orgUID, incidentUID string, png []byte, details models.JSONMap,
+	) (string, error)
+	// DeleteIncidentAttachments soft-deletes everything attached to the
+	// incident and reports how many rows changed.
+	DeleteIncidentAttachments(ctx context.Context, orgUID, incidentUID string) (int, error)
+	// DeleteIncidentAttachment soft-deletes ONE kind of attachment on the
+	// incident, so retiring the stale screenshot cannot take the path capture
+	// with it (or the other way round).
+	DeleteIncidentAttachment(ctx context.Context, orgUID, incidentUID, kind string) (int, error)
+	// ListIncidentAttachments renders the incident's live attachments for the
+	// API, signed download URLs included.
+	ListIncidentAttachments(ctx context.Context, orgUID, incidentUID string) ([]attachments.Response, error)
+}
+
+// AgentUploadRequester is the deported-agent side of onset evidence (spec
+// 2026-08-21-05).
+//
+// A deported agent cannot put a PNG on its JSON control channel, so its result
+// frame carries only a marker naming a capture it holds. When that result opens
+// or reopens an incident — and ONLY then — this asks the agent to upload the
+// bytes to POST /api/v1/agent/attachments under a topic THIS package generates
+// from the incident it just wrote.
+//
+// Same shape and same posture as PublicationHook: one small method, returning
+// nothing, so there is no failure the incident state machine could observe. The
+// implementation (agentws) drops the request when no live connection is
+// registered; the capture is then simply lost and the incident opens exactly as
+// it does today.
+type AgentUploadRequester interface {
+	// RequestScreenshotUpload asks the agent behind workerUID for the capture
+	// named by captureID, to be POSTed under topic.
+	RequestScreenshotUpload(ctx context.Context, workerUID, captureID, topic string)
+}
+
+// TraceRequest is what the incident pipeline hands to the path-trace
+// dispatcher: everything needed to run (or route) one capture, and nothing the
+// dispatcher would otherwise have to query back for.
+//
+// Topic is SERVER-GENERATED here, from the incident row this package just
+// wrote — same rule as the screenshot upload request, and for the same reason:
+// a topic is a storage key and an authorization subject.
+type TraceRequest struct {
+	OrgUID      string
+	IncidentUID string
+	CheckUID    string
+	// WorkerUID names the worker that produced the failing result. It is how
+	// the dispatcher decides WHERE to trace from: a capture run on the wrong
+	// host describes a route the probe never took.
+	WorkerUID string
+	// Region is the probing region, taken from the PERSISTED result row rather
+	// than from anything a deported agent said about itself.
+	Region string
+	// Trigger is TriggerIncidentOpen or TriggerIncidentReopen.
+	Trigger string
+	// Topic is the attachment topic to write the capture under.
+	Topic string
+	// Failure is the checker's network-reachability marker: the class, and the
+	// exact address and port the failing probe dialed.
+	Failure checkerdef.NetworkFailure
+}
+
+// TraceRequester is the path-diagnostics side of the incident lifecycle (spec
+// 2026-08-21-10).
+//
+// Same shape and same posture as AttachmentStore and AgentUploadRequester: one
+// small method returning NOTHING, so the incident state machine has no failure
+// to observe. The implementation runs the trace asynchronously — the failing
+// result is already reported and the incident already open by the time it
+// starts, which is the spec's "best-effort and asynchronous" requirement
+// expressed as a call-site property rather than as a promise.
+type TraceRequester interface {
+	// RequestTrace starts (or routes) one path capture. Never blocks on the
+	// trace itself.
+	RequestTrace(ctx context.Context, req *TraceRequest)
+}
 
 // PublicationHook is the status-page publication side of the incident
 // lifecycle (spec 2026-08-19-08). It is an interface, and deliberately a small
@@ -117,8 +219,6 @@ type PublicationHook interface {
 	// OnIncidentReopened reopens the SAME publication on a relapse rather than
 	// minting a second public entry.
 	OnIncidentReopened(ctx context.Context, incident *models.Incident)
-	// OnGroupMemberJoined appends a rate-limited "also affecting X" note.
-	OnGroupMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check)
 }
 
 // Service provides incident management functionality.
@@ -137,6 +237,24 @@ type Service struct {
 	// transition, `incidents`+`events` (immediate) alongside event writes.
 	// Nil-safe — a nil publisher no-ops (realtime disabled, tests).
 	rt *realtime.Publisher
+
+	// attachmentStore persists incident attachments (today: the browser
+	// screenshot of the onset). Nil-safe: every call goes through the
+	// attach*/reap* helpers below, which no-op when unset (tests, or a
+	// deployment with file storage disabled).
+	attachmentStore AttachmentStore
+
+	// agentUploads asks a deported agent for a capture it advertised but could
+	// not send. Nil-safe: the call goes through requestAgentScreenshot, which
+	// no-ops when unset (the in-process worker path, tests, or any deployment
+	// with no agent transport).
+	agentUploads AgentUploadRequester
+
+	// traces asks for the MTR-style path capture when a check goes down on a
+	// network-reachability failure. Nil-safe: the call goes through
+	// requestTraceroute, which no-ops when unset (tests, or a deployment with
+	// file storage disabled).
+	traces TraceRequester
 
 	// maintenance resolves "is this check in an active maintenance window?".
 	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
@@ -162,8 +280,238 @@ func (s *Service) SetPublicationHook(hook PublicationHook) {
 	s.publications = hook
 }
 
-// publishOpened / publishResolved / publishReopened / publishMemberJoined are
-// the nil-safe wrappers every incident-lifecycle call site uses.
+// SetAttachmentStore wires the attachment side. Optional.
+func (s *Service) SetAttachmentStore(store AttachmentStore) {
+	s.attachmentStore = store
+}
+
+// SetAgentUploadRequester wires the deported-agent upload-request side.
+// Optional.
+func (s *Service) SetAgentUploadRequester(requester AgentUploadRequester) {
+	s.agentUploads = requester
+}
+
+// SetTraceRequester wires the path-diagnostics side. Optional.
+func (s *Service) SetTraceRequester(requester TraceRequester) {
+	s.traces = requester
+}
+
+// requestTraceroute asks for a path capture for the incident this result just
+// opened or reopened (spec 2026-08-21-10).
+//
+// THREE GATES, IN THIS ORDER, AND EACH ONE MATTERS:
+//
+//  1. TRANSITIONS ONLY. Like persistScreenshot, this is reached from
+//     createIncident and reopenIncident and nowhere else. A check that flaps
+//     every 30 s produces one trace per outage, not 2,880 a day.
+//  2. NETWORK-REACHABILITY FAILURES ONLY. No marker, no trace. An HTTP 500, a
+//     keyword mismatch or an expiring certificate never carries one (the
+//     checker sets it at transport-error sites only), so the "do not trace
+//     application failures" rule is a property of where the field is written
+//     rather than of a condition here that could rot.
+//  3. OPT-IN. The check's own answer wins; nil defers to the org.
+//
+// A marker with no address is dropped rather than re-resolved: tracing a
+// freshly resolved name could point at a different machine than the one that
+// actually failed, and a confidently wrong path is worse than none.
+func (s *Service) requestTraceroute(
+	ctx context.Context, check *models.Check, incident *models.Incident,
+	result *models.Result, trigger string,
+) {
+	if s.traces == nil || result == nil || result.Diagnostics == nil {
+		return
+	}
+
+	failure := result.Diagnostics.NetworkFailure
+	if failure == nil || failure.Address == "" {
+		return
+	}
+
+	if !s.tracerouteEnabled(ctx, check) {
+		return
+	}
+
+	req := &TraceRequest{
+		OrgUID:      check.OrganizationUID,
+		IncidentUID: incident.UID,
+		CheckUID:    check.UID,
+		Trigger:     trigger,
+		Topic:       attachments.IncidentTracerouteTopic(incident.UID),
+		Failure:     *failure,
+	}
+
+	if result.WorkerUID != nil {
+		req.WorkerUID = *result.WorkerUID
+	}
+
+	if result.Region != nil {
+		req.Region = *result.Region
+	}
+
+	s.traces.RequestTrace(ctx, req)
+}
+
+// dropStaleTraceroute retires the PREVIOUS onset's path capture on a relapse.
+//
+// UNCONDITIONALLY, unlike the screenshot — and the asymmetry is the point. A
+// screenshot arrives WITH the failing result, so "did this relapse bring one?"
+// is answerable right here. A trace is started afterwards and may never
+// complete (no capability, rate-limited, agent gone, budget blown), so the only
+// way to guarantee the incident never shows a path from the previous outage
+// next to a relapse it does not describe is to drop it now and let the new one
+// land if it can.
+func (s *Service) dropStaleTraceroute(
+	ctx context.Context, check *models.Check, incident *models.Incident,
+) {
+	if s.attachmentStore == nil {
+		return
+	}
+
+	if _, err := s.attachmentStore.DeleteIncidentAttachment(
+		ctx, check.OrganizationUID, incident.UID, attachments.KindTraceroute,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to drop stale incident traceroute",
+			"incidentUid", incident.UID, "error", err)
+	}
+}
+
+// tracerouteEnabled resolves check → org → on.
+//
+// A read error resolves to the DEFAULT (on) rather than to off: the parameter
+// row is the org's OVERRIDE, and a database blip must not silently look like an
+// operator having turned the feature off.
+func (s *Service) tracerouteEnabled(ctx context.Context, check *models.Check) bool {
+	if check.TracerouteOnFailure != nil {
+		return *check.TracerouteOnFailure
+	}
+
+	param, err := s.db.GetOrgParameter(ctx, check.OrganizationUID, models.ParamKeyTracerouteEnabled)
+	if err != nil || param == nil {
+		return true
+	}
+
+	enabled, ok := param.Value[models.ParameterValueKey].(bool)
+	if !ok {
+		return true
+	}
+
+	return enabled
+}
+
+// persistScreenshot writes the triggering result's browser capture as the
+// incident's screenshot attachment, when there is one.
+//
+// TRANSITIONS ONLY. This is called from createIncident and reopenIncident and
+// nowhere else, which is the whole storage argument of the feature: a 30 s
+// browser check that flaps all day produces 2,880 captures, and exactly the
+// handful that opened or reopened an incident are kept. Every other capture
+// only ever existed in the worker's memory and dies with the result.
+//
+// Best-effort: a storage failure is logged and the incident proceeds.
+func (s *Service) persistScreenshot(
+	ctx context.Context, check *models.Check, incident *models.Incident,
+	result *models.Result, trigger string,
+) {
+	if result == nil || result.Diagnostics == nil || result.Diagnostics.Screenshot == nil {
+		return
+	}
+
+	shot := result.Diagnostics.Screenshot
+	if len(shot.PNG) == 0 {
+		// The agent path advertises a capture it holds rather than sending the
+		// bytes (see checkerdef.Screenshot). Ask for it: the upload arrives
+		// out-of-band through POST /api/v1/agent/attachments.
+		s.requestAgentScreenshot(ctx, incident, result, shot)
+
+		return
+	}
+
+	if s.attachmentStore == nil {
+		return
+	}
+
+	details := models.JSONMap{
+		attachments.DetailKeyTrigger:  trigger,
+		attachments.DetailKeyCheckUID: check.UID,
+	}
+
+	if !shot.CapturedAt.IsZero() {
+		details[attachments.DetailKeyCapturedAt] = shot.CapturedAt.UTC().Format(time.RFC3339)
+	}
+
+	// Region comes from the PERSISTED result row, never from the checker: a
+	// deported agent must not be the authority on where it ran.
+	if result.Region != nil {
+		details[attachments.DetailKeyRegion] = *result.Region
+	}
+
+	if _, err := s.attachmentStore.PutIncidentScreenshot(
+		ctx, check.OrganizationUID, incident.UID, shot.PNG, details,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to persist incident screenshot",
+			"incidentUid", incident.UID, "error", err)
+	}
+}
+
+// requestAgentScreenshot asks the agent that produced this result to upload the
+// capture it advertised (spec 2026-08-21-05).
+//
+// BOUNDING THE ASK IS STRUCTURAL, NOT A COUNTER. This is reached only from
+// persistScreenshot, which is called only from createIncident and
+// reopenIncident. An agent that sets the marker on every single failing result
+// therefore still causes at most ONE request per open and one per reopen — the
+// incident state machine is the bound, so there is no way to talk the server
+// into an unbounded number of uploads by being chatty.
+//
+// The topic is built HERE, from the incident row the server just wrote. Nothing
+// about it comes from the agent. captureID is echoed verbatim, which is fine:
+// it names a slot in the agent's own memory and never becomes a storage key.
+func (s *Service) requestAgentScreenshot(
+	ctx context.Context, incident *models.Incident, result *models.Result, shot *checkerdef.Screenshot,
+) {
+	if s.agentUploads == nil || !shot.Available || shot.CaptureID == "" {
+		return
+	}
+
+	if result.WorkerUID == nil || *result.WorkerUID == "" {
+		return
+	}
+
+	s.agentUploads.RequestScreenshotUpload(
+		ctx, *result.WorkerUID, shot.CaptureID, attachments.IncidentScreenshotTopic(incident.UID),
+	)
+}
+
+// dropStaleScreenshot removes the previous onset's evidence when a relapse
+// brought none of its own.
+//
+// Same rule as failureResponse on reopen: a screenshot of the ORIGINAL outage
+// shown next to an incident whose current onset is a different failure is
+// worse than no screenshot — it invites the reader to diagnose the wrong
+// thing. persistScreenshot already replaces on write, so this only has to
+// handle the "relapse produced no capture" branch.
+func (s *Service) dropStaleScreenshot(
+	ctx context.Context, check *models.Check, incident *models.Incident, result *models.Result,
+) {
+	if s.attachmentStore == nil {
+		return
+	}
+
+	if result != nil && result.Diagnostics != nil &&
+		result.Diagnostics.Screenshot != nil && len(result.Diagnostics.Screenshot.PNG) > 0 {
+		return
+	}
+
+	if _, err := s.attachmentStore.DeleteIncidentAttachment(
+		ctx, check.OrganizationUID, incident.UID, attachments.KindScreenshot,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to drop stale incident screenshot",
+			"incidentUid", incident.UID, "error", err)
+	}
+}
+
+// publishOpened / publishResolved / publishReopened are the nil-safe wrappers
+// every incident-lifecycle call site uses.
 func (s *Service) publishOpened(ctx context.Context, incident *models.Incident) {
 	if s.publications == nil {
 		return
@@ -186,14 +534,6 @@ func (s *Service) publishReopened(ctx context.Context, incident *models.Incident
 	}
 
 	s.publications.OnIncidentReopened(ctx, incident)
-}
-
-func (s *Service) publishMemberJoined(ctx context.Context, incident *models.Incident, check *models.Check) {
-	if s.publications == nil {
-		return
-	}
-
-	s.publications.OnGroupMemberJoined(ctx, incident, check)
 }
 
 // IsCheckInActiveMaintenance reports whether the check is inside an active
@@ -517,31 +857,23 @@ func confirmationElapsedDerive(check *models.Check, newStreak int, now time.Time
 	return !now.Before(firstFailure.Add(confirmation))
 }
 
-// routeCheckResultWithIncident dispatches to the per-check or group state
-// machine using a pre-fetched active incident (or nil). Extracted from
-// ProcessCheckResult to keep cyclomatic complexity manageable; the
-// pre-fetched incident lets the validating-state derivation upstream and the
-// state-machine downstream agree on what the active incident is for this
-// result.
+// routeCheckResultWithIncident dispatches to the incident state machine using
+// a pre-fetched active incident (or nil). Extracted from ProcessCheckResult to
+// keep cyclomatic complexity manageable; the pre-fetched incident lets the
+// validating-state derivation upstream and the state-machine downstream agree
+// on what the active incident is for this result.
+//
+// Incidents are ALWAYS per-check (spec 2026-08-24-14). A check that belongs to
+// a check group takes exactly this path too — group membership is an
+// organizational and display concept, never an incident-identity one. The
+// consolidated "N/M checks down" view is rebuilt at read time (dash0) and at
+// the publication layer (status pages) instead of being baked into the row.
 func (s *Service) routeCheckResultWithIncident(
 	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
 	incident *models.Incident,
 ) error {
-	// Route uses the active incident's CheckGroupUID first; falls back to the
-	// check's group when there's no active incident yet.
-	isGroup := (incident != nil && incident.CheckGroupUID != nil) ||
-		(incident == nil && check.CheckGroupUID != nil)
-
 	if isFailure {
-		if isGroup {
-			return s.handleGroupFailure(ctx, check, result, incident)
-		}
-
 		return s.handleFailure(ctx, check, result, incident)
-	}
-
-	if isGroup {
-		return s.handleGroupSuccess(ctx, check, result, incident)
 	}
 
 	return s.handleSuccess(ctx, check, result, incident)
@@ -621,7 +953,7 @@ func confirmationElapsed(check *models.Check, now time.Time) bool {
 
 // recoveryElapsed reports whether the *effective* RecoveryPeriod has passed
 // since the first success arrived during the active incident. The effective
-// period is flap-aware (see effectiveRecoveryPeriod): a flapping check must
+// period is flap-aware (see models.Check.EffectiveRecoveryPeriod): a flapping check must
 // stay stable progressively longer before auto-resolving. A 0-second base
 // period means "resolve immediately on first success".
 //
@@ -637,68 +969,21 @@ func recoveryElapsed(check *models.Check, incident *models.Incident, now time.Ti
 		return false
 	}
 
-	return !now.Before(check.FirstSuccessSinceFailureAt.Add(effectiveRecoveryPeriod(check)))
-}
-
-// recoveryHardCeiling bounds the effective recovery period in wall-clock time,
-// mirroring the existing reopen-cooldown clamp (maxCooldown). Even a long
-// backoff or a large multiplier can never push the required stability beyond
-// this.
-const recoveryHardCeiling = 30 * time.Minute
-
-// effectiveRecoveryPeriod returns the stability required before an incident
-// auto-resolves, given how much the check has been flapping:
-//
-//	effective = min( R · F^flapCount , R · MaxRecoveryMultiplier , HARD_CEILING )
-//
-// where R = RecoveryPeriodSeconds and F = FlapBackoffFactor. It short-circuits
-// to a plain R (today's constant behavior) when the flapping feature is off
-// for this check — F<=1, FlappingWindowSeconds==0, or no flaps accumulated yet
-// — so existing checks never regress.
-func effectiveRecoveryPeriod(check *models.Check) time.Duration {
-	base := time.Duration(check.RecoveryPeriodSeconds) * time.Second
-
-	if check.FlapBackoffFactor <= 1 || check.FlappingWindowSeconds == 0 || check.FlapCount <= 0 {
-		return base
-	}
-
-	// Cap multiplier: required recovery never exceeds R × MaxRecoveryMultiplier.
-	capMult := check.MaxRecoveryMultiplier
-	if capMult < 1 {
-		capMult = 1
-	}
-
-	// Compute F^flapCount in integer space, short-circuiting once it reaches or
-	// exceeds the cap so a large flapCount can't overflow.
-	multiplier := 1
-	for range check.FlapCount {
-		multiplier *= check.FlapBackoffFactor
-		if multiplier >= capMult {
-			multiplier = capMult
-
-			break
-		}
-	}
-
-	effective := base * time.Duration(multiplier)
-	if effective > recoveryHardCeiling {
-		effective = recoveryHardCeiling
-	}
-
-	return effective
+	return !now.Before(check.FirstSuccessSinceFailureAt.Add(check.EffectiveRecoveryPeriod()))
 }
 
 // bumpFlap updates the check's rolling flap counter for an outage onset at
 // `now`. If this is the first-ever outage, or the previous outage is older
 // than the flapping window, the counter resets to 0 (this outage starts a
 // fresh window). Otherwise it increments — the outage lands inside the active
-// window and counts as a flap. LastOutageAt is always advanced to `now`.
+// window and counts as a flap. LastOutageAt is always advanced to `now`. The
+// lazy-reset rule itself lives once on the model
+// (models.Check.FlappingWindowElapsed) so this write path and the read-path
+// EffectiveFlapCount can never drift apart.
 //
 // Mutates the in-memory check; the caller persists flap_count / last_outage_at.
 func bumpFlap(check *models.Check, now time.Time) {
-	window := time.Duration(check.FlappingWindowSeconds) * time.Second
-
-	if check.LastOutageAt == nil || window == 0 || now.Sub(*check.LastOutageAt) > window {
+	if check.FlappingWindowElapsed(now) {
 		check.FlapCount = 0
 	} else {
 		check.FlapCount++
@@ -739,6 +1024,9 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 	incident.Details = failureDetails(result)
+	// FlapLevel snapshots the flap count recordFlap just bumped, so the
+	// incident carries the level it actually opened at (spec 2026-08-24-05).
+	incident.FlapLevel = check.FlapCount
 
 	// Roll up under a hard parent if one is open within the correlation window.
 	s.applyRollup(ctx, check, incident)
@@ -746,6 +1034,11 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	if err := s.db.CreateIncident(ctx, incident); err != nil {
 		return fmt.Errorf("failed to create incident: %w", err)
 	}
+
+	// After the row exists: the attachment topic is keyed on the incident uid,
+	// so there is nothing to attach to before this point.
+	s.persistScreenshot(ctx, check, incident, result, attachments.TriggerIncidentOpen)
+	s.requestTraceroute(ctx, check, incident, result, attachments.TriggerIncidentOpen)
 
 	// Emit incident created event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
@@ -757,6 +1050,11 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident created event: %w", err)
 	}
+
+	// Forward rollup: this check may itself be a hard parent whose dependents
+	// already opened and are already paging. The parent confirming LAST is the
+	// normal ordering (spec 2026-08-24-15), so re-evaluate them now.
+	s.rollUpExistingChildren(ctx, check, incident, incident.StartedAt)
 
 	s.publishOpened(ctx, incident)
 
@@ -861,7 +1159,7 @@ func calculateCooldown(check *models.Check) time.Duration {
 // equals the configured RecoveryPeriodSeconds; with flapping active it reflects
 // the per-flap backoff and cap. See spec 2026-06-30-07.
 func effectiveRecoveryPeriodSeconds(check *models.Check) int {
-	return int(effectiveRecoveryPeriod(check) / time.Second)
+	return int(check.EffectiveRecoveryPeriod() / time.Second)
 }
 
 // tryReopenIncident looks for a recently resolved incident and reopens it if appropriate.
@@ -915,11 +1213,16 @@ func (s *Service) reopenIncident(
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
 	newDetails := lastFailureDetails(incident.Details, result)
+	// FlapLevel snapshots the flap count recordFlap just bumped above, so a
+	// reopened incident reflects the escalated level it reopened at (spec
+	// 2026-08-24-05) — mirrors the same assignment in createIncident.
+	newFlapLevel := check.FlapCount
 
 	update := models.IncidentUpdate{
 		State:               &activeState,
 		ClearResolvedAt:     true,
 		RelapseCount:        &newRelapseCount,
+		FlapLevel:           &newFlapLevel,
 		LastReopenedAt:      &now,
 		FailureCount:        &newFailureCount,
 		Details:             &newDetails,
@@ -952,8 +1255,16 @@ func (s *Service) reopenIncident(
 		return fmt.Errorf("failed to reopen incident: %w", err)
 	}
 
+	// A reopen is a NEW onset: the relapse's capture replaces the original
+	// one, and a relapse with no capture leaves no stale one behind.
+	s.dropStaleScreenshot(ctx, check, incident, result)
+	s.dropStaleTraceroute(ctx, check, incident)
+	s.persistScreenshot(ctx, check, incident, result, attachments.TriggerIncidentReopen)
+	s.requestTraceroute(ctx, check, incident, result, attachments.TriggerIncidentReopen)
+
 	// Pass check fields to the incident for notification payload
 	incident.RelapseCount = newRelapseCount
+	incident.FlapLevel = newFlapLevel
 
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
 		keyCheckUID:                   check.UID,
@@ -969,430 +1280,12 @@ func (s *Service) reopenIncident(
 	incident.State = activeState
 	incident.ResolvedAt = nil
 
-	s.publishReopened(ctx, incident)
-
-	return nil
-}
-
-// formatGroupTitle returns "<group> — N/M checks down". Used for both create
-// and rebuild — callers pass the current failing/total counts.
-func formatGroupTitle(group *models.CheckGroup, failing, total int) string {
-	name := "Group"
-	if group != nil {
-		name = group.Name
-	}
-
-	return fmt.Sprintf("%s — %d/%d checks down", name, failing, total)
-}
-
-// countEnabledGroupMembers returns the number of enabled checks in the group.
-// Used to compute the M in the "N/M" title.
-func (s *Service) countEnabledGroupMembers(ctx context.Context, orgUID, groupUID string) int {
-	filter := &models.ListChecksFilter{
-		CheckGroupUID: &groupUID,
-	}
-
-	checks, _, err := s.db.ListChecks(ctx, orgUID, filter)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to list group members for title",
-			"groupUID", groupUID, "error", err)
-
-		return 0
-	}
-
-	return len(checks)
-}
-
-// handleGroupFailure handles a failed result for a check that belongs to a group.
-func (s *Service) handleGroupFailure(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	if incident == nil && !confirmationElapsed(check, s.clock.Now()) {
-		return nil
-	}
-
-	if incident == nil {
-		return s.createOrReopenGroupIncident(ctx, check, result)
-	}
-
-	// Group incident is active — update or insert this check's member row.
-	return s.updateGroupMemberOnFailure(ctx, check, result, incident)
-}
-
-// updateGroupMemberOnFailure handles a check failure when the group incident exists.
-func (s *Service) updateGroupMemberOnFailure(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	member, err := s.db.GetIncidentMemberCheck(ctx, incident.UID, check.UID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to load incident member: %w", err)
-	}
-
-	now := s.clock.Now()
-
-	if member == nil {
-		// New member joining an active incident.
-		newMember := &models.IncidentMemberCheck{
-			IncidentUID:      incident.UID,
-			CheckUID:         check.UID,
-			JoinedAt:         now,
-			FirstFailureAt:   result.PeriodStart,
-			LastFailureAt:    result.PeriodStart,
-			FailureCount:     1,
-			CurrentlyFailing: true,
-		}
-		if err := s.db.UpsertIncidentMemberCheck(ctx, newMember); err != nil {
-			return fmt.Errorf("failed to insert new member: %w", err)
-		}
-
-		// A new component joined an outage customers may already be reading
-		// about — say so, once, rate-limited on the publication side.
-		s.publishMemberJoined(ctx, incident, check)
-	} else {
-		// Bump the member's failure count, mark currently_failing, advance the
-		// last_failure_at timestamp. Same path for "still failing" and "relapse".
-		newCount := member.FailureCount + 1
-		failing := true
-		mUpdate := &models.IncidentMemberUpdate{
-			LastFailureAt:    &result.PeriodStart,
-			FailureCount:     &newCount,
-			CurrentlyFailing: &failing,
-		}
-		if err := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); err != nil {
-			return fmt.Errorf("failed to update member: %w", err)
-		}
-	}
-
-	// Bump the incident's aggregate failure count and re-evaluate escalation.
-	newFailureCount := incident.FailureCount + 1
-	update := &models.IncidentUpdate{FailureCount: &newFailureCount}
-
-	if incident.EscalatedAt == nil {
-		// Per-spec: escalation fires the first time any individual member crosses
-		// its own escalation threshold.
-		var memberFailureCount int
-		if member != nil {
-			memberFailureCount = member.FailureCount + 1
-		} else {
-			memberFailureCount = 1
-		}
-
-		if memberFailureCount >= check.EscalationThreshold {
-			update.EscalatedAt = &now
-		}
-	}
-
-	// Rebuild title with the latest failing/total counts.
-	failing, total := s.groupCounts(ctx, incident, check)
-	if failing > 0 && total > 0 {
-		group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-		title := formatGroupTitle(group, failing, total)
-		update.Title = &title
-	}
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, update); err != nil {
-		return fmt.Errorf("failed to update group incident: %w", err)
-	}
-
-	if update.EscalatedAt != nil {
-		if err := s.emitEvent(
-			ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
-				keyCheckUID:            check.UID,
-				keyCheckSlug:           check.Slug,
-				keyCheckName:           check.Name,
-				keyFailureCount:        newFailureCount,
-				keyEscalationThreshold: check.EscalationThreshold,
-			}); err != nil {
-			return fmt.Errorf("failed to emit group escalation event: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// groupCounts returns (failing, total) for an active group incident. `total`
-// is the count of currently-enabled checks in the group at evaluation time.
-func (s *Service) groupCounts(
-	ctx context.Context, incident *models.Incident, check *models.Check,
-) (int, int) {
-	if incident == nil || incident.CheckGroupUID == nil {
-		return 0, 0
-	}
-
-	failing, err := s.db.CountFailingIncidentMembers(ctx, incident.UID)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to count failing members",
-			"incidentUID", incident.UID, "error", err)
-	}
-
-	total := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-
-	return failing, total
-}
-
-// createOrReopenGroupIncident tries to reopen a recently-resolved group
-// incident, otherwise creates a new one with this check as the trigger.
-func (s *Service) createOrReopenGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
-) error {
-	if check.CheckGroupUID == nil {
-		return nil
-	}
-
-	cooldown := calculateCooldown(check)
-	if cooldown > 0 {
-		since := s.clock.Now().Add(-cooldown)
-
-		incident, err := s.db.FindRecentlyResolvedIncidentByGroupUID(ctx, *check.CheckGroupUID, since)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("failed to find recently resolved group incident: %w", err)
-		}
-
-		if incident != nil && incident.AcknowledgedBy == nil {
-			return s.reopenGroupIncident(ctx, check, result, incident)
-		}
-	}
-
-	return s.createGroupIncident(ctx, check, result)
-}
-
-// createGroupIncident inserts a new group incident with this check as trigger
-// and inserts the first member row.
-func (s *Service) createGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
-) error {
-	if check.CheckGroupUID == nil {
-		return nil
-	}
-
-	group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
-	totalMembers := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *check.CheckGroupUID)
-	if totalMembers == 0 {
-		totalMembers = 1
-	}
-
-	title := formatGroupTitle(group, 1, totalMembers)
-	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
-	incident.CheckGroupUID = check.CheckGroupUID
-	incident.Details = failureDetails(result)
-
-	if err := s.db.CreateIncident(ctx, incident); err != nil {
-		// Race: another concurrent failure beat us to it. Re-fetch the existing
-		// active group incident and attach this check as a member.
-		if isUniqueConstraintError(err) {
-			existing, lookupErr := s.db.FindActiveIncidentByGroupUID(ctx, *check.CheckGroupUID)
-			if lookupErr != nil {
-				return fmt.Errorf("group incident race: lookup after unique violation: %w", lookupErr)
-			}
-
-			slog.WarnContext(ctx, "group incident race resolved, joined existing",
-				"incidentUid", existing.UID, "checkUid", check.UID)
-
-			return s.updateGroupMemberOnFailure(ctx, check, result, existing)
-		}
-
-		return fmt.Errorf("failed to create group incident: %w", err)
-	}
-
-	member := &models.IncidentMemberCheck{
-		IncidentUID:      incident.UID,
-		CheckUID:         check.UID,
-		JoinedAt:         s.clock.Now(),
-		FirstFailureAt:   result.PeriodStart,
-		LastFailureAt:    result.PeriodStart,
-		FailureCount:     1,
-		CurrentlyFailing: true,
-	}
-	if err := s.db.UpsertIncidentMemberCheck(ctx, member); err != nil {
-		return fmt.Errorf("failed to insert trigger member: %w", err)
-	}
-
-	if err := s.emitEvent(
-		ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
-			keyCheckUID:  check.UID,
-			keyCheckSlug: check.Slug,
-			keyCheckName: check.Name,
-			keyStartedAt: result.PeriodStart,
-			keyResultUID: result.UID,
-		}); err != nil {
-		return fmt.Errorf("failed to emit group incident created event: %w", err)
-	}
-
-	s.publishOpened(ctx, incident)
-
-	return nil
-}
-
-// reopenGroupIncident reopens a previously-resolved group incident, marking
-// this check as a (possibly re-joining) member.
-func (s *Service) reopenGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	now := s.clock.Now()
-	activeState := models.IncidentStateActive
-	newRelapseCount := incident.RelapseCount + 1
-	newFailureCount := incident.FailureCount + 1
-	newDetails := lastFailureDetails(incident.Details, result)
-
-	update := models.IncidentUpdate{
-		State:               &activeState,
-		ClearResolvedAt:     true,
-		RelapseCount:        &newRelapseCount,
-		LastReopenedAt:      &now,
-		FailureCount:        &newFailureCount,
-		Details:             &newDetails,
-		ClearAcknowledgedAt: true,
-		ClearAcknowledgedBy: true,
-	}
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
-		return fmt.Errorf("failed to reopen group incident: %w", err)
-	}
-
-	incident.Details = newDetails
-
-	// Reset / insert this check's member row to "currently failing".
-	failing := true
-	one := 1
-	mUpdate := &models.IncidentMemberUpdate{
-		LastFailureAt:    &result.PeriodStart,
-		FailureCount:     &one,
-		CurrentlyFailing: &failing,
-	}
-	if err := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); err != nil {
-		// If no row exists yet (new member on reopen), insert one.
-		member := &models.IncidentMemberCheck{
-			IncidentUID:      incident.UID,
-			CheckUID:         check.UID,
-			JoinedAt:         now,
-			FirstFailureAt:   result.PeriodStart,
-			LastFailureAt:    result.PeriodStart,
-			FailureCount:     1,
-			CurrentlyFailing: true,
-		}
-		if upErr := s.db.UpsertIncidentMemberCheck(ctx, member); upErr != nil {
-			return fmt.Errorf("failed to upsert reopen member: %w", upErr)
-		}
-	}
-
-	incident.RelapseCount = newRelapseCount
-
-	if err := s.emitEvent(
-		ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
-			keyCheckUID:                   check.UID,
-			keyCheckSlug:                  check.Slug,
-			keyCheckName:                  check.Name,
-			keyRelapseCount:               newRelapseCount,
-			keyResultUID:                  result.UID,
-			keyEffectiveRecoveryThreshold: effectiveRecoveryPeriodSeconds(check),
-		}); err != nil {
-		return fmt.Errorf("failed to emit group reopened event: %w", err)
-	}
-
-	incident.State = activeState
-	incident.ResolvedAt = nil
+	// A reopen is an onset too: dependents that failed during the relapse may
+	// already be open and paging. `result.PeriodStart` — not incident.StartedAt,
+	// which still holds the ORIGINAL onset — is the correlation anchor.
+	s.rollUpExistingChildren(ctx, check, incident, result.PeriodStart)
 
 	s.publishReopened(ctx, incident)
-
-	return nil
-}
-
-// handleGroupSuccess handles a successful result for a check whose group has
-// an active incident.
-func (s *Service) handleGroupSuccess(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	if incident == nil {
-		return nil
-	}
-
-	member, err := s.db.GetIncidentMemberCheck(ctx, incident.UID, check.UID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to load member on success: %w", err)
-	}
-
-	if !member.CurrentlyFailing {
-		return nil
-	}
-
-	if !recoveryElapsed(check, incident, s.clock.Now()) {
-		return nil
-	}
-
-	// Mark this member recovered.
-	failing := false
-	recoveredAt := result.PeriodStart
-	mUpdate := &models.IncidentMemberUpdate{
-		LastRecoveryAt:   &recoveredAt,
-		CurrentlyFailing: &failing,
-	}
-	if updErr := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); updErr != nil {
-		return fmt.Errorf("failed to mark member recovered: %w", updErr)
-	}
-
-	failingCount, err := s.db.CountFailingIncidentMembers(ctx, incident.UID)
-	if err != nil {
-		return fmt.Errorf("failed to count failing members: %w", err)
-	}
-
-	if failingCount == 0 {
-		return s.resolveGroupIncident(ctx, check, result, incident)
-	}
-
-	// Some members still failing — rebuild title.
-	total := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-	if total == 0 {
-		total = failingCount
-	}
-
-	group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *incident.CheckGroupUID)
-	title := formatGroupTitle(group, failingCount, total)
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{Title: &title}); err != nil {
-		return fmt.Errorf("failed to rebuild group title: %w", err)
-	}
-
-	return nil
-}
-
-// resolveGroupIncident resolves a group incident when its last failing member recovers.
-func (s *Service) resolveGroupIncident(
-	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-) error {
-	resolvedState := models.IncidentStateResolved
-	resolvedAt := result.PeriodStart
-
-	update := models.IncidentUpdate{
-		State:      &resolvedState,
-		ResolvedAt: &resolvedAt,
-	}
-
-	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
-		return fmt.Errorf("failed to resolve group incident: %w", err)
-	}
-
-	durationSeconds := int64(resolvedAt.Sub(incident.StartedAt).Seconds())
-
-	if err := s.emitEvent(
-		ctx, check.OrganizationUID, models.EventTypeIncidentResolved, incident, models.JSONMap{
-			keyCheckUID:        check.UID,
-			keyCheckSlug:       check.Slug,
-			keyCheckName:       check.Name,
-			keyResolvedAt:      resolvedAt,
-			keyDurationSeconds: durationSeconds,
-			keyTotalFailures:   incident.FailureCount,
-		}); err != nil {
-		return fmt.Errorf("failed to emit group resolved event: %w", err)
-	}
-
-	incident.State = resolvedState
-	incident.ResolvedAt = &resolvedAt
-
-	s.publishResolved(ctx, incident)
 
 	return nil
 }
@@ -1438,7 +1331,18 @@ func (s *Service) emitEvent(
 	// immediate so an opening incident reaches watching dashboards instantly.
 	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
-	// Queue notifications for incident lifecycle events
+	return s.queueLifecycleNotifications(ctx, orgUID, eventType, incident, payload)
+}
+
+// queueLifecycleNotifications decides what, if anything, an emitted incident
+// event pages. Split out of emitEvent because the switch has to enumerate
+// EVERY event type in the product (exhaustive lint), so it grows with families
+// that have nothing to do with incidents — the audit trail added twenty-six of
+// them at once.
+func (s *Service) queueLifecycleNotifications(
+	ctx context.Context, orgUID string, eventType models.EventType,
+	incident *models.Incident, payload models.JSONMap,
+) error {
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
@@ -1455,19 +1359,17 @@ func (s *Service) emitEvent(
 
 		// People who were PAGED for this incident only ever hear from the
 		// escalation machinery, which stops the moment the incident is handled.
-		// Without this they are paged and then never told it ended. Enqueued
-		// before the group branch on purpose: a group incident pages under its
-		// own UID, so the notice job works identically for it.
+		// Without this they are paged and then never told it ended.
 		if eventType == models.EventTypeIncidentResolved {
 			s.queueResolutionNotice(ctx, orgUID, incident.UID)
 		}
 
-		if incident.CheckGroupUID != nil {
-			s.queueGroupNotifications(ctx, orgUID, incident.UID, eventType)
-
-			return nil
-		}
-
+		// Every incident — grouped check or not — pages through the per-check
+		// fan-out (spec 2026-08-24-14). A correlated infra event that takes
+		// several members of one group down now produces one page per member,
+		// deliberately: prod and nonprod deserve distinct paging, and the
+		// merged group incident silently inherited the escalation state of
+		// whichever member happened to fail first.
 		checkUID, _ := payload["check_uid"].(string)
 		if checkUID == "" {
 			slog.WarnContext(ctx, "Missing check_uid in event payload", "eventType", eventType)
@@ -1488,6 +1390,10 @@ func (s *Service) emitEvent(
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed,
+		// A retroactive rollup is recorded on the child's timeline and never
+		// paged — the whole point of the attachment is that the child stops
+		// paging. See rollup.go.
+		models.EventTypeIncidentRolledUp,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
@@ -1497,13 +1403,44 @@ func (s *Service) emitEvent(
 		models.EventTypeStatusPageIncidentPublished,
 		models.EventTypeStatusPageIncidentUpdated,
 		models.EventTypeStatusPageIncidentResolved,
+		// A disabled status-page subscription is likewise the status page's
+		// business, and it is already recorded as its own event — paging
+		// on-call because a customer's webhook receiver broke would be noise.
+		models.EventTypeStatusSubscriberDisabled,
+		// A demoted custom domain is likewise the status page's business. It
+		// already alerts the organization's admins by email from the sweep
+		// (jobtypes.alertCustomDomainDemoted) and there is no anchor check to
+		// hang an incident on — incidents.check_uid is NOT NULL — so routing
+		// it through the on-call fan-out would mean inventing a fake one.
+		models.EventTypeStatusPageCustomDomainDemoted,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,
 		models.EventTypeOrgActivationFirstNotificationConfigured,
-		models.EventTypeOrgActivationFirstIncidentPaged:
+		models.EventTypeOrgActivationFirstIncidentPaged,
+		// The security/configuration audit trail (spec 2026-08-21-09) is
+		// recorded, never paged. An escalation policy edit is a fact for the
+		// audit page; waking the on-call engineer for it would be absurd.
+		models.EventTypeAuthLoginSucceeded, models.EventTypeAuthLoginFailed,
+		models.EventTypeAuthLogout,
+		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,
+		models.EventTypeAuthTokenMisuse,
+		models.EventTypeMemberInvited, models.EventTypeMemberJoined,
+		models.EventTypeMemberRemoved, models.EventTypeMemberRoleChanged,
+		models.EventTypeIntegrationCreated, models.EventTypeIntegrationUpdated,
+		models.EventTypeIntegrationDeleted,
+		models.EventTypeEscalationPolicyCreated, models.EventTypeEscalationPolicyUpdated,
+		models.EventTypeEscalationPolicyDeleted,
+		models.EventTypeOnCallScheduleCreated, models.EventTypeOnCallScheduleUpdated,
+		models.EventTypeOnCallScheduleDeleted,
+		models.EventTypeStatusPageCreated, models.EventTypeStatusPageUpdated,
+		models.EventTypeStatusPageDeleted,
+		models.EventTypeMaintenanceWindowCreated, models.EventTypeMaintenanceWindowUpdated,
+		models.EventTypeMaintenanceWindowDeleted,
+		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated:
 		// No notifications for these event types — operator actions, soft
-		// escalation failures, status updates, or activation milestones.
+		// escalation failures, status updates, activation milestones, or
+		// audit-trail entries.
 	case models.EventTypeIncidentComment:
 		// Comments DO notify — but never through here. addCommentByOrgUID
 		// writes its own event row and calls queueCommentNotifications
@@ -1543,47 +1480,35 @@ func (s *Service) queueResolutionNotice(ctx context.Context, orgUID, incidentUID
 	}
 }
 
-// queueGroupNotifications fans out a single notification per (connection,
-// event-type), where the connection set is the union of every currently-
-// failing member's connections. Recovered members do not bring their
-// channels into mid-incident events, but they DO contribute to the
-// resolved event so every channel that fired on creation also hears about
-// the recovery.
-func (s *Service) queueGroupNotifications(
-	ctx context.Context, orgUID, incidentUID string, eventType models.EventType,
-) {
-	members, err := s.db.ListIncidentMemberChecks(ctx, incidentUID)
-	if err != nil {
-		slog.WarnContext(ctx, "Failed to list group members for notification dedup",
-			"incidentUid", incidentUID, "error", err)
+// notificationExtras is the per-event-type extra payload a fan-out attaches to
+// a notification job.
+//
+// A struct rather than one parameter per kind: the list only ever grows (a
+// comment's body, an acknowledgment's actor, whatever the next event type
+// needs), and every existing call site would have to learn a new `nil`
+// argument each time. Nil-safe accessors keep the plain lifecycle paths at a
+// bare `nil`.
+type notificationExtras struct {
+	Comment        *notifications.CommentInfo
+	Acknowledgment *notifications.AckInfo
+}
 
-		return
+// comment returns the carried comment, or nil.
+func (e *notificationExtras) comment() *notifications.CommentInfo {
+	if e == nil {
+		return nil
 	}
 
-	seen := make(map[string]bool)
+	return e.Comment
+}
 
-	for _, member := range members {
-		if !member.CurrentlyFailing && eventType != models.EventTypeIncidentResolved {
-			continue
-		}
-
-		conns, err := s.db.ListChannelsForCheck(ctx, member.CheckUID)
-		if err != nil {
-			slog.WarnContext(ctx, "Failed to load connections for group member",
-				"checkUid", member.CheckUID, "error", err)
-
-			continue
-		}
-
-		for _, conn := range conns {
-			if !conn.Enabled || seen[conn.UID] {
-				continue
-			}
-
-			seen[conn.UID] = true
-			s.enqueueNotificationJob(ctx, orgUID, conn, incidentUID, eventType, nil)
-		}
+// acknowledgment returns the carried acknowledgment attribution, or nil.
+func (e *notificationExtras) acknowledgment() *notifications.AckInfo {
+	if e == nil {
+		return nil
 	}
+
+	return e.Acknowledgment
 }
 
 // enqueueNotificationJob marshals the config, creates a single job row, and
@@ -1591,18 +1516,20 @@ func (s *Service) queueGroupNotifications(
 // group, and comment — so the job config and the audit row can only ever be
 // built one way.
 //
-// comment is nil for lifecycle events and carries the body/author for
-// `incident.comment`; it is the only thing that differs between the paths,
-// which is why they are not separate functions.
+// extras is nil for plain lifecycle events and carries the per-event-type
+// extra payload otherwise (a comment's body/author, an acknowledgment's
+// actor); it is the only thing that differs between the paths, which is why
+// they are not separate functions.
 func (s *Service) enqueueNotificationJob(
 	ctx context.Context, orgUID string, conn *models.Integration,
-	incidentUID string, eventType models.EventType, comment *notifications.CommentInfo,
+	incidentUID string, eventType models.EventType, extras *notificationExtras,
 ) {
 	config, err := json.Marshal(jobtypes.NotificationJobConfig{
-		ConnectionUID: conn.UID,
-		IncidentUID:   incidentUID,
-		EventType:     string(eventType),
-		Comment:       comment,
+		ConnectionUID:  conn.UID,
+		IncidentUID:    incidentUID,
+		EventType:      string(eventType),
+		Comment:        extras.comment(),
+		Acknowledgment: extras.acknowledgment(),
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to marshal notification config",
@@ -1744,23 +1671,36 @@ type IncidentResponse struct {
 	UID string `json:"uid"`
 	// Number is the short per-org reference rendered as `#42`. Every human-facing
 	// surface (dashboard, Slack, Telegram) addresses the incident by this.
-	Number              int64                    `json:"number"`
-	CheckUID            string                   `json:"checkUid"`
-	CheckSlug           *string                  `json:"checkSlug,omitempty"`
-	CheckName           *string                  `json:"checkName,omitempty"`
-	State               string                   `json:"state"`
-	StartedAt           time.Time                `json:"startedAt"`
-	ResolvedAt          *time.Time               `json:"resolvedAt,omitempty"`
-	ResolvedBy          *string                  `json:"resolvedBy,omitempty"`
-	ResolutionType      *string                  `json:"resolutionType,omitempty"`
-	EscalatedAt         *time.Time               `json:"escalatedAt,omitempty"`
-	AcknowledgedAt      *time.Time               `json:"acknowledgedAt,omitempty"`
-	AcknowledgedBy      *string                  `json:"acknowledgedBy,omitempty"`
-	SnoozedUntil        *time.Time               `json:"snoozedUntil,omitempty"`
-	SnoozedBy           *string                  `json:"snoozedBy,omitempty"`
-	SnoozeReason        *string                  `json:"snoozeReason,omitempty"`
-	FailureCount        int                      `json:"failureCount"`
-	RelapseCount        int                      `json:"relapseCount"`
+	Number         int64      `json:"number"`
+	CheckUID       string     `json:"checkUid"`
+	CheckSlug      *string    `json:"checkSlug,omitempty"`
+	CheckName      *string    `json:"checkName,omitempty"`
+	State          string     `json:"state"`
+	StartedAt      time.Time  `json:"startedAt"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
+	ResolvedBy     *string    `json:"resolvedBy,omitempty"`
+	ResolutionType *string    `json:"resolutionType,omitempty"`
+	EscalatedAt    *time.Time `json:"escalatedAt,omitempty"`
+	AcknowledgedAt *time.Time `json:"acknowledgedAt,omitempty"`
+	AcknowledgedBy *string    `json:"acknowledgedBy,omitempty"`
+	// AcknowledgedByActor is the RESOLVED identity of the acker — a name to
+	// render plus the channel it came from. Populated by the DETAIL endpoint
+	// only: resolving it costs a user lookup and an event lookup per incident,
+	// which the list endpoint's bounded query budget (spec 2026-08-18-01) does
+	// not have, and the surfaces that show an attribution are on the detail
+	// page. `acknowledgedBy` alone is NOT a substitute — it is NULL for every
+	// Slack, Discord and phone ack.
+	AcknowledgedByActor *IncidentActorResponse `json:"acknowledgedByActor,omitempty"`
+	SnoozedUntil        *time.Time             `json:"snoozedUntil,omitempty"`
+	SnoozedBy           *string                `json:"snoozedBy,omitempty"`
+	SnoozeReason        *string                `json:"snoozeReason,omitempty"`
+	FailureCount        int                    `json:"failureCount"`
+	RelapseCount        int                    `json:"relapseCount"`
+	// FlapLevel is the check's flap count at the moment this incident opened
+	// or last reopened — 0 (omitted) means it opened at the base level, not
+	// escalated by the adaptive-recovery flapping layer. See
+	// models.Incident.FlapLevel.
+	FlapLevel           int                      `json:"flapLevel,omitempty"`
 	LastReopenedAt      *time.Time               `json:"lastReopenedAt,omitempty"`
 	Title               *string                  `json:"title,omitempty"`
 	Description         *string                  `json:"description,omitempty"`
@@ -1774,6 +1714,15 @@ type IncidentResponse struct {
 	// incident open/reopen (failure_reason, first_result, and — after a
 	// relapse — last_failure). See failureDetails / lastFailureDetails.
 	Details models.JSONMap `json:"details,omitempty"`
+	// Attachments are the incident's stored evidence blobs (today: the browser
+	// screenshot of the onset), each with a short-lived signed download URL.
+	//
+	// Populated by the DETAIL endpoint only. The list endpoint deliberately
+	// leaves it empty: signing a URL per attachment per incident on a 100-row
+	// page is work nobody asked for, and the list view has nowhere to show one.
+	//
+	// NEVER PUBLIC — see attachments.Response.
+	Attachments []attachments.Response `json:"attachments,omitempty"`
 }
 
 // IncidentMemberResponse represents a single member of a group incident.
@@ -1833,6 +1782,7 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		SnoozeReason:        inc.SnoozeReason,
 		FailureCount:        inc.FailureCount,
 		RelapseCount:        inc.RelapseCount,
+		FlapLevel:           inc.FlapLevel,
 		LastReopenedAt:      inc.LastReopenedAt,
 		Title:               inc.Title,
 		Description:         inc.Description,
@@ -2237,7 +2187,32 @@ func (s *Service) GetIncident(
 		s.loadIncidentMembers(ctx, org.UID, incident, &response)
 	}
 
+	response.AcknowledgedByActor = s.resolveAckActor(ctx, org.UID, incident)
+
+	s.loadIncidentAttachments(ctx, org.UID, incident, &response)
+
 	return &response, nil
+}
+
+// loadIncidentAttachments fills the response's attachments. Best-effort: a
+// storage hiccup must degrade the incident page to "no screenshot", never to a
+// 500 on the page an operator opens during an outage.
+func (s *Service) loadIncidentAttachments(
+	ctx context.Context, orgUID string, incident *models.Incident, resp *IncidentResponse,
+) {
+	if s.attachmentStore == nil {
+		return
+	}
+
+	list, err := s.attachmentStore.ListIncidentAttachments(ctx, orgUID, incident.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list incident attachments",
+			"incidentUid", incident.UID, "error", err)
+
+		return
+	}
+
+	resp.Attachments = list
 }
 
 // GetIncidentByUID gets an incident by UID, requiring organization UID.
@@ -2307,8 +2282,26 @@ type AcknowledgeIncidentRequest struct {
 	// entirely — this records who actually did it, which the user UID alone
 	// cannot express.
 	TelegramActor string
-	Note          string // Optional free-text note
-	Via           string // "slack", "web", "email", "phone", etc.
+	// DiscordUserID / DiscordUsername attribute a Discord button ack. Discord
+	// users are not SolidPing users, so — exactly like the Slack pair above —
+	// these land on the event payload and AcknowledgedBy stays empty.
+	DiscordUserID   string
+	DiscordUsername string
+	Note            string // Optional free-text note
+	Via             string // "slack", "web", "email", "phone", etc.
+	// EchoOriginTeamID names the Slack workspace where this acknowledgment is
+	// ALREADY visible, and is therefore the workspace the ack-notice fan-out
+	// must skip: the message whose button was pressed is rewritten in place
+	// with "Acknowledged by @them", so a second message in the same thread
+	// tells the acker something they are already looking at.
+	//
+	// Set only by the Slack button path. A `/ack` slash command posts nothing
+	// visible in the channel, so it must NOT set this — otherwise the one
+	// workspace that asked is the one workspace that never hears.
+	EchoOriginTeamID string
+	// EchoOriginGuildID is the Discord counterpart of EchoOriginTeamID, set
+	// only by the Discord button path for the same reason.
+	EchoOriginGuildID string
 }
 
 // AcknowledgeIncident marks an incident as acknowledged. Accepts the org
@@ -2365,43 +2358,7 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	incident.AcknowledgedAt = &now
 	incident.AcknowledgedBy = update.AcknowledgedBy
 
-	// Create acknowledgment event
-	event := models.NewEvent(orgUID, models.EventTypeIncidentAcknowledged, models.ActorTypeUser)
-	event.IncidentUID = &incident.UID
-	event.CheckUID = &incident.CheckUID
-	event.Payload = models.JSONMap{
-		payloadKeyVia:    req.Via,
-		"slack_user_id":  req.SlackUserID,
-		"slack_username": req.SlackUsername,
-		"note":           req.Note,
-		keyCheckUID:      incident.CheckUID,
-	}
-	// Best-effort: the check may have been deleted since the incident opened;
-	// don't fail the acknowledgment over a missing slug/name.
-	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
-		event.Payload[keyCheckSlug] = check.Slug
-		event.Payload[keyCheckName] = check.Name
-	}
-	// Magic-link acks come in with the recipient email even when the
-	// recipient is not a known platform user — record it on the payload so
-	// the audit trail names the acker even when actor_uid is NULL.
-	if req.AcknowledgedByEmail != "" {
-		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
-	}
-	// Phone (DTMF) acks record the caller's number, mirroring the email
-	// attribution above.
-	if req.PhoneNumber != "" {
-		event.Payload["acknowledged_by_phone"] = req.PhoneNumber
-	}
-	// Telegram acks: the credited user is the chat's linked account, so without
-	// this the timeline could not tell "the on-call person acked from their DM"
-	// apart from "a colleague pressed the button in the team group".
-	if req.TelegramActor != "" {
-		event.Payload["acknowledged_by_telegram"] = req.TelegramActor
-	}
-	if req.AcknowledgedBy != "" {
-		event.ActorUID = &req.AcknowledgedBy
-	}
+	event := s.buildAcknowledgmentEvent(ctx, orgUID, incident, req)
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "Failed to create acknowledgment event",
@@ -2415,6 +2372,15 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 
 	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
+	// AFTER the sweep, never before: cancelPendingNotifications soft-deletes
+	// every pending job carrying this incident's UID, and an ack notice
+	// enqueued first would be swept by the very action that created it.
+	//
+	// Also strictly past the "already acknowledged" early return above, so a
+	// double-click, a retried Slack interaction or a second escalation email
+	// being clicked cannot fan out a second round of notices.
+	s.queueAckNotifications(ctx, orgUID, incident, req)
+
 	slog.InfoContext(ctx, "Incident acknowledged",
 		"incident_uid", incident.UID,
 		"via", req.Via,
@@ -2422,6 +2388,66 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	)
 
 	return incident, nil
+}
+
+// buildAcknowledgmentEvent assembles the append-only acknowledgment event,
+// including the per-transport attribution keys. Split out of
+// acknowledgeIncidentByOrgUID because the attribution list only ever grows —
+// one branch per chat platform — and the state transition above it should not
+// get longer every time a new one ships.
+func (s *Service) buildAcknowledgmentEvent(
+	ctx context.Context, orgUID string, incident *models.Incident, req *AcknowledgeIncidentRequest,
+) *models.Event {
+	event := models.NewEvent(orgUID, models.EventTypeIncidentAcknowledged, models.ActorTypeUser)
+	event.IncidentUID = &incident.UID
+	event.CheckUID = &incident.CheckUID
+	event.Payload = models.JSONMap{
+		payloadKeyVia:              req.Via,
+		payloadKeyAckSlackUserID:   req.SlackUserID,
+		payloadKeyAckSlackUsername: req.SlackUsername,
+		payloadKeyAckNote:          req.Note,
+		keyCheckUID:                incident.CheckUID,
+	}
+
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the acknowledgment over a missing slug/name.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		event.Payload[keyCheckSlug] = check.Slug
+		event.Payload[keyCheckName] = check.Name
+	}
+
+	// Magic-link acks come in with the recipient email even when the
+	// recipient is not a known platform user — record it on the payload so
+	// the audit trail names the acker even when actor_uid is NULL.
+	if req.AcknowledgedByEmail != "" {
+		event.Payload[payloadKeyAckEmail] = req.AcknowledgedByEmail
+	}
+
+	// Phone (DTMF) acks record the caller's number, mirroring the email
+	// attribution above.
+	if req.PhoneNumber != "" {
+		event.Payload[payloadKeyAckPhone] = req.PhoneNumber
+	}
+
+	// Telegram acks: the credited user is the chat's linked account, so without
+	// this the timeline could not tell "the on-call person acked from their DM"
+	// apart from "a colleague pressed the button in the team group".
+	if req.TelegramActor != "" {
+		event.Payload[payloadKeyAckTelegram] = req.TelegramActor
+	}
+
+	// Discord acks: same shape as the Slack pair, kept under their own keys so
+	// a timeline entry says which chat platform the button lived on.
+	if req.DiscordUserID != "" {
+		event.Payload[payloadKeyAckDiscordUserID] = req.DiscordUserID
+		event.Payload[payloadKeyAckDiscordUser] = req.DiscordUsername
+	}
+
+	if req.AcknowledgedBy != "" {
+		event.ActorUID = &req.AcknowledgedBy
+	}
+
+	return event
 }
 
 // cancelPendingNotifications soft-deletes future notification jobs for an
@@ -2453,14 +2479,21 @@ func (s *Service) GetCheckByUID(ctx context.Context, orgUID, checkUID string) (*
 
 // AcknowledgeIncidentFromSlack marks an incident as acknowledged via Slack.
 // This method is used by the Slack integration to acknowledge incidents.
+// slackTeamID is the workspace the ack happened in, and is what the ack-notice
+// fan-out skips: the Acknowledge button rewrites its own message in place with
+// "acknowledged by @them", so a second message in that workspace tells the
+// acker something they are already looking at. Pass "" from any future path
+// that posts nothing visible (a `/ack` slash command), or the one workspace
+// that asked is the one workspace that never hears.
 func (s *Service) AcknowledgeIncidentFromSlack(
-	ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername string,
+	ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername, slackTeamID string,
 ) (*models.Incident, error) {
 	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
-		IncidentUID:   incidentUID,
-		SlackUserID:   slackUserID,
-		SlackUsername: slackUsername,
-		Via:           "slack",
+		IncidentUID:      incidentUID,
+		SlackUserID:      slackUserID,
+		SlackUsername:    slackUsername,
+		Via:              CommentSourceSlack,
+		EchoOriginTeamID: slackTeamID,
 	})
 }
 
@@ -2525,6 +2558,17 @@ type AddCommentRequest struct {
 	// these two are display/provenance detail for the timeline.
 	TelegramChatID string
 	TelegramActor  string
+	// Discord attribution (discord source). Mirrors the Slack quartet.
+	DiscordUserID    string
+	DiscordUserName  string
+	DiscordGuildID   string
+	DiscordMessageID string
+	// EchoOriginGuildID names the Discord guild where this comment is ALREADY
+	// visible — the guild whose incident thread the author typed it into — and
+	// is therefore the guild the fan-out must skip. Set only by the thread-reply
+	// ingest path, never by the `comment` command, for the same reason as
+	// EchoOriginTeamID above.
+	EchoOriginGuildID string
 }
 
 // AddComment appends a user-authored comment to an incident's timeline as an
@@ -2579,6 +2623,60 @@ func (s *Service) AddCommentFromSlackCommand(
 	})
 }
 
+// AcknowledgeIncidentFromDiscord marks an incident acknowledged from a Discord
+// message-component (button) interaction. Same idempotent, escalation-canceling
+// path as the Slack variant; only the attribution differs.
+// guildID is the guild the button was pressed in, skipped by the ack-notice
+// fan-out for the same reason as the Slack workspace: that message is rewritten
+// in place AND an acknowledgment notice is already posted into the incident's
+// thread there.
+func (s *Service) AcknowledgeIncidentFromDiscord(
+	ctx context.Context, orgUID, incidentUID, discordUserID, discordUsername, guildID string,
+) (*models.Incident, error) {
+	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
+		IncidentUID:       incidentUID,
+		DiscordUserID:     discordUserID,
+		DiscordUsername:   discordUsername,
+		Via:               CommentSourceDiscord,
+		EchoOriginGuildID: guildID,
+	})
+}
+
+// AddCommentFromDiscord appends a comment ingested from a Discord thread reply.
+// The echo origin is set so the guild whose thread the author typed into does
+// not get the comment repeated back at them.
+func (s *Service) AddCommentFromDiscord(
+	ctx context.Context, orgUID, incidentUID, text, discordUserID, discordUserName, guildID, messageID string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:       incidentUID,
+		Text:              text,
+		Source:            CommentSourceDiscord,
+		DiscordUserID:     discordUserID,
+		DiscordUserName:   discordUserName,
+		DiscordGuildID:    guildID,
+		DiscordMessageID:  messageID,
+		EchoOriginGuildID: guildID,
+	})
+}
+
+// AddCommentFromDiscordCommand appends a comment posted with the bot's
+// `comment` command. Separate from AddCommentFromDiscord for the same reason
+// the Slack pair is split: a command posts nothing visible in the channel, so
+// the originating guild MUST still receive the fan-out.
+func (s *Service) AddCommentFromDiscordCommand(
+	ctx context.Context, orgUID, incidentUID, text, discordUserID, discordUserName, guildID string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:     incidentUID,
+		Text:            text,
+		Source:          CommentSourceDiscord,
+		DiscordUserID:   discordUserID,
+		DiscordUserName: discordUserName,
+		DiscordGuildID:  guildID,
+	})
+}
+
 // AddCommentFromTelegram appends a comment posted with the Telegram bot's
 // /comment command. Unlike Slack, the author is a VERIFIED linked contact, so
 // the comment is attributed to their SolidPing user (actorUID) exactly as a
@@ -2630,23 +2728,7 @@ func (s *Service) addCommentByOrgUID(
 		keyCheckUID:             incident.CheckUID,
 	}
 
-	switch req.Source {
-	case CommentSourceWeb:
-		if req.ActorUID != "" {
-			event.ActorUID = &req.ActorUID
-		}
-	case CommentSourceSlack:
-		payload[payloadKeySlackUserID] = req.SlackUserID
-		payload[payloadKeySlackUserName] = req.SlackUserName
-		payload[payloadKeySlackTeamID] = req.SlackTeamID
-		payload[payloadKeySlackTs] = req.SlackTs
-	case CommentSourceTelegram:
-		if req.ActorUID != "" {
-			event.ActorUID = &req.ActorUID
-		}
-		payload[payloadKeyTelegramChat] = req.TelegramChatID
-		payload[payloadKeyVia] = CommentSourceTelegram
-	}
+	applyCommentAttribution(event, payload, req)
 
 	// Best-effort check identity for rendering, mirroring the ack path — the
 	// check may have been deleted since the incident opened.
@@ -2679,6 +2761,36 @@ func (s *Service) addCommentByOrgUID(
 	return event, nil
 }
 
+// applyCommentAttribution records who authored a comment, in the shape each
+// source needs. Split out of addCommentByOrgUID for the same reason as the
+// acknowledgment attribution: the list grows once per chat platform, and the
+// function that validates and writes the comment should not grow with it.
+func applyCommentAttribution(event *models.Event, payload models.JSONMap, req *AddCommentRequest) {
+	switch req.Source {
+	case CommentSourceWeb:
+		if req.ActorUID != "" {
+			event.ActorUID = &req.ActorUID
+		}
+	case CommentSourceSlack:
+		payload[payloadKeySlackUserID] = req.SlackUserID
+		payload[payloadKeySlackUserName] = req.SlackUserName
+		payload[payloadKeySlackTeamID] = req.SlackTeamID
+		payload[payloadKeySlackTs] = req.SlackTs
+	case CommentSourceTelegram:
+		if req.ActorUID != "" {
+			event.ActorUID = &req.ActorUID
+		}
+
+		payload[payloadKeyTelegramChat] = req.TelegramChatID
+		payload[payloadKeyVia] = CommentSourceTelegram
+	case CommentSourceDiscord:
+		payload[payloadKeyDiscordUserID] = req.DiscordUserID
+		payload[payloadKeyDiscordUser] = req.DiscordUserName
+		payload[payloadKeyDiscordGuild] = req.DiscordGuildID
+		payload[payloadKeyDiscordMsgID] = req.DiscordMessageID
+	}
+}
+
 // commentAuthorName resolves the human label a channel message attributes the
 // comment to. Slack carries its own display name, Telegram carries the actor
 // label the bot saw, and a dashboard comment is looked up from the user row.
@@ -2692,6 +2804,8 @@ func (s *Service) commentAuthorName(ctx context.Context, req *AddCommentRequest)
 		if actor := strings.TrimSpace(req.TelegramActor); actor != "" {
 			return actor
 		}
+	case CommentSourceDiscord:
+		return strings.TrimSpace(req.DiscordUserName)
 	}
 
 	if req.ActorUID == "" {
@@ -2758,13 +2872,15 @@ func (s *Service) queueCommentNotifications(
 			continue
 		}
 
-		s.enqueueNotificationJob(ctx, orgUID, conn, incident.UID, models.EventTypeIncidentComment, comment)
+		s.enqueueNotificationJob(ctx, orgUID, conn, incident.UID, models.EventTypeIncidentComment,
+			&notificationExtras{Comment: comment})
 	}
 }
 
 // commentFanoutConnections resolves the connection set a comment reaches,
-// mirroring queueNotifications / queueGroupNotifications so a comment lands
-// exactly where the incident's own alerts landed.
+// mirroring queueNotifications so a comment lands exactly where the incident's
+// own alerts landed. Historical group incidents still fan out over their
+// member checks here — the read path for them is deliberately intact.
 func (s *Service) commentFanoutConnections(
 	ctx context.Context, incident *models.Incident,
 ) []*models.Integration {
@@ -2821,20 +2937,36 @@ func (s *Service) commentFanoutConnections(
 // Slack thread is stored once per incident, so every Slack connection in that
 // workspace would post into the very thread the author is reading.
 func isCommentEchoOrigin(conn *models.Integration, req *AddCommentRequest) bool {
-	if req.Source != CommentSourceSlack || conn.Type != models.ConnectionTypeSlack {
+	switch {
+	case req.Source == CommentSourceSlack && conn.Type == models.ConnectionTypeSlack:
+		if req.EchoOriginTeamID == "" {
+			return false
+		}
+
+		settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+		if err != nil || settings == nil {
+			return false
+		}
+
+		return settings.TeamID == req.EchoOriginTeamID
+	case req.Source == CommentSourceDiscord && conn.Type == models.ConnectionTypeDiscord:
+		// Guild-level, for the same reason as the Slack workspace match: the
+		// incident's Discord thread is stored once per incident, so any
+		// connection in that guild would post into the very thread the author
+		// is reading.
+		if req.EchoOriginGuildID == "" {
+			return false
+		}
+
+		settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
+		if err != nil || settings == nil {
+			return false
+		}
+
+		return settings.GuildID == req.EchoOriginGuildID
+	default:
 		return false
 	}
-
-	if req.EchoOriginTeamID == "" {
-		return false
-	}
-
-	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
-	if err != nil || settings == nil {
-		return false
-	}
-
-	return settings.TeamID == req.EchoOriginTeamID
 }
 
 // UnacknowledgeIncident clears the acknowledgment on an incident. Use case:
@@ -2876,6 +3008,18 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 
 	incident.AcknowledgedAt = nil
 	incident.AcknowledgedBy = nil
+
+	// Withdrawing an acknowledgment must not leave its notice in flight: a
+	// channel hearing "Alice acknowledged this" seconds after the ack was
+	// undone is worse than never hearing it, because it stops other people
+	// from picking the incident up. Ack already swept everything else pending
+	// for this incident and unack does not resume escalation on its own, so
+	// this sweep can only reach notices the ack itself queued.
+	//
+	// Unack is otherwise SILENT by decision (spec 2026-08-24-01): no
+	// notification of its own. The cleared state is visible on the incident
+	// row and the API response.
+	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnacknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID

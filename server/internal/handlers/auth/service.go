@@ -22,12 +22,14 @@ import (
 	"github.com/pquerna/otp/totp"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
+	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
@@ -138,7 +140,10 @@ type Service struct {
 	// fullCfg is the LIVE shared *config.Config pointer. The systemconfig
 	// overlay and ensureJWTSecret mutate fullCfg.Auth after NewService, so
 	// reads through it see the post-overlay values.
-	fullCfg      *config.Config
+	fullCfg *config.Config
+	// support is the instance support inbox. Only used to detach attribution
+	// when an org is deleted; nil-guarded (see SetSupportInbox).
+	support      *support.Service
 	jobsSvc      jobsvc.Service
 	entitlements EntitlementsChecker
 	patCache     map[string]*cachedPATClaims
@@ -213,12 +218,21 @@ type Context struct {
 	RemoteAddr string `json:"remoteAddr,omitempty"`
 }
 
-// ToMap converts Context to a map for storage.
+// ToMap converts Context to a map for storage, omitting fields with no
+// value. A session with no known provenance therefore stores no
+// userAgent/remoteAddr keys at all, rather than persisting them as `""` —
+// indistinguishable at read time from a pre-feature row.
 func (c *Context) ToMap() map[string]any {
-	return map[string]any{
-		"userAgent":  c.UserAgent,
-		"remoteAddr": c.RemoteAddr,
+	result := map[string]any{}
+	if c.UserAgent != "" {
+		result["userAgent"] = c.UserAgent
 	}
+
+	if c.RemoteAddr != "" {
+		result["remoteAddr"] = c.RemoteAddr
+	}
+
+	return result
 }
 
 // UserInfo represents user information returned in responses.
@@ -228,6 +242,42 @@ type UserInfo struct {
 	Name      string `json:"name,omitempty"`
 	AvatarURL string `json:"avatarUrl,omitempty"`
 	Role      string `json:"role"`
+	// MustChangePassword is the machine-readable signal that this session may
+	// do nothing but rotate its password (spec 2026-08-23-04). It rides on every
+	// login-shaped response and on /auth/me, so a client routes to its
+	// "set a new password" screen PROACTIVELY instead of discovering the state
+	// by tripping a 403 it would otherwise render as a dead "Permission denied".
+	//
+	// omitempty on purpose: the field is only ever meaningful when true, and
+	// UserInfo is also used to describe OTHER people (the membership-request
+	// admin view), where a user's pending-rotation state is none of the
+	// viewer's business — see newUserInfo's doc.
+	MustChangePassword bool `json:"mustChangePassword,omitempty"`
+}
+
+// newUserInfo builds the user payload every login-shaped response and /auth/me
+// carries. Funneling the construction through one function is what keeps a new
+// user field (mustChangePassword being the first) from reaching some responses
+// and not others — the same reason newOrganizationInfo exists, and the same
+// class of bug that let avatarUrl silently miss two of the login paths.
+//
+// Use it ONLY for the caller describing themselves. UserInfo also appears in
+// the membership-request admin view, which describes a DIFFERENT user to an
+// org admin; that site deliberately keeps a literal so a third party's
+// forced-rotation state is never disclosed.
+func newUserInfo(user *models.User, role string) *UserInfo {
+	if user == nil {
+		return nil
+	}
+
+	return &UserInfo{
+		UID:                user.UID,
+		Email:              user.Email,
+		Name:               user.Name,
+		AvatarURL:          user.AvatarURL,
+		Role:               role,
+		MustChangePassword: user.MustChangePassword,
+	}
 }
 
 // OrganizationInfo represents organization information.
@@ -235,7 +285,7 @@ type OrganizationInfo struct {
 	UID  string `json:"uid"`
 	Slug string `json:"slug"`
 	Name string `json:"name,omitempty"`
-	// LogoURL is the org's logo (absolute http(s) URL, or /pub/org-logos/<uid>
+	// LogoURL is the org's logo (absolute http(s) URL, or /pub/assets/<uid>
 	// for an uploaded one). Null means "no logo" and the client falls back to
 	// the product default.
 	LogoURL *string `json:"logoUrl"`
@@ -299,6 +349,11 @@ type TwoFAClaims struct {
 	OrgSlug string `json:"orgSlug"`
 	Role    string `json:"role"`
 	Purpose string `json:"purpose"`
+	// Method carries the FIRST factor across the 2FA hand-off, so the audit
+	// trail can record "password+totp" rather than losing how the user proved
+	// themselves before the code prompt. Empty on tokens minted before this
+	// field existed; withSecondFactor defaults those to password.
+	Method string `json:"method,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -466,11 +521,19 @@ func (s *Service) CheckMembershipSlot(ctx context.Context, orgUID string) error 
 // The subject is left blank: every template defines its own
 // {{define "subject"}} block, so duplicating the subject at the call
 // site only invites drift.
+//
+// Returns whether the job was successfully queued. This is NOT proof of
+// delivery — actual sending happens later, asynchronously, in the "email"
+// job type — only that the job row was created. Callers that need to report
+// delivery status to a user (e.g. the invitation create response) must also
+// check whether email sending is enabled instance-wide
+// (s.fullCfg.Email.Enabled): a queued job for a disabled sender is a no-op
+// at send time.
 func (s *Service) enqueueEmail(
 	ctx context.Context, orgUID, recipient, template string, data any,
-) {
+) bool {
 	if s.jobsSvc == nil || recipient == "" {
-		return
+		return false
 	}
 
 	cfg := emailJobConfig{
@@ -483,13 +546,18 @@ func (s *Service) enqueueEmail(
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to marshal email job config",
 			"template", template, "error", err)
-		return
+
+		return false
 	}
 
 	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeEmail), raw, nil); err != nil {
 		slog.ErrorContext(ctx, "Failed to enqueue email job",
 			"template", template, "error", err)
+
+		return false
 	}
+
+	return true
 }
 
 // Login authenticates a user and returns access and refresh tokens.
@@ -520,21 +588,29 @@ func (s *Service) Login(
 		return nil, err
 	}
 
-	authMethod := "password"
+	authMethod := AuthMethodPassword
+
+	// Every rejection below funnels through recordLoginFailed, which folds
+	// repeats and enforces the per-org hourly ceiling — see internal/audit.
+	auditCtx := auditActorCtx(ctx, "", authContext)
 
 	switch {
 	case user != nil && user.PasswordHash != nil && *user.PasswordHash != "":
 		if verifyErr := s.verifyLocalPassword(ctx, user, password); verifyErr != nil {
+			s.recordLoginFailed(auditCtx, orgSlug, email, auditReasonInvalidCredentials)
+
 			return nil, verifyErr
 		}
 	default:
 		ldapUser, ldapErr := s.authenticateViaLDAP(ctx, orgSlug, email, password)
 		if ldapErr != nil {
+			s.recordLoginFailed(auditCtx, orgSlug, email, auditReasonInvalidCredentials)
+
 			return nil, ldapErr
 		}
 
 		user = ldapUser
-		authMethod = "ldap"
+		authMethod = AuthMethodLDAP
 	}
 
 	// Resolve organization treating orgSlug as a preference
@@ -550,7 +626,7 @@ func (s *Service) Login(
 			orgSlugForToken = resolvedOrg.Slug
 		}
 
-		tempToken, tokenErr := s.generate2FATempToken(user.UID, orgSlugForToken, role)
+		tempToken, tokenErr := s.generate2FATempToken(user.UID, orgSlugForToken, role, authMethod)
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -616,13 +692,7 @@ func (s *Service) completeLogin(
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
 
-	userInfo := &UserInfo{
-		UID:       user.UID,
-		Email:     user.Email,
-		Name:      user.Name,
-		AvatarURL: user.AvatarURL,
-		Role:      role,
-	}
+	userInfo := newUserInfo(user, role)
 
 	if resolvedOrg == nil {
 		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "")
@@ -645,25 +715,13 @@ func (s *Service) completeLogin(
 		return nil, err
 	}
 
-	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := s.refreshTokenExpiry(ctx, resolvedOrg.UID, now, now)
-	refreshToken.ExpiresAt = &expiresAt
-	refreshToken.LastActiveAt = &now
+	refreshToken := s.newRefreshTokenRow(ctx, user, resolvedOrg, refreshTokenValue, method, now, authContext)
 
-	createdWith := authContext.ToMap()
-	if createdWith == nil {
-		createdWith = map[string]any{}
-	}
-	createdWith[keyMethod] = method
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: createdWith,
-	}
-
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.startSession(
+		ctx, actorFromUser(user), resolvedOrg, refreshToken, role, method, authContext,
+	); err != nil {
 		return nil, err
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role, refreshToken.UID)
 	if err != nil {
@@ -680,6 +738,67 @@ func (s *Service) completeLogin(
 		Organizations: orgSummaries,
 		LoginAction:   loginAction,
 	}, nil
+}
+
+// newRefreshTokenRow builds the refresh-token row a completed login persists,
+// tagged with the authentication method and the request provenance for
+// forensics (that tag is what the sessions listing shows).
+func (s *Service) newRefreshTokenRow(
+	ctx context.Context,
+	user *models.User,
+	resolvedOrg *models.Organization,
+	refreshTokenValue, method string,
+	now time.Time,
+	authContext Context,
+) *models.UserToken {
+	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
+	expiresAt := s.refreshTokenExpiry(ctx, resolvedOrg.UID, now, now)
+	refreshToken.ExpiresAt = &expiresAt
+	refreshToken.LastActiveAt = &now
+
+	createdWith := authContext.ToMap()
+	if createdWith == nil {
+		createdWith = map[string]any{}
+	}
+
+	createdWith[keyMethod] = method
+	refreshToken.Properties = models.JSONMap{
+		keyCreatedWith: createdWith,
+	}
+
+	return refreshToken
+}
+
+// startSession persists the refresh-token row that BRINGS A SESSION INTO
+// EXISTENCE, enforces the session cap, and records auth.login_succeeded.
+//
+// Every path that mints a real session must go through this function. It is
+// the lowest choke point that all of them share — a session is exactly a
+// `refresh`-type user_tokens row — and routing them all through one place is
+// what makes "who logged in?" answerable. Emitting per-path instead was the
+// first cut of spec 2026-08-21-09 and it silently missed federated logins,
+// 2FA logins, org switches, registration confirmations, invitation
+// acceptances and org creation.
+//
+// TestEverySessionMintingPathGoesThroughStartSession enforces this
+// structurally, so a NEW session path added later cannot quietly skip the
+// trail either.
+func (s *Service) startSession(
+	ctx context.Context,
+	actor sessionActor,
+	org *models.Organization,
+	refreshToken *models.UserToken,
+	role, method string,
+	authContext Context,
+) error {
+	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+		return err
+	}
+
+	s.enforceSessionCap(ctx, actor.UID)
+	s.recordLoginSucceeded(ctx, actor, org, role, method, authContext)
+
+	return nil
 }
 
 // enforceSessionCap prunes the user's active `refresh`-type sessions down to
@@ -950,9 +1069,17 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return err
 	}
 
-	_, err = s.db.DeleteUserToken(ctx, token.UID)
+	if _, err = s.db.DeleteUserToken(ctx, token.UID); err != nil {
+		return err
+	}
 
-	return err
+	if token.OrganizationUID != nil {
+		audit.Record(auditActorCtx(ctx, token.UserUID, Context{}), s.db, *token.OrganizationUID,
+			models.EventTypeAuthLogout,
+			audit.Target{Type: auditTargetUser, UID: token.UserUID}, nil)
+	}
+
+	return nil
 }
 
 // LogoutUser invalidates all refresh tokens for a user across all orgs.
@@ -1220,21 +1347,21 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
 
+// PATTokenPrefix is the literal prefix every personal access token carries. It
+// is what distinguishes a PAT from a session JWT without parsing either, both
+// for validation routing here and for audit actor classification in
+// middleware.actorTypeForToken.
+const PATTokenPrefix = "pat_"
+
 // ValidateToken validates a JWT or PAT token and returns its claims.
 func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claims, error) {
 	// Check if it's a PAT token
-	if strings.HasPrefix(tokenString, "pat_") {
+	if strings.HasPrefix(tokenString, PATTokenPrefix) {
 		return s.ValidatePATToken(ctx, tokenString)
 	}
 
@@ -1450,13 +1577,7 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
 
 	return &MeResponse{
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User:                      newUserInfo(user, role),
 		Organization:              newOrganizationInfo(org),
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
@@ -1501,13 +1622,7 @@ func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResp
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
 
 	return &MeResponse{
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User:                      newUserInfo(user, role),
 		Organization:              nil,
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
@@ -1615,6 +1730,10 @@ func extractCreatedWith(properties map[string]any) *TokenCreatedWith {
 
 	if remoteAddr, ok := raw["remoteAddr"].(string); ok {
 		createdWith.RemoteAddr = remoteAddr
+	}
+
+	if createdWith.Method == "" && createdWith.UserAgent == "" && createdWith.RemoteAddr == "" {
+		return nil
 	}
 
 	return createdWith
@@ -1740,6 +1859,18 @@ func (s *Service) CreatePAT(
 		return nil, err
 	}
 
+	// Name and prefix only. The token VALUE is the credential; storing it —
+	// or any suffix of it — in a table org admins can read would make the
+	// audit trail a credential store.
+	audit.Record(ctx, s.db, org.UID, models.EventTypeAuthTokenCreated,
+		audit.Target{Type: auditTargetToken, UID: token.UID, Name: req.Name},
+		models.JSONMap{
+			"token_kind":   "pat",
+			"token_name":   req.Name,
+			"token_prefix": tokenDisplayPrefix(tokenValue),
+			"scope_count":  len(req.Scopes),
+		})
+
 	return &CreateTokenResponse{
 		UID:       token.UID,
 		Token:     tokenValue,
@@ -1747,6 +1878,20 @@ func (s *Service) CreatePAT(
 		ExpiresAt: token.ExpiresAt,
 		CreatedAt: token.CreatedAt,
 	}, nil
+}
+
+// tokenDisplayPrefix returns the leading, non-secret slice of a token value —
+// enough for a human to match a trail entry against the token list, far too
+// little to authenticate with. The 8 characters after the "pat_" marker are
+// well under the entropy needed to guess the rest.
+func tokenDisplayPrefix(value string) string {
+	const prefixLen = len(PATTokenPrefix) + 8
+
+	if len(value) <= prefixLen {
+		return value
+	}
+
+	return value[:prefixLen]
 }
 
 // RevokeToken revokes (deletes) a user token. User-scoped, no org check needed.
@@ -1776,9 +1921,20 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 		s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeOAuthRefresh)
 	}
 
-	_, err = s.db.DeleteUserToken(ctx, tokenUID)
+	if _, err = s.db.DeleteUserToken(ctx, tokenUID); err != nil {
+		return err
+	}
 
-	return err
+	if token.OrganizationUID != nil {
+		audit.Record(ctx, s.db, *token.OrganizationUID, models.EventTypeAuthTokenRevoked,
+			audit.Target{Type: auditTargetToken, UID: token.UID, Name: stringFromMap(token.Properties, keyName)},
+			models.JSONMap{
+				"token_kind": string(token.Type),
+				"token_name": stringFromMap(token.Properties, keyName),
+			})
+	}
+
+	return nil
 }
 
 // SwitchOrg switches the user's current organization context.
@@ -1845,11 +2001,11 @@ func (s *Service) SwitchOrg(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodSwitchOrg, authContext,
+	); err != nil {
 		return nil, err
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	// Generate access token, bound to the new refresh-token row.
 	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
@@ -1862,13 +2018,7 @@ func (s *Service) SwitchOrg(
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:       user.UID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      role,
-		},
+		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -2025,8 +2175,18 @@ func (s *Service) GenerateTokensForOAuth(
 	ctx context.Context,
 	user *models.User,
 	org *models.Organization,
-	role string,
+	role, method string,
+	authContext Context,
 ) (*OAuthLoginResponse, error) {
+	if method == "" {
+		method = AuthMethodOAuth
+	}
+
+	// A federated callback is several frames away from the *http.Request and
+	// rarely threads an explicit Context; fall back to what the request-meta
+	// middleware parked on ctx (spec 2026-08-24-02).
+	authContext = contextFromRequestMeta(ctx, authContext)
+
 	// Generate refresh token
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
@@ -2039,17 +2199,19 @@ func (s *Service) GenerateTokensForOAuth(
 	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: map[string]any{
-			keyMethod: "oauth",
-		},
+	createdWith := authContext.ToMap()
+	if createdWith == nil {
+		createdWith = map[string]any{}
 	}
 
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	createdWith[keyMethod] = method
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+
+	if err = s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
+	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	// Generate access token, bound to the new refresh-token row.
 	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
@@ -2270,11 +2432,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		// No org to login to - return minimal response
 		return &LoginResponse{
 			TokenType: tokenTypeBearer,
-			User: &UserInfo{
-				UID:   user.UID,
-				Email: user.Email,
-				Name:  user.Name,
-			},
+			User:      newUserInfo(user, ""),
 		}, nil
 	}
 
@@ -2296,13 +2454,17 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "registration"}}
 
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	authContext := contextFromRequestMeta(ctx, Context{})
+	createdWith := authContext.ToMap()
+	createdWith[keyMethod] = AuthMethodRegistration
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+
+	if err = s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, AuthMethodRegistration, authContext,
+	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
 	if err != nil {
@@ -2314,12 +2476,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:   user.UID,
-			Email: user.Email,
-			Name:  user.Name,
-			Role:  role,
-		},
+		User:         newUserInfo(user, role),
 		Organization: newOrganizationInfo(org),
 	}, nil
 }
@@ -2386,7 +2543,12 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 
 		if createErr := s.db.CreateOrganizationMember(ctx, member); createErr != nil {
 			slog.ErrorContext(ctx, "Failed to auto-join org", "error", createErr, "orgUID", *param.OrganizationUID)
+
+			continue
 		}
+
+		s.recordMemberJoined(ctx, *param.OrganizationUID, userUID, userEmail,
+			models.MemberRoleUser, joinSourceAutoJoin)
 	}
 }
 
@@ -2581,7 +2743,17 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &hash}); err != nil {
+	// Clearing must_change_password here is what makes the flag a general
+	// capability rather than an admin-seed special case: the emailed reset link
+	// is a legitimate way to satisfy a forced rotation (it is the ONLY way, for
+	// a user who has forgotten the password they are being forced to change),
+	// so it must clear the flag exactly like the authenticated rotation does.
+	rotationCleared := false
+
+	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{
+		PasswordHash:       &hash,
+		MustChangePassword: &rotationCleared,
+	}); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -2695,7 +2867,15 @@ func (s *Service) ChangePassword(
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &hash}); err != nil {
+	// Satisfying a forced rotation is the whole point of the flag: clear it in
+	// the same UPDATE as the hash, so a crash between the two can never leave
+	// an account with a new password and a stale block on it.
+	rotationCleared := false
+
+	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{
+		PasswordHash:       &hash,
+		MustChangePassword: &rotationCleared,
+	}); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -2903,6 +3083,35 @@ func getAllowedInviteExpirations() map[string]time.Duration {
 // ErrInvalidExpiresIn is returned when an invalid expiresIn value is provided.
 var ErrInvalidExpiresIn = errors.New("invalid expiresIn: must be one of 1h, 6h, 12h, 24h, 48h, 1w")
 
+// inviteExpirationLabels maps each accepted expiresIn code to the
+// human-readable phrase shown in the invitation email ("This invitation
+// expires in ..."). Kept as a literal map (rather than deriving from
+// time.Duration.String(), which renders machine-ish output like "168h0m0s")
+// so the email always reads naturally. Keys mirror
+// getAllowedInviteExpirations exactly.
+func inviteExpirationLabels() map[string]string {
+	return map[string]string{
+		"1h":            "1 hour",
+		"6h":            "6 hours",
+		"12h":           "12 hours",
+		durationLabel24: "24 hours",
+		"48h":           "48 hours",
+		"1w":            "7 days",
+	}
+}
+
+// humanizeInviteExpiresIn converts an expiresIn code (e.g. "24h") into the
+// human-readable phrase used in the invitation email. Falls back to the raw
+// code for any value outside getAllowedInviteExpirations — defensive only,
+// CreateInvitation already validates the code before this is ever called.
+func humanizeInviteExpiresIn(expiresIn string) string {
+	if label, ok := inviteExpirationLabels()[expiresIn]; ok {
+		return label
+	}
+
+	return expiresIn
+}
+
 // ErrInvalidApp is returned when an invalid app value is provided.
 var ErrInvalidApp = errors.New("invalid app: must be one of dash0, dash")
 
@@ -2914,6 +3123,12 @@ type InviteResponse struct {
 	Role      string    `json:"role"`
 	InviteURL string    `json:"inviteUrl"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	// EmailSent reports whether the invitation email was queued for
+	// delivery — NOT confirmation that it reached an inbox, since delivery
+	// itself is async (job type "email"). False when email sending is
+	// disabled instance-wide, or when enqueueing the job failed; either way
+	// the dashboard must treat InviteURL as the only channel.
+	EmailSent bool `json:"emailSent"`
 }
 
 // InviteListItem represents an invitation in a list response.
@@ -3010,7 +3225,14 @@ func (s *Service) CreateInvitation(
 	expiresAt := time.Now().Add(ttl)
 
 	// Send invitation email
-	s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, inviteURL)
+	emailSent := s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, req.ExpiresIn, inviteURL)
+
+	audit.Record(ctx, s.db, org.UID, models.EventTypeMemberInvited,
+		audit.Target{Type: auditTargetMember, Name: req.Email},
+		models.JSONMap{
+			auditKeyEmail: req.Email,
+			auditKeyRole:  req.Role,
+		})
 
 	return &InviteResponse{
 		UID:       entry.UID,
@@ -3019,6 +3241,7 @@ func (s *Service) CreateInvitation(
 		Role:      req.Role,
 		InviteURL: inviteURL,
 		ExpiresAt: expiresAt,
+		EmailSent: emailSent,
 	}, nil
 }
 
@@ -3204,6 +3427,15 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			return nil, fmt.Errorf("failed to create membership: %w", createErr)
 		}
 
+		audit.Record(auditActorCtx(ctx, user.UID, Context{}), s.db, matchedOrg.UID,
+			models.EventTypeMemberJoined,
+			audit.Target{Type: auditTargetMember, UID: user.UID, Name: user.Email},
+			models.JSONMap{
+				auditKeyEmail:  user.Email,
+				auditKeyRole:   string(role),
+				auditKeySource: "invitation",
+			})
+
 		// Delete the invitation
 		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
 	}
@@ -3229,13 +3461,17 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	expiresAt := s.refreshTokenExpiry(ctx, matchedOrg.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "invitation"}}
 
-	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	authContext := contextFromRequestMeta(ctx, Context{})
+	createdWith := authContext.ToMap()
+	createdWith[keyMethod] = AuthMethodInvitation
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: createdWith}
+
+	if err = s.startSession(
+		ctx, actorFromUser(user), matchedOrg, refreshToken, role, AuthMethodInvitation, authContext,
+	); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID)
 	if err != nil {
@@ -3248,16 +3484,11 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	}
 
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenValue,
-		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    tokenTypeBearer,
-		User: &UserInfo{
-			UID:   user.UID,
-			Email: user.Email,
-			Name:  user.Name,
-			Role:  role,
-		},
+		AccessToken:   accessToken,
+		RefreshToken:  refreshTokenValue,
+		ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
+		TokenType:     tokenTypeBearer,
+		User:          newUserInfo(user, role),
 		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil
@@ -3282,6 +3513,15 @@ type OrgSettingsResponse struct {
 	// resolve to no policy of their own — the blast radius of setting or
 	// changing DefaultEscalationPolicyUID. Always present.
 	InheritingCheckCount int `json:"inheritingCheckCount"`
+	// TracerouteOnFailure is the ORG-LEVEL default for the path capture taken
+	// when a check goes down on a network-reachability failure (spec
+	// 2026-08-21-10). It applies to every check whose own
+	// `tracerouteOnFailure` is `inherit`.
+	//
+	// ALWAYS PRESENT, and true when the org has never set it — the spec's
+	// "org-level default (on)". A nullable field here would make the settings
+	// page render an unchecked box for an org that is in fact tracing.
+	TracerouteOnFailure bool `json:"tracerouteOnFailure"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -3318,12 +3558,37 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		return nil, err
 	}
 
+	traceParam, err := s.db.GetOrgParameter(ctx, org.UID, models.ParamKeyTracerouteEnabled)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgSettingsResponse{
 		RegistrationEmailPattern:   pattern,
 		SessionMaxDurationSeconds:  sessionMaxDurationSeconds,
 		DefaultEscalationPolicyUID: org.DefaultEscalationPolicyUID,
 		InheritingCheckCount:       inheritingCount,
+		TracerouteOnFailure:        paramBoolDefaultTrue(traceParam),
 	}, nil
+}
+
+// paramBoolDefaultTrue reads a boolean org parameter whose ABSENCE means true.
+//
+// The default has to live somewhere, and it lives here rather than in a row
+// written at org creation: a default stamped into every org at signup is a
+// default nobody can change later without a backfill, and it would make orgs
+// created before the feature behave differently from ones created after.
+func paramBoolDefaultTrue(param *models.Parameter) bool {
+	if param == nil {
+		return true
+	}
+
+	value, ok := param.Value[models.ParameterValueKey].(bool)
+	if !ok {
+		return true
+	}
+
+	return value
 }
 
 // UpdateOrgSettingsRequest contains the request data for updating org settings.
@@ -3338,6 +3603,9 @@ type UpdateOrgSettingsRequest struct {
 	// default (checks fall back to no policy); a non-empty UID sets it (the UID
 	// must be a policy in this org). Omit the field to leave it untouched.
 	DefaultEscalationPolicyUID *string `json:"defaultEscalationPolicyUid"`
+	// TracerouteOnFailure sets the org-level path-trace default (spec
+	// 2026-08-21-10). Omit to leave it unchanged.
+	TracerouteOnFailure *bool `json:"tracerouteOnFailure"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -3367,7 +3635,48 @@ func (s *Service) UpdateOrgSettings(
 		}
 	}
 
+	if req.TracerouteOnFailure != nil {
+		if updateErr := s.db.SetOrgParameter(
+			ctx, org.UID, models.ParamKeyTracerouteEnabled, *req.TracerouteOnFailure, false,
+		); updateErr != nil {
+			return nil, fmt.Errorf("set traceroute default: %w", updateErr)
+		}
+	}
+
+	if changed := orgSettingsChangedFields(req); len(changed) > 0 {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeOrgSettingsUpdated,
+			audit.Target{Type: "organization", UID: org.UID, Name: org.Slug},
+			audit.ChangePayload(changed, nil, nil, nil))
+	}
+
 	return s.GetOrgSettings(ctx, orgSlug)
+}
+
+// orgSettingsChangedFields names the settings a request actually carried.
+// Field names rather than a value diff: registration_email_pattern is a regex
+// that decides who may auto-join the org, and session_max_duration is a
+// security control — knowing they were touched, by whom and when is the audit
+// fact; reconstructing them is what GetOrgSettings is for.
+func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
+	var changed []string
+
+	if req.RegistrationEmailPattern != nil {
+		changed = append(changed, "registration_email_pattern")
+	}
+
+	if req.SessionMaxDurationSeconds != nil {
+		changed = append(changed, "session_max_duration_seconds")
+	}
+
+	if req.DefaultEscalationPolicyUID != nil {
+		changed = append(changed, "default_escalation_policy_uid")
+	}
+
+	if req.TracerouteOnFailure != nil {
+		changed = append(changed, "traceroute_on_failure")
+	}
+
+	return changed
 }
 
 // updateDefaultEscalationPolicy sets or clears the org's default escalation
@@ -3467,23 +3776,31 @@ func maskEmail(email string) string {
 	return local[:2] + "***@" + parts[1]
 }
 
+// sendInvitationEmail enqueues the invitation email and reports whether it
+// was actually queued for delivery: instance-wide email sending must be
+// enabled AND the job must have been created successfully. This is the value
+// surfaced to the inviter as InviteResponse.EmailSent, so the dashboard can
+// tell them whether the link is a convenience or their only channel.
 func (s *Service) sendInvitationEmail(
-	ctx context.Context, orgUID, recipientEmail, inviterUID, orgName, role, inviteURL string,
-) {
+	ctx context.Context, orgUID, recipientEmail, inviterUID, orgName, role, expiresIn, inviteURL string,
+) bool {
 	if recipientEmail == "" {
-		return
+		return false
 	}
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
+	queued := s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
 		map[string]any{
 			emailKeyOrgName: orgName,
 			"Role":          role,
 			"InviterName":   inviterName,
 			"InviteURL":     inviteURL,
+			"ExpiresIn":     humanizeInviteExpiresIn(expiresIn),
 		},
 	)
+
+	return s.fullCfg.Email.Enabled && queued
 }
 
 func (s *Service) getInviterName(ctx context.Context, inviterUID string) string {
@@ -3509,13 +3826,14 @@ const (
 )
 
 // generate2FATempToken creates a short-lived JWT for the 2FA verification step.
-func (s *Service) generate2FATempToken(userUID, orgSlug, role string) (string, error) {
+func (s *Service) generate2FATempToken(userUID, orgSlug, role, method string) (string, error) {
 	now := time.Now()
 	claims := &TwoFAClaims{
 		UserUID: userUID,
 		OrgSlug: orgSlug,
 		Role:    role,
 		Purpose: twoFAPurpose,
+		Method:  method,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(twoFATempTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -3670,7 +3988,8 @@ func (s *Service) Verify2FA(
 		return nil, ErrInvalid2FACode
 	}
 
-	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role, authContext)
+	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
+		withSecondFactor(claims.Method, SecondFactorTOTP), authContext)
 }
 
 // Recovery2FA validates a recovery code during login and returns full login tokens.
@@ -3720,7 +4039,8 @@ func (s *Service) Recovery2FA(
 		return nil, updateErr
 	}
 
-	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role, authContext)
+	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
+		withSecondFactor(claims.Method, SecondFactorRecoveryCode), authContext)
 }
 
 // Disable2FA disables 2FA for the user after validating the current TOTP code.
@@ -3757,7 +4077,7 @@ func (s *Service) Disable2FA(ctx context.Context, userUID, code string) error {
 func (s *Service) completeLoginAfter2FA(
 	ctx context.Context,
 	user *models.User,
-	orgSlug, role string,
+	orgSlug, role, method string,
 	authContext Context,
 ) (*LoginResponse, error) {
 	// Update last active timestamp
@@ -3767,13 +4087,7 @@ func (s *Service) completeLoginAfter2FA(
 		slog.ErrorContext(ctx, "Failed to update user last_active_at", "error", updateErr, "userUID", user.UID)
 	}
 
-	userInfo := &UserInfo{
-		UID:       user.UID,
-		Email:     user.Email,
-		Name:      user.Name,
-		AvatarURL: user.AvatarURL,
-		Role:      role,
-	}
+	userInfo := newUserInfo(user, role)
 
 	// No org case
 	if orgSlug == "" {
@@ -3813,11 +4127,11 @@ func (s *Service) completeLoginAfter2FA(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if createErr := s.db.CreateUserToken(ctx, refreshToken); createErr != nil {
+	if createErr := s.startSession(
+		ctx, actorFromUser(user), org, refreshToken, role, method, authContext,
+	); createErr != nil {
 		return nil, createErr
 	}
-
-	s.enforceSessionCap(ctx, user.UID)
 
 	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID)
 	if err != nil {

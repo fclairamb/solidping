@@ -194,7 +194,7 @@ func (s *GitHubOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user)
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodGitHub))
 	if err != nil {
 		return nil, err
 	}
@@ -331,8 +331,24 @@ func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *Git
 
 	// Check by GitHub user ID first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeGitHub, providerID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get user provider: %w", err)
+	}
+
 	if err == nil && provider != nil {
-		return s.db.GetUser(ctx, provider.UserUID)
+		// A link pointing at a soft-deleted user is stale: it is cleared
+		// and we fall through to the email lookup / create path rather
+		// than failing this login (and every later one) forever.
+		user, resolveErr := resolveLinkedUser(ctx, s.db, models.ProviderTypeGitHub, providerID, provider)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+
+		if user != nil {
+			return user, nil
+		}
+
+		provider = nil
 	}
 
 	// Check by email

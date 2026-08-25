@@ -117,7 +117,26 @@
     "removed": "Subscriber removed",
     "removeError": "Failed to remove subscriber",
     "removeConfirmTitle": "Remove subscriber?",
-    "removeConfirmDescription": "This subscriber will stop receiving notifications. They can re-subscribe from the public status page."
+    "removeConfirmDescription": "This subscriber will stop receiving notifications. They can re-subscribe from the public status page.",
+    "destination": "Destination",
+    "channel": "Channel",
+    "disabled": "Disabled",
+    "channels": {
+      "email": "Email",
+      "webhook": "Webhook",
+      "slack": "Slack"
+    },
+    "addEndpoint": "Add a webhook or Slack delivery",
+    "addEndpointHint": "Registered here, not on the public page: the public subscribe form is email-only, because a visitor pasting an incoming-webhook URL cannot be verified. Deliveries are signed and stop automatically after repeated failures.",
+    "url": "Delivery URL",
+    "add": "Add",
+    "endpointAdded": "Delivery added",
+    "endpointAddError": "Could not add the delivery",
+    "signingSecret": "Signing secret (optional)",
+    "signingSecretPlaceholder": "Leave empty to have one generated",
+    "signingSecretHint": "Used to sign every delivery (HMAC-SHA256) so your receiver can verify it came from SolidPing.",
+    "signingSecretIssued": "Copy this signing secret now — it is shown once and cannot be retrieved later.",
+    "signingSecretSaved": "I've saved it"
   },
   "customDomain": {
     "title": "Custom domain",
@@ -131,6 +150,11 @@
     "verifying": "Verifying…",
     "verified": "Verified",
     "unverified": "Unverified",
+    "degraded": "DNS re-check failing",
+    "degradedTitle": "The domain's DNS re-check is failing",
+    "degradedDescription": "Your status page is still being served on this domain, but the periodic DNS check has failed several times in a row. Fix the CNAME record and it will recover on its own — if it keeps failing for a few days, the page will stop being served here.",
+    "demotedTitle": "This domain is no longer serving your status page",
+    "demotedDescription": "The DNS check failed for several days in a row, so the page stopped being served on this domain. Fix the CNAME record and click Verify — or leave it: once DNS resolves correctly again, the domain is restored automatically after a few successful checks.",
     "certIssued": "HTTPS active",
     "certError": "HTTPS failed",
     "certPending": "HTTPS pending",
@@ -234,5 +258,35 @@
     "updated": "Status page updated successfully",
     "deleted": "Status page deleted successfully",
     "deleteFailed": "Failed to delete status page"
+  },
+  "branding": {
+    "title": "Branding",
+    "description": "The logo and favicon this status page wears. Uploading a logo replaces the SolidPing mark in the page header.",
+    "logo": "Logo",
+    "logoHint": "PNG, JPEG, WebP, GIF or SVG, up to 1 MB. Shown in the status page header.",
+    "favicon": "Favicon",
+    "faviconHint": "ICO, PNG, WebP, GIF or SVG, up to 256 KB. Shown in the browser tab, including on a custom domain.",
+    "upload": "Upload",
+    "replace": "Replace",
+    "remove": "Remove",
+    "uploaded": "Image updated",
+    "removed": "Image removed",
+    "unexpectedError": "Something went wrong. Please try again.",
+    "hideBranding": "Hide “Powered by SolidPing”",
+    "hideBrandingHint": "Removes the SolidPing footer link from the public page.",
+    "hideBrandingLocked": "White labelling is not included in your current plan. The setting is saved, and takes effect as soon as the plan includes it."
+  },
+  "visibilityField": {
+    "label": "Visibility",
+    "public": "Public",
+    "private": "Private",
+    "password": "Password protected",
+    "publicHint": "Anyone with the link can see this page.",
+    "privateHint": "The page is hidden entirely — public URLs answer as if it did not exist.",
+    "passwordHint": "Visitors must enter a password before they can see the page.",
+    "passwordLabel": "Page password",
+    "passwordPlaceholder": "At least 6 characters",
+    "passwordKeepPlaceholder": "Leave empty to keep the current password",
+    "passwordFieldHint": "Share this with the people who should see the page. Changing it signs everyone out immediately."
   }
 }

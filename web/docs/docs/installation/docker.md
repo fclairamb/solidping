@@ -93,11 +93,18 @@ docker-compose up -d
 Once running, access the dashboard at [http://localhost:4000](http://localhost:4000).
 
 **Default credentials:**
-- Email: `admin@solidping.com`
+- Email: `admin@solidping.io`
 - Password: `solidpass`
 
-:::warning
-Change the default credentials in production!
+:::warning First login sets a new password
+That password is published in the SolidPing repository, so it buys you exactly
+one login. SolidPing lands you on a "set a new password" screen and the account
+can do nothing else until you complete it — over the API, every endpoint except
+`POST /api/v1/auth/change-password`, `GET /api/v1/auth/me` and
+`POST /api/v1/auth/logout` answers `403` with code `PASSWORD_CHANGE_REQUIRED`.
+
+This applies to any fresh database, self-hosted or not. There is no setting
+that turns it off.
 :::
 
 ## Updating

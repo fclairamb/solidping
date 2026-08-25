@@ -179,9 +179,12 @@ test.describe("Check Detail Page", () => {
       if (!url.pathname.includes("/results")) return route.continue();
       const region = url.searchParams.get("region");
       // Recent Results requests `limit=10` (useResults); the chart's own
-      // window fetch (useAllResults, shared with the page's
-      // chartWindowResults) always requests `limit=1000` and never sends
-      // `region` at all — region filtering there is client-side.
+      // window fetch (useResultTiers — one request per aggregation tier, whose
+      // react-query keys the page's chartWindowResults shares) always requests
+      // `limit=1000` and never sends `region` at all — region filtering there
+      // is client-side. This handler ignores `periodType`, so every tier gets
+      // the same rows back; mergeResultTiers dedups them by uid, so the point
+      // counts below are the same as they were before the tier split.
       const isListCall = url.searchParams.get("limit") === "10";
       if (isListCall) {
         listFetchCount++;

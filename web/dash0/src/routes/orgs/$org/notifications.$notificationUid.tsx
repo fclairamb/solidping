@@ -283,7 +283,7 @@ function NotificationDetailPage() {
       void navigate({
         to: "/orgs/$org/incidents",
         params: { org },
-        search: { state: "all" as const, showSuppressed: undefined },
+        search: { state: "all" as const, showSuppressed: undefined, checkUid: undefined },
       });
     }
   };

@@ -84,6 +84,29 @@ func TestGatusOverCapTimeoutIsClampedNotRejected(t *testing.T) {
 	r.Equal("30s", check.Config["timeout"])
 }
 
+// TestUptimeRobotOverCapTimeoutIsClampedNotRejected covers the UptimeRobot
+// `timeout` field, which feeds the same uniform config key. UptimeRobot allows
+// per-monitor timeouts well past SolidPing's 30s cap.
+func TestUptimeRobotOverCapTimeoutIsClampedNotRejected(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	harness := newConvertHarness(t, "")
+	body := []byte(`{"monitors":[
+	  {"id":1,"friendly_name":"Slow endpoint","url":"https://slow.example.org","type":1,
+	   "interval":300,"timeout":45,"status":2}
+	]}`)
+
+	result := decodeConvert(t, harness.post(t, "uptimerobot", false, body))
+
+	r.Empty(result.Errors)
+	r.True(warningMentions(result.Warnings, "clamped to 30s"), "%+v", result.Warnings)
+
+	check, err := harness.dbSvc.GetCheckByUidOrSlug(t.Context(), harness.org.UID, "slow-endpoint")
+	r.NoError(err)
+	r.Equal("30s", check.Config["timeout"])
+}
+
 // TestInRangeTimeoutSurvivesTheImport is the positive control for the clamp:
 // a timeout already inside the range must reach the persisted check untouched,
 // so the tests above cannot pass by simply dropping the key.

@@ -37,6 +37,7 @@ import { classifyPasskeyError } from "@/lib/passkey-error";
 import {
   isOAuthAuthorizeReturnTo,
   resolveDestination,
+  stripOAuthErrorParams,
   type LoginDestination,
 } from "@/lib/login-destination";
 import { refreshAccessToken } from "@/lib/token-refresh";
@@ -535,9 +536,13 @@ function LoginPage() {
     // handoff stores the session and the already-authenticated effect then
     // resumes the authorize flow (with the cookie refreshed by
     // goToDestination).
+    // A previous failed attempt left `error`/`error_description` on this URL,
+    // and the 401 bounce captured them into `returnTo`. Strip them before the
+    // value becomes a redirect_uri, or each retry nests the last failure one
+    // URL-encoding deeper (spec 2026-08-25-01).
     const currentPath = isOAuthAuthorizeReturnTo(returnTo)
       ? `${BASE_PATH}/orgs/${org}/login?returnTo=${encodeURIComponent(returnTo)}`
-      : returnTo || `/dash0/orgs/${org}`;
+      : stripOAuthErrorParams(returnTo || `/dash0/orgs/${org}`);
     const loginUrl = `/api/v1/auth/${providerType}/login?org=${encodeURIComponent(org)}&redirect_uri=${encodeURIComponent(currentPath)}`;
     window.location.href = loginUrl;
   };

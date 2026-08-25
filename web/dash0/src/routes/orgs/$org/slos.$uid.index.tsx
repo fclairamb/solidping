@@ -1,11 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Pencil, Target } from "lucide-react";
+import { Flame, Pencil, Target } from "lucide-react";
 
 import { useSlo, useSloBurndown, useSloHistory, useSloStatus, type SloStatusRow } from "@/api/hooks";
 import { PageHeader } from "@/components/shared/page-header";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { StatTile } from "@/components/shared/stat-tile";
+import { AlertingSection } from "@/components/slos/alerting-section";
 import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,9 +101,17 @@ function SloDetailPage() {
                 {current.partial ? ` · ${t("detail.partial")}` : ""}
               </p>
             </div>
-            <Badge className={sloStateBadgeClass(current.state)} data-testid="slo-state">
-              {t(`state.${current.state}`)}
-            </Badge>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {slo.burning && (
+                <Badge variant="destructive" data-testid="slo-detail-burning">
+                  <Flame className="mr-1 h-3 w-3" />
+                  {t("alerting.burning")}
+                </Badge>
+              )}
+              <Badge className={sloStateBadgeClass(current.state)} data-testid="slo-state">
+                {t(`state.${current.state}`)}
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -147,6 +156,8 @@ function SloDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <AlertingSection org={org} uid={uid} />
 
       <BudgetBurndownChart burndown={burndown} isLoading={burndownLoading} />
 

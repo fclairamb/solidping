@@ -23,6 +23,7 @@ import enDiscovery from "./locales/en/discovery.json";
 import enJobs from "./locales/en/jobs.json";
 import enMaintenanceWindows from "./locales/en/maintenanceWindows.json";
 import enSlos from "./locales/en/slos.json";
+import enSupport from "./locales/en/support.json";
 import frCommon from "./locales/fr/common.json";
 import frNav from "./locales/fr/nav.json";
 import frAuth from "./locales/fr/auth.json";
@@ -45,6 +46,7 @@ import frDiscovery from "./locales/fr/discovery.json";
 import frJobs from "./locales/fr/jobs.json";
 import frMaintenanceWindows from "./locales/fr/maintenanceWindows.json";
 import frSlos from "./locales/fr/slos.json";
+import frSupport from "./locales/fr/support.json";
 import deCommon from "./locales/de/common.json";
 import deNav from "./locales/de/nav.json";
 import deAuth from "./locales/de/auth.json";
@@ -67,6 +69,7 @@ import deDiscovery from "./locales/de/discovery.json";
 import deJobs from "./locales/de/jobs.json";
 import deMaintenanceWindows from "./locales/de/maintenanceWindows.json";
 import deSlos from "./locales/de/slos.json";
+import deSupport from "./locales/de/support.json";
 import esCommon from "./locales/es/common.json";
 import esNav from "./locales/es/nav.json";
 import esAuth from "./locales/es/auth.json";
@@ -89,6 +92,7 @@ import esDiscovery from "./locales/es/discovery.json";
 import esJobs from "./locales/es/jobs.json";
 import esMaintenanceWindows from "./locales/es/maintenanceWindows.json";
 import esSlos from "./locales/es/slos.json";
+import esSupport from "./locales/es/support.json";
 
 i18n
   .use(LanguageDetector)
@@ -118,6 +122,7 @@ i18n
         jobs: enJobs,
         maintenanceWindows: enMaintenanceWindows,
         slos: enSlos,
+        support: enSupport,
       },
       fr: {
         common: frCommon,
@@ -142,6 +147,7 @@ i18n
         jobs: frJobs,
         maintenanceWindows: frMaintenanceWindows,
         slos: frSlos,
+        support: frSupport,
       },
       de: {
         common: deCommon,
@@ -166,6 +172,7 @@ i18n
         jobs: deJobs,
         maintenanceWindows: deMaintenanceWindows,
         slos: deSlos,
+        support: deSupport,
       },
       es: {
         common: esCommon,
@@ -190,6 +197,7 @@ i18n
         jobs: esJobs,
         maintenanceWindows: esMaintenanceWindows,
         slos: esSlos,
+        support: esSupport,
       },
     },
     defaultNS: "common",

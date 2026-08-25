@@ -168,6 +168,15 @@ func incidentNeedsPaging(incident *models.Incident, now time.Time) bool {
 	if incident.SnoozedUntil != nil && incident.SnoozedUntil.After(now) {
 		return false
 	}
+	// Rolled-up child: its cause is somebody else's incident and that incident
+	// is the one being paged for. Checked HERE, at fire time, and not only when
+	// the cycle was scheduled, because the attachment routinely happens after
+	// the steps are queued — a hard parent's own probe usually confirms after
+	// its dependents' do (specs 2026-05-03-57 and 2026-08-24-15). Without this
+	// gate, retroactive suppression cannot stop a storm already in flight.
+	if incident.PagingSuppressed {
+		return false
+	}
 
 	return true
 }
@@ -580,10 +589,14 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 		return 0
 	}
 
-	text := fmt.Sprintf(
-		"[escalation] incident %s requires your attention. Open the dashboard to acknowledge or resolve.",
-		incident.UID,
-	)
+	checkName := escalationUnknownCheckName
+	if check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); checkErr == nil {
+		checkName = escalationCheckName(check)
+	}
+
+	baseURL := appBaseURL(jctx)
+	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
+	text := escalationSlackDMMessage(incident, checkName, orgSlug, baseURL)
 
 	if err := postSlackDM(ctx, settings.AccessToken, route.Contact.Value, text); err != nil {
 		log.WarnContext(ctx, "failed to send escalation Slack DM",
@@ -595,6 +608,30 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 	}
 
 	return 1
+}
+
+// escalationSlackDMMessage builds the Slack DM text for a per-user escalation
+// notification. The incident is addressed by its short #N reference and check
+// name — never the UID, which must never appear in visible text — mirroring
+// escalationWebPushMessage. When baseURL and orgSlug resolve to a full
+// incident URL, the dashboard mention is hyperlinked with Slack's <url|text>
+// syntax; otherwise it degrades to plain text with no link, as the phone/SMS
+// path already does.
+func escalationSlackDMMessage(incident *models.Incident, checkName, orgSlug, baseURL string) string {
+	ref := "Incident"
+	if incident.Number > 0 {
+		ref = fmt.Sprintf("Incident #%d", incident.Number)
+	}
+
+	dashboard := "Open the dashboard"
+	if url := escalationIncidentURL(baseURL, orgSlug, incident); url != "" {
+		dashboard = fmt.Sprintf("<%s|%s>", url, dashboard)
+	}
+
+	return fmt.Sprintf(
+		"[escalation] %s for %s requires your attention. %s to acknowledge or resolve.",
+		ref, checkName, dashboard,
+	)
 }
 
 // sendWebPush delivers a Web Push notification for a per-user webpush contact.
@@ -610,11 +647,13 @@ func (r *EscalationStepJobRun) sendWebPush(
 		return 0
 	}
 
-	msg := webpush.Message{
-		Title: fmt.Sprintf("[escalation] incident %s requires attention", incident.UID),
-		Body:  "An incident requires your attention. Open the dashboard to acknowledge or resolve.",
-		URL:   "",
+	checkName := escalationUnknownCheckName
+	if check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); checkErr == nil {
+		checkName = escalationCheckName(check)
 	}
+
+	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
+	msg := escalationWebPushMessage(incident, checkName, orgSlug)
 
 	err := webpush.Send(ctx, jctx.Services.WebPushOptions, route.Contact.Value, msg)
 	if errors.Is(err, webpush.ErrSubscriptionGone) {
@@ -651,6 +690,29 @@ func (r *EscalationStepJobRun) sendWebPush(
 	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), "")
 
 	return 1
+}
+
+// escalationWebPushMessage builds the push content for a per-user escalation
+// notification. The incident is addressed by its short #N reference, never the
+// UID, and the URL is the in-app incident page (relative, like the org-channel
+// webpush sender — the service worker resolves it against its own origin) so a
+// click lands on the incident rather than the generic dashboard.
+func escalationWebPushMessage(incident *models.Incident, checkName, orgSlug string) webpush.Message {
+	ref := "Incident"
+	if incident.Number > 0 {
+		ref = fmt.Sprintf("Incident #%d", incident.Number)
+	}
+
+	url := ""
+	if orgSlug != "" && incident.UID != "" {
+		url = "/dash0/orgs/" + orgSlug + "/incidents/" + incident.UID
+	}
+
+	return webpush.Message{
+		Title: "[ESCALATED] " + checkName,
+		Body:  fmt.Sprintf("%s for %s requires your attention.", ref, checkName),
+		URL:   url,
+	}
 }
 
 // pagePhone delivers to a per-user verified phone contact: an SMS when the
@@ -1301,10 +1363,11 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{recipient}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{recipient}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("escalation.html"),
 	}
 
 	result, err := jctx.Services.EmailSender.Send(ctx, msg)

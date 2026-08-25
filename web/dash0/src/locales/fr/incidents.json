@@ -14,11 +14,15 @@
   "allOperational": "Tous les systèmes sont opérationnels",
   "noResolved": "Aucun incident résolu pour le moment",
   "noIncidents": "Aucun incident enregistré",
+  "noIncidentsForCheck": "Aucun incident trouvé pour ce check",
   "noIncidentsFound": "Aucun incident trouvé",
   "incidentNotFound": "Incident introuvable",
   "backToIncidents": "Retour aux incidents",
   "filterByState": "Filtrer par état",
+  "filterByCheck": "Filtrer par check",
   "relapse": "{{count}}x rechute",
+  "flapping": "instabilité ×{{count}}",
+  "flappingHint": "Ouvert au niveau d'instabilité {{count}} — la récupération adaptative a augmenté la stabilité requise avant la résolution automatique de cet incident.",
   "active": "Actif",
   "resolved": "Résolu",
   "reopened": "Rouvert",
@@ -66,7 +70,8 @@
   "stateBadges": {
     "acked": "Acquitté",
     "snoozed": "En pause",
-    "snoozedUntil": "En pause jusqu'à {{time}}"
+    "snoozedUntil": "En pause jusqu'à {{time}}",
+    "ackedBy": "Acquitté par {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Acquittés",
@@ -113,6 +118,44 @@
       "truncated": "Corps tronqué à {{shown}} sur {{total}}.",
       "binary": "Corps non conservé : binaire ou UTF-8 invalide. Métadonnées seulement — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "une taille inconnue"
+    },
+    "screenshot": {
+      "title": "Capture d'écran à la détection",
+      "description": "À quoi ressemblait la page quand ce check a signalé l'échec. Prise juste APRÈS la détection, depuis une seule région — c'est un indice, pas l'image exacte de l'échec.",
+      "alt": "Capture d'écran de la page prise à l'ouverture de l'incident",
+      "caption": "Capturée {{capturedAt}} depuis {{region}}, peu après la détection de l'échec.",
+      "unknownTime": "à une heure inconnue",
+      "unknownRegion": "une région inconnue"
+    },
+    "traceroute": {
+      "title": "Chemin réseau lors de la panne",
+      "description": "Un traceroute façon MTR effectué juste après l'ouverture de cet incident, depuis la région de sonde vers l'adresse que le check en échec avait contactée.",
+      "loadFailed": "La capture du chemin n'a pas pu être chargée. Son lien de téléchargement est éphémère — rechargez l'incident pour en signer un nouveau.",
+      "modes": {
+        "icmp": "ICMP (privilégié)",
+        "icmp-udp": "ICMP (non privilégié)",
+        "tcp": "TCP (accessibilité seule)"
+      },
+      "target": "Cible : {{target}}",
+      "region": "Sondé depuis {{region}}",
+      "rounds": "{{rounds}} passages",
+      "tcpModeNotice": "Cet hôte n'a pas pu ouvrir de socket ICMP : le chemin a donc été sondé par simples connexions TCP. Cela mesure jusqu'où les paquets sont allés, mais ne montre pas les routeurs intermédiaires — un saut vide ici signifie « non observable », pas « sans réponse ».",
+      "truncated": "Le budget de temps a expiré avant que le trace n'atteigne la cible. Ce qui est affiché est réel, mais ce n'est pas tout le chemin.",
+      "incomplete": "Le trace n'a jamais atteint la cible. Le dernier saut ayant répondu est l'endroit où le chemin cesse de fonctionner.",
+      "columns": {
+        "hop": "#",
+        "host": "Hôte",
+        "loss": "Perte",
+        "avg": "RTT moy."
+      },
+      "noReply": "sans réponse",
+      "notObservable": "non observable dans ce mode",
+      "extraPaths": "+{{count}} autre(s)",
+      "targetBadge": "cible",
+      "unreachableBadge": "inaccessible",
+      "lossValue": "{{pct}} %",
+      "msValue": "{{ms}} ms",
+      "caption": "Capturé à {{startedAt}}, en {{durationMs}} ms — après que la sonde en échec ait déjà été rapportée, donc sans jamais retarder l'incident."
     }
   },
   "timeline": {
@@ -122,7 +165,16 @@
     "acknowledged": "Acquitté",
     "escalated": "Escaladé",
     "reopenedRelapse": "Rouvert (rechute n°{{count}})",
-    "resolved": "Résolu"
+    "resolved": "Résolu",
+    "acknowledgedBy": "par {{name}}",
+    "acknowledgedByVia": "par {{name}} via {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "e-mail",
+      "phone": "téléphone"
+    }
   },
   "eventLog": {
     "title": "Journal des événements",
@@ -162,5 +214,9 @@
     "showRolledUp": "Afficher les incidents regroupés",
     "pagingSuppressed": "notifications suspendues",
     "rolledUpInactive": "regroupé"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} en panne",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} en panne"
   }
 }

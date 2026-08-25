@@ -14,11 +14,13 @@ func (s *Service) ApplyRollupForTest(ctx context.Context, check *models.Check, i
 	s.applyRollup(ctx, check, incident)
 }
 
-// EffectiveRecoveryPeriodForTest exposes the unexported effectiveRecoveryPeriod
-// so external tests can assert the flapping-backoff math (worked example, cap,
-// off-switches) directly against a check's flap state.
+// EffectiveRecoveryPeriodForTest asserts the flapping-backoff math (worked
+// example, cap, off-switches) directly against a check's flap state. The math
+// itself now lives on models.Check.EffectiveRecoveryPeriod (spec
+// 2026-08-24-05) — this wrapper is kept so the existing test call sites in
+// this package need no changes.
 func EffectiveRecoveryPeriodForTest(check *models.Check) time.Duration {
-	return effectiveRecoveryPeriod(check)
+	return check.EffectiveRecoveryPeriod()
 }
 
 // RecoveryElapsedForTest exposes the unexported recoveryElapsed so external
@@ -56,25 +58,20 @@ func (s *Service) CreateOrReopenIncidentForTest(
 	return s.createOrReopenIncident(ctx, check, result)
 }
 
-// CreateGroupIncidentForTest exposes the unexported createGroupIncident so
-// external tests can assert the group-create path writes the same
-// failure-details snapshot as the per-check path.
-func (s *Service) CreateGroupIncidentForTest(ctx context.Context, check *models.Check, result *models.Result) error {
-	return s.createGroupIncident(ctx, check, result)
-}
-
-// CreateOrReopenGroupIncidentForTest exposes the unexported
-// createOrReopenGroupIncident so external tests can drive the group
-// open/reopen decision directly.
-func (s *Service) CreateOrReopenGroupIncidentForTest(
-	ctx context.Context, check *models.Check, result *models.Result,
-) error {
-	return s.createOrReopenGroupIncident(ctx, check, result)
-}
-
 // FailureDetailsForTest exposes the unexported failureDetails helper so
 // external tests can assert the snapshot shape (and the size cap) in
 // isolation, without a DB round-trip.
 func FailureDetailsForTest(result *models.Result) models.JSONMap {
 	return failureDetails(result)
+}
+
+// RollUpExistingChildrenForTest exposes the unexported forward rollup walk so
+// external tests can prove it is idempotent — calling it twice for the same
+// parent must produce exactly one attachment and one event, which is the same
+// convergence property that protects it against a concurrent backward
+// evaluation on another worker (spec 2026-08-24-15).
+func (s *Service) RollUpExistingChildrenForTest(
+	ctx context.Context, parentCheck *models.Check, parent *models.Incident, onset time.Time,
+) {
+	s.rollUpExistingChildren(ctx, parentCheck, parent, onset)
 }

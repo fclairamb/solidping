@@ -162,6 +162,30 @@ func (s *Service) Resolve(ctx context.Context, orgUID string) (Resolved, error) 
 	return merged, nil
 }
 
+// WhiteLabelAllowed reports whether the org may drop the "powered by
+// SolidPing" badge from its status pages (spec 2026-08-21-07).
+//
+// It FAILS CLOSED: a resolve error returns false rather than an error, because
+// every caller is on a status-page render path where the honest fallback is
+// "show the badge". Losing the badge for a moment because the entitlements
+// table hiccuped would be a silent revenue leak; showing it for a moment is a
+// cosmetic annoyance.
+func (s *Service) WhiteLabelAllowed(ctx context.Context, orgUID string) bool {
+	if s == nil {
+		return false
+	}
+
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		slog.WarnContext(ctx, "white-label entitlement lookup failed; keeping the branding",
+			"error", err, "orgUID", orgUID)
+
+		return false
+	}
+
+	return resolved.Limits.WhiteLabel != nil && *resolved.Limits.WhiteLabel
+}
+
 // Set replaces the entitlement row and writes an audit entry in the same
 // transaction. Pass empty actor for unattended writes.
 //
@@ -434,6 +458,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	}
 	if limits.MaxSlos != nil {
 		out.Limits.MaxSlos = limits.MaxSlos
+	}
+	if limits.WhiteLabel != nil {
+		out.Limits.WhiteLabel = limits.WhiteLabel
 	}
 
 	return out

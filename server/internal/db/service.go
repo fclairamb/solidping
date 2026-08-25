@@ -103,11 +103,6 @@ type Service interface {
 	ListOrganizations(ctx context.Context) ([]*models.Organization, error)
 	UpdateOrganization(ctx context.Context, uid string, update models.OrganizationUpdate) error
 	DeleteOrganization(ctx context.Context, uid string) error
-	// GetOrganizationByLogoFileUID resolves the live organization whose current
-	// logo is the given file. It is the authorization rule behind the unsigned
-	// /pub/org-logos/:uid route: a file that is not some org's current logo is
-	// simply not served there.
-	GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error)
 
 	// Organization previous-slug (rename alias) operations. See
 	// models.OrganizationPreviousSlug for the semantics; the invariant is that
@@ -332,9 +327,36 @@ type Service interface {
 	// have at least one check_job whose period no longer matches the check's
 	// period — the one-shot startup reconcile target (spec 2026-07-20-05).
 	ListChecksWithStaleJobPeriods(ctx context.Context) ([]*models.Check, error)
+	// ListChecksWithStaleJobRegions returns enabled, non-deleted checks whose
+	// check_jobs no longer line up with `checks.regions` — either a job sits in
+	// a region the check no longer declares (the slug it was materialized under
+	// was renamed, so no worker's prefix match can ever claim it again), or a
+	// declared region has no job at all. The symmetric sibling of
+	// ListChecksWithStaleJobPeriods, feeding the same startup reconcile
+	// (spec 2026-08-24-08).
+	ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.Check, error)
+	// ListChecksReferencingRegion returns every non-deleted check that names
+	// the region slug in `checks.regions` OR owns a check_jobs row carrying it,
+	// across ALL organizations. Both sources matter: a rename can leave the old
+	// slug in the check, in its jobs, or (the live 2026-08-24 incident) only in
+	// the jobs. Server-operator scope — deliberately not org-filtered.
+	ListChecksReferencingRegion(ctx context.Context, region string) ([]*models.Check, error)
+	// MigrateCheckRegionSlug rewrites `checks.regions` in ONE transaction,
+	// replacing `from` with `to` in every non-deleted check that declares it and
+	// de-duplicating when `to` is already present (a check listing both would
+	// otherwise want two identical jobs and trip the unique (check_uid, region)
+	// index). Returns the checks whose array actually changed, already carrying
+	// the new value, so the caller can feed them straight to reconcileCheckJobs.
+	// Cross-org by design. Idempotent: a second call matches nothing.
+	MigrateCheckRegionSlug(ctx context.Context, from, to string) ([]*models.Check, error)
 
 	// CheckJob operations
 	ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error)
+	// ListCheckJobsByRegion returns every check_job carrying the given region
+	// slug, across ALL organizations. Backs the region-migration report, which
+	// must describe the blast radius (reassigned / deleted / overdue) before
+	// anything is written.
+	ListCheckJobsByRegion(ctx context.Context, region string) ([]*models.CheckJob, error)
 	DeleteCheckJob(ctx context.Context, uid string) error
 	CreateCheckJob(ctx context.Context, job *models.CheckJob) error
 	// GetCheckJobByUID returns one check job by UID.
@@ -363,6 +385,31 @@ type Service interface {
 	UpsertAggregatedResult(ctx context.Context, result *models.Result) error
 	GetResult(ctx context.Context, uid string) (*models.Result, error)
 	ListResults(ctx context.Context, filter *models.ListResultsFilter) (*models.ListResultsResponse, error)
+	// RecentResultsPerCheck returns the newest rows PER CHECK, per tier —
+	// `filter.LimitFor(checkUID)` rows for each requested check in each of
+	// filter.Tiers, newest period_start first — in ONE round trip.
+	//
+	// It exists because ListResults cannot express this: its Limit is global,
+	// so "the last 100 points for each of 20 checks" can only be asked for as
+	// one huge global limit that over-fetches and still, on a page mixing fast
+	// and slow checks, starves the slow ones (spec 2026-08-22-05: 40 000 rows
+	// read to keep ~6 000, sorted to disk, 662 ms per public page view).
+	//
+	// Every tier branch MUST sit entirely on one side of the raw/rollup split;
+	// Validate rejects anything else. This is not a style rule — both useful
+	// indexes on `results` are partial on `period_type = 'raw'` / `!= 'raw'`,
+	// and a per-check branch without that predicate degrades into one
+	// sequential scan of the whole table PER CHECK (measured 12 274 ms for a
+	// 20-check page, i.e. 18x WORSE than the query this replaces).
+	//
+	// The rows carry no metrics/output: this serves the response-time chart,
+	// which reads duration/status only.
+	//
+	// The returned rows are grouped per check and per tier but NOT globally
+	// ordered — callers merge and sort them (see statuspages.fetchRecentResults).
+	RecentResultsPerCheck(
+		ctx context.Context, filter *models.RecentResultsPerCheckFilter,
+	) ([]*models.Result, error)
 	// CountResultsByPeriodType returns the total row count in `results` grouped
 	// by period_type, across every organization. Table-wide and uncached —
 	// only the aggregation-job-cadence gauge sampler may call this, never a
@@ -418,23 +465,43 @@ type Service interface {
 	// also maintained the now-removed last_for_status flag; the name is kept to
 	// avoid churn across its callers.)
 	SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error
+	// HasRawResultWithMessageID reports whether a raw result already exists for
+	// orgUID/checkUID whose output.messageId equals messageID, restricted to
+	// rows with period_start >= since.
+	//
+	// This is the migration-free idempotency backstop for the inbound-email
+	// path (spec 2026-08-22-01): one inbound email must mint exactly one raw
+	// result no matter how many server replicas raced for it, how a JMAP move
+	// failed, or how often a crash-recovery re-scan replays it. There is no
+	// unique index to lean on, so the bounding is done entirely by the WHERE
+	// clause: orgUID is passed even though checkUID alone identifies the rows,
+	// because every usable index on `results` leads with organization_uid —
+	// without it neither backend can seek results_raw_idx and the lookup
+	// degrades to a full scan of the results table on every inbound email.
+	// Callers must also always pass a bounded window (emailcheck uses 7 days).
+	HasRawResultWithMessageID(
+		ctx context.Context, orgUID, checkUID, messageID string, since time.Time,
+	) (bool, error)
 
 	// Incident operations
 	CreateIncident(ctx context.Context, incident *models.Incident) error
 	GetIncident(ctx context.Context, orgUID, uid string) (*models.Incident, error)
+	// GetIncidentAny looks an incident up by UID with NO org scoping. Its only
+	// caller is the attachment topic authorizer (spec 2026-08-21-01), which has
+	// no org to scope by BY DESIGN: the incident row is what names the
+	// organization, so that a caller cannot pick one by forging a topic.
+	GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error)
 	// GetIncidentByNumber resolves the short per-org `#42` reference — the form
 	// humans type into Telegram and read in Slack. Returns sql.ErrNoRows if none.
 	GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error)
 	// FindActiveIncidentByCheckUID returns the incident a check is participating in, whether
-	// per-check (incidents.check_uid = $1) or via a group (incident_member_checks row exists
-	// with currently_failing = true). Returns sql.ErrNoRows if none.
+	// keyed on incidents.check_uid. Returns sql.ErrNoRows if none.
+	//
+	// It does NOT reach through incident_member_checks any more (spec
+	// 2026-08-24-14): that OR-branch is exactly how a check's own failure
+	// disappeared into another check's incident.
 	FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error)
 	FindRecentlyResolvedIncidentByCheckUID(ctx context.Context, checkUID string, since time.Time) (*models.Incident, error)
-	// FindActiveIncidentByGroupUID returns the active group incident keyed on check_group_uid.
-	FindActiveIncidentByGroupUID(ctx context.Context, groupUID string) (*models.Incident, error)
-	// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
-	// for a group resolved after `since`. Used for the reopen-within-cooldown path.
-	FindRecentlyResolvedIncidentByGroupUID(ctx context.Context, groupUID string, since time.Time) (*models.Incident, error)
 	// ListIncidents returns incidents matching filter plus the total count of
 	// matching rows ignoring Limit/cursor (mirrors ListChecks).
 	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, int64, error)
@@ -497,7 +564,11 @@ type Service interface {
 	) error
 	ListEscalationPolicyTargets(ctx context.Context, stepUIDs []string) ([]*models.EscalationPolicyTarget, error)
 
-	// Incident member operations (group incidents only)
+	// Incident member operations. HISTORICAL: group incidents are no longer
+	// created (spec 2026-08-24-14), so the readers below serve old rows and the
+	// writers have no production caller left. Do not build on them — a new
+	// caller would reintroduce the binding of one check's failure to another
+	// check's incident that this table's write path was removed for.
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
 	// ListIncidentMemberChecksByIncidentUIDs returns member rows for several
 	// group incidents at once, grouped by incident UID — one batched query
@@ -542,6 +613,13 @@ type Service interface {
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)
+	// UpdateEventPayload is the ONE sanctioned mutation of an audit row —
+	// auth.login_failed folding (spec 2026-08-21-09). Everything else about
+	// events stays append-only.
+	UpdateEventPayload(ctx context.Context, uid string, payload models.JSONMap) error
+	// DeleteEventsBefore is the audit-retention sweep (default 365 days),
+	// batched; returns how many rows it removed.
+	DeleteEventsBefore(ctx context.Context, before time.Time, limit int) (int64, error)
 
 	// --- IncidentNotifications ---
 	CreateIncidentNotification(ctx context.Context, n *models.IncidentNotification) error
@@ -774,6 +852,10 @@ type Service interface {
 	ConfirmSubscriber(ctx context.Context, uid string, confirmedAt time.Time) error
 	ResubscribeSubscriber(ctx context.Context, uid, confirmToken, unsubscribeToken string) error
 	SoftDeleteSubscriber(ctx context.Context, uid string) error
+	// UpdateSubscriberDelivery records a webhook/Slack delivery outcome: the
+	// consecutive-failure counter and the circuit-breaker timestamp (nil
+	// clears it).
+	UpdateSubscriberDelivery(ctx context.Context, uid string, failureCount int, disabledAt *time.Time) error
 	ListConfirmedSubscribers(
 		ctx context.Context, statusPageUID string, incidentUID *string,
 	) ([]*models.StatusPageSubscriber, error)
@@ -799,6 +881,11 @@ type Service interface {
 	// UpdateStatusPageCustomDomain overwrites all custom-domain columns in one
 	// write (set/clear/verify/re-verify all go through here).
 	UpdateStatusPageCustomDomain(ctx context.Context, uid string, update *models.StatusPageCustomDomainUpdate) error
+	// UpdateStatusPageBranding replaces the whole `branding` SECTION of
+	// status_pages.settings in one write, so set/replace/clear share a single
+	// shape (specs 2026-08-21-07, 2026-08-22-03). The write is a JSON merge in
+	// SQL, so a concurrent `availability` change is not clobbered.
+	UpdateStatusPageBranding(ctx context.Context, uid string, update *models.StatusPageBrandingUpdate) error
 	DeleteStatusPage(ctx context.Context, uid string) error
 
 	// StatusPageSection operations
@@ -894,6 +981,23 @@ type Service interface {
 	// given checks. Powers the "covered by an SLO" chip on check detail.
 	ListSLOsForChecks(ctx context.Context, orgUID string, checkUIDs []string) ([]*models.SLO, error)
 
+	// SLO burn-rate alert policies (spec 2026-08-21-08)
+	CreateSLOAlertPolicy(ctx context.Context, policy *models.SLOAlertPolicy) error
+	GetSLOAlertPolicy(ctx context.Context, orgUID, uid string) (*models.SLOAlertPolicy, error)
+	ListSLOAlertPolicies(ctx context.Context, sloUID string) ([]*models.SLOAlertPolicy, error)
+	UpdateSLOAlertPolicy(ctx context.Context, uid string, update *models.SLOAlertPolicyUpdate) error
+	// ListEnabledSLOAlertPolicies is the burn evaluator's work queue: every
+	// enabled policy across every org whose SLO is itself live and enabled,
+	// oldest-evaluated first so a large install still makes progress under a
+	// bounded per-sweep limit.
+	ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error)
+	// FindActiveBurnIncident returns the open burn incident for one
+	// (SLO, policy) pair, if any. sql.ErrNoRows when there is none.
+	FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error)
+	// ListActiveBurnIncidentsForSLOs powers the "burning" badge on the SLO
+	// list: one query for the whole page rather than one per row.
+	ListActiveBurnIncidentsForSLOs(ctx context.Context, orgUID string, sloUIDs []string) ([]*models.Incident, error)
+
 	// ReportSchedule operations (spec 2026-08-20-01)
 	CreateReportSchedule(ctx context.Context, schedule *models.ReportSchedule) error
 	GetReportSchedule(ctx context.Context, orgUID, uid string) (*models.ReportSchedule, error)
@@ -924,6 +1028,18 @@ type Service interface {
 		ctx context.Context, orgUID string, filter models.ListFilesFilter,
 	) ([]*models.File, int64, error)
 	DeleteFile(ctx context.Context, orgUID, uid string) error
+	// DeleteFilesByTopicPrefix soft-deletes every live attachment of an org
+	// whose topic starts with prefix, and reports how many rows changed. This
+	// is the entity-deletion reaper and the replace-on-reopen primitive
+	// (spec 2026-08-21-01) — a no-match is NOT an error, unlike DeleteFile.
+	DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix string) (int, error)
+	// ListAttachmentsByTopicPrefix returns live attachment rows across ALL
+	// organizations whose topic starts with prefix and which were created
+	// before `before`, capped at limit. Cross-org by design: its only caller
+	// is the GC sweep, which has no org to scope to.
+	ListAttachmentsByTopicPrefix(
+		ctx context.Context, prefix string, before time.Time, limit int,
+	) ([]*models.File, error)
 
 	// CheckDependency operations
 	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error
@@ -942,6 +1058,17 @@ type Service interface {
 	FindActiveIncidentsForChecksInWindow(
 		ctx context.Context, checkUIDs []string, since, until time.Time,
 	) ([]*models.Incident, error)
+	// AttachIncidentToRollupParent is the compare-and-set that attaches a
+	// child incident to a hard-parent incident: it sets
+	// caused_by_incident_uid and paging_suppressed = TRUE, but ONLY while the
+	// child is still active and NOT already suppressed. That guard is what
+	// makes the two rollup evaluations (backward at child-open, forward at
+	// parent-open) idempotent against each other — whichever worker loses the
+	// race updates zero rows and must not emit a second lifecycle event.
+	// Reports whether this call is the one that performed the attachment.
+	AttachIncidentToRollupParent(
+		ctx context.Context, childIncidentUID, parentIncidentUID string,
+	) (bool, error)
 
 	// Org entitlement operations
 	GetOrgEntitlements(ctx context.Context, orgUID string) (*models.OrgEntitlements, error)

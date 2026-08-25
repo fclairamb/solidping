@@ -17,6 +17,18 @@ interface EmptyStateOnboardingProps {
   org: string;
 }
 
+// QUICK_DEFS deliberately does NOT follow CHECK_TYPE_IDENTITY
+// (check-type-identity.tsx), and that divergence is intentional, not drift:
+// this surface is a beginner-facing vocabulary aimed at someone who hasn't
+// created their first check yet, while CHECK_TYPE_IDENTITY is the precise
+// label used everywhere a check already exists. `icmp` already reads
+// "Ping" here vs. "ICMP" elsewhere. `ssl` keeps "SSL" here (both the chip
+// label in welcome.quick.ssl / welcome.quickLabel.ssl and namePrefix below)
+// even though every other surface renamed it to "TLS" (spec
+// 2026-08-24-04): "SSL" is still the term a newcomer recognizes (e.g. "SSL
+// certificate"), matching the same friendlier-over-precise choice already
+// made for Ping/ICMP — see spec 2026-08-24-07 for the full reasoning. Do
+// not "fix" this to TLS without redoing that analysis.
 const QUICK_DEFS: Record<
   QuickType,
   {

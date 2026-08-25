@@ -68,6 +68,11 @@ type WebhookData struct {
 	// comment body plus its author. Omitted entirely for every other event, so
 	// existing receivers see a byte-identical payload to before.
 	Comment *CommentInfo `json:"comment,omitempty"`
+	// Acknowledgment is present only on `incident.acknowledged` deliveries and
+	// names who took the incident and from where. Omitted entirely for every
+	// other event, so existing receivers see a byte-identical payload to
+	// before.
+	Acknowledgment *AckInfo `json:"acknowledgment,omitempty"`
 }
 
 // WebhookIncident is the incident projection inside a webhook payload.
@@ -75,6 +80,7 @@ type WebhookIncident struct {
 	UID                   string     `json:"uid"`
 	StartedAt             time.Time  `json:"startedAt"`
 	ResolvedAt            *time.Time `json:"resolvedAt"`
+	AcknowledgedAt        *time.Time `json:"acknowledgedAt,omitempty"`
 	DurationSeconds       *int       `json:"durationSeconds"`
 	Title                 *string    `json:"title"`
 	FailureCount          int        `json:"failureCount"`
@@ -405,12 +411,13 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 	}
 
 	incident := WebhookIncident{
-		UID:          payload.Incident.UID,
-		StartedAt:    payload.Incident.StartedAt,
-		ResolvedAt:   payload.Incident.ResolvedAt,
-		Title:        payload.Incident.Title,
-		FailureCount: payload.Incident.FailureCount,
-		RelapseCount: payload.Incident.RelapseCount,
+		UID:            payload.Incident.UID,
+		StartedAt:      payload.Incident.StartedAt,
+		ResolvedAt:     payload.Incident.ResolvedAt,
+		AcknowledgedAt: payload.Incident.AcknowledgedAt,
+		Title:          payload.Incident.Title,
+		FailureCount:   payload.Incident.FailureCount,
+		RelapseCount:   payload.Incident.RelapseCount,
 	}
 
 	if payload.Incident.ResolvedAt != nil {
@@ -434,7 +441,8 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 				Name: checkName,
 				Type: payload.Check.Type,
 			},
-			Comment: payload.Comment,
+			Comment:        payload.Comment,
+			Acknowledgment: payload.Acknowledgment,
 		},
 	}
 }

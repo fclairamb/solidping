@@ -43,8 +43,11 @@ to mention the on-call person in channel alerts. Deliberately separate from
 identities are *who I am there*. Nothing in the paging path reads them, so a
 wrong mapping can annoy but can never misdirect a page.
 
-Only Slack integrations support identities today (Teams is out of scope); other
-types return `400 VALIDATION_ERROR`.
+Slack and bot-mode Discord integrations support identities; Teams is out of
+scope, and other types return `400 VALIDATION_ERROR`. A legacy webhook-mode
+Discord integration cannot mention anyone — a webhook post has no identity
+behind it and cannot ping a user id — so mentions are gated on `UsesBot()` as
+well as on the `mention_on_call` flag.
 
 ### GET /api/v1/orgs/:org/integrations/:uid/identities
 List every member with their mapping status on this integration. Never calls
@@ -143,6 +146,63 @@ Auth: required
 ### GET /api/v1/orgs/:org/channels/:uid/slack/destinations
 List the Slack channels/DMs the connected workspace can post to, for the
 destination picker. Auth: required
+
+## Discord
+
+Inbound endpoints for the Discord bot, plus the install helper. A Discord
+integration may also be in **legacy webhook mode**, which uses none of these:
+it holds only a `webhook_url` and is created through the normal
+`POST /orgs/:org/integrations`. Which mode an integration is in is a property
+of its settings (`guild_id` + `channel_id` present = bot mode), not a separate
+connection type.
+
+### GET /api/v1/integrations/discord/oauth
+Bot-install OAuth callback. Validates the CSRF state, exchanges the code,
+records the guild→org mapping and creates/updates the integration, then
+redirects into the dashboard on that integration. Auth: public (Discord flow)
+
+### POST /api/v1/integrations/discord/interactions
+Discord's single callback for buttons and application commands.
+Auth: **Ed25519 signature verification** (`X-Signature-Ed25519` /
+`X-Signature-Timestamp` over `timestamp + body`), plus a five-minute freshness
+bound on the timestamp.
+
+Unlike the Slack middleware, this one does **not** fall through when no public
+key is configured — it rejects everything. The endpoint acknowledges and
+escalates incidents, and Discord probes it with deliberately invalid signatures
+and deactivates it if a probe is not answered 401.
+
+Type-1 (PING) interactions are answered with a type-1 (PONG) before any other
+handling; that handshake is how Discord validates the URL at configuration time.
+
+### GET /api/v1/integrations/discord/gateway/status
+Report the state of the outgoing Discord Gateway (WebSocket) connection —
+enabled, connected, guild count, last connected time, last error, bot user id.
+Never contains the bot token. Auth: public
+
+### POST /api/v1/orgs/:org/integrations/discord/install-url
+Build an org-scoped Discord bot install URL (carries the org in the OAuth
+state). Optional body `{ "channelUid": "<uid>" }` targets an existing
+integration so the callback updates it instead of creating a second one.
+Auth: required
+
+There is deliberately **no** unauthenticated install entry point (Slack has one
+for its Marketplace listing): an anonymous Discord install would have to trust a
+caller-supplied org, which is the hole the Slack org-scoped endpoint closed.
+
+### GET /api/v1/orgs/:org/channels/:uid/discord/destinations
+List the guild's postable text channels for the destination picker. Voice and
+category channels are filtered out — they are returned by Discord's channel
+list but would silently fail at send time. Auth: required
+
+```json
+{ "channels": [ { "id": "…", "name": "alerts", "type": 0 } ],
+  "guildId": "…", "guildName": "acme", "connected": true }
+```
+
+Errors: `404` unknown integration or org, `400` not a Discord integration,
+`409 CHANNEL_NOT_CONNECTED` for a webhook-only integration or an instance with
+no bot token, `502` when Discord itself cannot be reached.
 
 ## Microsoft Teams (bot)
 

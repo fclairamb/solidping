@@ -46,6 +46,12 @@
       "confirmInputLabel": "Type {{org}} to confirm",
       "confirmAction": "Delete organization",
       "deleted": "Organization {{org}} deleted"
+    },
+    "traceroute": {
+      "title": "Network path diagnostics",
+      "description": "When a check goes down because its target could not be REACHED, capture an MTR-style traceroute and attach it to the incident.",
+      "label": "Traceroute on network failure",
+      "help": "Applies to every check set to \"inherit\". Only reachability failures trigger a capture — connect timeouts, refusals, ICMP loss, stalled TLS handshakes. An HTTP 5xx, a keyword mismatch or an expiring certificate never does, because the server answered. Traces run after the failing result is already reported and are rate-limited per organization, so they never delay an incident or flood a mass outage."
     }
   },
   "usage": {
@@ -67,7 +73,11 @@
       "runaway": "{{count}} message(s) were refused because this instance's SMS cap of {{limit}}/hour was reached. Alerts are being dropped instance-wide — tell your operator.",
       "country": "{{count}} message(s) were refused because the destination country is outside this instance's allow-list ({{countries}})."
     },
-    "slos": "Service level objectives"
+    "slos": "Service level objectives",
+    "whiteLabel": "White labelling",
+    "included": "Included",
+    "notIncluded": "Not included",
+    "whiteLabelHint": "Lets a status page hide the “Powered by SolidPing” footer."
   },
   "ai": {
     "title": "AI assistants",
@@ -157,6 +167,9 @@
     "inviteMember": "Invite a member",
     "sendDescription": "Send an invitation to join this organization",
     "invitationCreated": "Invitation created. Share this link:",
+    "emailSentTo": "An invitation email was sent to {{email}}.",
+    "shareLinkFallback": "Or share this link directly:",
+    "emailNotConfigured": "Email sending is not configured on this instance — share this link with the recipient.",
     "sendInvitation": "Send invitation",
     "sending": "Sending...",
     "pendingTitle": "Pending invitations",

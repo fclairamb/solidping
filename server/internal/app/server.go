@@ -27,6 +27,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
@@ -38,6 +39,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
+	"github.com/fclairamb/solidping/server/internal/db/dblock"
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
@@ -46,6 +48,7 @@ import (
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -88,13 +91,17 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/reportschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
+	"github.com/fclairamb/solidping/server/internal/handlers/sloalerts"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
+	"github.com/fclairamb/solidping/server/internal/handlers/supportinbox"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
@@ -102,6 +109,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/whatsappcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/msteams"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
@@ -120,6 +128,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
+	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/tlsedge"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
@@ -147,6 +158,11 @@ const (
 // SQLite backend — the database every server-level test runs against.
 const dbTypeSQLiteMemory = "sqlite-memory"
 
+// runModeTest is the RunMode value that gates the /test/* fixture routes and
+// InitializeTestData — see SetupRoutes (spec 2026-08-23-07) and
+// InitializeTestData below.
+const runModeTest = "test"
+
 // ErrUnsupportedDatabaseType is returned when an unsupported database type is specified.
 var ErrUnsupportedDatabaseType = errors.New("unsupported database type")
 
@@ -167,24 +183,25 @@ var docsFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
-	dbService             db.Service
-	jobSvc                jobsvc.Service
-	services              *services.Registry
-	router                *httpx.Router
-	config                *config.Config
-	authService           *auth.Service
-	mcpHandler            *mcp.Handler
-	profilerSrv           *profiler.Server
-	jmapManager           *jmap.Manager
-	slackSocketSupervisor *slack.SlackSocketSupervisor
-	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
-	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
-	statusPagesService    *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
-	customDomainCache     *customDomainCache      // host -> status-page resolution cache for custom-domain routing
-	tlsEdge               *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
-	status0FS             fs.FS                   // overridden in tests; nil means use the real embedded status0Files
-	cancelCtx             context.CancelFunc
-	workersWg             sync.WaitGroup // Tracks workers
+	dbService                db.Service
+	jobSvc                   jobsvc.Service
+	services                 *services.Registry
+	router                   *httpx.Router
+	config                   *config.Config
+	authService              *auth.Service
+	mcpHandler               *mcp.Handler
+	profilerSrv              *profiler.Server
+	jmapManager              *jmap.Manager
+	slackSocketSupervisor    *slack.SlackSocketSupervisor
+	discordGatewaySupervisor *discord.GatewaySupervisor
+	rateLimiter              *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	realtimeHub              *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
+	statusPagesService       *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
+	customDomainCache        *customDomainCache      // host -> status-page resolution cache for custom-domain routing
+	tlsEdge                  *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
+	status0FS                fs.FS                   // overridden in tests; nil means use the real embedded status0Files
+	cancelCtx                context.CancelFunc
+	workersWg                sync.WaitGroup // Tracks workers
 
 	// dbFault latches the first structural database fault (the schema this
 	// process needs is gone). Armed in Start to trigger a graceful shutdown:
@@ -504,6 +521,32 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 	}
 }
 
+// fakeAPIRequestsPerMinute bounds the public /fake self-test fixture (spec
+// 2026-08-23-07). Unlike the dashboard, /fake has no legitimate
+// high-frequency caller pattern — a check pointed at it polls at most every
+// few seconds — and its delay/slowResponse params can each hold a connection
+// open for seconds, so it gets its own, much stricter limiter than the
+// general per-IP budget rather than riding on dashboard-sized traffic
+// assumptions.
+const fakeAPIRequestsPerMinute = 60
+
+// fakeAPIRateLimitConfig derives the /fake limiter from the server's own,
+// keeping deployment-specific knobs (trusted proxy hops) while collapsing the
+// allowance and adding a small per-IP concurrency cap — MaxConcurrent matters
+// here specifically because slowResponse/delay hold the connection, unlike
+// the device-consent limiter above. RateQueue and ConcurrencyQueue are left
+// at zero so an over-eager caller is rejected outright (429) rather than
+// parked in a waiting room, which would only prolong the connection-holding
+// it exists to bound.
+func fakeAPIRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: fakeAPIRequestsPerMinute,
+		Burst:             fakeAPIRequestsPerMinute / 5,
+		MaxConcurrent:     5,
+		TrustedProxies:    base.TrustedProxies,
+	}
+}
+
 // buildMainGroup installs the process-wide middleware chain and returns the
 // root group every route below hangs off.
 //
@@ -539,6 +582,12 @@ func (s *Server) buildMainGroup(ctx context.Context, router *httpx.Router) *http
 		middleware.Recoverer,
 		rateLimiter.RateLimit,
 		rateLimiter.ConcurrencyLimit,
+		// Capture-only: parks the client address and user agent on the context
+		// for the audit trail (spec 2026-08-21-09). It emits nothing — audit
+		// events are minted by the services that perform the change. Placed
+		// last so it runs for every request, including the unauthenticated
+		// login attempts whose source IP matters most.
+		middleware.AuditRequestMeta,
 	)
 }
 
@@ -554,6 +603,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// InitializeSystemConfig, so DB-stored posthog.* parameters are already
 	// overlaid onto cfg. When PostHog is not configured this installs a genuine
 	// no-op: no client, no goroutine, no network.
+	// Apply the audit-trail knobs (spec 2026-08-21-09) before any route
+	// exists, so no request can be served with the default settings while the
+	// operator's `audit.capture_ip: false` is still in flight. Like the
+	// analytics client below, this runs after InitializeSystemConfig so
+	// DB-stored parameters have already been overlaid onto cfg.
+	audit.SetCaptureIP(s.config.Audit.CaptureIP)
+	audit.ConfigureDefaultFolder(
+		time.Duration(s.config.Audit.FailedLoginFoldWindowMinutes)*time.Minute,
+		s.config.Audit.FailedLoginMaxPerOrgPerHour,
+	)
+
 	analytics.SetDefault(analytics.New(s.config.PostHog))
 	if analytics.Default().Enabled() {
 		slog.InfoContext(ctx, "Product analytics enabled", "host", s.config.PostHog.ResolvedHost())
@@ -686,7 +746,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// orgGroup by design. These are exactly the URLs customers paste into
 	// their own sites (status pages, SVG badges, the /embed/v1 widget's
 	// summary endpoint), so they are the ones a rename must not break.
-	publicOrgAPI := api.Use(orgSlugRedirect.Middleware)
+	publicOrgAPI := api.Use(orgSlugRedirect.Middleware, statusPageUnlockGrant)
 
 	// Org creation (protected). Any authenticated user may create an org; the
 	// creator becomes its owner (spec 2026-08-08-11).
@@ -1026,7 +1086,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// of them, is the only arrangement where that cannot happen by omission.
 	statusSubscriberNotifier := statussubscribers.NewNotifier(
 		s.dbService, s.services.EmailSender, s.services.EmailFormatter,
-		s.config.Server.BaseURL, slog.Default())
+		s.config.Server.BaseURL, slog.Default(), s.services.Credentials)
 
 	incidentPublicationsService := incidentpublications.NewService(
 		s.dbService, s.services.Clock, s.services.Realtime)
@@ -1067,6 +1127,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgAgentsAdmin.GET("/agents", agentsAdminHandler.ListAgents)
 	orgAgentsAdmin.DELETE("/agents/:uid", agentsAdminHandler.RevokeAgent)
 
+	// Files + attachments. Created HERE rather than next to the /files routes
+	// below because three later blocks need them: the agent upload endpoint,
+	// the agent-path incident pipeline, and the dashboard-path one.
+	filesService := files.NewService(s.dbService, s.config)
+	attachmentsService := attachments.NewService(filesService, s.dbService, s.config)
+
 	// Deported-agent WebSocket transport (spec 2026-07-16-02). Registered
 	// directly on `api` — it carries its own auth, performed BEFORE the
 	// upgrade: a one-shot spe_ enrollment bearer on first connect, Ed25519
@@ -1098,8 +1164,38 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	)
 	api.GET("/agent/ws", agentWSHandler.Serve)
 
+	// Agent attachment upload (spec 2026-08-21-01) — the WS route's sibling,
+	// and its counterpart: the socket is the JSON control channel, this is the
+	// only way binary bytes get in. It carries the SAME Ed25519 signed-header
+	// auth performed inline, so it is registered on `api` and never on an
+	// authenticated group.
+	agentAttachmentsHandler := attachments.NewHandler(attachmentsService, s.dbService, s.config)
+	api.POST("/agent/attachments", agentAttachmentsHandler.Upload)
+
+	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
+
+	// …and its counterpart for DEPORTED agents (spec 2026-08-21-05): an agent
+	// cannot put a PNG on the JSON socket, so a result that opens or reopens an
+	// incident makes the pipeline ask that agent's live connection to upload the
+	// capture it advertised. Wired only on the agent-path incident service —
+	// the in-process worker already has the bytes in memory.
+	agentWorkerIncidents.SetAgentUploadRequester(agentWSHandler)
+
+	// Path diagnostics for DEPORTED agents (spec 2026-08-21-10). The trace has
+	// to run on the agent — its route to the target is the one that failed, and
+	// a sweep from this process would describe a path the probe never took — so
+	// this dispatcher gets the agent sender and NO local resolver. A result from
+	// a worker with no live connection here is simply not traced.
+	agentTraceSettings := s.config.Checkers.TraceroutePolicy()
+	agentWSHandler.SetTraceSettings(
+		agentTraceSettings.Rounds, agentTraceSettings.Hops, agentTraceSettings.Budget)
+
+	agentTraces := tracediag.New(agentTraceSettings, attachmentsService, slog.Default())
+	agentTraces.SetAgentSender(agentWSHandler)
+	agentWorkerIncidents.SetTraceRequester(agentTraces)
+
 	// Results routes (authentication required)
-	resultsService := results.NewService(s.dbService)
+	resultsService := results.NewService(s.dbService, s.config)
 	resultsHandler := results.NewHandler(resultsService, s.config)
 	orgResults := orgGroup("/orgs/:org/results")
 	orgResults.GET("", resultsHandler.ListResults)
@@ -1117,6 +1213,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	incidentsService.SetPublicationHook(incidentPublicationsService)
+	incidentsService.SetAttachmentStore(attachmentsService)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := orgGroup("/orgs/:org/incidents")
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -1260,7 +1357,6 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/orgs/:org/events/ws", wsHandler.Serve)
 
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
-	filesService := files.NewService(s.dbService, s.config)
 	filesHandler := files.NewHandler(filesService, s.config)
 	orgFiles := orgGroup("/orgs/:org/files")
 	orgFiles.GET("", filesHandler.List)
@@ -1270,16 +1366,27 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	pubFiles := mainGroup.NewGroup("/pub/files")
 	pubFiles.GET("/:uid", filesHandler.PublicGet)
 
-	// Organization logo (spec 2026-08-08-12). Upload/clear are owner-gated; the
-	// public route is unsigned on purpose — a logo URL has to be stable enough
-	// to paste into a status page — and is authorized by state instead: the
-	// file must be the CURRENT logo of a live organization.
+	// The ONE unsigned public-asset route (spec 2026-08-22-03). It serves any
+	// file whose attachment topic is on files.IsPublicTopic's closed allowlist
+	// — status-page logos and favicons, organization logos — instead of one
+	// bespoke handler with its own state query per asset kind.
+	//
+	// `/pub/status-page-assets/:uid` is the same handler on a second path: the
+	// status-page payload pins that exact string in `logoUrl`/`faviconUrl`, and
+	// this change is a storage-and-authorization refactor, not a URL change.
+	pubAssets := mainGroup.NewGroup(strings.TrimSuffix(files.PublicAssetPathPrefix, "/"))
+	pubAssets.GET("/:uid", filesHandler.PublicAssetGet)
+	pubStatusPageAssets := mainGroup.NewGroup(strings.TrimSuffix(statuspageassets.PublicPathPrefix, "/"))
+	pubStatusPageAssets.GET("/:uid", filesHandler.PublicAssetGet)
+
+	// Organization logo (spec 2026-08-08-12). Upload/clear are owner-gated. The
+	// uploaded blob is served by the generic public-asset route registered
+	// above — this package has no public route of its own since the bespoke
+	// /pub/org-logos/:uid handler was retired (spec 2026-08-22-03).
 	orgLogoService := orglogo.NewService(s.dbService, filesService)
 	orgLogoHandler := orglogo.NewHandler(orgLogoService, s.config)
 	orgOwnerGroup.POST("/logo", orgLogoHandler.Upload)
 	orgOwnerGroup.DELETE("/logo", orgLogoHandler.Delete)
-	pubOrgLogos := mainGroup.NewGroup("/pub/org-logos")
-	pubOrgLogos.GET("/:uid", orgLogoHandler.PublicGet)
 
 	// Bug report (public POST under /api/mgmt) and features endpoint (auth)
 	feedbackService := feedback.NewService(s.dbService, filesService, s.config, nil)
@@ -1367,6 +1474,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// listed per-org, but system agents (kind='system', no owning org) are
 	// otherwise visible nowhere short of querying the DB by hand.
 	systemActions.GET("/agents", agentsAdminHandler.ListAllAgents)
+	// Region migration (spec 2026-08-24-08): renaming a worker region strands
+	// every check_job materialized under the old slug, in every org at once.
+	// Recovering is a deployment-level operation, so it lives here rather than
+	// behind per-org admin credentials.
+	systemActions.POST("/regions/migrate", checksHandler.MigrateRegion)
+	// Ghost-region detection (spec 2026-08-24-09): the read-side companion of
+	// the migration above — one row per region slug seen anywhere, so an
+	// operator knows which `from` slugs to migrate before ever running one.
+	systemActions.GET("/regions/health", checksHandler.RegionHealth)
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (trusted service preferred for the SaaS billing service; admin user
@@ -1483,6 +1599,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
 	statusPagesService.SetPublicIncidentProvider(publicIncidentAdapter{svc: incidentPublicationsService})
+	// A hard demotion reached through the synchronous Verify button alerts the
+	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
+	statusPagesService.SetJobsService(s.services.Jobs)
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
@@ -1495,6 +1614,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.DELETE("/:statusPageUid", statusPagesHandler.DeleteStatusPage)
 	// Custom-domain verify-now (authenticated): runs the DNS checks synchronously.
 	orgStatusPages.POST("/:statusPageUid/custom-domain/verify", statusPagesHandler.VerifyCustomDomain)
+
+	// Per-page brand assets (spec 2026-08-21-07). Upload/clear are admin-gated
+	// by the org group's own chain; the uploaded blob is served by the generic
+	// public-asset route registered further up, authorized by the file's topic
+	// (spec 2026-08-22-03).
+	statusPageAssetsService := statuspageassets.NewService(s.dbService, filesService)
+	statusPageAssetsHandler := statuspageassets.NewHandler(statusPageAssetsService, s.config)
+	orgStatusPages.POST("/:statusPageUid/logo", statusPageAssetsHandler.UploadLogo)
+	orgStatusPages.DELETE("/:statusPageUid/logo", statusPageAssetsHandler.DeleteLogo)
+	orgStatusPages.POST("/:statusPageUid/favicon", statusPageAssetsHandler.UploadFavicon)
+	orgStatusPages.DELETE("/:statusPageUid/favicon", statusPageAssetsHandler.DeleteFavicon)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
 	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)
@@ -1525,11 +1655,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status page subscribers (public email/RSS subscriptions). The handler is
 	// shared by the authed admin routes (below) and the public routes (further
 	// down, outside RequireAuth).
-	statusSubscribersService := statussubscribers.NewService(s.dbService)
+	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials)
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
 	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
+	// Operator-side webhook/Slack subscriptions (spec 2026-08-21-07).
+	//
+	// The path is `/subscribers/endpoints`, NOT `/subscribers`, and that is
+	// load-bearing: the public email-subscribe route further down registers
+	// `POST /orgs/:org/status-pages/:statusPageUid/subscribers` on the SAME
+	// chi mux. chi's node.setEndpoint silently OVERWRITES a duplicate
+	// method+pattern rather than panicking, so two handlers on one pattern do
+	// not fail loudly — the last registration simply wins and the other one
+	// becomes unreachable. Splitting the path is the only way to keep both.
+	// Pinned by TestStatusSubscriberRoutesDoNotCollide.
+	orgStatusPages.POST(
+		"/:statusPageUid/subscribers/endpoints", statusSubscribersHandler.CreateEndpointSubscriber)
 	orgStatusPages.DELETE("/:statusPageUid/subscribers/:uid", statusSubscribersHandler.RemoveSubscriber)
 
 	// Maintenance windows routes (authentication required)
@@ -1557,6 +1699,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSLOs.GET("/:uid/history", sloHandler.History)
 	orgSLOs.GET("/:uid/burndown", sloHandler.Burndown)
 
+	// SLO burn-rate alert policies (spec 2026-08-21-08, authentication
+	// required). The evaluator is registered on the services registry through
+	// the SLOBurnEvaluator interface so the periodic job in jobs/jobtypes can
+	// reach it without importing handlers/incidents (import cycle).
+	sloAlertsService := sloalerts.NewService(
+		s.dbService, sloService, incidentsService, s.services.Clock, slog.Default(),
+	)
+	s.services.SLOBurn = sloAlertsService
+	sloAlertsHandler := sloalerts.NewHandler(sloAlertsService, s.config)
+	orgSLOs.GET("/:uid/alert-policies", sloAlertsHandler.List)
+	orgSLOs.GET("/:uid/alert-policies/:policyUid", sloAlertsHandler.Get)
+	orgSLOs.PATCH("/:uid/alert-policies/:policyUid", sloAlertsHandler.Update)
+
 	// Scheduled uptime reports (spec 2026-08-20-01, authentication required)
 	reportBuilder := uptimereport.NewBuilder(s.dbService, s.config, sloService)
 	reportSchedulesService := reportschedules.NewService(
@@ -1578,6 +1733,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// above, with a Cache-Control header the full view doesn't set (spec
 	// 2026-08-08-06).
 	publicOrgAPI.GET("/status-pages/:org/:slug/summary", statusPagesHandler.ViewStatusPageSummary)
+	// Unlock a password-protected page (spec 2026-08-21-07). Public and
+	// unauthenticated by design: the password IS the credential. It sets a
+	// host-only cookie so it works identically on a custom domain.
+	publicOrgAPI.POST("/status-pages/:org/:slug/unlock", statusPagesHandler.Unlock)
+	publicOrgAPI.POST("/status-pages/:org/unlock", statusPagesHandler.UnlockDefault)
 	// Public SVG badge (page-level rollup) — same sibling as the per-check
 	// badge under /orgs/:org/checks/:check/badges/:components (spec
 	// 2026-08-08-07).
@@ -1597,13 +1757,44 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
 	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
 	// single-purpose token links that render an HTML landing page.
+	// Email-only, public. Its operator-side sibling deliberately lives at
+	// `.../subscribers/endpoints` — see the comment there for why they cannot
+	// share this pattern.
 	publicOrgAPI.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
 	publicSubscribers := api.NewGroup("/public/status-subscribers")
 	publicSubscribers.GET("/confirm", statusSubscribersHandler.Confirm)
 	publicSubscribers.GET("/unsubscribe", statusSubscribersHandler.Unsubscribe)
 
+	// The instance support inbox (spec 2026-08-22-02). Built BEFORE the channel
+	// integrations because each of them captures into it.
+	//
+	// The mailer is the shared instance sender. The support mailbox
+	// (SP_EMAIL_REPLY_TO / email.reply_to) is what the whole feature hangs off:
+	// unset, capture still happens but no mirror notification is sent, which is
+	// the documented "off" state rather than a half-configured one.
+	supportService := support.NewService(s.dbService, support.Options{
+		Mailer:  s.services.EmailSender,
+		Logger:  slog.Default(),
+		BaseURL: s.config.Server.BaseURL,
+		ReplyTo: s.config.Email.ReplyTo,
+	})
+	s.services.Support = supportService
+	s.authService.SetSupportInbox(supportService)
+
+	// SuperAdmin on EVERY endpoint. The dash0 route that consumes this is
+	// unlinked, but a hidden route is not an access control — the URL is public
+	// knowledge and that group is the boundary. The registration (gate
+	// included) lives in the handler package so one function owns it and a test
+	// can exercise the real thing.
+	supportinbox.RegisterRoutes(api, authMiddleware, supportinbox.NewHandler(supportService, s.config))
+
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
+	slackService.SetSupport(supportService)
+	// One line at boot naming how many workspaces still owe a reinstall before
+	// their DMs arrive. Slack does not grant new scopes to existing installs, so
+	// the only other symptom is an inbox that stays quiet.
+	slackService.ReportDMCapability(ctx)
 	// Auto-match members to workspace users right after an install so the first
 	// alert can already mention the on-call person (spec 2026-08-12-03). The
 	// dependency can only point this way — handlers/integrations imports the
@@ -1632,6 +1823,30 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
 
+	// Discord bot integration routes (inbound from Discord — no org auth;
+	// authenticity for the interactions endpoint is the per-request Ed25519
+	// signature check in VerifyMiddleware, which Discord probes and which it
+	// DEACTIVATES the endpoint over if it ever fails).
+	discordService := discord.NewService(s.dbService, s.config, checksService, incidentsService)
+	discordService.SetSupport(supportService)
+	discordHandler := discord.NewHandler(discordService, s.config)
+
+	s.registerSupportRepliers(supportService, slackService, discordService)
+
+	// Build the Gateway supervisor up-front when enabled so its status is
+	// readable even before Start(). The Run() goroutine is launched from
+	// Start() under workersWg, exactly like the Slack Socket Mode supervisor.
+	if s.config.Discord.Enabled && s.config.Discord.GatewayEnabled && s.config.ShouldRunAPI() {
+		s.discordGatewaySupervisor = discord.NewGatewaySupervisor(discordService, s.config, slog.Default())
+		discordHandler.SetGatewaySupervisor(s.discordGatewaySupervisor)
+	}
+
+	discordIntegration := api.NewGroup("/integrations/discord")
+	discordIntegration.GET("/oauth", discordHandler.OAuthCallback)
+	discordIntegration.GET("/gateway/status", discordHandler.GetGatewayStatus)
+	discordIntegration.POST("/interactions",
+		discordHandler.VerifyMiddleware(discordHandler.HandleInteractions))
+
 	// Microsoft Teams bot routes (inbound from Bot Framework — no org auth;
 	// authenticity is the per-request JWT check against Microsoft's JWKS in
 	// HandleMessages). The routes are always registered so the status and
@@ -1656,11 +1871,22 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// param. Voice and status get DIFFERENT middlewares: a server-credential
 	// status callback is validated with the instance credentials of the
 	// capability it belongs to (SMS or voice), which are configured separately.
-	twilioHandler := twiliocb.NewHandler(s.dbService, s.services.Credentials, s.config, incidentsService)
+	twilioHandler := twiliocb.NewHandler(
+		s.dbService, s.services.Credentials, s.config, incidentsService,
+		twiliocb.WithSupport(supportService),
+	)
 	twilioIntegration := api.NewGroup("/integrations/twilio")
 	twilioIntegration.POST("/voice", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleVoice))
 	twilioIntegration.POST("/voice/gather", twilioHandler.VerifyVoiceMiddleware(twilioHandler.HandleGather))
 	twilioIntegration.POST("/status", twilioHandler.VerifyStatusMiddleware(twilioHandler.HandleStatus))
+	// Inbound SMS. Until spec 2026-08-22-02 there was NO such route: the
+	// Messaging Service had use_inbound_webhook_on_number: true and SolidPing
+	// exposed nothing, so a reply died at Twilio. Carrier keywords
+	// (STOP/START/HELP) are answered and NOT captured — Twilio's Advanced
+	// Opt-Out owns those, and filing them as support tickets would bury real
+	// opt-outs.
+	twilioIntegration.POST(twiliocb.MessagePath,
+		twilioHandler.VerifyMessageMiddleware(twilioHandler.HandleMessage))
 
 	// OVH SMS delivery receipts. OVH does not sign its callbacks and offers no
 	// per-job callback field, so the route authenticates by construction with a
@@ -1679,7 +1905,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// with the app secret before parsing. Registered only when the instance has
 	// WhatsApp configured — an unconfigured deployment exposes no route at all.
 	if s.config.WhatsApp.Active() {
-		whatsAppHandler := whatsappcb.NewHandler(s.dbService, s.config)
+		whatsAppHandler := whatsappcb.NewHandler(s.dbService, s.config,
+			whatsappcb.WithSupport(supportService))
 		whatsAppIntegration := api.NewGroup("/integrations/whatsapp")
 		whatsAppIntegration.GET("/webhook", whatsAppHandler.HandleVerify)
 		whatsAppIntegration.POST("/webhook", whatsAppHandler.HandleEvent)
@@ -1699,7 +1926,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	if s.config.Telegram.Configured() {
 		telegramHandler := telegramcb.NewHandler(s.dbService, s.config,
 			telegramcb.WithAcknowledger(incidentsService),
-			telegramcb.WithCommenter(incidentsService))
+			telegramcb.WithCommenter(incidentsService),
+			telegramcb.WithSupport(supportService))
 		telegramIntegration := api.NewGroup("/integrations/telegram")
 		// Path kept in sync with TelegramWebhookPath, which the boot-time
 		// self-registration uses.
@@ -1735,6 +1963,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/slack").
 		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	slackOrgIntegrationRoutes.POST("/install-url", slackHandler.BuildInstallURLForOrg)
+
+	// Discord destinations picker (authenticated, org-scoped).
+	discordOrgRoutes := orgGroup("/orgs/:org/channels/:uid/discord")
+	discordOrgRoutes.GET("/destinations", discordHandler.GetDestinations)
+
+	// Org-scoped Discord bot install-URL minting. Same reasoning as Slack: the
+	// org comes from the authenticated route context, never from a query param.
+	discordOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/discord").
+		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	discordOrgIntegrationRoutes.POST("/install-url", discordHandler.BuildInstallURLForOrg)
 
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)
@@ -1779,12 +2017,31 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath)
 	}
 
-	// Test API routes (no authentication for development/testing)
+	// Test/dev fixture routes. Everything registered inside the RunMode=="test"
+	// block below 404s outside test mode; TestTestModeRoutesGatedByRunMode
+	// walks the whole block from both directions so a route added here
+	// without the gate, or a gate accidentally lifted, fails loudly instead of
+	// shipping unauthenticated in production (spec 2026-08-23-07 — /test/jobs
+	// used to sit here unauthenticated too, an open mail relay reachable by
+	// anyone).
 	testHandler := testapi.NewHandler(s.jobSvc, s.dbService, s.services.EventNotifier)
-	api.POST("/test/jobs", testHandler.CreateEmailJob)
-	api.GET("/fake", testHandler.FakeAPI)
 
-	if s.config.RunMode == "test" {
+	// /fake is the one deliberate exception: a documented, intentionally
+	// public self-test fixture (specs/done/2026/01/2026-01-02-fake-api.md)
+	// with live dashboard callers (test.bulk.tsx, test.templates.tsx, which
+	// build its URL from window.location.origin) and potentially customer
+	// checks pointed at it. Do NOT move it inside the RunMode=="test" block —
+	// a future "fix" here breaks both of those. It is bounded instead (spec
+	// 2026-08-23-07): the delay/slowResponse ceiling is capped well below its
+	// old 30000ms (see testapi.MaxFakeDelayMS), and it carries its own,
+	// much stricter per-IP rate limit than the general budget, since a
+	// self-test fixture has no legitimate high-frequency caller pattern.
+	fakeLimiter := middleware.NewRateLimiter(fakeAPIRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	fakeAPI := api.Use(fakeLimiter.RateLimit)
+	fakeAPI.GET("/fake", testHandler.FakeAPI)
+
+	if s.config.RunMode == runModeTest {
+		api.POST("/test/jobs", testHandler.CreateEmailJob)
 		api.GET("/test/state-entries", testHandler.ListStateEntries)
 		api.POST("/test/users", testHandler.CreateUser)
 		api.POST("/test/checks/bulk", testHandler.BulkCreateChecks)
@@ -2533,6 +2790,15 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// per-page Open Graph / Twitter Card metadata so shared links get a rich
 	// preview. Non-status-page paths and missing/disabled/private pages keep
 	// the generic head (no page-existence leak).
+	//
+	// A `password` page keeps the generic head too, and that is not an
+	// oversight to be fixed: status0MetaForPath resolves the page WITHOUT
+	// installing the request's unlock grant, so statuspagelock.Allows denies by
+	// default and no gated page's name or description is ever injected here.
+	// That is why this shell stays safe to serve as a single shared-cacheable
+	// artifact, unlike its custom-domain twin — there, the host IS the page, so
+	// the meta is injected unconditionally and the directive has to follow the
+	// page's visibility (serveStatus0IndexForCustomHost, spec 2026-08-22-06).
 	if servingIndexFallback {
 		if meta, ok := s.status0MetaForPath(req, reqPath); ok {
 			data = []byte(injectStatus0Meta(string(data), &meta))
@@ -2557,6 +2823,14 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	}
 
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+
+	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
+	// shell varies on it exactly like the custom-domain one. Hashed assets do
+	// not, so they keep their unqualified year-long entry.
+	if servingIndexFallback {
+		writer.Header().Set("Vary", statuspagecache.VaryPublic)
+	}
+
 	writer.Header().Set("Content-Type", contentType)
 
 	if _, err := writer.Write(data); err != nil {
@@ -2698,6 +2972,14 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start JMAP inbox supervisor (idle when email_inbox not configured).
 	// runnerCtx is intentionally separate from request context.
+	//
+	// Deliberately NOT gated on s.config.Node.Role, unlike the job worker and
+	// check worker below: a static role assignment picks a leader that cannot
+	// fail over, so the one pod configured to consume the mailbox taking a
+	// crash-loop would silently stop all inbound email. runJMAPManager holds a
+	// Postgres advisory lock instead — same "one consumer" outcome, but the
+	// lock is released when its holder dies and the next replica picks the
+	// mailbox up within the retry interval (spec 2026-08-22-01, layer 2).
 	if s.jmapManager != nil {
 		s.workersWg.Add(1)
 
@@ -2715,6 +2997,18 @@ func (s *Server) Start(ctx context.Context) error {
 
 		//nolint:contextcheck // runnerCtx is intentionally separate from request context
 		go s.runSlackSocketSupervisor(runnerCtx)
+	}
+
+	// Start the Discord Gateway supervisor when configured. Unlike Slack's
+	// Socket Mode this is not an alternative transport: the HTTP interactions
+	// endpoint and the Gateway carry DIFFERENT traffic, and both are needed for
+	// full parity — buttons and slash commands over HTTP, everything a human
+	// types (thread replies, mention commands) over the Gateway.
+	if s.discordGatewaySupervisor != nil {
+		s.workersWg.Add(1)
+
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go s.runDiscordGatewaySupervisor(runnerCtx)
 	}
 
 	// Telegram boot-time sanity check + webhook self-heal (no-op unless this
@@ -2817,11 +3111,28 @@ func (s *Server) waitForRunners(ctx context.Context) {
 }
 
 // startJobWorker starts the job worker with internal runner goroutines.
-// runJMAPManager wraps jmap.Manager.Run for the goroutine launched in Start.
+// runJMAPManager wraps jmap.Manager.Run for the goroutine launched in Start,
+// under a Postgres advisory lock so that only one replica holds a JMAP session
+// against the shared mailbox at a time (spec 2026-08-22-01, layer 2).
+//
+// The lock is an optimization — fewer JMAP sessions, less load on the mail
+// provider — not the correctness mechanism. Even a single leader replays a
+// message when its own claim-move fails, so the claim-by-archive ordering in
+// jmap.Manager and the Message-ID dedup in emailcheck remain load-bearing.
+//
+// Cost to be aware of: while this process is the holder it pins one connection
+// out of the Postgres pool for the process's lifetime. That is one slot, not
+// one per sync, and it is the price of a session-scoped lock — see
+// internal/db/dblock.
 func (s *Server) runJMAPManager(ctx context.Context) {
 	defer s.workersWg.Done()
 
-	if err := s.jmapManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+	err := dblock.RunExclusive(
+		ctx, s.dbService.DB(), dblock.KeyJMAPInbox, dblock.DefaultRetryInterval,
+		slog.Default().With("component", "jmap.lock"),
+		s.jmapManager.Run,
+	)
+	if err != nil && !errors.Is(err, context.Canceled) {
 		slog.WarnContext(ctx, "JMAP inbox manager exited", "error", err)
 	}
 }
@@ -2833,6 +3144,16 @@ func (s *Server) runSlackSocketSupervisor(ctx context.Context) {
 
 	if err := s.slackSocketSupervisor.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		slog.WarnContext(ctx, "Slack Socket Mode supervisor exited", "error", err)
+	}
+}
+
+// runDiscordGatewaySupervisor wraps GatewaySupervisor.Run for the goroutine
+// launched in Start.
+func (s *Server) runDiscordGatewaySupervisor(ctx context.Context) {
+	defer s.workersWg.Done()
+
+	if err := s.discordGatewaySupervisor.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.WarnContext(ctx, "Discord Gateway supervisor exited", "error", err)
 	}
 }
 
@@ -3074,12 +3395,21 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	return nil
 }
 
-// ReconcileCheckJobSchedules recomputes period, scheduled_at, and
-// effective_scheduled_at for every check_job whose period no longer matches
-// its check's period (spec 2026-07-20-05). One-shot at startup: multi-region
-// checks written before the per-region-full-period change carry a stale
-// basePeriod×region_count job period and would keep it until the check is next
-// edited. Idempotent — a database whose jobs already match reconciles nothing.
+// ReconcileCheckJobSchedules re-materializes every check_job that has drifted
+// away from its check, in either of the two ways a job can drift.
+//
+// PERIOD (spec 2026-07-20-05): multi-region checks written before the
+// per-region-full-period change carry a stale basePeriod×region_count job
+// period and would keep it until the check is next edited.
+//
+// REGION (spec 2026-08-24-08): renaming a worker region leaves every job under
+// the old slug, where the worker's prefix-matched claim can never reach it —
+// a silent, permanent outage of everything that region ran. Healing it at boot
+// means the operator's deploy fixes it even if nobody calls
+// POST /system/regions/migrate.
+//
+// One-shot at startup, and idempotent — a database whose jobs already match
+// reconciles nothing.
 func (s *Server) ReconcileCheckJobSchedules(ctx context.Context) error {
 	if s.dbService == nil || s.services == nil {
 		return nil
@@ -3094,7 +3424,7 @@ func (s *Server) ReconcileCheckJobSchedules(ctx context.Context) error {
 	}
 
 	if reconciled > 0 {
-		slog.InfoContext(ctx, "reconciled stale multi-region check job schedules at startup",
+		slog.InfoContext(ctx, "reconciled stale check job schedules and regions at startup",
 			"checksReconciled", reconciled)
 	}
 
@@ -3170,13 +3500,13 @@ func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
 // InitializeTestData creates test data for test mode.
 // This should be called after Initialize and before Start.
 func (s *Server) InitializeTestData(ctx context.Context) error {
-	if s.config.RunMode != "test" {
+	if s.config.RunMode != runModeTest {
 		return nil
 	}
 
 	slog.InfoContext(ctx, "Test mode detected, creating test data")
 
-	return testdata.CreateTestData(ctx, s.dbService)
+	return testdata.CreateTestData(ctx, s.dbService, s.config)
 }
 
 //nolint:ireturn // Returning interface is intentional for testing
@@ -3348,4 +3678,18 @@ func readMasterKeyFile(path string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(bytes)), nil
+}
+
+// statusPageUnlockGrant installs the request's own status-page unlock decision
+// on its context (spec 2026-08-21-07).
+//
+// It is mounted on the public API surface rather than checked in each handler
+// so the gate lives at ONE place, next to the visibility check it belongs
+// with. Anything reached without it — the MCP tools, a background job — gets
+// statuspagelock's deny-by-default, so forgetting to mount it locks pages
+// rather than exposing them.
+func statusPageUnlockGrant(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		return next(writer, statuspagelock.WithRequestGrant(req))
+	}
 }

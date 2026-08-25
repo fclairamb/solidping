@@ -173,6 +173,21 @@ func TestConvertEndpointUptimeKumaRoundTrip(t *testing.T) {
 	r.Contains(names, "Production")
 }
 
+func TestConvertEndpointUptimeRobotRoundTrip(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	harness := newConvertHarness(t, "")
+	result := runSourceRoundTrip(t, harness, "uptimerobot", readFixture(t, "uptimerobot-monitors.json"))
+
+	r.Equal("uptimerobot", result.Manifest)
+	r.NotEmpty(result.Warnings)
+
+	check, err := harness.dbSvc.GetCheckByUidOrSlug(t.Context(), harness.org.UID, "main-website")
+	r.NoError(err)
+	r.Equal("http", check.Type)
+}
+
 func TestConvertEndpointBetterStackRoundTrip(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

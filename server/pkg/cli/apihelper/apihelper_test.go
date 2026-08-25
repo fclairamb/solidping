@@ -14,6 +14,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/oauth"
 	"github.com/fclairamb/solidping/server/pkg/cli/config"
+	"github.com/fclairamb/solidping/server/pkg/client"
 )
 
 const testJWTToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MDQwNjcyMDAsInN1YiI6InRlc3QifQ.sig"
@@ -349,4 +350,79 @@ func TestCreateTokenData(t *testing.T) {
 		assert.Empty(t, tokenData.RefreshToken)
 		assert.Zero(t, tokenData.RefreshTokenExpiresAt)
 	})
+}
+
+// TestLoginReportsForcedRotation is the CLI half of spec 2026-08-23-04.
+//
+// The server does NOT fail the login — that is the design: the session exists
+// and can reach the rotation endpoint. But printing "Login successful!" and
+// then failing every subsequent command with a 403 is exactly the opaque
+// outcome the spec asks us to avoid, so `solidping login` says it at the
+// password prompt instead.
+//
+// The token is deliberately still written to disk: it is the credential the
+// rotation itself needs.
+func TestLoginReportsForcedRotation(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch req.URL.Path {
+		case "/api/v1/auth/login":
+			_, _ = w.Write([]byte(`{"accessToken":"` + testJWTToken +
+				`","refreshToken":"rt","expiresIn":3600,` +
+				`"user":{"uid":"11111111-1111-4111-8111-111111111111","email":"admin@solidping.io","role":"owner",` +
+				`"mustChangePassword":true}}`))
+		case "/api/v1/auth/me":
+			_, _ = w.Write([]byte(`{"user":{"uid":"11111111-1111-4111-8111-111111111111","email":"admin@solidping.io",` +
+				`"role":"owner","mustChangePassword":true},"organizations":[]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	tokenPath := filepath.Join(t.TempDir(), "token.json")
+	helper := NewHelper(&config.Config{URL: srv.URL, Org: "default"}, tokenPath, false)
+
+	_, _, err := helper.Login(t.Context(), "default", "admin@solidping.io", "solidpass")
+	r.ErrorIs(err, client.ErrPasswordChangeRequired)
+	r.Contains(err.Error(), "change-password", "the CLI message must name the way out")
+
+	saved, readErr := helper.readTokenFile()
+	r.NoError(readErr)
+	r.NotNil(saved, "the session is kept: the rotation needs it")
+}
+
+// TestLoginUnflaggedAccountIsSilent is the positive control: an ordinary login
+// must not pay for, or trip over, the rotation probe.
+func TestLoginUnflaggedAccountIsSilent(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch req.URL.Path {
+		case "/api/v1/auth/login":
+			_, _ = w.Write([]byte(`{"accessToken":"` + testJWTToken +
+				`","refreshToken":"rt","expiresIn":3600,` +
+				`"user":{"uid":"11111111-1111-4111-8111-111111111111","email":"user@example.com","role":"owner"}}`))
+		case "/api/v1/auth/me":
+			_, _ = w.Write([]byte(`{"user":{"uid":"11111111-1111-4111-8111-111111111111","email":"user@example.com",` +
+				`"role":"owner"},"organizations":[]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	tokenPath := filepath.Join(t.TempDir(), "token.json")
+	helper := NewHelper(&config.Config{URL: srv.URL, Org: "default"}, tokenPath, false)
+
+	token, _, err := helper.Login(t.Context(), "default", "user@example.com", "pw")
+	r.NoError(err)
+	r.NotEmpty(token)
 }

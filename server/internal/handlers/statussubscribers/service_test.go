@@ -35,7 +35,9 @@ func newSubSetup(t *testing.T) *subSetup {
 	r.NoError(dbSvc.CreateStatusPage(ctx, page))
 
 	return &subSetup{
-		svc:   statussubscribers.NewService(dbSvc),
+		svc: statussubscribers.NewService(dbSvc, nil,
+			// The delivery tests point at an httptest server on 127.0.0.1.
+			statussubscribers.WithAllowPrivateEndpoints(true)),
 		dbSvc: dbSvc,
 		org:   org,
 		page:  page,
@@ -60,7 +62,7 @@ func TestSubscribeCreatesUnconfirmedRow(t *testing.T) {
 
 	res := s.subscribe(t, "user@example.com")
 	r.NotNil(res.Subscriber)
-	r.Equal("user@example.com", res.Subscriber.Email)
+	r.Equal("user@example.com", res.Subscriber.EmailAddress())
 	r.Nil(res.Subscriber.ConfirmedAt)
 	r.NotEmpty(res.Subscriber.ConfirmToken)
 	r.NotEmpty(res.Subscriber.UnsubscribeToken)
@@ -74,7 +76,7 @@ func TestSubscribeNormalizesEmail(t *testing.T) {
 	s := newSubSetup(t)
 
 	res := s.subscribe(t, "  USER@Example.COM ")
-	r.Equal("user@example.com", res.Subscriber.Email)
+	r.Equal("user@example.com", res.Subscriber.EmailAddress())
 }
 
 func TestSubscribeInvalidEmail(t *testing.T) {
@@ -208,7 +210,7 @@ func TestListConfirmedExcludesUnconfirmed(t *testing.T) {
 	subs, err := s.dbSvc.ListConfirmedSubscribers(ctx, s.page.UID, nil)
 	r.NoError(err)
 	r.Len(subs, 1)
-	r.Equal("yes@example.com", subs[0].Email)
+	r.Equal("yes@example.com", subs[0].EmailAddress())
 }
 
 func TestAdminListAndRemove(t *testing.T) {

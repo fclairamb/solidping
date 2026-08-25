@@ -33,6 +33,8 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"incident-escalated.html":          incidentFixture,
 	"incident-reopened.html":           incidentFixture,
 	"incident-resolved.html":           resolvedIncidentFixture,
+	"incident-burn-created.html":       burnIncidentFixture,
+	"incident-burn-resolved.html":      resolvedBurnIncidentFixture,
 	"escalation.html":                  escalationFixture,
 	"test-email.html":                  testEmailFixture,
 	"paging-nudge.html":                pagingNudgeFixture,
@@ -83,6 +85,40 @@ func incidentFixture() map[string]any {
 		"UnsubscribeURL":       "https://solidping.example/unsubscribe?token=preview-unsub-token",
 		"UnsubscribeCheckName": fixtureCheckName,
 	}
+}
+
+// burnIncidentFixture is the SLO burn-rate alert view-model. It extends the
+// incident fixture rather than replacing it because a burn incident IS an
+// incident — same ack link, same deep links — with the three deciding numbers
+// added: burn rate, budget remaining, projected exhaustion.
+func burnIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["SLOName"] = "Acme API availability"
+	fixture["BurnPolicyLabel"] = "Fast burn"
+	fixture["BurnSeverity"] = "critical"
+	fixture["BurnRate"] = "31.0x"
+	fixture["BurnShortRate"] = "44.5x"
+	fixture["BurnPeakRate"] = "52.0x"
+	fixture["BurnThreshold"] = "14.4x"
+	fixture["BurnLongWindow"] = "1h"
+	fixture["BurnShortWindow"] = "5m"
+	fixture["BurnBudgetRemaining"] = "1h30m"
+	fixture["BurnProjectedExhaustion"] = "2026-07-05 14:30:00 UTC"
+	fixture["BurnTarget"] = "99.9%"
+
+	return fixture
+}
+
+// resolvedBurnIncidentFixture is the cleared-alert half: no ack (there is
+// nothing left to acknowledge) and a rate back under the threshold.
+func resolvedBurnIncidentFixture() map[string]any {
+	fixture := burnIncidentFixture()
+	fixture["AckURL"] = ""
+	fixture["ResolvedAt"] = "2026-07-05 10:15:00"
+	fixture["Duration"] = "15m0s"
+	fixture["BurnRate"] = "1.2x"
+
+	return fixture
 }
 
 // resolvedIncidentFixture extends incidentFixture with the resolved-only
@@ -180,6 +216,11 @@ func invitationFixture() map[string]any {
 		"Role":        "admin",
 		"InviterName": "Alice Admin",
 		"InviteURL":   "https://solidping.example/dash0/invitations/preview-token",
+		// Dynamic on purpose: the template used to hardcode "7 days" here
+		// regardless of the actual invite TTL. This fixture value is
+		// deliberately NOT "7 days" so the preview harness would catch a
+		// regression back to the hardcoded string.
+		"ExpiresIn": "24 hours",
 	}
 }
 

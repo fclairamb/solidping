@@ -124,13 +124,13 @@ func (h *Handler) AddMember(writer http.ResponseWriter, req *http.Request) error
 	var validationErrors []base.ValidationErrorField
 	if addReq.Email == "" {
 		validationErrors = append(validationErrors, base.ValidationErrorField{
-			Name: "email", Message: "Email is required",
+			Name: fieldEmail, Message: "Email is required",
 		})
 	}
 
 	if addReq.Role == "" {
 		validationErrors = append(validationErrors, base.ValidationErrorField{
-			Name: "role", Message: "Role is required",
+			Name: fieldRole, Message: "Role is required",
 		})
 	}
 
@@ -239,7 +239,7 @@ func (h *Handler) handleMembershipError(writer http.ResponseWriter, err error) (
 			"Only an owner can grant, revoke or remove ownership")
 	case errors.Is(err, ErrInvalidRole):
 		return true, h.WriteValidationError(writer, "Invalid role", []base.ValidationErrorField{
-			{Name: "role", Message: "Role must be one of: owner, admin, user, viewer"},
+			{Name: fieldRole, Message: "Role must be one of: owner, admin, user, viewer"},
 		})
 	}
 

@@ -14,6 +14,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -179,6 +181,73 @@ func TestCreateInvitation(t *testing.T) {
 		})
 		r.ErrorIs(err, ErrInvalidApp)
 	})
+}
+
+// TestCreateInvitation_ReportsEmailSentStatus pins the response's emailSent
+// field (spec 2026-08-24-13): true only when email sending is enabled
+// instance-wide AND the email job was successfully enqueued, false
+// otherwise — so the dashboard knows whether the invite link is a
+// convenience or the recipient's only channel. Uses a real jobsvc.Service
+// (not nil) so the "enabled" case actually exercises a successful enqueue,
+// not just the jobsSvc==nil short-circuit already covered elsewhere.
+func TestCreateInvitation_ReportsEmailSentStatus(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		orgSlug       string
+		emailEnabled  bool
+		wantEmailSent bool
+	}{
+		{"email enabled", "invite-email-on", true, true},
+		{"email disabled", "invite-email-off", false, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			ctx := t.Context()
+
+			dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbService.Initialize(ctx))
+			t.Cleanup(func() { _ = dbService.Close() })
+
+			jobs := jobsvc.NewService(dbService.DB(), dbService, notifier.NewLocalEventNotifier(), nil)
+
+			fullCfg := &config.Config{
+				Server: config.ServerConfig{BaseURL: "http://127.0.0.1:4000"},
+				Auth: config.AuthConfig{
+					JWTSecret:          "test-jwt-secret",
+					AccessTokenExpiry:  time.Hour,
+					RefreshTokenExpiry: 7 * 24 * time.Hour,
+				},
+				Email: config.EmailConfig{Enabled: tc.emailEnabled},
+			}
+
+			svc := NewService(dbService, fullCfg.Auth, fullCfg, jobs, nil)
+
+			org := models.NewOrganization(tc.orgSlug, "Invite Email Org")
+			r.NoError(dbService.CreateOrganization(ctx, org))
+
+			user := models.NewUser("inviter-" + tc.orgSlug + "@example.com")
+			r.NoError(dbService.CreateUser(ctx, user))
+
+			member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)
+			r.NoError(dbService.CreateOrganizationMember(ctx, member))
+
+			resp, err := svc.CreateInvitation(ctx, tc.orgSlug, user.UID, InviteRequest{
+				Email:     "invitee-" + tc.orgSlug + "@example.com",
+				Role:      "user",
+				ExpiresIn: "1h",
+				App:       "dash0",
+			})
+			r.NoError(err)
+			r.Equal(tc.wantEmailSent, resp.EmailSent)
+		})
+	}
 }
 
 func TestGetUserInfo(t *testing.T) {

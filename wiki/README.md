@@ -57,6 +57,7 @@ the relevant code.
 - [features/browser-monitoring.md](features/browser-monitoring.md) — Headless-Chrome (chromedp) checks: when to pick browser over http, execution model, capabilities & limits, worker requirements, security model.
 - [features/showcase-media.md](features/showcase-media.md) — Regenerable product screenshots & video: the `web/dash0/showcase/` Playwright pipeline, `make showcase`, AV1 post-processing, which assets are committed, where they're surfaced, and the marketing (`solidping-website`) hand-off.
 - [features/config-as-code.md](features/config-as-code.md) — Declarative checks: export → edit → `sp apply` loop, the `solidping.io/managed` scope, reconcile plan (create/update/delete/unmanaged/rename), `${env:}`/`${param:}` secret references, prune + deletion cap, admin gating.
+- [features/platform-watchdog.md](features/platform-watchdog.md) — The hourly `platform_watchdog` job: how the platform reports on ITSELF. Three independent detectors (dark region with assigned work, fleet execution collapse, frozen active incidents), transition-based anti-flood, delivery through the operators' own notification routes, and the out-of-band `solidping_watchdog_*` gauges.
 - [features/results-aggregation.md](features/results-aggregation.md) — The raw → hour → day → month results rollup: per-org job, tier boundaries, transactional compaction, pure-Go aggregate math (warning-counts-as-up, degraded promotion, metric suffixes), retention config, consumers (uptimebar, badges, results-API fallback), failure-mode history.
 
 ## Conventions
@@ -80,7 +81,7 @@ Project-wide standards and naming rules.
 Operational procedures for diagnosing the running system.
 
 - [runbooks/memory-profiling.md](runbooks/memory-profiling.md) — Memory profiling & leak detection: pprof heap/alloc/goroutine/block profiles per role, base-diffing, the off-heap (cgo/SQLite) rule, the `/api/mgmt/memory` snapshot + Prometheus surfaces, baseline/soak procedure, GC levers (`GOMEMLIMIT`/`GOGC`).
-- [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the k8xp SNI-passthrough / LoadBalancer prerequisite, the live acceptance checklist, and `tls_storage` handling rules.
+- [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the four edge options (SNI passthrough, dedicated LB, chained instances, external proxy), config reference, acceptance checklist, troubleshooting, and the 2026-08-23 investigation of *intermittent* re-verification failure while `dig` succeeds (class: resolver/transport fault, infra-side).
 
 ## Testing
 
@@ -92,6 +93,7 @@ Operational procedures for diagnosing the running system.
 - [slack/README.md](slack/README.md) — Slack app manifests overview; the `/check` and `/comment` slash commands, the `comment_ingestion` (explicit-by-default) setting, inbound thread-reply → incident-comment scopes and the re-authorization requirement
 - [slack/manifest-dev.json](slack/manifest-dev.json) — Slack app manifest for development
 - [slack/manifest-prod.json](slack/manifest-prod.json) — Slack app manifest for production
+- [discord/README.md](discord/README.md) — Discord bot operator setup: application/bot creation, the exact permissions requested and why Manage Threads is needed, the privileged `MESSAGE_CONTENT` intent and its 100-guild review threshold, the two inbound transports (HTTPS interactions + Gateway), Ed25519 verification, guild→org mapping and comment ingestion
 
 ## Research
 

@@ -75,6 +75,25 @@ edit the three values there (stored as the system parameters
 Values must be **whole numbers ≥ 1**; anything else is rejected. Changes
 apply on the aggregation job's next pass — no restart needed.
 
+## Other retained data
+
+Monitoring results are not the only thing SolidPing keeps on a clock.
+
+| Data | Default retention | Setting |
+|---|---|---|
+| Audit events | 365 days | `SP_AUDIT_RETENTION_DAYS` / `audit.retention_days` |
+| Support-inbox threads and messages (closed only) | 365 days | `SP_SUPPORT_RETENTION_DAYS` / `support.retention_days` |
+
+The [support inbox](../features/support-inbox.md) is the one that stores
+**personal data** — free text written by identifiable people, arriving from
+publicly reachable phone numbers. Only **closed** threads are purged, and the
+sweep takes their messages with them. Setting the value to `0` keeps everything,
+which is the switch to use under a legal hold.
+
+If you publish a privacy policy for your instance, its retention table needs a
+row for this store: capture without the matching policy text puts what you
+publish in conflict with what your service does.
+
 ## Raise retention before you need it
 
 :::caution Rollups are irreversible

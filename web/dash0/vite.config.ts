@@ -35,7 +35,14 @@ export default defineConfig(() => {
     },
     server: {
       port: 5174,
-      allowedHosts: ["solidping.k8xp.com"],
+      // Extra hostnames the dev server will answer for, beyond localhost.
+      // Set VITE_DEV_ALLOWED_HOSTS (comma-separated) when reaching the dev
+      // server through a tunnel or a remote hostname. No deployment host is
+      // hardcoded here.
+      allowedHosts: (process.env.VITE_DEV_ALLOWED_HOSTS ?? "")
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean),
       proxy: {
         // ws: true lets this proxy also forward the realtime v2 WebSocket
         // upgrade (GET /api/v1/orgs/:org/events/ws) to the backend dev

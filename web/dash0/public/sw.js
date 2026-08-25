@@ -28,12 +28,15 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
+    // Push URLs are relative in-app paths; client URLs are absolute. Resolve
+    // against our origin so the "focus an already-open tab" match can ever hit.
+    const target = new URL(event.notification.data.url, self.location.origin).href;
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
             for (const c of list) {
-                if (c.url === event.notification.data.url) return c.focus();
+                if (c.url === target) return c.focus();
             }
-            return clients.openWindow(event.notification.data.url);
+            return clients.openWindow(target);
         })
     );
 });

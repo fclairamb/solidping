@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getFieldError } from "@/hooks/use-check-validation";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
@@ -88,6 +89,7 @@ export interface BrowserState {
   url: string;
   waitSelector: string;
   keyword: string;
+  screenshot: boolean;
 }
 
 export const browserModule: CheckTypeModule<BrowserState> = {
@@ -96,12 +98,16 @@ export const browserModule: CheckTypeModule<BrowserState> = {
     url: getConfigField(config, "url"),
     waitSelector: getConfigField(config, "waitSelector"),
     keyword: getConfigField(config, "keyword"),
+    screenshot: getConfigField(config, "screenshot") === "true",
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.url) cfg.url = state.url;
     if (state.waitSelector) cfg.waitSelector = state.waitSelector;
     if (state.keyword) cfg.keyword = state.keyword;
+    // Only sent when on: the backend default is off, and an explicit `false`
+    // would add noise to every browser check's stored config.
+    if (state.screenshot) cfg.screenshot = true;
     const errors: FieldErrors = state.url
       ? []
       : [{ name: "url", message: "URL is required" }];
@@ -145,7 +151,8 @@ function BrowserFields({
           data-testid="check-wait-selector-input"
         />
         <p className="text-xs text-muted-foreground">
-          CSS selector to wait for before checking. Leave empty to wait for body.
+          CSS selector to wait for before checking. Leave empty to wait for
+          body.
         </p>
       </div>
       <div className="space-y-2">
@@ -160,6 +167,23 @@ function BrowserFields({
         />
         <p className="text-xs text-muted-foreground">
           Text to search for in the rendered page content.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={state.screenshot}
+            onCheckedChange={(v) =>
+              onChange({ ...state, screenshot: v === true })
+            }
+            data-testid="check-browser-screenshot-checkbox"
+          />
+          <span className="text-sm">Capture a screenshot on failure</span>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Keeps a PNG of the page on the incident this check opens or reopens.
+          Taken just after the failure is detected, from the probing region —
+          evidence, not the failing frame itself. Off by default.
         </p>
       </div>
     </>

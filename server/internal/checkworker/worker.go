@@ -35,9 +35,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/errorreport"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
+	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
@@ -202,12 +205,33 @@ func NewCheckWorker(
 	publicationSvc.SetJobsService(svc.Jobs)
 	publicationSvc.SetScheduler(jobtypes.NewIncidentPublishScheduler(svc.Jobs))
 
-	if svc.EmailSender != nil && svc.EmailFormatter != nil {
-		publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
-			dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL, slog.Default()))
-	}
+	// Unconditional now: the fan-out no longer needs a mailer to be useful —
+	// webhook and Slack subscriptions deliver on an instance with no SMTP at
+	// all, and the notifier skips only the email leg when the sender is nil.
+	publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
+		dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL,
+		slog.Default(), svc.Credentials))
 
 	incidentSvc.SetPublicationHook(publicationSvc)
+
+	// Incident screenshots (spec 2026-08-21-01) are captured by the IN-PROCESS
+	// browser checker, so this is the path that actually persists them — the
+	// HTTP server's own incident service would only ever see results submitted
+	// by remote workers.
+	attachmentSvc := attachments.NewService(files.NewService(dbService, cfg), dbService, cfg)
+	incidentSvc.SetAttachmentStore(attachmentSvc)
+
+	// Path diagnostics (spec 2026-08-21-10), same argument as the screenshots
+	// above: this is the process that ran the probe, so this is the only
+	// process whose route to the target is the one that just failed.
+	//
+	// The local-worker test is unconditionally true here BY CONSTRUCTION, not
+	// by luck: this incident service is reachable only through the
+	// DirectBackend below, whose single caller is this worker. Every result it
+	// ever sees was produced a few milliseconds ago, in this process.
+	traceDispatcher := tracediag.New(cfg.Checkers.TraceroutePolicy(), attachmentSvc, slog.Default())
+	traceDispatcher.SetLocalWorkerResolver(tracediag.LocalWorkerFunc(func(string) bool { return true }))
+	incidentSvc.SetTraceRequester(traceDispatcher)
 
 	directBackend := backend.NewDirectBackend(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
@@ -389,11 +413,12 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 
 // registerWorker registers or updates the worker in the database.
 func (r *CheckWorker) registerWorker(ctx context.Context) error {
-	// Identity is SP_NODE_NAME when set, otherwise the lowercased OS hostname
-	// truncated to config.WorkerHostnameMaxLen. Config.Validate() has already
-	// rejected a slug the database CHECK constraint would refuse.
+	// Identity is SP_NODE_NAME when set, otherwise the lowercased, sanitized OS
+	// hostname truncated to config.WorkerHostnameMaxLen. Config.Validate() has
+	// already rejected a slug the database CHECK constraint would refuse.
 	identity := r.config.WorkerIdentity()
 	identity.WarnIfTruncated(ctx, r.logger)
+	identity.WarnIfSanitized(ctx, r.logger)
 
 	region := "default"
 	if r.config.Server.CheckWorker.Region != "" {

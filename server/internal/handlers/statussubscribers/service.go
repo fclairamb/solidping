@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 // nowUTC returns the current time in UTC. Wrapped so tests can reason about it.
@@ -51,27 +53,100 @@ const maxEmailLen = 320
 // Service provides subscription business logic.
 type Service struct {
 	db db.Service
+	// creds encrypts the delivery endpoints of webhook/slack subscriptions at
+	// rest. nil is legal (self-hosted with no master key) and falls back to the
+	// documented plaintext envelope — see sealEndpoint.
+	creds credentials.Service
+	// allowPrivateEndpoints relaxes the loopback/private-range refusal on
+	// delivery URLs. OFF by default: on a multi-tenant instance a
+	// customer-supplied URL pointing at 169.254.169.254 is a plain SSRF lever.
+	// A self-hosted operator posting to a receiver on their own LAN is a
+	// legitimate case though, which is why this is an option rather than a
+	// hard-coded rule.
+	allowPrivateEndpoints bool
+}
+
+// Option configures the subscribers service.
+type Option func(*Service)
+
+// WithAllowPrivateEndpoints permits webhook/Slack deliveries to loopback and
+// private-range hosts. Intended for a single-tenant self-hosted instance whose
+// receivers live on the same network, and for tests.
+func WithAllowPrivateEndpoints(allow bool) Option {
+	return func(s *Service) { s.allowPrivateEndpoints = allow }
 }
 
 // NewService creates a new status subscribers service.
-func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+func NewService(dbService db.Service, creds credentials.Service, opts ...Option) *Service {
+	svc := &Service{db: dbService, creds: creds}
+	for _, opt := range opts {
+		opt(svc)
+	}
+
+	return svc
 }
 
 // SubscriberResponse is the public/admin representation of a subscriber.
 // Email is included only in authed admin responses (handler decides).
+//
+// Endpoint is the MASKED delivery URL, never the real one: an
+// incoming-webhook URL is a credential, and a list endpoint that echoed it
+// would turn every admin read into a credential disclosure.
 type SubscriberResponse struct {
 	UID         string  `json:"uid"`
 	Email       string  `json:"email,omitempty"`
+	Channel     string  `json:"channel"`
+	Endpoint    *string `json:"endpoint,omitempty"`
 	Scope       string  `json:"scope"`
 	IncidentUID *string `json:"incidentUid,omitempty"`
 	Confirmed   bool    `json:"confirmed"`
-	CreatedAt   string  `json:"createdAt"`
+	// FailureCount is the CONSECUTIVE delivery failure count; Disabled says the
+	// circuit breaker tripped. Both are operator diagnostics for a webhook that
+	// stopped working, which is why they are on the admin payload at all.
+	FailureCount int    `json:"failureCount,omitempty"`
+	Disabled     bool   `json:"disabled,omitempty"`
+	CreatedAt    string `json:"createdAt"`
+}
+
+// CreateEndpointSubscriberResponse is the create-only shape. It is a SEPARATE
+// type from SubscriberResponse, not that type with an extra optional field,
+// precisely so the signing secret cannot leak from the list endpoint by
+// someone later populating a shared struct: there is no field on the list
+// shape that could carry it.
+type CreateEndpointSubscriberResponse struct {
+	SubscriberResponse
+
+	// SigningSecret is returned EXACTLY ONCE, here, at creation. It is never
+	// stored in a readable column and never returned again — a receiver that
+	// loses it must have the subscription re-created. That is the standard
+	// show-once contract for a shared secret, and it is what makes the HMAC on
+	// every delivery actually verifiable: without it the operator would be
+	// handed signed requests they could not check.
+	SigningSecret string `json:"signingSecret"`
+}
+
+// CreateEndpointSubscriberRequest is the body of the AUTHENTICATED
+// webhook/slack subscription endpoint. There is deliberately no public
+// equivalent: a visitor pasting an incoming-webhook URL has no verification
+// story, so the operator is the verification.
+type CreateEndpointSubscriberRequest struct {
+	Channel string `json:"channel"`
+	URL     string `json:"url"`
+	// SigningSecret is optional; when omitted one is generated and returned
+	// once in the create response (see CreateEndpointSubscriberResponse).
+	// Supplying your own is useful when the receiver already has a secret it
+	// verifies other SolidPing calls with.
+	SigningSecret *string `json:"signingSecret,omitempty"`
+	Scope         *string `json:"scope,omitempty"`
+	IncidentUID   *string `json:"incidentUid,omitempty"`
 }
 
 // SubscribeRequest is the body of a public subscribe call.
 type SubscribeRequest struct {
-	Email       string  `json:"email"`
+	Email string `json:"email"`
+	// Channel is accepted only so a client asking for a non-email channel gets
+	// a clear refusal. Public self-serve is email-only.
+	Channel     *string `json:"channel,omitempty"`
 	Scope       *string `json:"scope,omitempty"`
 	IncidentUID *string `json:"incidentUid,omitempty"`
 }
@@ -118,6 +193,13 @@ func normalizeEmail(raw string) (string, error) {
 func (s *Service) Subscribe(
 	ctx context.Context, orgSlug, statusPageUID string, req *SubscribeRequest,
 ) (*SubscribeResult, error) {
+	// Public self-serve is email-only, explicitly. The channel field is
+	// accepted so a mistaken client gets a clear error rather than silently
+	// creating an email subscription it did not ask for.
+	if req.Channel != nil && *req.Channel != "" && *req.Channel != string(models.SubscriberChannelEmail) {
+		return nil, ErrPublicChannelNotAllowed
+	}
+
 	email, err := normalizeEmail(req.Email)
 	if err != nil {
 		return nil, err
@@ -151,8 +233,17 @@ func (s *Service) Subscribe(
 		return nil, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != "public" {
+	if !statuspagelock.Visible(page) {
 		return nil, ErrStatusPageNotFound
+	}
+
+	// The subscribe FORM sits behind the unlock — a page shared with a
+	// password should not be a mailing-list signup for the whole internet.
+	// Already-confirmed subscribers are untouched by this: the fan-out in
+	// notifier.go never consults visibility, so locking a page down does not
+	// silently stop the notifications people already opted into.
+	if !statuspagelock.Allows(ctx, page) {
+		return nil, statuspagelock.ErrLocked
 	}
 
 	if incidentUID != nil {
@@ -323,12 +414,16 @@ func (s *Service) ListSubscribers(
 	out := make([]SubscriberResponse, len(subs))
 	for i, sub := range subs {
 		out[i] = SubscriberResponse{
-			UID:         sub.UID,
-			Email:       sub.Email,
-			Scope:       string(sub.Scope),
-			IncidentUID: sub.IncidentUID,
-			Confirmed:   sub.ConfirmedAt != nil,
-			CreatedAt:   sub.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+			UID:          sub.UID,
+			Email:        sub.EmailAddress(),
+			Channel:      string(sub.Channel),
+			Endpoint:     sub.EndpointHint,
+			Scope:        string(sub.Scope),
+			IncidentUID:  sub.IncidentUID,
+			Confirmed:    sub.ConfirmedAt != nil,
+			FailureCount: sub.FailureCount,
+			Disabled:     sub.DisabledAt != nil,
+			CreatedAt:    sub.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		}
 	}
 

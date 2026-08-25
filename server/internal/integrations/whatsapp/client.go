@@ -240,6 +240,62 @@ func (c *Client) SendTemplate(ctx context.Context, msg *TemplateMessage) (string
 		return "", err
 	}
 
+	return c.postMessage(ctx, payload)
+}
+
+// textPayload is the wire shape of a free-form Cloud API text message.
+type textPayload struct {
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+	MessagingProduct string `json:"messaging_product"`
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+	RecipientType string      `json:"recipient_type"`
+	To            string      `json:"to"`
+	Type          string      `json:"type"`
+	Text          textContent `json:"text"`
+}
+
+type textContent struct {
+	Body string `json:"body"`
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+	PreviewURL bool `json:"preview_url"`
+}
+
+// messageTypeText is the Cloud API message type for a free-form text message.
+const messageTypeText = "text"
+
+// ErrEmptyText is returned when a free-form send has nothing to say.
+var ErrEmptyText = errors.New("whatsapp: message body is empty")
+
+// SendText sends a FREE-FORM text message.
+//
+// This only works inside the 24-hour customer-service window that the user's own
+// inbound message opens. Outside it Meta rejects the send and only an approved
+// template may be used — which is why the support inbox checks the window before
+// calling this rather than discovering it from a provider error. See
+// models.SupportThread.ReplyWindow.
+func (c *Client) SendText(ctx context.Context, to, body string) (string, error) {
+	recipient := strings.TrimSpace(to)
+	if !ValidE164(recipient) && !ValidE164("+"+normalizeRecipient(recipient)) {
+		return "", ErrInvalidRecipient
+	}
+
+	if strings.TrimSpace(body) == "" {
+		return "", ErrEmptyText
+	}
+
+	return c.postMessage(ctx, &textPayload{
+		MessagingProduct: "whatsapp",
+		RecipientType:    "individual",
+		To:               normalizeRecipient(recipient),
+		Type:             messageTypeText,
+		Text:             textContent{Body: body, PreviewURL: false},
+	})
+}
+
+// postMessage marshals a payload to the messages endpoint and returns the
+// provider message id. Shared by the template and free-form senders so both
+// classify errors and parse responses identically.
+func (c *Client) postMessage(ctx context.Context, payload any) (string, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("marshal whatsapp payload: %w", err)

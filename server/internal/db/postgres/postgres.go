@@ -513,26 +513,6 @@ func (s *Service) DeleteOrganization(ctx context.Context, uid string) error {
 	return err
 }
 
-// GetOrganizationByLogoFileUID returns the live organization whose current logo
-// is the given file. This is the authorization rule behind the unsigned
-// /pub/org-logos/:uid route: only a file that is some live org's CURRENT logo
-// is public, so retiring a logo (replacing or clearing it) immediately
-// un-publishes the old blob.
-func (s *Service) GetOrganizationByLogoFileUID(ctx context.Context, fileUID string) (*models.Organization, error) {
-	org := new(models.Organization)
-
-	err := s.db.NewSelect().
-		Model(org).
-		Where("logo_file_uid = ?", fileUID).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return org, nil
-}
-
 // AddOrganizationPreviousSlug records a slug an organization has just renamed
 // away from. Any live alias already holding that slug is released first: the
 // partial unique index allows a single live alias per slug, and the newest
@@ -799,6 +779,10 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		}
 
 		query = query.Set("totp_recovery_codes = ?::jsonb", string(codesJSON))
+	}
+
+	if update.MustChangePassword != nil {
+		query = query.Set("must_change_password = ?", *update.MustChangePassword)
 	}
 
 	if update.LastActiveAt != nil {
@@ -1982,6 +1966,12 @@ func applyAdaptiveAndIncidentTrackingPg(
 	case update.RegionSpread != nil:
 		query = query.Set("region_spread = ?", *update.RegionSpread)
 	}
+	if update.ClearTracerouteOnFailure {
+		query = query.Set("traceroute_on_failure = NULL")
+	} else if update.TracerouteOnFailure != nil {
+		query = query.Set("traceroute_on_failure = ?", *update.TracerouteOnFailure)
+	}
+
 	if update.ReopenCooldownMultiplier != nil {
 		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
 	}
@@ -2279,6 +2269,33 @@ func (s *Service) SaveResultWithStatusTracking(ctx context.Context, result *mode
 	return err
 }
 
+// HasRawResultWithMessageID reports whether a raw result for the check already
+// carries output.messageId == messageID, among rows with period_start >=
+// since. The migration-free idempotency backstop for inbound email (spec
+// 2026-08-22-01); see the db.Service doc for why the caller must bound the
+// window. `output->>'messageId'` is the JSONB twin of SQLite's json_extract.
+//
+// The leading organization_uid / check_uid / period_start clauses match
+// results_raw_idx exactly, so the JSONB comparison only ever runs over the
+// check's recent rows — it is not an index the planner can reach without the
+// org column, which is why the caller passes one.
+func (s *Service) HasRawResultWithMessageID(
+	ctx context.Context, orgUID, checkUID, messageID string, since time.Time,
+) (bool, error) {
+	if messageID == "" {
+		return false, nil
+	}
+
+	return s.db.NewSelect().
+		Model((*models.Result)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("check_uid = ?", checkUID).
+		Where("period_type = ?", models.PeriodTypeRaw).
+		Where("period_start >= ?", since).
+		Where("output->>'messageId' = ?", messageID).
+		Exists(ctx)
+}
+
 func (s *Service) GetResult(ctx context.Context, uid string) (*models.Result, error) {
 	result := new(models.Result)
 
@@ -2351,6 +2368,40 @@ func (s *Service) ListResults(
 	}, nil
 }
 
+// applyPeriodTypeFilter narrows a results SELECT to the requested aggregation
+// tiers, restating which side of the raw/rollup split they sit on.
+//
+// That restatement is redundant and load-bearing: both useful indexes on
+// `results` are PARTIAL and split on `period_type = 'raw'`
+// (results_raw_idx WHERE period_type = 'raw', results_aggregated_idx WHERE
+// period_type != 'raw'), and an index is only eligible when the query's WHERE
+// implies the index's own predicate. Postgres derives that implication from an
+// IN list on its own; SQLite does not, and scans the whole table even for
+// `period_type IN ('raw')`. Adding the side explicitly — only when every
+// requested tier sits on ONE side — makes the query seekable on both backends
+// at zero selectivity cost.
+//
+// A list straddling the split gets nothing added, because nothing true can be
+// added: such a query is unservable by either index and must be issued as two
+// (spec 2026-08-22-04).
+func applyPeriodTypeFilter(query *bun.SelectQuery, periodTypes []string) *bun.SelectQuery {
+	if len(periodTypes) == 0 {
+		return query
+	}
+
+	query = query.Where("result.period_type IN (?)", bun.List(periodTypes))
+
+	switch models.PeriodTypesTierSide(periodTypes) {
+	case models.PeriodTierRaw:
+		query = query.Where("result.period_type = ?", models.PeriodTypeRaw)
+	case models.PeriodTierRollup:
+		query = query.Where("result.period_type != ?", models.PeriodTypeRaw)
+	case models.PeriodTierMixed:
+	}
+
+	return query
+}
+
 // applyResultsFilter narrows a results SELECT by filter. Shared by ListResults
 // and CompactResults so both read exactly the same rows for a bucket.
 //
@@ -2383,9 +2434,7 @@ func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter
 		query = query.Where("result.region IN (?)", bun.List(filter.Regions))
 	}
 	// Filter by multiple period types
-	if len(filter.PeriodTypes) > 0 {
-		query = query.Where("result.period_type IN (?)", bun.List(filter.PeriodTypes))
-	}
+	query = applyPeriodTypeFilter(query, filter.PeriodTypes)
 
 	// Filter by multiple statuses
 	if len(filter.Statuses) > 0 {
@@ -2414,11 +2463,16 @@ func applyResultsFilter(query *bun.SelectQuery, filter *models.ListResultsFilter
 		query = query.Where("result.period_start < ?", *filter.PeriodEndBefore)
 	}
 
-	// Cursor-based pagination
+	// Cursor-based pagination, as a row-value comparison rather than the
+	// equivalent `(period_start < ?) OR (period_start = ? AND uid < ?)`. The OR
+	// form is semantically identical but plans as a BitmapOr plus a full sort of
+	// everything before the cursor; the row-value form is a single index range
+	// scan whose start point is the cursor itself, so page N costs the same as
+	// page 1 (spec 2026-08-22-04 §4). Row-value comparison follows the ORDER BY
+	// (period_start DESC, uid DESC) exactly, which is what makes it seekable.
 	if filter.CursorTimestamp != nil && filter.CursorUID != nil {
-		// Results with period_start < cursor_timestamp OR (period_start = cursor_timestamp AND uid < cursor_uid)
-		query = query.Where("(result.period_start < ?) OR (result.period_start = ? AND result.uid < ?)",
-			*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
+		query = query.Where("(result.period_start, result.uid) < (?, ?)",
+			*filter.CursorTimestamp, *filter.CursorUID)
 	}
 
 	// Only join `checks` when the caller explicitly asked for check info via
@@ -3043,6 +3097,7 @@ func applyIncidentSetFields(query *bun.UpdateQuery, update *models.IncidentUpdat
 		{"snooze_reason", update.SnoozeReason},
 		{"failure_count", update.FailureCount},
 		{"relapse_count", update.RelapseCount},
+		{"flap_level", update.FlapLevel},
 		{"last_reopened_at", update.LastReopenedAt},
 		{"title", update.Title},
 		{"description", update.Description},
@@ -3185,18 +3240,25 @@ func (s *Service) GetIncident(ctx context.Context, orgUID, uid string) (*models.
 func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error) {
 	incident := new(models.Incident)
 
-	// Match per-check incidents on incidents.check_uid OR group incidents that
-	// currently include this check via incident_member_checks.
+	// Matched on incidents.check_uid alone. Group incidents are historical
+	// (spec 2026-08-24-14): the OR-branch that also matched an
+	// incident_member_checks row is gone, because that binding is exactly how
+	// a check's own failure disappeared into another check's incident — the
+	// prod check joined a stale nonprod group incident, and its page showed no
+	// incident at all. The v0.18.0 migration resolves every remaining active
+	// group incident, so nothing can be reached through a member row anyway.
+	//
+	// Restricted to check incidents: a burn incident carries a representative
+	// check purely so channel/escalation resolution has an anchor, and if this
+	// lookup returned one the check-result state machine would read a burning
+	// SLO as "this check is already down" and stop opening real incidents for
+	// it (spec 2026-08-21-08).
 	err := s.db.NewSelect().
 		Model(incident).
+		Where("kind = ?", models.IncidentKindCheck).
 		Where("state = ?", models.IncidentStateActive).
 		Where("deleted_at IS NULL").
-		Where(
-			"(check_uid = ? OR uid IN ("+
-				"SELECT incident_uid FROM incident_member_checks "+
-				"WHERE check_uid = ? AND currently_failing = TRUE))",
-			checkUID, checkUID,
-		).
+		Where("check_uid = ?", checkUID).
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
@@ -3213,49 +3275,10 @@ func (s *Service) FindRecentlyResolvedIncidentByCheckUID(
 
 	err := s.db.NewSelect().
 		Model(incident).
+		// Check incidents only — see FindActiveIncidentByCheckUID.
+		Where("kind = ?", models.IncidentKindCheck).
 		Where("check_uid = ?", checkUID).
 		Where("check_group_uid IS NULL").
-		Where("state = ?", models.IncidentStateResolved).
-		Where("resolved_at >= ?", since).
-		Where("deleted_at IS NULL").
-		Order("resolved_at DESC").
-		Limit(1).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return incident, nil
-}
-
-// FindActiveIncidentByGroupUID returns the active group incident keyed on check_group_uid.
-func (s *Service) FindActiveIncidentByGroupUID(ctx context.Context, groupUID string) (*models.Incident, error) {
-	incident := new(models.Incident)
-
-	err := s.db.NewSelect().
-		Model(incident).
-		Where("check_group_uid = ?", groupUID).
-		Where("state = ?", models.IncidentStateActive).
-		Where("deleted_at IS NULL").
-		Limit(1).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return incident, nil
-}
-
-// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
-// for a group resolved after `since`. Used to reopen within cooldown.
-func (s *Service) FindRecentlyResolvedIncidentByGroupUID(
-	ctx context.Context, groupUID string, since time.Time,
-) (*models.Incident, error) {
-	incident := new(models.Incident)
-
-	err := s.db.NewSelect().
-		Model(incident).
-		Where("check_group_uid = ?", groupUID).
 		Where("state = ?", models.IncidentStateResolved).
 		Where("resolved_at >= ?", since).
 		Where("deleted_at IS NULL").
@@ -3430,6 +3453,13 @@ func applyIncidentsFilter(query *bun.SelectQuery, filter *models.ListIncidentsFi
 
 	if len(filter.States) > 0 {
 		query = query.Where("state IN (?)", bun.List(filter.States))
+	}
+
+	// Empty Kinds means every kind, deliberately: the dashboard's incident
+	// list shows burn alerts next to check outages. Only the callers that
+	// derive DOWNTIME from incidents narrow it.
+	if len(filter.Kinds) > 0 {
+		query = query.Where("kind IN (?)", bun.List(filter.Kinds))
 	}
 
 	if filter.Since != nil {
@@ -3613,31 +3643,14 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 	query := s.db.NewSelect().
 		Model(&events).
 		Where("organization_uid = ?", filter.OrganizationUID).
-		Order("created_at DESC")
+		// uid is part of the sort key, not decoration: the keyset cursor's
+		// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
+		// only works if rows sharing a created_at have a DEFINED order. Without
+		// this tie-break an audit trail — which bulk-inserts within the same
+		// microsecond constantly — could skip events at a page boundary.
+		Order("created_at DESC", "uid DESC")
 
-	if filter.IncidentUID != nil {
-		query = query.Where("incident_uid = ?", *filter.IncidentUID)
-	}
-
-	if filter.CheckUID != nil {
-		query = query.Where("check_uid = ?", *filter.CheckUID)
-	}
-
-	if len(filter.EventTypes) > 0 {
-		query = query.Where("event_type IN (?)", bun.List(filter.EventTypes))
-	}
-
-	if filter.ActorType != nil {
-		query = query.Where("actor_type = ?", *filter.ActorType)
-	}
-
-	if filter.Since != nil {
-		query = query.Where("created_at >= ?", *filter.Since)
-	}
-
-	if filter.Until != nil {
-		query = query.Where("created_at < ?", *filter.Until)
-	}
+	query = applyEventFilters(query, filter)
 
 	if filter.CursorTimestamp != nil {
 		if filter.CursorUID != nil {
@@ -3655,6 +3668,144 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 	err := query.Scan(ctx)
 
 	return events, err
+}
+
+// applyEventFilters folds the ListEvents predicates onto the query. Split out
+// of ListEvents so that function stays inside the cyclomatic-complexity budget
+// as the audit trail's filter set grows; it is a straight-line list of
+// independent `if`s and carries no logic of its own.
+func applyEventFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
+	if filter.IncidentUID != nil {
+		query = query.Where("incident_uid = ?", *filter.IncidentUID)
+	}
+
+	if filter.CheckUID != nil {
+		query = query.Where("check_uid = ?", *filter.CheckUID)
+	}
+
+	// Exact types and family prefixes are ORed together inside one AND group:
+	// "?eventType=check.created&type=auth" means "either", not "both", which
+	// would be unsatisfiable.
+	if len(filter.EventTypes) > 0 || len(filter.EventTypePrefixes) > 0 {
+		query = query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+			if len(filter.EventTypes) > 0 {
+				group = group.WhereOr("event_type IN (?)", bun.List(filter.EventTypes))
+			}
+
+			for _, prefix := range filter.EventTypePrefixes {
+				group = group.WhereOr("event_type LIKE ? ESCAPE ?",
+					models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
+			}
+
+			return group
+		})
+	}
+
+	// Exclusions are ANDed on top and therefore cannot be argued away by any
+	// caller-supplied include filter — this is what makes "auth events are
+	// admin-only" hold for `?type=auth` as well as for an unfiltered listing.
+	for _, prefix := range filter.ExcludeEventTypePrefixes {
+		query = query.Where("event_type NOT LIKE ? ESCAPE ?",
+			models.EventTypeLikePattern(prefix), models.EventTypeLikeEscape)
+	}
+
+	if filter.ActorType != nil {
+		query = query.Where("actor_type = ?", *filter.ActorType)
+	}
+
+	if filter.ActorUID != nil {
+		query = query.Where("actor_uid = ?", *filter.ActorUID)
+	}
+
+	if filter.SourceIP != nil {
+		query = query.Where("source_ip = ?", *filter.SourceIP)
+	}
+
+	// The target is polymorphic, so it lives in the payload rather than in a
+	// column of its own. jsonb's ->> is the Postgres half; the SQLite store
+	// spells the identical predicate with json_extract.
+	query = applyEventTargetFilters(query, filter)
+
+	return query
+}
+
+// applyEventTargetFilters folds the polymorphic target predicates onto the
+// query. Separate from applyEventFilters purely to keep both inside the
+// cyclomatic-complexity budget; these are the ones that reach INTO the
+// payload rather than into a column.
+func applyEventTargetFilters(query *bun.SelectQuery, filter *models.ListEventsFilter) *bun.SelectQuery {
+	if filter.TargetUID != nil {
+		query = query.Where("payload->>'target_uid' = ?", *filter.TargetUID)
+	}
+
+	if filter.TargetType != nil {
+		query = query.Where("payload->>'target_type' = ?", *filter.TargetType)
+	}
+
+	// One box, two things an operator might paste into it: the exact UID from
+	// a URL, or the name they remember. ILIKE on the name half is what makes
+	// the "name or UID" label true.
+	if filter.TargetSearch != nil && *filter.TargetSearch != "" {
+		query = query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+			return group.
+				WhereOr("payload->>'target_uid' = ?", *filter.TargetSearch).
+				WhereOr("payload->>'target_name' ILIKE ? ESCAPE ?",
+					models.LikeContainsPattern(*filter.TargetSearch), models.EventTypeLikeEscape)
+		})
+	}
+
+	if filter.Since != nil {
+		query = query.Where("created_at >= ?", *filter.Since)
+	}
+
+	if filter.Until != nil {
+		query = query.Where("created_at < ?", *filter.Until)
+	}
+
+	return query
+}
+
+// UpdateEventPayload replaces one event's payload in place.
+//
+// events is otherwise strictly append-only; the single exception is
+// auth.login_failed folding (spec 2026-08-21-09), where repeats of the same
+// (org, email, IP) inside a short window bump a counter on the row that is
+// already there instead of writing a new row per attempt. Anything else
+// mutating an audit row would be a bug.
+func (s *Service) UpdateEventPayload(ctx context.Context, uid string, payload models.JSONMap) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.Event)(nil)).
+		Set("payload = ?", payload).
+		Where("uid = ?", uid).
+		Exec(ctx)
+
+	return err
+}
+
+// DeleteEventsBefore hard-deletes up to limit events created before the cutoff
+// and reports how many rows went. Batched so a first sweep on a long-lived
+// installation cannot hold one enormous transaction.
+func (s *Service) DeleteEventsBefore(ctx context.Context, before time.Time, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	res, err := s.db.NewDelete().
+		Model((*models.Event)(nil)).
+		Where("uid IN (?)",
+			s.db.NewSelect().
+				Model((*models.Event)(nil)).
+				Column("uid").
+				Where("created_at < ?", before).
+				Order("created_at ASC").
+				Limit(limit),
+		).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
 }
 
 // GetStateEntry retrieves a state entry by organization and key.
@@ -4602,6 +4753,27 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 	return pages, err
 }
 
+// applyStatusPageAccessColumns adds the visibility-adjacent columns (spec
+// 2026-08-21-07) to an UpdateStatusPage query. Split out of UpdateStatusPage
+// purely to keep that already-long one-branch-per-column function under the
+// statement budget.
+func applyStatusPageAccessColumns(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) *bun.UpdateQuery {
+	if update.PasswordHash == nil {
+		return query
+	}
+
+	// An empty hash means "this page is no longer password protected" and is
+	// stored as NULL, never as '': a '' hash would compare against nothing and
+	// would read back as hasPassword=true.
+	if *update.PasswordHash == "" {
+		return query.Set("password_hash = NULL")
+	}
+
+	return query.Set("password_hash = ?", *update.PasswordHash)
+}
+
 // UpdateStatusPage updates a status page by UID.
 //
 //nolint:cyclop // one branch per optional column; splitting it would only hide the shape.
@@ -4668,6 +4840,8 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("auto_resolve = ?", *update.AutoResolve)
 	}
 
+	query = applyStatusPageAccessColumns(query, update)
+
 	if update.CustomCSS != nil {
 		// An empty stylesheet is stored as NULL, not '': the appearance editor
 		// clears the field by submitting an empty textarea, and "no custom CSS"
@@ -4679,13 +4853,88 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		}
 	}
 
+	query = applyStatusPageSettings(query, update)
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// applyStatusPageSettings writes the `settings` column for an update.
+//
+// HideBranding lives in `settings -> branding -> hideBranding`, so it and a
+// whole-column Settings overwrite target the SAME column. Postgres refuses two
+// assignments to one column in a single UPDATE, so when both are present the
+// flag is folded into the value in Go and written once — which makes the
+// illegal statement unreachable rather than merely unlikely.
+func applyStatusPageSettings(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) *bun.UpdateQuery {
 	if update.Settings != nil {
 		// The service layer has already applied the no-deep-merge
 		// section-replace-or-reset semantics; this is a whole-column overwrite.
-		query = query.Set("settings = ?", *update.Settings)
+		return query.Set("settings = ?", foldHideBranding(*update.Settings, update.HideBranding))
 	}
 
-	_, err := query.Exec(ctx)
+	if update.HideBranding == nil {
+		return query
+	}
+
+	return query.Set(brandingSettingsMergePG, models.HideBrandingSectionPatch(*update.HideBranding))
+}
+
+// foldHideBranding applies a pending white-label opt-in onto a whole-column
+// settings value, so the two never become two assignments to one column.
+func foldHideBranding(settings models.StatusPageSettings, hide *bool) models.StatusPageSettings {
+	if hide == nil {
+		return settings
+	}
+
+	branding := models.BrandingSettings{}
+	if settings.Branding != nil {
+		branding = *settings.Branding
+	}
+
+	branding.HideBranding = *hide
+	settings.Branding = &branding
+
+	return settings
+}
+
+// brandingSettingsMergePG is the two-level JSON merge that writes the
+// `branding` section without touching its siblings.
+//
+// The nesting is load-bearing. A one-level `settings || '{"branding": ...}'`
+// would REPLACE the whole branding object — the same last-write-wins clobber
+// this merge exists to avoid, just one level down. `||` is shallow in Postgres,
+// so the inner concatenation has to be spelled out.
+const brandingSettingsMergePG = "settings = settings || jsonb_build_object(" +
+	"'branding', coalesce(settings->'branding', '{}'::jsonb) || ?::jsonb)"
+
+// UpdateStatusPageBranding replaces the `branding` section of settings in one
+// write. Every transition (upload, replace, clear, white-label opt-in) goes
+// through here, and the section is written WHOLE — a nil file UID travels as an
+// explicit JSON null rather than being omitted, which is what guarantees a
+// cleared asset stops being publicly reachable immediately.
+//
+// The merge happens in SQL, never as a read-modify-write in Go: reading
+// StatusPageSettings, mutating .Branding and writing the struct back would
+// clobber a concurrent `availability` threshold change.
+func (s *Service) UpdateStatusPageBranding(
+	ctx context.Context, uid string, update *models.StatusPageBrandingUpdate,
+) error {
+	patch, err := update.BrandingPatchJSON()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.NewUpdate().
+		Model((*models.StatusPage)(nil)).
+		Set(brandingSettingsMergePG, patch).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
 
 	return err
 }
@@ -4705,10 +4954,26 @@ func (s *Service) UpdateStatusPageCustomDomain(
 		Set("custom_domain_verified_at = ?", update.VerifiedAt).
 		Set("custom_domain_checked_at = ?", update.CheckedAt).
 		Set("custom_domain_failures = ?", update.Failures).
+		Set("custom_domain_state = ?", customDomainState(update)).
+		Set("custom_domain_successes = ?", update.Successes).
+		Set("custom_domain_grace_since = ?", update.GraceSince).
+		Set("custom_domain_last_check = ?", update.LastCheck).
 		Set("updated_at = ?", time.Now()).
 		Exec(ctx)
 
 	return err
+}
+
+// customDomainState normalizes the lifecycle state an update carries. The zero
+// value ("") is not a legal state: a caller that forgot the field means "no
+// domain", never "keep whatever was there" — this is a whole-row overwrite and
+// silently preserving a stale `active` would keep a cleared domain servable.
+func customDomainState(update *models.StatusPageCustomDomainUpdate) string {
+	if models.ValidCustomDomainState(update.State) {
+		return update.State
+	}
+
+	return models.CustomDomainStateNone
 }
 
 // DeleteStatusPage soft-deletes a status page.
@@ -5582,6 +5847,8 @@ func (s *Service) ListFiles(
 		query = query.Where("name ILIKE ?", "%"+filter.Q+"%")
 	}
 
+	query = applyFileTopicFilter(query, filter)
+
 	total, err := query.Count(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -6052,6 +6319,177 @@ func (s *Service) DeleteSLO(ctx context.Context, orgUID, uid string) error {
 	return err
 }
 
+// --- SLO burn-rate alert policies (spec 2026-08-21-08) ---------------------
+
+// CreateSLOAlertPolicy inserts a new burn-rate alert policy.
+func (s *Service) CreateSLOAlertPolicy(ctx context.Context, policy *models.SLOAlertPolicy) error {
+	_, err := s.db.NewInsert().Model(policy).Exec(ctx)
+
+	return err
+}
+
+// GetSLOAlertPolicy retrieves one policy by UID within an organization.
+func (s *Service) GetSLOAlertPolicy(ctx context.Context, orgUID, uid string) (*models.SLOAlertPolicy, error) {
+	policy := new(models.SLOAlertPolicy)
+
+	err := s.db.NewSelect().
+		Model(policy).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return policy, nil
+}
+
+// ListSLOAlertPolicies lists one SLO's policies, fast before slow so the API
+// and the dashboard always render them in escalating order.
+func (s *Service) ListSLOAlertPolicies(ctx context.Context, sloUID string) ([]*models.SLOAlertPolicy, error) {
+	var policies []*models.SLOAlertPolicy
+
+	err := s.db.NewSelect().
+		Model(&policies).
+		Where("slo_uid = ?", sloUID).
+		Order("long_window_seconds ASC").
+		Scan(ctx)
+
+	return policies, err
+}
+
+// ListEnabledSLOAlertPolicies returns the burn evaluator's work queue.
+//
+// Joined to `slos` so a policy attached to a disabled or soft-deleted SLO is
+// never evaluated: disabling the objective has to stop the paging, or "turn it
+// off" would not mean what an operator expects.
+//
+// Ordered oldest-evaluated first (NULLs, i.e. never evaluated, first) so a
+// bounded per-sweep limit still gives every policy a turn on a large install
+// instead of starving the tail forever.
+func (s *Service) ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error) {
+	var policies []*models.SLOAlertPolicy
+
+	query := s.db.NewSelect().
+		Model(&policies).
+		Join("JOIN slos ON slos.uid = slo_alert_policies.slo_uid").
+		Where("slo_alert_policies.enabled = ?", true).
+		Where("slos.enabled = ?", true).
+		Where("slos.deleted_at IS NULL").
+		Order("slo_alert_policies.last_evaluated_at ASC NULLS FIRST")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	err := query.Scan(ctx)
+
+	return policies, err
+}
+
+// UpdateSLOAlertPolicy applies a partial update. Nil fields are left alone.
+func (s *Service) UpdateSLOAlertPolicy(
+	ctx context.Context, uid string, update *models.SLOAlertPolicyUpdate,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.SLOAlertPolicy)(nil)).
+		Where("uid = ?", uid).
+		Set("updated_at = ?", time.Now())
+
+	if update.Enabled != nil {
+		query = query.Set("enabled = ?", *update.Enabled)
+	}
+
+	if update.LongWindowSeconds != nil {
+		query = query.Set("long_window_seconds = ?", *update.LongWindowSeconds)
+	}
+
+	if update.ShortWindowSeconds != nil {
+		query = query.Set("short_window_seconds = ?", *update.ShortWindowSeconds)
+	}
+
+	if update.Threshold != nil {
+		query = query.Set("threshold = ?", *update.Threshold)
+	}
+
+	if update.Severity != nil {
+		query = query.Set("severity = ?", *update.Severity)
+	}
+
+	if update.MinSamples != nil {
+		query = query.Set("min_samples = ?", *update.MinSamples)
+	}
+
+	if update.LastEvaluatedAt != nil {
+		query = query.Set("last_evaluated_at = ?", *update.LastEvaluatedAt)
+	}
+
+	if update.ClearLastBurnRates {
+		query = query.Set("last_long_burn_rate = NULL").Set("last_short_burn_rate = NULL")
+	} else {
+		if update.LastLongBurnRate != nil {
+			query = query.Set("last_long_burn_rate = ?", *update.LastLongBurnRate)
+		}
+
+		if update.LastShortBurnRate != nil {
+			query = query.Set("last_short_burn_rate = ?", *update.LastShortBurnRate)
+		}
+	}
+
+	if update.ClearBelowThresholdSince {
+		query = query.Set("below_threshold_since = NULL")
+	} else if update.BelowThresholdSince != nil {
+		query = query.Set("below_threshold_since = ?", *update.BelowThresholdSince)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// FindActiveBurnIncident returns the open burn incident for one (SLO, policy).
+func (s *Service) FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("kind = ?", models.IncidentKindSLOBurn).
+		Where("slo_uid = ?", sloUID).
+		Where("slo_alert_policy_uid = ?", policyUID).
+		Where("state = ?", models.IncidentStateActive).
+		Where("deleted_at IS NULL").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
+}
+
+// ListActiveBurnIncidentsForSLOs returns every open burn incident bound to any
+// of the given SLOs — one query for a whole list page.
+func (s *Service) ListActiveBurnIncidentsForSLOs(
+	ctx context.Context, orgUID string, sloUIDs []string,
+) ([]*models.Incident, error) {
+	if len(sloUIDs) == 0 {
+		return nil, nil
+	}
+
+	var incidents []*models.Incident
+
+	err := s.db.NewSelect().
+		Model(&incidents).
+		Where("organization_uid = ?", orgUID).
+		Where("kind = ?", models.IncidentKindSLOBurn).
+		Where("slo_uid IN (?)", bun.List(sloUIDs)).
+		Where("state = ?", models.IncidentStateActive).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+
+	return incidents, err
+}
+
 // --- Report schedules (spec 2026-08-20-01) ---------------------------------
 
 // CreateReportSchedule inserts a new report schedule.
@@ -6260,4 +6698,109 @@ func (s *Service) RemoveRecipientFromReportSchedules(ctx context.Context, orgUID
 	}
 
 	return changed, nil
+}
+
+// applyFileTopicFilter narrows a files query to attachments. An exact Topic and
+// a TopicPrefix are both honored when both are set; neither set leaves the
+// query untouched, which is what keeps the historical "list every file"
+// behavior intact for the dashboard's file browser.
+//
+// LIKE with an escaped prefix, not a raw concatenation: a topic is
+// server-generated today, but the agent upload endpoint accepts one from the
+// wire, and a `%` smuggled into a prefix would silently widen a REAP from one
+// entity to a whole table.
+func applyFileTopicFilter(query *bun.SelectQuery, filter models.ListFilesFilter) *bun.SelectQuery {
+	if filter.Topic != "" {
+		query = query.Where("topic = ?", filter.Topic)
+	}
+
+	if filter.TopicPrefix != "" {
+		query = query.Where("topic LIKE ? ESCAPE '\\'", escapeLikePrefix(filter.TopicPrefix)+"%")
+	}
+
+	return query
+}
+
+// escapeLikePrefix neutralizes the LIKE wildcards in a literal prefix.
+func escapeLikePrefix(prefix string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+
+	return replacer.Replace(prefix)
+}
+
+// DeleteFilesByTopicPrefix soft-deletes every live attachment of an org under a
+// topic prefix and returns how many rows changed. A zero count is a normal
+// answer (nothing was attached), never an error — the reaper runs on entities
+// that may well have no attachments at all.
+func (s *Service) DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix string) (int, error) {
+	if prefix == "" {
+		// Defensive: an empty prefix would match every attachment in the org.
+		return 0, nil
+	}
+
+	res, err := s.db.NewUpdate().
+		Model((*models.File)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("topic LIKE ? ESCAPE '\\'", escapeLikePrefix(prefix)+"%").
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(rows), nil
+}
+
+// ListAttachmentsByTopicPrefix returns live attachment rows across all orgs
+// under a topic prefix, older than `before`, capped at limit. Cross-org because
+// its only caller is the GC sweep.
+func (s *Service) ListAttachmentsByTopicPrefix(
+	ctx context.Context, prefix string, before time.Time, limit int,
+) ([]*models.File, error) {
+	if prefix == "" {
+		return nil, nil
+	}
+
+	var files []*models.File
+
+	query := s.db.NewSelect().
+		Model(&files).
+		Where("topic LIKE ? ESCAPE '\\'", escapeLikePrefix(prefix)+"%").
+		Where("deleted_at IS NULL").
+		Where("created_at < ?", before).
+		Order("created_at ASC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+// GetIncidentAny retrieves an incident by UID without org scoping. Used by the
+// attachment topic authorizer, which derives the organization FROM the incident
+// rather than trusting the caller for it.
+func (s *Service) GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
 }

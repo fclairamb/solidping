@@ -42,6 +42,41 @@ The depth cap is 10. In practice that's plenty for any sane org topology;
 a real graph that hits the cap probably has a cycle or a confused
 modeling decision and the cap is a safety net rather than a real limit.
 
+## When the parent confirms LAST (the common case)
+
+The backward walk above only fires at the child's incident-open, so on its
+own it misses the ordering that dominates in production: a core service's
+own probe usually confirms **after** the consumers that depend on it. During
+the RabbitMQ outage of 2026-08-23 the dependents' health endpoints died at
+23:47:50, the core check only confirmed at 23:50:14, and all 55 dependent
+incidents had already opened un-suppressed — every one of them paged.
+
+So an incident open (or reopen) also runs the **forward** mirror,
+`rollUpExistingChildren` (same file):
+
+1. Walk children BFS along **hard edges only**, same `visited` set and same
+   depth cap of 10.
+2. For each hard descendant, query its open, non-suppressed, `kind = check`
+   incidents inside **the child's own** correlation window — the same
+   `max(2 × child.period, 5 minutes)` rule and literally the same query as
+   the backward path, with `until = the parent's onset` instead of
+   `until = the child's onset`. Children with different periods are grouped
+   by window so each gets its own bounds.
+3. Attach each match with a compare-and-set
+   (`AttachIncidentToRollupParent`): the UPDATE carries
+   `WHERE paging_suppressed = FALSE AND state = 'active'`, so a forward walk
+   racing the child's own backward evaluation converges on exactly one
+   attachment and exactly one event.
+4. Emit `incident.rolled_up` on the child, and log the attachment at
+   **INFO** — "why did this incident not page?" is the first post-mortem
+   question and it used to be answerable only at DEBUG level.
+
+Because the attachment can land *after* the child's escalation cycle was
+scheduled, `incidentNeedsPaging`
+(`jobs/jobtypes/job_escalation_step.go`) re-checks `pagingSuppressed` at
+**fire time**, alongside acked / resolved / snoozed. Pages already delivered
+are not recalled — the goal is stopping the rest of the storm.
+
 ## Why "deepest" instead of "first hard parent"
 
 Imagine: `db → api → dashboard → status-page`. All four edges are hard.
@@ -114,11 +149,17 @@ Two ways to add a dependency:
   immediately on the failing result; rollup is computed synchronously
   and the suppression flag is part of the same DB write. There is no
   "waiting to see if a parent fails first" backoff.
-- **Rollup is one-shot at incident open and at incident reopen**. If a
-  parent's incident opens *after* the child's, the child is not
-  retroactively suppressed. The window check at open time is the only
-  evaluation; the child remains pageable for the lifetime of its
-  incident.
+- **Rollup is evaluated in both directions, at every incident open and
+  reopen** (spec `2026-08-24-15`). Backward at the child's open, forward
+  at the parent's — so a parent that confirms after its dependents still
+  suppresses them retroactively, provided its onset lands inside each
+  child's own correlation window. Outside that window nothing is
+  reattached: a child that has been down for an hour is not somebody
+  else's cascade.
+- **Retroactive suppression does not recall notifications already sent.**
+  It stops the remaining escalation steps (fire-time `pagingSuppressed`
+  gate) and every later lifecycle notification for that child, nothing
+  more.
 - **The correlation window is per-child** based on the child's check
   period. A child polled every 30s gets a 5-minute window (the floor);
   a child polled every 10 minutes gets a 20-minute window. This is
@@ -137,6 +178,9 @@ Two ways to add a dependency:
 | Concern | File |
 |---|---|
 | Rollup walk + suppression | [`server/internal/handlers/incidents/rollup.go`](../../server/internal/handlers/incidents/rollup.go) |
+| Forward walk on parent open/reopen | `rollup.go` (`rollUpExistingChildren`) |
+| Guarded attachment (race convergence) | `db/{postgres,sqlite}/check_dependencies.go` (`AttachIncidentToRollupParent`) |
+| Escalation fire-time suppression gate | `jobs/jobtypes/job_escalation_step.go` (`incidentNeedsPaging`) |
 | Parent-resolve re-evaluation | `rollup.go:151` (`reEvaluateRollupChildren`) |
 | Suppressed-child notification skip | `incidents/service.go:888` |
 | Edge CRUD handlers | `server/internal/handlers/checkdependencies/` |

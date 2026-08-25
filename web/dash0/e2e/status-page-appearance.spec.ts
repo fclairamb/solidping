@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, disableHttpCache, type Page } from "./fixtures";
 
 // The appearance editor's contract in one place (spec 2026-07-27-02):
 //
@@ -101,6 +101,10 @@ test.describe("Status page appearance editor", () => {
 
     // Nothing was published: the public page is still unstyled.
     const publicPage = await page.context().newPage();
+    // This tab re-reads the public page after each save; the endpoint's
+    // public, max-age=60 directive would otherwise pin it to the pre-save
+    // body for the whole test. See disableHttpCache.
+    await disableHttpCache(publicPage);
     // Absolute: baseURL is the /dash0/ app, and a relative path would
     // resolve under it and silently load dash0 instead of status0.
     await publicPage.goto(`${API_BASE}/status0/test/${slug}`);
@@ -248,6 +252,10 @@ test.describe("Status page appearance editor", () => {
     const save = page.getByTestId("custom-css-save");
 
     const publicPage = await page.context().newPage();
+    // This tab re-reads the public page after each save; the endpoint's
+    // public, max-age=60 directive would otherwise pin it to the pre-save
+    // body for the whole test. See disableHttpCache.
+    await disableHttpCache(publicPage);
     await publicPage.goto(`${API_BASE}/status0/test/${slug}`);
     await publicPage.waitForLoadState("networkidle");
 

@@ -81,7 +81,7 @@ func testGetResultNeighborsAcrossBackend(ctx context.Context, t *testing.T, dbSv
 	t.Helper()
 
 	r := require.New(t)
-	svc := NewService(dbSvc)
+	svc := NewService(dbSvc, nil)
 
 	org := models.NewOrganization("nbr-org", "")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

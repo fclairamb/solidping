@@ -60,21 +60,28 @@ type exportDefaultsV2 struct {
 // exportCheckV2 is one check in the v2 wire shape. Every defaulted field is
 // omitempty: it appears only when it differs from the document default.
 type exportCheckV2 struct {
-	Name                     string               `json:"name,omitempty"`
-	Slug                     string               `json:"slug"`
-	PreviousSlug             string               `json:"previousSlug,omitempty"`
-	Description              string               `json:"description,omitempty"`
-	Type                     string               `json:"type"`
-	Config                   map[string]any       `json:"config"`
-	Group                    string               `json:"group,omitempty"`
-	Labels                   map[string]string    `json:"labels,omitempty"`
-	Regions                  []string             `json:"regions,omitempty"`
-	Disabled                 bool                 `json:"disabled,omitempty"`
-	Internal                 bool                 `json:"internal,omitempty"`
-	Period                   string               `json:"period,omitempty"`
-	ConfirmationPeriod       string               `json:"confirmationPeriod,omitempty"`
-	EscalationThreshold      *int                 `json:"escalationThreshold,omitempty"`
-	RecoveryPeriod           string               `json:"recoveryPeriod,omitempty"`
+	Name                string            `json:"name,omitempty"`
+	Slug                string            `json:"slug"`
+	PreviousSlug        string            `json:"previousSlug,omitempty"`
+	Description         string            `json:"description,omitempty"`
+	Type                string            `json:"type"`
+	Config              map[string]any    `json:"config"`
+	Group               string            `json:"group,omitempty"`
+	Labels              map[string]string `json:"labels,omitempty"`
+	Regions             []string          `json:"regions,omitempty"`
+	Disabled            bool              `json:"disabled,omitempty"`
+	Internal            bool              `json:"internal,omitempty"`
+	Period              string            `json:"period,omitempty"`
+	ConfirmationPeriod  string            `json:"confirmationPeriod,omitempty"`
+	EscalationThreshold *int              `json:"escalationThreshold,omitempty"`
+	RecoveryPeriod      string            `json:"recoveryPeriod,omitempty"`
+	// TracerouteOnFailure is `on` or `off`; absent means `inherit` (spec
+	// 2026-08-21-10). DELIBERATELY NOT part of the defaults block: it is a
+	// policy an operator sets on the few checks that need it, so a modal
+	// default would either be noise on every document or, worse, silently
+	// re-derive an `off` into an `inherit` on a document where `off` happened
+	// to be the majority.
+	TracerouteOnFailure      string               `json:"tracerouteOnFailure,omitempty"`
 	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindow           string               `json:"flappingWindow,omitempty"`
 	FlapBackoffFactor        *int                 `json:"flapBackoffFactor,omitempty"`
@@ -181,6 +188,7 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 			Labels:                   check.Labels,
 			Disabled:                 !check.Enabled,
 			Internal:                 check.Internal,
+			TracerouteOnFailure:      tracerouteWireValue(check.TracerouteOnFailure),
 			ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
 			DependsOn:                check.DependsOn,
 		}
@@ -290,6 +298,7 @@ func resolveCheckV2(wire *exportCheckV2, defaults *exportDefaultsV2) (ExportChec
 		Group:                    wire.Group,
 		Enabled:                  !wire.Disabled,
 		Internal:                 wire.Internal,
+		TracerouteOnFailure:      wire.TracerouteOnFailure,
 		ReopenCooldownMultiplier: wire.ReopenCooldownMultiplier,
 		DependsOn:                wire.DependsOn,
 	}
@@ -518,4 +527,18 @@ func equalStringSlice(a, b []string) bool {
 	}
 
 	return true
+}
+
+// tracerouteWireValue omits the `inherit` state from a v2 document.
+//
+// `inherit` IS the absent state — a check that never set the policy and one
+// explicitly set back to `inherit` are the same row — so writing it out would
+// add a line to every check in every export to say nothing. `on` and `off` are
+// the two that carry an operator's decision, and those always travel.
+func tracerouteWireValue(policy string) string {
+	if policy == TraceroutePolicyInherit {
+		return ""
+	}
+
+	return policy
 }

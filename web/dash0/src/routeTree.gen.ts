@@ -14,7 +14,10 @@ import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SupportIndexRouteImport } from './routes/support.index'
+import { Route as SupportThreadUidRouteImport } from './routes/support.$threadUid'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as OrgsOrgRouteImport } from './routes/orgs/$org'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -75,6 +78,7 @@ import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org
 import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server.mail'
 import { Route as OrgsOrgServerHashingRouteImport } from './routes/orgs/$org/server.hashing'
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
+import { Route as OrgsOrgServerDiscordRouteImport } from './routes/orgs/$org/server.discord'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
 import { Route as OrgsOrgServerAnalyticsRouteImport } from './routes/orgs/$org/server.analytics'
 import { Route as OrgsOrgServerAggregationRouteImport } from './routes/orgs/$org/server.aggregation'
@@ -87,6 +91,7 @@ import { Route as OrgsOrgOrganizationReportSchedulesRouteImport } from './routes
 import { Route as OrgsOrgOrganizationPrivateLocationsRouteImport } from './routes/orgs/$org/organization.private-locations'
 import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
+import { Route as OrgsOrgOrganizationAuditRouteImport } from './routes/orgs/$org/organization.audit'
 import { Route as OrgsOrgOrganizationAiRouteImport } from './routes/orgs/$org/organization.ai'
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
 import { Route as OrgsOrgOnCallUidRouteImport } from './routes/orgs/$org/on-call.$uid'
@@ -136,6 +141,7 @@ import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$or
 import { Route as OrgsOrgCheckGroupsUidEditRouteImport } from './routes/orgs/$org/check-groups.$uid.edit'
 import { Route as OrgsOrgAccountOrganizationsNewRouteImport } from './routes/orgs/$org/account.organizations.new'
 import { Route as OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.incidents.$uid'
+import { Route as OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport } from './routes/orgs/$org/slos.$uid.alert-policies.$policyUid'
 import { Route as OrgsOrgOrganizationMembersMemberUidPagingRouteImport } from './routes/orgs/$org/organization.members_.$memberUid.paging'
 import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
@@ -165,9 +171,24 @@ const DeviceRoute = DeviceRouteImport.update({
   path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangePasswordRoute = ChangePasswordRouteImport.update({
+  id: '/change-password',
+  path: '/change-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportIndexRoute = SupportIndexRouteImport.update({
+  id: '/support/',
+  path: '/support/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportThreadUidRoute = SupportThreadUidRouteImport.update({
+  id: '/support/$threadUid',
+  path: '/support/$threadUid',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
@@ -482,6 +503,11 @@ const OrgsOrgServerEmailInboxRoute = OrgsOrgServerEmailInboxRouteImport.update({
   path: '/email-inbox',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
+const OrgsOrgServerDiscordRoute = OrgsOrgServerDiscordRouteImport.update({
+  id: '/discord',
+  path: '/discord',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
 const OrgsOrgServerAuthRoute = OrgsOrgServerAuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -548,6 +574,12 @@ const OrgsOrgOrganizationInvitationsRoute =
   OrgsOrgOrganizationInvitationsRouteImport.update({
     id: '/invitations',
     path: '/invitations',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
+const OrgsOrgOrganizationAuditRoute =
+  OrgsOrgOrganizationAuditRouteImport.update({
+    id: '/audit',
+    path: '/audit',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
 const OrgsOrgOrganizationAiRoute = OrgsOrgOrganizationAiRouteImport.update({
@@ -823,6 +855,12 @@ const OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute =
     path: '/incidents/$uid',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
+const OrgsOrgSlosUidAlertPoliciesPolicyUidRoute =
+  OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport.update({
+    id: '/alert-policies/$policyUid',
+    path: '/alert-policies/$policyUid',
+    getParentRoute: () => OrgsOrgSlosUidRoute,
+  } as any)
 const OrgsOrgOrganizationMembersMemberUidPagingRoute =
   OrgsOrgOrganizationMembersMemberUidPagingRouteImport.update({
     id: '/members_/$memberUid/paging',
@@ -844,6 +882,7 @@ const OrgsOrgChecksCheckUidResultsResultUidRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/change-password': typeof ChangePasswordRoute
   '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -853,6 +892,8 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/support/$threadUid': typeof SupportThreadUidRoute
+  '/support/': typeof SupportIndexRoute
   '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
@@ -903,6 +944,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
+  '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
@@ -915,6 +957,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
   '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/discord': typeof OrgsOrgServerDiscordRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
@@ -972,10 +1015,12 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/change-password': typeof ChangePasswordRoute
   '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -984,6 +1029,8 @@ export interface FileRoutesByTo {
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/support/$threadUid': typeof SupportThreadUidRoute
+  '/support': typeof SupportIndexRoute
   '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
@@ -1014,6 +1061,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
+  '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
@@ -1024,6 +1072,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
   '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/discord': typeof OrgsOrgServerDiscordRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
@@ -1079,11 +1128,13 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/change-password': typeof ChangePasswordRoute
   '/device': typeof DeviceRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
@@ -1093,6 +1144,8 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/support/$threadUid': typeof SupportThreadUidRoute
+  '/support/': typeof SupportIndexRoute
   '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
@@ -1143,6 +1196,7 @@ export interface FileRoutesById {
   '/orgs/$org/on-call/$uid': typeof OrgsOrgOnCallUidRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/ai': typeof OrgsOrgOrganizationAiRoute
+  '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
@@ -1155,6 +1209,7 @@ export interface FileRoutesById {
   '/orgs/$org/server/aggregation': typeof OrgsOrgServerAggregationRoute
   '/orgs/$org/server/analytics': typeof OrgsOrgServerAnalyticsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/discord': typeof OrgsOrgServerDiscordRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
@@ -1212,12 +1267,14 @@ export interface FileRoutesById {
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
   '/orgs/$org/organization/members_/$memberUid/paging': typeof OrgsOrgOrganizationMembersMemberUidPagingRoute
+  '/orgs/$org/slos/$uid/alert-policies/$policyUid': typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
   '/orgs/$org/status-pages/$statusPageUid/incidents/$uid': typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/change-password'
     | '/device'
     | '/forgot-password'
     | '/login'
@@ -1227,6 +1284,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/support/$threadUid'
+    | '/support/'
     | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
@@ -1277,6 +1336,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
+    | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/private-locations'
@@ -1289,6 +1349,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/aggregation'
     | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/discord'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
@@ -1346,10 +1407,12 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/change-password'
     | '/device'
     | '/forgot-password'
     | '/login'
@@ -1358,6 +1421,8 @@ export interface FileRouteTypes {
     | '/confirm-registration/$token'
     | '/invite/$token'
     | '/reset-password/$token'
+    | '/support/$threadUid'
+    | '/support'
     | '/auth/slack/complete'
     | '/orgs/$org/badges'
     | '/orgs/$org/design-reference'
@@ -1388,6 +1453,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/oauth/consent'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
+    | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/requests'
@@ -1398,6 +1464,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/aggregation'
     | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/discord'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
@@ -1453,10 +1520,12 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
     | '/orgs/$org/organization/members/$memberUid/paging'
+    | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   id:
     | '__root__'
     | '/'
+    | '/change-password'
     | '/device'
     | '/forgot-password'
     | '/login'
@@ -1466,6 +1535,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/support/$threadUid'
+    | '/support/'
     | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
@@ -1516,6 +1587,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$uid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/ai'
+    | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/private-locations'
@@ -1528,6 +1600,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/aggregation'
     | '/orgs/$org/server/analytics'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/discord'
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
@@ -1585,11 +1658,13 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
     | '/orgs/$org/organization/members_/$memberUid/paging'
+    | '/orgs/$org/slos/$uid/alert-policies/$policyUid'
     | '/orgs/$org/status-pages/$statusPageUid/incidents/$uid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChangePasswordRoute: typeof ChangePasswordRoute
   DeviceRoute: typeof DeviceRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
@@ -1599,6 +1674,8 @@ export interface RootRouteChildren {
   InviteTokenRoute: typeof InviteTokenRoute
   OrgsOrgRoute: typeof OrgsOrgRouteWithChildren
   ResetPasswordTokenRoute: typeof ResetPasswordTokenRoute
+  SupportThreadUidRoute: typeof SupportThreadUidRoute
+  SupportIndexRoute: typeof SupportIndexRoute
   AuthSlackCompleteRoute: typeof AuthSlackCompleteRoute
 }
 
@@ -1639,11 +1716,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/change-password': {
+      id: '/change-password'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support/': {
+      id: '/support/'
+      path: '/support'
+      fullPath: '/support/'
+      preLoaderRoute: typeof SupportIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support/$threadUid': {
+      id: '/support/$threadUid'
+      path: '/support/$threadUid'
+      fullPath: '/support/$threadUid'
+      preLoaderRoute: typeof SupportThreadUidRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password/$token': {
@@ -2066,6 +2164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgServerEmailInboxRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
+    '/orgs/$org/server/discord': {
+      id: '/orgs/$org/server/discord'
+      path: '/discord'
+      fullPath: '/orgs/$org/server/discord'
+      preLoaderRoute: typeof OrgsOrgServerDiscordRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
     '/orgs/$org/server/auth': {
       id: '/orgs/$org/server/auth'
       path: '/auth'
@@ -2148,6 +2253,13 @@ declare module '@tanstack/react-router' {
       path: '/invitations'
       fullPath: '/orgs/$org/organization/invitations'
       preLoaderRoute: typeof OrgsOrgOrganizationInvitationsRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
+    '/orgs/$org/organization/audit': {
+      id: '/orgs/$org/organization/audit'
+      path: '/audit'
+      fullPath: '/orgs/$org/organization/audit'
+      preLoaderRoute: typeof OrgsOrgOrganizationAuditRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
     }
     '/orgs/$org/organization/ai': {
@@ -2493,6 +2605,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
+    '/orgs/$org/slos/$uid/alert-policies/$policyUid': {
+      id: '/orgs/$org/slos/$uid/alert-policies/$policyUid'
+      path: '/alert-policies/$policyUid'
+      fullPath: '/orgs/$org/slos/$uid/alert-policies/$policyUid'
+      preLoaderRoute: typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRouteImport
+      parentRoute: typeof OrgsOrgSlosUidRoute
+    }
     '/orgs/$org/organization/members_/$memberUid/paging': {
       id: '/orgs/$org/organization/members_/$memberUid/paging'
       path: '/members/$memberUid/paging'
@@ -2811,6 +2930,7 @@ const OrgsOrgOrganizationReportSchedulesRouteWithChildren =
 
 interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationAiRoute: typeof OrgsOrgOrganizationAiRoute
+  OrgsOrgOrganizationAuditRoute: typeof OrgsOrgOrganizationAuditRoute
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
   OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
   OrgsOrgOrganizationPrivateLocationsRoute: typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
@@ -2824,6 +2944,7 @@ interface OrgsOrgOrganizationRouteChildren {
 
 const OrgsOrgOrganizationRouteChildren: OrgsOrgOrganizationRouteChildren = {
   OrgsOrgOrganizationAiRoute: OrgsOrgOrganizationAiRoute,
+  OrgsOrgOrganizationAuditRoute: OrgsOrgOrganizationAuditRoute,
   OrgsOrgOrganizationInvitationsRoute: OrgsOrgOrganizationInvitationsRoute,
   OrgsOrgOrganizationMembersRoute: OrgsOrgOrganizationMembersRoute,
   OrgsOrgOrganizationPrivateLocationsRoute:
@@ -2847,6 +2968,7 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerAggregationRoute: typeof OrgsOrgServerAggregationRoute
   OrgsOrgServerAnalyticsRoute: typeof OrgsOrgServerAnalyticsRoute
   OrgsOrgServerAuthRoute: typeof OrgsOrgServerAuthRoute
+  OrgsOrgServerDiscordRoute: typeof OrgsOrgServerDiscordRoute
   OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
   OrgsOrgServerHashingRoute: typeof OrgsOrgServerHashingRoute
   OrgsOrgServerMailRoute: typeof OrgsOrgServerMailRoute
@@ -2862,6 +2984,7 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerAggregationRoute: OrgsOrgServerAggregationRoute,
   OrgsOrgServerAnalyticsRoute: OrgsOrgServerAnalyticsRoute,
   OrgsOrgServerAuthRoute: OrgsOrgServerAuthRoute,
+  OrgsOrgServerDiscordRoute: OrgsOrgServerDiscordRoute,
   OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
   OrgsOrgServerHashingRoute: OrgsOrgServerHashingRoute,
   OrgsOrgServerMailRoute: OrgsOrgServerMailRoute,
@@ -2878,11 +3001,14 @@ const OrgsOrgServerRouteWithChildren = OrgsOrgServerRoute._addFileChildren(
 interface OrgsOrgSlosUidRouteChildren {
   OrgsOrgSlosUidEditRoute: typeof OrgsOrgSlosUidEditRoute
   OrgsOrgSlosUidIndexRoute: typeof OrgsOrgSlosUidIndexRoute
+  OrgsOrgSlosUidAlertPoliciesPolicyUidRoute: typeof OrgsOrgSlosUidAlertPoliciesPolicyUidRoute
 }
 
 const OrgsOrgSlosUidRouteChildren: OrgsOrgSlosUidRouteChildren = {
   OrgsOrgSlosUidEditRoute: OrgsOrgSlosUidEditRoute,
   OrgsOrgSlosUidIndexRoute: OrgsOrgSlosUidIndexRoute,
+  OrgsOrgSlosUidAlertPoliciesPolicyUidRoute:
+    OrgsOrgSlosUidAlertPoliciesPolicyUidRoute,
 }
 
 const OrgsOrgSlosUidRouteWithChildren = OrgsOrgSlosUidRoute._addFileChildren(
@@ -3062,6 +3188,7 @@ const OrgsOrgRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChangePasswordRoute: ChangePasswordRoute,
   DeviceRoute: DeviceRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
@@ -3071,6 +3198,8 @@ const rootRouteChildren: RootRouteChildren = {
   InviteTokenRoute: InviteTokenRoute,
   OrgsOrgRoute: OrgsOrgRouteWithChildren,
   ResetPasswordTokenRoute: ResetPasswordTokenRoute,
+  SupportThreadUidRoute: SupportThreadUidRoute,
+  SupportIndexRoute: SupportIndexRoute,
   AuthSlackCompleteRoute: AuthSlackCompleteRoute,
 }
 export const routeTree = rootRouteImport

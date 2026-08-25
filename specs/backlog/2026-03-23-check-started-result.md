@@ -59,7 +59,7 @@ The worker requires **no changes**. It continues to execute probes and report `U
 ### Manual testing
 ```bash
 TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"org":"default","email":"admin@solidping.com","password":"solidpass"}' \
+  -d '{"org":"default","email":"admin@solidping.io","password":"solidpass"}' \
   'http://localhost:4000/api/v1/auth/login' | jq -r '.accessToken')
 
 # 1. Create a check — verify initial result exists

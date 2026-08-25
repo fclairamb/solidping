@@ -209,3 +209,103 @@ func TestGroupPrefixNesting(t *testing.T) {
 	r.Equal(http.StatusOK, rec.Code)
 	r.Equal(1, hits)
 }
+
+// TestDuplicateRouteRegistrationPanics is the guard that the old post-hoc
+// uniqueness check could not be.
+//
+// chi stores handlers in a map keyed by method and `setEndpoint` OVERWRITES
+// that entry, so walking the finished tree can never reveal a duplicate — the
+// loser is gone before Walk runs. The check therefore has to happen at
+// registration time, and this test pins that it does, in the two shapes the
+// route table actually produces: the same group twice, and two DIFFERENT groups
+// resolving to the same pattern (which is how the real collision happened —
+// an authenticated group and a public one both landing on
+// `/api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers`).
+func TestDuplicateRouteRegistrationPanics(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	noop := func(http.ResponseWriter, *http.Request) error { return nil }
+
+	t.Run("same group", func(t *testing.T) {
+		t.Parallel()
+
+		router := httpx.New()
+		group := router.NewGroup("/api/v1/things")
+		group.POST("/:uid/subscribers", noop)
+
+		var caught httpx.DuplicateRouteError
+
+		func() {
+			defer func() {
+				recovered := recover()
+				require.NotNil(t, recovered, "a duplicate registration must panic")
+				require.ErrorAs(t, recovered.(error), &caught) //nolint:forcetypeassert // panic value is our error
+			}()
+
+			group.POST("/:uid/subscribers", noop)
+		}()
+
+		require.Equal(t, http.MethodPost, caught.Route.Method)
+		require.Equal(t, "/api/v1/things/{uid}/subscribers", caught.Route.Pattern)
+		require.Contains(t, caught.Error(), "unreachable")
+	})
+
+	t.Run("different groups, same resolved pattern", func(t *testing.T) {
+		t.Parallel()
+
+		router := httpx.New()
+		authed := router.NewGroup("/api/v1/orgs/:org").Use(func(next httpx.HandlerFunc) httpx.HandlerFunc {
+			return next
+		})
+		public := router.NewGroup("/api/v1")
+
+		authed.POST("/status-pages/:uid/subscribers", noop)
+
+		require.Panics(t, func() {
+			public.POST("/orgs/:org/status-pages/:uid/subscribers", noop)
+		}, "a different group is still the same pattern on the same mux")
+	})
+
+	// Negative control: the two patterns this spec actually ships coexist, so
+	// the panics above are about duplication and not about the paths.
+	router := httpx.New()
+	group := router.NewGroup("/api/v1/orgs/:org/status-pages")
+	r.NotPanics(func() {
+		group.POST("/:uid/subscribers", noop)
+		group.POST("/:uid/subscribers/endpoints", noop)
+		group.GET("/:uid/subscribers", noop)
+	})
+}
+
+// TestRegisteredRoutesReportsWhatWasAsked pins the difference between the two
+// views of the table: RegisteredRoutes is what the code asked for, Walk is what
+// chi ended up matching.
+func TestRegisteredRoutesReportsWhatWasAsked(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	noop := func(http.ResponseWriter, *http.Request) error { return nil }
+
+	router := httpx.New()
+	group := router.NewGroup("/api/v1/orgs/:org")
+	group.GET("/checks", noop)
+	group.POST("/checks", noop)
+	group.GET("/checks/:uid", noop)
+
+	registered := router.RegisteredRoutes()
+	r.Len(registered, 3)
+
+	// Sorted by pattern, then method.
+	r.Equal(httpx.Route{Method: http.MethodGet, Pattern: "/api/v1/orgs/{org}/checks"}, registered[0])
+	r.Equal(httpx.Route{Method: http.MethodPost, Pattern: "/api/v1/orgs/{org}/checks"}, registered[1])
+	r.Equal(httpx.Route{Method: http.MethodGet, Pattern: "/api/v1/orgs/{org}/checks/{uid}"}, registered[2])
+
+	walked := 0
+	r.NoError(router.Walk(func(string, string) error {
+		walked++
+
+		return nil
+	}))
+	r.Equal(len(registered), walked, "with no duplicates the two views must agree")
+}

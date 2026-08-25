@@ -39,6 +39,14 @@ tags:
     description: Network discovery scans and suggested checks
   - name: System
     description: System-wide configuration (super admin only)
+  - name: Support
+    description: >
+      Instance support inbox — inbound human messages captured from the bot
+      channels, and replies back through them. Super admin only. Threads belong
+      to the INSTANCE, not to an organization: the sender is frequently a phone
+      number with no org to attribute it to, and a message from a stranger must
+      not be dropped for lack of one. organizationUid/userUid on a thread are
+      attribution hints for the operator, never an access boundary.
   - name: MaintenanceWindows
     description: Scheduled maintenance windows and their check coverage
   - name: SLOs
@@ -211,6 +219,108 @@ paths:
           $ref: "#/components/responses/Forbidden"
 
   # System actions (Super Admin Only)
+  /api/v1/system/regions/migrate:
+    post:
+      tags: [System]
+      summary: Migrate every reference to a region slug
+      description: >
+        Reassigns a region slug server-wide and across every organization:
+        `checks.regions` is rewritten in one transaction, then each affected
+        check's `check_jobs` are re-materialized under the new slug through the
+        normal reconcile (so the unique `(checkUid, region)` pair, the phase
+        stagger, the plan weight and the schedule are all recomputed).
+
+
+        This exists because renaming a worker region — an `SP_NODE_REGION` /
+        `SP_REGIONS` change, with no check ever edited — leaves every job row
+        under the old spelling, and a worker only claims a job whose region its
+        own region matches by prefix. Those jobs become unclaimable by every
+        worker, silently and forever. The migration is the recovery, and it is
+        server-scope because org-scoped credentials cannot reach the jobs of
+        the other tenants a rename breaks.
+
+
+        `to` must be a declared region (present in the `regions` system
+        parameter) or served by a live worker — migrating to a slug nobody
+        serves would only move the stranding. `from` deliberately need not be
+        declared: cleaning up a slug that no longer exists is the point. A
+        private (`@…`) region may only migrate to another private region, since
+        its sealed configs are encrypted to the private region's agent keys and
+        cannot be re-targeted server-side.
+
+
+        Idempotent: a second call with the same pair finds no references and
+        returns zeros. Super-admin only.
+      operationId: migrateRegion
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegionMigrationRequest"
+      responses:
+        "200":
+          description: Migration report (identical shape for a dry run)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionMigrationReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/system/regions/health:
+    get:
+      tags: [System]
+      summary: Ghost-region detection report
+      description: >
+        One row per region slug seen anywhere — in the declared `regions`
+        system parameter, in a check's `regions` array, in a
+        `check_jobs.region`, or in a live or previously-live worker's
+        announced region — so the caller gets the ghosts and the healthy
+        baseline in one call.
+
+
+        A **ghost** is a slug something depends on (a job or a check
+        reference) that nothing live can serve: `(jobs > 0 || checksReferencing
+        > 0) && liveWorkers == 0`. A declared region with zero live workers
+        and zero references is dark but unused, not a ghost — the alarm
+        condition is work assigned to nobody, not an idle region.
+
+
+        `liveWorkers` reuses the exact prefix rule the scheduler claims jobs
+        with (`workerRegion` has the slug as a prefix, so a `us` job is
+        served by a `us-1` worker) and the same liveness window as the region
+        capability report. `lastWorkerSeenAt` spans every matching worker,
+        soft-deleted included, so it dates when the region actually went
+        dark. NULL-region (any-region) jobs never count toward any row — they
+        are claimable by every cloud worker by construction.
+
+
+        Read-side companion of `POST /system/regions/migrate`: its output
+        names exactly the `from` slugs a migration should target. Cheap and
+        unpaginated — a handful of bounded scans, not a query per region.
+        Super-admin only.
+      operationId: getRegionHealth
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Ghost-region detection report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegionHealthReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/v1/system/test-email:
     post:
       tags: [System]
@@ -456,6 +566,199 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # Support inbox (Super Admin Only)
+  /api/v1/support/threads:
+    get:
+      tags: [Support]
+      summary: List support threads
+      description: >
+        Returns captured support conversations, most recent activity first.
+        Super-admin only.
+      operationId: listSupportThreads
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, pending, closed]
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [whatsapp, telegram, sms, slack, discord, email]
+        - name: q
+          in: query
+          description: Case-insensitive substring match on subject or channel identity
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+      responses:
+        "200":
+          description: Support threads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThreadListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/support/threads/{uid}:
+    get:
+      tags: [Support]
+      summary: Get one support thread
+      description: >
+        Returns the thread, marking it read. Super-admin only.
+      operationId: getSupportThread
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Support thread
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThread"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Support]
+      summary: Update a support thread
+      description: Change the operator-set status or the subject. Super-admin only.
+      operationId: updateSupportThread
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSupportThreadRequest"
+      responses:
+        "200":
+          description: Updated thread
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportThread"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/support/threads/{uid}/messages:
+    get:
+      tags: [Support]
+      summary: List a thread's messages
+      description: Chronological order, oldest first. Super-admin only.
+      operationId: listSupportMessages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+            maximum: 1000
+      responses:
+        "200":
+          description: Support messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessageListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Support]
+      summary: Reply to a support thread
+      description: >
+        Sends the reply through the channel the thread arrived on AND records it.
+        Returns 409 when the channel will not accept a free-form reply right now
+        — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter —
+        which is a refusal we make deliberately rather than a provider error
+        surfaced after the fact. Returns 202 when the row was recorded but the
+        provider send failed, so an operator is never left unsure whether the
+        attempt happened. Super-admin only.
+      operationId: createSupportMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupportMessageRequest"
+      responses:
+        "201":
+          description: Reply sent and recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+        "202":
+          description: Reply recorded but the provider send failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   # Authentication APIs (root-level)
   /api/v1/auth/login:
@@ -1579,6 +1882,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1590,7 +1895,15 @@ paths:
         Full public rendering of a status page: sections, per-resource live
         status, and (when enabled) availability/response-time history. A
         disabled or non-public page returns 404, identical to a page that
-        doesn't exist. No authentication required.
+        doesn't exist. No authentication required. Caching follows the page's
+        visibility: a `public` page carries Cache-Control: public, max-age=60,
+        while a `password` or `private` page — and every 401/404 answer —
+        carries Cache-Control: private, no-store, so a shared cache can never
+        retain a gated page's body. Holding a valid unlock cookie does not
+        change that: it authorizes the visitor, not the CDN in front of them.
+        Public responses carry Vary: X-Forwarded-Proto (the header the
+        absolute URLs in these payloads derive their scheme from); gated ones
+        add Cookie.
       operationId: viewStatusPage
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1607,6 +1920,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1617,10 +1932,12 @@ paths:
       description: >-
         Cheap "is it up?" companion to the full page view: overall status,
         per-category counts, page identity, and the canonical public URL —
-        no sections, no per-resource history. Response carries
-        Cache-Control: public, max-age=60. Same visibility gate as the full
-        view: a disabled or non-public page returns 404, identical to a page
-        that doesn't exist. No authentication required.
+        no sections, no per-resource history. Same visibility gate AND the
+        same caching rule as the full page view: Cache-Control: public,
+        max-age=60 for a `public` page, private, no-store for a `password` or
+        `private` one (unlocked or not) and for every 401/404 answer. A
+        disabled or non-public page returns 404, identical to a page that
+        doesn't exist. No authentication required.
       operationId: viewStatusPageSummary
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1637,6 +1954,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPageSummary"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1650,8 +1969,10 @@ paths:
         contexts like GitHub READMEs where scripts can't run. Same visibility
         gate as the full view and the summary endpoint: a disabled or
         non-public page returns 404, identical to a page that doesn't exist.
-        Response carries Cache-Control: public, max-age=60. No authentication
-        required.
+        Same caching rule too: Cache-Control: public, max-age=60 for a
+        `public` page, private, no-store for a `password` or `private` one —
+        the badge renders the rollup status of a page the requester may not be
+        entitled to see. No authentication required.
       operationId: getStatusPageBadge
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1689,6 +2010,8 @@ paths:
             image/svg+xml:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1734,8 +2057,11 @@ paths:
         set the full page view embeds as `activeIncidents[]`.
 
         Same visibility gate as the full page view: a disabled or non-public
-        page returns 404, identical to a page that doesn't exist. No
-        authentication required.
+        page returns 404, identical to a page that doesn't exist. Same caching
+        rule too — Cache-Control: public, max-age=60 for a `public` page,
+        private, no-store for a `password` or `private` one (unlocked or not),
+        since this payload quotes incident titles and update bodies verbatim.
+        No authentication required.
 
         Every field is operator-authored or templated from the page's own
         public resource names. Probe output, error strings and internal
@@ -1761,6 +2087,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicIncidentListResponse"
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1771,7 +2099,10 @@ paths:
       description: >-
         Public Atom/RSS feed of the page's recent status updates (incident
         posts and manual updates). Same visibility gate as the full page
-        view. No authentication required.
+        view, and the same visibility-driven caching: Cache-Control: public,
+        max-age=300 for a `public` page, private, no-store for a `password` or
+        `private` one — the feed quotes update titles and bodies verbatim. No
+        authentication required.
       operationId: statusPageFeed
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -1788,8 +2119,119 @@ paths:
             application/atom+xml:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # Unlock a password-protected status page (spec 2026-08-21-07). Public and
+  # unauthenticated by design: the password IS the credential.
+  /api/v1/status-pages/{org}/{slug}/unlock:
+    post:
+      tags: [StatusPages]
+      summary: Unlock a password-protected status page
+      description: >-
+        Verifies the page password and, on success, sets the unlock cookie
+        every gated public read then requires.
+
+
+        The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax,
+        Secure when the request arrived over TLS, and lasts 12 hours. Host-only
+        is what makes it work on a customer's own domain without ever minting a
+        cookie for solidping.io. It is signed with a key derived from the stored
+        password hash, so changing or clearing the password invalidates every
+        outstanding unlock immediately.
+
+
+        Attempts are rate limited per (client IP, page).
+      operationId: unlockStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Status page slug
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageUnlockRequest"
+      responses:
+        "204":
+          description: >-
+            Unlocked. The response carries Set-Cookie: sp_unlock_<pageUid>.
+          headers:
+            Set-Cookie:
+              description: The host-only unlock cookie.
+              schema:
+                type: string
+        "401":
+          description: >-
+            Incorrect password. Same STATUS_PAGE_LOCKED code the gated reads
+            use, so a client can keep the visitor on the unlock form with one
+            branch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: >-
+            No live, password-protected page under this slug. A public page
+            answers 404 here too — telling a caller "this page exists but needs
+            no password" would be a needless disclosure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/status-pages/{org}/unlock:
+    post:
+      tags: [StatusPages]
+      summary: Unlock an organization's password-protected default status page
+      description: >-
+        Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the
+        organization's default page — the form a client reaching a default page
+        through /status0/{org} can use, having no slug to send.
+      operationId: unlockDefaultStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageUnlockRequest"
+      responses:
+        "204":
+          description: Unlocked. The response carries the unlock cookie.
+          headers:
+            Set-Cookie:
+              description: The host-only unlock cookie.
+              schema:
+                type: string
+        "401":
+          description: Incorrect password (code STATUS_PAGE_LOCKED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No live, password-protected default page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   # Results APIs
   /api/v1/orgs/{org}/results:
@@ -1825,22 +2267,57 @@ paths:
             type: string
         - name: periodType
           in: query
-          description: Filter by period type (comma-separated for multiple)
+          description: >
+            Filter by period type (comma-separated for multiple). Both useful
+            indexes on `results` are partial and split on
+            `period_type = 'raw'`, so a single request naming raw AND a rollup
+            tier is served by neither and sequentially scans the table — ask
+            for one side per request. A raw-only request is additionally
+            clamped server-side to the raw-retention band (see the `window`
+            object on the response); rows older than that were deleted by the
+            aggregation job, so nothing is lost.
           schema:
             type: string
-          example: "raw,hour"
+          example: "raw"
+        - name: periodStartAfter
+          in: query
+          description: >
+            RFC3339 timestamp. Filters on `period_start >= value`. For a
+            raw-only request the server may move this forward to the
+            raw-retention boundary; the effective value is echoed in the
+            response's `window` object.
+          schema:
+            type: string
+            format: date-time
+        - name: periodEndBefore
+          in: query
+          description: >
+            RFC3339 timestamp. Despite the name it filters on
+            `period_start < value`, NOT on `period_end` — an aggregated bucket
+            that starts inside the window and ends outside it IS returned.
+            That is deliberate and charting depends on it: a partially visible
+            bucket should still be drawn.
+          schema:
+            type: string
+            format: date-time
         - name: cursor
           in: query
           description: Cursor for pagination
           schema:
             type: string
-        - name: size
+        - name: limit
           in: query
-          description: Results per page (default 20, max 100)
+          description: Results per page (default 100, max 1000)
           schema:
             type: integer
-            default: 20
-            maximum: 100
+            default: 100
+            maximum: 1000
+        - name: size
+          in: query
+          description: Deprecated alias for `limit`.
+          deprecated: true
+          schema:
+            type: integer
         - name: with
           in: query
           description: >
@@ -3101,6 +3578,66 @@ paths:
           description: Filter by incident UID
           schema:
             type: string
+        - name: type
+          in: query
+          description: >-
+            Filter by event-type FAMILY (comma-separated prefixes, e.g.
+            `auth,member`). Distinct from `eventType`, which matches exactly.
+            The `auth` family is only returned to org admins and owners.
+          schema:
+            type: string
+        - name: actorUserUid
+          in: query
+          description: >-
+            Filter to the events caused by one user. `actorUid` is accepted as
+            an alias.
+          schema:
+            type: string
+            format: uuid
+        - name: targetType
+          in: query
+          description: >-
+            Filter to one kind of acted-on object (`integration`, `member`,
+            `escalation_policy`, …), matched against the payload's
+            `target_type`.
+          schema:
+            type: string
+        - name: targetUid
+          in: query
+          description: >-
+            Filter to the events about one object, matched EXACTLY against the
+            payload's `target_uid`.
+          schema:
+            type: string
+        - name: target
+          in: query
+          description: >-
+            Free-text target filter: matches an exact `target_uid`, or a
+            case-insensitive substring of the `target_name` captured on the
+            event. This is what the dashboard's "target name or UID" box sends.
+          schema:
+            type: string
+        - name: sourceIp
+          in: query
+          description: >-
+            Filter to one client address. Honoured for org admins and owners
+            ONLY; for anyone else it is silently ignored rather than rejected,
+            so it cannot be used as an oracle for a column they are not
+            allowed to read.
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Only events created at or after this RFC3339 timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: Only events created strictly before this RFC3339 timestamp
+          schema:
+            type: string
+            format: date-time
         - name: cursor
           in: query
           description: Cursor for pagination
@@ -3120,6 +3657,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EventListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -4482,6 +5021,108 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+    post:
+      tags: [StatusPages]
+      summary: Subscribe an email address to a status page
+      description: >-
+        PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and
+        nothing is delivered until its link is followed, which is the primary
+        anti-abuse control.
+
+
+        Email is the ONLY channel available here. A `channel` of anything else
+        is refused — a visitor pasting a webhook URL has no verification story,
+        and the URL is itself a credential. Webhook and Slack deliveries are
+        registered by an operator through
+        POST .../subscribers/endpoints instead.
+      operationId: subscribeToStatusPage
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusPageSubscribeRequest"
+      responses:
+        "202":
+          description: >-
+            Accepted. A confirmation email has been sent; nothing is
+            deliverable until it is confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: pending_confirmation
+        "401":
+          $ref: "#/components/responses/StatusPageLocked"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints:
+    post:
+      tags: [StatusPages]
+      summary: Register a webhook or Slack delivery for a status page
+      description: >-
+        AUTHENTICATED, operator-side. Creates a subscription that delivers to a
+        URL rather than a mailbox, already confirmed — the operator registering
+        their own endpoint IS the verification.
+
+
+        The URL must be https and must not resolve to a loopback or private
+        host; a `slack` subscription must point at hooks.slack.com. It is stored
+        ENCRYPTED and never returned: list responses carry only a masked
+        `endpoint` hint.
+
+
+        Webhook deliveries are signed with HMAC-SHA256 over
+        `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in
+        X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is
+        returned by THIS CALL ONLY (`data.signingSecret`) and never again — a
+        receiver that loses it needs the subscription re-created.
+
+
+        The path is deliberately distinct from `.../subscribers`, which is the
+        public email-only route: the two cannot share a pattern on the router.
+      operationId: createStatusPageEndpointSubscriber
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStatusPageEndpointSubscriberRequest"
+      responses:
+        "201":
+          description: >-
+            The subscription, plus the signing secret — shown once, here.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StatusPageEndpointSubscriber"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/{uid}:
     delete:
       tags: [StatusPages]
@@ -5073,6 +5714,91 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/slos/{uid}/alert-policies:
+    get:
+      tags: [SLOs]
+      summary: List an objective's burn-rate alert policies
+      description: >-
+        Two built-in multiwindow burn-rate policies (`fast` and `slow`),
+        materialized on demand so an objective created before the feature
+        existed answers exactly like a new one. Both start disabled — alerting
+        is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the
+        request rather than read back from the stored readout, and are null
+        (never 0) when a window carries no countable probe.
+      operationId: listSloAlertPolicies
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+      responses:
+        "200":
+          description: Alert policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOAlertPolicyListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid}:
+    get:
+      tags: [SLOs]
+      summary: Get one burn-rate alert policy
+      operationId: getSloAlertPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+        - $ref: "#/components/parameters/SLOAlertPolicyUidPath"
+      responses:
+        "200":
+          description: Alert policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOAlertPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [SLOs]
+      summary: Tune a burn-rate alert policy
+      description: >-
+        `kind` is not writable — there are exactly two built-ins. Changing a
+        threshold or either window clears the auto-resolve hysteresis anchor,
+        which was measured against the old numbers.
+      operationId: updateSloAlertPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/SLOUidPath"
+        - $ref: "#/components/parameters/SLOAlertPolicyUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSLOAlertPolicyRequest"
+      responses:
+        "200":
+          description: Updated alert policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLOAlertPolicy"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/report-schedules:
     get:
       tags: [SLOs]
@@ -5194,7 +5920,9 @@ paths:
       description: >-
         Renders the report for the period that most recently closed and mails it
         to the authenticated caller (or to `recipient`). It never fans out to the
-        schedule's recipient list.
+        schedule's recipient list. Returns 409 instead of 202 when the resolved
+        recipient is on the organization's suppression list, since nothing is
+        actually queued in that case.
       operationId: testReportSchedule
       security:
         - bearerAuth: []
@@ -5220,6 +5948,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/orgs/{org}/maintenance-windows:
     get:
@@ -6296,10 +7026,11 @@ paths:
         harmless, which is what makes that safe.
 
 
-        The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable,
-        but authorized by state: it only serves a file that is the CURRENT logo
-        of a live organization, so replacing or clearing the logo un-publishes
-        the previous image immediately. Uploaded SVGs are always served with
+        The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but
+        authorized by the stored file's attachment topic: only a file attached
+        under `organizations/{orgUid}/logo` is served there, and only while that
+        file row is live — so replacing or clearing the logo un-publishes the
+        previous image immediately. Uploaded SVGs are always served with
         `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`
         so they cannot execute as a document on the application's origin; they
         still render normally in an `img` element.
@@ -7119,6 +7850,15 @@ components:
         type: string
       description: SLO UID or slug
 
+    SLOAlertPolicyUidPath:
+      name: policyUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Burn-rate alert policy UID
+
     ReportScheduleUidPath:
       name: uid
       in: path
@@ -7304,6 +8044,18 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
 
+    StatusPageLocked:
+      description: >-
+        The status page is password protected and the request carried no valid
+        unlock cookie. The error `code` is `STATUS_PAGE_LOCKED`, deliberately
+        distinct from a generic UNAUTHORIZED: it means "unlock me", not "log
+        in" — public status pages have no accounts. Obtain the cookie from
+        POST /api/v1/status-pages/{org}/{slug}/unlock and replay it.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
     Forbidden:
       description: Permission denied
       content:
@@ -7333,6 +8085,154 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    SupportReplyWindow:
+      type: object
+      description: >
+        Whether a free-form reply can be sent RIGHT NOW. Derived from the last
+        inbound message's timestamp and the channel's rule at read time, never
+        stored — so it cannot go stale. This is a different axis from `status`:
+        a thread can be open (unanswered) and yet expired (WhatsApp will no
+        longer accept a free-form reply), which is exactly the state an operator
+        most needs to see.
+      required: [expires, open, costsMoney]
+      properties:
+        expires:
+          type: boolean
+          description: Whether this channel has a window at all. Only WhatsApp does.
+        open:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        reason:
+          type: string
+          description: Operator-facing explanation of a closed window.
+        costsMoney:
+          type: boolean
+          description: True for channels billed per reply (SMS).
+
+    SupportThread:
+      type: object
+      required: [uid, channel, channelIdentity, subject, status, lastMessageAt, unreadCount]
+      properties:
+        uid:
+          type: string
+        channel:
+          type: string
+          enum: [whatsapp, telegram, sms, slack, discord, email]
+        channelIdentity:
+          type: string
+          description: E.164 number, Telegram chat id, Slack/Discord user id.
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [open, pending, closed]
+          description: Set by the operator, deliberately. Not the reply window.
+        organizationUid:
+          type: string
+          nullable: true
+          description: >
+            Attribution only. Recorded when the sender resolves to a verified
+            user contact; it does NOT grant that organization visibility of the
+            thread.
+        userUid:
+          type: string
+          nullable: true
+        lastMessageAt:
+          type: string
+          format: date-time
+        lastInboundAt:
+          type: string
+          format: date-time
+          nullable: true
+        unreadCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        replyWindow:
+          $ref: "#/components/schemas/SupportReplyWindow"
+        canReply:
+          type: boolean
+          description: Whether an outbound adapter exists for this channel at all.
+
+    SupportThreadListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportThread"
+
+    SupportMessage:
+      type: object
+      required: [uid, threadUid, channel, direction, body, rawType, createdAt]
+      properties:
+        uid:
+          type: string
+        threadUid:
+          type: string
+        channel:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        body:
+          type: string
+          description: >
+            Attacker-influenced free text. Never render it as HTML.
+        truncated:
+          type: boolean
+          description: True when the body exceeded the stored-body cap and was cut.
+        rawType:
+          type: string
+          enum: [text, image, audio, video, document, location, sticker, unsupported]
+        externalId:
+          type: string
+          nullable: true
+        authorUid:
+          type: string
+          nullable: true
+          description: The super admin who sent an outbound reply.
+        delivery:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SupportMessageListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportMessage"
+
+    UpdateSupportThreadRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, pending, closed]
+        subject:
+          type: string
+
+    CreateSupportMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+
     Error:
       type: object
       required: [title, code]
@@ -7841,6 +8741,14 @@ components:
         role:
           type: string
           enum: [owner, admin, user, viewer]
+        mustChangePassword:
+          type: boolean
+          description: >
+            True when this account must rotate its password before it can do
+            anything else. The session returned alongside this flag reaches only
+            POST /auth/change-password, GET /auth/me and POST /auth/logout;
+            every other endpoint answers 403 with code PASSWORD_CHANGE_REQUIRED.
+            Omitted when false.
 
     CreateTokenRequest:
       type: object
@@ -8203,6 +9111,18 @@ components:
               type: string
               enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, UNKNOWN]
               description: The status that the check transitioned to
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy. When a network-reachability failure
+            (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or
+            reopens an incident for this check, an MTR-style traceroute is
+            captured and attached. `inherit` defers to the organization default
+            (itself on unless an admin turned it off); `on` and `off` decide for
+            this check. Application-level failures (HTTP 5xx, keyword mismatch,
+            certificate expiry) never trigger a trace, whatever this is set to.
+          default: inherit
         flappingWindowSeconds:
           type: integer
           description: >-
@@ -8226,6 +9146,34 @@ components:
             this multiple of the base recovery period (also hard-capped at 30
             minutes).
           default: 8
+        flapState:
+          type: object
+          nullable: true
+          description: >-
+            Live adaptive-recovery (flapping) state — the effective,
+            lazy-reset-aware counterpart of flappingWindowSeconds /
+            flapBackoffFactor / maxRecoveryMultiplier above. Omitted when the
+            flapping feature is off for this check, or when no flap state has
+            accumulated (no outage yet, or the rolling window has since
+            lapsed).
+          properties:
+            flapCount:
+              type: integer
+              description: >-
+                Number of outages counted inside the current rolling flapping
+                window. 1 means the 2nd outage within the window — the first
+                one that actually counts as a flap.
+            lastOutageAt:
+              type: string
+              format: date-time
+              description: >-
+                Wall-clock of the most recent outage onset that counted
+                against the window.
+            effectiveRecoveryPeriodSeconds:
+              type: integer
+              description: >-
+                Stability currently required before an open incident on this
+                check auto-resolves, given flapCount.
         createdAt:
           type: string
           format: date-time
@@ -8405,6 +9353,13 @@ components:
       type: object
       required: [config]
       properties:
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy (see the Check schema). `inherit` puts
+            the check back under the organization default. Omit to leave
+            unchanged.
         name:
           type: string
           description: Check name (auto-generated from URL if not provided)
@@ -8488,6 +9443,13 @@ components:
     UpdateCheckRequest:
       type: object
       properties:
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy (see the Check schema). `inherit` puts
+            the check back under the organization default. Omit to leave
+            unchanged.
         name:
           type: string
         slug:
@@ -8550,6 +9512,13 @@ components:
       type: object
       required: [config]
       properties:
+        tracerouteOnFailure:
+          type: string
+          enum: [inherit, "on", "off"]
+          description: >-
+            Per-check path-trace policy (see the Check schema). Sent
+            explicitly by import/apply so a manifest that says `inherit` moves
+            a check back off an explicit override rather than leaving it.
         name:
           type: string
           description: Check name (auto-generated from URL if not provided)
@@ -8786,6 +9755,33 @@ components:
             $ref: "#/components/schemas/OrgResult"
         pagination:
           $ref: "#/components/schemas/ResultsCursorPagination"
+        window:
+          $ref: "#/components/schemas/ResultsWindow"
+
+    ResultsWindow:
+      type: object
+      description: >-
+        The time window the server actually queried. A raw-only request is
+        clamped to the raw-retention band, so this is not always the window
+        that was asked for. Always present — `clamped: false` is an answer,
+        letting a client tell a clamp from a genuinely empty range and size a
+        follow-up request. Additive and optional to read.
+      properties:
+        periodStartAfter:
+          type: string
+          format: date-time
+          description: Effective `period_start >=` bound; absent when unbounded.
+        periodEndBefore:
+          type: string
+          format: date-time
+          description: >-
+            Effective `period_start <` bound (not `period_end` — see the query
+            parameter description); absent when unbounded.
+        clamped:
+          type: boolean
+          description: >-
+            True when the server moved `periodStartAfter` forward from the
+            requested value.
 
     CheckAvailabilityResponse:
       type: object
@@ -9054,8 +10050,41 @@ components:
         acknowledgedAt:
           type: string
           format: date-time
+        acknowledgedBy:
+          type: string
+          format: uuid
+          description: >-
+            UID of the SolidPing user credited with the acknowledgment.
+
+
+            **Present only when the acker maps to a platform account** — the
+            dashboard, a magic link whose recipient address matches a user, or
+            a linked Telegram chat. A Slack, Discord or phone acknowledgment
+            leaves this null, because those people have no `users` row. Read
+            `acknowledgedByActor` to render an attribution; this field alone
+            says "nobody" for the majority of real acknowledgments.
+        acknowledgedByActor:
+          allOf:
+            - $ref: "#/components/schemas/IncidentActor"
+          description: >-
+            Resolved, display-ready identity of the acker: a name to render
+            and the channel it came from. Derived from the `users` row when
+            `acknowledgedBy` is set, and from the `incident.acknowledged`
+            event payload otherwise.
+
+
+            **Returned by the DETAIL endpoint and by `POST .../ack` only.**
+            The list endpoint omits it — resolving it costs a user lookup and
+            an event lookup per incident, which a 100-row page cannot afford.
         failureCount:
           type: integer
+        flapLevel:
+          type: integer
+          description: >-
+            The check's flap count at the moment this incident opened or last
+            reopened — a snapshot, not a live value. 0 (omitted) means it
+            opened at the base level, not escalated by the adaptive-recovery
+            flapping layer.
         title:
           type: string
         description:
@@ -9084,6 +10113,108 @@ components:
             dropped when the new onset has no capture. **This block is
             operator-only — it is never serialized onto a status page or a
             subscriber payload.**
+        attachments:
+          type: array
+          description: >-
+            Evidence blobs attached to this incident (spec 2026-08-21-01).
+            Present on the DETAIL endpoint only — the list endpoint never
+            populates it. Today the only kind is `screenshot`: the PNG a
+            browser check captured when the incident opened or reopened, for
+            checks with the browser `screenshot` option enabled.
+
+
+            **Operator-only, exactly like `details`.** Each entry carries a
+            short-lived SIGNED download URL, so it is never serialized onto a
+            status page or a subscriber payload.
+          items:
+            $ref: "#/components/schemas/IncidentAttachment"
+
+    IncidentActor:
+      type: object
+      description: >-
+        Display identity of whoever performed an incident action, for the
+        surfaces that must name a human rather than a UUID.
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: >-
+            Human label to render — the SolidPing user's name or email, or the
+            chat username / email address / phone number recorded on the event.
+            Never empty; falls back to `Unknown` when nothing is recoverable.
+        via:
+          type: string
+          description: >-
+            Channel the action came from. Absent for actions recorded before
+            the channel was captured.
+          enum: [web, slack, discord, telegram, email, phone, manual, auto]
+        userUid:
+          type: string
+          format: uuid
+          description: >-
+            SolidPing user the action is credited to. Absent for chat and
+            phone actors with no platform account.
+
+    IncidentAttachment:
+      type: object
+      description: >-
+        One stored evidence blob hanging off an incident. The bytes are fetched
+        through `downloadUrl`, never inlined.
+      required: [uid, kind, name, mimeType, size, downloadUrl, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+          description: The `files` row uid.
+        kind:
+          type: string
+          enum: [screenshot, traceroute]
+          description: >-
+            Attachment kind. `screenshot` is a PNG of what a failing browser
+            check's page looked like; `traceroute` is a JSON MTR-style path
+            capture (`nettrace.Capture`: mode, hops with address/PTR/loss and
+            min/avg/max RTT) taken after a network-reachability failure opened
+            the incident. Fetch and parse the JSON from `downloadUrl` — it is
+            never inlined into this payload.
+        name:
+          type: string
+        mimeType:
+          type: string
+          description: >-
+            Content type as SNIFFED at write time from the bytes themselves,
+            not as declared by the uploader.
+        size:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+          description: >-
+            RELATIVE, short-lived signed URL
+            (`/pub/files/<uid>?exp=…&sig=…`). Relative so it resolves against
+            whichever host served the dashboard — SolidPing answers on
+            several. Re-signed on every fetch of the incident; do not cache it.
+        createdAt:
+          type: string
+          format: date-time
+        capturedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the probe took the capture. For a screenshot this is a moment
+            AFTER failure detection, not the failing frame itself; for a
+            traceroute it is when the sweep STARTED, which is always after the
+            failing result was already reported.
+        region:
+          type: string
+          description: >-
+            Probing region, stamped server-side from the persisted result row.
+        checkUid:
+          type: string
+          format: uuid
+        trigger:
+          type: string
+          description: What caused the capture to be kept.
+          enum: [incident-open, incident-reopen, agent-upload]
 
     IncidentCheck:
       type: object
@@ -9153,21 +10284,35 @@ components:
           format: uuid
         eventType:
           type: string
-          enum:
-            - incident.created
-            - incident.escalated
-            - incident.resolved
-            - incident.acknowledged
-            - incident.comment
-            - check.created
-            - check.updated
-            - check.deleted
+          description: >-
+            Event type. Deliberately NOT an enum: the catalogue grows with the
+            product (see wiki/api-specification/events-catalogue.md), and a client that
+            hard-fails on an unknown value would break on every new family.
         actorType:
           type: string
-          enum: [system, user]
+          enum: [system, user, api_token, service]
         actorUid:
           type: string
           format: uuid
+          description: >-
+            Acting user. This is the audit trail's `actor_user_uid` — filter on
+            it with the `actorUserUid` query parameter.
+        actorName:
+          type: string
+          description: Acting user's display name, resolved for the returned page.
+        actorEmail:
+          type: string
+          format: email
+          description: Acting user's email, resolved for the returned page.
+        sourceIp:
+          type: string
+          description: >-
+            Client address the action came from. Returned to org admins and
+            owners only, and absent entirely when `audit.capture_ip` is off.
+        userAgent:
+          type: string
+          description: >-
+            User-Agent of the originating request, truncated. Admin/owner only.
         payload:
           type: object
         createdAt:
@@ -9721,7 +10866,33 @@ components:
           type: string
         visibility:
           type: string
-          description: Visibility of the page (e.g. "public", "private")
+          enum: [public, private, password]
+          description: >-
+            public = world-readable; private = hidden entirely (public
+            endpoints answer 404); password = shared with a secret (public
+            endpoints answer 401 STATUS_PAGE_LOCKED until unlocked).
+        hasPassword:
+          type: boolean
+          description: >-
+            Whether an unlock password is stored. The hash itself is never
+            serialized.
+        hideBranding:
+          type: boolean
+          description: >-
+            On admin payloads: the page's raw white-label opt-in. On the PUBLIC
+            payload: the RESOLVED decision, already ANDed with the org's
+            whiteLabel entitlement.
+        whiteLabelAllowed:
+          type: boolean
+          description: >-
+            Whether the org holds the whiteLabel entitlement. Admin payloads
+            only — plan state is never disclosed publicly.
+        logoUrl:
+          type: string
+          description: Public path of the page's uploaded logo, if any.
+        faviconUrl:
+          type: string
+          description: Public path of the page's uploaded favicon, if any.
         isDefault:
           type: boolean
         enabled:
@@ -9791,6 +10962,33 @@ components:
             a certificate is in storage, "error" = the last issuance attempt
             failed (see the server log). Omitted when in-server TLS is disabled
             or the domain is not verified yet. Authenticated endpoints only.
+        customDomainState:
+          type: string
+          enum: [none, pending, active, grace, demoted]
+          description: >-
+            Custom-domain lifecycle state (spec 2026-08-23-03). "grace" is the
+            one customDomainStatus cannot express: the page is STILL served,
+            but its periodic DNS re-checks are failing and it will stop being
+            served if nothing is done. "demoted" means it already has, and is
+            recoverable — the sweep re-promotes after several consecutive
+            successful checks while a valid certificate is still held.
+            Authenticated endpoints only.
+        customDomainDegradedSince:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the domain entered "grace". Absent otherwise. Authenticated
+            endpoints only.
+        customDomainLastCheck:
+          type: string
+          nullable: true
+          description: >-
+            One-line diagnostic from the last DNS re-check: the verification
+            mode used, the CNAME target expected, what DNS actually returned,
+            and the lookup error if any. Exists so a failing verification is
+            diagnosable from the API instead of by correlating server logs with
+            manual dig runs. Authenticated endpoints only.
         customDomainRecords:
           type: array
           description: >-
@@ -10216,6 +11414,17 @@ components:
           type: string
         visibility:
           type: string
+          enum: [public, private, password]
+        password:
+          type: string
+          description: >-
+            WRITE-ONLY. Required when visibility is "password". Minimum 6
+            characters. Never returned — reads expose hasPassword instead.
+        hideBranding:
+          type: boolean
+          description: >-
+            Page-level white-label opt-in. Stored whether or not the org is
+            entitled, so an upgrade applies without re-saving the page.
         isDefault:
           type: boolean
         showAvailability:
@@ -10286,6 +11495,16 @@ components:
           type: string
         visibility:
           type: string
+          enum: [public, private, password]
+        password:
+          type: string
+          description: >-
+            WRITE-ONLY. A non-empty value sets/replaces the unlock password
+            (invalidating every outstanding unlock cookie); "" clears it
+            (refused while visibility is still "password"); omitting it leaves
+            the stored one untouched.
+        hideBranding:
+          type: boolean
         isDefault:
           type: boolean
         enabled:
@@ -10522,13 +11741,32 @@ components:
 
     StatusPageSubscriber:
       type: object
-      required: [uid, scope, confirmed, createdAt]
+      required: [uid, channel, scope, confirmed, createdAt]
       properties:
         uid:
           type: string
           format: uuid
         email:
           type: string
+          description: Absent for a webhook/Slack subscription.
+        channel:
+          type: string
+          enum: [email, webhook, slack]
+        endpoint:
+          type: string
+          description: >-
+            MASKED delivery URL, endpoint channels only. The real URL is stored
+            encrypted and is never returned — an incoming-webhook URL is a
+            credential, so a list endpoint that echoed it would turn every read
+            into a credential disclosure.
+        failureCount:
+          type: integer
+          description: Consecutive delivery failures; reset by a success.
+        disabled:
+          type: boolean
+          description: >-
+            True once repeated delivery failures tripped the circuit breaker.
+            A `statuspage.subscriber.disabled` event records why.
         scope:
           type: string
           description: Subscription scope ("page" or "incident")
@@ -10539,6 +11777,74 @@ components:
           type: boolean
         createdAt:
           type: string
+
+    StatusPageUnlockRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          description: The page password, as given to the visitor by the operator.
+
+    StatusPageSubscribeRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        channel:
+          type: string
+          enum: [email]
+          description: >-
+            Accepted only so a client asking for a non-email channel gets a
+            clear refusal. Public self-serve is email-only.
+        scope:
+          type: string
+          enum: [page, incident]
+        incidentUid:
+          type: string
+          format: uuid
+          description: Required when scope is "incident".
+
+    CreateStatusPageEndpointSubscriberRequest:
+      type: object
+      required: [channel, url]
+      properties:
+        channel:
+          type: string
+          enum: [webhook, slack]
+        url:
+          type: string
+          format: uri
+          description: >-
+            https only, and never a loopback/private host. A "slack"
+            subscription must point at hooks.slack.com.
+        signingSecret:
+          type: string
+          description: >-
+            Optional. Supply your own when the receiver already verifies a
+            known secret; omit it and one is generated. WRITE-ONLY — it is
+            echoed once in the create response and never readable again.
+        scope:
+          type: string
+          enum: [page, incident]
+        incidentUid:
+          type: string
+          format: uuid
+
+    StatusPageEndpointSubscriber:
+      allOf:
+        - $ref: "#/components/schemas/StatusPageSubscriber"
+        - type: object
+          required: [signingSecret]
+          properties:
+            signingSecret:
+              type: string
+              description: >-
+                Returned EXACTLY ONCE, on creation. It is stored encrypted and
+                never appears on any other response, so copy it now: without it
+                the HMAC on every delivery is unverifiable.
 
     StatusPageSubscriberListResponse:
       type: object
@@ -10673,18 +11979,38 @@ components:
         sectionUid:
           type: string
           format: uuid
+          nullable: true
+          description: >-
+            Set/change the section (must belong to the update's status page), or
+            clear it with null. Omit the field to leave it unchanged; "" is a
+            VALIDATION_ERROR (send null to clear). Clearing sectionUid does not
+            implicitly clear checkUid.
         checkUid:
           type: string
           format: uuid
+          nullable: true
+          description: >-
+            Set/change the check (must be a resource of the update's status
+            page), or clear it with null. Omit the field to leave it unchanged;
+            "" is a VALIDATION_ERROR (send null to clear). Clearing checkUid
+            does not implicitly clear sectionUid.
         incidentUid:
           type: string
           format: uuid
+          nullable: true
+          description: >-
+            Set/change the incident, or clear it with null. Omit the field to
+            leave it unchanged; "" is a VALIDATION_ERROR (send null to clear).
         title:
           type: string
         bodyMarkdown:
           type: string
         linkUrl:
           type: string
+          nullable: true
+          description: >-
+            Set/replace the link URL (must be http/https), or clear it with
+            null or "". Omit the field to leave it unchanged.
         kind:
           type: string
         publishedAt:
@@ -10993,6 +12319,142 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkerLaneLoad"
+
+    RegionMigrationRequest:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          description: >
+            The region slug to migrate away from. Need NOT be a declared
+            region — a slug that no longer exists anywhere is the normal case.
+          example: default
+        to:
+          type: string
+          description: >
+            The region slug to migrate to. Must be declared in the `regions`
+            system parameter or served by a live worker.
+          example: gravelines
+        dryRun:
+          type: boolean
+          default: false
+          description: >
+            When true, returns the full report without writing anything. The
+            numbers are computed from the same pre-state the real run uses, so
+            a dry run and the apply that follows it agree.
+
+    RegionMigrationReport:
+      type: object
+      required:
+        [
+          from,
+          to,
+          dryRun,
+          checksUpdated,
+          jobsReassigned,
+          jobsDeleted,
+          byOrg,
+          overdueRecovered,
+        ]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        dryRun:
+          type: boolean
+        checksUpdated:
+          type: integer
+          description: >
+            Checks the migration touches: their `regions` array was rewritten,
+            they owned a job stranded under `from`, or both.
+        jobsReassigned:
+          type: integer
+          description: Stranded `from` jobs that come back to life under `to`.
+        jobsDeleted:
+          type: integer
+          description: >
+            `from` jobs removed without a replacement — the check does not
+            declare `to`, is disabled, or already owns a `to` job (the unique
+            `(checkUid, region)` case, where the correct job is kept).
+        byOrg:
+          type: object
+          additionalProperties:
+            type: integer
+          description: checksUpdated split by organization slug.
+        overdueRecovered:
+          type: integer
+          description: >
+            Reassigned jobs whose `scheduledAt` was already in the past — the
+            stranded backlog that starts running again.
+
+    RegionHealthRow:
+      type: object
+      required:
+        [
+          slug,
+          declared,
+          liveWorkers,
+          lastWorkerSeenAt,
+          checksReferencing,
+          jobs,
+          jobsOverdue,
+          oldestOverdueAt,
+          ghost,
+        ]
+      properties:
+        slug:
+          type: string
+        declared:
+          type: boolean
+          description: Whether the slug is present in the `regions` system parameter.
+        liveWorkers:
+          type: integer
+          description: >
+            Non-deleted workers within the liveness window whose announced
+            region has this slug as a prefix.
+        lastWorkerSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Max `lastActiveAt` across every matching worker, including
+            soft-deleted ones — dates when the region went dark.
+        checksReferencing:
+          type: integer
+          description: Distinct, non-deleted checks whose `regions` array names this slug.
+        jobs:
+          type: integer
+          description: check_jobs rows carrying this slug. NULL-region jobs are never counted.
+        jobsOverdue:
+          type: integer
+          description: Subset of `jobs` whose `scheduledAt` has already passed.
+        oldestOverdueAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Earliest `scheduledAt` among the overdue jobs, null when there are none.
+        ghost:
+          type: boolean
+          description: >
+            `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work
+            assigned to a slug nothing live can serve.
+
+    RegionHealthReport:
+      type: object
+      required: [regions, ghostCount, generatedAt]
+      properties:
+        regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegionHealthRow"
+        ghostCount:
+          type: integer
+          description: Count of rows where `ghost` is true.
+        generatedAt:
+          type: string
+          format: date-time
 
     TestEmailRequest:
       type: object
@@ -11342,12 +12804,132 @@ components:
           type: boolean
         enabled:
           type: boolean
+        burning:
+          type: boolean
+          description: >-
+            True while at least one burn-rate alert policy on this objective has
+            an open incident. Derived from the incident rows, never stored.
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    SLOAlertPolicy:
+      type: object
+      description: >-
+        One built-in multiwindow burn-rate alert policy. An alert fires only
+        when BOTH windows exceed the threshold: the long window proves the burn
+        is significant, the short one proves it is still happening.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        sloUid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [fast, slow]
+          description: Built-in identity. Not writable.
+        enabled:
+          type: boolean
+        longWindowSeconds:
+          type: integer
+          description: Significance window. Stored, never derived.
+        shortWindowSeconds:
+          type: integer
+          description: Confirmation window. Must be <= longWindowSeconds.
+        threshold:
+          type: number
+          format: double
+          description: >-
+            Burn-rate multiple both windows must exceed. 1.0 spends the calendar
+            budget exactly by period end.
+        severity:
+          type: string
+          enum: [critical, warning]
+        minSamples:
+          type: integer
+          description: >-
+            Per-window probe floor. Below it the window is inconclusive: it does
+            not fire, and it does not count as below-threshold for auto-resolve.
+        lastEvaluatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        longBurnRate:
+          type: number
+          format: double
+          nullable: true
+          description: Null when the window carries no countable probe. Never 0.
+        shortBurnRate:
+          type: number
+          format: double
+          nullable: true
+        longSamples:
+          type: integer
+        shortSamples:
+          type: integer
+        longConclusive:
+          type: boolean
+        shortConclusive:
+          type: boolean
+        overThresholdNow:
+          type: boolean
+          description: Both windows are conclusively over the threshold right now.
+        firing:
+          type: boolean
+          description: An open burn incident exists for this policy.
+        incidentUid:
+          type: string
+          format: uuid
+          nullable: true
+        incidentNumber:
+          type: integer
+          format: int64
+          nullable: true
+        firingSince:
+          type: string
+          format: date-time
+          nullable: true
+        resolvingSince:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Hysteresis anchor: both windows have been below threshold since this
+            instant, and the incident auto-resolves once that has held for a
+            full short window.
+
+    SLOAlertPolicyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SLOAlertPolicy"
+
+    UpdateSLOAlertPolicyRequest:
+      type: object
+      description: Partial update. Omitted fields are left alone.
+      properties:
+        enabled:
+          type: boolean
+        longWindowSeconds:
+          type: integer
+        shortWindowSeconds:
+          type: integer
+        threshold:
+          type: number
+          format: double
+        severity:
+          type: string
+          enum: [critical, warning]
+        minSamples:
+          type: integer
+          minimum: 1
 
     SLOListResponse:
       type: object
@@ -12402,7 +13984,7 @@ components:
           nullable: true
           description: >-
             The organization's logo: an absolute http(s) URL, or a relative
-            `/pub/org-logos/{fileUid}` path for an uploaded image. Null when the
+            `/pub/assets/{fileUid}` path for an uploaded image. Null when the
             organization has no logo.
         accessToken:
           type: string
@@ -12494,7 +14076,7 @@ components:
 
     OrgSettingsResponse:
       type: object
-      required: [registrationEmailPattern, inheritingCheckCount]
+      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure]
       properties:
         registrationEmailPattern:
           type: string
@@ -12515,6 +14097,12 @@ components:
           description: >-
             How many live checks currently resolve to no policy of their own —
             the blast radius of setting or changing the org default.
+        tracerouteOnFailure:
+          type: boolean
+          description: >-
+            Organization default for path-trace-on-failure. Applies to every
+            check whose own `tracerouteOnFailure` is `inherit`. True when the
+            organization has never set it.
 
     UpdateOrgSettingsRequest:
       type: object
@@ -12530,6 +14118,11 @@ components:
           description: >-
             A UID sets the org default escalation policy (must be a policy in
             this org); an empty string clears it; omit to leave unchanged.
+        tracerouteOnFailure:
+          type: boolean
+          description: >-
+            Sets the organization default for path-trace-on-failure. Omit to
+            leave unchanged.
 
     # Invitation schemas
     CreateInvitationRequest:
@@ -12554,7 +14147,7 @@ components:
 
     InviteResponse:
       type: object
-      required: [uid, token, email, role, inviteUrl, expiresAt]
+      required: [uid, token, email, role, inviteUrl, expiresAt, emailSent]
       properties:
         uid:
           type: string
@@ -12571,6 +14164,14 @@ components:
         expiresAt:
           type: string
           format: date-time
+        emailSent:
+          type: boolean
+          description: >-
+            Whether the invitation email was queued for delivery — NOT
+            confirmation it reached an inbox, since delivery is async. False
+            when email sending is disabled on this instance, or when
+            enqueueing the job failed; the invite link (inviteUrl) is then the
+            only channel.
 
     InviteListItem:
       type: object
@@ -12755,6 +14356,14 @@ components:
           type: integer
           nullable: true
           description: Maximum service-level objectives (null = unlimited)
+        whiteLabel:
+          type: boolean
+          nullable: true
+          description: >-
+            Whether the organization may hide the "powered by SolidPing" badge
+            on its status pages. Unlike the caps above, null does NOT mean
+            unlimited — it means "use the deployment default" (true
+            self-hosted, false on the SaaS).
 
     EntitlementsUsage:
       type: object

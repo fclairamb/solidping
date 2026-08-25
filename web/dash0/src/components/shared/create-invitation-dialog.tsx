@@ -1,6 +1,14 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, Check, Copy, Loader2, Plus } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Check,
+  Copy,
+  Loader2,
+  Mail,
+  Plus,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +30,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApiError } from "@/api/client";
-import { useCreateInvitation } from "@/api/hooks";
+import {
+  useCreateInvitation,
+  type CreateInvitationResponse,
+} from "@/api/hooks";
 
 interface CreateInvitationDialogProps {
   org: string;
@@ -43,20 +54,25 @@ export function CreateInvitationDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("user");
   const [error, setError] = useState<string | null>(null);
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [result, setResult] = useState<CreateInvitationResponse | null>(null);
+  // The recipient email survives independently of the `email` field above,
+  // which is cleared on success so a re-opened dialog starts blank — the
+  // success state still needs it to render "sent to alice@acme.com".
+  const [sentEmail, setSentEmail] = useState("");
   const [copied, setCopied] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setInviteUrl(null);
+    setResult(null);
 
     try {
-      const result = await createInvitation.mutateAsync({ email, role });
-      setInviteUrl(result.inviteUrl);
+      const created = await createInvitation.mutateAsync({ email, role });
+      setResult(created);
+      setSentEmail(email);
       setEmail("");
       setRole("user");
-      onCreated?.(result.inviteUrl);
+      onCreated?.(created.inviteUrl);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -75,7 +91,8 @@ export function CreateInvitationDialog({
   const handleDialogClose = () => {
     setDialogOpen(false);
     setError(null);
-    setInviteUrl(null);
+    setResult(null);
+    setSentEmail("");
     setEmail("");
     setRole("user");
   };
@@ -104,28 +121,68 @@ export function CreateInvitationDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {inviteUrl ? (
+        {result ? (
           <div className="space-y-4">
-            <Alert>
-              <Check className="h-4 w-4" />
-              <AlertDescription>
-                {t("invitations.invitationCreated")}
-              </AlertDescription>
-            </Alert>
-            <div className="flex gap-2">
-              <Input value={inviteUrl} readOnly className="font-mono text-xs" />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => handleCopy(inviteUrl)}
-              >
-                {copied ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
+            {result.emailSent ? (
+              <>
+                <Alert variant="success">
+                  <Mail className="h-4 w-4" />
+                  <AlertDescription>
+                    {t("invitations.emailSentTo", { email: sentEmail })}
+                  </AlertDescription>
+                </Alert>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    {t("invitations.shareLinkFallback")}
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={result.inviteUrl}
+                      readOnly
+                      className="font-mono text-xs"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleCopy(result.inviteUrl)}
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <Alert variant="warning">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    {t("invitations.emailNotConfigured")}
+                  </AlertDescription>
+                </Alert>
+                <div className="flex gap-2">
+                  <Input
+                    value={result.inviteUrl}
+                    readOnly
+                    className="font-mono text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleCopy(result.inviteUrl)}
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
             <DialogFooter>
               <Button variant="outline" onClick={handleDialogClose}>
                 {tc("close")}

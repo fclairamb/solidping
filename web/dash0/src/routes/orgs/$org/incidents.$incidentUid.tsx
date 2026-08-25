@@ -38,6 +38,7 @@ import {
   type Event,
   type IncidentDetail,
   type IncidentResultSnapshot,
+  type IncidentAttachment,
   type IncidentFailureResponse,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
@@ -47,11 +48,13 @@ import {
   getCommentSource,
   getCommentText,
   getCommentSlackAuthor,
+  getEventActorLabel,
   getEventIcon,
 } from "@/components/dashboard/event-display";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { IncidentPublicationsPanel } from "@/components/incidents/incident-publications-panel";
+import { IncidentTracerouteCard } from "@/components/incidents/traceroute-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -84,6 +87,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { FlappingBadge } from "@/components/shared/flapping-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgo } from "@/components/ui/time-ago";
 import {
@@ -155,19 +159,58 @@ function TotalDuration({
   );
 }
 
+// ACK_CHANNEL_KEYS are the `via` values that have a translated channel label.
+// Anything else (including "web", which needs no explanation) renders the
+// attribution without a channel clause rather than echoing a raw slug.
+const ACK_CHANNEL_KEYS = [
+  "slack",
+  "discord",
+  "telegram",
+  "email",
+  "phone",
+] as const;
+
+// ackAttribution renders "by {name} via {channel}" for the acknowledgment
+// timeline entry, or undefined when the API resolved no actor (an incident
+// acknowledged before this attribution shipped).
+function ackAttribution(
+  incident: IncidentDetail,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string | undefined {
+  const actor = incident.acknowledgedByActor;
+  if (!actor?.name) return undefined;
+
+  const via = actor.via?.toLowerCase();
+  const known = ACK_CHANNEL_KEYS.find((key) => key === via);
+
+  if (!known) {
+    return t("timeline.acknowledgedBy", { name: actor.name });
+  }
+
+  return t("timeline.acknowledgedByVia", {
+    name: actor.name,
+    channel: t(`timeline.ackChannels.${known}`),
+  });
+}
+
 function TimelineItem({
   label,
   timestamp,
   icon,
+  detail,
+  detailTestId,
 }: {
   label: string;
   timestamp?: string;
   icon: React.ReactNode;
+  /** Optional second line, e.g. who acknowledged and from where. */
+  detail?: string;
+  detailTestId?: string;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-start gap-3">
       {icon}
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <div className="font-medium">{label}</div>
         <div className="text-sm text-muted-foreground">
           {timestamp ? (
@@ -180,6 +223,14 @@ function TimelineItem({
             "-"
           )}
         </div>
+        {detail ? (
+          <div
+            className="text-sm text-muted-foreground break-words"
+            data-testid={detailTestId}
+          >
+            {detail}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -809,7 +860,7 @@ function IncidentDetailPage() {
         <Link
           to="/orgs/$org/incidents"
           params={{ org }}
-          search={{ state: "all" as const, showSuppressed: undefined }}
+          search={{ state: "all" as const, showSuppressed: undefined, checkUid: undefined }}
         >
           <Button variant="outline">{t("backToIncidents")}</Button>
         </Link>
@@ -856,7 +907,13 @@ function IncidentDetailPage() {
               </Badge>
             )}
             {isActive && !isSnoozed && incident.acknowledgedAt && (
-              <Badge variant="outline">{t("stateBadges.acked")}</Badge>
+              <Badge variant="outline" data-testid="incident-acked-badge">
+                {incident.acknowledgedByActor?.name
+                  ? t("stateBadges.ackedBy", {
+                      name: incident.acknowledgedByActor.name,
+                    })
+                  : t("stateBadges.acked")}
+              </Badge>
             )}
             {relapseCount > 0 && (
               <Badge variant="outline">
@@ -872,6 +929,9 @@ function IncidentDetailPage() {
             {incident.escalatedAt && (
               <Badge variant="outline">{t("escalated")}</Badge>
             )}
+            {(incident.flapLevel ?? 0) > 0 && (
+              <FlappingBadge flapLevel={incident.flapLevel!} t={t} />
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -883,7 +943,7 @@ function IncidentDetailPage() {
               navigate({
                 to: "/orgs/$org/incidents",
                 params: { org },
-                search: { state: "all" as const, showSuppressed: undefined },
+                search: { state: "all" as const, showSuppressed: undefined, checkUid: undefined },
               })
             }
           >
@@ -1050,6 +1110,8 @@ function IncidentDetailPage() {
                   label={t("timeline.acknowledged")}
                   timestamp={incident.acknowledgedAt}
                   icon={getEventIcon("incident.acknowledged")}
+                  detail={ackAttribution(incident, t)}
+                  detailTestId="incident-timeline-acknowledged-by"
                 />
               )}
               {incident.escalatedAt && (
@@ -1094,6 +1156,9 @@ function IncidentDetailPage() {
       <FailureDetailsCard incident={incident} />
 
       <ProbeResponseCard incident={incident} />
+
+      <IncidentScreenshotCard incident={incident} />
+      <IncidentTracerouteCard incident={incident} />
 
       <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
 
@@ -1148,8 +1213,11 @@ function IncidentDetailPage() {
                             t={tEvents}
                           />
                         </TableCell>
-                        <TableCell className="text-sm capitalize">
-                          {event.actorType || "-"}
+                        <TableCell
+                          className="text-sm"
+                          data-testid="incident-event-actor"
+                        >
+                          {getEventActorLabel(event) || "-"}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1349,6 +1417,66 @@ function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
 function formatCaptureBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+// IncidentScreenshotCard renders the browser capture kept for this incident's
+// current onset (spec 2026-08-21-01).
+//
+// It is DELIBERATELY cautious about what it claims. The capture is taken right
+// after the check decided the target was unhealthy, not at the failing frame,
+// and a page that finished loading half a second later can look perfectly fine.
+// Saying so in the caption is the difference between evidence and a red
+// herring, so the honesty label is not optional decoration.
+function IncidentScreenshotCard({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("incidents");
+
+  const shots: IncidentAttachment[] = (incident.attachments ?? []).filter(
+    (a) => a.kind === "screenshot" && a.downloadUrl,
+  );
+
+  if (shots.length === 0) return null;
+
+  return (
+    <Card data-testid="incident-screenshot-card">
+      <CardHeader>
+        <CardTitle>{t("detail.screenshot.title")}</CardTitle>
+        <CardDescription>{t("detail.screenshot.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {shots.map((shot) => (
+          <figure key={shot.uid} className="space-y-2">
+            {/* The image is a link to itself so a full-resolution view is one
+                click away without a lightbox dependency. */}
+            <a
+              href={shot.downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block overflow-hidden rounded-md border bg-muted"
+            >
+              <img
+                src={shot.downloadUrl}
+                alt={t("detail.screenshot.alt")}
+                loading="lazy"
+                className="h-auto w-full max-w-full"
+                data-testid="incident-screenshot-image"
+              />
+            </a>
+            <figcaption
+              className="text-xs text-muted-foreground"
+              data-testid="incident-screenshot-caption"
+            >
+              {t("detail.screenshot.caption", {
+                capturedAt: shot.capturedAt
+                  ? new Date(shot.capturedAt).toLocaleString()
+                  : t("detail.screenshot.unknownTime"),
+                region: shot.region || t("detail.screenshot.unknownRegion"),
+              })}
+            </figcaption>
+          </figure>
+        ))}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ProbeResponseCard renders "What the probe saw": the opt-in capture of the

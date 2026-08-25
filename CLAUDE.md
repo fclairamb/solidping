@@ -37,8 +37,21 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 
 | Mode | Email | Password | Org |
 |---|---|---|---|
-| Normal | `admin@solidping.com` | `solidpass` | `default` |
+| Normal | `admin@solidping.io` | `solidpass` | `default` |
 | Test (`SP_RUNMODE=test`) | `test@test.com` | `test` | `test` |
+
+**The normal seeded admin lands on a forced password rotation.** On a fresh
+database the seeded `admin@solidping.io` carries `users.must_change_password`,
+so the first successful login yields a session that can reach only
+`POST /auth/change-password`, `GET /auth/me` and `POST /auth/logout` —
+everything else answers `403 PASSWORD_CHANGE_REQUIRED` and dash0 lands on
+`/dash0/change-password`. This is unconditional: `make dev` against a fresh
+database prompts for a new password too. Pick one, and every example below
+works with it in place of `solidpass`.
+
+The test-mode user (`test@test.com`) is deliberately **not** flagged — it is
+created by a different path (`server/test/testdata/testdata.go`) and the
+Playwright suites sign in with those fixed credentials.
 
 ## SaaS mode & entitlements
 
@@ -126,7 +139,7 @@ Key codes: `INTERNAL_ERROR`, `VALIDATION_ERROR`, `NOT_FOUND`, `UNAUTHORIZED`, `F
 ### Quick API test
 ```bash
 TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"org":"default","email":"admin@solidping.com","password":"solidpass"}' \
+  -d '{"org":"default","email":"admin@solidping.io","password":"solidpass"}' \
   'http://localhost:4000/api/v1/auth/login' | jq -r '.accessToken')
 curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/api/v1/orgs/default/checks'
 ```

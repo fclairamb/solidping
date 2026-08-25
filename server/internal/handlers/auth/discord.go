@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -161,7 +160,7 @@ func (h *DiscordOAuthHandler) handleOAuthError(
 		description = OAuthDescTokenExchange
 	default:
 		code = OAuthCodeFailed
-		description = fmt.Sprintf("OAuth failed: %v", err)
+		description = logOAuthFailure(req, "discord", err)
 	}
 
 	return h.redirectWithError(writer, req, redirectURI, code, description)

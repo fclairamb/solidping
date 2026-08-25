@@ -47,6 +47,10 @@ type Payload struct {
 	// Non-nil only for that event type; senders that render comments must
 	// tolerate a nil here rather than assuming the fan-out filled it in.
 	Comment *CommentInfo
+	// Acknowledgment carries who took the incident and from where, for
+	// `incident.acknowledged`. Non-nil only for that event type; senders must
+	// tolerate a nil rather than assuming the fan-out filled it in.
+	Acknowledgment *AckInfo
 }
 
 // MentionTarget is one human an alert should ping. ExternalID is the

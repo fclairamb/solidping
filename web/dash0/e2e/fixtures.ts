@@ -147,4 +147,32 @@ export async function mockSloCoverage(page: Page): Promise<void> {
   );
 }
 
+/**
+ * Turns the browser HTTP cache OFF for `page`. Call it before the first
+ * navigation.
+ *
+ * The public status-page endpoints answer `Cache-Control: public, max-age=60`
+ * for a `public` page — deliberate, per spec
+ * `2026-08-22-06-public-status-page-view-sends-no-cache-control.md`, whose
+ * acceptance is explicitly "status changes still surface within 60 s".
+ *
+ * That directive is invisible to a human pressing reload but fatal to a spec
+ * that saves branding/appearance in the dashboard and then re-reads the public
+ * page: `page.reload()` revalidates the *document*, while the SPA's own
+ * `fetch` for `/api/v1/status-pages/:org/:slug` is served straight from the
+ * still-fresh cache entry. A poll loop shorter than 60 s can then only ever
+ * observe the pre-save body — which is what silently broke
+ * status-page-appearance.spec.ts and status-page-branding.spec.ts once the
+ * cache directive landed.
+ *
+ * These specs assert what the server *publishes*, not how long a browser is
+ * entitled to hold it, so they read through with the cache disabled. Nothing
+ * is loosened: the assertions are unchanged and still fail if the save never
+ * reaches the public payload. (Playwright disables the HTTP cache for any page
+ * with routing enabled — the pass-through handler is what buys that.)
+ */
+export async function disableHttpCache(page: Page): Promise<void> {
+  await page.route("**/*", (route) => route.continue());
+}
+
 export { expect, type Page };

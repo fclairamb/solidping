@@ -292,6 +292,45 @@ type CheckersConfig struct {
 	EnabledLabels []string `koanf:"enabled_labels"` // Enable types matching any of these labels
 	// Browser configures the Chrome backend the `browser` check type runs on.
 	Browser BrowserCheckerConfig `koanf:"browser"`
+	// Traceroute configures the path capture taken when a check goes down on a
+	// network-reachability failure (spec 2026-08-21-10).
+	Traceroute TracerouteConfig `koanf:"traceroute"`
+}
+
+// TracerouteConfig is the deployment-level half of the traceroute-on-failure
+// policy. The per-CHECK toggle lives on `checks.traceroute_on_failure` and the
+// per-ORG default in the `diagnostics.traceroute.enabled` org parameter; this
+// is the operator's kill switch and the knobs neither of those should expose.
+//
+// EVERY KOANF KEY HERE IS A SINGLE WORD, on purpose. koanf's env loader
+// collapses underscores in SP_* names to dots, so a `max_hops` key would be
+// unreachable as SP_CHECKERS_TRACEROUTE_MAX_HOPS and would silently do nothing
+// — the quirk BrowserCheckerConfig needs a hand-written reader for. Naming
+// around it is cheaper than another manual binding.
+type TracerouteConfig struct {
+	// Enabled is the deployment kill switch (SP_CHECKERS_TRACEROUTE_ENABLED,
+	// default true). It only ever turns the feature OFF: a check still has to
+	// be opted in (directly or through its org) for a trace to happen.
+	Enabled bool `koanf:"enabled"`
+	// Rounds is how many times each hop is probed
+	// (SP_CHECKERS_TRACEROUTE_ROUNDS, default 3 — the spec's value).
+	Rounds int `koanf:"rounds"`
+	// Hops caps the TTL walk (SP_CHECKERS_TRACEROUTE_HOPS, default 30).
+	Hops int `koanf:"hops"`
+	// Budget is the hard wall-clock ceiling for one capture, reverse DNS
+	// included (SP_CHECKERS_TRACEROUTE_BUDGET, default 15s). The trace runs
+	// AFTER the failing result is reported, so this bounds nothing the
+	// monitored service or the incident can observe.
+	Budget time.Duration `koanf:"budget"`
+	// Limit is the per-ORGANIZATION ceiling on traces started per minute
+	// (SP_CHECKERS_TRACEROUTE_LIMIT, default 10).
+	//
+	// This is the mass-outage guard the spec asks for. When one upstream drops,
+	// every check behind it opens an incident within the same minute, and
+	// without a ceiling that is one 15-second traceroute per check — hundreds of
+	// concurrent sweeps whose results would all say the same thing. 0 disables
+	// the limit, which is a foot-gun and not a default.
+	Limit int `koanf:"limit"`
 }
 
 // BrowserCheckerConfig selects where the `browser` check type finds Chrome.
@@ -460,6 +499,7 @@ type Config struct {
 	WebPush      WebPushConfig        `koanf:"webpush"`
 	PostHog      PostHogConfig        `koanf:"posthog"`
 	Entitlements EntitlementsConfig   `koanf:"entitlements"`
+	Audit        AuditConfig          `koanf:"audit"`
 	ACME         ACMEConfig           `koanf:"acme"`
 	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
@@ -641,6 +681,19 @@ func (c *Config) CustomDomainCNAMETarget() string {
 	return ""
 }
 
+// BaseURLHost returns the lowercased hostname of Server.BaseURL, port stripped,
+// or "" when BaseURL is unset or unparseable. It is the instance's own public
+// hostname — use it instead of hardcoding a deployment's host, so a
+// self-hosted install behaves like the SaaS one.
+func (c *Config) BaseURLHost() string {
+	parsed, err := url.Parse(strings.TrimSpace(c.Server.BaseURL))
+	if err != nil {
+		return ""
+	}
+
+	return strings.ToLower(parsed.Hostname())
+}
+
 // CustomDomainCNAMEMode resolves the configured CNAME verification mode,
 // falling back to domainverify.ModeShared for an empty or unrecognized value
 // (Validate rejects unrecognized values at startup, so a bad value never
@@ -663,6 +716,16 @@ type EmailConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecureskipverify"` // Skip TLS certificate verification
 	AuthType           string `koanf:"authtype"`           // SMTP auth type: plain, login, cram-md5 (default: login)
 	Protocol           string `koanf:"protocol"`           // SMTP encryption: none, starttls, ssl (default: starttls)
+	// ReplyTo is the instance support mailbox (env SP_EMAIL_REPLY_TO, system
+	// parameter email.reply_to). Empty by default — unset means no Reply-To
+	// header, no "you can reply" notice, and no inbound-message mirror, so
+	// nothing changes for an installation that does not want this.
+	//
+	// It is applied ONLY to messages that explicitly opted in via
+	// email.Message.SupportReplyable; security mail (password reset, password
+	// changed, registration, invitation, subscriber confirm) never carries it.
+	// See email.SupportReplyable and spec 2026-08-22-02.
+	ReplyTo string `koanf:"replyto"`
 }
 
 // FileStorageConfig controls where File blobs are persisted. The bytes live
@@ -714,6 +777,36 @@ type AggregationConfig struct {
 	RetentionRaw  int `koanf:"retention_raw"`  // hours of raw to keep (default 24)
 	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 7)
 	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 2)
+}
+
+// AuditConfig tunes the security/configuration audit trail (spec 2026-08-21-09).
+//
+// BOTH KEYS ARE SNAKE_CASE AND THEREFORE UNREACHABLE BY koanf's ENV LOADER —
+// SP_AUDIT_CAPTURE_IP would land on audit.capture.ip, not capture_ip. They are
+// bound by hand in applyAuditEnv, the same quirk as rate_limiting /
+// shutdown_timeout, and listed in manualReaderEnvVars so the startup env check
+// does not flag them as typos. See project_koanf_env_quirk.
+type AuditConfig struct {
+	// CaptureIP controls whether events.source_ip is populated. Default true.
+	// A GDPR-sensitive self-hoster sets it false and every audit row is
+	// written with a NULL source_ip — the rest of the trail is unaffected.
+	// SP_AUDIT_CAPTURE_IP.
+	CaptureIP bool `koanf:"capture_ip"`
+	// RetentionDays is how long audit events are kept before the events_cleanup
+	// job removes them. Default 365 — long enough for the annual review an
+	// ISO/SOC2 auditor asks for. 0 or negative means "keep forever" and
+	// disables the sweep entirely. SP_AUDIT_RETENTION_DAYS.
+	//
+	// Resolved at job-run time through the established precedence: env →
+	// global DB parameter (audit.retention_days) → this koanf value → default.
+	RetentionDays int `koanf:"retention_days"`
+	// FailedLoginFoldWindowMinutes is how long repeated failed logins from the
+	// same (org, email, IP) fold into a single event. Default 10.
+	FailedLoginFoldWindowMinutes int `koanf:"failed_login_fold_window_minutes"`
+	// FailedLoginMaxPerOrgPerHour caps newly created auth.login_failed events
+	// per org per hour, so a credential-stuffing run cannot flood the trail it
+	// is supposed to appear in. Default 60.
+	FailedLoginMaxPerOrgPerHour int `koanf:"failed_login_max_per_org_per_hour"`
 }
 
 // AuthConfig contains authentication configuration.
@@ -1392,6 +1485,12 @@ func Load() (*Config, error) {
 			RetentionHour: 7,
 			RetentionDay:  2,
 		},
+		Audit: AuditConfig{
+			CaptureIP:                    true,
+			RetentionDays:                DefaultAuditRetentionDays,
+			FailedLoginFoldWindowMinutes: DefaultAuditFailedLoginFoldWindowMinutes,
+			FailedLoginMaxPerOrgPerHour:  DefaultAuditFailedLoginMaxPerOrgPerHour,
+		},
 		Jobs: JobsConfig{
 			StuckTimeout:   15 * time.Minute,
 			ReaperInterval: time.Minute,
@@ -1479,6 +1578,18 @@ func Load() (*Config, error) {
 		Entitlements: EntitlementsConfig{
 			SMSRunawayPerHour:  30,
 			CallRunawayPerHour: 10,
+		},
+		Checkers: CheckersConfig{
+			Traceroute: TracerouteConfig{
+				// ON by deployment default, per the spec's "org-level default
+				// (on)". A check still has to be opted in through its org or
+				// its own toggle before anything is traced.
+				Enabled: true,
+				Rounds:  nettraceDefaultRounds,
+				Hops:    nettraceDefaultHops,
+				Budget:  nettraceDefaultBudget,
+				Limit:   10,
+			},
 		},
 	}
 
@@ -1592,6 +1703,7 @@ func Load() (*Config, error) {
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
 	applyACMEEnv(&cfg.ACME)
+	applyAuditEnv(&cfg.Audit)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
@@ -1688,6 +1800,36 @@ func applyCheckersEnv(cfg *CheckersConfig) {
 		cfg.Browser.ChromePath = v
 	}
 }
+
+// TraceroutePolicy is the resolved, defaulted view of TracerouteConfig. Reading
+// through it rather than the raw struct is what keeps "0 means the default"
+// from having to be re-remembered at every call site.
+func (c *CheckersConfig) TraceroutePolicy() TracerouteConfig {
+	out := c.Traceroute
+
+	if out.Rounds <= 0 {
+		out.Rounds = nettraceDefaultRounds
+	}
+
+	if out.Hops <= 0 {
+		out.Hops = nettraceDefaultHops
+	}
+
+	if out.Budget <= 0 {
+		out.Budget = nettraceDefaultBudget
+	}
+
+	return out
+}
+
+// Fallbacks for TraceroutePolicy. Duplicated from internal/nettrace rather than
+// imported because config is a leaf package that nothing else may depend on;
+// the nettrace tests assert the two agree.
+const (
+	nettraceDefaultRounds = 3
+	nettraceDefaultHops   = 30
+	nettraceDefaultBudget = 15 * time.Second
+)
 
 // applyPasswordHashingEnv reads SP_AUTH_PASSWORD_* into cfg. koanf's env loader
 // collapses every underscore in SP_*-prefixed names to a dot, so multi-word keys
@@ -1982,6 +2124,50 @@ func applySchedulingEnv(cfg *SchedulingConfig) {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.FastLaneReserved = n
 		}
+	}
+}
+
+// Audit-trail defaults (spec 2026-08-21-09). Named constants rather than bare
+// literals because the job, the folder and the config validator must all agree
+// on them.
+const (
+	// DefaultAuditRetentionDays is one year of audit history.
+	DefaultAuditRetentionDays = 365
+	// DefaultAuditFailedLoginFoldWindowMinutes is the failed-login fold window.
+	DefaultAuditFailedLoginFoldWindowMinutes = 10
+	// DefaultAuditFailedLoginMaxPerOrgPerHour is the per-org hourly ceiling on
+	// newly created auth.login_failed events.
+	DefaultAuditFailedLoginMaxPerOrgPerHour = 60
+)
+
+// applyAuditEnv reads the multi-word SP_AUDIT_* knobs koanf's env loader cannot
+// bind (it would map SP_AUDIT_CAPTURE_IP to audit.capture.ip and miss the
+// snake_case koanf tag "capture_ip"). See project_koanf_env_quirk.
+//
+// capture_ip is the one knob here with a security/privacy meaning, so it is
+// parsed strictly: only an explicitly parseable boolean moves it, and an
+// unparseable value leaves the default alone rather than silently reading as
+// false and turning IP capture off by accident.
+func applyAuditEnv(cfg *AuditConfig) {
+	if v := os.Getenv("SP_AUDIT_CAPTURE_IP"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.CaptureIP = b
+		} else {
+			slog.Warn("Ignoring unparseable SP_AUDIT_CAPTURE_IP; keeping current setting",
+				"value", v, "captureIp", cfg.CaptureIP)
+		}
+	}
+
+	if n := envInt("SP_AUDIT_RETENTION_DAYS"); n != 0 {
+		cfg.RetentionDays = n
+	}
+
+	if n := envInt("SP_AUDIT_FAILED_LOGIN_FOLD_WINDOW_MINUTES"); n > 0 {
+		cfg.FailedLoginFoldWindowMinutes = n
+	}
+
+	if n := envInt("SP_AUDIT_FAILED_LOGIN_MAX_PER_ORG_PER_HOUR"); n > 0 {
+		cfg.FailedLoginMaxPerOrgPerHour = n
 	}
 }
 

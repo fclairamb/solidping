@@ -230,10 +230,11 @@ func (s *Service) SendPagingNudge(ctx context.Context, orgSlug, memberUID string
 	}
 
 	if _, err := s.email.Send(ctx, &email.Message{
-		Recipients: email.Recipients{To: []string{user.Email}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{user.Email}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("paging-nudge.html"),
 	}); err != nil {
 		return fmt.Errorf("send paging nudge: %w", err)
 	}

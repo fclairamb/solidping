@@ -84,7 +84,7 @@ asks for candidate source rows:
   **source fetch window is `period_end + 1ms`** — the exclusive next-bucket
   start. Fetching with the inclusive end excluded a row landing exactly on
   `HH:59:59.999`, which was then re-discovered forever and never compacted
-  (spec `2026-07-22-03` §B, observed live on k8xp).
+  (spec `2026-07-22-03` §B, observed live on a production deployment).
 
 ## Transactional compaction
 

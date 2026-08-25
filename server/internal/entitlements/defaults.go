@@ -97,6 +97,21 @@ const (
 	defaultMaxSlosSaaS = 2
 )
 
+// White-label defaults. Self-hosted gets it unconditionally — an operator
+// running their own instance should never have to pay to take our badge off
+// their own status page — while the SaaS Free tier does not, which is the
+// point: white labeling is one of the things a paid plan buys.
+//
+// Keep the SaaS value in sync with solidping-billing's Free SKU, the same rule
+// as every numeric default above.
+const (
+	defaultWhiteLabelSelfHosted = true
+	defaultWhiteLabelSaaS       = false
+)
+
+// Bool is a tiny helper for default-defining bool pointers, mirroring Int.
+func Bool(b bool) *bool { return &b }
+
 // Display identity shown on the usage page when a row has none of its
 // own (see Service.merge). SaaS mirrors billing's Free plan identity;
 // self-hosted gets a plain label so it never claims to be "Free".
@@ -133,6 +148,7 @@ func DefaultsFor(mode string) Entitlements {
 				MaxCallsPerMonth:    Int(defaultMaxCallsPerMonthSaaS),
 				MaxWhatsappPerMonth: Int(defaultMaxWhatsappPerMonthSaaS),
 				MaxSlos:             Int(defaultMaxSlosSaaS),
+				WhiteLabel:          Bool(defaultWhiteLabelSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),
@@ -145,6 +161,7 @@ func DefaultsFor(mode string) Entitlements {
 				// MaxDeportedAgents stays nil (unlimited) — self-hosted keeps
 				// the "free private locations" competitive positioning
 				// documented in wiki/features/deported-agents.md.
+				WhiteLabel: Bool(defaultWhiteLabelSelfHosted),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSelfHosted),
@@ -156,7 +173,8 @@ func DefaultsFor(mode string) Entitlements {
 
 		return Entitlements{
 			Limits: Limits{
-				MaxUsers: Int(defaultMaxUsersSelfHosted),
+				MaxUsers:   Int(defaultMaxUsersSelfHosted),
+				WhiteLabel: Bool(defaultWhiteLabelSelfHosted),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSelfHosted),

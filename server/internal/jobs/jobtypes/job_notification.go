@@ -45,6 +45,11 @@ type NotificationJobConfig struct {
 	// the job then renders exactly the text that was commented, even if the
 	// event is aggregated away or the incident is deleted before delivery.
 	Comment *notifications.CommentInfo `json:"comment,omitempty"`
+	// Acknowledgment carries who acknowledged an incident and from where, for
+	// `incident.acknowledged`. Embedded for the same reason as Comment: the
+	// notice must name the person who actually acked even if the incident is
+	// unacked — or re-acked by somebody else — between enqueue and delivery.
+	Acknowledgment *notifications.AckInfo `json:"acknowledgment,omitempty"`
 	// JobUID is the UID of the job row itself. Populated at Sites 1+2 so that
 	// NotificationJobRun.Run can update the matching audit row by job_uid.
 	JobUID string `json:"jobUid,omitempty"`
@@ -201,6 +206,8 @@ func (r *NotificationJobRun) buildPayload(
 		OnCallMentions: ResolveOnCallMentions(ctx, jctx, log, connection, check, r.config.EventType),
 		// Non-nil only for `incident.comment`.
 		Comment: r.config.Comment,
+		// Non-nil only for `incident.acknowledged`.
+		Acknowledgment: r.config.Acknowledgment,
 	}
 }
 

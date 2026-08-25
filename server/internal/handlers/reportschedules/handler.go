@@ -164,6 +164,13 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteValidationError(writer, msgValidation, []base.ValidationErrorField{
 			{Name: "recipient", Message: ErrNoTestRecipient.Error()},
 		})
+	case errors.Is(err, ErrRecipientSuppressed):
+		// 409 CONFLICT, not 400 VALIDATION_ERROR: the request itself is
+		// well-formed (a valid, resolvable recipient address) — what
+		// conflicts is the org's own suppression-list state, which the
+		// caller cannot fix by changing the request body.
+		return h.WriteErrorErr(writer, request, http.StatusConflict, base.ErrorCodeConflict,
+			"Recipient has unsubscribed and cannot receive a test send", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}

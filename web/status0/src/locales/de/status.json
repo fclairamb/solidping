@@ -46,7 +46,8 @@
     "submitting": "Wird abonniert…",
     "checkInbox": "Fast geschafft! Überprüfen Sie Ihren Posteingang, um Ihr Abonnement zu bestätigen.",
     "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
-    "feedLink": "Per RSS abonnieren"
+    "feedLink": "Per RSS abonnieren",
+    "emailOnlyNote": "Webhook- und Slack-Benachrichtigungen richtet der Betreiber dieser Seite ein — fragen Sie ihn, wenn Sie eine brauchen."
   },
   "servicesOperational": "{{ok}} von {{total}} Diensten betriebsbereit",
   "activeIncidents": "Laufende Störungen",
@@ -70,5 +71,11 @@
     "major": "Erheblich",
     "critical": "Kritisch"
   },
-  "resourceAffected": "Betroffen"
+  "resourceAffected": "Betroffen",
+  "unlockTitle": "Passwort erforderlich",
+  "unlockDescription": "Diese Statusseite ist privat. Geben Sie das Passwort ein, das Sie erhalten haben.",
+  "unlockPasswordLabel": "Passwort",
+  "unlockSubmit": "Statusseite anzeigen",
+  "unlockSubmitting": "Wird geprüft…",
+  "unlockGenericError": "Das Passwort konnte nicht geprüft werden. Bitte erneut versuchen."
 }

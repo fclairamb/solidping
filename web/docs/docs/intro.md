@@ -16,7 +16,7 @@ SolidPing is a **distributed monitoring platform** designed for checking the ava
 - **Low Resource Footprint** - Single binary with PostgreSQL or SQLite as the only dependency
 - **Sub-Minute Checks** - Run checks as frequently as every 5 seconds for critical services
 - **Flexible Notifications** - Slack, Discord, Email, Webhooks, Google Chat, Mattermost, ntfy, Matrix, PagerDuty, Pushover, and Web Push
-- **Smart Incident Management** - Adaptive thresholds, cooldown, group-incident correlation, acknowledgment, snooze, and per-incident comments
+- **Smart Incident Management** - Adaptive thresholds, cooldown, dependency rollup, acknowledgment, snooze, and per-incident comments
 - **On-Call & Escalation** - Rotation schedules with overrides and iCal feeds, plus multi-step escalation policies
 - **Maintenance Windows** - One-time or recurring suppression of alerts during planned work
 - **Public Status Pages** - Embeddable status dashboards with email subscribers and an Atom feed
@@ -69,9 +69,15 @@ docker run -p 4000:4000 -v solidping-data:/data \
 Then open [http://localhost:4000](http://localhost:4000) in your browser.
 
 **Default credentials:**
-- Email: `admin@solidping.com`
+- Email: `admin@solidping.io`
 - Password: `solidpass`
 - Organization: `default`
+
+:::warning First login sets a new password
+That password is published in the SolidPing repository, so it is only good for
+exactly one login. SolidPing takes you straight to a "set a new password"
+screen, and the account can do nothing else until you complete it.
+:::
 
 ## Next Steps
 

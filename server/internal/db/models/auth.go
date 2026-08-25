@@ -64,10 +64,25 @@ type User struct {
 	TOTPSecret        *string    `bun:"totp_secret"`
 	TOTPEnabled       bool       `bun:"totp_enabled,notnull,default:false"`
 	TOTPRecoveryCodes []string   `bun:"totp_recovery_codes,type:jsonb"`
-	LastActiveAt      *time.Time `bun:"last_active_at"`
-	CreatedAt         time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt         time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt         *time.Time `bun:"deleted_at"`
+	// MustChangePassword forces a password rotation before the account can do
+	// anything else. It is a GENERAL user-level capability, not a property of
+	// the seeded bootstrap admin: an operator-initiated reset, an invited user
+	// or a compromised-credential response all set the same flag, and every
+	// consumer reads this field rather than keying on who the user is.
+	//
+	// While it is true, a session authenticated as this user reaches only the
+	// rotation endpoint, /auth/me and /auth/logout — enforced centrally in the
+	// auth layer (see internal/handlers/auth/password_rotation.go), so the API,
+	// the dashboard, the CLI, PAT creation and the realtime socket are all
+	// covered by one rule.
+	//
+	// Defaults to false, which is what keeps OAuth/SSO/LDAP users — who may
+	// carry a nil PasswordHash and could not satisfy a rotation — unaffected.
+	MustChangePassword bool       `bun:"must_change_password,notnull,default:false"`
+	LastActiveAt       *time.Time `bun:"last_active_at"`
+	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt          *time.Time `bun:"deleted_at"`
 }
 
 // NewUser creates a new user with generated UID.
@@ -93,7 +108,11 @@ type UserUpdate struct {
 	TOTPSecret        *string
 	TOTPEnabled       *bool
 	TOTPRecoveryCodes *[]string
-	LastActiveAt      *time.Time
+	// MustChangePassword sets or clears the forced-rotation flag. Nil leaves it
+	// alone — so an unrelated profile update can never silently un-force a
+	// pending rotation.
+	MustChangePassword *bool
+	LastActiveAt       *time.Time
 }
 
 // ProviderType represents an external auth provider type.

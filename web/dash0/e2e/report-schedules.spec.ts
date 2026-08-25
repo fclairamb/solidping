@@ -70,4 +70,132 @@ test.describe("Uptime report schedules", () => {
       { headers: { Authorization: `Bearer ${token}` } },
     );
   });
+
+  // Regression coverage for spec 2026-08-21-04: TestSend queues correctly and
+  // returns 202 with an empty body, but apiFetch's handleResponse only ever
+  // special-cased 204 — so response.json() threw on the empty stream and the
+  // UI reported a manufactured failure for a request that had actually
+  // succeeded. Asserting the failure toast is ABSENT (not just that the
+  // success toast is present) is what would have caught that: both toasts
+  // firing together would still pass an assertion that only checked success.
+  test("sends a test report and shows success, not a manufactured failure", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const name = `E2E Test Send ${Date.now()}`;
+    const recipient = `e2e-test-send-${Date.now()}@acme.com`;
+
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/report-schedules`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name, frequency: "monthly", recipients: [recipient] },
+      },
+    );
+    expect(createResp.status()).toBe(201);
+    const { uid } = await createResp.json();
+
+    try {
+      // "Send me a test" lives on the edit page — per the design reference,
+      // list rows carry only the Pencil/Trash2 icon pair.
+      await page.goto(`orgs/test/organization/report-schedules/${uid}`);
+      await page.waitForLoadState("networkidle");
+
+      await page.getByTestId("report-test").click();
+
+      await expect(
+        page.getByText("Test report queued to your address"),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Failed to send the test report"),
+      ).toHaveCount(0);
+    } finally {
+      await page.request.delete(
+        `${API_BASE}/api/v1/orgs/test/report-schedules/${uid}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    }
+  });
+});
+
+test.describe("Organization breadcrumb", () => {
+  // Coverage for spec 2026-08-21-03: every tab under Organization must
+  // resolve a breadcrumb leaf, not just the original four (members,
+  // invitations, usage, settings).
+  test("resolves a leaf on every Organization tab", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const header = () => page.locator("header").first();
+
+    for (const [path, label] of [
+      ["requests", "Requests"],
+      ["private-locations", "Private locations"],
+      ["report-schedules", "Uptime reports"],
+    ] as const) {
+      await page.goto(`orgs/test/organization/${path}`);
+      await page.waitForLoadState("networkidle");
+      // Section root on its own index page renders as plain (non-link) text
+      // — the negative control that keeps "the leaf is visible" from passing
+      // vacuously on a blank page.
+      await expect(header().getByText(label, { exact: true })).toBeVisible();
+      await expect(header().getByRole("link", { name: label })).toHaveCount(0);
+    }
+  });
+
+  test("renders the full trail on deep Organization routes", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const header = () => page.locator("header").first();
+
+    // report-schedules/new: section crumb becomes a link, leaf is "New".
+    await page.goto("orgs/test/organization/report-schedules/new");
+    await page.waitForLoadState("networkidle");
+    await expect(
+      header().getByRole("link", { name: "Uptime reports" }),
+    ).toBeVisible();
+    await expect(header().getByText("New", { exact: true })).toBeVisible();
+
+    // report-schedules/$uid: leaf names the record.
+    const name = `E2E Breadcrumb Report ${Date.now()}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/report-schedules`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          name,
+          frequency: "monthly",
+          recipients: [`e2e-breadcrumb-${Date.now()}@acme.com`],
+        },
+      },
+    );
+    expect(createResp.status()).toBe(201);
+    const { uid } = await createResp.json();
+
+    try {
+      await page.goto(`orgs/test/organization/report-schedules/${uid}`);
+      await page.waitForLoadState("networkidle");
+      await expect(
+        header().getByRole("link", { name: "Uptime reports" }),
+      ).toBeVisible();
+      await expect(header().getByText(name, { exact: true })).toBeVisible();
+    } finally {
+      await page.request.delete(
+        `${API_BASE}/api/v1/orgs/test/report-schedules/${uid}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    }
+
+    // private-locations/register: section crumb becomes a link, leaf is
+    // "Register".
+    await page.goto("orgs/test/organization/private-locations/register");
+    await page.waitForLoadState("networkidle");
+    await expect(
+      header().getByRole("link", { name: "Private locations" }),
+    ).toBeVisible();
+    await expect(header().getByText("Register", { exact: true })).toBeVisible();
+  });
 });

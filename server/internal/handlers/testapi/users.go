@@ -16,6 +16,13 @@ type CreateUserRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
+	// MustChangePassword seeds the forced-rotation flag (spec 2026-08-23-04).
+	// The state it produces is otherwise only reachable by booting against a
+	// brand-new database, which an e2e run cannot do without destroying the
+	// shared test fixture — so the e2e spec for the rotation screen asks for it
+	// here instead. Test-only route; the flag itself is ordinary production
+	// behavior.
+	MustChangePassword bool `json:"mustChangePassword"`
 }
 
 // CreateUser creates a pre-confirmed, org-less user directly in the
@@ -62,6 +69,7 @@ func (h *Handler) CreateUser(writer http.ResponseWriter, req *http.Request) erro
 	user := models.NewUser(body.Email)
 	user.Name = body.Name
 	user.PasswordHash = &hash
+	user.MustChangePassword = body.MustChangePassword
 
 	now := time.Now()
 	user.EmailVerifiedAt = &now
@@ -71,7 +79,8 @@ func (h *Handler) CreateUser(writer http.ResponseWriter, req *http.Request) erro
 	}
 
 	return h.writeJSON(writer, http.StatusCreated, map[string]any{
-		"uid":   user.UID,
-		"email": user.Email,
+		"uid":                user.UID,
+		"email":              user.Email,
+		"mustChangePassword": user.MustChangePassword,
 	})
 }

@@ -8,6 +8,8 @@ import (
 	"log/slog"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/support"
 )
 
 // Organization-deletion errors.
@@ -95,8 +97,46 @@ func (s *Service) DeleteOrg(
 		return nil, fmt.Errorf("failed to release organization previous slugs: %w", aliasErr)
 	}
 
+	// External identity links (Slack workspace, Discord guild, …) go too. The
+	// `on delete cascade` on organization_providers.organization_uid only fires
+	// for HARD deletes, so a soft-deleted org used to leave its links live —
+	// and a live link pointing at a dead org bricked every later SSO login for
+	// that workspace/guild (spec 2026-08-25-01). Releasing them here prevents
+	// the class; resolveLinkedOrganization heals rows that already went stale.
+	if linkErr := s.releaseOrgProviderLinks(ctx, org.UID); linkErr != nil {
+		return nil, linkErr
+	}
+
 	if delErr := s.db.DeleteOrganization(ctx, org.UID); delErr != nil {
 		return nil, fmt.Errorf("failed to delete organization: %w", delErr)
+	}
+
+	// Reap the org's public attachments — today just its logo. A logo blob is
+	// public exactly while its file row is live (spec 2026-08-22-03), so
+	// without this the deleted org's logo stays readable on /pub/assets/:uid
+	// forever. Best-effort: the org is already gone, and failing the whole
+	// deletion over a leftover file row would be worse.
+	if _, reapErr := s.db.DeleteFilesByTopicPrefix(
+		ctx, org.UID, files.OrganizationTopicPrefix(org.UID),
+	); reapErr != nil {
+		slog.WarnContext(ctx, "failed to reap organization attachments",
+			"error", reapErr, "orgUID", org.UID)
+	}
+
+	// Strip support-thread attribution pointing at the deleted org. The THREADS
+	// SURVIVE: a support conversation belongs to the instance, and attribution
+	// only records who we thought the sender was — deleting an org must not
+	// delete a stranger's conversation, and must not leave a dangling reference
+	// either (spec 2026-08-22-02). Best-effort, same reasoning as the
+	// attachment reap above.
+	if s.support != nil {
+		if detached, detachErr := s.support.DetachOrganization(ctx, org.UID); detachErr != nil {
+			slog.WarnContext(ctx, "failed to detach support thread attribution",
+				"error", detachErr, "orgUID", org.UID)
+		} else if detached > 0 {
+			slog.InfoContext(ctx, "detached support thread attribution",
+				"orgUID", org.UID, "threads", detached)
+		}
 	}
 
 	slog.InfoContext(ctx, "organization deleted",
@@ -216,6 +256,24 @@ func (s *Service) stopOrgChecks(ctx context.Context, orgUID string) error {
 	return nil
 }
 
+// releaseOrgProviderLinks soft-deletes every organization_providers row the org
+// still holds, so its Slack team / Discord guild / OIDC issuer identity becomes
+// claimable again instead of pointing at a soft-deleted org forever.
+func (s *Service) releaseOrgProviderLinks(ctx context.Context, orgUID string) error {
+	links, err := s.db.ListOrganizationProviders(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("failed to list organization provider links: %w", err)
+	}
+
+	for _, link := range links {
+		if delErr := s.db.DeleteOrganizationProvider(ctx, link.UID); delErr != nil {
+			return fmt.Errorf("failed to release organization provider link: %w", delErr)
+		}
+	}
+
+	return nil
+}
+
 // deleteOrgMemberships soft-deletes every membership of the organization.
 func (s *Service) deleteOrgMemberships(ctx context.Context, orgUID string) error {
 	members, err := s.db.ListMembersByOrg(ctx, orgUID)
@@ -230,4 +288,11 @@ func (s *Service) deleteOrgMemberships(ctx context.Context, orgUID string) error
 	}
 
 	return nil
+}
+
+// SetSupportInbox wires the support inbox used to detach attribution on org
+// deletion. Late injection: the support service is built after auth, and
+// integrations that own it already import this package.
+func (s *Service) SetSupportInbox(svc *support.Service) {
+	s.support = svc
 }

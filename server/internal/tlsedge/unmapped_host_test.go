@@ -104,6 +104,14 @@ func (e *Edge) expireServableCache() {
 // request fell through to the instance's own-host routing and served the
 // dashboard SPA on a hostname the installation no longer claimed.
 //
+// It also pins the BOUNDARY of the "never fail at the handshake for a domain we
+// hold a certificate for" rule added by spec 2026-08-23-03: that rule keys off
+// material in tls_storage, not off certmagic's in-memory cache. Here nothing
+// was stored — an unmapped domain has had its stored material dropped by
+// ForgetDomain — so the refusal stands, and the Let's Encrypt
+// failed-validation rate limit stays protected against a hostile SNI scan. The
+// demoted-with-stored-certificate case is covered in demoted_host_test.go.
+//
 // What this test deliberately avoids: it never calls ForgetDomain.
 // An earlier version did, and it passed with the gate removed — because
 // ForgetDomain drops the certificate, so the next handshake took the issuance

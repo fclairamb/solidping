@@ -43,6 +43,12 @@
       "confirmInputLabel": "Geben Sie {{org}} zur Bestätigung ein",
       "confirmAction": "Organisation löschen",
       "deleted": "Organisation {{org}} gelöscht"
+    },
+    "traceroute": {
+      "title": "Netzwerkpfad-Diagnose",
+      "description": "Wenn ein Check ausfällt, weil sein Ziel nicht ERREICHT werden konnte, einen Traceroute im MTR-Stil aufzeichnen und an den Vorfall anhängen.",
+      "label": "Traceroute bei Netzwerkausfall",
+      "help": "Gilt für jeden Check, der auf „übernehmen“ steht. Nur Erreichbarkeitsfehler lösen eine Aufzeichnung aus: Verbindungs-Timeouts, Ablehnungen, ICMP-Verlust, hängende TLS-Handshakes. Ein HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat nie — der Server hat geantwortet. Traces laufen, nachdem das fehlgeschlagene Ergebnis bereits gemeldet wurde, und sind pro Organisation begrenzt: Sie verzögern nie einen Vorfall und überschwemmen keinen Massenausfall."
     }
   },
   "usage": {
@@ -64,7 +70,11 @@
       "runaway": "{{count}} Nachricht(en) wurden abgelehnt, weil das SMS-Limit dieser Instanz ({{limit}}/Stunde) erreicht wurde. Instanzweit gehen Alarme verloren — informieren Sie Ihren Betreiber.",
       "country": "{{count}} Nachricht(en) wurden abgelehnt, weil das Zielland nicht auf der Positivliste dieser Instanz steht ({{countries}})."
     },
-    "slos": "Service-Level-Ziele"
+    "slos": "Service-Level-Ziele",
+    "whiteLabel": "White-Labeling",
+    "included": "Enthalten",
+    "notIncluded": "Nicht enthalten",
+    "whiteLabelHint": "Erlaubt einer Statusseite, die Fußzeile „Powered by SolidPing“ auszublenden."
   },
   "ai": {
     "title": "KI-Assistenten",
@@ -154,6 +164,9 @@
     "inviteMember": "Mitglied einladen",
     "sendDescription": "Senden Sie eine Einladung zum Beitritt zu dieser Organisation",
     "invitationCreated": "Einladung erstellt. Teilen Sie diesen Link:",
+    "emailSentTo": "Eine Einladungs-E-Mail wurde an {{email}} gesendet.",
+    "shareLinkFallback": "Oder teilen Sie diesen Link direkt:",
+    "emailNotConfigured": "Der E-Mail-Versand ist auf dieser Instanz nicht konfiguriert – teilen Sie diesen Link mit dem Empfänger.",
     "sendInvitation": "Einladung senden",
     "sending": "Senden...",
     "pendingTitle": "Ausstehende Einladungen",

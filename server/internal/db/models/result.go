@@ -53,6 +53,53 @@ const (
 	PeriodTypeMonth = "month"
 )
 
+// PeriodTierSide describes which side of the raw/rollup split a requested set of
+// period types sits on. It exists because BOTH useful indexes on `results` are
+// partial and split on exactly that predicate (`results_raw_idx WHERE
+// period_type = 'raw'`, `results_aggregated_idx WHERE period_type != 'raw'`):
+// a query can only ride one of them if its WHERE clause implies the index's own
+// predicate. See PeriodTypesTierSide.
+type PeriodTierSide int
+
+const (
+	// PeriodTierMixed names both raw and at least one rollup tier, so neither
+	// partial index is eligible and the query can only be a full scan. Never
+	// issue one — split it into one query per side (spec 2026-08-22-04).
+	PeriodTierMixed PeriodTierSide = iota
+	// PeriodTierRaw names only raw.
+	PeriodTierRaw
+	// PeriodTierRollup names only aggregated tiers (hour/day/month).
+	PeriodTierRollup
+)
+
+// PeriodTypesTierSide reports which side of the raw/rollup index split the given
+// period types sit on. An empty list is mixed: it constrains nothing, so neither
+// partial predicate is implied.
+func PeriodTypesTierSide(periodTypes []string) PeriodTierSide {
+	if len(periodTypes) == 0 {
+		return PeriodTierMixed
+	}
+
+	sawRaw, sawRollup := false, false
+
+	for _, periodType := range periodTypes {
+		if periodType == PeriodTypeRaw {
+			sawRaw = true
+		} else {
+			sawRollup = true
+		}
+	}
+
+	switch {
+	case sawRaw && !sawRollup:
+		return PeriodTierRaw
+	case sawRollup && !sawRaw:
+		return PeriodTierRollup
+	default:
+		return PeriodTierMixed
+	}
+}
+
 // StatusToString converts a ResultStatus integer to its string representation.
 func StatusToString(status int) string {
 	switch status {

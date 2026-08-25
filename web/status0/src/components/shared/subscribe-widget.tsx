@@ -92,6 +92,15 @@ export function SubscribeWidget({
           </form>
         )}
 
+        {/* Say out loud that self-serve is email-only, so a visitor looking
+            for a webhook or Slack option knows it exists and who to ask —
+            rather than concluding the product does not have it. Registering a
+            delivery URL is operator-side by design: there is no way to verify
+            that a visitor owns the webhook they paste. */}
+        <p className="mt-3 text-xs text-muted-foreground">
+          {t("subscribe.emailOnlyNote")}
+        </p>
+
         <div className="mt-3">
           <a
             href={feedUrl}

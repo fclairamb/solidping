@@ -1563,3 +1563,38 @@ func TestLoad_SentryEnvironmentDefault(t *testing.T) {
 	r.NoError(err)
 	r.Equal("staging", cfg.Sentry.Environment, "explicit configuration always wins")
 }
+
+// TestBaseURLHost proves the instance's own hostname is derived from
+// server.base_url and nothing else. The negative cases are the point: no
+// deployment hostname is special-cased anywhere in the binary, so an install
+// that sets a different base_url gets that host and only that host.
+func TestBaseURLHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		baseURL string
+		want    string
+	}{
+		{name: "plain host", baseURL: "https://app.example.com", want: "app.example.com"},
+		{name: "port stripped", baseURL: "http://localhost:4000", want: "localhost"},
+		{name: "path ignored", baseURL: "https://app.example.com/dash0/", want: "app.example.com"},
+		{name: "lowercased", baseURL: "https://APP.Example.COM", want: "app.example.com"},
+		{name: "surrounding space", baseURL: "  https://app.example.com  ", want: "app.example.com"},
+		{name: "empty", baseURL: "", want: ""},
+		{name: "scheme only", baseURL: "https://", want: ""},
+		{name: "unparseable", baseURL: "://nope", want: ""},
+		// A self-hosted install gets ITS host, not a SaaS one.
+		{name: "self-hosted", baseURL: "https://status.acme.internal", want: "status.acme.internal"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &Config{}
+			cfg.Server.BaseURL = tt.baseURL
+			require.Equal(t, tt.want, cfg.BaseURLHost())
+		})
+	}
+}

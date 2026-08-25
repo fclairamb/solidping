@@ -10,23 +10,21 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
-	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 )
 
 func setupSlackTestService(t *testing.T) (*SlackOAuthService, context.Context) {
 	t.Helper()
 
-	ctx := t.Context()
+	return newSlackTestService(t, newSQLiteDBService(t)), t.Context()
+}
 
-	dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
-	require.NoError(t, err)
-
-	require.NoError(t, dbService.Initialize(ctx))
-
-	t.Cleanup(func() {
-		_ = dbService.Close()
-	})
+// newSlackTestService wires a Slack OAuth service on top of an already
+// initialized database service, so the same test bodies can run against SQLite
+// and Postgres (see provider_links_postgres_test.go).
+func newSlackTestService(t *testing.T, dbService db.Service) *SlackOAuthService {
+	t.Helper()
 
 	cfg := &config.Config{
 		Slack: config.SlackConfig{
@@ -43,10 +41,7 @@ func setupSlackTestService(t *testing.T) (*SlackOAuthService, context.Context) {
 		},
 	}
 
-	authService := NewService(dbService, cfg.Auth, cfg, nil, nil)
-	svc := NewSlackOAuthService(dbService, cfg, authService)
-
-	return svc, ctx
+	return NewSlackOAuthService(dbService, cfg, NewService(dbService, cfg.Auth, cfg, nil, nil))
 }
 
 // fakeSlackEndpoints points the Slack sign-in service at httptest stand-ins
@@ -56,16 +51,27 @@ func setupSlackTestService(t *testing.T) (*SlackOAuthService, context.Context) {
 func fakeSlackEndpoints(t *testing.T, svc *SlackOAuthService, teamID, teamName, email string) {
 	t.Helper()
 
+	fakeSlackEndpointsWithSub(t, svc, teamID, teamName, email, "U-1")
+}
+
+// fakeSlackEndpointsWithSub is the same stand-in with the attested Slack user id
+// (the OpenID `sub`) made explicit, so contracts that seed a user_providers row
+// for that identity can pick one nothing else in the run uses.
+func fakeSlackEndpointsWithSub(
+	t *testing.T, svc *SlackOAuthService, teamID, teamName, email, sub string,
+) {
+	t.Helper()
+
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"access_token":"xoxb-bot","team":{"id":"` + teamID +
-			`","name":"` + teamName + `"},"authed_user":{"id":"U-1","access_token":"xoxp-user"}}`))
+			`","name":"` + teamName + `"},"authed_user":{"id":"` + sub + `","access_token":"xoxp-user"}}`))
 	}))
 	t.Cleanup(tokenServer.Close)
 
 	userServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"sub":"U-1","email":"` + email +
+		_, _ = w.Write([]byte(`{"ok":true,"sub":"` + sub + `","email":"` + email +
 			`","email_verified":true,"name":"Workspace Member",` +
 			`"https://slack.com/team_name":"` + teamName + `","https://slack.com/team_domain":"acme"}`))
 	}))
@@ -235,4 +241,92 @@ func TestFindOrCreateOrganizationSlugCollision(t *testing.T) {
 	second, err := svc.findOrCreateOrganization(ctx, "TEAM-B", "Acme", "acme")
 	r.NoError(err)
 	r.Equal("acme2", second.Slug)
+}
+
+// TestSlackStaleTeamLink_SQLite is the Slack twin of
+// TestDiscordStaleProviderLinks_SQLite: the same soft-deleted-org state bricks
+// the Slack sign-in through the identical bare-return path, so it needs its own
+// proof rather than inheriting Discord's.
+func TestSlackStaleTeamLink_SQLite(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stale team link", func(t *testing.T) {
+		t.Parallel()
+		testSlackStaleTeamLinkHeals(t, newSQLiteDBService(t))
+	})
+
+	t.Run("stale user link", func(t *testing.T) {
+		t.Parallel()
+		testSlackStaleUserLinkHeals(t, newSQLiteDBService(t))
+	})
+}
+
+// testSlackStaleTeamLinkHeals: an org linked to workspace T-DEAD is
+// soft-deleted; a member of T-DEAD signs in and must land in a fresh org.
+func testSlackStaleTeamLinkHeals(t *testing.T, dbService db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc := newSlackTestService(t, dbService)
+
+	fixture := nextFixture()
+	teamID := "T-DEAD-" + fixture
+
+	dead := models.NewOrganization("acme-slack-"+fixture, "Acme")
+	r.NoError(dbService.CreateOrganization(ctx, dead))
+
+	staleLink := models.NewOrganizationProvider(dead.UID, models.ProviderTypeSlack, teamID)
+	r.NoError(dbService.CreateOrganizationProvider(ctx, staleLink))
+	r.NoError(dbService.DeleteOrganization(ctx, dead.UID))
+
+	fakeSlackEndpointsWithSub(t, svc, teamID, "Acme", "member"+fixture+"@acme.example", "U-"+fixture)
+
+	result, err := svc.HandleCallback(ctx, "mock-code")
+	r.NoError(err, "a soft-deleted linked org must not brick the Slack login")
+
+	fresh, err := dbService.GetOrganizationBySlug(ctx, result.OrgSlug)
+	r.NoError(err)
+	r.NotEqual(dead.UID, fresh.UID, "the soft-deleted org must not be resurrected")
+
+	cleared, err := dbService.GetOrganizationProvider(ctx, staleLink.UID)
+	r.Error(err, "the stale organization_providers row must be soft-deleted")
+	r.Nil(cleared)
+
+	relinked, err := dbService.GetOrganizationProviderByProviderID(
+		ctx, models.ProviderTypeSlack, teamID)
+	r.NoError(err)
+	r.Equal(fresh.UID, relinked.OrganizationUID)
+	r.NotEqual(staleLink.UID, relinked.UID)
+}
+
+// testSlackStaleUserLinkHeals is the user_providers twin for Slack.
+func testSlackStaleUserLinkHeals(t *testing.T, dbService db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+	svc := newSlackTestService(t, dbService)
+
+	fixture := nextFixture()
+	sub := "U-" + fixture
+
+	dead := models.NewUser("stale-slack" + fixture + "@acme.example")
+	r.NoError(dbService.CreateUser(ctx, dead))
+
+	staleLink := models.NewUserProvider(dead.UID, models.ProviderTypeSlack, sub)
+	r.NoError(dbService.CreateUserProvider(ctx, staleLink))
+	r.NoError(dbService.DeleteUser(ctx, dead.UID))
+
+	fakeSlackEndpointsWithSub(
+		t, svc, "T-USER-"+fixture, "Acme", "member"+fixture+"@acme.example", sub)
+
+	result, err := svc.HandleCallback(ctx, "mock-code")
+	r.NoError(err, "a soft-deleted linked user must not brick the Slack login")
+	r.NotEqual(dead.UID, result.UserUID)
+
+	relinked, err := dbService.GetUserProviderByProviderID(ctx, models.ProviderTypeSlack, sub)
+	r.NoError(err)
+	r.Equal(result.UserUID, relinked.UserUID)
+	r.NotEqual(staleLink.UID, relinked.UID)
 }

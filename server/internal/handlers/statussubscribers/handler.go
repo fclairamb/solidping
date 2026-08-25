@@ -16,6 +16,16 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
+)
+
+// Response/validation field names used more than once.
+const (
+	respKeyData    = "data"
+	fieldURL       = "url"
+	fieldChannel   = "channel"
+	fieldBodyInput = "body"
 )
 
 // Handler provides HTTP handlers for subscriber management + the Atom feed.
@@ -61,7 +71,7 @@ func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error
 	var body SubscribeRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: fieldBodyInput, Message: "Invalid JSON format"},
 		})
 	}
 
@@ -73,7 +83,7 @@ func (h *Handler) Subscribe(writer http.ResponseWriter, req *http.Request) error
 	h.sendConfirmMail(req.Context(), result)
 
 	return h.WriteJSON(writer, http.StatusAccepted, map[string]any{
-		"data": map[string]any{
+		respKeyData: map[string]any{
 			"status": "pending_confirmation",
 		},
 	})
@@ -103,11 +113,14 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 		return
 	}
 
+	// Deliberately NOT support-replyable: the confirm mail is the double-opt-in
+	// proof, and it must keep the "this is automated" framing.
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{result.Subscriber.Email}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{result.Subscriber.EmailAddress()}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("status-subscriber-confirm.html"),
 	}
 
 	if _, err := h.sender.Send(ctx, msg); err != nil {
@@ -155,6 +168,39 @@ func (h *Handler) statusPageURL(orgSlug, pageSlug string) string {
 	return fmt.Sprintf("%s/status0/%s/%s", h.baseURL(), orgSlug, pageSlug)
 }
 
+// CreateEndpointSubscriber handles
+// POST /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers/endpoints
+// (AUTHED).
+//
+// Deliberately operator-side: a visitor pasting an incoming-webhook URL has no
+// verification story, and the URL is a credential that would then be accepted
+// from anyone. The public email subscribe lives one path segment up.
+//
+// The `/endpoints` suffix is load-bearing, not decorative — see the route
+// registration in app/server.go: chi silently overwrites a duplicate
+// method+pattern, so these two handlers cannot share `…/subscribers`.
+//
+// The response carries the signing secret ONCE. That is the only moment it is
+// ever readable; see CreateEndpointSubscriberResponse.
+func (h *Handler) CreateEndpointSubscriber(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	statusPageUID := httpx.Param(req, "statusPageUid")
+
+	var body CreateEndpointSubscriberRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBodyInput, Message: "Invalid JSON format"},
+		})
+	}
+
+	created, err := h.svc.CreateEndpointSubscriber(req.Context(), orgSlug, statusPageUID, &body)
+	if err != nil {
+		return h.handleError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, map[string]any{respKeyData: created})
+}
+
 // ListSubscribers handles GET /api/v1/orgs/:org/status-pages/:statusPageUid/subscribers (authed).
 func (h *Handler) ListSubscribers(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
@@ -166,8 +212,8 @@ func (h *Handler) ListSubscribers(writer http.ResponseWriter, req *http.Request)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{
-		"data": subs,
-		"meta": map[string]any{"count": len(subs)},
+		respKeyData: subs,
+		"meta":      map[string]any{"count": len(subs)},
 	})
 }
 
@@ -193,6 +239,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found")
+	case errors.Is(err, statuspagelock.ErrLocked):
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeStatusPageLocked,
+			"This status page is password protected")
 	case errors.Is(err, ErrSubscriberNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Subscriber not found")
 	case errors.Is(err, ErrIncidentNotFound):
@@ -208,6 +257,27 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	case errors.Is(err, ErrIncidentRequired):
 		return h.WriteValidationError(writer, "Incident required", []base.ValidationErrorField{
 			{Name: "incidentUid", Message: "incidentUid is required when scope is incident"},
+		})
+	case errors.Is(err, ErrInvalidChannel):
+		return h.WriteValidationError(writer, "Invalid channel", []base.ValidationErrorField{
+			{Name: fieldChannel, Message: "Must be one of: webhook, slack"},
+		})
+	case errors.Is(err, ErrPublicChannelNotAllowed):
+		return h.WriteValidationError(writer, "Channel not available", []base.ValidationErrorField{
+			{Name: fieldChannel, Message: "Public subscriptions are email-only. " +
+				"Webhook and Slack deliveries are registered by an operator from the dashboard."},
+		})
+	case errors.Is(err, ErrEndpointRequired):
+		return h.WriteValidationError(writer, "Endpoint required", []base.ValidationErrorField{
+			{Name: fieldURL, Message: "A delivery URL is required"},
+		})
+	case errors.Is(err, ErrSlackWebhookExpected):
+		return h.WriteValidationError(writer, "Slack webhook expected", []base.ValidationErrorField{
+			{Name: fieldURL, Message: "A Slack incoming-webhook URL (https://hooks.slack.com/...) is required"},
+		})
+	case errors.Is(err, ErrInvalidEndpointURL):
+		return h.WriteValidationError(writer, "Invalid endpoint URL", []base.ValidationErrorField{
+			{Name: fieldURL, Message: "Must be an https URL pointing at a publicly reachable host"},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)
@@ -304,8 +374,18 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 	}
 
 	page, err := h.dbService.GetStatusPageBySlug(ctx, org.UID, slug)
-	if err != nil || page == nil || !page.Enabled || page.Visibility != "public" {
+	if err != nil || !statuspagelock.Visible(page) {
 		return h.writeFeedNotFound(writer)
+	}
+
+	// The feed is a read of the page, so it is gated like the page. A feed
+	// reader that followed the URL after unlocking in a browser carries the
+	// cookie; one that never unlocked gets a 401 it can surface to its user.
+	if !statuspagelock.RequestUnlocks(req, page) {
+		statuspagecache.ApplyGated(writer.Header())
+
+		return h.WriteError(writer, http.StatusUnauthorized,
+			base.ErrorCodeStatusPageLocked, "This status page is password protected")
 	}
 
 	historyDays := page.HistoryDays
@@ -320,7 +400,7 @@ func (h *Handler) Feed(writer http.ResponseWriter, req *http.Request) error {
 
 	feed := h.buildFeed(orgSlug, slug, page.Name, updates)
 
-	return h.writeFeed(writer, feed)
+	return h.writeFeed(writer, feed, page.Visibility)
 }
 
 func (h *Handler) buildFeed(
@@ -365,9 +445,12 @@ func (h *Handler) buildFeed(
 	return feed
 }
 
-func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomFeed) error {
+func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomFeed, visibility string) error {
 	writer.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
-	writer.Header().Set("Cache-Control", "public, max-age=300")
+	// The feed body carries the page's update titles and bodies verbatim, so a
+	// password-gated page's feed must never be retained by a shared cache —
+	// same rule, same helper as the page itself (spec 2026-08-22-06).
+	statuspagecache.Apply(writer.Header(), visibility, statuspagecache.FeedMaxAge)
 	writer.WriteHeader(http.StatusOK)
 
 	if _, err := writer.Write([]byte(xml.Header)); err != nil {
@@ -381,5 +464,7 @@ func (h *Handler) writeFeed(writer http.ResponseWriter, feed *atomFeed) error {
 }
 
 func (h *Handler) writeFeedNotFound(writer http.ResponseWriter) error {
+	statuspagecache.ApplyGated(writer.Header())
+
 	return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found")
 }

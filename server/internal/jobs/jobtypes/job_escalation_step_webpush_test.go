@@ -239,3 +239,62 @@ func TestSendWebPush_NotConfigured(t *testing.T) {
 	sent := run.sendWebPush(ctx, jctx, slog.Default(), incident, route)
 	r.Equal(0, sent, "unconfigured web push must return 0 without error")
 }
+
+// TestEscalationWebPushMessage verifies the push content addresses the
+// incident by check name and short #N reference — never the UID — and links
+// to the incident detail page rather than the generic dashboard.
+func TestEscalationWebPushMessage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		incident  *models.Incident
+		checkName string
+		orgSlug   string
+		wantTitle string
+		wantBody  string
+		wantURL   string
+	}{
+		{
+			name:      "numbered incident links to its detail page",
+			incident:  &models.Incident{UID: "inc-1", Number: 42},
+			checkName: "API prod",
+			orgSlug:   "acme",
+			wantTitle: "[ESCALATED] API prod",
+			wantBody:  "Incident #42 for API prod requires your attention.",
+			wantURL:   "/dash0/orgs/acme/incidents/inc-1",
+		},
+		{
+			name:      "unnumbered incident omits the reference, not the name",
+			incident:  &models.Incident{UID: "inc-2"},
+			checkName: "API prod",
+			orgSlug:   "acme",
+			wantTitle: "[ESCALATED] API prod",
+			wantBody:  "Incident for API prod requires your attention.",
+			wantURL:   "/dash0/orgs/acme/incidents/inc-2",
+		},
+		{
+			name:      "missing org slug yields empty url for the SW fallback",
+			incident:  &models.Incident{UID: "inc-3", Number: 7},
+			checkName: "API prod",
+			orgSlug:   "",
+			wantTitle: "[ESCALATED] API prod",
+			wantBody:  "Incident #7 for API prod requires your attention.",
+			wantURL:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			msg := escalationWebPushMessage(tt.incident, tt.checkName, tt.orgSlug)
+			r.Equal(tt.wantTitle, msg.Title)
+			r.Equal(tt.wantBody, msg.Body)
+			r.Equal(tt.wantURL, msg.URL)
+			r.NotContains(msg.Title, tt.incident.UID, "title must never expose the incident UID")
+			r.NotContains(msg.Body, tt.incident.UID, "body must never expose the incident UID")
+		})
+	}
+}

@@ -107,7 +107,19 @@ type Handler struct {
 	// cache is not sound once the API tier or the agent fleet scales out.
 	nonces agentcrypto.NonceGuard
 	reseal ResealFunc
+	// conns tracks live agent connections by worker uid so the incident
+	// pipeline can push an unsolicited upload request down the socket a result
+	// arrived on (spec 2026-08-21-05). In-process and best-effort — see
+	// uploads.go.
+	conns  *connRegistry
 	logger *slog.Logger
+	// traceRounds / traceMaxHops / traceBudget are the path-trace settings the
+	// server hands to an agent on a trace-request frame (spec 2026-08-21-10).
+	// They live here rather than on the agent so an operator tunes them in one
+	// config instead of on every deployed agent.
+	traceRounds  int
+	traceMaxHops int
+	traceBudget  time.Duration
 }
 
 // NewHandler creates the agent WebSocket handler.
@@ -132,6 +144,7 @@ func NewHandler(
 		regions:      regions.NewService(dbService),
 		nonces:       agentcrypto.NewStoredNonceGuard(dbService, db.ErrAgentNonceReplayed),
 		reseal:       reseal,
+		conns:        newConnRegistry(),
 		logger:       slog.Default().With("component", "agent_ws"),
 	}
 }
@@ -592,6 +605,25 @@ func (h *Handler) runAgentConnection(
 
 	state := &connState{agent: agent, workerUID: workerUID, versionChecked: versionChecked}
 
+	// Publish the connection so the incident pipeline can reach this agent, and
+	// retire it on the way out. The registration is identity-checked on removal
+	// so a reconnect that overtakes this connection's teardown keeps its own.
+	outbound := h.conns.add(workerUID)
+	defer h.conns.remove(workerUID, outbound)
+
+	// Subscribe BEFORE announcing the connection with the hello frame below.
+	// An agent that has seen hello is, from the client's point of view, live —
+	// so a check created the instant after must reach it. Subscribing after
+	// the announcement left a window in which check.created fired against no
+	// listener and the express hint was lost for good, dropping that agent to
+	// poll latency (and making TestJobsAvailableHintFansOutAcrossOrgs flake
+	// under load: it timed out rather than running slow, the signature of a
+	// dropped notification rather than a late one). Listen's channel is
+	// buffered and Notify's send is non-blocking, so subscribing this early
+	// costs nothing while the loop below is not yet draining.
+	hints := h.events.Listen("check.created")
+	defer h.events.Unlisten("check.created", hints)
+
 	// Reconnects have not seen a hello-with-identity yet; enrollment
 	// connections got theirs in the enrolled frame — a second hello echoing
 	// the identity is harmless and keeps the protocol uniform.
@@ -631,31 +663,60 @@ func (h *Handler) runAgentConnection(
 		}
 	}()
 
-	hints := h.events.Listen("check.created")
-	defer h.events.Unlisten("check.created", hints)
+	h.serveConnEvents(loopCtx, conn, state, &connChannels{
+		frames:   frames,
+		readErr:  readErr,
+		outbound: outbound,
+		hints:    hints,
+	})
+}
 
+// connChannels bundles the event sources one agent connection's loop selects
+// on. It exists so serveConnEvents can be a function rather than a seventh
+// parameter list.
+type connChannels struct {
+	// frames carries decoded client frames from the read goroutine.
+	frames <-chan agentcrypto.ClientFrame
+	// readErr ends the connection on the first read failure.
+	readErr <-chan error
+	// outbound carries UNSOLICITED server->agent frames (today: capture upload
+	// requests). Drained here, from the connection's own goroutine, so such a
+	// frame can never interleave with the responses handleFrame writes.
+	outbound <-chan agentcrypto.ServerFrame
+	// hints fans out the "a check was created" express hint.
+	hints <-chan string
+}
+
+// serveConnEvents runs one connection's event loop until it ends.
+func (h *Handler) serveConnEvents(
+	ctx context.Context, conn *websocket.Conn, state *connState, chans *connChannels,
+) {
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
 
 	for {
 		select {
-		case <-loopCtx.Done():
+		case <-ctx.Done():
 			return
-		case err := <-readErr:
-			h.logger.DebugContext(ctx, "agent connection closed", "agent", agent.UID, "error", err)
+		case err := <-chans.readErr:
+			h.logger.DebugContext(ctx, "agent connection closed", "agent", state.agent.UID, "error", err)
 
 			return
 		case <-ping.C:
-			if !h.handlePingTick(loopCtx, conn, state) {
+			if !h.handlePingTick(ctx, conn, state) {
 				return
 			}
-		case <-hints:
+		case frame := <-chans.outbound:
+			if err := wsjson.Write(ctx, conn, frame); err != nil {
+				return
+			}
+		case <-chans.hints:
 			// Express hint: a check was created somewhere. The agent's claim is
 			// hard-scoped, so forwarding unconditionally is safe — a claim for a
 			// foreign check simply returns no jobs.
-			_ = wsjson.Write(loopCtx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobsAvailable})
-		case frame := <-frames:
-			if !h.handleFrame(loopCtx, conn, state, &frame) {
+			_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobsAvailable})
+		case frame := <-chans.frames:
+			if !h.handleFrame(ctx, conn, state, &frame) {
 				return
 			}
 		}

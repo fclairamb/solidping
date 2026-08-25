@@ -27,6 +27,30 @@ const (
 	MsgTypeAck           = "ack"
 	MsgTypeError         = "error"
 	MsgTypeJobsAvailable = "jobs-available"
+	// MsgTypeUploadRequest asks the agent to upload a binary capture it is
+	// holding (spec 2026-08-21-05). It is the server's half of the split the
+	// JSON control channel forces: the result frame carries only a marker
+	// naming the agent's own cache slot, and THIS frame — emitted only when
+	// that result opened or reopened an incident — names the topic to POST the
+	// bytes to.
+	//
+	// UNSOLICITED AND UNCORRELATED: it carries no ID, expects no response on
+	// the socket, and an agent that does not understand it ignores it. That is
+	// what makes it safe to add to a protocol whose agents upgrade on their own
+	// schedule.
+	MsgTypeUploadRequest = "upload-request"
+	// MsgTypeTraceRequest asks the agent to RUN an MTR-style path trace and
+	// upload the resulting capture (spec 2026-08-21-10).
+	//
+	// It differs from MsgTypeUploadRequest in one important way: there is no
+	// capture waiting in the agent's cache. The trace has not happened yet, and
+	// it has to happen ON THE AGENT because the agent's path to the target is
+	// the one that failed — a trace run on the master would describe a route
+	// the probe never took.
+	//
+	// UNSOLICITED AND UNCORRELATED, exactly like the upload request: no id, no
+	// response on the socket, and an agent that predates it ignores it.
+	MsgTypeTraceRequest = "trace-request"
 )
 
 // ClientFrame is the envelope every agent->server frame decodes into. Fields
@@ -176,6 +200,50 @@ type ServerFrame struct {
 	// error
 	Code  string `json:"code,omitempty"`
 	Title string `json:"title,omitempty"`
+
+	// upload-request
+	//
+	// Topic is the attachment topic the agent must POST to. It is ALWAYS
+	// server-generated from the entity the server just wrote (e.g.
+	// `incidents/<uid>/screenshot`) and is NEVER echoed from anything the agent
+	// sent: the topic is a storage key and an authorization subject, so letting
+	// an agent name it would hand it the choice of what it is writing over.
+	Topic string `json:"topic,omitempty"`
+	// CaptureID names the capture in the AGENT'S OWN cache. It is echoed back
+	// verbatim from the marker the agent sent, and that is fine precisely
+	// because it never leaves the agent's process boundary in any meaningful
+	// sense — it indexes a map in the agent's RAM, never a path, a query, or a
+	// storage key.
+	CaptureID string `json:"captureId,omitempty"`
+
+	// trace-request
+	//
+	// Trace carries what the agent needs to run one path capture. It travels as
+	// its own object rather than as more flat fields so a frame that is not a
+	// trace request costs nothing on the wire.
+	Trace *TraceRequestFrame `json:"trace,omitempty"`
+}
+
+// TraceRequestFrame is the payload of MsgTypeTraceRequest.
+//
+// EVERY FIELD IS SERVER-CHOSEN, and Address is the load-bearing one: it is the
+// IP the FAILING PROBE actually dialed, carried forward from the checker's own
+// network-failure marker. Letting the agent re-resolve the hostname would let a
+// round-robin record point the trace at a machine that never failed, and would
+// quietly discard the check's IP-family pinning.
+type TraceRequestFrame struct {
+	// Host is the configured hostname, for display in the capture.
+	Host string `json:"host,omitempty"`
+	// Address is the IP to trace to.
+	Address string `json:"address"`
+	// Port is the target port. Zero for an ICMP check, which is what makes the
+	// unprivileged TCP fallback unavailable there.
+	Port int `json:"port,omitempty"`
+	// Rounds / MaxHops / BudgetMs are the server's settings, so an operator
+	// tunes one place rather than every agent.
+	Rounds   int   `json:"rounds,omitempty"`
+	MaxHops  int   `json:"maxHops,omitempty"`
+	BudgetMs int64 `json:"budgetMs,omitempty"`
 }
 
 // ToAgentJob converts a claimed CheckJob row into its wire shape. ConfigPrivate

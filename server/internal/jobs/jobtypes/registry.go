@@ -23,6 +23,9 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeIncidentResolutionNotice: func() jobdef.JobDefinition {
 		return &IncidentResolutionNoticeJobDefinition{}
 	},
+	jobdef.JobTypeIncidentAckNotice: func() jobdef.JobDefinition {
+		return &IncidentAckNoticeJobDefinition{}
+	},
 	jobdef.JobTypeNetworkDiscoveryPlan: func() jobdef.JobDefinition {
 		return &NetworkDiscoveryPlanJobDefinition{}
 	},
@@ -31,6 +34,8 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeKubernetesDiscovery: func() jobdef.JobDefinition { return &KubernetesDiscoveryJobDefinition{} },
 	jobdef.JobTypeStuckJobReaper:      func() jobdef.JobDefinition { return &StuckJobReaperJobDefinition{} },
 	jobdef.JobTypeJobsCleanup:         func() jobdef.JobDefinition { return &JobsCleanupJobDefinition{} },
+	jobdef.JobTypeEventsCleanup:       func() jobdef.JobDefinition { return &EventsCleanupJobDefinition{} },
+	jobdef.JobTypeSupportCleanup:      func() jobdef.JobDefinition { return &SupportCleanupJobDefinition{} },
 	jobdef.JobTypeCustomDomainVerify:  func() jobdef.JobDefinition { return &CustomDomainVerifyJobDefinition{} },
 	jobdef.JobTypeAgentGC:             func() jobdef.JobDefinition { return &AgentGCJobDefinition{} },
 	jobdef.JobTypeIncidentPublish:     func() jobdef.JobDefinition { return &IncidentPublishJobDefinition{} },
@@ -39,6 +44,12 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	},
 	jobdef.JobTypeUptimeReport: func() jobdef.JobDefinition {
 		return &UptimeReportJobDefinition{}
+	},
+	jobdef.JobTypeSLOBurnEval: func() jobdef.JobDefinition {
+		return &SLOBurnEvalJobDefinition{}
+	},
+	jobdef.JobTypePlatformWatchdog: func() jobdef.JobDefinition {
+		return &PlatformWatchdogJobDefinition{}
 	},
 }
 

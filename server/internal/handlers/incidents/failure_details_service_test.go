@@ -178,10 +178,12 @@ func TestReopenIncident_AddsLastFailurePreservesFirstResult(t *testing.T) {
 	r.Equal("relapse cause: TLS handshake failed", output[checkerdef.OutputKeyError])
 }
 
-// TestCreateGroupIncident_WritesFailureDetails pins the group-create path:
-// the triggering member's failure is the recorded cause, same shape as the
-// per-check path.
-func TestCreateGroupIncident_WritesFailureDetails(t *testing.T) {
+// TestGroupedCheckIncident_WritesFailureDetails pins the NEW contract for a
+// check that belongs to a group (spec 2026-08-24-14): it opens its OWN
+// per-check incident through the ordinary create path, with the same
+// failure-details snapshot as any ungrouped check — no group incident, no
+// incident_member_checks row.
+func TestGroupedCheckIncident_WritesFailureDetails(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := context.Background()
@@ -195,20 +197,27 @@ func TestCreateGroupIncident_WritesFailureDetails(t *testing.T) {
 
 	result := downResult(s.org.UID, s.check.UID, "group member unreachable")
 
-	r.NoError(s.svc.CreateGroupIncidentForTest(ctx, s.check, result))
+	r.NoError(s.svc.CreateIncidentForTest(ctx, s.check, result))
 
-	inc, err := s.dbSvc.FindActiveIncidentByGroupUID(ctx, group.UID)
+	inc, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
+	r.Equal(s.check.UID, inc.CheckUID, "the incident belongs to the failing check itself")
+	r.Nil(inc.CheckGroupUID, "grouped checks no longer mint group incidents")
 	r.Equal("group member unreachable", inc.Details["failure_reason"])
 
 	first, ok := inc.Details["first_result"].(map[string]any)
 	r.True(ok)
 	r.Equal(result.UID, first["resultUid"])
+
+	members, err := s.dbSvc.ListIncidentMemberChecks(ctx, inc.UID)
+	r.NoError(err)
+	r.Empty(members, "incident_member_checks must gain no new rows")
 }
 
-// TestReopenGroupIncident_AddsLastFailurePreservesFirstResult mirrors the
-// per-check reopen test for the group path.
-func TestReopenGroupIncident_AddsLastFailurePreservesFirstResult(t *testing.T) {
+// TestGroupedCheckReopen_AddsLastFailurePreservesFirstResult mirrors the
+// per-check reopen test for a check that belongs to a group: the reopen is the
+// ordinary per-check reopen, on the check's own incident.
+func TestGroupedCheckReopen_AddsLastFailurePreservesFirstResult(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := context.Background()
@@ -220,9 +229,9 @@ func TestReopenGroupIncident_AddsLastFailurePreservesFirstResult(t *testing.T) {
 	r.NoError(s.dbSvc.UpdateCheck(ctx, s.check.UID, &models.CheckUpdate{CheckGroupUID: &group.UID}))
 
 	firstFailure := downResult(s.org.UID, s.check.UID, "original group cause")
-	r.NoError(s.svc.CreateGroupIncidentForTest(ctx, s.check, firstFailure))
+	r.NoError(s.svc.CreateIncidentForTest(ctx, s.check, firstFailure))
 
-	inc, err := s.dbSvc.FindActiveIncidentByGroupUID(ctx, group.UID)
+	inc, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
 
 	resolvedState := models.IncidentStateResolved
@@ -233,7 +242,7 @@ func TestReopenGroupIncident_AddsLastFailurePreservesFirstResult(t *testing.T) {
 	}))
 
 	relapseResult := downResult(s.org.UID, s.check.UID, "relapse group cause")
-	r.NoError(s.svc.CreateOrReopenGroupIncidentForTest(ctx, s.check, relapseResult))
+	r.NoError(s.svc.CreateOrReopenIncidentForTest(ctx, s.check, relapseResult))
 
 	reopened, err := s.dbSvc.GetIncident(ctx, s.org.UID, inc.UID)
 	r.NoError(err)

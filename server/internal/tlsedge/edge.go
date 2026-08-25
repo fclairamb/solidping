@@ -262,6 +262,31 @@ func (e *Edge) hostIsLocal(ctx context.Context, host string) bool {
 	return servable
 }
 
+// servableStoredCertificate returns the unexpired certificate held in
+// tls_storage for a host we do not currently serve, or nil when there is none.
+//
+// Deliberately uncached: this is the cold path (a host that is NOT ours), so it
+// costs one indexed lookup on an already-failing request, and caching a
+// certificate for a host we do not own is exactly the kind of state that
+// outlives the reason it was created.
+func (e *Edge) servableStoredCertificate(ctx context.Context, host string) *tls.Certificate {
+	cert, err := LoadStoredCertificate(ctx, e.opts.DB, host)
+	if err != nil {
+		if !errors.Is(err, ErrNoStoredCertificate) {
+			e.log.WarnContext(ctx, "tlsedge: could not load the stored certificate for an unowned host",
+				"host", host, "error", err)
+		}
+
+		return nil
+	}
+
+	if !StoredCertificateUsable(cert, time.Now()) {
+		return nil
+	}
+
+	return cert
+}
+
 // servableCached reports a still-valid positive answer for host.
 func (e *Edge) servableCached(host string) bool {
 	e.mu.RLock()
@@ -407,6 +432,28 @@ func (e *Edge) TLSConfig(ctx context.Context) *tls.Config {
 		}
 
 		if !e.hostIsLocal(ctx, host) {
+			// We do not serve this host — but if we are still HOLDING a valid
+			// certificate for it, refusing here is the worst possible way to
+			// say so. The visitor gets a full-page browser security
+			// interstitial ("this site is compromised"), not a message, and
+			// there is no HTTP layer left to render one in.
+			//
+			// Completing the handshake with the certificate we already have
+			// gives the request somewhere to land: custom-domain routing
+			// answers it with a legible "this domain is not currently
+			// configured" page (see internal/app/custom_domain_routing.go).
+			// It is NOT a hole in the takeover protection — the certificate is
+			// one we legitimately obtained, traffic only arrives here because
+			// DNS still points at us, and the HTTP layer still refuses to
+			// serve any status page or dashboard on the host.
+			if cert := e.servableStoredCertificate(ctx, host); cert != nil {
+				e.log.WarnContext(ctx,
+					"tlsedge: serving a host we no longer own from its stored certificate so the failure is legible",
+					"host", host)
+
+				return cert, nil
+			}
+
 			e.log.WarnContext(ctx, "tlsedge: refusing to serve a host we do not own", "host", host)
 
 			return nil, fmt.Errorf("%w: %s", ErrHostNotAllowed, host)

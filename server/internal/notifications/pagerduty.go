@@ -27,6 +27,15 @@ const (
 
 	pagerdutyEventActionTrigger = "trigger"
 	pagerdutyEventActionResolve = "resolve"
+	// pagerdutyEventActionAcknowledge mirrors a SolidPing ack onto the
+	// PagerDuty incident that shares its dedup_key, so an on-call engineer
+	// who acked in Slack does not also get paged by PagerDuty.
+	pagerdutyEventActionAcknowledge = "acknowledge"
+	// Events API v2 envelope keys, named once so the three event builders
+	// cannot drift on a spelling the API silently ignores.
+	pagerdutyFieldEventAction = "event_action"
+	pagerdutyFieldDedupKey    = "dedup_key"
+	pagerdutyFieldClient      = "client"
 
 	// pagerdutyLinkText labels the incident-page link sent in every trigger.
 	pagerdutyLinkText = "View incident in SolidPing"
@@ -89,6 +98,12 @@ func (s *PagerDutySender) Send(ctx context.Context, _ *jobdef.JobContext, payloa
 		return s.trigger(ctx, settings, payload)
 	case eventTypeIncidentResolved:
 		return s.resolve(ctx, settings, payload)
+	case eventTypeIncidentAcknowledged:
+		// Events API v2 has a native acknowledge action keyed on the same
+		// dedup_key, so this is the one lifecycle event PagerDuty can express
+		// exactly. It MUST be explicit: the default branch below is `trigger`,
+		// which would re-open a resolved incident on an ack.
+		return s.acknowledge(ctx, settings, payload)
 	case eventTypeIncidentEscalated, eventTypeIncidentComment:
 		// Events API v2 has no note/annotation concept, and a `trigger` call
 		// reusing an already-resolved incident's dedup_key would RE-OPEN it.
@@ -132,13 +147,13 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 	}
 
 	event := map[string]any{
-		pagerdutyFieldRoutingKey: settings.RoutingKey,
-		"event_action":           pagerdutyEventActionTrigger,
+		pagerdutyFieldRoutingKey:  settings.RoutingKey,
+		pagerdutyFieldEventAction: pagerdutyEventActionTrigger,
 		// dedup_key = incident UID, so trigger/resolve (and any future
 		// trigger for the same incident) all correlate to ONE PagerDuty
 		// incident across its whole lifecycle.
-		"dedup_key": payload.Incident.UID,
-		"client":    productName,
+		pagerdutyFieldDedupKey: payload.Incident.UID,
+		pagerdutyFieldClient:   productName,
 		"payload": map[string]any{
 			"summary":  summary,
 			"source":   pagerdutySource(payload),
@@ -167,10 +182,26 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 
 func (s *PagerDutySender) resolve(ctx context.Context, settings *pagerdutySettings, payload *Payload) error {
 	event := map[string]any{
-		pagerdutyFieldRoutingKey: settings.RoutingKey,
-		"event_action":           pagerdutyEventActionResolve,
-		"dedup_key":              payload.Incident.UID,
-		"client":                 productName,
+		pagerdutyFieldRoutingKey:  settings.RoutingKey,
+		pagerdutyFieldEventAction: pagerdutyEventActionResolve,
+		pagerdutyFieldDedupKey:    payload.Incident.UID,
+		pagerdutyFieldClient:      productName,
+	}
+
+	return s.doRequest(ctx, event)
+}
+
+// acknowledge marks the correlated PagerDuty incident as acknowledged. Same
+// dedup_key as the trigger, so it lands on the incident SolidPing opened
+// rather than creating a new one.
+func (s *PagerDutySender) acknowledge(
+	ctx context.Context, settings *pagerdutySettings, payload *Payload,
+) error {
+	event := map[string]any{
+		pagerdutyFieldRoutingKey:  settings.RoutingKey,
+		pagerdutyFieldEventAction: pagerdutyEventActionAcknowledge,
+		pagerdutyFieldDedupKey:    payload.Incident.UID,
+		pagerdutyFieldClient:      productName,
 	}
 
 	return s.doRequest(ctx, event)

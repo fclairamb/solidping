@@ -14,11 +14,15 @@
   "allOperational": "Alle Systeme funktionieren ordnungsgemäß",
   "noResolved": "Noch keine gelösten Vorfälle",
   "noIncidents": "Es wurden keine Vorfälle aufgezeichnet",
+  "noIncidentsForCheck": "Für diesen Check wurden keine Vorfälle gefunden",
   "noIncidentsFound": "Keine Vorfälle gefunden",
   "incidentNotFound": "Vorfall nicht gefunden",
   "backToIncidents": "Zurück zu Vorfälle",
   "filterByState": "Nach Status filtern",
+  "filterByCheck": "Nach Check filtern",
   "relapse": "{{count}}× Rückfall",
+  "flapping": "Flattern ×{{count}}",
+  "flappingHint": "Geöffnet bei Flap-Level {{count}} — die adaptive Erholung hat die erforderliche Stabilität vor der automatischen Auflösung dieses Vorfalls erhöht.",
   "active": "Aktiv",
   "resolved": "Gelöst",
   "reopened": "Wieder geöffnet",
@@ -66,7 +70,8 @@
   "stateBadges": {
     "acked": "Bestätigt",
     "snoozed": "Pausiert",
-    "snoozedUntil": "Pausiert bis {{time}}"
+    "snoozedUntil": "Pausiert bis {{time}}",
+    "ackedBy": "Bestätigt von {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Bestätigt",
@@ -113,6 +118,44 @@
       "truncated": "Body auf {{shown}} von {{total}} gekürzt.",
       "binary": "Body nicht gespeichert: binär oder kein gültiges UTF-8. Nur Metadaten — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "unbekannte Größe"
+    },
+    "screenshot": {
+      "title": "Screenshot bei Fehlererkennung",
+      "description": "So sah die Seite aus, als dieser Check den Fehler meldete. Kurz NACH der Erkennung aufgenommen, aus einer Region — ein Hinweis, nicht das fehlerhafte Bild selbst.",
+      "alt": "Screenshot der Seite, aufgenommen beim Öffnen des Vorfalls",
+      "caption": "Aufgenommen {{capturedAt}} aus {{region}}, kurz nach der Fehlererkennung.",
+      "unknownTime": "zu unbekannter Zeit",
+      "unknownRegion": "einer unbekannten Region"
+    },
+    "traceroute": {
+      "title": "Netzwerkpfad beim Ausfall",
+      "description": "Ein Traceroute im MTR-Stil, aufgenommen unmittelbar nach dem Öffnen dieses Vorfalls, von der Prüfregion zur Adresse, die der fehlgeschlagene Check angewählt hatte.",
+      "loadFailed": "Die Pfadaufnahme konnte nicht geladen werden. Ihr Download-Link ist kurzlebig — laden Sie den Vorfall neu, um einen frischen zu signieren.",
+      "modes": {
+        "icmp": "ICMP (privilegiert)",
+        "icmp-udp": "ICMP (unprivilegiert)",
+        "tcp": "TCP (nur Erreichbarkeit)"
+      },
+      "target": "Ziel: {{target}}",
+      "region": "Geprüft von {{region}}",
+      "rounds": "{{rounds}} Durchläufe",
+      "tcpModeNotice": "Dieser Host konnte keinen ICMP-Socket öffnen, daher wurde der Pfad mit einfachen TCP-Verbindungen geprüft. Das misst, wie weit die Pakete kamen, zeigt aber nicht die Router dazwischen — ein leerer Hop bedeutet hier „nicht beobachtbar“, nicht „keine Antwort“.",
+      "truncated": "Das Zeitbudget lief ab, bevor der Trace das Ziel erreichte. Das Gezeigte ist echt, aber nicht der ganze Pfad.",
+      "incomplete": "Der Trace hat das Ziel nie erreicht. Der letzte antwortende Hop ist die Stelle, an der der Pfad aufhört zu funktionieren.",
+      "columns": {
+        "hop": "#",
+        "host": "Host",
+        "loss": "Verlust",
+        "avg": "Ø RTT"
+      },
+      "noReply": "keine Antwort",
+      "notObservable": "in diesem Modus nicht beobachtbar",
+      "extraPaths": "+{{count}} weitere",
+      "targetBadge": "Ziel",
+      "unreachableBadge": "nicht erreichbar",
+      "lossValue": "{{pct}} %",
+      "msValue": "{{ms}} ms",
+      "caption": "Aufgenommen um {{startedAt}}, in {{durationMs}} ms — nachdem die fehlgeschlagene Prüfung bereits gemeldet war, hat sie den Vorfall also nie verzögert."
     }
   },
   "timeline": {
@@ -122,7 +165,16 @@
     "acknowledged": "Bestätigt",
     "escalated": "Eskaliert",
     "reopenedRelapse": "Wieder geöffnet (Rückfall Nr. {{count}})",
-    "resolved": "Aufgelöst"
+    "resolved": "Aufgelöst",
+    "acknowledgedBy": "von {{name}}",
+    "acknowledgedByVia": "von {{name}} über {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "E-Mail",
+      "phone": "Telefon"
+    }
   },
   "eventLog": {
     "title": "Ereignisprotokoll",
@@ -162,5 +214,9 @@
     "showRolledUp": "Zusammengefasste Vorfälle anzeigen",
     "pagingSuppressed": "Benachrichtigung unterdrückt",
     "rolledUpInactive": "zusammengefasst"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} ausgefallen",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} ausgefallen"
   }
 }

@@ -1,10 +1,21 @@
+import { useMemo } from "react";
 import {
+  useQueries,
   useQuery,
   useInfiniteQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
 import { apiFetch, getToken } from "./client";
+import { mergeResultTiers } from "@/lib/result-tiers";
+import {
+  chartFetchParamsForWindow,
+  chartRollupTier,
+  chartWindowBounds,
+  seamStartFrom,
+  type TimeRange,
+  type ZoomWindow,
+} from "@/lib/chart-window";
 import {
   stretchWhileLive,
   useLiveSubscription,
@@ -61,8 +72,51 @@ export interface Check {
    * Escalation policy assigned directly to this check. When null/absent the
    * check inherits its group's policy, then the org default, then none.
    */
+  /** Per-check path-trace policy: `inherit` (the org default), `on` or `off`.
+   * Always present on read; a check that never set it reads `inherit`. */
+  tracerouteOnFailure?: string;
   escalationPolicyUid?: string | null;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "prometheus" | "sleep";
+  type?:
+    | "http"
+    | "tcp"
+    | "icmp"
+    | "dns"
+    | "ssl"
+    | "heartbeat"
+    | "email"
+    | "domain"
+    | "smtp"
+    | "udp"
+    | "ssh"
+    | "pop3"
+    | "imap"
+    | "websocket"
+    | "postgresql"
+    | "mysql"
+    | "redis"
+    | "mongodb"
+    | "ftp"
+    | "sftp"
+    | "js"
+    | "mssql"
+    | "oracle"
+    | "clickhouse"
+    | "grpc"
+    | "kafka"
+    | "mqtt"
+    | "a2s"
+    | "minecraft"
+    | "rabbitmq"
+    | "snmp"
+    | "docker"
+    | "browser"
+    | "freebox_line"
+    | "dnsbl"
+    | "sip"
+    | "ntp"
+    | "rdp"
+    | "prometheus"
+    | "sleep";
   config?: Record<string, unknown>;
   /**
    * Derived, read-time-only host this check probes: config's `host` when
@@ -112,6 +166,20 @@ export interface Check {
   flappingWindowSeconds?: number;
   flapBackoffFactor?: number;
   maxRecoveryMultiplier?: number;
+  /**
+   * Live adaptive-recovery (flapping) state — the effective, lazy-reset-aware
+   * counterpart of the raw flapping config above. Absent when the feature is
+   * off for this check, or nothing has accumulated (no outage yet, or the
+   * rolling window has since lapsed). See spec 2026-08-24-05.
+   */
+  flapState?: {
+    /** Outages counted inside the current rolling window. 1 = 2nd outage
+     * within the window, the first that actually counts as a flap. */
+    flapCount: number;
+    lastOutageAt?: string;
+    /** Stability currently required before an open incident auto-resolves. */
+    effectiveRecoveryPeriodSeconds: number;
+  } | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
   /**
@@ -142,13 +210,57 @@ export interface RegionDefinition {
 }
 
 export interface CreateCheckRequest {
+  /** Per-check path-trace policy: `inherit`, `on` or `off` (spec
+   * 2026-08-21-10). `inherit` is what puts a check back under the org default;
+   * omitting the field leaves it unchanged. */
+  tracerouteOnFailure?: string;
   name?: string;
   slug?: string;
   description?: string;
   checkGroupUid?: string;
   /** Escalation policy to assign; omit/empty inherits (group → org default → none). */
   escalationPolicyUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "clickhouse" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "rdp" | "prometheus" | "sleep";
+  type?:
+    | "http"
+    | "tcp"
+    | "icmp"
+    | "dns"
+    | "ssl"
+    | "heartbeat"
+    | "email"
+    | "domain"
+    | "smtp"
+    | "udp"
+    | "ssh"
+    | "pop3"
+    | "imap"
+    | "websocket"
+    | "postgresql"
+    | "mysql"
+    | "redis"
+    | "mongodb"
+    | "ftp"
+    | "sftp"
+    | "js"
+    | "mssql"
+    | "oracle"
+    | "clickhouse"
+    | "grpc"
+    | "kafka"
+    | "mqtt"
+    | "a2s"
+    | "minecraft"
+    | "rabbitmq"
+    | "snmp"
+    | "docker"
+    | "browser"
+    | "freebox_line"
+    | "dnsbl"
+    | "sip"
+    | "ntp"
+    | "rdp"
+    | "prometheus"
+    | "sleep";
   config: Record<string, unknown>;
   regions?: string[];
   /** Omit to use the automatic default (period / region count). */
@@ -160,6 +272,10 @@ export interface CreateCheckRequest {
 }
 
 export interface UpdateCheckRequest {
+  /** Per-check path-trace policy: `inherit`, `on` or `off` (spec
+   * 2026-08-21-10). `inherit` is what puts a check back under the org default;
+   * omitting the field leaves it unchanged. */
+  tracerouteOnFailure?: string;
   name?: string;
   slug?: string;
   description?: string;
@@ -257,6 +373,106 @@ export interface IncidentFailureResponse {
   region?: string;
 }
 
+/** One evidence blob attached to an incident (spec 2026-08-21-01).
+ *
+ * Operator-only: `downloadUrl` is a short-lived SIGNED url and is re-signed on
+ * every incident fetch, so it must never be cached or shared onward. */
+export interface IncidentAttachment {
+  uid: string;
+  /** Attachment kind, e.g. `screenshot`. */
+  kind?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+  /** Relative signed URL: `/pub/files/<uid>?exp=…&sig=…`. */
+  downloadUrl: string;
+  createdAt?: string;
+  /** When the probe took the capture — a moment AFTER failure detection. */
+  capturedAt?: string;
+  region?: string;
+  checkUid?: string;
+  trigger?: "incident-open" | "incident-reopen" | "agent-upload";
+}
+
+/** One hop in an MTR-style path capture (spec 2026-08-21-10).
+ *
+ * `address` empty means nothing answered at this TTL — UNLESS the capture's
+ * `hopAddressesVisible` is false, in which case the probe mode could not have
+ * heard a router even if one had answered. The two look identical here and
+ * mean completely different things, so never render a blank address without
+ * consulting that flag. */
+export interface TracerouteHop {
+  ttl: number;
+  address?: string;
+  /** Every distinct router seen at this TTL, when a load-balanced path
+   * answered from more than one. Absent for the ordinary single-router case. */
+  addresses?: string[];
+  /** Reverse-DNS name of `address`, when one resolved inside the budget. */
+  hostname?: string;
+  sent: number;
+  received: number;
+  /** 0-100, two decimals. */
+  lossPct: number;
+  rttMinMs?: number;
+  rttAvgMs?: number;
+  rttMaxMs?: number;
+  /** The target itself answered here. */
+  final?: boolean;
+  /** A router answered destination-unreachable rather than TTL-exceeded. */
+  unreachable?: boolean;
+}
+
+/** The JSON body of a `traceroute` incident attachment.
+ *
+ * Fetched from the attachment's own signed `downloadUrl` rather than inlined
+ * into the incident payload: it is a few kilobytes that only matter on the one
+ * page that renders it. */
+export interface TracerouteCapture {
+  version: number;
+  /** `icmp` (privileged raw), `icmp-udp` (unprivileged datagram) or `tcp`. */
+  mode: "icmp" | "icmp-udp" | "tcp";
+  /** False for `tcp`, which cannot observe intermediate hop addresses at all. */
+  hopAddressesVisible: boolean;
+  host?: string;
+  address: string;
+  family: string;
+  port?: number;
+  region?: string;
+  trigger?: string;
+  rounds: number;
+  maxHops: number;
+  /** When the sweep STARTED — always after the failing result was reported. */
+  startedAt: string;
+  durationMs: number;
+  /** The target answered, so the path is whole. */
+  complete: boolean;
+  /** The budget ran out before the sweep finished. Still evidence. */
+  truncated?: boolean;
+  hops: TracerouteHop[];
+}
+
+/** Fetches a traceroute attachment's JSON from its signed relative URL.
+ *
+ * The URL is same-origin and self-authenticating (exp+sig), so this is a plain
+ * fetch rather than an `apiFetch` — there is no bearer token to attach, and
+ * attaching one would be pointless. It is re-signed on every incident fetch, so
+ * the query key includes it and a refetched incident naturally refetches this. */
+export function useTracerouteCapture(url: string | undefined) {
+  return useQuery({
+    queryKey: ["traceroute-capture", url],
+    queryFn: async (): Promise<TracerouteCapture> => {
+      const response = await fetch(url as string);
+      if (!response.ok) {
+        throw new Error(`traceroute capture: HTTP ${response.status}`);
+      }
+      return (await response.json()) as TracerouteCapture;
+    },
+    enabled: !!url,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
 export interface IncidentDetails {
   /** Human-readable cause, same key the Slack notifier reads. */
   failure_reason?: string;
@@ -268,7 +484,19 @@ export interface IncidentDetails {
   failureResponse?: IncidentFailureResponse;
 }
 
+/** Display identity of whoever performed an incident action. */
+export interface IncidentActor {
+  /** Human label. Never empty — the API falls back to a neutral word. */
+  name: string;
+  /** Channel the action came from ("web", "slack", "discord", …). */
+  via?: string;
+  /** SolidPing user, when the actor maps to one. */
+  userUid?: string;
+}
+
 export interface IncidentDetail {
+  /** Evidence blobs. Populated by the DETAIL endpoint only. */
+  attachments?: IncidentAttachment[];
   uid?: string;
   /** Short per-org reference, rendered as `#42`. Assigned at creation, never reused. */
   number?: number;
@@ -285,7 +513,17 @@ export interface IncidentDetail {
   description?: string;
   startedAt?: string;
   acknowledgedAt?: string;
+  /**
+   * UID of the SolidPing user credited with the acknowledgment — NULL for
+   * every Slack / Discord / phone ack, whose actor has no platform account.
+   * Render `acknowledgedByActor` instead.
+   */
   acknowledgedBy?: string;
+  /**
+   * Resolved, display-ready identity of the acker. Returned by the DETAIL
+   * endpoint and by `POST .../ack` only; the list endpoint omits it.
+   */
+  acknowledgedByActor?: IncidentActor;
   snoozedUntil?: string;
   snoozedBy?: string;
   snoozeReason?: string;
@@ -295,6 +533,13 @@ export interface IncidentDetail {
   resolutionType?: "auto" | "manual" | "expired";
   failureCount?: number;
   relapseCount?: number;
+  /**
+   * The check's flap count at the moment this incident opened or last
+   * reopened — a point-in-time snapshot, not a live value. 0/absent means it
+   * opened at the base level, not escalated by adaptive-recovery flapping.
+   * See spec 2026-08-24-05.
+   */
+  flapLevel?: number;
   lastReopenedAt?: string;
   causedByIncidentUid?: string;
   pagingSuppressed?: boolean;
@@ -304,8 +549,18 @@ export interface IncidentDetail {
 export interface Event {
   uid?: string;
   eventType?: string;
-  actorType?: "system" | "user";
+  actorType?: "system" | "user" | "api_token" | "service";
   actorUid?: string;
+  /** Resolved by the API for the returned page; absent for system events. */
+  actorName?: string;
+  actorEmail?: string;
+  /**
+   * Request provenance (spec 2026-08-21-09). The API returns these to org
+   * admins/owners ONLY, and never at all when `audit.capture_ip` is off — so
+   * absent means "not visible to you or not recorded", never "0.0.0.0".
+   */
+  sourceIp?: string;
+  userAgent?: string;
   checkUid?: string;
   incidentUid?: string;
   payload?: Record<string, unknown>;
@@ -342,14 +597,15 @@ function buildChecksUrl(
     /** Opt-in ordering. "group" = group sortOrder asc, ungrouped last, then
      * created_at DESC within a bucket. Omitted = default created_at DESC. */
     sort?: string;
-  }
+  },
 ): string {
   const params = new URLSearchParams();
   if (options?.labels) params.set("labels", options.labels);
   if (options?.with) params.set("with", options.with);
   if (options?.q) params.set("q", options.q);
   if (options?.type) params.set("type", options.type);
-  if (options?.checkGroupUid) params.set("checkGroupUid", options.checkGroupUid);
+  if (options?.checkGroupUid)
+    params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
   if (options?.status) params.set("status", options.status);
   if (options?.limit) params.set("limit", options.limit.toString());
@@ -370,7 +626,7 @@ export function useChecks(
     type?: string;
     checkGroupUid?: string;
     limit?: number;
-  }
+  },
 ) {
   return useQuery({
     queryKey: ["checks", org, options],
@@ -414,7 +670,7 @@ export interface CheckStats {
  */
 export function useCheckStats(
   org: string,
-  options?: { refetchInterval?: number }
+  options?: { refetchInterval?: number },
 ) {
   return useQuery({
     queryKey: ["check-stats", org],
@@ -431,6 +687,8 @@ export function useInfiniteChecks(
     labels?: string;
     with?: string;
     q?: string;
+    /** Comma-separated check types, e.g. "ssh" or "http,tcp". */
+    type?: string;
     checkGroupUid?: string;
     internal?: string;
     status?: string;
@@ -443,7 +701,7 @@ export function useInfiniteChecks(
    * describes how often to refresh a cache entry, not which entry it is).
    * Kept as a second parameter so it can never accidentally fork the key.
    */
-  queryOptions?: { refetchInterval?: number }
+  queryOptions?: { refetchInterval?: number },
 ) {
   return useInfiniteQuery({
     queryKey: ["checks", "infinite", org, options],
@@ -472,7 +730,7 @@ export function useCheck(
      * guarantees the seed comes from fresh data, not a stale cache entry.
      */
     refetchOnMount?: boolean | "always";
-  }
+  },
 ) {
   return useQuery({
     // One canonical cache entry per check, keyed by org+uid only — every
@@ -484,7 +742,7 @@ export function useCheck(
     queryKey: ["check", org, uid],
     queryFn: async () =>
       apiFetch<Check>(
-        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`
+        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`,
       ),
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,
@@ -532,7 +790,7 @@ export interface LabelSuggestion {
 
 export function useLabelSuggestions(
   org: string,
-  opts: { key?: string; q?: string; limit?: number; enabled?: boolean }
+  opts: { key?: string; q?: string; limit?: number; enabled?: boolean },
 ) {
   const params = new URLSearchParams();
   if (opts.key) params.set("key", opts.key);
@@ -639,7 +897,12 @@ export interface ImportResult {
 }
 
 /** Third-party import sources the convert endpoint accepts. */
-export const CONVERT_SOURCES = ["gatus", "betterstack", "uptime-kuma"] as const;
+export const CONVERT_SOURCES = [
+  "gatus",
+  "betterstack",
+  "uptime-kuma",
+  "uptimerobot",
+] as const;
 export type ConvertSource = (typeof CONVERT_SOURCES)[number];
 
 /** One source item (or field) that could not be mapped faithfully. */
@@ -688,7 +951,11 @@ export function useConvertChecks(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { source: ConvertSource; body: string; dryRun?: boolean }) =>
+    mutationFn: (params: {
+      source: ConvertSource;
+      body: string;
+      dryRun?: boolean;
+    }) =>
       apiFetch<ConvertResult>(
         `/api/v1/orgs/${org}/checks/import/convert?source=${encodeURIComponent(params.source)}${
           params.dryRun ? "&dryRun=true" : ""
@@ -740,7 +1007,7 @@ export function useCheckGroups(org: string) {
     queryKey: ["checkGroups", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: CheckGroup[] }>(
-        `/api/v1/orgs/${org}/check-groups`
+        `/api/v1/orgs/${org}/check-groups`,
       );
       return response.data || [];
     },
@@ -924,10 +1191,7 @@ export function useDeleteCheckDependency(org: string, checkUid: string) {
   });
 }
 
-export function useDependencyGraph(
-  org: string,
-  opts?: { enabled?: boolean },
-) {
+export function useDependencyGraph(org: string, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["dependencyGraph", org],
     queryFn: async () => {
@@ -954,7 +1218,7 @@ export function useResults(
     cursor?: string;
     size?: number;
     refetchInterval?: number;
-  }
+  },
 ) {
   const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
@@ -963,8 +1227,10 @@ export function useResults(
       const params = new URLSearchParams();
       if (options?.checkUid) params.set("checkUid", options.checkUid);
       if (options?.periodType) params.set("periodType", options.periodType);
-      if (options?.periodStartAfter) params.set("periodStartAfter", options.periodStartAfter);
-      if (options?.periodEndBefore) params.set("periodEndBefore", options.periodEndBefore);
+      if (options?.periodStartAfter)
+        params.set("periodStartAfter", options.periodStartAfter);
+      if (options?.periodEndBefore)
+        params.set("periodEndBefore", options.periodEndBefore);
       if (options?.region) params.set("region", options.region);
       if (options?.with) params.set("with", options.with);
       if (options?.cursor) params.set("cursor", options.cursor);
@@ -991,7 +1257,7 @@ export function useResult(
   org: string,
   checkUid: string,
   resultUid: string,
-  options?: { region?: string }
+  options?: { region?: string },
 ) {
   const region = options?.region;
   return useQuery<OrgResultDetail>({
@@ -1067,53 +1333,260 @@ export function useCheckAvailability(
   });
 }
 
-/** Fetches all result pages by following cursors until exhausted. */
+/** The per-query slice of `useAllResults`/`useResultTiers` options — everything
+ * that lands in the react-query key and on the wire. `refetchInterval` is
+ * deliberately NOT part of it: it is a client-side scheduling concern, and
+ * folding it into the key would split the cache between two callers that
+ * request the same data at different cadences. */
+export interface ResultsQueryOptions {
+  checkUid?: string;
+  periodType?: string;
+  periodStartAfter?: string;
+  periodEndBefore?: string;
+  with?: string;
+  size?: number;
+}
+
+/** Follows result cursors until exhausted, returning every row in the window.
+ * Shared by `useAllResults` and by each tier of `useResultTiers` so both walk
+ * pages identically. */
+async function fetchAllResultPages(
+  org: string,
+  options: ResultsQueryOptions,
+): Promise<OrgResult[]> {
+  const allData: OrgResult[] = [];
+  let cursor: string | undefined;
+  const pageSize = options.size ?? 100;
+
+  do {
+    const params = new URLSearchParams();
+    if (options.checkUid) params.set("checkUid", options.checkUid);
+    if (options.periodType) params.set("periodType", options.periodType);
+    if (options.periodStartAfter)
+      params.set("periodStartAfter", options.periodStartAfter);
+    if (options.periodEndBefore)
+      params.set("periodEndBefore", options.periodEndBefore);
+    if (options.with) params.set("with", options.with);
+    if (cursor) params.set("cursor", cursor);
+    params.set("limit", pageSize.toString());
+    const query = params.toString();
+    const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
+    const response = await apiFetch<{
+      data?: OrgResult[];
+      pagination?: CursorPagination;
+    }>(path);
+    if (response.data) allData.push(...response.data);
+    cursor = response.pagination?.cursor;
+  } while (cursor);
+
+  return allData;
+}
+
+/**
+ * Fetches all result pages by following cursors until exhausted, as ONE query.
+ *
+ * @deprecated Retained deliberately, with no in-repo callers. Every caller moved
+ * to `useResultTiers` when spec 2026-08-22-04 split the chart fetch at the
+ * raw/rollup boundary; a single query naming both sides matches neither partial
+ * index on `results` and sequentially scans the largest table in the system. Use
+ * this only for a genuinely single-tier window (or none at all) — if you are
+ * about to pass `periodType: "raw,hour"`, you want `useResultTiers` instead.
+ */
 export function useAllResults(
   org: string,
-  options?: {
-    checkUid?: string;
-    periodType?: string;
-    periodStartAfter?: string;
-    periodEndBefore?: string;
-    with?: string;
-    size?: number;
-    refetchInterval?: number;
-  }
+  options?: ResultsQueryOptions & { refetchInterval?: number },
 ) {
   const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
     queryKey: ["allResults", org, queryOptions],
-    queryFn: async () => {
-      const allData: OrgResult[] = [];
-      let cursor: string | undefined;
-      const pageSize = options?.size ?? 100;
-
-      do {
-        const params = new URLSearchParams();
-        if (options?.checkUid) params.set("checkUid", options.checkUid);
-        if (options?.periodType) params.set("periodType", options.periodType);
-        if (options?.periodStartAfter)
-          params.set("periodStartAfter", options.periodStartAfter);
-        if (options?.periodEndBefore)
-          params.set("periodEndBefore", options.periodEndBefore);
-        if (options?.with) params.set("with", options.with);
-        if (cursor) params.set("cursor", cursor);
-        params.set("limit", pageSize.toString());
-        const query = params.toString();
-        const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
-        const response = await apiFetch<{
-          data?: OrgResult[];
-          pagination?: CursorPagination;
-        }>(path);
-        if (response.data) allData.push(...response.data);
-        cursor = response.pagination?.cursor;
-      } while (cursor);
-
-      return { data: allData };
-    },
+    queryFn: async () => ({
+      data: await fetchAllResultPages(org, queryOptions),
+    }),
     enabled: !!org,
     refetchInterval,
   });
+}
+
+/**
+ * Runs one `useAllResults`-shaped paginated walk per aggregation tier, **in
+ * parallel**, and merges the pages back into the single descending sequence a
+ * combined query would have returned.
+ *
+ * The tiers exist because the two indexes on `results` are partial and split on
+ * `period_type = 'raw'`: a query asking for `raw` and a rollup tier at once is
+ * satisfied by neither and can only be answered by a sequential scan of the
+ * largest table in the system (spec 2026-08-22-04). Callers build the tier list
+ * with `chartFetchParams`.
+ *
+ * Each tier gets the SAME `["allResults", org, {...}]` key shape `useAllResults`
+ * uses, so a second caller passing the same tier list (the check-detail route,
+ * which derives its region set and duration stats from the chart's window)
+ * remains a react-query cache hit rather than a second round of HTTP requests.
+ */
+export function useResultTiers(
+  org: string,
+  tiers: ResultsQueryOptions[],
+  options?: { refetchInterval?: number; enabled?: boolean },
+) {
+  const queries = useQueries({
+    queries: tiers.map((tier) => ({
+      queryKey: ["allResults", org, tier],
+      queryFn: async () => ({ data: await fetchAllResultPages(org, tier) }),
+      // `enabled` lets a caller hold a pass back until the data its window
+      // depends on exists — see useChartWindowResults, where firing the raw
+      // pass before the rollup pass resolves would request the full window,
+      // which is the whole cost this indirection removes.
+      enabled: !!org && (options?.enabled ?? true),
+      refetchInterval: options?.refetchInterval,
+    })),
+  });
+
+  // A single string dependency, not a spread array: the tier count changes when
+  // the user switches range (a month view has a rollup tier, an hour view does
+  // not) and a variable-length deps array is a hook-rules violation.
+  //
+  // The signature must name EVERY input that changes which rows belong in the
+  // merge — org and checkUid included. Navigating from one check to another
+  // while this component stays mounted swaps the query keys but, until either
+  // tier resolves, leaves `dataUpdatedAt` at 0 on both; with an identical window
+  // a signature built from the window alone would be unchanged and the memo
+  // would hand back the PREVIOUS check's rows. The chart hides that behind its
+  // own isLoading, but the check-detail route feeds this straight into
+  // observedRegions with no such guard, so the region chips would briefly show
+  // the wrong check's regions.
+  const signature = [
+    org,
+    ...tiers.map(
+      (t) =>
+        `${t.checkUid ?? ""}#${t.periodType}@${t.periodStartAfter}~${
+          t.periodEndBefore ?? ""
+        }+${t.with ?? ""}:${t.size ?? ""}`,
+    ),
+    ...queries.map((q) => q.dataUpdatedAt),
+  ].join("|");
+
+  const data = useMemo(
+    () => ({ data: mergeResultTiers(queries.map((q) => q.data?.data)) }),
+    // Re-merge whenever a tier resolves or the tier plan itself changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
+  );
+
+  return {
+    data,
+    isLoading: queries.some((q) => q.isLoading),
+    isFetching: queries.some((q) => q.isFetching),
+    error: queries.find((q) => q.error)?.error ?? null,
+  };
+}
+
+/** How often pass 1 re-runs. A closed rollup bucket never changes, so the only
+ * reason to refetch is that a NEW bucket closed — which happens at the finest
+ * rollup width, one hour. Re-downloading a month of settled buckets every 60 s
+ * (what the single-pass chart did) is pure waste, and it is where most of the
+ * steady-state cost of an open dashboard went. */
+const ROLLUP_REFETCH_MS = 60 * 60_000;
+
+/**
+ * The chart's window, fetched as TWO passes instead of one blocked render
+ * (spec 2026-08-22-07).
+ *
+ * Pass 1 asks for the rollup tier over the whole window and resolves in one
+ * round-trip; the chart is interactive from that alone. Pass 2 then asks for
+ * raw over only the SEAM — the span between the newest bucket pass 1 returned
+ * and now — and merges into the same series. On a 30-day view of a 1-minute
+ * check that turns ~4 320 raw points across five sequential round-trips into
+ * ~180 in one, without losing the chart's right-hand edge (the open bucket the
+ * aggregator has not rolled up yet).
+ *
+ * The data dependency is what makes this two passes rather than two parallel
+ * fetches, and it is also what makes it correct when the aggregator lags: the
+ * seam is derived from pass 1's rows, so it widens on its own exactly when
+ * rollups fall behind (see seamStartFrom).
+ *
+ * Both the chart and the check-detail route call this with the same arguments,
+ * so they share one set of react-query keys and the route stays a cache hit
+ * rather than a second round of HTTP requests.
+ *
+ * `isLoading` is pass 1 ONLY — the skeleton belongs to the first render, not to
+ * the raw merge. A pass-2 failure surfaces as `rawError` and leaves the pass-1
+ * data on screen.
+ */
+export function useChartWindowResults(
+  org: string,
+  checkUid: string,
+  window: { timeRange: TimeRange; periodMs?: number; zoom?: ZoomWindow },
+  options?: { rawRefetchInterval?: number },
+) {
+  const { timeRange, periodMs, zoom } = window;
+  const zoomFrom = zoom?.from;
+  const zoomTo = zoom?.to;
+
+  // Resolve the window ONCE for both passes. An unzoomed start is
+  // startOfMinute(now), and pass 2's plan is rebuilt when pass 1 settles — so
+  // re-deriving it per pass would let a minute tick land the two tiers on
+  // windows that disagree, and split the raw key between this hook's two call
+  // sites (the chart and the check-detail route) into two HTTP requests where
+  // there should be one cache hit.
+  const bounds = useMemo(
+    () => chartWindowBounds(timeRange, zoom),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
+    [timeRange, zoomFrom, zoomTo],
+  );
+
+  // Pass 1 — rollups over the whole window. Empty for a range where raw IS the
+  // tier (hour, or a day view of a check slower than 5 min): there is nothing
+  // to narrow raw against, so it stays the full window.
+  const rollupTier = chartRollupTier(timeRange, periodMs, zoom);
+  const hasRollupTier = rollupTier !== "";
+  const rollupTiers = useMemo(
+    () =>
+      hasRollupTier
+        ? [{ checkUid, ...chartFetchParamsForWindow(bounds, rollupTier)[0] }]
+        : [],
+    [hasRollupTier, rollupTier, bounds, checkUid],
+  );
+  const rollup = useResultTiers(org, rollupTiers, {
+    refetchInterval: ROLLUP_REFETCH_MS,
+  });
+
+  const rollupRows = rollup.data.data;
+  const seamStart = useMemo(() => seamStartFrom(rollupRows), [rollupRows]);
+
+  // Pass 2 — raw over the seam. Held back until pass 1 has settled, because a
+  // raw query issued before the seam is known would span the full window; once
+  // pass 1 has settled with NO rows (a check younger than one rollup bucket)
+  // the seam is undefined and raw correctly covers everything again.
+  const rawTiers = useMemo(() => {
+    const plan = chartFetchParamsForWindow(bounds, rollupTier, seamStart);
+
+    return [{ checkUid, ...plan[plan.length - 1] }];
+  }, [checkUid, bounds, rollupTier, seamStart]);
+  const raw = useResultTiers(org, rawTiers, {
+    refetchInterval: options?.rawRefetchInterval,
+    enabled: !hasRollupTier || !rollup.isLoading,
+  });
+
+  const rollupData = rollup.data.data;
+  const rawData = raw.data.data;
+  const data = useMemo(
+    () => ({ data: mergeResultTiers<OrgResult>([rollupData, rawData]) }),
+    [rollupData, rawData],
+  );
+
+  return {
+    data,
+    // Pass 1 only. When raw IS the tier there is no pass 1, so raw's own
+    // loading state is the first render's.
+    isLoading: hasRollupTier ? rollup.isLoading : raw.isLoading,
+    isFetching: rollup.isFetching || raw.isFetching,
+    error: rollup.error,
+    /** Pass 2's failure. Deliberately separate: the chart must stay usable on
+     * pass-1 data and surface this without discarding what is drawn. */
+    rawError: raw.error,
+    /** True while the seam has not arrived yet — the progressive-render phase. */
+    rawPending: raw.isLoading,
+  };
 }
 
 // Incidents hooks
@@ -1138,7 +1611,7 @@ export function useIncidents(
     // wire request always carries a UID and never a slug (issue #127).
     // Defaults to true so existing callers are unaffected.
     enabled?: boolean;
-  }
+  },
 ) {
   const { refetchInterval, enabled, ...queryOptions } = options || {};
   return useQuery({
@@ -1154,7 +1627,8 @@ export function useIncidents(
       if (options?.size) params.set("limit", options.size.toString());
       if (options?.with) params.set("with", options.with);
       if (options?.hideSuppressed) params.set("hideSuppressed", "true");
-      if (options?.causedByIncidentUid) params.set("causedByIncidentUid", options.causedByIncidentUid);
+      if (options?.causedByIncidentUid)
+        params.set("causedByIncidentUid", options.causedByIncidentUid);
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/incidents${query ? `?${query}` : ""}`;
       const response = await apiFetch<{
@@ -1269,7 +1743,7 @@ export function useEvents(
     cursor?: string;
     size?: number;
     refetchInterval?: number;
-  }
+  },
 ) {
   const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
@@ -1295,6 +1769,77 @@ export function useEvents(
     },
     enabled: !!org,
     refetchInterval,
+  });
+}
+
+/**
+ * useAuditEvents is the org Audit page's reader.
+ *
+ * Distinct from useEvents rather than another pile of optional arguments on
+ * it: this one drives a page whose whole job is filtering, so its inputs are
+ * required-shaped (family, actor, time window, cursor) and its query key is
+ * built from all of them. Sharing useEvents would mean every dashboard feed
+ * re-fetching whenever the audit page's filters moved.
+ */
+export function useAuditEvents(
+  org: string,
+  options: {
+    family?: string;
+    actorUserUid?: string;
+    targetType?: string;
+    /**
+     * Free-text target match: an exact object UID, or a case-insensitive
+     * substring of the target name captured on the event. Sent as `target`,
+     * which is the API's free-text parameter — `targetUid` is the separate,
+     * exact-match one.
+     */
+    target?: string;
+    /**
+     * Client address. The API honours this for org admins/owners only and
+     * silently ignores it otherwise, so a non-admin cannot use it as an
+     * oracle for a column they are not allowed to read.
+     */
+    sourceIp?: string;
+    /**
+     * Window size in hours, not an absolute timestamp: the caller must not
+     * compute `Date.now()` during render (it is impure, and it would also make
+     * the query key drift on every re-render). The instant is resolved here,
+     * when the request is actually made.
+     */
+    sinceHours?: number;
+    cursor?: string;
+    size?: number;
+  },
+) {
+  return useQuery({
+    queryKey: ["audit-events", org, options],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options.family) params.set("type", options.family);
+      if (options.actorUserUid)
+        params.set("actorUserUid", options.actorUserUid);
+      if (options.targetType) params.set("targetType", options.targetType);
+      if (options.target) params.set("target", options.target);
+      if (options.sourceIp) params.set("sourceIp", options.sourceIp);
+      if (options.sinceHours) {
+        params.set(
+          "since",
+          new Date(Date.now() - options.sinceHours * 3600_000).toISOString(),
+        );
+      }
+      if (options.cursor) params.set("cursor", options.cursor);
+      params.set("limit", String(options.size ?? 50));
+      const path = `/api/v1/orgs/${org}/events?${params.toString()}`;
+      const response = await apiFetch<{
+        data?: Event[];
+        pagination?: CursorPagination;
+      }>(path);
+      return {
+        data: response.data || [],
+        cursor: response.pagination?.cursor,
+      };
+    },
+    enabled: !!org,
   });
 }
 
@@ -1361,7 +1906,7 @@ export function useIncidentNotifications(
   options?: {
     status?: string;
     limit?: number;
-  }
+  },
 ) {
   return useQuery({
     queryKey: ["incidentNotifications", org, incidentUid, options],
@@ -1381,13 +1926,13 @@ export function useIncidentNotifications(
 export function useIncidentNotification(
   org: string,
   incidentUid: string,
-  notifUid: string
+  notifUid: string,
 ) {
   return useQuery<IncidentNotification>({
     queryKey: ["incidentNotification", org, incidentUid, notifUid],
     queryFn: () =>
       apiFetch<IncidentNotification>(
-        `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications/${notifUid}`
+        `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications/${notifUid}`,
       ),
     enabled: !!org && !!incidentUid && !!notifUid,
     staleTime: Infinity,
@@ -1402,7 +1947,7 @@ export function useOrgNotification(org: string, notifUid: string) {
     queryKey: ["orgNotification", org, notifUid],
     queryFn: () =>
       apiFetch<IncidentNotification>(
-        `/api/v1/orgs/${org}/notifications/${notifUid}`
+        `/api/v1/orgs/${org}/notifications/${notifUid}`,
       ),
     enabled: !!org && !!notifUid,
     staleTime: Infinity,
@@ -1414,7 +1959,7 @@ export function useOrgNotification(org: string, notifUid: string) {
 export function useIntegrationNotifications(
   org: string,
   integrationUid: string,
-  limit = 10
+  limit = 10,
 ) {
   return useQuery({
     queryKey: ["integrationNotifications", org, integrationUid, limit],
@@ -1424,7 +1969,7 @@ export function useIntegrationNotifications(
         limit: String(limit),
       });
       const response = await apiFetch<{ data?: IncidentNotification[] }>(
-        `/api/v1/orgs/${org}/notifications?${params.toString()}`
+        `/api/v1/orgs/${org}/notifications?${params.toString()}`,
       );
       return response.data || [];
     },
@@ -1452,7 +1997,7 @@ export function useEmailSuppressions(org: string) {
     queryKey: ["emailSuppressions", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: EmailSuppression[] }>(
-        `/api/v1/orgs/${org}/email-suppressions`
+        `/api/v1/orgs/${org}/email-suppressions`,
       );
       return response.data || [];
     },
@@ -1482,7 +2027,7 @@ export function useMyNotifications(
     status?: string;
     limit?: number;
     before?: string;
-  }
+  },
 ) {
   return useQuery({
     queryKey: ["myNotifications", org, options],
@@ -1548,7 +2093,7 @@ export function useTokens(org: string) {
     queryKey: ["tokens", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: TokenInfo[] }>(
-        `/api/v1/orgs/${org}/tokens?type=pat`
+        `/api/v1/orgs/${org}/tokens?type=pat`,
       );
       return response.data || [];
     },
@@ -1641,7 +2186,7 @@ export function useSessions(org: string) {
     queryKey: ["sessions", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: SessionInfo[] }>(
-        `/api/v1/orgs/${org}/tokens?type=refresh`
+        `/api/v1/orgs/${org}/tokens?type=refresh`,
       );
       return response.data || [];
     },
@@ -1706,6 +2251,17 @@ export type CustomDomainStatus = "unverified" | "verified";
 // external proxy) or the domain is not verified yet.
 export type CustomDomainCertStatus = "none" | "issued" | "error";
 
+// CustomDomainState is the domain's lifecycle state (spec 2026-08-23-03).
+// `grace` is the one customDomainStatus cannot express: the page is STILL being
+// served, but its periodic DNS re-checks are failing and it will go dark if
+// nothing is done. `demoted` means it already has.
+export type CustomDomainState =
+  | "none"
+  | "pending"
+  | "active"
+  | "grace"
+  | "demoted";
+
 // AvailabilitySettings customizes a status page's green/amber/red
 // availability thresholds. A nil/omitted field means "use the platform
 // default" (99.9 / 99.0) — see AvailabilityThresholds for the resolved
@@ -1728,12 +2284,19 @@ export interface AvailabilityThresholds {
   thresholdDegraded: number;
 }
 
+/**
+ * Status page visibility. `public` is world-readable, `private` is fully
+ * hidden (the public endpoints 404), and `password` is shared-with-a-secret:
+ * the public endpoints answer 401 until the visitor unlocks the page.
+ */
+export type StatusPageVisibility = "public" | "private" | "password";
+
 export interface StatusPage {
   uid: string;
   name: string;
   slug: string;
   description?: string;
-  visibility: "public" | "private";
+  visibility: StatusPageVisibility;
   isDefault: boolean;
   enabled: boolean;
   showAvailability: boolean;
@@ -1755,11 +2318,37 @@ export interface StatusPage {
   // Never applied to dash0's own chrome — only inside the appearance preview
   // iframe, which loads the real status0 renderer.
   customCss?: string;
+  /**
+   * Public paths of the page's uploaded brand assets (spec 2026-08-21-07), or
+   * absent when the slot is empty. Read-only here: they are set by the
+   * dedicated upload endpoints, never by PATCH.
+   */
+  logoUrl?: string;
+  faviconUrl?: string;
+  /**
+   * The page's white-label OPT-IN, as stored — not the resolved decision. On
+   * the admin payload this is the raw column so the toggle round-trips
+   * honestly even while the org is not entitled; `whiteLabelAllowed` says
+   * whether it currently has any effect.
+   */
+  hideBranding?: boolean;
+  /** Whether the org holds the `whiteLabel` entitlement. Admin payload only. */
+  whiteLabelAllowed?: boolean;
+  /** True when the page is password-protected. The hash is never returned. */
+  hasPassword?: boolean;
   // Custom-domain fields are only present on the authenticated org endpoints.
   customDomain?: string;
   customDomainStatus?: CustomDomainStatus;
   customDomainCertStatus?: CustomDomainCertStatus;
   customDomainRecords?: DnsRecord[];
+  customDomainState?: CustomDomainState;
+  /** When the domain entered `grace`. Only set while degrading. */
+  customDomainDegradedSince?: string;
+  /**
+   * One-line diagnostic from the last DNS re-check: the mode used, the target
+   * expected, what DNS actually returned. Admin-only.
+   */
+  customDomainLastCheck?: string;
   // Settings mirrors the storage shape (an unset section means "using the
   // default"); AvailabilityThresholds is always the resolved, non-nil pair.
   settings?: StatusPageSettings;
@@ -1808,7 +2397,10 @@ export interface CreateStatusPageRequest {
   name: string;
   slug: string;
   description?: string;
-  visibility?: "public" | "private";
+  visibility?: StatusPageVisibility;
+  /** Write-only. Required when visibility is "password"; never read back. */
+  password?: string;
+  hideBranding?: boolean;
   isDefault?: boolean;
   showAvailability?: boolean;
   showResponseTime?: boolean;
@@ -1825,7 +2417,14 @@ export interface UpdateStatusPageRequest {
   name?: string;
   slug?: string;
   description?: string;
-  visibility?: "public" | "private";
+  visibility?: StatusPageVisibility;
+  /**
+   * Write-only. A non-empty string sets the unlock password (and invalidates
+   * every outstanding unlock cookie); an empty string clears it; omit to leave
+   * it untouched. Never read back.
+   */
+  password?: string;
+  hideBranding?: boolean;
   isDefault?: boolean;
   enabled?: boolean;
   showAvailability?: boolean;
@@ -1888,7 +2487,7 @@ export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
     queryKey: ["statusPages", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: StatusPage[] }>(
-        `/api/v1/orgs/${org}/status-pages`
+        `/api/v1/orgs/${org}/status-pages`,
       );
       return response.data || [];
     },
@@ -1896,7 +2495,11 @@ export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
   });
 }
 
-export function useStatusPage(org: string, uid: string, options?: { with?: string }) {
+export function useStatusPage(
+  org: string,
+  uid: string,
+  options?: { with?: string },
+) {
   return useQuery({
     queryKey: ["statusPage", org, uid, { with: options?.with }],
     queryFn: async () => {
@@ -1941,6 +2544,65 @@ export function useUpdateStatusPage(org: string, uid: string) {
   });
 }
 
+/**
+ * Response of the status-page asset endpoints — just enough of the page for
+ * the caller to update what it already holds without a refetch.
+ */
+export interface StatusPageAssetResponse {
+  uid: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  faviconUrl: string | null;
+}
+
+/** The asset slots a status page has. One logo, one favicon — never a list. */
+export type StatusPageAssetKind = "logo" | "favicon";
+
+// useUploadStatusPageAsset posts the image as multipart/form-data. The
+// Content-Type header is deliberately left unset so the browser adds the
+// multipart boundary (same reason as useUploadOrgLogo).
+export function useUploadStatusPageAsset(
+  org: string,
+  uid: string,
+  kind: StatusPageAssetKind,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData();
+      body.append(kind, file);
+      return apiFetch<StatusPageAssetResponse>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/${kind}`,
+        { method: "POST", body },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
+export function useClearStatusPageAsset(
+  org: string,
+  uid: string,
+  kind: StatusPageAssetKind,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<StatusPageAssetResponse>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/${kind}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
 export function useDeleteStatusPage(org: string) {
   const queryClient = useQueryClient();
 
@@ -1964,7 +2626,7 @@ export function useVerifyStatusPageDomain(org: string, uid: string) {
     mutationFn: () =>
       apiFetch<StatusPage>(
         `/api/v1/orgs/${org}/status-pages/${uid}/custom-domain/verify`,
-        { method: "POST" }
+        { method: "POST" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
@@ -1974,13 +2636,77 @@ export function useVerifyStatusPageDomain(org: string, uid: string) {
 }
 
 // Status page subscriber hooks (read-only admin list + remove).
+/** Where a status-page subscription delivers. */
+export type StatusPageSubscriberChannel = "email" | "webhook" | "slack";
+
 export interface StatusPageSubscriber {
   uid: string;
+  /** Empty for a webhook/Slack subscription. */
   email: string;
+  channel: StatusPageSubscriberChannel;
+  /**
+   * MASKED delivery URL. The API never returns the real one — an
+   * incoming-webhook URL is a credential — so this is only ever enough to
+   * recognise which endpoint a row is.
+   */
+  endpoint?: string;
   scope: string;
   incidentUid?: string;
   confirmed: boolean;
+  /** Consecutive delivery failures; reset by a success. */
+  failureCount?: number;
+  /** True once the circuit breaker disabled the subscription. */
+  disabled?: boolean;
   createdAt: string;
+}
+
+export interface CreateEndpointSubscriberRequest {
+  channel: Exclude<StatusPageSubscriberChannel, "email">;
+  url: string;
+  /**
+   * Optional. When omitted the server generates one and returns it in the
+   * create response — see CreateEndpointSubscriberResponse. Either way it is
+   * never readable again afterwards.
+   */
+  signingSecret?: string;
+}
+
+/**
+ * Create-only response. `signingSecret` is returned EXACTLY ONCE, here: the
+ * receiver needs it to verify the HMAC on every delivery, and it is never
+ * stored in a readable column nor echoed by the list endpoint.
+ */
+export interface CreateEndpointSubscriberResponse extends StatusPageSubscriber {
+  signingSecret: string;
+}
+
+/**
+ * Registers a webhook or Slack delivery for a status page.
+ *
+ * Operator-side by design: the public subscribe endpoint is email-only,
+ * because a visitor pasting an incoming-webhook URL has no verification story.
+ */
+export function useCreateEndpointSubscriber(
+  org: string,
+  statusPageUid: string,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateEndpointSubscriberRequest) =>
+      apiFetch<{ data: CreateEndpointSubscriberResponse }>(
+        // `/subscribers/endpoints`, not `/subscribers`: the latter is the
+        // PUBLIC email-only subscribe route, and the two cannot share a
+        // pattern on the router (see app/server.go).
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers/endpoints`,
+        { method: "POST", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSubscribers", org, statusPageUid],
+      });
+    },
+  });
 }
 
 export function useStatusPageSubscribers(org: string, statusPageUid: string) {
@@ -2002,7 +2728,7 @@ export function useStatusPageSubscribers(org: string, statusPageUid: string) {
 
 export function useDeleteStatusPageSubscriber(
   org: string,
-  statusPageUid: string
+  statusPageUid: string,
 ) {
   const queryClient = useQueryClient();
 
@@ -2010,7 +2736,7 @@ export function useDeleteStatusPageSubscriber(
     mutationFn: (uid: string) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers/${uid}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -2026,7 +2752,7 @@ export function useStatusPageSections(org: string, statusPageUid: string) {
     queryKey: ["statusPageSections", org, statusPageUid],
     queryFn: async () => {
       const response = await apiFetch<{ data?: StatusPageSection[] }>(
-        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections`
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections`,
       );
       return response.data || [];
     },
@@ -2041,27 +2767,39 @@ export function useCreateSection(org: string, statusPageUid: string) {
     mutationFn: (request: CreateSectionRequest) =>
       apiFetch<StatusPageSection>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections`,
-        { method: "POST", body: JSON.stringify(request) }
+        { method: "POST", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPageSections", org, statusPageUid] });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSections", org, statusPageUid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useUpdateSection(org: string, statusPageUid: string, sectionUid: string) {
+export function useUpdateSection(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (request: UpdateSectionRequest) =>
       apiFetch<StatusPageSection>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}`,
-        { method: "PATCH", body: JSON.stringify(request) }
+        { method: "PATCH", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPageSections", org, statusPageUid] });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSections", org, statusPageUid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2073,11 +2811,15 @@ export function useDeleteSection(org: string, statusPageUid: string) {
     mutationFn: (sectionUid: string) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPageSections", org, statusPageUid] });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSections", org, statusPageUid],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2086,13 +2828,13 @@ export function useDeleteSection(org: string, statusPageUid: string) {
 export function useStatusPageResources(
   org: string,
   statusPageUid: string,
-  sectionUid: string
+  sectionUid: string,
 ) {
   return useQuery({
     queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
     queryFn: async () => {
       const response = await apiFetch<{ data?: StatusPageResource[] }>(
-        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources`
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources`,
       );
       return response.data || [];
     },
@@ -2100,20 +2842,26 @@ export function useStatusPageResources(
   });
 }
 
-export function useCreateResource(org: string, statusPageUid: string, sectionUid: string) {
+export function useCreateResource(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (request: CreateResourceRequest) =>
       apiFetch<StatusPageResource>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources`,
-        { method: "POST", body: JSON.stringify(request) }
+        { method: "POST", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2128,17 +2876,25 @@ export function useCreateResource(org: string, statusPageUid: string, sectionUid
 // original slot before the server roundtrip lands.
 export function useReorderSections(org: string, statusPageUid: string) {
   const queryClient = useQueryClient();
-  const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];
+  const pageWithSectionsKey = [
+    "statusPage",
+    org,
+    statusPageUid,
+    { with: "sections" },
+  ];
 
   return useMutation({
     mutationFn: (uids: string[]) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/reorder`,
-        { method: "POST", body: JSON.stringify({ uids }) }
+        { method: "POST", body: JSON.stringify({ uids }) },
       ),
     onMutate: async (uids) => {
-      await queryClient.cancelQueries({ queryKey: ["statusPage", org, statusPageUid] });
-      const snapshot = queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
+      await queryClient.cancelQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
+      const snapshot =
+        queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
       if (snapshot?.sections) {
         const byUid = new Map(snapshot.sections.map((s) => [s.uid, s]));
         const reordered = uids
@@ -2157,24 +2913,38 @@ export function useReorderSections(org: string, statusPageUid: string) {
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useReorderResources(org: string, statusPageUid: string, sectionUid: string) {
+export function useReorderResources(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
-  const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];
+  const pageWithSectionsKey = [
+    "statusPage",
+    org,
+    statusPageUid,
+    { with: "sections" },
+  ];
 
   return useMutation({
     mutationFn: (uids: string[]) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/reorder`,
-        { method: "POST", body: JSON.stringify({ uids }) }
+        { method: "POST", body: JSON.stringify({ uids }) },
       ),
     onMutate: async (uids) => {
-      await queryClient.cancelQueries({ queryKey: ["statusPage", org, statusPageUid] });
-      const snapshot = queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
+      await queryClient.cancelQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
+      const snapshot =
+        queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
       if (snapshot) {
         queryClient.setQueryData<StatusPage>(pageWithSectionsKey, {
           ...snapshot,
@@ -2199,43 +2969,63 @@ export function useReorderResources(org: string, statusPageUid: string, sectionU
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useUpdateResource(org: string, statusPageUid: string, sectionUid: string) {
+export function useUpdateResource(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ resourceUid, request }: { resourceUid: string; request: UpdateResourceRequest }) =>
+    mutationFn: ({
+      resourceUid,
+      request,
+    }: {
+      resourceUid: string;
+      request: UpdateResourceRequest;
+    }) =>
       apiFetch<StatusPageResource>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/${resourceUid}`,
-        { method: "PATCH", body: JSON.stringify(request) }
+        { method: "PATCH", body: JSON.stringify(request) },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
 
-export function useDeleteResource(org: string, statusPageUid: string, sectionUid: string) {
+export function useDeleteResource(
+  org: string,
+  statusPageUid: string,
+  sectionUid: string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (resourceUid: string) =>
       apiFetch<void>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/${resourceUid}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["statusPage", org, statusPageUid],
+      });
     },
   });
 }
@@ -2257,7 +3047,7 @@ export function useProviders() {
     queryFn: async () => {
       const response = await apiFetch<ProvidersResponse>(
         "/api/v1/auth/providers",
-        { skipAuth: true }
+        { skipAuth: true },
       );
       return {
         providers: response.data || [],
@@ -2291,7 +3081,12 @@ export function useConfirmRegistration() {
         accessToken: string;
         refreshToken?: string;
         expiresIn?: number;
-        user: { email: string; name?: string; avatarUrl?: string; role: string };
+        user: {
+          email: string;
+          name?: string;
+          avatarUrl?: string;
+          role: string;
+        };
         organization?: { uid: string; slug: string; name?: string };
       }>("/api/v1/auth/confirm-registration", {
         method: "POST",
@@ -2328,7 +3123,13 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (data: { name: string }) =>
       apiFetch<{
-        user: { uid: string; email: string; name?: string; avatarUrl?: string; role: string };
+        user: {
+          uid: string;
+          email: string;
+          name?: string;
+          avatarUrl?: string;
+          role: string;
+        };
         organization: { uid: string; slug: string; name?: string };
         organizations: { slug: string; name?: string; role: string }[];
       }>("/api/v1/auth/me", {
@@ -2377,17 +3178,24 @@ export function useInvitations(org: string) {
   });
 }
 
+export interface CreateInvitationResponse {
+  token: string;
+  inviteUrl: string;
+  // Whether the invitation email was queued for delivery — not proof it
+  // reached an inbox, since delivery is async. False when email sending is
+  // disabled on this instance, or when enqueueing the job failed; the
+  // dashboard must then treat inviteUrl as the only channel.
+  emailSent: boolean;
+}
+
 export function useCreateInvitation(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { email: string; role: string }) =>
-      apiFetch<{ token: string; inviteUrl: string }>(
-        `/api/v1/orgs/${org}/invitations`,
-        {
-          method: "POST",
-          body: JSON.stringify(data),
-        }
-      ),
+      apiFetch<CreateInvitationResponse>(`/api/v1/orgs/${org}/invitations`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["invitations", org] });
     },
@@ -2443,7 +3251,9 @@ export function useCreateMembershipRequest() {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "me"],
+      });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
   });
@@ -2454,7 +3264,7 @@ export function useMyMembershipRequests() {
     queryKey: ["membership-requests", "me"],
     queryFn: () =>
       apiFetch<{ data: MembershipRequestSummary[] }>(
-        "/api/v1/auth/membership-requests"
+        "/api/v1/auth/membership-requests",
       ),
   });
 }
@@ -2467,7 +3277,9 @@ export function useCancelMembershipRequest() {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "me"],
+      });
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
   });
@@ -2475,7 +3287,7 @@ export function useCancelMembershipRequest() {
 
 export function useOrgMembershipRequests(
   org: string,
-  opts?: { status?: MembershipRequestStatus; enabled?: boolean }
+  opts?: { status?: MembershipRequestStatus; enabled?: boolean },
 ) {
   const status = opts?.status;
   const qs = status ? `?status=${status}` : "";
@@ -2483,7 +3295,7 @@ export function useOrgMembershipRequests(
     queryKey: ["membership-requests", "org", org, status ?? "all"],
     queryFn: () =>
       apiFetch<{ data: MembershipRequestAdminView[] }>(
-        `/api/v1/orgs/${org}/membership-requests${qs}`
+        `/api/v1/orgs/${org}/membership-requests${qs}`,
       ),
     enabled: opts?.enabled !== false,
   });
@@ -2493,13 +3305,10 @@ export function useApproveMembershipRequest(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ uid, role }: { uid: string; role?: string }) =>
-      apiFetch<void>(
-        `/api/v1/orgs/${org}/membership-requests/${uid}/approve`,
-        {
-          method: "POST",
-          body: JSON.stringify(role ? { role } : {}),
-        }
-      ),
+      apiFetch<void>(`/api/v1/orgs/${org}/membership-requests/${uid}/approve`, {
+        method: "POST",
+        body: JSON.stringify(role ? { role } : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["membership-requests", "org", org],
@@ -2513,13 +3322,10 @@ export function useRejectMembershipRequest(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ uid, reason }: { uid: string; reason?: string }) =>
-      apiFetch<void>(
-        `/api/v1/orgs/${org}/membership-requests/${uid}/reject`,
-        {
-          method: "POST",
-          body: JSON.stringify(reason ? { reason } : {}),
-        }
-      ),
+      apiFetch<void>(`/api/v1/orgs/${org}/membership-requests/${uid}/reject`, {
+        method: "POST",
+        body: JSON.stringify(reason ? { reason } : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["membership-requests", "org", org],
@@ -2595,7 +3401,12 @@ export interface DeleteOrgResponse {
     role: string;
   };
   organization?: { uid: string; slug: string; name?: string };
-  organizations?: { slug: string; name?: string; logoUrl?: string; role: string }[];
+  organizations?: {
+    slug: string;
+    name?: string;
+    logoUrl?: string;
+    role: string;
+  }[];
   loginAction?: string;
 }
 
@@ -2712,18 +3523,20 @@ export function useInviteInfo(token: string) {
 
 export interface AcceptInviteResponse {
   accessToken: string;
-  user: { uid: string; email: string; name?: string; avatarUrl?: string; role: string };
+  user: {
+    uid: string;
+    email: string;
+    name?: string;
+    avatarUrl?: string;
+    role: string;
+  };
   organization: { uid: string; slug: string; name?: string };
   organizations?: Array<{ slug: string; name?: string; role: string }>;
 }
 
 export function useAcceptInvite() {
   return useMutation({
-    mutationFn: (data: {
-      token: string;
-      name?: string;
-      password?: string;
-    }) =>
+    mutationFn: (data: { token: string; name?: string; password?: string }) =>
       apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {
         method: "POST",
         body: JSON.stringify(data),
@@ -2745,13 +3558,16 @@ export interface OrgSettings {
   // How many live checks currently resolve to no policy of their own — the
   // blast radius of setting/changing the org default. Always present.
   inheritingCheckCount?: number;
+  // Org-level default for path-trace-on-failure (spec 2026-08-21-10). Applies
+  // to every check whose own `tracerouteOnFailure` is `inherit`. Always
+  // present, and true for an org that never set it.
+  tracerouteOnFailure?: boolean;
 }
 
 export function useOrgSettings(org: string) {
   return useQuery({
     queryKey: ["org-settings", org],
-    queryFn: () =>
-      apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`),
+    queryFn: () => apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`),
   });
 }
 
@@ -2763,6 +3579,8 @@ export interface UpdateOrgSettingsRequest {
   // A UID sets the org default escalation policy; "" clears it; omit to leave
   // it untouched.
   defaultEscalationPolicyUid?: string;
+  // Org-level default for path-trace-on-failure; omit to leave it untouched.
+  tracerouteOnFailure?: boolean;
 }
 
 export function useUpdateOrgSettings(org: string) {
@@ -2965,9 +3783,12 @@ interface SystemParametersResponse {
 
 async function fetchSystemParameters(): Promise<SystemParametersResponse> {
   const response = await apiFetch<SystemParametersResponse>(
-    "/api/v1/system/parameters"
+    "/api/v1/system/parameters",
   );
-  return { data: response.data || [], envOverrides: response.envOverrides || [] };
+  return {
+    data: response.data || [],
+    envOverrides: response.envOverrides || [],
+  };
 }
 
 export function useSystemParameters() {
@@ -3013,7 +3834,7 @@ export function useSchedulingLaneLoad() {
     queryKey: ["system-scheduling-lane-load"],
     queryFn: async () => {
       const response = await apiFetch<{ data: WorkerLaneLoad[] }>(
-        "/api/v1/system/scheduling/lane-load"
+        "/api/v1/system/scheduling/lane-load",
       );
       return response.data || [];
     },
@@ -3033,13 +3854,10 @@ export function useSetSystemParameter() {
       value: unknown;
       secret?: boolean;
     }) =>
-      apiFetch<SystemParameter>(
-        `/api/v1/system/parameters/${key}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ value, secret }),
-        }
-      ),
+      apiFetch<SystemParameter>(`/api/v1/system/parameters/${key}`, {
+        method: "PUT",
+        body: JSON.stringify({ value, secret }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["system-parameters"] });
     },
@@ -3059,8 +3877,30 @@ export function useSlackSocketStatus() {
   return useQuery({
     queryKey: ["slack-socket-status"],
     queryFn: async () =>
-      apiFetch<SlackSocketStatus>(
-        "/api/v1/integrations/slack/socket/status",
+      apiFetch<SlackSocketStatus>("/api/v1/integrations/slack/socket/status"),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  });
+}
+
+// Discord Gateway status hook. The Gateway is what carries everything a human
+// types at the bot (thread replies, mention commands); the HTTP interactions
+// endpoint only carries buttons and slash commands.
+export interface DiscordGatewayStatus {
+  enabled: boolean;
+  connected: boolean;
+  lastConnectedAt?: string;
+  lastError?: string;
+  guildCount?: number;
+  botUserId?: string;
+}
+
+export function useDiscordGatewayStatus() {
+  return useQuery({
+    queryKey: ["discord-gateway-status"],
+    queryFn: async () =>
+      apiFetch<DiscordGatewayStatus>(
+        "/api/v1/integrations/discord/gateway/status",
       ),
     refetchInterval: 5000,
     refetchIntervalInBackground: false,
@@ -3075,7 +3915,7 @@ export function useTestEmail() {
         {
           method: "POST",
           body: JSON.stringify({ recipient }),
-        }
+        },
       ),
   });
 }
@@ -3135,7 +3975,7 @@ export function useCheckTypes(org: string) {
     queryKey: ["check-types", org],
     queryFn: async () => {
       const response = await apiFetch<{ data: CheckTypeInfo[] }>(
-        `/api/v1/orgs/${org}/check-types`
+        `/api/v1/orgs/${org}/check-types`,
       );
       return response.data || [];
     },
@@ -3148,9 +3988,9 @@ export function useSampleConfigs(checkType: string) {
   return useQuery({
     queryKey: ["check-types", "samples", checkType],
     queryFn: async () => {
-      const response = await apiFetch<{ data: Array<{ checkType: string; samples: SampleConfig[] }> }>(
-        `/api/v1/check-types/samples?type=${encodeURIComponent(checkType)}`
-      );
+      const response = await apiFetch<{
+        data: Array<{ checkType: string; samples: SampleConfig[] }>;
+      }>(`/api/v1/check-types/samples?type=${encodeURIComponent(checkType)}`);
       return response.data?.[0]?.samples || [];
     },
     staleTime: 10 * 60 * 1000,
@@ -3249,18 +4089,12 @@ export function useOnCallSchedule(org: string, uid: string) {
   return useQuery({
     queryKey: ["onCallSchedules", org, uid],
     queryFn: () =>
-      apiFetch<OnCallSchedule>(
-        `/api/v1/orgs/${org}/on-call-schedules/${uid}`,
-      ),
+      apiFetch<OnCallSchedule>(`/api/v1/orgs/${org}/on-call-schedules/${uid}`),
     enabled: !!org && !!uid,
   });
 }
 
-export function useOnCallSchedulePreview(
-  org: string,
-  uid: string,
-  days = 14,
-) {
+export function useOnCallSchedulePreview(org: string, uid: string, days = 14) {
   return useQuery({
     queryKey: ["onCallSchedules", org, uid, "preview", days],
     queryFn: async () => {
@@ -3304,10 +4138,10 @@ export function useUpdateOnCallSchedule(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: UpdateOnCallScheduleRequest) =>
-      apiFetch<OnCallSchedule>(
-        `/api/v1/orgs/${org}/on-call-schedules/${uid}`,
-        { method: "PATCH", body: JSON.stringify(request) },
-      ),
+      apiFetch<OnCallSchedule>(`/api/v1/orgs/${org}/on-call-schedules/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
     },
@@ -3574,7 +4408,10 @@ export interface UpdateEscalationPolicyRequest {
   steps?: EscalationPolicyStep[];
 }
 
-export function useEscalationPolicies(org: string, opts?: { enabled?: boolean }) {
+export function useEscalationPolicies(
+  org: string,
+  opts?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["escalationPolicies", org],
     queryFn: async () => {
@@ -4023,6 +4860,37 @@ export function useSlackDestinations(
   });
 }
 
+// Discord destination picker types and hook
+
+export interface DiscordChannel {
+  id: string;
+  name: string;
+  type: number;
+}
+
+export interface DiscordDestinationsResponse {
+  channels: DiscordChannel[];
+  guildId: string;
+  guildName: string;
+  connected: boolean;
+}
+
+export function useDiscordDestinations(
+  org: string,
+  channelUid: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["discord-destinations", org, channelUid],
+    queryFn: () =>
+      apiFetch<DiscordDestinationsResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/discord/destinations`,
+      ),
+    enabled: enabled && Boolean(org && channelUid),
+    staleTime: 60_000,
+  });
+}
+
 // Per-member paging coverage (spec 2026-08-12-03, phase 2).
 //
 // Admin-only, and type-level only: the API deliberately returns channel types
@@ -4128,8 +4996,7 @@ export interface IntegrationIdentityListResponse {
   data: IntegrationIdentity[];
 }
 
-export interface IntegrationIdentitySyncResponse
-  extends IntegrationIdentityListResponse {
+export interface IntegrationIdentitySyncResponse extends IntegrationIdentityListResponse {
   matchedCount: number;
   notFoundCount: number;
   ambiguousCount: number;
@@ -4171,10 +5038,7 @@ export function useSyncIntegrationIdentities(
   });
 }
 
-export function useSetIntegrationIdentity(
-  org: string,
-  integrationUid: string,
-) {
+export function useSetIntegrationIdentity(org: string, integrationUid: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -4373,6 +5237,31 @@ export async function startSlackInstall(
   window.location.href = url;
 }
 
+interface DiscordInstallURLResponse {
+  url: string;
+}
+
+/**
+ * Mints an org-scoped Discord bot install URL and navigates the browser there.
+ *
+ * Unlike Slack there is deliberately no unauthenticated install entry point:
+ * an anonymous Discord install would have to trust a caller-supplied org, which
+ * is exactly the hole the Slack org-scoped endpoint was introduced to close.
+ */
+export async function startDiscordInstall(
+  org: string,
+  channelUid?: string,
+): Promise<void> {
+  const { url } = await apiFetch<DiscordInstallURLResponse>(
+    `/api/v1/orgs/${org}/integrations/discord/install-url`,
+    {
+      method: "POST",
+      body: JSON.stringify(channelUid ? { channelUid } : {}),
+    },
+  );
+  window.location.href = url;
+}
+
 // --- Status Update types and hooks ---
 
 export interface StatusUpdate {
@@ -4384,7 +5273,13 @@ export interface StatusUpdate {
   title: string;
   bodyMarkdown: string;
   linkUrl?: string;
-  kind: "investigating" | "identified" | "monitoring" | "resolved" | "maintenance" | "info";
+  kind:
+    | "investigating"
+    | "identified"
+    | "monitoring"
+    | "resolved"
+    | "maintenance"
+    | "info";
   publishedAt: string;
   authorUid: string;
   createdAt: string;
@@ -4404,12 +5299,16 @@ export interface CreateStatusUpdateRequest {
 }
 
 export interface UpdateStatusUpdateRequest {
-  sectionUid?: string;
-  checkUid?: string;
-  incidentUid?: string;
+  // Presence-aware nullable fields: omit the key to leave the column
+  // untouched, send `null` to clear it, or a non-empty value to set it. A
+  // plain optional string can't express "clear" — see
+  // server/internal/handlers/statusupdates/service.go.
+  sectionUid?: string | null;
+  checkUid?: string | null;
+  incidentUid?: string | null;
+  linkUrl?: string | null;
   title?: string;
   bodyMarkdown?: string;
-  linkUrl?: string;
   kind?: string;
   publishedAt?: string;
 }
@@ -4423,7 +5322,7 @@ export function useStatusUpdates(
     incident?: string;
     limit?: number;
     offset?: number;
-  } = {}
+  } = {},
 ) {
   return useQuery({
     queryKey: ["statusUpdates", org, params],
@@ -4437,7 +5336,7 @@ export function useStatusUpdates(
       if (params.offset) query.set("offset", params.offset.toString());
       const qs = query.toString();
       const response = await apiFetch<{ data?: StatusUpdate[] }>(
-        `/api/v1/orgs/${org}/status-updates${qs ? `?${qs}` : ""}`
+        `/api/v1/orgs/${org}/status-updates${qs ? `?${qs}` : ""}`,
       );
       return response.data || [];
     },
@@ -4480,6 +5379,9 @@ export function useUpdateStatusUpdate(org: string, uid: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+      // The edit page reads through the singular key, which the app-wide
+      // 1-minute staleTime would otherwise leave stale after a save.
+      queryClient.invalidateQueries({ queryKey: ["statusUpdate", org, uid] });
     },
   });
 }
@@ -4492,8 +5394,9 @@ export function useDeleteStatusUpdate(org: string) {
       apiFetch<void>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
         method: "DELETE",
       }),
-    onSuccess: () => {
+    onSuccess: (_data, uid) => {
       queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+      queryClient.removeQueries({ queryKey: ["statusUpdate", org, uid] });
     },
   });
 }
@@ -4572,7 +5475,9 @@ export function useDiscoveryTypes(org: string) {
   return useQuery({
     queryKey: ["discoveryTypes", org],
     queryFn: () =>
-      apiFetch<{ data: DiscoveryType[] }>(`/api/v1/orgs/${org}/discovery/types`),
+      apiFetch<{ data: DiscoveryType[] }>(
+        `/api/v1/orgs/${org}/discovery/types`,
+      ),
     select: (res) => res?.data ?? [],
   });
 }
@@ -4598,7 +5503,9 @@ export function useListDiscoveryScans(org: string) {
   return useQuery({
     queryKey: ["discoveryScans", org],
     queryFn: () =>
-      apiFetch<{ data: DiscoveryScan[] }>(`/api/v1/orgs/${org}/discovery/scans`),
+      apiFetch<{ data: DiscoveryScan[] }>(
+        `/api/v1/orgs/${org}/discovery/scans`,
+      ),
     select: (res) => res?.data ?? [],
   });
 }
@@ -4642,7 +5549,9 @@ export function useCancelScan(org: string) {
         method: "POST",
       }),
     onSuccess: (_data, jobUid) => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryScan", org, jobUid] });
+      queryClient.invalidateQueries({
+        queryKey: ["discoveryScan", org, jobUid],
+      });
       queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
     },
   });
@@ -4653,13 +5562,19 @@ export function useCancelScan(org: string) {
 // pollWhileActive to stream rows in as chunks land.
 export function useListDiscoveredChecks(
   org: string,
-  opts?: { jobUid?: string; group?: string; promoted?: boolean; source?: string },
+  opts?: {
+    jobUid?: string;
+    group?: string;
+    promoted?: boolean;
+    source?: string;
+  },
   pollWhileActive = false,
 ) {
   const params = new URLSearchParams();
   if (opts?.jobUid) params.set("jobUid", opts.jobUid);
   if (opts?.group) params.set("group", opts.group);
-  if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
+  if (opts?.promoted !== undefined)
+    params.set("promoted", String(opts.promoted));
   if (opts?.source) params.set("source", opts.source);
   const qs = params.toString();
 
@@ -4759,7 +5674,9 @@ export function useNotificationRoutes(org: string) {
   return useQuery({
     queryKey: ["notificationRoutes", org],
     queryFn: () =>
-      apiFetch<NotificationRoutesResponse>(`/api/v1/orgs/${org}/users/me/notification-routes`),
+      apiFetch<NotificationRoutesResponse>(
+        `/api/v1/orgs/${org}/users/me/notification-routes`,
+      ),
   });
 }
 
@@ -4767,10 +5684,13 @@ export function useCreateNotificationContact(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: { type: string; value: string; label?: string }) =>
-      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-contacts`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      apiFetch<NotificationRoute>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },
@@ -4781,9 +5701,12 @@ export function useDeleteNotificationContact(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (contactUid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`, {
-        method: "DELETE",
-      }),
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`,
+        {
+          method: "DELETE",
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },
@@ -4818,9 +5741,12 @@ export interface TelegramLinkResponse {
 export function useCreateTelegramLink(org: string) {
   return useMutation({
     mutationFn: () =>
-      apiFetch<TelegramLinkResponse>(`/api/v1/orgs/${org}/users/me/telegram/link`, {
-        method: "POST",
-      }),
+      apiFetch<TelegramLinkResponse>(
+        `/api/v1/orgs/${org}/users/me/telegram/link`,
+        {
+          method: "POST",
+        },
+      ),
   });
 }
 
@@ -4842,11 +5768,20 @@ export function useConfirmVerifyContact(org: string) {
 export function usePatchNotificationRoute(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ routeUid, patch }: { routeUid: string; patch: { enabled?: boolean } }) =>
-      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      }),
+    mutationFn: ({
+      routeUid,
+      patch,
+    }: {
+      routeUid: string;
+      patch: { enabled?: boolean };
+    }) =>
+      apiFetch<NotificationRoute>(
+        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
     },
@@ -4856,9 +5791,12 @@ export function usePatchNotificationRoute(org: string) {
 export function useTestNotificationRoute(org: string) {
   return useMutation({
     mutationFn: (routeUid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`, {
-        method: "POST",
-      }),
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`,
+        {
+          method: "POST",
+        },
+      ),
   });
 }
 
@@ -4875,6 +5813,13 @@ export interface EntitlementsLimits {
   maxWhatsappPerMonth?: number | null;
   /** Cap on service-level objectives. null = unlimited. */
   maxSlos?: number | null;
+  /**
+   * The one non-numeric entitlement: whether the org may drop the "powered by
+   * SolidPing" badge from its status pages. Unlike the caps above, null here
+   * does NOT mean unlimited — it means the server sent no value, which the UI
+   * renders as "not included".
+   */
+  whiteLabel?: boolean | null;
 }
 
 /**
@@ -5158,7 +6103,11 @@ export function useBackgroundJob(org: string, uid: string, opts?: JobsScope) {
 }
 
 // useBackgroundJobChain fetches the ordered retry chain a job belongs to.
-export function useBackgroundJobChain(org: string, uid: string, opts?: JobsScope) {
+export function useBackgroundJobChain(
+  org: string,
+  uid: string,
+  opts?: JobsScope,
+) {
   const allOrgs = opts?.allOrgs ?? false;
   return useQuery({
     queryKey: ["backgroundJobChain", org, uid, { allOrgs }],
@@ -5234,7 +6183,8 @@ export interface CreateMaintenanceWindowRequest {
   recurrenceEnd?: string | null;
 }
 
-export type UpdateMaintenanceWindowRequest = Partial<CreateMaintenanceWindowRequest>;
+export type UpdateMaintenanceWindowRequest =
+  Partial<CreateMaintenanceWindowRequest>;
 
 export interface SetMaintenanceWindowChecksRequest {
   checkUids: string[];
@@ -5265,7 +6215,9 @@ export function useMaintenanceWindow(org: string, uid: string) {
   return useQuery({
     queryKey: ["maintenanceWindow", org, uid],
     queryFn: () =>
-      apiFetch<MaintenanceWindow>(`/api/v1/orgs/${org}/maintenance-windows/${uid}`),
+      apiFetch<MaintenanceWindow>(
+        `/api/v1/orgs/${org}/maintenance-windows/${uid}`,
+      ),
     enabled: !!org && !!uid,
   });
 }
@@ -5312,7 +6264,9 @@ export function useUpdateMaintenanceWindow(org: string, uid: string) {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
-      queryClient.invalidateQueries({ queryKey: ["maintenanceWindow", org, uid] });
+      queryClient.invalidateQueries({
+        queryKey: ["maintenanceWindow", org, uid],
+      });
     },
   });
 }
@@ -5440,9 +6394,12 @@ export function useDeletePrivateRegion(org: string) {
 
   return useMutation({
     mutationFn: (slug: string) =>
-      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/private-regions/${slug}`, {
-        method: "DELETE",
-      }),
+      apiFetch<{ status: string }>(
+        `/api/v1/orgs/${org}/private-regions/${slug}`,
+        {
+          method: "DELETE",
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
       queryClient.invalidateQueries({ queryKey: ["regions", org] });
@@ -5457,7 +6414,9 @@ export function useAgents(
   return useQuery({
     queryKey: ["agents", org],
     queryFn: async () => {
-      const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/orgs/${org}/agents`);
+      const response = await apiFetch<{ data?: AgentInfo[] }>(
+        `/api/v1/orgs/${org}/agents`,
+      );
       return response.data || [];
     },
     enabled: (options?.enabled ?? true) && !!org,
@@ -5467,11 +6426,16 @@ export function useAgents(
 
 /** Fleet-wide agent list (superadmin only): every org agent plus every
  * platform-operated system agent, across all organizations. */
-export function useAllAgents(options?: { refetchInterval?: number; enabled?: boolean }) {
+export function useAllAgents(options?: {
+  refetchInterval?: number;
+  enabled?: boolean;
+}) {
   return useQuery({
     queryKey: ["system-agents"],
     queryFn: async () => {
-      const response = await apiFetch<{ data?: AgentInfo[] }>(`/api/v1/system/agents`);
+      const response = await apiFetch<{ data?: AgentInfo[] }>(
+        `/api/v1/system/agents`,
+      );
       return response.data || [];
     },
     enabled: options?.enabled ?? true,
@@ -5516,12 +6480,17 @@ export function useMintEnrollmentToken(org: string) {
 
   return useMutation({
     mutationFn: (request: { regionSlug: string; expiresIn?: string }) =>
-      apiFetch<MintedEnrollmentToken>(`/api/v1/orgs/${org}/agent-enrollment-tokens`, {
-        method: "POST",
-        body: JSON.stringify(request),
-      }),
+      apiFetch<MintedEnrollmentToken>(
+        `/api/v1/orgs/${org}/agent-enrollment-tokens`,
+        {
+          method: "POST",
+          body: JSON.stringify(request),
+        },
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agent-enrollment-tokens", org] });
+      queryClient.invalidateQueries({
+        queryKey: ["agent-enrollment-tokens", org],
+      });
     },
   });
 }
@@ -5531,11 +6500,16 @@ export function useDeleteEnrollmentToken(org: string) {
 
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<{ status: string }>(`/api/v1/orgs/${org}/agent-enrollment-tokens/${uid}`, {
-        method: "DELETE",
-      }),
+      apiFetch<{ status: string }>(
+        `/api/v1/orgs/${org}/agent-enrollment-tokens/${uid}`,
+        {
+          method: "DELETE",
+        },
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agent-enrollment-tokens", org] });
+      queryClient.invalidateQueries({
+        queryKey: ["agent-enrollment-tokens", org],
+      });
     },
   });
 }
@@ -5789,6 +6763,12 @@ export interface Slo {
   timezone: string;
   excludeMaintenance: boolean;
   enabled: boolean;
+  /**
+   * True while at least one burn-rate alert policy on this objective has an
+   * open incident. Derived server-side from the incident rows, so it cannot go
+   * stale when somebody resolves the incident by hand.
+   */
+  burning?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -5848,7 +6828,10 @@ export interface CreateSloRequest {
 
 export type UpdateSloRequest = Partial<CreateSloRequest>;
 
-export function useSlos(org: string, params?: { checkUid?: string; enabled?: boolean }) {
+export function useSlos(
+  org: string,
+  params?: { checkUid?: string; enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["slos", org, { checkUid: params?.checkUid }],
     queryFn: async () => {
@@ -5875,7 +6858,8 @@ export function useSlo(org: string, uid: string) {
 export function useSloStatus(org: string, uid: string) {
   return useQuery({
     queryKey: ["sloStatus", org, uid],
-    queryFn: () => apiFetch<SloStatus>(`/api/v1/orgs/${org}/slos/${uid}/status`),
+    queryFn: () =>
+      apiFetch<SloStatus>(`/api/v1/orgs/${org}/slos/${uid}/status`),
     enabled: !!org && !!uid,
   });
 }
@@ -5913,7 +6897,8 @@ export interface SloBurndown {
 export function useSloBurndown(org: string, uid: string) {
   return useQuery({
     queryKey: ["sloBurndown", org, uid],
-    queryFn: () => apiFetch<SloBurndown>(`/api/v1/orgs/${org}/slos/${uid}/burndown`),
+    queryFn: () =>
+      apiFetch<SloBurndown>(`/api/v1/orgs/${org}/slos/${uid}/burndown`),
     enabled: !!org && !!uid,
   });
 }
@@ -5959,6 +6944,98 @@ export function useDeleteSlo(org: string) {
       apiFetch<void>(`/api/v1/orgs/${org}/slos/${uid}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["slos", org] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SLO burn-rate alert policies (spec 2026-08-21-08)
+// ---------------------------------------------------------------------------
+
+export type SloAlertPolicyKind = "fast" | "slow";
+export type SloAlertSeverity = "critical" | "warning";
+
+export interface SloAlertPolicy {
+  uid: string;
+  sloUid: string;
+  /** Built-in identity. Not writable. */
+  kind: SloAlertPolicyKind;
+  enabled: boolean;
+  longWindowSeconds: number;
+  shortWindowSeconds: number;
+  /** Burn-rate multiple both windows must exceed for the policy to fire. */
+  threshold: number;
+  severity: SloAlertSeverity;
+  /** Per-window probe floor. Below it a window is inconclusive. */
+  minSamples: number;
+  lastEvaluatedAt: string | null;
+  /**
+   * Recomputed per request. `null` means the window carried no countable probe
+   * — it is NEVER 0, which would read as "healthy".
+   */
+  longBurnRate: number | null;
+  shortBurnRate: number | null;
+  longSamples: number;
+  shortSamples: number;
+  longConclusive: boolean;
+  shortConclusive: boolean;
+  overThresholdNow: boolean;
+  firing: boolean;
+  incidentUid: string | null;
+  incidentNumber: number | null;
+  firingSince: string | null;
+  /** Hysteresis anchor: both windows below threshold since this instant. */
+  resolvingSince: string | null;
+}
+
+export type UpdateSloAlertPolicyRequest = Partial<
+  Pick<
+    SloAlertPolicy,
+    | "enabled"
+    | "longWindowSeconds"
+    | "shortWindowSeconds"
+    | "threshold"
+    | "severity"
+    | "minSamples"
+  >
+>;
+
+export function useSloAlertPolicies(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["sloAlertPolicies", org, uid],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: SloAlertPolicy[] }>(
+        `/api/v1/orgs/${org}/slos/${uid}/alert-policies`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useUpdateSloAlertPolicy(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      policyUid,
+      request,
+    }: {
+      policyUid: string;
+      request: UpdateSloAlertPolicyRequest;
+    }) =>
+      apiFetch<SloAlertPolicy>(
+        `/api/v1/orgs/${org}/slos/${uid}/alert-policies/${policyUid}`,
+        { method: "PATCH", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["sloAlertPolicies", org, uid],
+      });
+      // The burning badge is derived from the same incidents, so the list and
+      // the detail header have to re-read too.
+      queryClient.invalidateQueries({ queryKey: ["slos", org] });
+      queryClient.invalidateQueries({ queryKey: ["slo", org, uid] });
     },
   });
 }
@@ -6015,7 +7092,8 @@ export function useReportSchedules(org: string) {
 export function useReportSchedule(org: string, uid: string) {
   return useQuery({
     queryKey: ["reportSchedule", org, uid],
-    queryFn: () => apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`),
+    queryFn: () =>
+      apiFetch<ReportSchedule>(`/api/v1/orgs/${org}/report-schedules/${uid}`),
     enabled: !!org && !!uid,
   });
 }
@@ -6056,7 +7134,9 @@ export function useDeleteReportSchedule(org: string) {
 
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}`, { method: "DELETE" }),
+      apiFetch<void>(`/api/v1/orgs/${org}/report-schedules/${uid}`, {
+        method: "DELETE",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reportSchedules", org] });
     },

@@ -12,8 +12,14 @@ import {
   ReferenceArea,
   type MouseHandlerDataParam,
 } from "recharts";
-import { format, subDays, subHours, startOfMinute } from "date-fns";
-import { useAllResults, useRegions } from "@/api/hooks";
+import { format, startOfMinute } from "date-fns";
+import { useChartWindowResults, useRegions } from "@/api/hooks";
+import {
+  chartWindowBounds,
+  type ChartTierFetch,
+  type TimeRange,
+  type ZoomWindow,
+} from "@/lib/chart-window";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +29,10 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
 import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 
-type TimeRange = "hour" | "day" | "week" | "month";
+// The window/tier plan lives in @/lib/chart-window rather than here, so
+// @/api/hooks can build the same plan without importing a component. Only the
+// types are re-exported (free at runtime); import the functions from the lib.
+export type { ChartTierFetch, TimeRange, ZoomWindow };
 
 interface ResponseTimeChartProps {
   org: string;
@@ -55,7 +64,7 @@ interface ResponseTimeChartProps {
   onSelectChange?: (uid?: string) => void;
 }
 
-interface ChartPoint {
+export interface ChartPoint {
   ts: number;
   durationMs: number | null;
   status: string;
@@ -87,20 +96,6 @@ interface GapRegion {
   showLabel: boolean;
 }
 
-function getStartFor(range: TimeRange): string {
-  const now = startOfMinute(new Date());
-  switch (range) {
-    case "hour":
-      return subHours(now, 1).toISOString();
-    case "day":
-      return subHours(now, 24).toISOString();
-    case "week":
-      return subDays(now, 7).toISOString();
-    case "month":
-      return subDays(now, 30).toISOString();
-  }
-}
-
 /** Choose x-axis format based on the actual time span */
 function adaptiveFormat(tsMs: number, spanMs: number): string {
   const date = new Date(tsMs);
@@ -120,93 +115,6 @@ export function formatMs(value: number): string {
   return `${Math.round(value)}ms`;
 }
 
-/** Fields fetched for the chart window — extended with stored aggregate stats
- * (durationMinMs/MaxMs/AvgMs/P95Ms, totalChecks) so the Recent Results stats
- * strip can compute tier-aware min/avg/max/p95 from this same dataset without
- * an extra HTTP request. Raw rows simply omit the aggregate-only fields. */
-export const CHART_WITH_FIELDS =
-  "durationMs,region,durationMinMs,durationMaxMs,durationAvgMs,durationP95Ms,totalChecks";
-
-export interface ChartFetchParams {
-  periodStartAfter: string;
-  /** Only present when a zoom window is active — maps the URL `graphTo` onto the
-   * results endpoint's existing `periodEndBefore` (RFC3339) filter. */
-  periodEndBefore?: string;
-  periodType: string;
-  with: string;
-  size: number;
-}
-
-/** A drag-selected X (time) zoom window, epoch-ms, `from < to`. */
-export interface ZoomWindow {
-  from: number;
-  to: number;
-}
-
-/** Maps a zoom span (ms) onto the equivalent default TimeRange bucket, so the
- * aggregation-tier choice for a zoomed window matches what that span would use
- * as a normal range (a narrow window naturally lands on the finer, less
- * aggregated tiers). */
-function rangeForSpan(spanMs: number): TimeRange {
-  const ONE_HOUR = 3_600_000;
-  const ONE_DAY = 24 * ONE_HOUR;
-  if (spanMs <= ONE_HOUR) return "hour";
-  if (spanMs <= ONE_DAY) return "day";
-  if (spanMs <= 7 * ONE_DAY) return "week";
-  return "month";
-}
-
-/** Builds the exact `useAllResults` query params for the chart's current
- * window (time range + check period, or an explicit zoom window). Exported so
- * the results-list route can issue an identical query (same react-query key) to
- * derive the observed region set and duration stats from the chart's
- * already-fetched window, with zero extra HTTP requests. When `zoom` is passed,
- * the window is `[zoom.from, zoom.to]` (server-side fetch, not a client
- * re-scale) and the tier is chosen from the zoom span; when it is absent the
- * result is byte-identical to the pre-zoom behaviour so the cache key is
- * unchanged. */
-export function chartFetchParams(
-  timeRange: TimeRange,
-  periodMs: number | undefined,
-  zoom?: ZoomWindow,
-): ChartFetchParams {
-  // For tier selection a zoomed window behaves like its span's default range.
-  const effectiveRange = zoom ? rangeForSpan(zoom.to - zoom.from) : timeRange;
-
-  // Include raw as a co-tier so the current open bucket (which the aggregator
-  // never rolls up until it closes) is always represented. The aggregator
-  // deletes source rows after rollup, so raw + hour + day are disjoint in
-  // time — no duplicates. detectGaps() already handles tier transitions.
-  const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
-  const periodType =
-    effectiveRange === "month"
-      ? "raw,hour,day"
-      : effectiveRange === "week"
-        ? "raw,hour"
-        : effectiveRange === "day"
-          ? denseEnoughForHourly
-            ? "raw,hour"
-            : "raw"
-          : "raw";
-
-  if (zoom) {
-    return {
-      periodStartAfter: new Date(zoom.from).toISOString(),
-      periodEndBefore: new Date(zoom.to).toISOString(),
-      periodType,
-      with: CHART_WITH_FIELDS,
-      size: 1000,
-    };
-  }
-
-  return {
-    periodStartAfter: getStartFor(timeRange),
-    periodType,
-    with: CHART_WITH_FIELDS,
-    size: 1000,
-  };
-}
-
 /** Compute median of a sorted array of numbers */
 function median(sorted: number[]): number {
   if (sorted.length === 0) return 0;
@@ -219,8 +127,13 @@ function median(sorted: number[]): number {
 /** Detect gaps in data where interval exceeds 5x the per-tier median interval.
  * Transitions between different periodTypes (raw → hour → day → month) are
  * not gaps — the aggregator deletes source rows so the timeline is contiguous
- * across tiers, just at different densities. */
-function detectGaps(
+ * across tiers, just at different densities.
+ *
+ * Exported for ./chart-seam.test.ts: since spec 2026-08-22-07 the rollup→raw
+ * transition is the NORMAL case on every wide range rather than an edge case,
+ * so the "a tier change is not a gap" rule has to be pinned rather than
+ * assumed. */
+export function detectGaps(
   data: ChartPoint[],
   domainMin: number,
   domainMax: number,
@@ -264,10 +177,7 @@ function detectGaps(
 }
 
 /** Insert null markers at gap boundaries to break the line */
-function insertGapMarkers(
-  data: ChartPoint[],
-  gaps: GapRegion[],
-): ChartPoint[] {
+function insertGapMarkers(data: ChartPoint[], gaps: GapRegion[]): ChartPoint[] {
   if (gaps.length === 0) return data;
 
   const gapStarts = new Set(gaps.map((g) => g.x1));
@@ -523,30 +433,42 @@ export function ResponseTimeChart({
 
   const resetZoom = () => onZoomChange?.(undefined, undefined);
 
-  const fetchParams = useMemo(
-    () => chartFetchParams(timeRange, periodMs, zoom),
+  // The window's own start — still the full requested range, independent of
+  // where the raw pass now begins — so the full-range boundary fallback below
+  // clamps the x-domain to what the user asked for, not to the seam.
+  const { periodStartAfter } = useMemo(
+    () => chartWindowBounds(timeRange, zoom),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
-    [timeRange, periodMs, zoomFrom, zoomTo],
+    [timeRange, zoomFrom, zoomTo],
   );
-  // periodStartAfter also drives the full-range boundary fallback below.
-  const { periodStartAfter } = fetchParams;
 
   // Derive a chart-specific refetch floor: 30s for hour/day, 5min for
   // week/month. The user just wants the line to move within a minute or two
-  // — the page's fast first-30s window doesn't apply to the graph.
+  // — the page's fast first-30s window doesn't apply to the graph. This now
+  // paces the RAW pass only; rollups refresh at their bucket width, since a
+  // closed bucket cannot change (spec 2026-08-22-07 §3).
   const baseInterval = periodMs ?? refetchInterval ?? 60_000;
   const chartRefetchInterval =
     timeRange === "week" || timeRange === "month"
       ? Math.max(baseInterval, 5 * 60_000)
       : Math.max(baseInterval, 30_000);
 
-  const { data: results, isLoading } = useAllResults(org, {
+  // Two passes: rollups over the whole window first (the chart is interactive
+  // from those alone), then raw over the seam between the newest rollup bucket
+  // and now. Never one query naming both sides of the raw/rollup index split —
+  // that matches neither partial index and scans the whole table
+  // (spec 2026-08-22-04). The results route calls this hook with the same
+  // arguments, so its region set and duration stats are cache hits.
+  const {
+    data: results,
+    isLoading,
+    rawError,
+  } = useChartWindowResults(
+    org,
     checkUid,
-    // Spread the full params (incl. periodEndBefore when zoomed) so this query's
-    // key stays identical to the results route's chartWindowParams cache-hit.
-    ...fetchParams,
-    refetchInterval: chartRefetchInterval,
-  });
+    { timeRange, periodMs, zoom },
+    { rawRefetchInterval: chartRefetchInterval },
+  );
 
   const {
     chartData,
@@ -603,8 +525,7 @@ export function ResponseTimeChart({
     // region is actually present in the unfiltered data. This keeps a
     // stale `?region=` deep link (regions changed, older data aged
     // out) from silently emptying the chart — it falls back to "All".
-    const effectiveRegion =
-      region && regionSet.has(region) ? region : null;
+    const effectiveRegion = region && regionSet.has(region) ? region : null;
 
     // Filter before gap detection, gradient stops, and domain/tick
     // computation so all of those operate on a single region's steady
@@ -730,10 +651,7 @@ export function ResponseTimeChart({
   // Stable per-region stroke color, cycling through the 5-color chart
   // palette in sorted slug order so the same region always gets the same
   // color across renders/reloads regardless of fetch order.
-  const sortedRegionsForColor = useMemo(
-    () => [...regions].sort(),
-    [regions],
-  );
+  const sortedRegionsForColor = useMemo(() => [...regions].sort(), [regions]);
   const colorByRegion = useMemo(() => {
     const map = new Map<string, string>();
     sortedRegionsForColor.forEach((slug, i) => {
@@ -754,7 +672,10 @@ export function ResponseTimeChart({
   // otherwise splitting one dense combined series into several per-region
   // series would make dots reappear on each one individually.
   const totalPointCount = isMultiSeries
-    ? Object.values(seriesByRegion).reduce((sum, series) => sum + series.length, 0)
+    ? Object.values(seriesByRegion).reduce(
+        (sum, series) => sum + series.length,
+        0,
+      )
     : chartData.length;
   const dotsEnabled = totalPointCount <= 150;
 
@@ -917,7 +838,9 @@ export function ResponseTimeChart({
               data-testid="response-time-chart-reset-zoom"
             >
               <ZoomOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("detail.chart.resetZoom")}</span>
+              <span className="hidden sm:inline">
+                {t("detail.chart.resetZoom")}
+              </span>
             </Button>
           )}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
@@ -927,7 +850,9 @@ export function ResponseTimeChart({
               className="scale-75"
               data-testid="response-time-chart-full-range-toggle"
             />
-            <span className="hidden sm:inline">{t("detail.chart.fullRange")}</span>
+            <span className="hidden sm:inline">
+              {t("detail.chart.fullRange")}
+            </span>
           </label>
           <div className="flex items-center gap-1">
             {(["hour", "day", "week", "month"] as TimeRange[]).map((range) => (
@@ -939,10 +864,14 @@ export function ResponseTimeChart({
                 className="px-2 text-xs sm:px-3 sm:text-sm"
               >
                 <span className="sm:hidden">
-                  {t(`detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}Short`)}
+                  {t(
+                    `detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}Short`,
+                  )}
                 </span>
                 <span className="hidden sm:inline">
-                  {t(`detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}`)}
+                  {t(
+                    `detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}`,
+                  )}
                 </span>
               </Button>
             ))}
@@ -985,6 +914,17 @@ export function ResponseTimeChart({
             ))}
           </div>
         )}
+        {/* Pass 2 (raw / the chart's right-hand edge) failed. Say so without
+            discarding the pass-1 render: a month of rollups is still a usable
+            chart, and blanking it would be a strictly worse answer. */}
+        {!isLoading && rawError != null && (
+          <p
+            className="mb-2 text-xs text-muted-foreground"
+            data-testid="response-time-chart-raw-error"
+          >
+            {t("detail.chart.rawUnavailable")}
+          </p>
+        )}
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
         ) : chartData.length === 0 ? (
@@ -1001,131 +941,173 @@ export function ResponseTimeChart({
               if (zoomed) resetZoom();
             }}
           >
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart
-              data={isMultiSeries ? undefined : chartData}
-              onClick={handleChartClick}
-              onMouseDown={handleSelectStart}
-              onMouseMove={handleSelectMove}
-              onMouseUp={handleSelectEnd}
-              onMouseLeave={handleSelectEnd}
-              onTouchStart={handleSelectStart}
-              onTouchMove={handleSelectMove}
-              onTouchEnd={handleSelectEnd}
-            >
-              {!isMultiSeries && (
-                <defs>
-                  <linearGradient
-                    id={`strokeGradient-${checkUid}`}
-                    x1="0"
-                    y1="0"
-                    x2="1"
-                    y2="0"
-                  >
-                    {gradientStops.map((s, i) => (
-                      <stop key={i} offset={s.offset} stopColor={s.color} />
-                    ))}
-                  </linearGradient>
-                  <linearGradient
-                    id={`fillGradient-${checkUid}`}
-                    x1="0"
-                    y1="0"
-                    x2="1"
-                    y2="0"
-                  >
-                    {gradientStops.map((s, i) => (
-                      <stop
-                        key={i}
-                        offset={s.offset}
-                        stopColor={s.color}
-                        stopOpacity={0.15}
-                      />
-                    ))}
-                  </linearGradient>
-                </defs>
-              )}
-              {isMultiSeries && (
-                <defs>
-                  {regions.map((slug) => (
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart
+                data={isMultiSeries ? undefined : chartData}
+                onClick={handleChartClick}
+                onMouseDown={handleSelectStart}
+                onMouseMove={handleSelectMove}
+                onMouseUp={handleSelectEnd}
+                onMouseLeave={handleSelectEnd}
+                onTouchStart={handleSelectStart}
+                onTouchMove={handleSelectMove}
+                onTouchEnd={handleSelectEnd}
+              >
+                {!isMultiSeries && (
+                  <defs>
                     <linearGradient
-                      key={slug}
-                      id={`rt-region-${slug}`}
+                      id={`strokeGradient-${checkUid}`}
                       x1="0"
                       y1="0"
                       x2="1"
                       y2="0"
                     >
-                      {(regionGradientStops[slug] ?? []).map((s, i) => (
+                      {gradientStops.map((s, i) => (
                         <stop key={i} offset={s.offset} stopColor={s.color} />
                       ))}
                     </linearGradient>
-                  ))}
-                </defs>
-              )}
-              <CartesianGrid
-                strokeDasharray="3 3"
-                className="stroke-muted"
-              />
-              <XAxis
-                dataKey="ts"
-                type="number"
-                scale="time"
-                domain={[domainMin, domainMax]}
-                ticks={ticks}
-                tickFormatter={(v) => adaptiveFormat(v, formatSpanMs)}
-                minTickGap={50}
-                className="text-xs"
-                tick={{ fill: "var(--muted-foreground)" }}
-              />
-              <YAxis
-                tickFormatter={formatMs}
-                className="text-xs"
-                tick={{ fill: "var(--muted-foreground)" }}
-                width={60}
-              />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
+                    <linearGradient
+                      id={`fillGradient-${checkUid}`}
+                      x1="0"
+                      y1="0"
+                      x2="1"
+                      y2="0"
+                    >
+                      {gradientStops.map((s, i) => (
+                        <stop
+                          key={i}
+                          offset={s.offset}
+                          stopColor={s.color}
+                          stopOpacity={0.15}
+                        />
+                      ))}
+                    </linearGradient>
+                  </defs>
+                )}
+                {isMultiSeries && (
+                  <defs>
+                    {regions.map((slug) => (
+                      <linearGradient
+                        key={slug}
+                        id={`rt-region-${slug}`}
+                        x1="0"
+                        y1="0"
+                        x2="1"
+                        y2="0"
+                      >
+                        {(regionGradientStops[slug] ?? []).map((s, i) => (
+                          <stop key={i} offset={s.offset} stopColor={s.color} />
+                        ))}
+                      </linearGradient>
+                    ))}
+                  </defs>
+                )}
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis
+                  dataKey="ts"
+                  type="number"
+                  scale="time"
+                  domain={[domainMin, domainMax]}
+                  ticks={ticks}
+                  tickFormatter={(v) => adaptiveFormat(v, formatSpanMs)}
+                  minTickGap={50}
+                  className="text-xs"
+                  tick={{ fill: "var(--muted-foreground)" }}
+                />
+                {/* No `domain`: recharts rescales from the data, so merging
+                    pass 2 (raw, at the right-hand edge) CAN move the y-axis.
+                    That is an accepted outcome of spec 2026-08-22-07 §2, not an
+                    oversight — pinning the domain would flatten a genuine spike
+                    in the newest points, which is the part of the chart people
+                    are looking at, and the alternative (holding pass 1's scale
+                    and letting raw overflow it) draws points outside the plot.
+                    §2's "no visible jump" requirement is met by never
+                    unmounting the chart (see chart-progressive-render.test.tsx);
+                    the rescale itself is deliberate. */}
+                <YAxis
+                  tickFormatter={formatMs}
+                  className="text-xs"
+                  tick={{ fill: "var(--muted-foreground)" }}
+                  width={60}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
 
-                  if (isMultiSeries) {
-                    // payload has one entry per region series at this x
-                    // position; most are null (sparse per-region data) —
-                    // find the one with a real value.
-                    const entry = payload.find((p) => {
+                    if (isMultiSeries) {
+                      // payload has one entry per region series at this x
+                      // position; most are null (sparse per-region data) —
+                      // find the one with a real value.
+                      const entry = payload.find((p) => {
+                        const key =
+                          typeof p.dataKey === "string" ? p.dataKey : undefined;
+                        const point = p.payload as ChartPoint | undefined;
+                        return (
+                          key &&
+                          point &&
+                          point[key as `durationMs:${string}`] != null
+                        );
+                      });
+                      if (!entry) return null;
+                      const data = entry.payload as ChartPoint;
+                      if (data.durationMs == null) return null;
+                      if (data.uid && data.uid === selectedUid) return null;
                       const key =
-                        typeof p.dataKey === "string" ? p.dataKey : undefined;
-                      const point = p.payload as ChartPoint | undefined;
+                        typeof entry.dataKey === "string"
+                          ? entry.dataKey
+                          : undefined;
+                      const slug = key ? dataKeyToRegion.get(key) : undefined;
                       return (
-                        key && point && point[key as `durationMs:${string}`] != null
+                        <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
+                          {slug && (
+                            <p className="flex items-center gap-1.5 font-medium">
+                              <span
+                                className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                                style={{
+                                  backgroundColor: colorByRegion.get(slug),
+                                }}
+                                aria-hidden="true"
+                              />
+                              {regionLabel(slug)}
+                            </p>
+                          )}
+                          <p className="text-muted-foreground">
+                            {format(new Date(data.ts), "MMM d, HH:mm:ss")}
+                          </p>
+                          <p className="font-medium">
+                            {formatMs(data.durationMs)}
+                          </p>
+                          {data.status && data.status !== "up" && (
+                            <StatusBadge
+                              status={data.status}
+                              className="mt-1 text-xs"
+                            />
+                          )}
+                          {data.uid && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {t("detail.chart.tooltipClickPoint")}
+                            </p>
+                          )}
+                        </div>
                       );
-                    });
-                    if (!entry) return null;
-                    const data = entry.payload as ChartPoint;
+                    }
+
+                    const data = payload[0].payload as ChartPoint;
                     if (data.durationMs == null) return null;
                     if (data.uid && data.uid === selectedUid) return null;
-                    const key =
-                      typeof entry.dataKey === "string" ? entry.dataKey : undefined;
-                    const slug = key ? dataKeyToRegion.get(key) : undefined;
                     return (
                       <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
-                        {slug && (
-                          <p
-                            className="flex items-center gap-1.5 font-medium"
-                          >
-                            <span
-                              className="inline-block h-2 w-2 shrink-0 rounded-sm"
-                              style={{ backgroundColor: colorByRegion.get(slug) }}
-                              aria-hidden="true"
-                            />
-                            {regionLabel(slug)}
-                          </p>
-                        )}
                         <p className="text-muted-foreground">
                           {format(new Date(data.ts), "MMM d, HH:mm:ss")}
                         </p>
-                        <p className="font-medium">{formatMs(data.durationMs)}</p>
+                        <p className="font-medium">
+                          {formatMs(data.durationMs)}
+                        </p>
                         {data.status && data.status !== "up" && (
-                          <StatusBadge status={data.status} className="mt-1 text-xs" />
+                          <StatusBadge
+                            status={data.status}
+                            className="mt-1 text-xs"
+                          />
                         )}
                         {data.uid && (
                           <p className="text-xs text-muted-foreground mt-1">
@@ -1134,291 +1116,285 @@ export function ResponseTimeChart({
                         )}
                       </div>
                     );
-                  }
-
-                  const data = payload[0].payload as ChartPoint;
-                  if (data.durationMs == null) return null;
-                  if (data.uid && data.uid === selectedUid) return null;
-                  return (
-                    <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
-                      <p className="text-muted-foreground">
-                        {format(new Date(data.ts), "MMM d, HH:mm:ss")}
-                      </p>
-                      <p className="font-medium">
-                        {formatMs(data.durationMs)}
-                      </p>
-                      {data.status && data.status !== "up" && (
-                        <StatusBadge status={data.status} className="mt-1 text-xs" />
-                      )}
-                      {data.uid && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {t("detail.chart.tooltipClickPoint")}
-                        </p>
-                      )}
-                    </div>
-                  );
-                }}
-              />
-              {/* Shaded "no data" gap bands reflect the combined-series gap
+                  }}
+                />
+                {/* Shaded "no data" gap bands reflect the combined-series gap
                   detection, which mixes all regions together — showing them
                   in multi-series mode would misleadingly shade a region's
                   window even when another region has data there. The
                   per-series null markers already break each line at its own
                   gaps (criterion: gap renders only on that region's line);
                   the shared band is single-series-only. */}
-              {!isMultiSeries &&
-                gaps.map((gap, i) => (
+                {!isMultiSeries &&
+                  gaps.map((gap, i) => (
+                    <ReferenceArea
+                      key={`gap-${i}`}
+                      x1={gap.x1}
+                      x2={gap.x2}
+                      fill="var(--muted)"
+                      fillOpacity={0.3}
+                      label={
+                        gap.showLabel
+                          ? {
+                              value: t("detail.chart.noData"),
+                              position: "center",
+                              fill: "var(--muted-foreground)",
+                              fontSize: 11,
+                            }
+                          : undefined
+                      }
+                    />
+                  ))}
+                {/* In-progress drag-to-zoom selection band. */}
+                {refAreaLeft != null && refAreaRight != null && (
                   <ReferenceArea
-                    key={`gap-${i}`}
-                    x1={gap.x1}
-                    x2={gap.x2}
-                    fill="var(--muted)"
-                    fillOpacity={0.3}
-                    label={
-                      gap.showLabel
-                        ? {
-                            value: t("detail.chart.noData"),
-                            position: "center",
-                            fill: "var(--muted-foreground)",
-                            fontSize: 11,
-                          }
-                        : undefined
-                    }
+                    x1={Math.min(refAreaLeft, refAreaRight)}
+                    x2={Math.max(refAreaLeft, refAreaRight)}
+                    fill="var(--primary)"
+                    fillOpacity={0.12}
+                    stroke="var(--primary)"
+                    strokeOpacity={0.4}
                   />
-                ))}
-              {/* In-progress drag-to-zoom selection band. */}
-              {refAreaLeft != null && refAreaRight != null && (
-                <ReferenceArea
-                  x1={Math.min(refAreaLeft, refAreaRight)}
-                  x2={Math.max(refAreaLeft, refAreaRight)}
-                  fill="var(--primary)"
-                  fillOpacity={0.12}
-                  stroke="var(--primary)"
-                  strokeOpacity={0.4}
-                />
-              )}
-              {!isMultiSeries && (
-              <Area
-                type="monotone"
-                dataKey="durationMs"
-                stroke={`url(#strokeGradient-${checkUid})`}
-                fill={`url(#fillGradient-${checkUid})`}
-                strokeWidth={2}
-                connectNulls={false}
-                isAnimationActive={false}
-                dot={(props) => {
-                  // Dense data → skip per-point circles, except for failing
-                  // points: a down/unknown result always renders and stays
-                  // clickable/pinnable, regardless of the density threshold.
-                  // activeDot still renders the hover/selected dot and caches
-                  // the anchor so the pinned-result box can find it.
-                  const dotProps = props as {
-                    cx?: number;
-                    cy?: number;
-                    payload?: ChartPoint;
-                    key?: React.Key | null;
-                  };
-                  const { cx, cy, payload, key } = dotProps;
-                  const reactKey =
-                    key == null ? undefined : (key as React.Key);
-                  if (cx == null || cy == null || !payload?.uid) {
-                    return <g key={reactKey} />;
-                  }
-                  // Selected point always renders (even in dense views) so its
-                  // anchor is cached for the pinned box on a cold deep-link.
-                  if (
-                    !dotsEnabled &&
-                    !isDownPoint(payload) &&
-                    payload.uid !== selectedUid
-                  ) {
-                    return <g key={reactKey} />;
-                  }
-                  const uid = payload.uid;
-                  // Cache the dot's coordinates for the pinned-box anchor.
-                  // Mutating a ref outside the React commit phase is safe —
-                  // it doesn't trigger a re-render.
-                  dotPositions.current[uid] = { cx, cy };
-                  const fill =
-                    payload.status === "unknown" ||
-                    statusStyle(payload.status).isDown
-                      ? COLOR_DOWN
-                      : COLOR_UP;
-                  const isSelected = selectedUid === uid;
-                  return (
-                    <circle
-                      key={reactKey}
-                      cx={cx}
-                      cy={cy}
-                      r={isSelected ? 5 : 3.5}
-                      fill={fill}
-                      stroke={isSelected ? "var(--primary)" : undefined}
-                      strokeWidth={isSelected ? 2 : 0}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <title>
-                        {isSelected
-                          ? t("detail.chart.dotClickToClose")
-                          : t("detail.chart.dotClickForDetails")}
-                      </title>
-                    </circle>
-                  );
-                }}
-                activeDot={(props) => {
-                  const dotProps = props as {
-                    cx?: number;
-                    cy?: number;
-                    payload?: ChartPoint;
-                    key?: React.Key | null;
-                  };
-                  const { cx, cy, payload, key } = dotProps;
-                  const reactKey =
-                    key == null ? undefined : (key as React.Key);
-                  if (cx == null || cy == null || !payload?.uid) {
-                    return <g key={reactKey} />;
-                  }
-                  const uid = payload.uid;
-                  // Always cache the active-dot anchor so the pinned-result box
-                  // works even when per-point dots are off.
-                  dotPositions.current[uid] = { cx, cy };
-                  const fill =
-                    payload.status === "down" ||
-                    payload.status === "unknown"
-                      ? COLOR_DOWN
-                      : COLOR_UP;
-                  return (
-                    <circle
-                      key={reactKey}
-                      cx={cx}
-                      cy={cy}
-                      r={5}
-                      fill={fill}
-                      style={{ cursor: "pointer" }}
-                    />
-                  );
-                }}
+                )}
+                {!isMultiSeries && (
+                  <Area
+                    type="monotone"
+                    dataKey="durationMs"
+                    stroke={`url(#strokeGradient-${checkUid})`}
+                    fill={`url(#fillGradient-${checkUid})`}
+                    strokeWidth={2}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                    dot={(props) => {
+                      // Dense data → skip per-point circles, except for failing
+                      // points: a down/unknown result always renders and stays
+                      // clickable/pinnable, regardless of the density threshold.
+                      // activeDot still renders the hover/selected dot and caches
+                      // the anchor so the pinned-result box can find it.
+                      const dotProps = props as {
+                        cx?: number;
+                        cy?: number;
+                        payload?: ChartPoint;
+                        key?: React.Key | null;
+                      };
+                      const { cx, cy, payload, key } = dotProps;
+                      const reactKey =
+                        key == null ? undefined : (key as React.Key);
+                      if (cx == null || cy == null || !payload?.uid) {
+                        return <g key={reactKey} />;
+                      }
+                      // Selected point always renders (even in dense views) so its
+                      // anchor is cached for the pinned box on a cold deep-link.
+                      if (
+                        !dotsEnabled &&
+                        !isDownPoint(payload) &&
+                        payload.uid !== selectedUid
+                      ) {
+                        return <g key={reactKey} />;
+                      }
+                      const uid = payload.uid;
+                      // Cache the dot's coordinates for the pinned-box anchor.
+                      // Mutating a ref outside the React commit phase is safe —
+                      // it doesn't trigger a re-render.
+                      dotPositions.current[uid] = { cx, cy };
+                      const fill =
+                        payload.status === "unknown" ||
+                        statusStyle(payload.status).isDown
+                          ? COLOR_DOWN
+                          : COLOR_UP;
+                      const isSelected = selectedUid === uid;
+                      return (
+                        <circle
+                          key={reactKey}
+                          cx={cx}
+                          cy={cy}
+                          r={isSelected ? 5 : 3.5}
+                          fill={fill}
+                          stroke={isSelected ? "var(--primary)" : undefined}
+                          strokeWidth={isSelected ? 2 : 0}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <title>
+                            {isSelected
+                              ? t("detail.chart.dotClickToClose")
+                              : t("detail.chart.dotClickForDetails")}
+                          </title>
+                        </circle>
+                      );
+                    }}
+                    activeDot={(props) => {
+                      const dotProps = props as {
+                        cx?: number;
+                        cy?: number;
+                        payload?: ChartPoint;
+                        key?: React.Key | null;
+                      };
+                      const { cx, cy, payload, key } = dotProps;
+                      const reactKey =
+                        key == null ? undefined : (key as React.Key);
+                      if (cx == null || cy == null || !payload?.uid) {
+                        return <g key={reactKey} />;
+                      }
+                      const uid = payload.uid;
+                      // Always cache the active-dot anchor so the pinned-result box
+                      // works even when per-point dots are off.
+                      dotPositions.current[uid] = { cx, cy };
+                      const fill =
+                        payload.status === "down" ||
+                        payload.status === "unknown"
+                          ? COLOR_DOWN
+                          : COLOR_UP;
+                      return (
+                        <circle
+                          key={reactKey}
+                          cx={cx}
+                          cy={cy}
+                          r={5}
+                          fill={fill}
+                          style={{ cursor: "pointer" }}
+                        />
+                      );
+                    }}
+                  />
+                )}
+                {isMultiSeries &&
+                  regions.map((slug) => {
+                    const seriesData = seriesByRegion[slug] ?? [];
+                    const key = regionDataKey(slug);
+                    const color = colorByRegion.get(slug) ?? COLOR_UP;
+                    return (
+                      <Area
+                        key={slug}
+                        data={seriesData}
+                        type="monotone"
+                        dataKey={key}
+                        stroke={`url(#rt-region-${slug})`}
+                        fill={`url(#rt-region-${slug})`}
+                        fillOpacity={0.08}
+                        strokeWidth={2}
+                        connectNulls={false}
+                        isAnimationActive={false}
+                        dot={(props) => {
+                          // Same combined-total dot-density threshold as
+                          // single-series mode (totalPointCount / dotsEnabled),
+                          // except a failing point always renders regardless.
+                          const dotProps = props as {
+                            cx?: number;
+                            cy?: number;
+                            payload?: ChartPoint;
+                            key?: React.Key | null;
+                          };
+                          const {
+                            cx,
+                            cy,
+                            payload,
+                            key: reactKeyRaw,
+                          } = dotProps;
+                          const reactKey =
+                            reactKeyRaw == null
+                              ? undefined
+                              : (reactKeyRaw as React.Key);
+                          if (cx == null || cy == null || !payload?.uid) {
+                            return <g key={reactKey} />;
+                          }
+                          if (
+                            !dotsEnabled &&
+                            !isDownPoint(payload) &&
+                            payload.uid !== selectedUid
+                          ) {
+                            return <g key={reactKey} />;
+                          }
+                          const uid = payload.uid;
+                          dotPositions.current[uid] = { cx, cy };
+                          // Down results stay visible as red dots on
+                          // their line even though the line itself uses
+                          // the region color, not the status gradient.
+                          const fill =
+                            payload.status === "unknown" ||
+                            statusStyle(payload.status).isDown
+                              ? COLOR_DOWN
+                              : color;
+                          const isSelected = selectedUid === uid;
+                          return (
+                            <circle
+                              key={reactKey}
+                              cx={cx}
+                              cy={cy}
+                              r={isSelected ? 5 : 3.5}
+                              fill={fill}
+                              stroke={isSelected ? "var(--primary)" : undefined}
+                              strokeWidth={isSelected ? 2 : 0}
+                              style={{ cursor: "pointer" }}
+                            >
+                              <title>
+                                {isSelected
+                                  ? t("detail.chart.dotClickToClose")
+                                  : t("detail.chart.dotClickForDetails")}
+                              </title>
+                            </circle>
+                          );
+                        }}
+                        activeDot={(props) => {
+                          const dotProps = props as {
+                            cx?: number;
+                            cy?: number;
+                            payload?: ChartPoint;
+                            key?: React.Key | null;
+                          };
+                          const {
+                            cx,
+                            cy,
+                            payload,
+                            key: reactKeyRaw,
+                          } = dotProps;
+                          const reactKey =
+                            reactKeyRaw == null
+                              ? undefined
+                              : (reactKeyRaw as React.Key);
+                          if (cx == null || cy == null || !payload?.uid) {
+                            return <g key={reactKey} />;
+                          }
+                          const uid = payload.uid;
+                          dotPositions.current[uid] = { cx, cy };
+                          const fill =
+                            payload.status === "down" ||
+                            payload.status === "unknown"
+                              ? COLOR_DOWN
+                              : color;
+                          return (
+                            <circle
+                              key={reactKey}
+                              cx={cx}
+                              cy={cy}
+                              r={5}
+                              fill={fill}
+                              style={{ cursor: "pointer" }}
+                            />
+                          );
+                        }}
+                      />
+                    );
+                  })}
+              </AreaChart>
+            </ResponsiveContainer>
+            {selectedUid && (
+              <PinnedResultBox
+                org={org}
+                checkUid={checkUid}
+                resultUid={selectedUid}
+                anchor={dotPositions.current[selectedUid]}
+                width={chartWidth}
+                height={chartHeight}
+                onClose={() => onSelectChange?.(undefined)}
               />
-              )}
-              {isMultiSeries &&
-                regions.map((slug) => {
-                  const seriesData = seriesByRegion[slug] ?? [];
-                  const key = regionDataKey(slug);
-                  const color = colorByRegion.get(slug) ?? COLOR_UP;
-                  return (
-                    <Area
-                      key={slug}
-                      data={seriesData}
-                      type="monotone"
-                      dataKey={key}
-                      stroke={`url(#rt-region-${slug})`}
-                      fill={`url(#rt-region-${slug})`}
-                      fillOpacity={0.08}
-                      strokeWidth={2}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                      dot={(props) => {
-                        // Same combined-total dot-density threshold as
-                        // single-series mode (totalPointCount / dotsEnabled),
-                        // except a failing point always renders regardless.
-                        const dotProps = props as {
-                          cx?: number;
-                          cy?: number;
-                          payload?: ChartPoint;
-                          key?: React.Key | null;
-                        };
-                        const { cx, cy, payload, key: reactKeyRaw } = dotProps;
-                        const reactKey =
-                          reactKeyRaw == null ? undefined : (reactKeyRaw as React.Key);
-                        if (cx == null || cy == null || !payload?.uid) {
-                          return <g key={reactKey} />;
-                        }
-                        if (
-                          !dotsEnabled &&
-                          !isDownPoint(payload) &&
-                          payload.uid !== selectedUid
-                        ) {
-                          return <g key={reactKey} />;
-                        }
-                        const uid = payload.uid;
-                        dotPositions.current[uid] = { cx, cy };
-                        // Down results stay visible as red dots on
-                        // their line even though the line itself uses
-                        // the region color, not the status gradient.
-                        const fill =
-                          payload.status === "unknown" ||
-                          statusStyle(payload.status).isDown
-                            ? COLOR_DOWN
-                            : color;
-                        const isSelected = selectedUid === uid;
-                        return (
-                          <circle
-                            key={reactKey}
-                            cx={cx}
-                            cy={cy}
-                            r={isSelected ? 5 : 3.5}
-                            fill={fill}
-                            stroke={isSelected ? "var(--primary)" : undefined}
-                            strokeWidth={isSelected ? 2 : 0}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <title>
-                              {isSelected
-                                ? t("detail.chart.dotClickToClose")
-                                : t("detail.chart.dotClickForDetails")}
-                            </title>
-                          </circle>
-                        );
-                      }}
-                      activeDot={(props) => {
-                        const dotProps = props as {
-                          cx?: number;
-                          cy?: number;
-                          payload?: ChartPoint;
-                          key?: React.Key | null;
-                        };
-                        const { cx, cy, payload, key: reactKeyRaw } = dotProps;
-                        const reactKey =
-                          reactKeyRaw == null ? undefined : (reactKeyRaw as React.Key);
-                        if (cx == null || cy == null || !payload?.uid) {
-                          return <g key={reactKey} />;
-                        }
-                        const uid = payload.uid;
-                        dotPositions.current[uid] = { cx, cy };
-                        const fill =
-                          payload.status === "down" || payload.status === "unknown"
-                            ? COLOR_DOWN
-                            : color;
-                        return (
-                          <circle
-                            key={reactKey}
-                            cx={cx}
-                            cy={cy}
-                            r={5}
-                            fill={fill}
-                            style={{ cursor: "pointer" }}
-                          />
-                        );
-                      }}
-                    />
-                  );
-                })}
-            </AreaChart>
-          </ResponsiveContainer>
-          {selectedUid && (
-            <PinnedResultBox
-              org={org}
-              checkUid={checkUid}
-              resultUid={selectedUid}
-              anchor={dotPositions.current[selectedUid]}
-              width={chartWidth}
-              height={chartHeight}
-              onClose={() => onSelectChange?.(undefined)}
-            />
-          )}
+            )}
           </div>
         )}
         {!isLoading && chartData.length > 0 && (
           <p className="mt-2 text-center text-xs text-muted-foreground">
-            {zoomed ? t("detail.chart.zoomHintReset") : t("detail.chart.zoomHint")}
+            {zoomed
+              ? t("detail.chart.zoomHintReset")
+              : t("detail.chart.zoomHint")}
           </p>
         )}
       </CardContent>

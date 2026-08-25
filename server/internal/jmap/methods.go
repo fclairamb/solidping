@@ -191,7 +191,13 @@ func (c *Client) FindOrCreateMailbox(ctx context.Context, accountID, name string
 type EmailQueryFilter struct {
 	InMailbox    string
 	Before       string // ISO-8601 timestamp; emails received strictly before
+	After        string // ISO-8601 timestamp; emails received at or after
 	NotInMailbox string
+	// Limit caps the number of ids returned. Not a filter condition — it is
+	// the query's own `limit` argument — but it lives here so bounded scans
+	// (the crash-recovery re-scan) express their whole shape in one value.
+	// Results are sorted newest-first, so a limit keeps the newest N.
+	Limit int
 }
 
 // EmailQuery returns email IDs matching the filter.
@@ -209,6 +215,10 @@ func (c *Client) EmailQuery(ctx context.Context, accountID string, filter EmailQ
 		cond["before"] = filter.Before
 	}
 
+	if filter.After != "" {
+		cond["after"] = filter.After
+	}
+
 	args := map[string]any{
 		keyAccountID: accountID,
 		"sort": []map[string]any{
@@ -217,6 +227,10 @@ func (c *Client) EmailQuery(ctx context.Context, accountID string, filter EmailQ
 	}
 	if len(cond) > 0 {
 		args["filter"] = cond
+	}
+
+	if filter.Limit > 0 {
+		args["limit"] = filter.Limit
 	}
 
 	resp, err := c.Call(ctx, []MethodCall{
@@ -280,14 +294,58 @@ func (c *Client) EmailGet(
 	return out.List, nil
 }
 
-// EmailSetMailbox moves the given emails from one mailbox to another. JMAP
-// expresses this as an `update` with a `mailboxIds/<from>` removal and a
-// `mailboxIds/<to>` addition (RFC 8621 §4.6 patch semantics).
+// SetMailboxResult is the per-id outcome of an Email/set move: which ids the
+// server actually moved, and which it refused. The split is what makes the
+// move usable as a claim — see Manager.syncEmails (spec 2026-08-22-01).
+type SetMailboxResult struct {
+	// Updated lists the ids this call moved. Only these are the caller's to
+	// process.
+	Updated []string
+	// NotUpdated lists the ids the server refused, in the order requested.
+	// Under concurrent consumers the usual cause is that someone else moved
+	// the message first, which is a normal outcome, not an error.
+	NotUpdated []string
+}
+
+// EmailSetMailbox moves the given emails from one mailbox to another and
+// fails unless every id moved. Used by the retention/cleanup paths, where a
+// partial move genuinely is an error worth surfacing.
 func (c *Client) EmailSetMailbox(
 	ctx context.Context, accountID string, ids []string, fromMailboxID, toMailboxID string,
 ) error {
+	res, err := c.EmailSetMailboxPartial(ctx, accountID, ids, fromMailboxID, toMailboxID)
+	if err != nil {
+		return err
+	}
+
+	if len(res.NotUpdated) > 0 {
+		return fmt.Errorf("%w: %d emails", ErrPartialUpdate, len(res.NotUpdated))
+	}
+
+	return nil
+}
+
+// EmailSetMailboxPartial moves the given emails from one mailbox to another
+// and reports the per-id outcome instead of collapsing a partial move into an
+// error. JMAP expresses the move as an `update` with a `mailboxIds/<from>`
+// removal and a `mailboxIds/<to>` addition (RFC 8621 §4.6 patch semantics).
+//
+// Interpreting the response: RFC 8620 §5.3 requires `updated` and `notUpdated`
+// on every /set reply, so normally an id is "ours" only when it appears in
+// `updated`. A response carrying NEITHER key is read as full success, which is
+// exactly what this client inferred before the split existed — a terse server
+// therefore behaves as it always did rather than silently processing nothing.
+// That fallback is the one place the claim is not a true CAS, and what makes
+// it survivable is the Message-ID dedup backstop (spec 2026-08-22-01, layer 3):
+// against such a server two consumers may both believe they won, and only the
+// dedup query stops the second from writing a row. The stricter half is
+// unconditional: once EITHER map is non-empty, an id named in neither is
+// treated as not ours, because at-most-once beats a duplicate.
+func (c *Client) EmailSetMailboxPartial(
+	ctx context.Context, accountID string, ids []string, fromMailboxID, toMailboxID string,
+) (SetMailboxResult, error) {
 	if len(ids) == 0 {
-		return nil
+		return SetMailboxResult{}, nil
 	}
 
 	updates := make(map[string]any, len(ids))
@@ -314,25 +372,56 @@ func (c *Client) EmailSetMailbox(
 		},
 	})
 	if err != nil {
-		return err
+		return SetMailboxResult{}, err
 	}
 
 	if len(resp.MethodResponses) == 0 {
-		return fmt.Errorf("%w: Email/set update", ErrEmptyResponse)
+		return SetMailboxResult{}, fmt.Errorf("%w: Email/set update", ErrEmptyResponse)
 	}
 
 	var out struct {
+		Updated    map[string]any `json:"updated"`
 		NotUpdated map[string]any `json:"notUpdated"`
 	}
 	if err := json.Unmarshal(resp.MethodResponses[0].Args, &out); err != nil {
-		return fmt.Errorf("%w: Email/set update: %w", ErrParseResponse, err)
+		return SetMailboxResult{}, fmt.Errorf("%w: Email/set update: %w", ErrParseResponse, err)
 	}
 
-	if len(out.NotUpdated) > 0 {
-		return fmt.Errorf("%w: %d emails", ErrPartialUpdate, len(out.NotUpdated))
+	return splitSetOutcome(ids, out.Updated, out.NotUpdated), nil
+}
+
+// splitSetOutcome partitions the requested ids using the /set reply's
+// updated / notUpdated maps. Order follows the request, so callers get a
+// deterministic result regardless of Go's map iteration order.
+func splitSetOutcome(ids []string, updated, notUpdated map[string]any) SetMailboxResult {
+	// Neither key present: pre-split behavior — the whole batch succeeded.
+	if len(updated) == 0 && len(notUpdated) == 0 {
+		return SetMailboxResult{Updated: append([]string(nil), ids...)}
 	}
 
-	return nil
+	res := SetMailboxResult{}
+
+	for _, id := range ids {
+		if _, refused := notUpdated[id]; refused {
+			res.NotUpdated = append(res.NotUpdated, id)
+
+			continue
+		}
+
+		if _, ok := updated[id]; ok {
+			res.Updated = append(res.Updated, id)
+
+			continue
+		}
+
+		// Named in neither map: the server neither confirmed nor refused it.
+		// Treat it as not ours — at-most-once beats a duplicate result, and
+		// the crash-recovery re-scan is there to pick it up if it really did
+		// move.
+		res.NotUpdated = append(res.NotUpdated, id)
+	}
+
+	return res
 }
 
 // EmailDestroy permanently deletes the listed email IDs.

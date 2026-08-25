@@ -313,8 +313,9 @@ func linkMember(t *testing.T, s *resolveSetup, incidentUID, checkUID string, cur
 //  3. NO `CurrentlyFailing` FILTER — a member that has already recovered still
 //     contributes its channels. A comment is discussion about the group
 //     incident as a whole (service.go, queueCommentNotifications), so an
-//     "optimization" that copies queueGroupNotifications' mid-incident filter
-//     must fail this test rather than silently muting a channel.
+//     "optimization" that reintroduced the retired group notifier's
+//     mid-incident filter must fail this test rather than silently muting a
+//     channel.
 func TestAddComment_GroupIncidentFansOutToEveryMembersChannels(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

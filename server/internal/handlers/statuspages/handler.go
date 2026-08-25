@@ -16,6 +16,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/statuspagecache"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
 // Kept in step with slugRegex, which migration 009 widened to 3-100 characters
@@ -28,19 +30,22 @@ const slugValidationMsg = "Slug must start with a lowercase letter, be 3-100 cha
 const visibilityPublic = "public"
 
 const (
-	fieldSlug          = "slug"
-	fieldBody          = "body"
-	fieldCustomDomain  = "customDomain"
-	fieldHistoryPeriod = "historyPeriod"
-	fieldCustomCSS     = "customCss"
-	fieldCheckUID      = "checkUid"
-	fieldCheckGroupUID = "checkGroupUid"
-	fieldSettings      = "settings"
-	respKeyData        = "data"
-	msgInvalidJSON     = "Invalid JSON format"
-	historyPeriodMsg   = "History period must be one of: 24h, 7d, 30d, 90d"
-	customCSSSizeMsg   = "Custom CSS must be at most 64 KB"
-	customCSSImportMsg = "Custom CSS must not contain @import — inline the rules instead " +
+	fieldSlug           = "slug"
+	fieldBody           = "body"
+	fieldCustomDomain   = "customDomain"
+	fieldVisibility     = "visibility"
+	fieldPassword       = "password"
+	fieldHistoryPeriod  = "historyPeriod"
+	fieldCustomCSS      = "customCss"
+	fieldCheckUID       = "checkUid"
+	fieldCheckGroupUID  = "checkGroupUid"
+	fieldSettings       = "settings"
+	respKeyData         = "data"
+	msgInvalidJSON      = "Invalid JSON format"
+	historyPeriodMsg    = "History period must be one of: 24h, 7d, 30d, 90d"
+	customCSSSizeMsg    = "Custom CSS must be at most 64 KB"
+	passwordTooShortMsg = "The status page password must be at least 6 characters"
+	customCSSImportMsg  = "Custom CSS must not contain @import — inline the rules instead " +
 		"(external url() references are allowed)"
 	availabilityThresholdsMsg = "thresholdDegraded must be greater than 0, less than thresholdUp, " +
 		"and thresholdUp must be at most 100"
@@ -569,6 +574,8 @@ func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req *http.Request) 
 		return h.handlePublicError(writer, req, err)
 	}
 
+	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
+
 	return h.WriteJSON(writer, http.StatusOK, page)
 }
 
@@ -580,6 +587,8 @@ func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Re
 	if err != nil {
 		return h.handlePublicError(writer, req, err)
 	}
+
+	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
 
 	return h.WriteJSON(writer, http.StatusOK, page)
 }
@@ -635,7 +644,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 		GeneratedAt: time.Now().UTC(),
 	}
 
-	writer.Header().Set("Cache-Control", "public, max-age=60")
+	statuspagecache.Apply(writer.Header(), summary.Visibility, statuspagecache.PageMaxAge)
 
 	return h.WriteJSON(writer, http.StatusOK, response)
 }
@@ -678,15 +687,15 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req *http.Request) error 
 		opts.Width = width
 	}
 
-	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, slug, opts)
+	badge, err := h.svc.GenerateBadge(req.Context(), orgSlug, slug, opts)
 	if err != nil {
 		return h.handlePublicError(writer, req, err)
 	}
 
 	writer.Header().Set("Content-Type", "image/svg+xml")
-	writer.Header().Set("Cache-Control", "public, max-age=60")
+	statuspagecache.Apply(writer.Header(), badge.Visibility, statuspagecache.PageMaxAge)
 	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write([]byte(svg))
+	_, _ = writer.Write([]byte(badge.SVG))
 
 	return nil
 }
@@ -813,8 +822,34 @@ func (h *Handler) handleVerifyError(writer http.ResponseWriter, request *http.Re
 	return h.handlePageError(writer, request, err)
 }
 
+// mapPasswordError maps the password/visibility validation errors to a
+// VALIDATION_ERROR response. Returns handled=false when err is neither, so the
+// caller can fall through to its own switch.
+func (h *Handler) mapPasswordError(writer http.ResponseWriter, err error) (bool, error) {
+	switch {
+	case errors.Is(err, ErrInvalidVisibility):
+		return true, h.WriteValidationError(writer, "Invalid visibility", []base.ValidationErrorField{
+			{Name: fieldVisibility, Message: "Must be one of: public, private, password"},
+		})
+	case errors.Is(err, ErrPasswordRequired):
+		return true, h.WriteValidationError(writer, "Password required", []base.ValidationErrorField{
+			{Name: fieldPassword, Message: "A password is required for password-protected visibility"},
+		})
+	case errors.Is(err, ErrPasswordTooShort):
+		return true, h.WriteValidationError(writer, "Password too short", []base.ValidationErrorField{
+			{Name: fieldPassword, Message: passwordTooShortMsg},
+		})
+	default:
+		return false, nil
+	}
+}
+
 func (h *Handler) handleCreatePageError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if handled, result := h.mapCustomDomainError(writer, request, err); handled {
+		return result
+	}
+
+	if handled, result := h.mapPasswordError(writer, err); handled {
 		return result
 	}
 
@@ -857,6 +892,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, request *htt
 
 func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, request *http.Request, err error) error {
 	if handled, result := h.mapCustomDomainError(writer, request, err); handled {
+		return result
+	}
+
+	if handled, result := h.mapPasswordError(writer, err); handled {
 		return result
 	}
 
@@ -999,10 +1038,78 @@ func (h *Handler) writeResourceTargetError(writer http.ResponseWriter) error {
 }
 
 func (h *Handler) handlePublicError(writer http.ResponseWriter, request *http.Request, err error) error {
+	// Nothing on the public surface may be stored by a shared cache unless a
+	// world-readable page was actually served: a cached 404 (or a cached 401)
+	// is an existence oracle for pages the visitor is not entitled to know
+	// about.
+	statuspagecache.ApplyGated(writer.Header())
+
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound), errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+	case errors.Is(err, statuspagelock.ErrLocked):
+		// 401, NOT 404: a password page is meant to be known to exist and
+		// unlockable. `private` is the one that pretends the page is not there.
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeStatusPageLocked,
+			"This status page is password protected")
+	default:
+		return h.WriteInternalError(writer, request, err)
+	}
+}
+
+// UnlockRequest is the body of POST /api/v1/status-pages/:org/:slug/unlock.
+type UnlockRequest struct {
+	Password string `json:"password"`
+}
+
+// Unlock handles POST /api/v1/status-pages/:org/:slug/unlock — public, no auth.
+//
+// On success it sets the host-only unlock cookie and returns 204. A wrong
+// password returns 401 with the same STATUS_PAGE_LOCKED code the gated reads
+// use, so status0 can keep the visitor on the unlock form with one branch.
+func (h *Handler) Unlock(writer http.ResponseWriter, req *http.Request) error {
+	return h.unlock(writer, req, httpx.Param(req, "slug"))
+}
+
+func (h *Handler) unlock(writer http.ResponseWriter, req *http.Request, slug string) error {
+	orgSlug := httpx.Param(req, "org")
+
+	var body UnlockRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	result, err := h.svc.Unlock(req.Context(), orgSlug, slug, base.ExtractRemoteAddr(req), body.Password)
+	if err != nil {
+		return h.handleUnlockError(writer, req, err)
+	}
+
+	statuspagelock.SetCookie(writer, req, result.PageUID, result.Token)
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
+// UnlockDefault handles POST /api/v1/status-pages/:org/unlock — the same
+// unlock for an organization's DEFAULT page, which status0 reaches through
+// /status0/<org> with no slug in the URL.
+func (h *Handler) UnlockDefault(writer http.ResponseWriter, req *http.Request) error {
+	return h.unlock(writer, req, "")
+}
+
+func (h *Handler) handleUnlockError(writer http.ResponseWriter, request *http.Request, err error) error {
+	switch {
+	case errors.Is(err, ErrOrganizationNotFound), errors.Is(err, ErrStatusPageNotFound):
+		return h.WriteErrorErr(
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
+	case errors.Is(err, ErrWrongPassword):
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeStatusPageLocked, "Incorrect password")
+	case errors.Is(err, ErrTooManyUnlockAttempts):
+		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many attempts. Please try again in a few minutes.")
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}

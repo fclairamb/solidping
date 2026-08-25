@@ -4,6 +4,7 @@ import { AlertTriangle, Calendar, RefreshCw, User, Cpu } from "lucide-react";
 import { useEvents } from "@/api/hooks";
 import {
   EventTypeBadge,
+  getEventActorName,
   getEventCheckName,
 } from "@/components/dashboard/event-display";
 import { DurationAgo } from "@/components/shared/relative-time";
@@ -91,6 +92,7 @@ function EventsPage() {
         icon={Calendar}
         title={t("title")}
         description={t("subtitle")}
+        docsHref="/docs/features/events"
         className="flex-wrap"
       />
 
@@ -177,7 +179,12 @@ function EventsPage() {
                           <Cpu className="h-3 w-3 shrink-0 text-muted-foreground/70" />
                         )}
                         <span className="capitalize">
-                          {t(`actorTypes.${event.actorType || "system"}`)}
+                          {/* The NAME when the event carries one — including a
+                              Slack/Discord/phone acker, who has no users row
+                              and would otherwise show as the bare word
+                              "user". Falls back to the localized actor type. */}
+                          {getEventActorName(event) ??
+                            t(`actorTypes.${event.actorType || "system"}`)}
                         </span>
                       </span>
                     </TableCell>

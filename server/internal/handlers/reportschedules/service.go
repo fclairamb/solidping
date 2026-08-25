@@ -40,6 +40,10 @@ var (
 	ErrTooManyRecipients = errors.New("too many recipients")
 	// ErrNoTestRecipient is returned when a test send has nowhere to go.
 	ErrNoTestRecipient = errors.New("no recipient for the test send")
+	// ErrRecipientSuppressed is returned when a test send's resolved recipient
+	// is on the org's suppression list: the send is honored (nothing is
+	// queued) but the caller must be told, rather than shown a false success.
+	ErrRecipientSuppressed = errors.New("recipient has unsubscribed and cannot receive a test send")
 )
 
 // maxRecipients bounds one schedule's fan-out. A digest is not a mailing list.
@@ -295,7 +299,7 @@ func (s *Service) TestSend(ctx context.Context, orgSlug, uid, recipient string, 
 	}
 
 	if suppressed {
-		return nil
+		return ErrRecipientSuppressed
 	}
 
 	window, _ := uptimereport.Window(row, now)

@@ -27,7 +27,7 @@ func TestCheckEnvironUnknownNameWarns(t *testing.T) {
 	r.Empty(warnings[0].Suggestion)
 }
 
-// TestCheckEnvironNearMissSuggests is the regression test for the k8xp incident:
+// TestCheckEnvironNearMissSuggests is the regression test for the near-miss incident:
 // the near-miss warns AND suggests the real name (asserting the suggestion, not
 // merely that a warning fired).
 func TestCheckEnvironNearMissSuggests(t *testing.T) {

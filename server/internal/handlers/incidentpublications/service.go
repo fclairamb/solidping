@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	clockpkg "github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -1090,12 +1091,30 @@ func (s *Service) affectedResourceNames(
 
 	checkUIDs := []string{incident.CheckUID}
 
+	// Historical group incidents carry their members in incident_member_checks.
+	// Those rows are frozen (nothing writes them any more) but they still have
+	// to render, so the legacy expansion stays exactly as it was.
 	if incident.CheckGroupUID != nil {
 		members, memErr := s.db.ListIncidentMemberChecks(ctx, incident.UID)
 		if memErr == nil {
 			for _, member := range members {
 				checkUIDs = append(checkUIDs, member.CheckUID)
 			}
+		}
+	}
+
+	// The group comes from the CHECK now (spec 2026-08-24-14), and a
+	// consolidated entry covers every member that failed while it was open —
+	// that breadth is precisely what consolidating buys the reader, since the
+	// internal "N/M checks down" phrasing is deliberately never published.
+	groupUID := s.incidentGroupUID(ctx, incident)
+	if groupUID != nil {
+		for _, sibling := range s.groupSiblingIncidents(ctx, incident, *groupUID, false) {
+			if !siblingOverlapsPublication(sibling, pub) {
+				continue
+			}
+
+			checkUIDs = append(checkUIDs, sibling.CheckUID)
 		}
 	}
 
@@ -1107,7 +1126,7 @@ func (s *Service) affectedResourceNames(
 			continue
 		}
 
-		for _, name := range s.resourceNamesOnPage(ctx, orgUID, pub.StatusPageUID, checkUID, incident.CheckGroupUID) {
+		for _, name := range s.resourceNamesOnPage(ctx, orgUID, pub.StatusPageUID, checkUID, groupUID) {
 			if _, dup := seen[name]; dup {
 				continue
 			}
@@ -1118,6 +1137,23 @@ func (s *Service) affectedResourceNames(
 	}
 
 	return names
+}
+
+// siblingOverlapsPublication reports whether a sibling group incident was
+// live at any point during the publication's life. A member that failed and
+// recovered long before the entry was published was never part of this public
+// outage, and listing it would tell readers something untrue.
+func siblingOverlapsPublication(sibling *models.Incident, pub *models.IncidentPublication) bool {
+	if sibling == nil {
+		return false
+	}
+
+	// Still down: it is affected right now, whenever it started.
+	if sibling.ResolvedAt == nil {
+		return true
+	}
+
+	return sibling.ResolvedAt.After(pub.PublishedAt)
 }
 
 // resourceNamesOnPage returns the public display names under which a check
@@ -1168,7 +1204,7 @@ func (s *Service) resourceNamesOnPage(
 func (s *Service) affectedName(
 	ctx context.Context, orgUID string, page *models.StatusPage, incident *models.Incident,
 ) string {
-	names := s.resourceNamesOnPage(ctx, orgUID, page.UID, incident.CheckUID, incident.CheckGroupUID)
+	names := s.resourceNamesOnPage(ctx, orgUID, page.UID, incident.CheckUID, s.incidentGroupUID(ctx, incident))
 	if len(names) > 0 {
 		return names[0]
 	}
@@ -1192,28 +1228,52 @@ func (s *Service) templatedTitle(
 	return fmt.Sprintf(tpl.OpenedTitle, name)
 }
 
+// PublicIncidentsView is the public incident history plus the visibility of
+// the page it belongs to.
+//
+// The visibility never reaches the wire. It is here because this payload
+// quotes incident titles and update bodies verbatim — the same text that made
+// the Atom feed a leak — so the handler has to know who may cache the response
+// (spec 2026-08-22-06). Deciding that from the page rather than from whether
+// this caller was let in is the whole point: an unlocked visitor is authorized,
+// the CDN in front of them is not.
+type PublicIncidentsView struct {
+	Incidents  []PublicIncident
+	Visibility string
+}
+
 // ViewPublicIncidents is the PUBLIC projection entry point: it resolves the
 // page by org+slug and applies the same visibility gate as every other public
 // status-page endpoint, so a private or disabled page's incidents are as
 // invisible as the page itself.
 func (s *Service) ViewPublicIncidents(
 	ctx context.Context, orgSlug, slug string, activeOnly bool,
-) ([]PublicIncident, error) {
+) (PublicIncidentsView, error) {
 	org, err := s.resolveOrg(ctx, orgSlug)
 	if err != nil {
-		return nil, err
+		return PublicIncidentsView{}, err
 	}
 
 	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
 	if err != nil || page == nil {
-		return nil, ErrStatusPageNotFound
+		return PublicIncidentsView{}, ErrStatusPageNotFound
 	}
 
-	// Identical gate to statuspages.ViewStatusPage: not enabled or not public
+	// Identical gate to statuspages.ViewStatusPage: not enabled, or private,
 	// is indistinguishable from not existing.
-	if !page.Enabled || page.Visibility != "public" {
-		return nil, ErrStatusPageNotFound
+	if !statuspagelock.Visible(page) {
+		return PublicIncidentsView{}, ErrStatusPageNotFound
 	}
 
-	return s.ListPublicIncidents(ctx, page, activeOnly)
+	// A password page's incident history is part of what the password buys.
+	if !statuspagelock.Allows(ctx, page) {
+		return PublicIncidentsView{}, statuspagelock.ErrLocked
+	}
+
+	incidents, err := s.ListPublicIncidents(ctx, page, activeOnly)
+	if err != nil {
+		return PublicIncidentsView{}, err
+	}
+
+	return PublicIncidentsView{Incidents: incidents, Visibility: page.Visibility}, nil
 }

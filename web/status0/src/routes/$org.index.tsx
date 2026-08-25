@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useDefaultStatusPage } from "@/api/hooks";
+import { isLockedError, useDefaultStatusPage } from "@/api/hooks";
 import { StatusPageView } from "@/components/shared/status-page-view";
+import { UnlockForm } from "@/components/shared/unlock-form";
 import { useTranslation } from "react-i18next";
 import { useLanguageFromPage } from "@/hooks/useLanguageFromPage";
 
@@ -11,7 +12,7 @@ export const Route = createFileRoute("/$org/")({
 function DefaultStatusPage() {
   const { t } = useTranslation();
   const { org } = Route.useParams();
-  const { data: page, isLoading, error } = useDefaultStatusPage(org);
+  const { data: page, isLoading, error, refetch } = useDefaultStatusPage(org);
 
   useLanguageFromPage(page?.language);
 
@@ -21,6 +22,12 @@ function DefaultStatusPage() {
         <div className="text-muted-foreground">{t("loading")}</div>
       </div>
     );
+  }
+
+  // Same as the /$org/$slug route: a locked page is not a missing page. The
+  // default page has no slug in the URL, so the unlock posts without one.
+  if (isLockedError(error)) {
+    return <UnlockForm org={org} onUnlocked={() => refetch()} />;
   }
 
   if (error || !page) {

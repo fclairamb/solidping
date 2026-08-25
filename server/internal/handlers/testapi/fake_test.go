@@ -2,6 +2,7 @@ package testapi
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -321,6 +322,55 @@ func TestFakeAPI_Delay(t *testing.T) {
 
 	elapsed := time.Since(start)
 	r.GreaterOrEqual(elapsed.Milliseconds(), int64(100))
+}
+
+// TestFakeAPI_DelayCeiling is a positive control for spec 2026-08-23-07's
+// connection-holding bound: the exact new ceiling (MaxFakeDelayMS) must still
+// parse as valid (this would fail if the ceiling were tightened further by
+// accident), while one millisecond over it must be rejected (this would fail
+// if the bound were silently dropped or widened back toward the old 30000ms).
+// Goes through parseFakeParams directly rather than the full handler so the
+// test doesn't actually sleep for MaxFakeDelayMS.
+func TestFakeAPI_DelayCeiling(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	handler := &Handler{}
+
+	atCeiling := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, fmt.Sprintf("/api/v1/fake?delay=%d", MaxFakeDelayMS), nil,
+	)
+	params, err := handler.parseFakeParams(atCeiling)
+	r.NoError(err)
+	r.Equal(MaxFakeDelayMS, params.delay)
+
+	overCeiling := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, fmt.Sprintf("/api/v1/fake?delay=%d", MaxFakeDelayMS+1), nil,
+	)
+	_, err = handler.parseFakeParams(overCeiling)
+	r.ErrorIs(err, ErrDelayRange)
+}
+
+// TestFakeAPI_SlowResponseDelayCeiling mirrors TestFakeAPI_DelayCeiling for
+// slowResponse's delay_ms leg, which the old code left unbounded entirely
+// (only delay >= 0 was checked) — a caller could hold a connection open far
+// longer via slowResponse than via delay ever allowed.
+func TestFakeAPI_SlowResponseDelayCeiling(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	handler := &Handler{}
+
+	atCeiling := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, fmt.Sprintf("/api/v1/fake?slowResponse=1,10,%d", MaxFakeDelayMS), nil,
+	)
+	params, err := handler.parseFakeParams(atCeiling)
+	r.NoError(err)
+	r.Equal(MaxFakeDelayMS, params.slowResponse.delayMs)
+
+	overCeiling := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, fmt.Sprintf("/api/v1/fake?slowResponse=1,10,%d", MaxFakeDelayMS+1), nil,
+	)
+	_, err = handler.parseFakeParams(overCeiling)
+	r.ErrorIs(err, ErrSlowResponseDelay)
 }
 
 func TestFakeAPI_SlowResponse(t *testing.T) {

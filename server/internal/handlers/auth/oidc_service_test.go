@@ -368,7 +368,7 @@ func createExistingLocalUser(ctx context.Context, t *testing.T, svc *OIDCOAuthSe
 // defaulted EmailVerified to true unless the claim was literally a JSON
 // boolean. A malicious/misconfigured IdP could exploit this to assert any
 // existing user's email - including the documented default super-admin
-// admin@solidping.com - and obtain a fully valid session with no password
+// admin@solidping.io - and obtain a fully valid session with no password
 // check.
 func TestOIDCHandleCallback_UnverifiedEmailDoesNotAutoLink(t *testing.T) {
 	t.Parallel()
@@ -406,7 +406,7 @@ func TestOIDCHandleCallback_UnverifiedEmailDoesNotAutoLink(t *testing.T) {
 		},
 		{
 			name:        "documented default super-admin email, unverified",
-			targetEmail: "admin@solidping.com",
+			targetEmail: "admin@solidping.io",
 			mutateClaims: func(c jwt.MapClaims) {
 				delete(c, oidcClaimEmailVerified)
 			},

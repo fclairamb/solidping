@@ -164,25 +164,31 @@ func buildWebPushURL(payload *Payload) string {
 	return base
 }
 
-// buildWebPushContent returns (title, body) for a push notification.
+// buildWebPushContent returns (title, body) for a push notification. Titles
+// carry the short #N incident reference (incidentRefPrefix, same as Slack and
+// Discord) — commentTitle already includes it on the comment path.
 func buildWebPushContent(payload *Payload, checkName string) (string, string) {
+	ref := incidentRefPrefix(payload.Incident)
+
 	switch payload.EventType {
 	case eventTypeIncidentCreated:
-		return "[DOWN] " + checkName,
+		return ref + "[DOWN] " + checkName,
 			fmt.Sprintf("%s is down. Cause: %s", checkName, getFailureReason(payload.Incident))
 	case eventTypeIncidentResolved:
-		return "[RECOVERED] " + checkName,
+		return ref + "[RECOVERED] " + checkName,
 			checkName + " is back up."
 	case eventTypeIncidentEscalated:
-		return "[ESCALATED] " + checkName,
+		return ref + "[ESCALATED] " + checkName,
 			fmt.Sprintf("Incident for %s has been escalated.", checkName)
 	case eventTypeIncidentReopened:
-		return "[REOPENED] " + checkName,
+		return ref + "[REOPENED] " + checkName,
 			checkName + " is down again."
 	case eventTypeIncidentComment:
 		return commentTitle(payload), commentPreview(payload.Comment)
+	case eventTypeIncidentAcknowledged:
+		return ackTitle(payload), ackPlainBody(payload)
 	default:
-		return "[UPDATE] " + checkName,
+		return ref + "[UPDATE] " + checkName,
 			"An incident update occurred for " + checkName
 	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -80,14 +81,43 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 				writer, req, http.StatusUnauthorized, base.ErrorCodeUserNotFound, "User not found", err)
 		}
 
+		// Forced password rotation (spec 2026-08-23-04). This is THE choke
+		// point: every authenticated REST surface — the dashboard, the CLI,
+		// PAT creation, every org route — runs through RequireAuth, so one
+		// check here covers them all rather than each login form growing its
+		// own. The credential is valid; what is denied is using it for
+		// anything but the rotation.
+		if auth.PasswordRotationRequired(user) &&
+			!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
+		}
+
 		// Add claims and user to context
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
 		ctx = context.WithValue(ctx, base.ContextKeyUser, user)
+		// Name the audit actor now that the credential is known. A personal
+		// access token is a materially different principal from an interactive
+		// session — "a token acting as alice" and "alice at a keyboard" must
+		// not read the same in a security trail — so the token form is
+		// recorded as such while ActorUID still names the owning user.
+		ctx = audit.WithUser(ctx, user.UID, actorTypeForToken(token))
 		setSentryIdentity(ctx, claims)
 
 		return next(writer, req.WithContext(ctx))
 	}
+}
+
+// actorTypeForToken classifies the credential a request authenticated with, for
+// the audit trail's actor_type column. PATs are recognized by their `pat_`
+// prefix — the same test auth.Service.ValidateToken uses to route validation.
+func actorTypeForToken(token string) models.ActorType {
+	if strings.HasPrefix(token, auth.PATTokenPrefix) {
+		return models.ActorTypeAPIToken
+	}
+
+	return models.ActorTypeUser
 }
 
 // setSentryIdentity attaches the authenticated principal to the request-scoped
@@ -149,6 +179,17 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
 		if err != nil {
 			return m.writeMCPChallenge(writer, meta, base.ErrorCodeUserNotFound, "User not found")
+		}
+
+		// A pending rotation blocks the MCP resource server too. No route
+		// under /mcp is on the allowlist, so this is an unconditional deny —
+		// but it is written through the same predicate as RequireAuth so the
+		// two can never disagree about what "flagged" means. 403, not the 401
+		// challenge: re-authenticating changes nothing, only rotating does.
+		if auth.PasswordRotationRequired(user) &&
+			!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
 		}
 
 		ctx := req.Context()

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
@@ -57,10 +58,18 @@ function SettingsPage() {
   const updateSettings = useUpdateOrgSettings(org);
   const updateSessionSettings = useUpdateOrgSettings(org);
   const updateEscalationSettings = useUpdateOrgSettings(org);
+  const updateDiagnosticsSettings = useUpdateOrgSettings(org);
 
   const [defaultPolicyUid, setDefaultPolicyUid] = useState<string>(NO_DEFAULT);
   const [escalationError, setEscalationError] = useState<string | null>(null);
   const [escalationSaved, setEscalationSaved] = useState(false);
+
+  // Path-trace-on-failure org default. Defaults to true BEFORE the settings
+  // load, matching the server's "absent means on" — a false initial value would
+  // flash an unchecked switch for an org that is in fact tracing.
+  const [tracerouteOnFailure, setTracerouteOnFailure] = useState(true);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [diagnosticsSaved, setDiagnosticsSaved] = useState(false);
 
   const [emailPattern, setEmailPattern] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +92,7 @@ function SettingsPage() {
           : "",
       );
       setDefaultPolicyUid(settings.defaultEscalationPolicyUid || NO_DEFAULT);
+      setTracerouteOnFailure(settings.tracerouteOnFailure ?? true);
     }
   }, [settings]);
 
@@ -154,6 +164,27 @@ function SettingsPage() {
       setTimeout(() => setEscalationSaved(false), 3000);
     } catch (err) {
       setEscalationError(
+        err instanceof ApiError ? err.message : t("settings.unexpectedError"),
+      );
+    }
+  };
+
+  const handleSaveDiagnostics = async (enabled: boolean) => {
+    setDiagnosticsError(null);
+    setDiagnosticsSaved(false);
+    setTracerouteOnFailure(enabled);
+
+    try {
+      await updateDiagnosticsSettings.mutateAsync({
+        tracerouteOnFailure: enabled,
+      });
+      setDiagnosticsSaved(true);
+      setTimeout(() => setDiagnosticsSaved(false), 3000);
+    } catch (err) {
+      // Put the switch back: leaving it where the user clicked would show a
+      // setting that was never saved.
+      setTracerouteOnFailure(!enabled);
+      setDiagnosticsError(
         err instanceof ApiError ? err.message : t("settings.unexpectedError"),
       );
     }
@@ -468,6 +499,48 @@ function SettingsPage() {
               )}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>{t("settings.traceroute.title")}</CardTitle>
+          <CardDescription>
+            {t("settings.traceroute.description")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {diagnosticsError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{diagnosticsError}</AlertDescription>
+            </Alert>
+          )}
+
+          {diagnosticsSaved && (
+            <Alert>
+              <Check className="h-4 w-4" />
+              <AlertDescription>{t("settings.saved")}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="org-traceroute-toggle">
+                {t("settings.traceroute.label")}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.traceroute.help")}
+              </p>
+            </div>
+            <Switch
+              id="org-traceroute-toggle"
+              checked={tracerouteOnFailure}
+              onCheckedChange={handleSaveDiagnostics}
+              disabled={updateDiagnosticsSettings.isPending || isLoading}
+              data-testid="org-traceroute-toggle"
+            />
+          </div>
         </CardContent>
       </Card>
 

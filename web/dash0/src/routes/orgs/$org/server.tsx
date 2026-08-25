@@ -20,6 +20,7 @@ function ServerLayout() {
     { label: t("tabs.authentication"), path: "/orgs/$org/server/auth" },
     { label: t("tabs.hashing"), path: "/orgs/$org/server/hashing" },
     { label: t("tabs.slack"), path: "/orgs/$org/server/slack" },
+    { label: t("tabs.discord", "Discord"), path: "/orgs/$org/server/discord" },
     { label: t("tabs.performance"), path: "/orgs/$org/server/performance" },
     { label: t("tabs.agents"), path: "/orgs/$org/server/agents" },
     { label: t("tabs.aggregation"), path: "/orgs/$org/server/aggregation" },

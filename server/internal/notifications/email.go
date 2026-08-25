@@ -43,7 +43,7 @@ func canAckEvent(eventType string) bool {
 func isModeledIncidentEvent(eventType string) bool {
 	switch eventType {
 	case eventTypeIncidentCreated, eventTypeIncidentResolved, eventTypeIncidentEscalated,
-		eventTypeIncidentReopened, eventTypeIncidentComment:
+		eventTypeIncidentReopened, eventTypeIncidentComment, eventTypeIncidentAcknowledged:
 		return true
 	default:
 		return false
@@ -91,6 +91,10 @@ const (
 	eventTypeIncidentEscalated = "incident.escalated"
 	eventTypeIncidentReopened  = "incident.reopened"
 	eventTypeIncidentComment   = "incident.comment"
+	// eventTypeIncidentAcknowledged closes the loop with everyone who was
+	// paged: without it a teammate taking the incident is invisible to every
+	// channel except the one the button lived in.
+	eventTypeIncidentAcknowledged = "incident.acknowledged"
 )
 
 // incidentTemplateForEvent maps an event type to its embedded template name.
@@ -109,9 +113,49 @@ func incidentTemplateForEvent(eventType string) (string, bool) {
 		return "incident-reopened.html", true
 	case eventTypeIncidentComment:
 		return "incident-comment.html", true
+	case eventTypeIncidentAcknowledged:
+		return "incident-acknowledged.html", true
 	default:
 		return "", false
 	}
+}
+
+// burnTemplateForEvent picks the burn-specific template for an SLO burn-rate
+// incident. Returns false for every other incident, leaving the ordinary
+// check-outage templates in place.
+func burnTemplateForEvent(incident *models.Incident, eventType string) (string, bool) {
+	if incident == nil || incident.Kind != models.IncidentKindSLOBurn {
+		return "", false
+	}
+
+	switch eventType {
+	case eventTypeIncidentCreated, eventTypeIncidentReopened:
+		return "incident-burn-created.html", true
+	case eventTypeIncidentResolved:
+		return "incident-burn-resolved.html", true
+	default:
+		// Escalations and comments keep the generic incident templates: they
+		// are about the paging cycle, not about the burn numbers.
+		return "", false
+	}
+}
+
+// applyBurnViewModel adds the burn-specific keys the burn templates render.
+// The three that matter — rate, budget remaining, projected exhaustion — are
+// the ones that let a reader decide without opening the dashboard.
+func applyBurnViewModel(viewModel map[string]any, burn *BurnInfo) {
+	viewModel["SLOName"] = burn.SLOName
+	viewModel["BurnPolicyLabel"] = burn.PolicyLabel
+	viewModel["BurnSeverity"] = burn.Severity
+	viewModel["BurnRate"] = burn.RateText()
+	viewModel["BurnShortRate"] = burn.ShortRateText()
+	viewModel["BurnPeakRate"] = fmt.Sprintf("%.1fx", burn.PeakRate)
+	viewModel["BurnThreshold"] = burn.ThresholdText()
+	viewModel["BurnLongWindow"] = humanDuration(burn.LongWindow)
+	viewModel["BurnShortWindow"] = humanDuration(burn.ShortWindow)
+	viewModel["BurnBudgetRemaining"] = burn.BudgetRemainingText()
+	viewModel["BurnProjectedExhaustion"] = burn.ProjectedExhaustionText()
+	viewModel["BurnTarget"] = fmt.Sprintf("%.3g%%", burn.TargetPct)
 }
 
 var (
@@ -276,10 +320,11 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: emailAddresses},
-		Subject:    content.subject,
-		HTML:       content.htmlBody,
-		Text:       content.textBody,
+		Recipients:       email.Recipients{To: emailAddresses},
+		Subject:          content.subject,
+		HTML:             content.htmlBody,
+		Text:             content.textBody,
+		SupportReplyable: email.SupportReplyable(content.template),
 	}
 
 	res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
@@ -350,6 +395,7 @@ func (s *EmailSender) sendPerRecipient(
 			Text:                        content.textBody,
 			ListUnsubscribeURL:          unsubURL,
 			ListUnsubscribePostOneClick: unsubURL != "",
+			SupportReplyable:            email.SupportReplyable(content.template),
 		}
 
 		res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
@@ -418,6 +464,10 @@ type emailContent struct {
 	subject  string
 	htmlBody string
 	textBody string
+	// template is the rendered template's file name, carried out so the caller
+	// can ask email.SupportReplyable about it. Empty on the ad-hoc fallback
+	// body below, which therefore fails closed — see spec 2026-08-22-02.
+	template string
 }
 
 // buildEmailContent assembles the view-model for one recipient and renders it
@@ -435,6 +485,15 @@ func (s *EmailSender) buildEmailContent(
 	}
 
 	templateName, ok := incidentTemplateForEvent(payload.EventType)
+
+	// A burn alert rides the SAME incident.created / incident.resolved events
+	// a check outage does, so the event type alone cannot pick the template:
+	// "[DOWN] api is down" would be an outright lie about an objective that
+	// merely spent budget too fast. The incident's kind is the discriminator.
+	if burnName, burnOK := burnTemplateForEvent(payload.Incident, payload.EventType); burnOK {
+		templateName, ok = burnName, true
+	}
+
 	if !ok {
 		// Unrecognized event type: no dedicated template exists. Keep a
 		// minimal ad-hoc body rather than failing the whole notification —
@@ -455,7 +514,7 @@ func (s *EmailSender) buildEmailContent(
 		return emailContent{}, fmt.Errorf("formatting template %s: %w", templateName, err)
 	}
 
-	return emailContent{subject: subject, htmlBody: html, textBody: text}, nil
+	return emailContent{subject: subject, htmlBody: html, textBody: text, template: templateName}, nil
 }
 
 // buildIncidentViewModel builds the data map passed to the incident-*.html
@@ -487,10 +546,23 @@ func (s *EmailSender) buildIncidentViewModel(
 		viewModel["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Round(time.Second).String()
 	}
 
+	if burn := BurnInfoFor(payload.Incident); burn != nil {
+		applyBurnViewModel(viewModel, burn)
+	}
+
 	if payload.Comment != nil {
 		viewModel["CommentText"] = commentText(payload.Comment)
 		viewModel["CommentAuthor"] = commentAuthor(payload.Comment)
 		viewModel["CommentSource"] = commentSourceLabel(payload.Comment)
+	}
+
+	if payload.EventType == eventTypeIncidentAcknowledged {
+		viewModel["AckActor"] = ackActor(payload.Acknowledgment)
+		viewModel["AckVia"] = ackViaLabel(payload.Acknowledgment)
+	}
+
+	if payload.Incident.AcknowledgedAt != nil {
+		viewModel["AcknowledgedAt"] = payload.Incident.AcknowledgedAt.Format("2006-01-02 15:04:05")
 	}
 
 	if unsubURL != "" {

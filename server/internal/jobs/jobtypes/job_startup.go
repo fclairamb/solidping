@@ -76,6 +76,14 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	// Ensure stuck-job reaper exists (global, not per-org). Running it at
 	// startup gives an immediate first sweep after a deploy — exactly when
 	// orphaned 'running' jobs appear.
+	if err := r.ensureSupportCleanupJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	if err := r.ensureEventsCleanupJob(ctx, jctx); err != nil {
+		return err
+	}
+
 	if err := r.ensureStuckJobReaperJob(ctx, jctx); err != nil {
 		return err
 	}
@@ -104,7 +112,69 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	// Ensure the uptime-report sweep exists (global, not per-org — one sweep
 	// serves every org's schedules). It self-reschedules hourly; this seeds the
 	// first run (spec 2026-08-20-01).
-	return r.ensureUptimeReportJob(ctx, jctx)
+	if err := r.ensureUptimeReportJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure the SLO burn-rate evaluation sweep exists. Self-reschedules every
+	// minute; this seeds the first run (spec 2026-08-21-08).
+	if err := r.ensureSLOBurnEvalJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure the platform watchdog exists (global, not per-org). It
+	// self-reschedules hourly; this seeds the first run so an instance that
+	// went blind between two deploys is reported on the first cycle after the
+	// restart rather than an hour later (spec 2026-08-24-10).
+	return r.ensurePlatformWatchdogJob(ctx, jctx)
+}
+
+// ensurePlatformWatchdogJob provisions the global platform watchdog. The job
+// reads its own enable flag from the `platform_watchdog` system parameter, so
+// it is provisioned unconditionally: a disabled watchdog costs one cheap job
+// row per interval and turning it on becomes a parameter edit rather than a
+// restart. CreateJob dedupes on type+config+org+pending, so a restart won't
+// stack a duplicate.
+func (r *StartupJobRun) ensurePlatformWatchdogJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping platform watchdog provisioning (services not available)")
+
+		return nil
+	}
+
+	if _, err := jctx.Services.Jobs.CreateJob(
+		ctx, "", string(jobdef.JobTypePlatformWatchdog), nil, nil,
+	); err != nil {
+		log.InfoContext(ctx, "Failed to create platform watchdog job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured platform watchdog job exists")
+	}
+
+	return nil
+}
+
+// ensureSLOBurnEvalJob provisions the global SLO burn-rate evaluation sweep.
+// CreateJob dedupes on type+config+org+pending, so a restart won't stack a
+// duplicate.
+func (r *StartupJobRun) ensureSLOBurnEvalJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping SLO burn evaluation provisioning (services not available)")
+
+		return nil
+	}
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeSLOBurnEval), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create SLO burn evaluation job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured SLO burn evaluation job exists")
+	}
+
+	return nil
 }
 
 // ensureUptimeReportJob provisions the global uptime-report sweep. The job
@@ -174,6 +244,13 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	adminUser := models.NewUser(adminEmail)
 	adminUser.PasswordHash = &passwordHash
 	adminUser.SuperAdmin = true
+	// Both halves of this credential pair are published in a public repository,
+	// and the account is a superadmin. The seed itself stays unconditional and
+	// identical in dev and production — a mode-dependent security posture is
+	// one more thing that can be mis-detected — so the exposure is closed at
+	// the other end instead: the first successful login can do nothing but
+	// rotate the password (spec 2026-08-23-04).
+	adminUser.MustChangePassword = true
 
 	// Deliberately NOT captured as a user_signed_up product event (spec
 	// 2026-08-02-08): this is the install-bootstrap admin seeded on every
@@ -478,6 +555,31 @@ func (r *StartupJobRun) ensureJobsCleanupJob(ctx context.Context, jctx *jobdef.J
 	return nil
 }
 
+// ensureEventsCleanupJob provisions a global audit-retention sweeper. The job
+// reschedules itself daily; this just ensures the very first one exists.
+// CreateJob dedupes on type+config+org+pending, so a restart won't stack a
+// duplicate.
+func (r *StartupJobRun) ensureEventsCleanupJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping events cleanup provisioning (services not available)")
+
+		return nil
+	}
+
+	log.InfoContext(ctx, "Ensuring events cleanup job exists")
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeEventsCleanup), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create events cleanup job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured events cleanup job exists")
+	}
+
+	return nil
+}
+
 // ensureStuckJobReaperJob provisions a global stuck-job reaper. The job
 // reschedules itself; this just ensures the very first one exists.
 func (r *StartupJobRun) ensureStuckJobReaperJob(ctx context.Context, jctx *jobdef.JobContext) error {
@@ -569,6 +671,30 @@ func (r *StartupJobRun) ensureAbandonedResultReaperJob(ctx context.Context, jctx
 		log.InfoContext(ctx, "Failed to create abandoned-result reaper job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured abandoned-result reaper exists")
+	}
+
+	return nil
+}
+
+// ensureSupportCleanupJob provisions the global support-retention sweeper. The
+// job reschedules itself daily; this just makes sure the very first one exists.
+// CreateJob dedupes on type+config+org+pending, so a restart does not stack
+// duplicates.
+func (r *StartupJobRun) ensureSupportCleanupJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping support cleanup provisioning (services not available)")
+
+		return nil
+	}
+
+	if _, err := jctx.Services.Jobs.CreateJob(
+		ctx, "", string(jobdef.JobTypeSupportCleanup), nil, nil,
+	); err != nil {
+		log.InfoContext(ctx, "Failed to create support cleanup job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured support cleanup job exists")
 	}
 
 	return nil

@@ -37,6 +37,15 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 | `maxCallsPerMonth` | Outbound voice calls placed by the org per UTC calendar month. | notification dispatch (voice channel) |
 | `maxWhatsappPerMonth` | Outbound WhatsApp template messages per UTC calendar month. | notification dispatch (WhatsApp channel) |
 | `maxSlos` | Service-level objectives the org may hold. | `SloCreateAllowed` → [`entitlements/usage.go`](../../server/internal/entitlements/usage.go), called from [`slos/service.go` (`CreateSLO`)](../../server/internal/handlers/slos/service.go) |
+| `whiteLabel` | **Boolean, not a cap.** Whether the org may drop the "powered by SolidPing" badge from its status pages (spec 2026-08-21-07). | `WhiteLabelAllowed` → [`entitlements/service.go`](../../server/internal/entitlements/service.go), called from [`statuspages/service.go`](../../server/internal/handlers/statuspages/service.go) |
+
+`whiteLabel` is the one non-numeric entitlement, and its `nil` means something
+different from every field above it: **`nil` = "use the deployment default"**,
+not "unlimited" — a boolean has no unbounded reading. It is also only half of
+the decision: the badge disappears only when the org is entitled AND the page
+sets `hideBranding`. The resolver fails CLOSED (a lookup error keeps the badge),
+because losing the badge when the plan does not include it is a silent revenue
+leak while showing it for a moment is cosmetic.
 
 `maxCustomDomains` is a **soft, one-directional gate**: only the transition
 from "page has no custom domain" to "page has one" is checked against the
@@ -75,10 +84,13 @@ after an upgrade or after deleting another agent.
 
 `DefaultsFor(mode)` — anything not listed is `nil` (unlimited):
 
-| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | maxWhatsappPerMonth | maxSlos | Display identity |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | 🏠 Self-hosted |
-| SaaS | 100 | 5 | 10 | 1 | 0 | 0 | 0 | 0 | 2 | 🆓 Free |
+| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | maxWhatsappPerMonth | maxSlos | whiteLabel | Display identity |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | **true** | 🏠 Self-hosted |
+| SaaS | 100 | 5 | 10 | 1 | 0 | 0 | 0 | 0 | 2 | **false** | 🆓 Free |
+
+Self-hosted gets `whiteLabel` unconditionally: an operator running their own
+instance should never have to pay to take our badge off their own status page.
 
 Self-hosted's unlimited `maxDeportedAgents` preserves the "free private
 locations" competitive positioning (see

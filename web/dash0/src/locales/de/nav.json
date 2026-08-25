@@ -18,6 +18,7 @@
   "designReference": "Design-Referenz",
   "new": "Neu",
   "edit": "Bearbeiten",
+  "register": "Registrierung",
   "profile": "Profil",
   "tokens": "Token",
   "account": "Konto",
@@ -27,6 +28,7 @@
   "invitations": "Einladungen",
   "requests": "Anfragen",
   "usage": "Nutzung",
+  "privateLocations": "Private Standorte",
   "ai": "KI-Assistenten",
   "settings": "Einstellungen",
   "web": "Web",
@@ -136,5 +138,6 @@
   },
   "security": "Sicherheit",
   "slos": "SLOs",
-  "reportSchedules": "Verfügbarkeitsberichte"
+  "reportSchedules": "Verfügbarkeitsberichte",
+  "audit": "Audit"
 }

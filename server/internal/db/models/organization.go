@@ -17,14 +17,15 @@ type Organization struct {
 	// → none). NULL = no org default (legacy behavior). FK `on delete set null`.
 	DefaultEscalationPolicyUID *string `bun:"default_escalation_policy_uid"`
 	// LogoURL is the organization's logo: either an external http(s) URL, or
-	// "/pub/org-logos/<file uid>" for a logo uploaded through the files
+	// "/pub/assets/<file uid>" for a logo uploaded through the files
 	// subsystem. NULL means "no logo", and every surface falls back to the
 	// product default.
 	LogoURL *string `bun:"logo_url"`
 	// LogoFileUID points at the uploaded file backing LogoURL. It is NULL for
-	// external-URL logos. Two things depend on it: replacing an uploaded logo
-	// retires the previous blob, and the unsigned public logo route only
-	// serves a file that is the CURRENT logo of a live organization.
+	// external-URL logos. Replacing an uploaded logo retires the previous blob
+	// through it. It is NO LONGER an authorization input: since spec
+	// 2026-08-22-03 the unsigned public route reads the FILE's own attachment
+	// topic (`organizations/<uid>/logo`) and serves live rows only.
 	LogoFileUID *string    `bun:"logo_file_uid"`
 	CreatedAt   time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt   time.Time  `bun:"updated_at,notnull,default:current_timestamp"`

@@ -3,8 +3,13 @@
 The SolidPing Slack app is configured from these manifests (paste into the
 Slack app config UI, or manage via the App Manifest API):
 
-- [`manifest-prod.json`](manifest-prod.json) — production app (`solidping.io`).
-- [`manifest-dev.json`](manifest-dev.json) — development app (`solidping.k8xp.com`).
+- [`manifest-prod.json`](manifest-prod.json) — production app, on the public
+  `solidping.io` host.
+- [`manifest-dev.json`](manifest-dev.json) — template for a second, development
+  app. Its URLs use the placeholder host `app.dev.example.com`: replace it with
+  wherever your dev instance is reachable before pasting. **A Slack app holds
+  one set of request URLs**, so dev needs its own app — it cannot share the
+  production one.
 
 ## Slash commands
 
@@ -55,3 +60,32 @@ own posts, message edits/deletes, and replies in unrelated threads are ignored.
 > must re-authorize (re-run the OAuth install flow) before its thread replies
 > are captured — Slack will not deliver `message.*` events, and history reads
 > will 403, until the workspace re-consents to the new scopes.
+
+## Direct messages → the support inbox (spec 2026-08-22-02)
+
+A DM to the bot (`channel_type: "im"`) is captured in the instance support
+inbox rather than dropped. It is handled **before** the thread-reply gate in
+`handleMessage`, because a DM's first message has no `thread_ts` and would
+otherwise be discarded by it. Channel and group traffic is untouched.
+
+- **Bot event:** `message.im` — already in both manifests.
+- **Bot scope:** `im:history` — already in both manifests, but until this spec
+  it was **missing from `slackBotScopes` in `service.go`**, which is what the
+  authorize URL actually requests. The manifests were never the blocker; the
+  install request was.
+
+> **Re-authorization required, again.** Slack does not grant new scopes to
+> existing installs. Every already-connected workspace must re-run the OAuth
+> install before its DMs reach the inbox. This was accepted deliberately when
+> the spec's open question was resolved, on the condition that the state
+> degrades cleanly and visibly rather than looking like an empty inbox:
+>
+> - `models.SlackSettings.DMCaptureAvailable()` reads the stored grant;
+> - the dash0 integration page shows a "Direct messages are not being captured"
+>   banner with a **Reinstall Slack app** button;
+> - `Service.ReportDMCapability` logs one WARN at boot with the count and
+>   publishes `solidping_support_dm_unavailable{channel="slack"}`.
+>
+> Nothing errors and nothing spams the logs while a workspace has not
+> reinstalled — the DMs simply never arrive, which is why the three signals
+> above exist.

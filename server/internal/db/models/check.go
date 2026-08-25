@@ -153,6 +153,21 @@ type Check struct {
 	// (and ultimately to no escalation) when nil.
 	EscalationPolicyUID *string `bun:"escalation_policy_uid"`
 
+	// TracerouteOnFailure is the per-check override for the MTR-style path
+	// capture taken when this check goes down on a network-reachability
+	// failure (spec 2026-08-21-10).
+	//
+	// THREE STATES, AND nil IS THE INTERESTING ONE:
+	//
+	//	nil     inherit the org default (org parameter
+	//	        `diagnostics.traceroute.enabled`, itself ON per the spec)
+	//	&true   always trace this check
+	//	&false  never trace this check, whatever the org default says
+	//
+	// A plain bool would collapse "not decided" into "no", which would make
+	// the org-level default unreachable for every check that already exists.
+	TracerouteOnFailure *bool `bun:"traceroute_on_failure"`
+
 	// Status tracking
 	Status          CheckStatus `bun:"status,notnull,default:0"`
 	StatusStreak    int         `bun:"status_streak,notnull,default:0"`
@@ -190,6 +205,115 @@ func (c *Check) RegionSpreadDuration() *time.Duration {
 	d := time.Duration(*c.RegionSpread)
 
 	return &d
+}
+
+// recoveryHardCeiling bounds the effective recovery period in wall-clock
+// time, mirroring the reopen-cooldown clamp (see calculateCooldown in the
+// incidents package). Even a long backoff or a large multiplier can never
+// push the required stability beyond this.
+const recoveryHardCeiling = 30 * time.Minute
+
+// FlappingWindowElapsed reports whether the rolling flapping window has
+// elapsed as of `now`, i.e. whether the NEXT outage onset would start a fresh
+// window rather than count as a flap inside the current one. True when there
+// has been no outage yet (LastOutageAt nil), the flapping feature is off
+// (FlappingWindowSeconds == 0), or the last outage is older than the window.
+//
+// This is the one place the "lazy reset" rule is expressed — both the
+// write-path counter bump (incidents.bumpFlap, via this method) and the
+// read-path effective-value exposure (EffectiveFlapCount) delegate to it, so
+// the two can never drift apart.
+func (c *Check) FlappingWindowElapsed(now time.Time) bool {
+	if c.LastOutageAt == nil {
+		return true
+	}
+
+	window := time.Duration(c.FlappingWindowSeconds) * time.Second
+	if window == 0 {
+		return true
+	}
+
+	return now.Sub(*c.LastOutageAt) > window
+}
+
+// EffectiveFlapCount returns the number of outages counted inside the
+// current rolling flapping window, as of `now`.
+//
+// THE LAZY-RESET TRAP: FlapCount (the raw column) only resets to 0 at the
+// NEXT outage onset (see incidents.bumpFlap) — a check whose last outage was
+// e.g. 12h ago can still hold a stale nonzero FlapCount in the row, because
+// nothing has come along yet to reset it. Any caller that reads FlapCount
+// directly to describe the check's CURRENT state (rather than to drive the
+// active incident's own recovery math, where it is always fresh) must use
+// this method instead, or it will report a flap level that stopped being
+// true hours or days ago.
+func (c *Check) EffectiveFlapCount(now time.Time) int {
+	if c.FlappingWindowElapsed(now) {
+		return 0
+	}
+
+	return c.FlapCount
+}
+
+// effectiveRecoveryPeriodForFlapCount is the shared math behind
+// EffectiveRecoveryPeriod and EffectiveRecoveryPeriodAt:
+//
+//	effective = min( R · F^flapCount , R · MaxRecoveryMultiplier , HARD_CEILING )
+//
+// where R = RecoveryPeriodSeconds and F = FlapBackoffFactor. It short-circuits
+// to a plain R (today's constant behavior) when the flapping feature is off
+// for this check — F<=1, FlappingWindowSeconds==0, or flapCount<=0 — so
+// existing checks never regress.
+func (c *Check) effectiveRecoveryPeriodForFlapCount(flapCount int) time.Duration {
+	base := time.Duration(c.RecoveryPeriodSeconds) * time.Second
+
+	if c.FlapBackoffFactor <= 1 || c.FlappingWindowSeconds == 0 || flapCount <= 0 {
+		return base
+	}
+
+	// Cap multiplier: required recovery never exceeds R × MaxRecoveryMultiplier.
+	capMult := c.MaxRecoveryMultiplier
+	if capMult < 1 {
+		capMult = 1
+	}
+
+	// Compute F^flapCount in integer space, short-circuiting once it reaches or
+	// exceeds the cap so a large flapCount can't overflow.
+	multiplier := 1
+	for range flapCount {
+		multiplier *= c.FlapBackoffFactor
+		if multiplier >= capMult {
+			multiplier = capMult
+
+			break
+		}
+	}
+
+	effective := base * time.Duration(multiplier)
+	if effective > recoveryHardCeiling {
+		effective = recoveryHardCeiling
+	}
+
+	return effective
+}
+
+// EffectiveRecoveryPeriod returns the stability required before an incident
+// on this check auto-resolves, given the check's RAW (possibly stale)
+// FlapCount. This is what the incidents package uses while an incident is
+// active: FlapCount was just written by bumpFlap at this incident's own
+// onset, so it is always fresh in that context — the lazy-reset trap does not
+// apply here. See effectiveRecoveryPeriodForFlapCount for the math.
+func (c *Check) EffectiveRecoveryPeriod() time.Duration {
+	return c.effectiveRecoveryPeriodForFlapCount(c.FlapCount)
+}
+
+// EffectiveRecoveryPeriodAt returns the same computation as
+// EffectiveRecoveryPeriod, but driven by EffectiveFlapCount(now) rather than
+// the raw column — i.e. it is lazy-reset aware. Use this to describe a
+// check's CURRENT adaptive-recovery state from outside an active incident
+// (e.g. the API's flapState block), where the raw FlapCount may be stale.
+func (c *Check) EffectiveRecoveryPeriodAt(now time.Time) time.Duration {
+	return c.effectiveRecoveryPeriodForFlapCount(c.EffectiveFlapCount(now))
 }
 
 // NewCheck creates a new check with generated UID.
@@ -280,6 +404,11 @@ type CheckUpdate struct {
 
 	// Optional escalation policy override (nil = inherit from group / none)
 	EscalationPolicyUID *string
+
+	// TracerouteOnFailure sets the per-check path-trace override;
+	// ClearTracerouteOnFailure resets it to NULL (inherit the org default).
+	TracerouteOnFailure      *bool
+	ClearTracerouteOnFailure bool
 
 	// Clear* fields set the corresponding column to NULL on update.
 	ClearEscalationPolicyUID bool

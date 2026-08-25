@@ -215,6 +215,57 @@ func TestBuildWebPushURL(t *testing.T) {
 	}
 }
 
+// TestBuildWebPushContent_IncidentNumber verifies titles carry the short #N
+// incident reference (and never the UID), matching Slack/Discord headers.
+func TestBuildWebPushContent_IncidentNumber(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		eventType string
+		incident  *models.Incident
+		wantTitle string
+	}{
+		{
+			name:      "created carries the reference",
+			eventType: eventTypeIncidentCreated,
+			incident:  &models.Incident{UID: "inc-1", Number: 42},
+			wantTitle: "#42 · [DOWN] my-check",
+		},
+		{
+			name:      "resolved carries the reference",
+			eventType: eventTypeIncidentResolved,
+			incident:  &models.Incident{UID: "inc-1", Number: 42},
+			wantTitle: "#42 · [RECOVERED] my-check",
+		},
+		{
+			name:      "unnumbered incident keeps the bare title",
+			eventType: eventTypeIncidentCreated,
+			incident:  &models.Incident{UID: "inc-1"},
+			wantTitle: "[DOWN] my-check",
+		},
+		{
+			name:      "no incident keeps the bare title",
+			eventType: eventTypeIncidentResolved,
+			wantTitle: "[RECOVERED] my-check",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			payload := &Payload{EventType: tt.eventType, Incident: tt.incident}
+
+			title, body := buildWebPushContent(payload, "my-check")
+			r.Equal(tt.wantTitle, title)
+			r.NotContains(title, "inc-1", "title must never expose the incident UID")
+			r.NotContains(body, "inc-1", "body must never expose the incident UID")
+		})
+	}
+}
+
 // TestWebPushSender_Send_NoVAPIDKeys verifies that the sender returns
 // ErrWebPushNotConfigured when VAPID keys are absent.
 func TestWebPushSender_Send_NoVAPIDKeys(t *testing.T) {

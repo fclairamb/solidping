@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -165,7 +164,7 @@ func (h *OIDCOAuthHandler) handleOAuthError(
 		description = "OIDC provider is not configured"
 	default:
 		code = OAuthCodeFailed
-		description = fmt.Sprintf("OAuth failed: %v", err)
+		description = logOAuthFailure(req, "oidc", err)
 	}
 
 	return h.redirectWithError(writer, req, redirectURI, code, description)

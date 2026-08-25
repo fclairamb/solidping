@@ -26,9 +26,20 @@
     "up": "Aktiv",
     "down": "Ausfall",
     "warning": "Warnung",
+    "created": "Ausstehend",
     "degraded": "Beeinträchtigt",
     "abandoned": "Abgebrochen",
     "unknown": "Unbekannt"
+  },
+  "statusFilter": {
+    "all": "Alle Status",
+    "count": "{{count}} Status",
+    "plusOne": "{{label}} +{{count}}"
+  },
+  "typeFilter": {
+    "all": "Alle Typen",
+    "count": "{{count}} Typen",
+    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} aktiv",
@@ -92,18 +103,21 @@
       "solidping": "SolidPing-Export (JSON/YAML)",
       "gatus": "Gatus (config.yaml)",
       "betterstack": "Better Stack (API-Token)",
-      "uptime-kuma": "Uptime Kuma (Backup-JSON)"
+      "uptime-kuma": "Uptime Kuma (Backup-JSON)",
+      "uptimerobot": "UptimeRobot (getMonitors-JSON)"
     },
     "importSourceHelp": {
       "solidping": "Ein über die Schaltfläche „Exportieren“ erzeugtes Dokument, als JSON oder YAML.",
       "gatus": "Fügen Sie Ihre Gatus-config.yaml ein oder laden Sie sie hoch — die endpoints:-Liste wird in Checks umgewandelt.",
       "betterstack": "Wir lesen Ihre Monitore und Heartbeats über die Better-Stack-API aus und konvertieren sie.",
-      "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an."
+      "uptime-kuma": "Uptime Kuma 1.x: Einstellungen → Backup → JSON exportieren. Version 2.x bietet diesen Export nicht mehr an.",
+      "uptimerobot": "Fügen Sie das JSON des getMonitors-Aufrufs der UptimeRobot-API v2 ein — den genauen curl-Befehl finden Sie in der Dokumentation."
     },
     "importPlaceholder": {
       "solidping": "Exportiertes JSON- oder YAML-Dokument einfügen…",
       "gatus": "Gatus-config.yaml einfügen…",
-      "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…"
+      "uptime-kuma": "Uptime-Kuma-Backup-JSON einfügen…",
+      "uptimerobot": "UptimeRobot-getMonitors-JSON einfügen…"
     },
     "importPayload": "Konfiguration",
     "importUpload": "Datei hochladen",
@@ -182,7 +196,7 @@
     "labelValue": "Wert",
     "addLabel": "Label hinzufügen",
     "flapping": "Flattern (Flapping)",
-    "flappingHelp": "Behandlung einer Prüfung, die sich wiederholt erholt und wieder fehlschlägt — dedupliziert kurze Aussetzer und verlangt längere Stabilität, bevor eine flatternde Prüfung aufgelöst wird.",
+    "flappingHelp": "Dedupliziert kurze Aussetzer und verlangt längere Stabilität, bevor eine flatternde Prüfung aufgelöst wird.",
     "confirmationPeriod": "Bestätigungszeitraum",
     "confirmationPeriodHelp": "Diese Zeit nach dem ersten Fehlschlag warten, bevor ein Vorfall geöffnet wird. 0 = sofort öffnen.",
     "escalationThreshold": "Eskalationsschwelle",
@@ -200,13 +214,16 @@
     "periodImmediateOpen": "Öffnet sofort beim ersten Fehlschlag einen Vorfall.",
     "periodImmediateResolve": "Löst den Vorfall sofort beim ersten Erfolg auf.",
     "reopenCooldown": "Wiedereröffnungs-Cooldown-Multiplikator",
-    "reopenCooldownHelp": "Schlägt die Prüfung kurz nach der Erholung erneut fehl, wird sie demselben Vorfall zugeordnet, statt erneut zu alarmieren. Fenster = N × Prüfintervall (min. 2 Min., max. 30 Min.). 0 = immer einen neuen Vorfall öffnen.",
+    "reopenCooldownHelp": "Ein Rückfall innerhalb dieses Fensters wird demselben Vorfall zugeordnet, statt erneut zu alarmieren.",
+    "reopenCooldownOff": "aus — öffnet immer einen neuen Vorfall",
+    "reopenCooldownCapped": "= {{duration}} (gedeckelt, von {{raw}})",
+    "reopenCooldownFloored": "= {{duration}} (Mindestwert, von {{raw}})",
     "flappingWindow": "Flatter-Fenster (Sekunden)",
-    "flappingWindowHelp": "Flattert eine Prüfung wiederholt innerhalb dieses Fensters, wird vor jeder Auflösung längere Stabilität verlangt. 0 = aus.",
+    "flappingWindowHelp": "Ausfälle innerhalb dieses Fensters erhöhen die erforderliche Wiederherstellungszeit. 0 = aus.",
     "flapBackoffFactor": "Backoff-Faktor",
-    "flapBackoffFactorHelp": "Jedes Flattern multipliziert die erforderliche Wiederherstellungszeit mit diesem Wert. 1 = aus (konstante Wiederherstellung).",
+    "flapBackoffFactorHelp": "Jedes Flattern multipliziert die erforderliche Wiederherstellung mit diesem Wert. 1 = aus.",
     "maxRecoveryMultiplier": "Max. Wiederherstellungs-Multiplikator",
-    "maxRecoveryMultiplierHelp": "Obergrenze — die erforderliche Wiederherstellung überschreitet niemals dieses Vielfache des Basis-Wiederherstellungszeitraums.",
+    "maxRecoveryMultiplierHelp": "Die erforderliche Wiederherstellung überschreitet niemals dieses Vielfache des Basis-Wiederherstellungszeitraums.",
     "saveChanges": "Änderungen speichern",
     "creating": "Erstellen...",
     "urlRequired": "URL ist erforderlich",
@@ -214,7 +231,12 @@
     "portRequired": "Port ist erforderlich",
     "domainRequired": "Domain ist erforderlich",
     "topic": "Thema",
-    "tls": "TLS"
+    "tls": "TLS",
+    "tracerouteOnFailure": "Traceroute bei Netzwerkausfall",
+    "tracerouteInherit": "Organisationsvorgabe übernehmen",
+    "tracerouteOn": "Immer aufzeichnen",
+    "tracerouteOff": "Nie aufzeichnen",
+    "tracerouteOnFailureHelp": "Wenn dieser Check ausfällt, weil das Ziel nicht ERREICHT werden konnte (Verbindungs-Timeout, Ablehnung, ICMP-Verlust, hängender TLS-Handshake), einen Traceroute im MTR-Stil aufzeichnen und an den Vorfall anhängen. Anwendungsfehler wie HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat lösen nie einen aus — der Server hat geantwortet, der Pfad ist also in Ordnung."
   },
   "types": {
     "http": "HTTP",
@@ -225,8 +247,8 @@
     "icmpDescription": "Hosts per ICMP anpingen",
     "dns": "DNS",
     "dnsDescription": "DNS-Auflösung überwachen",
-    "ssl": "SSL",
-    "sslDescription": "Gültigkeit von SSL-Zertifikaten prüfen",
+    "ssl": "TLS",
+    "sslDescription": "Gültigkeit von TLS-Zertifikaten prüfen",
     "domain": "Domain",
     "domainDescription": "Ablauf von Domains überwachen",
     "heartbeat": "Heartbeat",
@@ -380,7 +402,8 @@
       "dotClickToClose": "Zum Schließen anklicken",
       "resetZoom": "Zoom zurücksetzen",
       "zoomHint": "Ziehen Sie über das Diagramm, um einen Zeitbereich zu vergrößern",
-      "zoomHintReset": "Vergrößert — ziehen zum Verfeinern oder doppelklicken zum Zurücksetzen"
+      "zoomHintReset": "Vergrößert — ziehen zum Verfeinern oder doppelklicken zum Zurücksetzen",
+      "rawUnavailable": "Neueste Punkte nicht verfügbar – nur aggregierte Daten"
     },
     "resultBox": {
       "close": "Schließen",
@@ -475,6 +498,9 @@
     "checkInterval": "Prüfintervall",
     "regionsLabel": "Regionen",
     "statusLabel": "Status",
+    "flapping": "Flattern",
+    "flappingSummary": "Ausfall Nr. {{count}} innerhalb von {{window}} — erforderliche Erholung ×{{multiplier}} = {{effective}}",
+    "flappingSummaryImmediate": "Ausfall Nr. {{count}} innerhalb von {{window}} — löst sich sofort auf",
     "labelsLabel": "Labels",
     "lastResult": "Letztes Ergebnis",
     "lastResultDescription": "Letzte Ausführung der Prüfung",

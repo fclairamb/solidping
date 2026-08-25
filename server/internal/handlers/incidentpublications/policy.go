@@ -87,7 +87,11 @@ func (s *Service) eligiblePages(ctx context.Context, incident *models.Incident) 
 		return nil
 	}
 
-	targets, err := s.db.ListStatusPageTargetsForCheck(ctx, incident.CheckUID, incident.CheckGroupUID)
+	// The group comes from the CHECK, not from incidents.check_group_uid — that
+	// column is NULL on every per-check incident, and reading it would make a
+	// status page that displays a group as ONE resource silently stop
+	// publishing outages for the checks behind it (spec 2026-08-24-14).
+	targets, err := s.db.ListStatusPageTargetsForCheck(ctx, incident.CheckUID, s.incidentGroupUID(ctx, incident))
 	if err != nil {
 		s.logger.WarnContext(ctx, "auto-publish: failed to resolve status page targets",
 			"checkUid", incident.CheckUID, "error", err)
@@ -214,6 +218,17 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 		return fmt.Errorf("auto-publish: look up existing publication: %w", findErr)
 	}
 
+	// One group, one public entry per page (spec 2026-08-24-14). Members now
+	// each get their own incident — internally that is correct, publicly it
+	// would be six near-identical notices for one outage. The first member to
+	// publish owns the entry; this one appends an "also affecting X" note to it
+	// instead of minting a second.
+	if groupUID := s.incidentGroupUID(ctx, incident); groupUID != nil {
+		if s.consolidateIntoSibling(ctx, page, incident, *groupUID) {
+			return nil
+		}
+	}
+
 	title := s.templatedTitle(ctx, orgUID, page, incident)
 	now := s.clock.Now()
 
@@ -276,6 +291,19 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 		return
 	}
 
+	groupUID := s.incidentGroupUID(ctx, incident)
+
+	// A consolidated public entry closes when the LAST member recovers. Closing
+	// it on the first recovery would announce "resolved" while five sibling
+	// checks are still down — the public page would be actively wrong, which is
+	// worse than being late (spec 2026-08-24-14).
+	if groupUID != nil && s.groupHasOtherActiveIncident(ctx, incident, *groupUID) {
+		s.logger.DebugContext(ctx, "auto-resolve: group still has active members, publication stays open",
+			"incidentUid", incident.UID, "checkGroupUid", *groupUID)
+
+		return
+	}
+
 	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
 		OrganizationUID: incident.OrganizationUID,
 		IncidentUID:     incident.UID,
@@ -286,6 +314,14 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 			"incidentUid", incident.UID, "error", err)
 
 		return
+	}
+
+	// The entry may hang off a SIBLING's incident: consolidation gave ownership
+	// to whichever member published first, and that one may well have recovered
+	// before this one. Without this the last member to recover would find no
+	// publication of its own and the public entry would never close.
+	if groupUID != nil {
+		pubs = append(pubs, s.groupSiblingPublications(ctx, incident, *groupUID)...)
 	}
 
 	for _, pub := range pubs {
@@ -426,85 +462,4 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 		s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentUpdated, pub, "")
 		s.publishHint(ctx, incident.OrganizationUID)
 	}
-}
-
-// groupMemberNoteInterval is the minimum spacing between two "also affecting"
-// notes on the same publication. A group whose members fail one after another
-// within seconds must read as one incident, not as a wall of near-identical
-// posts — so the notes are coalesced rather than queued.
-const groupMemberNoteInterval = 5 * time.Minute
-
-// OnGroupMemberJoined appends a rate-limited "also affecting X" note when a new
-// member check joins an already-published group incident.
-func (s *Service) OnGroupMemberJoined(
-	ctx context.Context, incident *models.Incident, check *models.Check,
-) {
-	if incident == nil || check == nil {
-		return
-	}
-
-	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
-		OrganizationUID: incident.OrganizationUID,
-		IncidentUID:     incident.UID,
-		ActiveOnly:      true,
-		Limit:           100,
-	})
-	if err != nil || len(pubs) == 0 {
-		return
-	}
-
-	for _, pub := range pubs {
-		page, pageErr := s.db.GetStatusPage(ctx, incident.OrganizationUID, pub.StatusPageUID)
-		if pageErr != nil || page == nil {
-			continue
-		}
-
-		// nil group UID ON PURPOSE: this asks "does the JOINING CHECK have a
-		// component of its own on this page?", not "is its group displayed
-		// here?". Passing the group through would match the group resource and
-		// announce "also affecting <group>" — naming the component the
-		// publication is already about, which tells the reader nothing and
-		// reads as a stutter. A group resource renders as ONE component and
-		// never lists its members, so a member that is only visible through it
-		// has nothing new to say.
-		names := s.resourceNamesOnPage(ctx, incident.OrganizationUID, page.UID, check.UID, nil)
-		if len(names) == 0 {
-			continue
-		}
-
-		if s.recentlyNotedMember(ctx, pub) {
-			continue
-		}
-
-		tpl := templatesFor(page.Language)
-
-		s.postUpdate(ctx, page, pub, models.StatusUpdateKindInfo,
-			fmt.Sprintf(tpl.AlsoAffectingTitle, names[0]),
-			fmt.Sprintf(tpl.AlsoAffectingBody, names[0]), nil)
-
-		s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentUpdated, pub, "")
-	}
-}
-
-// recentlyNotedMember reports whether an "also affecting" note was already
-// posted on this publication inside groupMemberNoteInterval.
-func (s *Service) recentlyNotedMember(ctx context.Context, pub *models.IncidentPublication) bool {
-	updates, err := s.db.ListStatusUpdates(ctx, pub.OrganizationUID, models.StatusUpdatesFilter{
-		StatusPageUID:          pub.StatusPageUID,
-		IncidentPublicationUID: &pub.UID,
-		Limit:                  50,
-	})
-	if err != nil {
-		return false
-	}
-
-	cutoff := s.clock.Now().Add(-groupMemberNoteInterval)
-
-	for _, upd := range updates {
-		if upd.Kind == models.StatusUpdateKindInfo && upd.PublishedAt.After(cutoff) {
-			return true
-		}
-	}
-
-	return false
 }

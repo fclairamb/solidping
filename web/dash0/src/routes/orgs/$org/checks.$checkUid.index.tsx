@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail, OrgResult } from "@/api/hooks";
+import { flappingSummaryParams } from "@/lib/flap-summary";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -25,7 +26,7 @@ import {
   useUpdateCheck,
   useRotateHeartbeatToken,
   useResults,
-  useAllResults,
+  useChartWindowResults,
   useIncidents,
   useRegions,
 } from "@/api/hooks";
@@ -39,7 +40,11 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge, badgeVariants } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -71,9 +76,17 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
-import { DeliverySources, DeliveryVia } from "@/components/checks/smtp-delivery-detail";
+import {
+  DeliverySources,
+  DeliveryVia,
+} from "@/components/checks/smtp-delivery-detail";
 import { StatusDot } from "@/components/shared/status-dot";
-import { CheckTypeBadge, CheckTypeIcon } from "@/components/shared/check-type-identity";
+import {
+  CheckTypeBadge,
+  CheckTypeIcon,
+} from "@/components/shared/check-type-identity";
+import { DocsLink } from "@/components/shared/docs-link";
+import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
@@ -81,7 +94,10 @@ import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
-import { ResponseTimeChart, chartFetchParams, formatMs } from "@/components/checks/response-time-chart";
+import {
+  ResponseTimeChart,
+  formatMs,
+} from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
 
@@ -114,7 +130,9 @@ interface CheckDetailSearch {
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
   validateSearch: (search: Record<string, unknown>): CheckDetailSearch => ({
-    graphPeriod: (["hour", "day", "week", "month"].includes(search.graphPeriod as string)
+    graphPeriod: (["hour", "day", "week", "month"].includes(
+      search.graphPeriod as string,
+    )
       ? search.graphPeriod
       : undefined) as "hour" | "day" | "week" | "month" | undefined,
     // TanStack Router's default search parser already coerces "true"/"false"
@@ -125,8 +143,7 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
       search.graphFull === true || search.graphFull === "true"
         ? true
         : undefined,
-    region:
-      typeof search.region === "string" ? search.region : undefined,
+    region: typeof search.region === "string" ? search.region : undefined,
     // Drag-to-zoom X (time) window, epoch-ms. Maps onto the results endpoint's
     // periodStartAfter/periodEndBefore so a shared link fetches just this
     // window. Coerced to a finite number; anything else → undefined (full
@@ -181,11 +198,15 @@ function IncidentDuration({ incident }: { incident: IncidentDetail }) {
   if (incident.startedAt && incident.resolvedAt) {
     return formatDuration(
       new Date(incident.resolvedAt).getTime() -
-        new Date(incident.startedAt).getTime()
+        new Date(incident.startedAt).getTime(),
     );
   }
   if (incident.startedAt) {
-    return formatDuration(now - new Date(incident.startedAt).getTime()) + " " + t("detail.ongoing");
+    return (
+      formatDuration(now - new Date(incident.startedAt).getTime()) +
+      " " +
+      t("detail.ongoing")
+    );
   }
   return "-";
 }
@@ -286,7 +307,12 @@ function computeDurationStats(
     }
   }
 
-  if (!Number.isFinite(min) || !Number.isFinite(max) || avgWeight === 0 || p95Count === 0) {
+  if (
+    !Number.isFinite(min) ||
+    !Number.isFinite(max) ||
+    avgWeight === 0 ||
+    p95Count === 0
+  ) {
     return null;
   }
 
@@ -310,7 +336,13 @@ function parsePeriodMs(period?: string): number | undefined {
   return ms > 0 ? ms : undefined;
 }
 
-function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string; uid: string; config?: Record<string, unknown> } }) {
+function HeartbeatEndpoint({
+  org,
+  check,
+}: {
+  org: string;
+  check: { slug?: string; uid: string; config?: Record<string, unknown> };
+}) {
   const { t } = useTranslation("checks");
   const token = check.config?.token as string;
   const identifier = check.slug || check.uid;
@@ -352,7 +384,9 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>{t("endpoints.heartbeat.regenerateTitle")}</AlertDialogTitle>
+              <AlertDialogTitle>
+                {t("endpoints.heartbeat.regenerateTitle")}
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 {t("endpoints.heartbeat.regenerateDescription")}
               </AlertDialogDescription>
@@ -389,7 +423,9 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
           </button>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">{t("endpoints.heartbeat.curl")}</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("endpoints.heartbeat.curl")}
+          </div>
           <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
             <span className="flex-1">{curlCommand}</span>
             <button
@@ -401,13 +437,19 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
             </button>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{t("endpoints.heartbeat.callerNote")}</p>
+        <p className="text-xs text-muted-foreground">
+          {t("endpoints.heartbeat.callerNote")}
+        </p>
       </div>
     </div>
   );
 }
 
-function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } }) {
+function EmailEndpoint({
+  check,
+}: {
+  check: { config?: Record<string, unknown> };
+}) {
   const { t } = useTranslation("checks");
   const token = check.config?.token as string;
   const { data: domain } = useEmailAddressDomain();
@@ -441,7 +483,9 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
       </div>
       <div className="space-y-3">
         <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
-          <span className="flex-1" data-testid="email-check-address">{address}</span>
+          <span className="flex-1" data-testid="email-check-address">
+            {address}
+          </span>
           <button
             type="button"
             data-testid="email-check-copy-btn"
@@ -452,7 +496,10 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
           </button>
         </div>
         <div>
-          <a href={mailto} className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+          <a
+            href={mailto}
+            className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+          >
             {t("endpoints.email.sendTest")}
             <ExternalLink className="h-3 w-3" />
           </a>
@@ -462,7 +509,9 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
           onClick={() => setShowHelp((v) => !v)}
           className="text-sm text-muted-foreground hover:text-foreground"
         >
-          {showHelp ? t("endpoints.email.hideOptions") : t("endpoints.email.showOptions")}
+          {showHelp
+            ? t("endpoints.email.hideOptions")
+            : t("endpoints.email.showOptions")}
         </button>
         {showHelp && (
           <div className="bg-muted rounded-md p-3 text-sm space-y-2">
@@ -520,10 +569,7 @@ function CheckDetailPage() {
     isRefetching,
   } = useCheck(org, checkUid);
 
-  const periodMs = useMemo(
-    () => parsePeriodMs(check?.period),
-    [check?.period]
-  );
+  const periodMs = useMemo(() => parsePeriodMs(check?.period), [check?.period]);
 
   // The address family the last probe actually used, and the one the check asks
   // for. Showing both is the point: "pinned to IPv6, resolved IPv6" is a
@@ -550,7 +596,9 @@ function CheckDetailPage() {
   // `undefined` is a no-op (see useLiveSubscription/useScopeLive), so this
   // never subscribes with a stale/wrong identifier while loading.
   const canonicalUid = check?.uid;
-  const checkScope = canonicalUid ? { entity: "check" as const, uid: canonicalUid } : undefined;
+  const checkScope = canonicalUid
+    ? { entity: "check" as const, uid: canonicalUid }
+    : undefined;
 
   // Watch this check (status/results) and the org's incidents collection —
   // an open/resolved incident for this check must reflect live too.
@@ -593,30 +641,27 @@ function CheckDetailPage() {
     refetchInterval,
   });
 
-  // Same react-query key as ResponseTimeChart's own useAllResults call (see
-  // chartFetchParams) so this is a cache hit, not a second HTTP request. Used
-  // to derive the observed-region set for the results filter and the
-  // tier-aware duration stats strip, both scoped to the chart's current
-  // graphPeriod window — one page, one time window, per the spec.
+  // The SAME two-pass window the chart draws, through the same hook — so the
+  // react-query keys are identical and these are cache hits, not a second round
+  // of HTTP requests. Used to derive the observed-region set for the results
+  // filter and the tier-aware duration stats strip, both scoped to the chart's
+  // current graphPeriod window — one page, one time window, per the spec.
   const graphTimeRange = graphPeriod ?? "day";
   // A zoom is active only for a well-formed forward window; when set, the same
-  // window is fed to chartFetchParams here as in the chart, keeping this a
-  // react-query cache hit (identical key) rather than a second HTTP request.
-  const graphZoom =
-    graphFrom != null && graphTo != null && graphTo > graphFrom
-      ? { from: graphFrom, to: graphTo }
-      : undefined;
-  const chartWindowParams = useMemo(
-    () => chartFetchParams(graphTimeRange, periodMs, graphZoom),
-    // graphZoom is derived from graphFrom/graphTo (already deps).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [graphTimeRange, periodMs, graphFrom, graphTo],
+  // window is fed to the hook here as in the chart, keeping these cache hits.
+  const graphZoom = useMemo(
+    () =>
+      graphFrom != null && graphTo != null && graphTo > graphFrom
+        ? { from: graphFrom, to: graphTo }
+        : undefined,
+    [graphFrom, graphTo],
   );
-  const { data: chartWindowResults } = useAllResults(org, {
+  const { data: chartWindowResults } = useChartWindowResults(
+    org,
     checkUid,
-    ...chartWindowParams,
-    refetchInterval,
-  });
+    { timeRange: graphTimeRange, periodMs, zoom: graphZoom },
+    { rawRefetchInterval: refetchInterval },
+  );
 
   const { data: regionsData } = useRegions(org);
 
@@ -647,7 +692,11 @@ function CheckDetailPage() {
   const setRegion = (nextRegion: string | undefined) => {
     navigate({
       to: ".",
-      search: (prev) => ({ ...prev, region: nextRegion, graphSelected: undefined }),
+      search: (prev) => ({
+        ...prev,
+        region: nextRegion,
+        graphSelected: undefined,
+      }),
       replace: true,
     });
   };
@@ -786,7 +835,9 @@ function CheckDetailPage() {
   if (!check) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground mb-4">{t("checks:detail.notFound")}</p>
+        <p className="text-muted-foreground mb-4">
+          {t("checks:detail.notFound")}
+        </p>
         <Link to="/orgs/$org/checks" params={{ org }}>
           <Button variant="outline">{t("checks:detail.backToChecks")}</Button>
         </Link>
@@ -795,6 +846,7 @@ function CheckDetailPage() {
   }
 
   const headerStatus = check.status ?? check.lastResult?.status;
+  const flapSummary = flappingSummaryParams(check);
 
   return (
     <div className="space-y-6">
@@ -804,7 +856,9 @@ function CheckDetailPage() {
             status={headerStatus}
             enabled={check.enabled}
             className="h-3 w-3"
-            title={check.enabled === false ? t("checks:detail.disabled") : undefined}
+            title={
+              check.enabled === false ? t("checks:detail.disabled") : undefined
+            }
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
@@ -847,84 +901,88 @@ function CheckDetailPage() {
                 </Tooltip>
               )}
             </div>
-              {check.slug && !editingSlug && (
-                <div className="hidden sm:flex items-center gap-1 mt-1">
-                  <Link
-                    to="/orgs/$org/checks/$checkUid"
-                    params={{ org, checkUid: check.slug }}
-                    search={{
-                      graphPeriod: undefined,
-                      graphFull: undefined,
-                      region: undefined,
-                      graphFrom: undefined,
-                      graphTo: undefined,
-                      graphSelected: undefined,
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <span>🔗</span>
-                    {check.slug}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={startEditingSlug}
-                    className="text-muted-foreground hover:text-foreground p-0.5 rounded"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-              {editingSlug && (
-                <div className="hidden sm:flex items-center gap-1 mt-1">
-                  <span className="text-xs">🔗</span>
-                  <input
-                    ref={slugInputRef}
-                    value={slugValue}
-                    onChange={(e) => setSlugValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveSlug();
-                      if (e.key === "Escape") cancelEditingSlug();
-                    }}
-                    className="h-6 rounded border bg-background px-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-                    disabled={updateCheck.isPending}
-                  />
-                  <button
-                    type="button"
-                    onClick={saveSlug}
-                    disabled={updateCheck.isPending}
-                    className="text-muted-foreground hover:text-green-500 p-0.5 rounded"
-                  >
-                    {updateCheck.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckIcon className="h-3 w-3" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEditingSlug}
-                    disabled={updateCheck.isPending}
-                    className="text-muted-foreground hover:text-red-500 p-0.5 rounded"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-              {check.uid && checkUid !== check.uid && (
-                <div className="hidden sm:flex items-center gap-1 mt-1">
-                  <Link
-                    to="/orgs/$org/checks/$checkUid"
-                    params={{ org, checkUid: check.uid }}
-                    search={{
-                      graphPeriod: undefined,
-                      graphFull: undefined,
-                      region: undefined,
-                      graphFrom: undefined,
-                      graphTo: undefined,
-                      graphSelected: undefined,
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    uid: {check.uid.slice(0, 8)}...
-                  </Link>
-                </div>
-              )}
+            {check.slug && !editingSlug && (
+              <div className="hidden sm:flex items-center gap-1 mt-1">
+                <Link
+                  to="/orgs/$org/checks/$checkUid"
+                  params={{ org, checkUid: check.slug }}
+                  search={{
+                    graphPeriod: undefined,
+                    graphFull: undefined,
+                    region: undefined,
+                    graphFrom: undefined,
+                    graphTo: undefined,
+                    graphSelected: undefined,
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <span>🔗</span>
+                  {check.slug}
+                </Link>
+                <button
+                  type="button"
+                  onClick={startEditingSlug}
+                  className="text-muted-foreground hover:text-foreground p-0.5 rounded"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {editingSlug && (
+              <div className="hidden sm:flex items-center gap-1 mt-1">
+                <span className="text-xs">🔗</span>
+                <input
+                  ref={slugInputRef}
+                  value={slugValue}
+                  onChange={(e) => setSlugValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveSlug();
+                    if (e.key === "Escape") cancelEditingSlug();
+                  }}
+                  className="h-6 rounded border bg-background px-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                  disabled={updateCheck.isPending}
+                />
+                <button
+                  type="button"
+                  onClick={saveSlug}
+                  disabled={updateCheck.isPending}
+                  className="text-muted-foreground hover:text-green-500 p-0.5 rounded"
+                >
+                  {updateCheck.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <CheckIcon className="h-3 w-3" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditingSlug}
+                  disabled={updateCheck.isPending}
+                  className="text-muted-foreground hover:text-red-500 p-0.5 rounded"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {check.uid && checkUid !== check.uid && (
+              <div className="hidden sm:flex items-center gap-1 mt-1">
+                <Link
+                  to="/orgs/$org/checks/$checkUid"
+                  params={{ org, checkUid: check.uid }}
+                  search={{
+                    graphPeriod: undefined,
+                    graphFull: undefined,
+                    region: undefined,
+                    graphFrom: undefined,
+                    graphTo: undefined,
+                    graphSelected: undefined,
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  uid: {check.uid.slice(0, 8)}...
+                </Link>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -938,6 +996,10 @@ function CheckDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
+
+          {/* Deep link into the docs section for *this* check's type, so the
+              page's own protocol reference is one click away. */}
+          <DocsLink href={docsHrefForType(check.type)} />
 
           {/* Inline toolbar — always visible; icon-only below lg, icon + label at lg+ */}
           <div className="flex items-center gap-2">
@@ -984,7 +1046,9 @@ function CheckDetailPage() {
               onClick={handleClone}
             >
               <Copy className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">{t("checks:detail.clone")}</span>
+              <span className="hidden lg:inline">
+                {t("checks:detail.clone")}
+              </span>
             </Button>
             <Button
               asChild
@@ -999,7 +1063,9 @@ function CheckDetailPage() {
                 search={{ check: check.slug ?? checkUid }}
               >
                 <BadgeCheck className="h-4 w-4 lg:mr-2" />
-                <span className="hidden lg:inline">{t("checks:detail.badges")}</span>
+                <span className="hidden lg:inline">
+                  {t("checks:detail.badges")}
+                </span>
               </Link>
             </Button>
             <Button
@@ -1013,7 +1079,9 @@ function CheckDetailPage() {
               <RefreshCw
                 className={`h-4 w-4 lg:mr-2 ${isRefetching ? "animate-spin" : ""}`}
               />
-              <span className="hidden lg:inline">{t("checks:detail.refresh")}</span>
+              <span className="hidden lg:inline">
+                {t("checks:detail.refresh")}
+              </span>
             </Button>
             <Button
               variant="destructive"
@@ -1023,7 +1091,9 @@ function CheckDetailPage() {
               onClick={() => setDeleteOpen(true)}
             >
               <Trash2 className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">{t("checks:detail.delete")}</span>
+              <span className="hidden lg:inline">
+                {t("checks:detail.delete")}
+              </span>
             </Button>
           </div>
 
@@ -1031,7 +1101,9 @@ function CheckDetailPage() {
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>{t("checks:detail.deleteTitle")}</AlertDialogTitle>
+                <AlertDialogTitle>
+                  {t("checks:detail.deleteTitle")}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
                   {t("checks:detail.deleteDescription")}
                 </AlertDialogDescription>
@@ -1076,7 +1148,9 @@ function CheckDetailPage() {
           <AlertDescription>
             {t("checks:detail.dutyCycle.description", {
               cost: formatDuration(check.scheduling.costEwmaMs),
-              period: periodMs ? formatDuration(periodMs) : (check.period ?? ""),
+              period: periodMs
+                ? formatDuration(periodMs)
+                : (check.period ?? ""),
               duty: check.scheduling.dutyCyclePct,
             })}
           </AlertDescription>
@@ -1136,7 +1210,9 @@ function CheckDetailPage() {
               graphFrom: from,
               graphTo: to,
               // Reset (from/to cleared) also clears the selected point (spec §4).
-              ...(from == null || to == null ? { graphSelected: undefined } : {}),
+              ...(from == null || to == null
+                ? { graphSelected: undefined }
+                : {}),
             }),
             replace: true,
           })
@@ -1161,7 +1237,9 @@ function CheckDetailPage() {
         <Card>
           <CardHeader>
             <CardTitle>{t("checks:detail.configuration")}</CardTitle>
-            <CardDescription>{t("checks:detail.configurationDescription")}</CardDescription>
+            <CardDescription>
+              {t("checks:detail.configurationDescription")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {check.description && (
@@ -1212,12 +1290,36 @@ function CheckDetailPage() {
                 {t("checks:detail.statusLabel")}
               </div>
               <div className="flex items-center gap-2">
-                <StatusBadge status={headerStatus || t("checks:detail.unknown").toLowerCase()} />
+                <StatusBadge
+                  status={
+                    headerStatus || t("checks:detail.unknown").toLowerCase()
+                  }
+                />
                 {check.enabled === false && (
                   <Badge variant="outline">{t("checks:detail.disabled")}</Badge>
                 )}
               </div>
             </div>
+            {flapSummary && (
+              <div>
+                <div className="text-sm font-medium text-muted-foreground">
+                  {t("checks:detail.flapping")}
+                </div>
+                <div data-testid="check-flapping-summary" className="text-sm">
+                  {flapSummary.multiplier !== undefined
+                    ? t("checks:detail.flappingSummary", {
+                        count: flapSummary.count,
+                        window: flapSummary.window,
+                        multiplier: flapSummary.multiplier,
+                        effective: flapSummary.effective,
+                      })
+                    : t("checks:detail.flappingSummaryImmediate", {
+                        count: flapSummary.count,
+                        window: flapSummary.window,
+                      })}
+                </div>
+              </div>
+            )}
             {check.config && Object.keys(check.config).length > 0 && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-2">
@@ -1277,7 +1379,9 @@ function CheckDetailPage() {
         <Card>
           <CardHeader>
             <CardTitle>{t("checks:detail.lastResult")}</CardTitle>
-            <CardDescription>{t("checks:detail.lastResultDescription")}</CardDescription>
+            <CardDescription>
+              {t("checks:detail.lastResultDescription")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {check.lastResult ? (
@@ -1306,7 +1410,7 @@ function CheckDetailPage() {
                                 : JSON.stringify(value)}
                             </span>
                           </div>
-                        )
+                        ),
                       )}
                     </div>
                   </div>
@@ -1346,7 +1450,9 @@ function CheckDetailPage() {
                               key !== "chain" &&
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
-                              !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key),
+                              !(
+                                DNSBL_OUTPUT_KEYS as readonly string[]
+                              ).includes(key),
                           )
                           .map(([key, value]) => (
                             <div key={key} className="flex gap-2">
@@ -1365,22 +1471,36 @@ function CheckDetailPage() {
                   )}
               </>
             ) : (
-              <p className="text-muted-foreground">{t("checks:detail.noResults")}</p>
+              <p className="text-muted-foreground">
+                {t("checks:detail.noResults")}
+              </p>
             )}
           </CardContent>
         </Card>
       </div>
 
       {check.type === "ssl" && (
-        <SslChainCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+        <SslChainCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
       )}
 
       {check.type === "docker" && (
-        <DockerRestartLoopCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+        <DockerRestartLoopCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
       )}
 
       {check.type === "dnsbl" && (
-        <DnsblCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+        <DnsblCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
       )}
 
       <DependenciesCard org={org} checkUid={checkUid} />
@@ -1389,7 +1509,9 @@ function CheckDetailPage() {
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0">
           <div>
             <CardTitle>{t("checks:detail.recentResults")}</CardTitle>
-            <CardDescription>{t("checks:detail.recentResultsDescription")}</CardDescription>
+            <CardDescription>
+              {t("checks:detail.recentResultsDescription")}
+            </CardDescription>
           </div>
           {observedRegions.length > 1 && (
             <div
@@ -1427,33 +1549,49 @@ function CheckDetailPage() {
             >
               <span className="text-xs text-muted-foreground">
                 {t("checks:detail.results.stats.window", {
-                  period: t(`checks:detail.results.stats.windowPeriod.${graphTimeRange}`),
+                  period: t(
+                    `checks:detail.results.stats.windowPeriod.${graphTimeRange}`,
+                  ),
                 })}
               </span>
               <span>
-                <span className="text-muted-foreground">{t("checks:detail.results.stats.min")}: </span>
-                <span className="font-medium">{formatMs(durationStats.min)}</span>
+                <span className="text-muted-foreground">
+                  {t("checks:detail.results.stats.min")}:{" "}
+                </span>
+                <span className="font-medium">
+                  {formatMs(durationStats.min)}
+                </span>
               </span>
               <span>
-                <span className="text-muted-foreground">{t("checks:detail.results.stats.avg")}: </span>
+                <span className="text-muted-foreground">
+                  {t("checks:detail.results.stats.avg")}:{" "}
+                </span>
                 <span className="font-medium">
                   {durationStats.isEstimate ? "~" : ""}
                   {formatMs(durationStats.avg)}
                 </span>
               </span>
               <span>
-                <span className="text-muted-foreground">{t("checks:detail.results.stats.max")}: </span>
-                <span className="font-medium">{formatMs(durationStats.max)}</span>
+                <span className="text-muted-foreground">
+                  {t("checks:detail.results.stats.max")}:{" "}
+                </span>
+                <span className="font-medium">
+                  {formatMs(durationStats.max)}
+                </span>
               </span>
               <span>
-                <span className="text-muted-foreground">{t("checks:detail.results.stats.p95")}: </span>
+                <span className="text-muted-foreground">
+                  {t("checks:detail.results.stats.p95")}:{" "}
+                </span>
                 <span className="font-medium">
                   {durationStats.isEstimate ? "~" : ""}
                   {formatMs(durationStats.p95)}
                 </span>
               </span>
               <span>
-                <span className="text-muted-foreground">{t("checks:detail.results.stats.samples")}: </span>
+                <span className="text-muted-foreground">
+                  {t("checks:detail.results.stats.samples")}:{" "}
+                </span>
                 <span className="font-medium">{durationStats.count}</span>
               </span>
             </div>
@@ -1472,7 +1610,9 @@ function CheckDetailPage() {
                 {results.data.map((result) => (
                   <TableRow
                     key={result.uid}
-                    className={result.uid ? "cursor-pointer hover:bg-muted/50" : ""}
+                    className={
+                      result.uid ? "cursor-pointer hover:bg-muted/50" : ""
+                    }
                     data-testid={`result-row-${result.uid}`}
                     onClick={() => {
                       if (!result.uid) return;
@@ -1500,34 +1640,32 @@ function CheckDetailPage() {
                       className="text-sm"
                       data-testid="result-region-cell"
                     >
-                      {result.region ? (
-                        (() => {
-                          const slug = result.region;
-                          return (
-                            // A real <button> styled with badgeVariants (not
-                            // <Badge>, which renders a plain <div> with no
-                            // asChild/Slot support) — keeps the Badge look
-                            // while being a genuine interactive element, with
-                            // a hover/focus affordance signaling it's clickable.
-                            <button
-                              type="button"
-                              className={cn(
-                                badgeVariants({ variant: "outline" }),
-                                "cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                              )}
-                              data-testid={`result-region-badge-${result.uid}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setRegion(slug);
-                              }}
-                            >
-                              {regionDisplayLabel(regionsData?.regions, slug)}
-                            </button>
-                          );
-                        })()
-                      ) : (
-                        "-"
-                      )}
+                      {result.region
+                        ? (() => {
+                            const slug = result.region;
+                            return (
+                              // A real <button> styled with badgeVariants (not
+                              // <Badge>, which renders a plain <div> with no
+                              // asChild/Slot support) — keeps the Badge look
+                              // while being a genuine interactive element, with
+                              // a hover/focus affordance signaling it's clickable.
+                              <button
+                                type="button"
+                                className={cn(
+                                  badgeVariants({ variant: "outline" }),
+                                  "cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                )}
+                                data-testid={`result-region-badge-${result.uid}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRegion(slug);
+                                }}
+                              >
+                                {regionDisplayLabel(regionsData?.regions, slug)}
+                              </button>
+                            );
+                          })()
+                        : "-"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1545,7 +1683,9 @@ function CheckDetailPage() {
         <Card>
           <CardHeader>
             <CardTitle>{t("checks:detail.recentIncidents")}</CardTitle>
-            <CardDescription>{t("checks:detail.recentIncidentsDescription")}</CardDescription>
+            <CardDescription>
+              {t("checks:detail.recentIncidentsDescription")}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>

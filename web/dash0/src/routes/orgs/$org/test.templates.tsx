@@ -291,7 +291,7 @@ function TemplatesTab() {
                 id="custom-delay"
                 type="number"
                 min="0"
-                max="30000"
+                max="5000"
                 value={customDelay}
                 onChange={(e) => setCustomDelay(e.target.value)}
               />

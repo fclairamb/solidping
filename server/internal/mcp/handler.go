@@ -122,7 +122,7 @@ func NewHandler(
 	handler := &Handler{
 		checksSvc:     checks.NewService(dbService, eventNotifier, creds, entSvc),
 		checkTypesSvc: checkTypesSvc,
-		resultsSvc:    results.NewService(dbService),
+		resultsSvc:    results.NewService(dbService, cfg),
 		incidentsSvc:  incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
 		eventsSvc:     events.NewService(dbService),
 		// nil cfg: the MCP surface has no app config to hand; the uptime-bar

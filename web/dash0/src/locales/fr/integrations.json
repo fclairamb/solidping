@@ -136,7 +136,22 @@
     "slackMappingAmbiguous": "Ambigu",
     "slackMappingNotFound": "Introuvable",
     "slackMappingClear": "Supprimer l'association",
-    "slackMappingSetFailed": "Impossible d'enregistrer cette association"
+    "slackMappingSetFailed": "Impossible d'enregistrer cette association",
+    "discordNotConnectedTitle": "Discord server not connected",
+    "discordNotConnectedBody": "Install the SolidPing bot to get threads, an Acknowledge button, on-call mentions and inbound comments. Without it, alerts are delivered one-way through the webhook URL below.",
+    "discordConnectButton": "Install Discord bot",
+    "discordInstallFailed": "Failed to start Discord install",
+    "discordServer": "Server",
+    "discordLoading": "Loading channels…",
+    "discordError": "Could not reach this Discord server — re-install the bot.",
+    "discordMentionOnCall": "Mention the on-call person in alerts",
+    "discordMentionOnCallHelp": "New and escalated incident messages start by @-mentioning whoever the escalation policy pages first. Members without a mapped Discord account are named in plain text.",
+    "discordCommentIngestion": "Capture every thread reply as a comment",
+    "discordCommentIngestionHelp": "Off (recommended): only an explicit comment command becomes an incident comment, so triage chatter stays chatter. On: every human reply in a tracked incident thread is saved to the incident timeline. Requires the Discord Gateway and the MESSAGE_CONTENT intent.",
+    "discordMemberMappingHelp": "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
+    "slackDmUnavailableTitle": "Les messages privés ne sont pas capturés",
+    "slackDmUnavailableBody": "Cet espace de travail a été connecté avant que SolidPing ne demande le scope im:history. Slack n'accorde pas de nouveaux scopes à une installation existante : les messages privés envoyés au bot n'arrivent donc jamais dans la boîte de support. Réinstallez l'application pour activer la capture des messages privés — rien d'autre ne change dans cette intégration.",
+    "slackReinstallButton": "Réinstaller l'application Slack"
   },
   "freebox": {
     "name": "Freebox",

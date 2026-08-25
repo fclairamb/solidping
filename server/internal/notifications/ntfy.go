@@ -154,6 +154,10 @@ func (s *NtfySender) buildContent(
 		title = commentTitle(payload)
 		tags = "speech_balloon"
 		body = commentPlainBody(payload)
+	case eventTypeIncidentAcknowledged:
+		title = ackTitle(payload)
+		tags = "white_check_mark"
+		body = ackPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		tags = "bell"

@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -23,6 +24,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/domainverify"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
@@ -349,6 +354,8 @@ type Service struct {
 	ent *entitlements.Service
 	// verifier runs the custom-domain DNS checks. Injectable for tests.
 	verifier *domainverify.Verifier
+	// unlockLimiter throttles password-page unlock attempts per (IP, page).
+	unlockLimiter *unlockRateLimiter
 	// verifyLimiter throttles the synchronous verify-now endpoint per org.
 	verifyLimiter *verifyRateLimiter
 	// certStatus reports the in-server-ACME certificate state for a custom
@@ -374,6 +381,17 @@ type Service struct {
 	// nil = the feature is not wired (tests, or a build without status-page
 	// publications), in which case the field is simply omitted.
 	publicIncidents PublicIncidentProvider
+	// jobs queues the operator email sent when a custom domain is hard-demoted
+	// by the synchronous Verify button. nil (the MCP handler, most tests) still
+	// records the audit event — only the mail is skipped.
+	jobs jobsvc.Service
+}
+
+// SetJobsService wires the job queue used to deliver the custom-domain
+// demotion alert. Optional: without it the demotion is still recorded as an
+// audit event, it simply reaches nobody's inbox.
+func (s *Service) SetJobsService(jobs jobsvc.Service) {
+	s.jobs = jobs
 }
 
 // SetPublicIncidentProvider wires the incident-publication projection into the
@@ -439,6 +457,7 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 		ent:           ent,
 		verifier:      domainverify.New(),
 		verifyLimiter: newVerifyRateLimiter(customDomainVerifyPerMinute, time.Minute),
+		unlockLimiter: newUnlockRateLimiter(),
 	}
 }
 
@@ -533,6 +552,31 @@ type StatusPageResponse struct {
 	AutoPublish             bool   `json:"autoPublish"`
 	AutoPublishDelaySeconds int    `json:"autoPublishDelaySeconds"`
 	AutoResolve             string `json:"autoResolve"`
+	// HideBranding means different things on the two payload families, and
+	// that is deliberate.
+	//
+	//   * On the ADMIN payloads it is the page's raw opt-in column, so the
+	//     dash0 toggle round-trips honestly even while the org is not
+	//     entitled. `WhiteLabelAllowed` alongside says whether it has any
+	//     effect right now.
+	//   * On the PUBLIC payload it is the RESOLVED decision — already ANDed
+	//     with the org's `whiteLabel` entitlement — so status0 never has to
+	//     know what a plan is, and a downgrade restores the badge with no
+	//     client-side logic at all.
+	HideBranding bool `json:"hideBranding"`
+	// WhiteLabelAllowed reports the org's `whiteLabel` entitlement. Admin
+	// payloads only: it is plan information, and a public status page has no
+	// business disclosing which plan pays for it.
+	WhiteLabelAllowed *bool `json:"whiteLabelAllowed,omitempty"`
+	// HasPassword reports that the page is gated by a password. The hash
+	// itself is never serialized anywhere.
+	HasPassword bool `json:"hasPassword,omitempty"`
+	// LogoURL / FaviconURL are the stable public paths of the page's uploaded
+	// brand assets (spec 2026-08-21-07), or absent when the slot is unset.
+	// They are set on BOTH admin and public payloads: a brand asset is
+	// deliberately world-readable, and status0 is the primary consumer.
+	LogoURL    *string `json:"logoUrl,omitempty"`
+	FaviconURL *string `json:"faviconUrl,omitempty"`
 	// CustomCSS is the operator-authored stylesheet the public page injects as
 	// a <style> text node. Unlike the custom-domain fields below it is set on
 	// the PUBLIC responses too — status0 is its only consumer.
@@ -551,6 +595,18 @@ type StatusPageResponse struct {
 	// attempt failed — see the server log for the reason). Empty when
 	// in-server TLS is disabled or the domain is not verified yet.
 	CustomDomainCertStatus string `json:"customDomainCertStatus,omitempty"`
+	// CustomDomainState is the lifecycle state (spec 2026-08-23-03):
+	// none | pending | active | grace | demoted. `grace` is the one that
+	// customDomainStatus cannot express — the page is still being served, but
+	// its DNS re-checks are failing and it will go dark if nothing is done.
+	CustomDomainState string `json:"customDomainState,omitempty"`
+	// CustomDomainDegradedSince is when the domain entered `grace`. Nil
+	// otherwise.
+	CustomDomainDegradedSince *time.Time `json:"customDomainDegradedSince,omitempty"`
+	// CustomDomainLastCheck is the diagnostic from the last re-verification:
+	// the mode used, the target expected, what DNS returned. Admin-only, like
+	// the domain itself.
+	CustomDomainLastCheck *string `json:"customDomainLastCheck,omitempty"`
 	// Settings mirrors the status_pages.settings storage shape: nil
 	// sub-fields mean "using the default". Present on both admin and public
 	// payloads (spec 2026-08-03-01).
@@ -599,6 +655,11 @@ type StatusPageSummary struct {
 	// CustomDomain is the verified, active custom domain for this page, or ""
 	// when the page is served path-based only.
 	CustomDomain string
+	// Visibility is the page's stored visibility (`public`, `password` or
+	// `private`). It never reaches the wire — it exists so the handler can
+	// decide who may cache the response, which depends on the page rather than
+	// on whether this particular caller was let in (spec 2026-08-22-06).
+	Visibility string
 }
 
 // AvailabilitySettingsResponse mirrors models.AvailabilitySettings on the
@@ -759,6 +820,16 @@ type CreateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// HideBranding opts the new page out of the "powered by SolidPing" footer.
+	// It only takes effect while the org holds the `whiteLabel` entitlement —
+	// the flag is stored either way, so an upgrade does not need the operator
+	// to come back and re-tick it.
+	HideBranding *bool `json:"hideBranding,omitempty"`
+	// Password sets the unlock password for a `visibility: password` page.
+	// WRITE-ONLY: it is hashed on the way in (internal/utils/passwords —
+	// argon2id by default) and never appears on
+	// any response.
+	Password *string `json:"password,omitempty"`
 	// CustomCSS optionally sets the page's custom stylesheet at create time.
 	// Max 64 KB, no @import (see validateCustomCSS).
 	CustomCSS *string `json:"customCss,omitempty"`
@@ -791,6 +862,14 @@ type UpdateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// HideBranding flips the page's white-label opt-in. nil leaves it.
+	HideBranding *bool `json:"hideBranding,omitempty"`
+	// Password sets, replaces or clears the unlock password: a non-empty
+	// string re-hashes it (which also invalidates every outstanding unlock
+	// cookie, since the cookie's HMAC key is derived from the hash), an empty
+	// string clears it, and an omitted field leaves it untouched.
+	// WRITE-ONLY — never echoed back.
+	Password *string `json:"password,omitempty"`
 	// CustomCSS sets, replaces or clears the page's custom stylesheet: an empty
 	// string clears the column, an omitted field leaves it untouched. Max
 	// 64 KB, no @import (see validateCustomCSS).
@@ -881,10 +960,15 @@ func (s *Service) ListStatusPages(ctx context.Context, orgSlug string) ([]Status
 		return nil, err
 	}
 
+	// One entitlement resolve for the whole list, not one per page: the flag is
+	// org-wide, and a list of 50 pages must not become 50 lookups.
+	allowed := s.whiteLabelAllowed(ctx, org.UID)
+
 	responses := make([]StatusPageResponse, len(pages))
 	for i, page := range pages {
 		responses[i] = convertPageToResponse(page)
 		s.enrichCustomDomain(&responses[i], page)
+		s.enrichAdminBranding(&responses[i], allowed)
 	}
 
 	return responses, nil
@@ -921,6 +1005,13 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 
 	if req.Language != nil {
 		page.Language = req.Language
+	}
+
+	if req.HideBranding != nil {
+		// The white-label opt-in lives in settings -> branding, alongside the
+		// two brand-asset UIDs (spec 2026-08-22-03). A brand-new page has no
+		// branding section yet, so it is created here rather than merged.
+		page.Settings.Branding = &models.BrandingSettings{HideBranding: *req.HideBranding}
 	}
 
 	if req.AutoPublish != nil {
@@ -982,6 +1073,36 @@ func daysForPeriod(period models.StatusPagePeriod) int {
 	}
 }
 
+// validateCreateStatusPage runs every pre-write validation for a create
+// request and returns the password hash to store (nil = none). Bundled into
+// one function so CreateStatusPage itself stays under the
+// cyclomatic-complexity budget, mirroring validateStatusPageUpdate.
+func validateCreateStatusPage(req *CreateStatusPageRequest) (*string, error) {
+	if err := validateHistoryPeriod(req.HistoryPeriod); err != nil {
+		return nil, err
+	}
+
+	if err := validateAutoPublishSettings(req.AutoResolve, req.AutoPublishDelaySeconds); err != nil {
+		return nil, err
+	}
+
+	if err := validateCustomCSS(req.CustomCSS); err != nil {
+		return nil, err
+	}
+
+	if err := validateVisibility(req.Visibility); err != nil {
+		return nil, err
+	}
+
+	if err := validateAvailabilitySettings(createRequestAvailability(req)); err != nil {
+		return nil, err
+	}
+
+	// nil `current` — there is no page yet, so "password visibility needs a
+	// password" has no prior hash to fall back on.
+	return resolvePasswordChange(nil, req.Visibility, req.Password)
+}
+
 // CreateStatusPage creates a new status page.
 func (s *Service) CreateStatusPage(
 	ctx context.Context, orgSlug string, req *CreateStatusPageRequest,
@@ -991,20 +1112,9 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, ErrOrganizationNotFound
 	}
 
-	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
-		return StatusPageResponse{}, errPeriod
-	}
-
-	if errAuto := validateAutoPublishSettings(req.AutoResolve, req.AutoPublishDelaySeconds); errAuto != nil {
-		return StatusPageResponse{}, errAuto
-	}
-
-	if errCSS := validateCustomCSS(req.CustomCSS); errCSS != nil {
-		return StatusPageResponse{}, errCSS
-	}
-
-	if errThresholds := validateAvailabilitySettings(createRequestAvailability(req)); errThresholds != nil {
-		return StatusPageResponse{}, errThresholds
+	passwordHash, errValidate := validateCreateStatusPage(req)
+	if errValidate != nil {
+		return StatusPageResponse{}, errValidate
 	}
 
 	taken := func(ctx context.Context, slug string) (bool, error) {
@@ -1023,6 +1133,7 @@ func (s *Service) CreateStatusPage(
 
 	page := models.NewStatusPage(org.UID, req.Name, slug)
 	applyCreateFields(page, req)
+	page.PasswordHash = passwordHash
 
 	// Check if this should be default (first page or explicitly set)
 	existingPages, _ := s.db.ListStatusPages(ctx, org.UID)
@@ -1046,6 +1157,13 @@ func (s *Service) CreateStatusPage(
 	// reasoning as the update path's capturePublishTransition.
 	s.capturePublishTransition(ctx, org.UID, nil, page)
 
+	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageCreated,
+		auditTarget(page), models.JSONMap{
+			fieldSlug:       page.Slug,
+			fieldVisibility: page.Visibility,
+			"enabled":       page.Enabled,
+		})
+
 	page, err = s.applyCreateCustomDomain(ctx, org.UID, page, req)
 	if err != nil {
 		return StatusPageResponse{}, err
@@ -1053,6 +1171,7 @@ func (s *Service) CreateStatusPage(
 
 	response := convertPageToResponse(page)
 	s.enrichCustomDomain(&response, page)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, org.UID))
 
 	return response, nil
 }
@@ -1090,6 +1209,7 @@ func (s *Service) GetStatusPage(
 
 	response := convertPageToResponse(page)
 	s.enrichCustomDomain(&response, page)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, org.UID))
 
 	if opts.IncludeSections {
 		sections, err := s.loadSectionsWithResources(ctx, page.UID)
@@ -1133,6 +1253,10 @@ func (s *Service) validateStatusPageUpdate(
 		return nil, err
 	}
 
+	if err := validateVisibility(req.Visibility); err != nil {
+		return nil, err
+	}
+
 	return resolveSettingsUpdate(page.Settings, req)
 }
 
@@ -1155,6 +1279,11 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, errVal
 	}
 
+	passwordHash, errPwd := resolvePasswordChange(page, req.Visibility, req.Password)
+	if errPwd != nil {
+		return StatusPageResponse{}, errPwd
+	}
+
 	// Handle default toggle
 	if req.IsDefault != nil && *req.IsDefault && !page.IsDefault {
 		if errClear := s.clearDefaultStatusPage(ctx, org.UID); errClear != nil {
@@ -1174,6 +1303,8 @@ func (s *Service) UpdateStatusPage(
 		HistoryDays:      req.HistoryDays,
 		HistoryPeriod:    req.HistoryPeriod,
 		Language:         req.Language,
+		HideBranding:     req.HideBranding,
+		PasswordHash:     passwordHash,
 		CustomCSS:        req.CustomCSS,
 		Settings:         newSettings,
 
@@ -1204,7 +1335,56 @@ func (s *Service) UpdateStatusPage(
 
 	s.capturePublishTransition(ctx, org.UID, page, updated)
 
+	if changed, safe := audit.Changes(auditSnapshot(page), auditSnapshot(updated)); len(changed) > 0 {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageUpdated,
+			auditTarget(updated), audit.ChangePayload(changed, safe, nil, nil))
+	}
+
 	return s.finalizeCustomDomainUpdate(ctx, org.UID, updated, req)
+}
+
+// auditTarget names a status page for the audit trail.
+func auditTarget(page *models.StatusPage) audit.Target {
+	return audit.Target{Type: "status_page", UID: page.UID, Name: page.Name}
+}
+
+// auditSnapshot is the scalar shape the audit trail diffs an update against.
+//
+// password_hash is present ON PURPOSE and is exactly why audit.Changes
+// separates "which fields moved" from "what they moved to": IsSensitiveKey
+// matches it, so the rotation is reported as a changed field name and the hash
+// itself never leaves this function.
+func auditSnapshot(page *models.StatusPage) map[string]any {
+	description := ""
+	if page.Description != nil {
+		description = *page.Description
+	}
+
+	customDomain := ""
+	if page.CustomDomain != nil {
+		customDomain = *page.CustomDomain
+	}
+
+	passwordHash := ""
+	if page.PasswordHash != nil {
+		passwordHash = *page.PasswordHash
+	}
+
+	return map[string]any{
+		"name":               page.Name,
+		fieldSlug:            page.Slug,
+		"description":        description,
+		fieldVisibility:      page.Visibility,
+		"enabled":            page.Enabled,
+		"is_default":         page.IsDefault,
+		"show_availability":  page.ShowAvailability,
+		"show_response_time": page.ShowResponseTime,
+		"history_period":     page.HistoryPeriod,
+		"custom_domain":      customDomain,
+		"auto_publish":       page.AutoPublish,
+		"auto_resolve":       page.AutoResolve,
+		"password_hash":      passwordHash,
+	}
 }
 
 // isPublished reports whether a status page is live and world-readable, which
@@ -1234,6 +1414,7 @@ func (s *Service) finalizeCustomDomainUpdate(
 
 	response := convertPageToResponse(page)
 	s.enrichCustomDomain(&response, page)
+	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, orgUID))
 
 	return response, nil
 }
@@ -1250,7 +1431,32 @@ func (s *Service) DeleteStatusPage(ctx context.Context, orgSlug, identifier stri
 		return ErrStatusPageNotFound
 	}
 
-	return s.db.DeleteStatusPage(ctx, page.UID)
+	if delErr := s.db.DeleteStatusPage(ctx, page.UID); delErr != nil {
+		return delErr
+	}
+
+	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageDeleted,
+		auditTarget(page), models.JSONMap{fieldSlug: page.Slug})
+
+	// Reap the page's brand assets. This is NOT housekeeping: a status-page
+	// logo is public exactly while its file row is live, so without this the
+	// deleted page's logo stays readable on /pub/assets/:uid forever. Before
+	// spec 2026-08-22-03 the page row disappearing handled it implicitly,
+	// because the access check went through the page; now nothing does.
+	//
+	// db.DeleteFilesByTopicPrefix is the same primitive files.DeleteAttachments
+	// wraps — used directly because this service holds no files.Service and
+	// injecting one to reach the identical query would be ceremony.
+	if _, reapErr := s.db.DeleteFilesByTopicPrefix(
+		ctx, org.UID, files.StatusPageTopicPrefix(page.UID),
+	); reapErr != nil {
+		// Best-effort: the page is already gone. Surfacing the error would turn
+		// a successful delete into a 500 the caller cannot act on.
+		slog.WarnContext(ctx, "failed to reap status page attachments",
+			"error", reapErr, "orgUID", org.UID, "statusPageUID", page.UID)
+	}
+
+	return nil
 }
 
 // --- Section CRUD ---
@@ -1684,11 +1890,43 @@ func (s *Service) DeleteResource(
 	return s.db.DeleteStatusPageResource(ctx, resourceUID)
 }
 
+// --- White label (spec 2026-08-21-07) ---
+
+// whiteLabelAllowed reports the org's `whiteLabel` entitlement.
+//
+// It FAILS CLOSED in both directions that can go wrong: a nil entitlements
+// service (the MCP wiring and most unit tests) and a resolve error both mean
+// "keep the badge". Showing the badge when it should have been hidden is a
+// cosmetic annoyance; hiding it when the plan does not include it is a silent
+// revenue leak, so the asymmetry is deliberate.
+func (s *Service) whiteLabelAllowed(ctx context.Context, orgUID string) bool {
+	if s.ent == nil {
+		return false
+	}
+
+	return s.ent.WhiteLabelAllowed(ctx, orgUID)
+}
+
+// enrichAdminBranding annotates an ADMIN payload with the entitlement, leaving
+// HideBranding as the raw stored opt-in. The dashboard needs both halves: the
+// toggle reflects what is stored, and the note next to it explains whether it
+// currently does anything.
+func (s *Service) enrichAdminBranding(resp *StatusPageResponse, allowed bool) {
+	resp.WhiteLabelAllowed = &allowed
+}
+
+// resolvePublicBranding collapses the two halves into the single boolean the
+// public payload carries: the badge disappears only when the page opted in AND
+// the org is entitled. WhiteLabelAllowed is stripped — which plan an
+// organization pays for is nobody else's business.
+func (s *Service) resolvePublicBranding(ctx context.Context, orgUID string, resp *StatusPageResponse) {
+	resp.HideBranding = resp.HideBranding && s.whiteLabelAllowed(ctx, orgUID)
+	resp.WhiteLabelAllowed = nil
+}
+
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
-//
-//nolint:cyclop // a flat sequence of optional enrichment blocks, each independently degradable.
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageResponse, error) {
@@ -1702,11 +1940,19 @@ func (s *Service) ViewStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != visibilityPublic {
+	if !statuspagelock.Visible(page) {
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
+	// A `password` page is KNOWN to exist and answers 401, unlike `private`,
+	// which 404s. The distinction is the whole product difference between
+	// "hidden from everyone" and "shared with our customers".
+	if !statuspagelock.Allows(ctx, page) {
+		return StatusPageResponse{}, statuspagelock.ErrLocked
+	}
+
 	response := convertPageToResponse(page)
+	s.resolvePublicBranding(ctx, org.UID, &response)
 
 	sections, err := s.loadSectionsWithResources(ctx, page.UID)
 	if err != nil {
@@ -1745,39 +1991,53 @@ func (s *Service) ViewStatusPage(
 		}
 	}
 
-	// Populate recent status updates (graceful — empty when table doesn't exist yet)
-	if page.HistoryDays > 0 {
-		updates, updErr := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
-		if updErr != nil {
-			// Don't fail the whole page, but surface the error: a broken
-			// updates query used to silently render an empty timeline, which
-			// masked the Postgres `$1`-placeholder bug for both this page and
-			// the Atom feed. Logging it means it can't hide again.
-			slog.ErrorContext(ctx, "Failed to load public status updates for status page",
-				"error", updErr, "statusPageUID", page.UID, "orgUID", org.UID)
-		}
+	response.RecentUpdates = s.loadRecentUpdates(ctx, org.UID, page)
 
-		if updErr == nil && len(updates) > 0 {
-			recentUpdates := make([]StatusUpdatePublicResponse, len(updates))
-			for i, upd := range updates {
-				recentUpdates[i] = StatusUpdatePublicResponse{
-					UID:          upd.UID,
-					SectionUID:   upd.SectionUID,
-					CheckUID:     upd.CheckUID,
-					IncidentUID:  upd.IncidentUID,
-					Title:        upd.Title,
-					BodyMarkdown: upd.BodyMarkdown,
-					LinkURL:      upd.LinkURL,
-					Kind:         upd.Kind,
-					PublishedAt:  upd.PublishedAt,
-				}
-			}
+	return response, nil
+}
 
-			response.RecentUpdates = recentUpdates
+// loadRecentUpdates fetches the page's public status-update timeline.
+//
+// It never fails the page: a broken updates query used to silently render an
+// empty timeline, which masked the Postgres `$1`-placeholder bug for both this
+// page and the Atom feed, so the error is LOGGED rather than swallowed —
+// it can't hide again, and a status page that cannot render its timeline is
+// still far more useful than a 500.
+func (s *Service) loadRecentUpdates(
+	ctx context.Context, orgUID string, page *models.StatusPage,
+) []StatusUpdatePublicResponse {
+	if page.HistoryDays <= 0 {
+		return nil
+	}
+
+	updates, err := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load public status updates for status page",
+			"error", err, "statusPageUID", page.UID, "orgUID", orgUID)
+
+		return nil
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	recentUpdates := make([]StatusUpdatePublicResponse, len(updates))
+	for i, upd := range updates {
+		recentUpdates[i] = StatusUpdatePublicResponse{
+			UID:          upd.UID,
+			SectionUID:   upd.SectionUID,
+			CheckUID:     upd.CheckUID,
+			IncidentUID:  upd.IncidentUID,
+			Title:        upd.Title,
+			BodyMarkdown: upd.BodyMarkdown,
+			LinkURL:      upd.LinkURL,
+			Kind:         upd.Kind,
+			PublishedAt:  upd.PublishedAt,
 		}
 	}
 
-	return response, nil
+	return recentUpdates
 }
 
 // ViewDefaultStatusPage returns the default status page for an organization.
@@ -1817,8 +2077,12 @@ func (s *Service) ViewStatusPageSummary(
 		return StatusPageSummary{}, ErrStatusPageNotFound
 	}
 
-	if !page.Enabled || page.Visibility != visibilityPublic {
+	if !statuspagelock.Visible(page) {
 		return StatusPageSummary{}, ErrStatusPageNotFound
+	}
+
+	if !statuspagelock.Allows(ctx, page) {
+		return StatusPageSummary{}, statuspagelock.ErrLocked
 	}
 
 	sections, err := s.loadSectionsWithResources(ctx, page.UID)
@@ -1839,10 +2103,20 @@ func (s *Service) ViewStatusPageSummary(
 		PageName:     page.Name,
 		PageSlug:     page.Slug,
 		CustomDomain: customDomain,
+		Visibility:   page.Visibility,
 	}, nil
 }
 
 // --- Badge (spec 2026-08-08-07) ---
+
+// Badge is a rendered page badge together with the visibility of the page it
+// reflects. The SVG alone is not enough for the handler: the badge text
+// discloses the rollup status of a page the requester may not be entitled to
+// see, so the caching directive has to travel with it (spec 2026-08-22-06).
+type Badge struct {
+	SVG        string
+	Visibility string
+}
 
 // BadgeOptions are the caller-supplied rendering options for the page-level
 // SVG badge. Mirrors badges.BadgeOptions' Label/Style/MinWidth/Width shape so
@@ -1890,10 +2164,10 @@ func pageBadgeColor(status models.PageStatus) string {
 // page — a badge that disagreed with either would be worse than no badge.
 // Rendering itself reuses badges.GenerateSVG/ComposeBadgeSVG rather than a
 // second SVG renderer.
-func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts BadgeOptions) (string, error) {
+func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts BadgeOptions) (Badge, error) {
 	summary, err := s.ViewStatusPageSummary(ctx, orgSlug, slug)
 	if err != nil {
-		return "", err
+		return Badge{}, err
 	}
 
 	label := opts.Label
@@ -1914,7 +2188,10 @@ func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts 
 	value := string(summary.Status)
 	color := pageBadgeColor(summary.Status)
 
-	return badges.GenerateSVG(label, value, color, style, minWidth), nil
+	return Badge{
+		SVG:        badges.GenerateSVG(label, value, color, style, minWidth),
+		Visibility: summary.Visibility,
+	}, nil
 }
 
 // --- Availability enrichment ---
@@ -2073,7 +2350,7 @@ func (s *Service) enrichWithAvailability(
 		return
 	}
 
-	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime)
+	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, hints)
 
 	// Build availability data for each resource
 	period := string(pagePeriod(page))
@@ -2114,47 +2391,103 @@ func resourceRecentResults(
 }
 
 // regionFanoutCap generously bounds the number of distinct regions
-// fetchRecentResults assumes per check when sizing its query's row limit, so
-// that the per-(check,region) point budget below can't be starved by another
-// region's rows dominating the interleaved fetch. Real deployments run a
-// handful of regions (2-5 is typical for a multi-region check); this mirrors
-// uptimebar.capMaxRegionsPerCheck's "generous, never bites under realistic
-// topology" reasoning for the same class of problem.
+// fetchRecentResults assumes for a check whose own region set it cannot see.
+// Real deployments run a handful of regions (2-5 is typical for a multi-region
+// check); this mirrors uptimebar.capMaxRegionsPerCheck's "generous, never bites
+// under realistic topology" reasoning for the same class of problem.
+//
+// It used to multiply a GLOBAL row limit (responseTimeLimit x regionFanoutCap x
+// len(checkUIDs) = 40 000 rows for a 20-check page, ~85 % of them discarded).
+// It is now only the per-check fallback for an unknown region set: per-check
+// isolation comes from the query shape itself (spec 2026-08-22-05).
 const regionFanoutCap = 20
 
+// responseTimeLimit is the number of points the response-time chart keeps per
+// (check, region) pair.
+const responseTimeLimit = 100
+
+// responseTimeRollupSpan is how far back the ROLLUP branch reads:
+// responseTimeLimit day-buckets, doubled for slack. That is the widest window
+// the chart can meaningfully render — 100 points at the coarsest tier a status
+// page has any business plotting — and it reaches comfortably past the default
+// day-rollup retention (2 months), so the `month` tier still contributes the
+// 60-200 day band rather than being requested and never matched.
+//
+// Rollups are cheap to bound generously: one row per bucket per tier per
+// region, against raw's one row per probe. The raw branch is the expensive one
+// and is clamped to actual raw retention instead (see uptimebar.RawTierStart).
+const responseTimeRollupSpan = 2 * responseTimeLimit * 24 * time.Hour
+
+// responseTimeRollupTiers is the ROLLUP half of the fetch. It names every
+// aggregated tier and NO raw tier, which is what lets the whole branch ride
+// results_aggregated_idx (partial on period_type != 'raw').
+//
+// The tiers matter for real pages, not just for completeness: the per-(check,
+// region) budget is 100 points, so a 1-minute check fills it from ~100 minutes
+// of raw, but a 1-hour check needs 100 hours — past the 24 h raw retention, so
+// those points exist ONLY as hour rollups. Dropping this branch would silently
+// empty the chart for every slow check.
+func responseTimeRollupTiers() []string {
+	return []string{models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth}
+}
+
 // fetchRecentResults loads the last responseTimeLimit results per
-// (check, region) pair (any period type) for the response-time chart.
-// Returns an empty map when the response-time chart is disabled. The region
-// key is "" for a NULL/legacy region (spec 2026-08-14-04 — previously this
-// budget was shared across every region interleaved on one check, so a check
-// running in N regions got roughly 100/N points per region instead of 100
-// each).
+// (check, region) pair for the response-time chart, newest first. Returns an
+// empty map when the response-time chart is disabled. The region key is "" for
+// a NULL/legacy region (spec 2026-08-14-04 — that budget is per region, so a
+// check running in N regions gets 100 points each, not 100/N).
+//
+// It issues ONE query, with a per-check row budget and one tier-aligned,
+// time-bounded branch per side of the raw/rollup index split (spec
+// 2026-08-22-05). What it replaced had neither a period-type filter nor a time
+// bound, so no index on `results` was eligible and every public page view cost
+// a sequential scan of the largest table in the system plus an external merge
+// sort to disk.
+//
+// hints carries the org's LIVE raw retention, resolved once per request through
+// systemconfig by the caller's uptimebarHints. It must not be re-derived from
+// cfg.Aggregation.RetentionRaw here: the Aggregation settings tab writes
+// performance.* DB parameters that never reach the koanf struct, so a koanf
+// reader clamping to 24 h while the job keeps 168 h would silently drop six
+// days of raw rows that no rollup covers yet.
 func (s *Service) fetchRecentResults(
-	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool,
+	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool, hints uptimebar.Hints,
 ) map[string]map[string][]*models.Result {
 	recentByCheck := make(map[string]map[string][]*models.Result)
 
-	if !showResponseTime {
+	if !showResponseTime || len(checkUIDs) == 0 {
 		return recentByCheck
 	}
 
-	const responseTimeLimit = 100
+	now := time.Now().UTC()
+	rollupSince := now.Add(-responseTimeRollupSpan)
 
-	recentFilter := &models.ListResultsFilter{
+	filter := &models.RecentResultsPerCheckFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       checkUIDs,
-		Limit:           responseTimeLimit * regionFanoutCap * len(checkUIDs),
-		// The response-time chart plots duration/status only, so the
-		// metrics/output blobs never reach the page (spec 2026-07-24-02 §5).
-		SkipBlobs: true,
+		Tiers: []models.RecentResultsTier{
+			{
+				PeriodTypes: []string{models.PeriodTypeRaw},
+				// Exactly uptimebar's raw clamp, from the same resolved
+				// retention: raw older than this has been rolled up and
+				// deleted, so a wider bound only widens the index descent.
+				Since: uptimebar.RawTierStart(rollupSince, now, hints.RetentionRawHours),
+			},
+			{PeriodTypes: responseTimeRollupTiers(), Since: rollupSince},
+		},
+		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs),
+		DefaultPerCheckLimit: responseTimeLimit * regionFanoutCap,
 	}
 
-	recentResp, err := s.db.ListResults(sloghook.WithCallsite(ctx, "statuspages.recent_results"), recentFilter)
-	if err != nil || recentResp == nil {
+	rows, err := s.db.RecentResultsPerCheck(sloghook.WithCallsite(ctx, "statuspages.recent_results"), filter)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load status page response-time results",
+			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
+
 		return recentByCheck
 	}
 
-	for _, result := range recentResp.Results {
+	for _, result := range rows {
 		regionKey := ""
 		if result.Region != nil {
 			regionKey = *result.Region
@@ -2166,12 +2499,109 @@ func (s *Service) fetchRecentResults(
 			recentByCheck[result.CheckUID] = byRegion
 		}
 
-		if len(byRegion[regionKey]) < responseTimeLimit {
-			byRegion[regionKey] = append(byRegion[regionKey], result)
-		}
+		byRegion[regionKey] = append(byRegion[regionKey], result)
 	}
 
+	trimResponseTimeSeries(recentByCheck)
+
 	return recentByCheck
+}
+
+// trimResponseTimeSeries merges the two tier branches into one per-(check,
+// region) series: newest period_start first, preferring the FINER tier on a
+// tie, truncated to responseTimeLimit points.
+//
+// Raw and rollups are disjoint by construction — the aggregation job compacts a
+// bucket and deletes its source raw rows in one transaction — so in practice
+// raw simply occupies the recent end and rollups fill the older tail. The
+// raw-wins tie-break only matters while the aggregation job is mid-rollup, and
+// it resolves that window in favor of the more precise row.
+//
+// A third, final rung breaks ties between two ROLLUP points that share a
+// period_start — e.g. the hour bucket at midnight and the day bucket for that
+// same day, which happens daily (all three tiers collide at a month
+// boundary). Without it, sort.SliceStable falls back to whatever order the DB
+// happened to return, which is nondeterministic. uid DESC restores the
+// determinism the pre-2026-08-22-05 query guaranteed
+// (ORDER BY period_start DESC, uid DESC), so it stays total (UIDs are unique)
+// without disturbing the raw-wins rung above it.
+func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result) {
+	for _, byRegion := range recentByCheck {
+		for regionKey, rows := range byRegion {
+			sort.SliceStable(rows, func(i, j int) bool {
+				if !rows[i].PeriodStart.Equal(rows[j].PeriodStart) {
+					return rows[i].PeriodStart.After(rows[j].PeriodStart)
+				}
+
+				iRaw := rows[i].PeriodType == models.PeriodTypeRaw
+				jRaw := rows[j].PeriodType == models.PeriodTypeRaw
+
+				if iRaw != jRaw {
+					return iRaw
+				}
+
+				return rows[i].UID > rows[j].UID // uid DESC — matches the pre-2026-08-22-05 query
+			})
+
+			if len(rows) > responseTimeLimit {
+				rows = rows[:responseTimeLimit]
+			}
+
+			byRegion[regionKey] = rows
+		}
+	}
+}
+
+// responseTimeBudgets sizes each check's row budget from ITS OWN region
+// fan-out: responseTimeLimit points per configured region, plus one region's
+// worth of slack for the NULL/legacy region bucket — a check created before
+// regions existed carries a NULL region, and so does every check's one-time
+// "Check created" lifecycle marker, which would otherwise eat a point out of a
+// real region's budget.
+//
+// The budget has to cover every region at once because the branch is ordered by
+// period_start across the whole check, not per region: a 3-region check's
+// newest 100 rows would be ~33 points each. It is capped at the regionFanoutCap
+// product so a check configured with an absurd region list cannot reintroduce
+// an unbounded fetch.
+//
+// A check with an EMPTY region list gets no entry at all, and so falls back to
+// DefaultPerCheckLimit (the pre-fix per-check budget). An empty list does not
+// mean "one region": createCheckJobs turns it into ONE region-less job, and
+// CheckWorker.resolveResultRegion then stamps that result with the WORKER's own
+// region — so a region-less check's rows can carry as many different region
+// labels as there are workers that ever claimed it. The fan-out is genuinely
+// unknown, and only the generous cap is safe.
+//
+// That path is rare in production: every check created or patched through the
+// API has its regions resolved and PERSISTED
+// (checks.Service.CreateCheck -> regions.ResolveRegionsForCheck, which never
+// returns an empty list). An empty column means a check written straight to the
+// database — fixtures, seeds, very old rows. Same fallback for a check that
+// vanished between resource expansion and this lookup, and for a failed lookup
+// (every check then uses the default).
+func (s *Service) responseTimeBudgets(ctx context.Context, orgUID string, checkUIDs []string) map[string]int {
+	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to size status page response-time budgets from check regions; "+
+			"falling back to the region fan-out cap",
+			"error", err, "orgUID", orgUID)
+
+		return nil
+	}
+
+	budgets := make(map[string]int, len(checkUIDs))
+
+	for _, checkUID := range checkUIDs {
+		check := checks[checkUID]
+		if check == nil || len(check.Regions) == 0 {
+			continue
+		}
+
+		budgets[checkUID] = responseTimeLimit * min(len(check.Regions)+1, regionFanoutCap)
+	}
+
+	return budgets
 }
 
 // hourlyBucketCount is the number of hourly buckets the 24h view renders.
@@ -2200,7 +2630,7 @@ func (s *Service) enrichHourly(
 		return
 	}
 
-	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime)
+	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, hints)
 	upThreshold, degradedThreshold := page.Settings.EffectiveThresholds()
 
 	for i := range sections {
@@ -2775,6 +3205,10 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		AutoPublishDelaySeconds: page.AutoPublishDelaySeconds,
 		AutoResolve:             page.AutoResolve,
 		CustomCSS:               page.CustomCSS,
+		HideBranding:            page.Settings.HideBranding(),
+		HasPassword:             page.PasswordHash != nil && *page.PasswordHash != "",
+		LogoURL:                 statuspageassets.PublicURL(page.Settings.LogoFileUID()),
+		FaviconURL:              statuspageassets.PublicURL(page.Settings.FaviconFileUID()),
 		CreatedAt:               &page.CreatedAt,
 		Settings:                convertSettingsToResponse(page.Settings),
 		AvailabilityThresholds: AvailabilityThresholdsResponse{

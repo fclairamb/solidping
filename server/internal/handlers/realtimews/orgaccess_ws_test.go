@@ -123,7 +123,7 @@ func TestServe_OrgNotFoundCloses4410(t *testing.T) {
 	super.SuperAdmin = true
 	r.NoError(fx.dbSvc.CreateUser(ctx, super))
 
-	resp, err := fx.authService.GenerateTokensForOAuth(ctx, super, realOrg, auth.RoleSuperAdmin)
+	resp, err := fx.authService.GenerateTokensForOAuth(ctx, super, realOrg, auth.RoleSuperAdmin, "", auth.Context{})
 	r.NoError(err)
 
 	conn, err := fx.dialOrg(t, "ghost", resp.AccessToken)

@@ -433,6 +433,7 @@ function BadgesPage() {
           icon={BadgeCheck}
           title={t("title")}
           description={t("subtitle")}
+          docsHref="/docs/features/status-badges"
           className="flex-wrap"
         />
       </div>

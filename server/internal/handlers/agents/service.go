@@ -12,12 +12,17 @@ import (
 	"time"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/regions"
 )
+
+// auditKeyTokenKind names the audit payload field that says WHICH kind of
+// credential an auth.token_* event is about.
+const auditKeyTokenKind = "token_kind"
 
 // DefaultEnrollmentTokenTTL is how long a minted enrollment token stays valid.
 const DefaultEnrollmentTokenTTL = 24 * time.Hour
@@ -310,6 +315,18 @@ func (s *Service) MintEnrollmentToken(
 		return nil, err
 	}
 
+	// An enrollment token is a credential that grants a machine the right to
+	// run this org's checks, so it belongs in the same trail as a PAT. Region
+	// and expiry only — never the token, which is the one thing that would
+	// let a reader enroll an agent of their own.
+	audit.Record(ctx, s.db, org.UID, models.EventTypeAuthTokenCreated,
+		audit.Target{Type: "agent_enrollment_token", UID: row.UID, Name: full},
+		models.JSONMap{
+			auditKeyTokenKind: "agent_enrollment",
+			"region":          full,
+			"expires_at":      expiresAt.UTC().Format(time.RFC3339),
+		})
+
 	return &MintEnrollmentTokenResponse{
 		UID:       row.UID,
 		Token:     token,
@@ -406,7 +423,15 @@ func (s *Service) DeleteEnrollmentToken(ctx context.Context, orgSlug, uid string
 		return err
 	}
 
-	return s.db.DeleteAgentEnrollmentToken(ctx, org.UID, uid)
+	if err := s.db.DeleteAgentEnrollmentToken(ctx, org.UID, uid); err != nil {
+		return err
+	}
+
+	audit.Record(ctx, s.db, org.UID, models.EventTypeAuthTokenRevoked,
+		audit.Target{Type: "agent_enrollment_token", UID: uid},
+		models.JSONMap{"token_kind": "agent_enrollment"})
+
+	return nil
 }
 
 // AgentResponse is an agent as returned by the API. Only public key material is
@@ -592,16 +617,39 @@ func (s *Service) RevokeAgent(ctx context.Context, orgSlug, uid string) error {
 	}
 
 	if agent.Status == models.AgentStatusRevoked {
-		return s.db.PurgeAgent(ctx, uid)
+		if purgeErr := s.db.PurgeAgent(ctx, uid); purgeErr != nil {
+			return purgeErr
+		}
+
+		s.recordAgentKeyRevoked(ctx, org.UID, agent, "purged")
+
+		return nil
 	}
 
 	if err := s.db.RevokeAgent(ctx, org.UID, uid); err != nil {
 		return err
 	}
 
+	s.recordAgentKeyRevoked(ctx, org.UID, agent, "revoked")
+
 	s.ResealRegion(ctx, org.UID, agent.Region)
 
 	return nil
+}
+
+// recordAgentKeyRevoked writes the auth.token_revoked event for an agent key.
+// An enrolled agent holds a long-lived key pair that decrypts this org's check
+// credentials, so its revocation is a credential event, not mere inventory.
+func (s *Service) recordAgentKeyRevoked(
+	ctx context.Context, orgUID string, agent *models.Agent, action string,
+) {
+	audit.Record(ctx, s.db, orgUID, models.EventTypeAuthTokenRevoked,
+		audit.Target{Type: "agent_key", UID: agent.UID, Name: agent.Name},
+		models.JSONMap{
+			auditKeyTokenKind: "agent_key",
+			"region":          agent.Region,
+			"action":          action,
+		})
 }
 
 // ResealRegion re-seals the region's mixed-mode checks (those the server can

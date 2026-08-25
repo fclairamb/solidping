@@ -53,8 +53,11 @@ import {
   startSlackInstall,
   useRotateWebhookSecret,
   useTestIntegration,
+  useDiscordDestinations,
   useMSTeamsBotDestinations,
   useMSTeamsBotStatus,
+  startDiscordInstall,
+  type DiscordChannel,
   useStartMSTeamsLink,
   downloadMSTeamsManifest,
   useIntegrationIdentities,
@@ -345,6 +348,14 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
         </div>
       );
     case "discord":
+      return (
+        <DiscordDestinationPanel
+          settings={settings}
+          onChange={onChange}
+          org={org}
+          channelUid={channelUid}
+        />
+      );
     case "googlechat":
     case "mattermost":
       return (
@@ -1157,6 +1168,327 @@ function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelP
 
 type SlackTab = "channel" | "dm";
 
+// ---- Discord ----
+
+interface DiscordDestinationPanelProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  org?: string;
+  channelUid?: string;
+}
+
+/**
+ * Settings panel for a Discord integration.
+ *
+ * It covers both Discord modes, because both are live at once and which one an
+ * integration is in is a property of its data, not of a separate type:
+ *
+ *  - Bot mode (a guild is recorded): channel picker, on-call mentions, comment
+ *    ingestion — everything the Slack panel offers.
+ *  - Legacy webhook mode: the webhook URL field, kept exactly where it was so
+ *    an org that never installs the bot sees no change at all.
+ *
+ * Both are shown together when both are configured: an org migrating from a
+ * webhook to the bot needs to see the webhook it is about to stop using.
+ */
+function DiscordDestinationPanel({
+  settings,
+  onChange,
+  org,
+  channelUid,
+}: DiscordDestinationPanelProps) {
+  const { t } = useTranslation("integrations");
+
+  const isEditMode = Boolean(org && channelUid);
+  const guildId = typeof settings.guild_id === "string" ? settings.guild_id : "";
+  const guildName =
+    typeof settings.guild_name === "string" ? settings.guild_name : "";
+  const isConnected = guildId.length > 0;
+
+  const { data, isLoading, isError } = useDiscordDestinations(
+    org ?? "",
+    channelUid ?? "",
+    isEditMode && isConnected,
+  );
+
+  const currentId = (settings.channel_id as string) || "";
+
+  const webhookField = (
+    <UrlPanel
+      label={t("form.webhookUrl", "Webhook URL")}
+      value={(settings.webhook_url as string) || ""}
+      onChange={(v) => onChange({ ...settings, webhook_url: v })}
+    />
+  );
+
+  if (!isConnected) {
+    return (
+      <div className="space-y-3" data-testid="discord-not-connected">
+        <div className="rounded border bg-muted/30 p-3 text-sm space-y-3">
+          <div className="space-y-1">
+            <p className="font-medium">
+              {t("form.discordNotConnectedTitle", "Discord server not connected")}
+            </p>
+            <p className="text-muted-foreground">
+              {t(
+                "form.discordNotConnectedBody",
+                "Install the SolidPing bot to get threads, an Acknowledge button, on-call mentions and inbound comments. Without it, alerts are delivered one-way through the webhook URL below.",
+              )}
+            </p>
+          </div>
+          {isEditMode && (
+            <Button
+              type="button"
+              onClick={() => {
+                if (!org) return;
+                void startDiscordInstall(org, channelUid).catch(() => {
+                  toast.error(
+                    t("form.discordInstallFailed", "Failed to start Discord install"),
+                  );
+                });
+              }}
+              data-testid="discord-install"
+            >
+              {t("form.discordConnectButton", "Install Discord bot")}
+            </Button>
+          )}
+        </div>
+        {webhookField}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3" data-testid="discord-connected">
+      <div className="rounded border bg-muted/30 p-3 text-sm space-y-3">
+        {guildName && (
+          <p className="text-muted-foreground">
+            <strong>{t("form.discordServer", "Server")}:</strong> {guildName}
+          </p>
+        )}
+
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>{t("form.discordLoading", "Loading channels…")}</span>
+          </div>
+        ) : isError ? (
+          <p className="text-destructive text-xs">
+            {t(
+              "form.discordError",
+              "Could not reach this Discord server — re-install the bot.",
+            )}
+          </p>
+        ) : (
+          <DiscordChannelCombobox
+            channels={data?.channels ?? []}
+            currentId={currentId}
+            onSelect={(ch) =>
+              onChange({
+                ...settings,
+                channel_id: ch.id,
+                channel_name: ch.name,
+              })
+            }
+          />
+        )}
+
+        <DiscordMentionSwitch settings={settings} onChange={onChange} />
+        <DiscordCommentIngestionSwitch settings={settings} onChange={onChange} />
+
+        {org && channelUid && currentId && (
+          <SlackMemberMapping
+            org={org}
+            integrationUid={channelUid}
+            workspaceUsers={[]}
+            variant="discord"
+          />
+        )}
+      </div>
+
+      {typeof settings.webhook_url === "string" &&
+        settings.webhook_url.length > 0 &&
+        webhookField}
+    </div>
+  );
+}
+
+interface DiscordChannelComboboxProps {
+  channels: DiscordChannel[];
+  currentId: string;
+  onSelect: (ch: DiscordChannel) => void;
+}
+
+function DiscordChannelCombobox({
+  channels,
+  currentId,
+  onSelect,
+}: DiscordChannelComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const filtered = channels.filter((ch) =>
+    ch.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  const selected = channels.find((ch) => ch.id === currentId);
+
+  if (channels.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No text channels the bot can see. Give it access to a channel in Discord
+        first.
+      </p>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal text-sm"
+          data-testid="discord-channel-combobox"
+        >
+          <span className={cn(!selected && "text-muted-foreground")}>
+            {selected ? `#${selected.name}` : "Pick a channel…"}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[280px]" align="start">
+        <div className="flex items-center border-b px-3 py-2">
+          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+          <input
+            ref={searchRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search channels…"
+            className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            data-testid="discord-channel-search"
+          />
+        </div>
+        <div className="max-h-56 overflow-y-auto p-1">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-muted-foreground">
+              No channels found
+            </div>
+          ) : (
+            filtered.map((ch) => (
+              <button
+                key={ch.id}
+                type="button"
+                role="option"
+                aria-selected={ch.id === currentId}
+                className={cn(
+                  "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                  ch.id === currentId && "bg-accent",
+                )}
+                onClick={() => {
+                  onSelect(ch);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                data-testid={`discord-channel-option-${ch.id}`}
+              >
+                <Check
+                  className={cn(
+                    "mt-0.5 h-4 w-4 shrink-0",
+                    ch.id === currentId ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                <div className="font-medium">#{ch.name}</div>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+interface DiscordSwitchProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}
+
+function DiscordMentionSwitch({ settings, onChange }: DiscordSwitchProps) {
+  const { t } = useTranslation("integrations");
+
+  const checked = settings.mention_on_call === true;
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded border bg-background p-3">
+      <div>
+        <Label htmlFor="discord-mention-on-call" className="font-medium">
+          {t("form.discordMentionOnCall", "Mention the on-call person in alerts")}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.discordMentionOnCallHelp",
+            "New and escalated incident messages start by @-mentioning whoever the escalation policy pages first. Members without a mapped Discord account are named in plain text.",
+          )}
+        </p>
+      </div>
+      <Switch
+        id="discord-mention-on-call"
+        checked={checked}
+        onCheckedChange={(value) =>
+          onChange({ ...settings, mention_on_call: value })
+        }
+        data-testid="discord-mention-on-call"
+      />
+    </div>
+  );
+}
+
+function DiscordCommentIngestionSwitch({
+  settings,
+  onChange,
+}: DiscordSwitchProps) {
+  const { t } = useTranslation("integrations");
+
+  const checked = settings.comment_ingestion === "all";
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded border bg-background p-3">
+      <div>
+        <Label htmlFor="discord-comment-ingestion" className="font-medium">
+          {t(
+            "form.discordCommentIngestion",
+            "Capture every thread reply as a comment",
+          )}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.discordCommentIngestionHelp",
+            "Off (recommended): only an explicit comment command becomes an incident comment, so triage chatter stays chatter. On: every human reply in a tracked incident thread is saved to the incident timeline. Requires the Discord Gateway and the MESSAGE_CONTENT intent.",
+          )}
+        </p>
+      </div>
+      <Switch
+        id="discord-comment-ingestion"
+        checked={checked}
+        onCheckedChange={(value) =>
+          onChange({
+            ...settings,
+            comment_ingestion: value ? "all" : "explicit",
+          })
+        }
+        data-testid="discord-comment-ingestion"
+      />
+    </div>
+  );
+}
+
 interface SlackDestinationPanelProps {
   settings: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
@@ -1277,6 +1609,12 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
           <strong>Workspace:</strong> {teamName}
         </p>
       )}
+
+      <SlackDmCaptureNotice
+        settings={settings}
+        org={org}
+        channelUid={channelUid}
+      />
 
       {/* Tab strip */}
       <div className="flex gap-1 rounded-md border bg-background p-0.5 w-fit">
@@ -1446,6 +1784,13 @@ interface SlackMemberMappingProps {
   org: string;
   integrationUid: string;
   workspaceUsers: SlackUser[];
+  /**
+   * "slack" offers a workspace-user picker per row. "discord" does not: a bot
+   * cannot look a Discord user up by email, so mappings come from members who
+   * signed in with Discord (re-sync picks those up). Rendering a picker with
+   * no options would be a dead control that looks broken.
+   */
+  variant?: "slack" | "discord";
 }
 
 /**
@@ -1457,6 +1802,7 @@ function SlackMemberMapping({
   org,
   integrationUid,
   workspaceUsers,
+  variant = "slack",
 }: SlackMemberMappingProps) {
   const { t } = useTranslation("integrations");
   const { data, isLoading, isError } = useIntegrationIdentities(
@@ -1497,10 +1843,15 @@ function SlackMemberMapping({
             {t("form.slackMemberMapping", "Member mapping")}
           </p>
           <p className="text-xs text-muted-foreground">
-            {t(
-              "form.slackMemberMappingHelp",
-              "Which SolidPing members we can @-mention on this workspace. Matched automatically by email; override any row manually.",
-            )}
+            {variant === "discord"
+              ? t(
+                  "form.discordMemberMappingHelp",
+                  "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
+                )
+              : t(
+                  "form.slackMemberMappingHelp",
+                  "Which SolidPing members we can @-mention on this workspace. Matched automatically by email; override any row manually.",
+                )}
           </p>
         </div>
         <Button
@@ -1559,7 +1910,12 @@ function SlackMemberMapping({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <IdentityStatusBadge identity={identity} />
-                  <div className="w-full sm:w-[220px]">
+                  <div
+                    className={cn(
+                      "w-full sm:w-[220px]",
+                      variant === "discord" && "hidden",
+                    )}
+                  >
                     <SlackUserCombobox
                       users={workspaceUsers}
                       currentId={identity.externalId ?? ""}
@@ -2302,5 +2658,74 @@ function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPane
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * "Direct messages need a reinstall" (spec 2026-08-22-02).
+ *
+ * SolidPing now asks for the `im:history` scope so a DM to the bot lands in the
+ * support inbox. Slack DOES NOT GRANT NEW SCOPES TO EXISTING INSTALLS: a
+ * workspace connected before that scope was requested keeps its old grant, and
+ * Slack simply never delivers `message.im` to us. From the inbox that is
+ * indistinguishable from nobody writing in — which is why the state is surfaced
+ * here, in the product, instead of leaving an operator to discover it from a
+ * silence.
+ *
+ * Reinstalling is the whole fix, and it reuses the existing install flow with
+ * this channel's uid so the callback updates the row rather than creating a
+ * second one.
+ */
+function SlackDmCaptureNotice({
+  settings,
+  org,
+  channelUid,
+}: {
+  settings: Record<string, unknown>;
+  org?: string;
+  channelUid?: string;
+}) {
+  const { t } = useTranslation("integrations");
+
+  const scopes = Array.isArray(settings.scopes) ? (settings.scopes as string[]) : [];
+  if (scopes.includes("im:history")) {
+    return null;
+  }
+
+  return (
+    <Alert data-testid="slack-dm-reinstall">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertTitle>
+        {t("form.slackDmUnavailableTitle", "Direct messages are not being captured")}
+      </AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p>
+          {t(
+            "form.slackDmUnavailableBody",
+            "This workspace was connected before SolidPing asked for the im:history scope. " +
+              "Slack does not grant new scopes to an existing install, so direct messages to the " +
+              "bot never reach the support inbox. Reinstall the app to enable DM capture — " +
+              "nothing else about this integration changes.",
+          )}
+        </p>
+        {org ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void startSlackInstall(org, channelUid).catch(() =>
+                toast.error(
+                  t("form.slackInstallFailed", "Failed to start Slack install"),
+                ),
+              );
+            }}
+            data-testid="slack-dm-reinstall-button"
+          >
+            {t("form.slackReinstallButton", "Reinstall Slack app")}
+          </Button>
+        ) : null}
+      </AlertDescription>
+    </Alert>
   );
 }

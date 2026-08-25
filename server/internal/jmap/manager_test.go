@@ -146,11 +146,16 @@ func extractInMailbox(body string) string {
 // stubHandler is a Handler test double.
 type stubHandler struct {
 	outcome jmap.Outcome
+	claims  bool
 	called  atomic.Int32
 	err     error
 }
 
-func (s *stubHandler) HandleEmail(_ context.Context, _ *jmap.Mailboxes, _ jmap.Email) (jmap.Outcome, error) {
+func (s *stubHandler) ClaimsEmail(_ jmap.Email) bool { return s.claims }
+
+func (s *stubHandler) HandleEmail(
+	_ context.Context, _ *jmap.Mailboxes, _ jmap.Email, _ jmap.Origin,
+) (jmap.Outcome, error) {
 	s.called.Add(1)
 
 	return s.outcome, s.err
@@ -173,8 +178,8 @@ func TestManagerProcessesEmailsViaSecondHandler(t *testing.T) {
 	}
 	cfg.ApplyDefaults()
 
-	first := &stubHandler{outcome: jmap.OutcomeIgnored}
-	second := &stubHandler{outcome: jmap.OutcomeProcessed}
+	first := &stubHandler{outcome: jmap.OutcomeIgnored, claims: true}
+	second := &stubHandler{outcome: jmap.OutcomeProcessed, claims: true}
 
 	client := jmap.NewClient(&cfg)
 	_, err := client.DiscoverSession(context.Background())
@@ -288,3 +293,8 @@ func TestJSONMapToConfigUnwrapsParameterEnvelope(t *testing.T) {
 	r.Equal("https://bare.example.com/.well-known/jmap", cfg.SessionURL)
 	r.Equal("bare@example.com", cfg.Username)
 }
+
+// errHandlerBoom is the failure a handler test double returns when it is asked
+// to blow up. Declared here (not in claim_test.go) so both files share one
+// sentinel and err113 stays happy.
+var errHandlerBoom = errors.New("handler boom")

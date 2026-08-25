@@ -46,7 +46,8 @@
     "submitting": "Subscribing…",
     "checkInbox": "Almost there! Check your inbox to confirm your subscription.",
     "error": "Something went wrong. Please try again.",
-    "feedLink": "Subscribe via RSS"
+    "feedLink": "Subscribe via RSS",
+    "emailOnlyNote": "Webhook and Slack notifications are set up by this page's operator — ask them if you need one."
   },
   "servicesOperational": "{{ok}} of {{total}} services operational",
   "activeIncidents": "Active incidents",
@@ -70,5 +71,11 @@
     "major": "Major",
     "critical": "Critical"
   },
-  "resourceAffected": "Affected"
+  "resourceAffected": "Affected",
+  "unlockTitle": "Password required",
+  "unlockDescription": "This status page is private. Enter the password you were given to view it.",
+  "unlockPasswordLabel": "Password",
+  "unlockSubmit": "View status page",
+  "unlockSubmitting": "Checking…",
+  "unlockGenericError": "Could not check the password. Please try again."
 }

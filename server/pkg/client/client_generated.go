@@ -171,6 +171,27 @@ func (e CheckLastStatusChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for CheckTracerouteOnFailure.
+const (
+	CheckTracerouteOnFailureInherit CheckTracerouteOnFailure = "inherit"
+	CheckTracerouteOnFailureOff     CheckTracerouteOnFailure = "off"
+	CheckTracerouteOnFailureOn      CheckTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the CheckTracerouteOnFailure enum.
+func (e CheckTracerouteOnFailure) Valid() bool {
+	switch e {
+	case CheckTracerouteOnFailureInherit:
+		return true
+	case CheckTracerouteOnFailureOff:
+		return true
+	case CheckTracerouteOnFailureOn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckType.
 const (
 	CheckTypeDns    CheckType = "dns"
@@ -288,6 +309,27 @@ func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for CheckListItemTracerouteOnFailure.
+const (
+	CheckListItemTracerouteOnFailureInherit CheckListItemTracerouteOnFailure = "inherit"
+	CheckListItemTracerouteOnFailureOff     CheckListItemTracerouteOnFailure = "off"
+	CheckListItemTracerouteOnFailureOn      CheckListItemTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the CheckListItemTracerouteOnFailure enum.
+func (e CheckListItemTracerouteOnFailure) Valid() bool {
+	switch e {
+	case CheckListItemTracerouteOnFailureInherit:
+		return true
+	case CheckListItemTracerouteOnFailureOff:
+		return true
+	case CheckListItemTracerouteOnFailureOn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckListItemType.
 const (
 	CheckListItemTypeDns    CheckListItemType = "dns"
@@ -312,6 +354,27 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeSsl:
 		return true
 	case CheckListItemTypeTcp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateCheckRequestTracerouteOnFailure.
+const (
+	CreateCheckRequestTracerouteOnFailureInherit CreateCheckRequestTracerouteOnFailure = "inherit"
+	CreateCheckRequestTracerouteOnFailureOff     CreateCheckRequestTracerouteOnFailure = "off"
+	CreateCheckRequestTracerouteOnFailureOn      CreateCheckRequestTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the CreateCheckRequestTracerouteOnFailure enum.
+func (e CreateCheckRequestTracerouteOnFailure) Valid() bool {
+	switch e {
+	case CreateCheckRequestTracerouteOnFailureInherit:
+		return true
+	case CreateCheckRequestTracerouteOnFailureOff:
+		return true
+	case CreateCheckRequestTracerouteOnFailureOn:
 		return true
 	default:
 		return false
@@ -498,6 +561,42 @@ func (e CreateReportScheduleRequestFrequency) Valid() bool {
 	}
 }
 
+// Defines values for CreateStatusPageEndpointSubscriberRequestChannel.
+const (
+	CreateStatusPageEndpointSubscriberRequestChannelSlack   CreateStatusPageEndpointSubscriberRequestChannel = "slack"
+	CreateStatusPageEndpointSubscriberRequestChannelWebhook CreateStatusPageEndpointSubscriberRequestChannel = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the CreateStatusPageEndpointSubscriberRequestChannel enum.
+func (e CreateStatusPageEndpointSubscriberRequestChannel) Valid() bool {
+	switch e {
+	case CreateStatusPageEndpointSubscriberRequestChannelSlack:
+		return true
+	case CreateStatusPageEndpointSubscriberRequestChannelWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateStatusPageEndpointSubscriberRequestScope.
+const (
+	CreateStatusPageEndpointSubscriberRequestScopeIncident CreateStatusPageEndpointSubscriberRequestScope = "incident"
+	CreateStatusPageEndpointSubscriberRequestScopePage     CreateStatusPageEndpointSubscriberRequestScope = "page"
+)
+
+// Valid indicates whether the value is a known member of the CreateStatusPageEndpointSubscriberRequestScope enum.
+func (e CreateStatusPageEndpointSubscriberRequestScope) Valid() bool {
+	switch e {
+	case CreateStatusPageEndpointSubscriberRequestScopeIncident:
+		return true
+	case CreateStatusPageEndpointSubscriberRequestScopePage:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateStatusPageRequestAutoResolve.
 const (
 	CreateStatusPageRequestAutoResolveAlways      CreateStatusPageRequestAutoResolve = "always"
@@ -513,6 +612,27 @@ func (e CreateStatusPageRequestAutoResolve) Valid() bool {
 	case CreateStatusPageRequestAutoResolveIfUntouched:
 		return true
 	case CreateStatusPageRequestAutoResolveNever:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateStatusPageRequestVisibility.
+const (
+	CreateStatusPageRequestVisibilityPassword CreateStatusPageRequestVisibility = "password"
+	CreateStatusPageRequestVisibilityPrivate  CreateStatusPageRequestVisibility = "private"
+	CreateStatusPageRequestVisibilityPublic   CreateStatusPageRequestVisibility = "public"
+)
+
+// Valid indicates whether the value is a known member of the CreateStatusPageRequestVisibility enum.
+func (e CreateStatusPageRequestVisibility) Valid() bool {
+	switch e {
+	case CreateStatusPageRequestVisibilityPassword:
+		return true
+	case CreateStatusPageRequestVisibilityPrivate:
+		return true
+	case CreateStatusPageRequestVisibilityPublic:
 		return true
 	default:
 		return false
@@ -719,52 +839,22 @@ func (e ErrorCode) Valid() bool {
 
 // Defines values for EventActorType.
 const (
-	EventActorTypeSystem EventActorType = "system"
-	EventActorTypeUser   EventActorType = "user"
+	EventActorTypeApiToken EventActorType = "api_token"
+	EventActorTypeService  EventActorType = "service"
+	EventActorTypeSystem   EventActorType = "system"
+	EventActorTypeUser     EventActorType = "user"
 )
 
 // Valid indicates whether the value is a known member of the EventActorType enum.
 func (e EventActorType) Valid() bool {
 	switch e {
+	case EventActorTypeApiToken:
+		return true
+	case EventActorTypeService:
+		return true
 	case EventActorTypeSystem:
 		return true
 	case EventActorTypeUser:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EventEventType.
-const (
-	EventEventTypeCheckCreated         EventEventType = "check.created"
-	EventEventTypeCheckDeleted         EventEventType = "check.deleted"
-	EventEventTypeCheckUpdated         EventEventType = "check.updated"
-	EventEventTypeIncidentAcknowledged EventEventType = "incident.acknowledged"
-	EventEventTypeIncidentComment      EventEventType = "incident.comment"
-	EventEventTypeIncidentCreated      EventEventType = "incident.created"
-	EventEventTypeIncidentEscalated    EventEventType = "incident.escalated"
-	EventEventTypeIncidentResolved     EventEventType = "incident.resolved"
-)
-
-// Valid indicates whether the value is a known member of the EventEventType enum.
-func (e EventEventType) Valid() bool {
-	switch e {
-	case EventEventTypeCheckCreated:
-		return true
-	case EventEventTypeCheckDeleted:
-		return true
-	case EventEventTypeCheckUpdated:
-		return true
-	case EventEventTypeIncidentAcknowledged:
-		return true
-	case EventEventTypeIncidentComment:
-		return true
-	case EventEventTypeIncidentCreated:
-		return true
-	case EventEventTypeIncidentEscalated:
-		return true
-	case EventEventTypeIncidentResolved:
 		return true
 	default:
 		return false
@@ -837,6 +927,81 @@ func (e HealthResponseStatus) Valid() bool {
 	case HealthResponseStatusOk:
 		return true
 	case HealthResponseStatusUnhealthy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IncidentActorVia.
+const (
+	IncidentActorViaAuto     IncidentActorVia = "auto"
+	IncidentActorViaDiscord  IncidentActorVia = "discord"
+	IncidentActorViaEmail    IncidentActorVia = "email"
+	IncidentActorViaManual   IncidentActorVia = "manual"
+	IncidentActorViaPhone    IncidentActorVia = "phone"
+	IncidentActorViaSlack    IncidentActorVia = "slack"
+	IncidentActorViaTelegram IncidentActorVia = "telegram"
+	IncidentActorViaWeb      IncidentActorVia = "web"
+)
+
+// Valid indicates whether the value is a known member of the IncidentActorVia enum.
+func (e IncidentActorVia) Valid() bool {
+	switch e {
+	case IncidentActorViaAuto:
+		return true
+	case IncidentActorViaDiscord:
+		return true
+	case IncidentActorViaEmail:
+		return true
+	case IncidentActorViaManual:
+		return true
+	case IncidentActorViaPhone:
+		return true
+	case IncidentActorViaSlack:
+		return true
+	case IncidentActorViaTelegram:
+		return true
+	case IncidentActorViaWeb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IncidentAttachmentKind.
+const (
+	IncidentAttachmentKindScreenshot IncidentAttachmentKind = "screenshot"
+	IncidentAttachmentKindTraceroute IncidentAttachmentKind = "traceroute"
+)
+
+// Valid indicates whether the value is a known member of the IncidentAttachmentKind enum.
+func (e IncidentAttachmentKind) Valid() bool {
+	switch e {
+	case IncidentAttachmentKindScreenshot:
+		return true
+	case IncidentAttachmentKindTraceroute:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IncidentAttachmentTrigger.
+const (
+	IncidentAttachmentTriggerAgentUpload    IncidentAttachmentTrigger = "agent-upload"
+	IncidentAttachmentTriggerIncidentOpen   IncidentAttachmentTrigger = "incident-open"
+	IncidentAttachmentTriggerIncidentReopen IncidentAttachmentTrigger = "incident-reopen"
+)
+
+// Valid indicates whether the value is a known member of the IncidentAttachmentTrigger enum.
+func (e IncidentAttachmentTrigger) Valid() bool {
+	switch e {
+	case IncidentAttachmentTriggerAgentUpload:
+		return true
+	case IncidentAttachmentTriggerIncidentOpen:
+		return true
+	case IncidentAttachmentTriggerIncidentReopen:
 		return true
 	default:
 		return false
@@ -1455,6 +1620,42 @@ func (e ResultFallbackInfoReason) Valid() bool {
 	}
 }
 
+// Defines values for SLOAlertPolicyKind.
+const (
+	SLOAlertPolicyKindFast SLOAlertPolicyKind = "fast"
+	SLOAlertPolicyKindSlow SLOAlertPolicyKind = "slow"
+)
+
+// Valid indicates whether the value is a known member of the SLOAlertPolicyKind enum.
+func (e SLOAlertPolicyKind) Valid() bool {
+	switch e {
+	case SLOAlertPolicyKindFast:
+		return true
+	case SLOAlertPolicyKindSlow:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SLOAlertPolicySeverity.
+const (
+	SLOAlertPolicySeverityCritical SLOAlertPolicySeverity = "critical"
+	SLOAlertPolicySeverityWarning  SLOAlertPolicySeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the SLOAlertPolicySeverity enum.
+func (e SLOAlertPolicySeverity) Valid() bool {
+	switch e {
+	case SLOAlertPolicySeverityCritical:
+		return true
+	case SLOAlertPolicySeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SLOStatusRowState.
 const (
 	SLOStatusRowStateAtRisk   SLOStatusRowState = "at_risk"
@@ -1521,6 +1722,33 @@ func (e StatusPageCustomDomainCertStatus) Valid() bool {
 	}
 }
 
+// Defines values for StatusPageCustomDomainState.
+const (
+	StatusPageCustomDomainStateActive  StatusPageCustomDomainState = "active"
+	StatusPageCustomDomainStateDemoted StatusPageCustomDomainState = "demoted"
+	StatusPageCustomDomainStateGrace   StatusPageCustomDomainState = "grace"
+	StatusPageCustomDomainStateNone    StatusPageCustomDomainState = "none"
+	StatusPageCustomDomainStatePending StatusPageCustomDomainState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageCustomDomainState enum.
+func (e StatusPageCustomDomainState) Valid() bool {
+	switch e {
+	case StatusPageCustomDomainStateActive:
+		return true
+	case StatusPageCustomDomainStateDemoted:
+		return true
+	case StatusPageCustomDomainStateGrace:
+		return true
+	case StatusPageCustomDomainStateNone:
+		return true
+	case StatusPageCustomDomainStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StatusPageCustomDomainStatus.
 const (
 	StatusPageCustomDomainStatusUnverified StatusPageCustomDomainStatus = "unverified"
@@ -1566,6 +1794,102 @@ func (e StatusPageOverallStatus) Valid() bool {
 	}
 }
 
+// Defines values for StatusPageVisibility.
+const (
+	StatusPageVisibilityPassword StatusPageVisibility = "password"
+	StatusPageVisibilityPrivate  StatusPageVisibility = "private"
+	StatusPageVisibilityPublic   StatusPageVisibility = "public"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageVisibility enum.
+func (e StatusPageVisibility) Valid() bool {
+	switch e {
+	case StatusPageVisibilityPassword:
+		return true
+	case StatusPageVisibilityPrivate:
+		return true
+	case StatusPageVisibilityPublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StatusPageEndpointSubscriberChannel.
+const (
+	StatusPageEndpointSubscriberChannelEmail   StatusPageEndpointSubscriberChannel = "email"
+	StatusPageEndpointSubscriberChannelSlack   StatusPageEndpointSubscriberChannel = "slack"
+	StatusPageEndpointSubscriberChannelWebhook StatusPageEndpointSubscriberChannel = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageEndpointSubscriberChannel enum.
+func (e StatusPageEndpointSubscriberChannel) Valid() bool {
+	switch e {
+	case StatusPageEndpointSubscriberChannelEmail:
+		return true
+	case StatusPageEndpointSubscriberChannelSlack:
+		return true
+	case StatusPageEndpointSubscriberChannelWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StatusPageSubscribeRequestChannel.
+const (
+	StatusPageSubscribeRequestChannelEmail StatusPageSubscribeRequestChannel = "email"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageSubscribeRequestChannel enum.
+func (e StatusPageSubscribeRequestChannel) Valid() bool {
+	switch e {
+	case StatusPageSubscribeRequestChannelEmail:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StatusPageSubscribeRequestScope.
+const (
+	StatusPageSubscribeRequestScopeIncident StatusPageSubscribeRequestScope = "incident"
+	StatusPageSubscribeRequestScopePage     StatusPageSubscribeRequestScope = "page"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageSubscribeRequestScope enum.
+func (e StatusPageSubscribeRequestScope) Valid() bool {
+	switch e {
+	case StatusPageSubscribeRequestScopeIncident:
+		return true
+	case StatusPageSubscribeRequestScopePage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StatusPageSubscriberChannel.
+const (
+	StatusPageSubscriberChannelEmail   StatusPageSubscriberChannel = "email"
+	StatusPageSubscriberChannelSlack   StatusPageSubscriberChannel = "slack"
+	StatusPageSubscriberChannelWebhook StatusPageSubscriberChannel = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the StatusPageSubscriberChannel enum.
+func (e StatusPageSubscriberChannel) Valid() bool {
+	switch e {
+	case StatusPageSubscriberChannelEmail:
+		return true
+	case StatusPageSubscriberChannelSlack:
+		return true
+	case StatusPageSubscriberChannelWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StatusPageSummaryStatus.
 const (
 	StatusPageSummaryStatusDegraded    StatusPageSummaryStatus = "degraded"
@@ -1587,6 +1911,132 @@ func (e StatusPageSummaryStatus) Valid() bool {
 	case StatusPageSummaryStatusOperational:
 		return true
 	case StatusPageSummaryStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportMessageDirection.
+const (
+	SupportMessageDirectionInbound  SupportMessageDirection = "inbound"
+	SupportMessageDirectionOutbound SupportMessageDirection = "outbound"
+)
+
+// Valid indicates whether the value is a known member of the SupportMessageDirection enum.
+func (e SupportMessageDirection) Valid() bool {
+	switch e {
+	case SupportMessageDirectionInbound:
+		return true
+	case SupportMessageDirectionOutbound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportMessageRawType.
+const (
+	SupportMessageRawTypeAudio       SupportMessageRawType = "audio"
+	SupportMessageRawTypeDocument    SupportMessageRawType = "document"
+	SupportMessageRawTypeImage       SupportMessageRawType = "image"
+	SupportMessageRawTypeLocation    SupportMessageRawType = "location"
+	SupportMessageRawTypeSticker     SupportMessageRawType = "sticker"
+	SupportMessageRawTypeText        SupportMessageRawType = "text"
+	SupportMessageRawTypeUnsupported SupportMessageRawType = "unsupported"
+	SupportMessageRawTypeVideo       SupportMessageRawType = "video"
+)
+
+// Valid indicates whether the value is a known member of the SupportMessageRawType enum.
+func (e SupportMessageRawType) Valid() bool {
+	switch e {
+	case SupportMessageRawTypeAudio:
+		return true
+	case SupportMessageRawTypeDocument:
+		return true
+	case SupportMessageRawTypeImage:
+		return true
+	case SupportMessageRawTypeLocation:
+		return true
+	case SupportMessageRawTypeSticker:
+		return true
+	case SupportMessageRawTypeText:
+		return true
+	case SupportMessageRawTypeUnsupported:
+		return true
+	case SupportMessageRawTypeVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportThreadChannel.
+const (
+	SupportThreadChannelDiscord  SupportThreadChannel = "discord"
+	SupportThreadChannelEmail    SupportThreadChannel = "email"
+	SupportThreadChannelSlack    SupportThreadChannel = "slack"
+	SupportThreadChannelSms      SupportThreadChannel = "sms"
+	SupportThreadChannelTelegram SupportThreadChannel = "telegram"
+	SupportThreadChannelWhatsapp SupportThreadChannel = "whatsapp"
+)
+
+// Valid indicates whether the value is a known member of the SupportThreadChannel enum.
+func (e SupportThreadChannel) Valid() bool {
+	switch e {
+	case SupportThreadChannelDiscord:
+		return true
+	case SupportThreadChannelEmail:
+		return true
+	case SupportThreadChannelSlack:
+		return true
+	case SupportThreadChannelSms:
+		return true
+	case SupportThreadChannelTelegram:
+		return true
+	case SupportThreadChannelWhatsapp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SupportThreadStatus.
+const (
+	SupportThreadStatusClosed  SupportThreadStatus = "closed"
+	SupportThreadStatusOpen    SupportThreadStatus = "open"
+	SupportThreadStatusPending SupportThreadStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the SupportThreadStatus enum.
+func (e SupportThreadStatus) Valid() bool {
+	switch e {
+	case SupportThreadStatusClosed:
+		return true
+	case SupportThreadStatusOpen:
+		return true
+	case SupportThreadStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateCheckRequestTracerouteOnFailure.
+const (
+	UpdateCheckRequestTracerouteOnFailureInherit UpdateCheckRequestTracerouteOnFailure = "inherit"
+	UpdateCheckRequestTracerouteOnFailureOff     UpdateCheckRequestTracerouteOnFailure = "off"
+	UpdateCheckRequestTracerouteOnFailureOn      UpdateCheckRequestTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the UpdateCheckRequestTracerouteOnFailure enum.
+func (e UpdateCheckRequestTracerouteOnFailure) Valid() bool {
+	switch e {
+	case UpdateCheckRequestTracerouteOnFailureInherit:
+		return true
+	case UpdateCheckRequestTracerouteOnFailureOff:
+		return true
+	case UpdateCheckRequestTracerouteOnFailureOn:
 		return true
 	default:
 		return false
@@ -1659,6 +2109,24 @@ func (e UpdateMemberRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for UpdateSLOAlertPolicyRequestSeverity.
+const (
+	UpdateSLOAlertPolicyRequestSeverityCritical UpdateSLOAlertPolicyRequestSeverity = "critical"
+	UpdateSLOAlertPolicyRequestSeverityWarning  UpdateSLOAlertPolicyRequestSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the UpdateSLOAlertPolicyRequestSeverity enum.
+func (e UpdateSLOAlertPolicyRequestSeverity) Valid() bool {
+	switch e {
+	case UpdateSLOAlertPolicyRequestSeverityCritical:
+		return true
+	case UpdateSLOAlertPolicyRequestSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateStatusPageRequestAutoResolve.
 const (
 	UpdateStatusPageRequestAutoResolveAlways      UpdateStatusPageRequestAutoResolve = "always"
@@ -1674,6 +2142,69 @@ func (e UpdateStatusPageRequestAutoResolve) Valid() bool {
 	case UpdateStatusPageRequestAutoResolveIfUntouched:
 		return true
 	case UpdateStatusPageRequestAutoResolveNever:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateStatusPageRequestVisibility.
+const (
+	UpdateStatusPageRequestVisibilityPassword UpdateStatusPageRequestVisibility = "password"
+	UpdateStatusPageRequestVisibilityPrivate  UpdateStatusPageRequestVisibility = "private"
+	UpdateStatusPageRequestVisibilityPublic   UpdateStatusPageRequestVisibility = "public"
+)
+
+// Valid indicates whether the value is a known member of the UpdateStatusPageRequestVisibility enum.
+func (e UpdateStatusPageRequestVisibility) Valid() bool {
+	switch e {
+	case UpdateStatusPageRequestVisibilityPassword:
+		return true
+	case UpdateStatusPageRequestVisibilityPrivate:
+		return true
+	case UpdateStatusPageRequestVisibilityPublic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateSupportThreadRequestStatus.
+const (
+	UpdateSupportThreadRequestStatusClosed  UpdateSupportThreadRequestStatus = "closed"
+	UpdateSupportThreadRequestStatusOpen    UpdateSupportThreadRequestStatus = "open"
+	UpdateSupportThreadRequestStatusPending UpdateSupportThreadRequestStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the UpdateSupportThreadRequestStatus enum.
+func (e UpdateSupportThreadRequestStatus) Valid() bool {
+	switch e {
+	case UpdateSupportThreadRequestStatusClosed:
+		return true
+	case UpdateSupportThreadRequestStatusOpen:
+		return true
+	case UpdateSupportThreadRequestStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpsertCheckRequestTracerouteOnFailure.
+const (
+	UpsertCheckRequestTracerouteOnFailureInherit UpsertCheckRequestTracerouteOnFailure = "inherit"
+	UpsertCheckRequestTracerouteOnFailureOff     UpsertCheckRequestTracerouteOnFailure = "off"
+	UpsertCheckRequestTracerouteOnFailureOn      UpsertCheckRequestTracerouteOnFailure = "on"
+)
+
+// Valid indicates whether the value is a known member of the UpsertCheckRequestTracerouteOnFailure enum.
+func (e UpsertCheckRequestTracerouteOnFailure) Valid() bool {
+	switch e {
+	case UpsertCheckRequestTracerouteOnFailureInherit:
+		return true
+	case UpsertCheckRequestTracerouteOnFailureOff:
+		return true
+	case UpsertCheckRequestTracerouteOnFailureOn:
 		return true
 	default:
 		return false
@@ -1875,6 +2406,57 @@ func (e GetStatusPageBadgeParamsStyle) Valid() bool {
 	case GetStatusPageBadgeParamsStyleFlat:
 		return true
 	case GetStatusPageBadgeParamsStyleFlatSquare:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSupportThreadsParamsStatus.
+const (
+	ListSupportThreadsParamsStatusClosed  ListSupportThreadsParamsStatus = "closed"
+	ListSupportThreadsParamsStatusOpen    ListSupportThreadsParamsStatus = "open"
+	ListSupportThreadsParamsStatusPending ListSupportThreadsParamsStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ListSupportThreadsParamsStatus enum.
+func (e ListSupportThreadsParamsStatus) Valid() bool {
+	switch e {
+	case ListSupportThreadsParamsStatusClosed:
+		return true
+	case ListSupportThreadsParamsStatusOpen:
+		return true
+	case ListSupportThreadsParamsStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSupportThreadsParamsChannel.
+const (
+	ListSupportThreadsParamsChannelDiscord  ListSupportThreadsParamsChannel = "discord"
+	ListSupportThreadsParamsChannelEmail    ListSupportThreadsParamsChannel = "email"
+	ListSupportThreadsParamsChannelSlack    ListSupportThreadsParamsChannel = "slack"
+	ListSupportThreadsParamsChannelSms      ListSupportThreadsParamsChannel = "sms"
+	ListSupportThreadsParamsChannelTelegram ListSupportThreadsParamsChannel = "telegram"
+	ListSupportThreadsParamsChannelWhatsapp ListSupportThreadsParamsChannel = "whatsapp"
+)
+
+// Valid indicates whether the value is a known member of the ListSupportThreadsParamsChannel enum.
+func (e ListSupportThreadsParamsChannel) Valid() bool {
+	switch e {
+	case ListSupportThreadsParamsChannelDiscord:
+		return true
+	case ListSupportThreadsParamsChannelEmail:
+		return true
+	case ListSupportThreadsParamsChannelSlack:
+		return true
+	case ListSupportThreadsParamsChannelSms:
+		return true
+	case ListSupportThreadsParamsChannelTelegram:
+		return true
+	case ListSupportThreadsParamsChannelWhatsapp:
 		return true
 	default:
 		return false
@@ -2138,6 +2720,18 @@ type Check struct {
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
 
+	// FlapState Live adaptive-recovery (flapping) state — the effective, lazy-reset-aware counterpart of flappingWindowSeconds / flapBackoffFactor / maxRecoveryMultiplier above. Omitted when the flapping feature is off for this check, or when no flap state has accumulated (no outage yet, or the rolling window has since lapsed).
+	FlapState *struct {
+		// EffectiveRecoveryPeriodSeconds Stability currently required before an open incident on this check auto-resolves, given flapCount.
+		EffectiveRecoveryPeriodSeconds *int `json:"effectiveRecoveryPeriodSeconds,omitempty"`
+
+		// FlapCount Number of outages counted inside the current rolling flapping window. 1 means the 2nd outage within the window — the first one that actually counts as a flap.
+		FlapCount *int `json:"flapCount,omitempty"`
+
+		// LastOutageAt Wall-clock of the most recent outage onset that counted against the window.
+		LastOutageAt *time.Time `json:"lastOutageAt,omitempty"`
+	} `json:"flapState,omitempty"`
+
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
@@ -2178,10 +2772,13 @@ type Check struct {
 	Slug       *string          `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
-	TargetHost *string             `json:"targetHost,omitempty"`
-	Type       *CheckType          `json:"type,omitempty"`
-	Uid        *openapi_types.UUID `json:"uid,omitempty"`
-	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
+	TargetHost *string `json:"targetHost,omitempty"`
+
+	// TracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+	TracerouteOnFailure *CheckTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+	Type                *CheckType                `json:"type,omitempty"`
+	Uid                 *openapi_types.UUID       `json:"uid,omitempty"`
+	UpdatedAt           *time.Time                `json:"updatedAt,omitempty"`
 
 	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
@@ -2189,6 +2786,9 @@ type Check struct {
 
 // CheckLastStatusChangeStatus The status that the check transitioned to
 type CheckLastStatusChangeStatus string
+
+// CheckTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+type CheckTracerouteOnFailure string
 
 // CheckType defines model for Check.Type.
 type CheckType string
@@ -2296,6 +2896,18 @@ type CheckListItem struct {
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
 
+	// FlapState Live adaptive-recovery (flapping) state — the effective, lazy-reset-aware counterpart of flappingWindowSeconds / flapBackoffFactor / maxRecoveryMultiplier above. Omitted when the flapping feature is off for this check, or when no flap state has accumulated (no outage yet, or the rolling window has since lapsed).
+	FlapState *struct {
+		// EffectiveRecoveryPeriodSeconds Stability currently required before an open incident on this check auto-resolves, given flapCount.
+		EffectiveRecoveryPeriodSeconds *int `json:"effectiveRecoveryPeriodSeconds,omitempty"`
+
+		// FlapCount Number of outages counted inside the current rolling flapping window. 1 means the 2nd outage within the window — the first one that actually counts as a flap.
+		FlapCount *int `json:"flapCount,omitempty"`
+
+		// LastOutageAt Wall-clock of the most recent outage onset that counted against the window.
+		LastOutageAt *time.Time `json:"lastOutageAt,omitempty"`
+	} `json:"flapState,omitempty"`
+
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
@@ -2336,10 +2948,13 @@ type CheckListItem struct {
 	Slug       *string          `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
-	TargetHost *string             `json:"targetHost,omitempty"`
-	Type       *CheckListItemType  `json:"type,omitempty"`
-	Uid        *openapi_types.UUID `json:"uid,omitempty"`
-	UpdatedAt  *time.Time          `json:"updatedAt,omitempty"`
+	TargetHost *string `json:"targetHost,omitempty"`
+
+	// TracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+	TracerouteOnFailure *CheckListItemTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+	Type                *CheckListItemType                `json:"type,omitempty"`
+	Uid                 *openapi_types.UUID               `json:"uid,omitempty"`
+	UpdatedAt           *time.Time                        `json:"updatedAt,omitempty"`
 
 	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
@@ -2347,6 +2962,9 @@ type CheckListItem struct {
 
 // CheckListItemLastStatusChangeStatus The status that the check transitioned to
 type CheckListItemLastStatusChangeStatus string
+
+// CheckListItemTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
+type CheckListItemTracerouteOnFailure string
 
 // CheckListItemType defines model for CheckListItem.Type.
 type CheckListItemType string
@@ -2566,9 +3184,15 @@ type CreateCheckRequest struct {
 	// Slug URL-friendly identifier (auto-generated from URL if not provided)
 	Slug *string `json:"slug,omitempty"`
 
+	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+	TracerouteOnFailure *CreateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *CreateCheckRequestType `json:"type,omitempty"`
 }
+
+// CreateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+type CreateCheckRequestTracerouteOnFailure string
 
 // CreateCheckRequestType Check type (auto-inferred from URL if not provided)
 type CreateCheckRequestType string
@@ -2736,6 +3360,25 @@ type CreateSeverityRequest struct {
 	Slug        *string   `json:"slug,omitempty"`
 }
 
+// CreateStatusPageEndpointSubscriberRequest defines model for CreateStatusPageEndpointSubscriberRequest.
+type CreateStatusPageEndpointSubscriberRequest struct {
+	Channel     CreateStatusPageEndpointSubscriberRequestChannel `json:"channel"`
+	IncidentUid *openapi_types.UUID                              `json:"incidentUid,omitempty"`
+	Scope       *CreateStatusPageEndpointSubscriberRequestScope  `json:"scope,omitempty"`
+
+	// SigningSecret Optional. Supply your own when the receiver already verifies a known secret; omit it and one is generated. WRITE-ONLY — it is echoed once in the create response and never readable again.
+	SigningSecret *string `json:"signingSecret,omitempty"`
+
+	// Url https only, and never a loopback/private host. A "slack" subscription must point at hooks.slack.com.
+	Url string `json:"url"`
+}
+
+// CreateStatusPageEndpointSubscriberRequestChannel defines model for CreateStatusPageEndpointSubscriberRequest.Channel.
+type CreateStatusPageEndpointSubscriberRequestChannel string
+
+// CreateStatusPageEndpointSubscriberRequestScope defines model for CreateStatusPageEndpointSubscriberRequest.Scope.
+type CreateStatusPageEndpointSubscriberRequestScope string
+
 // CreateStatusPageRequest defines model for CreateStatusPageRequest.
 type CreateStatusPageRequest struct {
 	// AutoPublish Publish incidents affecting this page's resources automatically as public incidents. OMITTING the field opts the new page IN (true) — only pages that predate the feature default to false, and they do so because the migration deliberately did not opt anyone in retroactively.
@@ -2751,13 +3394,19 @@ type CreateStatusPageRequest struct {
 	CustomCss *string `json:"customCss,omitempty"`
 
 	// CustomDomain Optional customer-owned hostname to bind to the new page. A fresh verification token is generated; verify it afterward via the custom-domain verify endpoint.
-	CustomDomain  *string `json:"customDomain,omitempty"`
-	Description   *string `json:"description,omitempty"`
+	CustomDomain *string `json:"customDomain,omitempty"`
+	Description  *string `json:"description,omitempty"`
+
+	// HideBranding Page-level white-label opt-in. Stored whether or not the org is entitled, so an upgrade applies without re-saving the page.
+	HideBranding  *bool   `json:"hideBranding,omitempty"`
 	HistoryDays   *int    `json:"historyDays,omitempty"`
 	HistoryPeriod *string `json:"historyPeriod,omitempty"`
 	IsDefault     *bool   `json:"isDefault,omitempty"`
 	Language      *string `json:"language,omitempty"`
 	Name          string  `json:"name"`
+
+	// Password WRITE-ONLY. Required when visibility is "password". Minimum 6 characters. Never returned — reads expose hasPassword instead.
+	Password *string `json:"password,omitempty"`
 
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
 	Settings         *StatusPageSettings `json:"settings,omitempty"`
@@ -2765,12 +3414,15 @@ type CreateStatusPageRequest struct {
 	ShowResponseTime *bool               `json:"showResponseTime,omitempty"`
 
 	// Slug URL-friendly identifier, unique within the organization. Omit it (or send "") to have one derived from `name`, disambiguated with a numeric suffix on collision. A slug you supply is never renamed: a collision returns VALIDATION_ERROR instead.
-	Slug       *string `json:"slug,omitempty"`
-	Visibility *string `json:"visibility,omitempty"`
+	Slug       *string                            `json:"slug,omitempty"`
+	Visibility *CreateStatusPageRequestVisibility `json:"visibility,omitempty"`
 }
 
 // CreateStatusPageRequestAutoResolve What an auto-created publication does when its incident resolves. "if_untouched" (the default) resolves it only while nobody has edited it; once a human owns the narrative the automation posts a "component recovered" note and leaves the final resolve to them. Any other value is a VALIDATION_ERROR.
 type CreateStatusPageRequestAutoResolve string
+
+// CreateStatusPageRequestVisibility defines model for CreateStatusPageRequest.Visibility.
+type CreateStatusPageRequestVisibility string
 
 // CreateStatusPageResourceRequest Exactly one of checkUid or checkGroupUid must be set; zero or both is a VALIDATION_ERROR naming both fields.
 type CreateStatusPageResourceRequest struct {
@@ -2807,6 +3459,11 @@ type CreateStatusUpdateRequest struct {
 	SectionUid    *openapi_types.UUID `json:"sectionUid,omitempty"`
 	StatusPageUid openapi_types.UUID  `json:"statusPageUid"`
 	Title         string              `json:"title"`
+}
+
+// CreateSupportMessageRequest defines model for CreateSupportMessageRequest.
+type CreateSupportMessageRequest struct {
+	Body string `json:"body"`
 }
 
 // CreateTokenRequest defines model for CreateTokenRequest.
@@ -3104,6 +3761,9 @@ type EntitlementLimits struct {
 
 	// MaxWhatsappPerMonth Outbound WhatsApp template messages per UTC month (null = unlimited)
 	MaxWhatsappPerMonth *int `json:"maxWhatsappPerMonth,omitempty"`
+
+	// WhiteLabel Whether the organization may hide the "powered by SolidPing" badge on its status pages. Unlike the caps above, null does NOT mean unlimited — it means "use the deployment default" (true self-hosted, false on the SaaS).
+	WhiteLabel *bool `json:"whiteLabel,omitempty"`
 }
 
 // EntitlementsAudit defines model for EntitlementsAudit.
@@ -3228,21 +3888,33 @@ type EscalationTargetInput struct {
 
 // Event defines model for Event.
 type Event struct {
-	ActorType   *EventActorType         `json:"actorType,omitempty"`
-	ActorUid    *openapi_types.UUID     `json:"actorUid,omitempty"`
-	CheckUid    *openapi_types.UUID     `json:"checkUid,omitempty"`
-	CreatedAt   *time.Time              `json:"createdAt,omitempty"`
-	EventType   *EventEventType         `json:"eventType,omitempty"`
+	// ActorEmail Acting user's email, resolved for the returned page.
+	ActorEmail *openapi_types.Email `json:"actorEmail,omitempty"`
+
+	// ActorName Acting user's display name, resolved for the returned page.
+	ActorName *string         `json:"actorName,omitempty"`
+	ActorType *EventActorType `json:"actorType,omitempty"`
+
+	// ActorUid Acting user. This is the audit trail's `actor_user_uid` — filter on it with the `actorUserUid` query parameter.
+	ActorUid  *openapi_types.UUID `json:"actorUid,omitempty"`
+	CheckUid  *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt *time.Time          `json:"createdAt,omitempty"`
+
+	// EventType Event type. Deliberately NOT an enum: the catalogue grows with the product (see wiki/api-specification/events-catalogue.md), and a client that hard-fails on an unknown value would break on every new family.
+	EventType   *string                 `json:"eventType,omitempty"`
 	IncidentUid *openapi_types.UUID     `json:"incidentUid,omitempty"`
 	Payload     *map[string]interface{} `json:"payload,omitempty"`
-	Uid         *openapi_types.UUID     `json:"uid,omitempty"`
+
+	// SourceIp Client address the action came from. Returned to org admins and owners only, and absent entirely when `audit.capture_ip` is off.
+	SourceIp *string             `json:"sourceIp,omitempty"`
+	Uid      *openapi_types.UUID `json:"uid,omitempty"`
+
+	// UserAgent User-Agent of the originating request, truncated. Admin/owner only.
+	UserAgent *string `json:"userAgent,omitempty"`
 }
 
 // EventActorType defines model for Event.ActorType.
 type EventActorType string
-
-// EventEventType defines model for Event.EventType.
-type EventEventType string
 
 // EventListResponse defines model for EventListResponse.
 type EventListResponse struct {
@@ -3354,6 +4026,55 @@ type IncidentAckRequest struct {
 	Note *string `json:"note,omitempty"`
 }
 
+// IncidentActor Display identity of whoever performed an incident action, for the surfaces that must name a human rather than a UUID.
+type IncidentActor struct {
+	// Name Human label to render — the SolidPing user's name or email, or the chat username / email address / phone number recorded on the event. Never empty; falls back to `Unknown` when nothing is recoverable.
+	Name string `json:"name"`
+
+	// UserUid SolidPing user the action is credited to. Absent for chat and phone actors with no platform account.
+	UserUid *openapi_types.UUID `json:"userUid,omitempty"`
+
+	// Via Channel the action came from. Absent for actions recorded before the channel was captured.
+	Via *IncidentActorVia `json:"via,omitempty"`
+}
+
+// IncidentActorVia Channel the action came from. Absent for actions recorded before the channel was captured.
+type IncidentActorVia string
+
+// IncidentAttachment One stored evidence blob hanging off an incident. The bytes are fetched through `downloadUrl`, never inlined.
+type IncidentAttachment struct {
+	// CapturedAt When the probe took the capture. For a screenshot this is a moment AFTER failure detection, not the failing frame itself; for a traceroute it is when the sweep STARTED, which is always after the failing result was already reported.
+	CapturedAt *time.Time          `json:"capturedAt,omitempty"`
+	CheckUid   *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt  time.Time           `json:"createdAt"`
+
+	// DownloadUrl RELATIVE, short-lived signed URL (`/pub/files/<uid>?exp=…&sig=…`). Relative so it resolves against whichever host served the dashboard — SolidPing answers on several. Re-signed on every fetch of the incident; do not cache it.
+	DownloadUrl string `json:"downloadUrl"`
+
+	// Kind Attachment kind. `screenshot` is a PNG of what a failing browser check's page looked like; `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
+	Kind IncidentAttachmentKind `json:"kind"`
+
+	// MimeType Content type as SNIFFED at write time from the bytes themselves, not as declared by the uploader.
+	MimeType string `json:"mimeType"`
+	Name     string `json:"name"`
+
+	// Region Probing region, stamped server-side from the persisted result row.
+	Region *string `json:"region,omitempty"`
+	Size   int64   `json:"size"`
+
+	// Trigger What caused the capture to be kept.
+	Trigger *IncidentAttachmentTrigger `json:"trigger,omitempty"`
+
+	// Uid The `files` row uid.
+	Uid openapi_types.UUID `json:"uid"`
+}
+
+// IncidentAttachmentKind Attachment kind. `screenshot` is a PNG of what a failing browser check's page looked like; `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
+type IncidentAttachmentKind string
+
+// IncidentAttachmentTrigger What caused the capture to be kept.
+type IncidentAttachmentTrigger string
+
 // IncidentCheck Embedded check details for incidents
 type IncidentCheck struct {
 	Config *map[string]interface{} `json:"config,omitempty"`
@@ -3371,6 +4092,21 @@ type IncidentCommentRequest struct {
 type IncidentDetail struct {
 	AcknowledgedAt *time.Time `json:"acknowledgedAt,omitempty"`
 
+	// AcknowledgedBy UID of the SolidPing user credited with the acknowledgment.
+	//
+	// **Present only when the acker maps to a platform account** — the dashboard, a magic link whose recipient address matches a user, or a linked Telegram chat. A Slack, Discord or phone acknowledgment leaves this null, because those people have no `users` row. Read `acknowledgedByActor` to render an attribution; this field alone says "nobody" for the majority of real acknowledgments.
+	AcknowledgedBy *openapi_types.UUID `json:"acknowledgedBy,omitempty"`
+
+	// AcknowledgedByActor Resolved, display-ready identity of the acker: a name to render and the channel it came from. Derived from the `users` row when `acknowledgedBy` is set, and from the `incident.acknowledged` event payload otherwise.
+	//
+	// **Returned by the DETAIL endpoint and by `POST .../ack` only.** The list endpoint omits it — resolving it costs a user lookup and an event lookup per incident, which a 100-row page cannot afford.
+	AcknowledgedByActor *IncidentActor `json:"acknowledgedByActor,omitempty"`
+
+	// Attachments Evidence blobs attached to this incident (spec 2026-08-21-01). Present on the DETAIL endpoint only — the list endpoint never populates it. Today the only kind is `screenshot`: the PNG a browser check captured when the incident opened or reopened, for checks with the browser `screenshot` option enabled.
+	//
+	// **Operator-only, exactly like `details`.** Each entry carries a short-lived SIGNED download URL, so it is never serialized onto a status page or a subscriber payload.
+	Attachments *[]IncidentAttachment `json:"attachments,omitempty"`
+
 	// Check Embedded check details for incidents
 	Check       *IncidentCheck      `json:"check,omitempty"`
 	CheckName   *string             `json:"checkName,omitempty"`
@@ -3384,6 +4120,9 @@ type IncidentDetail struct {
 	Details      *map[string]interface{} `json:"details,omitempty"`
 	EscalatedAt  *time.Time              `json:"escalatedAt,omitempty"`
 	FailureCount *int                    `json:"failureCount,omitempty"`
+
+	// FlapLevel The check's flap count at the moment this incident opened or last reopened — a snapshot, not a live value. 0 (omitted) means it opened at the base level, not escalated by the adaptive-recovery flapping layer.
+	FlapLevel *int `json:"flapLevel,omitempty"`
 
 	// Number Short per-organization incident reference, rendered as `#42` in the dashboard, Slack and Telegram. Assigned at creation, never reused.
 	Number     *int64               `json:"number,omitempty"`
@@ -4134,7 +4873,7 @@ type OrgResponse struct {
 	// ExpiresIn Access token lifetime in seconds
 	ExpiresIn int `json:"expiresIn"`
 
-	// LogoUrl The organization's logo: an absolute http(s) URL, or a relative `/pub/org-logos/{fileUid}` path for an uploaded image. Null when the organization has no logo.
+	// LogoUrl The organization's logo: an absolute http(s) URL, or a relative `/pub/assets/{fileUid}` path for an uploaded image. Null when the organization has no logo.
 	LogoUrl      *string            `json:"logoUrl,omitempty"`
 	Name         string             `json:"name"`
 	RefreshToken string             `json:"refreshToken"`
@@ -4196,6 +4935,9 @@ type OrgResultListResponse struct {
 
 	// Pagination Cursor pagination for the results endpoint only — deliberately no `total`. `results` is the largest table in the system, and an unbounded COUNT(*) on every page load is too expensive to compute (see the Results section of the API wiki). Page forward with `cursor` until it comes back empty.
 	Pagination *ResultsCursorPagination `json:"pagination,omitempty"`
+
+	// Window The time window the server actually queried. A raw-only request is clamped to the raw-retention band, so this is not always the window that was asked for. Always present — `clamped: false` is an answer, letting a client tell a clamp from a genuinely empty range and size a follow-up request. Additive and optional to read.
+	Window *ResultsWindow `json:"window,omitempty"`
 }
 
 // OrgSettingsResponse defines model for OrgSettingsResponse.
@@ -4211,6 +4953,9 @@ type OrgSettingsResponse struct {
 
 	// SessionMaxDurationSeconds Org-level session max duration override in seconds; omitted when inherited
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+
+	// TracerouteOnFailure Organization default for path-trace-on-failure. Applies to every check whose own `tracerouteOnFailure` is `inherit`. True when the organization has never set it.
+	TracerouteOnFailure bool `json:"tracerouteOnFailure"`
 }
 
 // OrganizationMemberSummary defines model for OrganizationMemberSummary.
@@ -4532,8 +5277,22 @@ type ResultsCursorPagination struct {
 	Size   *int    `json:"size,omitempty"`
 }
 
+// ResultsWindow The time window the server actually queried. A raw-only request is clamped to the raw-retention band, so this is not always the window that was asked for. Always present — `clamped: false` is an answer, letting a client tell a clamp from a genuinely empty range and size a follow-up request. Additive and optional to read.
+type ResultsWindow struct {
+	// Clamped True when the server moved `periodStartAfter` forward from the requested value.
+	Clamped *bool `json:"clamped,omitempty"`
+
+	// PeriodEndBefore Effective `period_start <` bound (not `period_end` — see the query parameter description); absent when unbounded.
+	PeriodEndBefore *time.Time `json:"periodEndBefore,omitempty"`
+
+	// PeriodStartAfter Effective `period_start >=` bound; absent when unbounded.
+	PeriodStartAfter *time.Time `json:"periodStartAfter,omitempty"`
+}
+
 // SLO defines model for SLO.
 type SLO struct {
+	// Burning True while at least one burn-rate alert policy on this objective has an open incident. Derived from the incident rows, never stored.
+	Burning        *bool   `json:"burning,omitempty"`
 	CheckGroupName *string `json:"checkGroupName,omitempty"`
 
 	// CheckGroupUid Set when the objective is scoped to one check group
@@ -4553,6 +5312,61 @@ type SLO struct {
 	Timezone  *string    `json:"timezone,omitempty"`
 	Uid       *string    `json:"uid,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
+// SLOAlertPolicy One built-in multiwindow burn-rate alert policy. An alert fires only when BOTH windows exceed the threshold: the long window proves the burn is significant, the short one proves it is still happening.
+type SLOAlertPolicy struct {
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Firing An open burn incident exists for this policy.
+	Firing         *bool               `json:"firing,omitempty"`
+	FiringSince    *time.Time          `json:"firingSince,omitempty"`
+	IncidentNumber *int64              `json:"incidentNumber,omitempty"`
+	IncidentUid    *openapi_types.UUID `json:"incidentUid,omitempty"`
+
+	// Kind Built-in identity. Not writable.
+	Kind            *SLOAlertPolicyKind `json:"kind,omitempty"`
+	LastEvaluatedAt *time.Time          `json:"lastEvaluatedAt,omitempty"`
+
+	// LongBurnRate Null when the window carries no countable probe. Never 0.
+	LongBurnRate   *float64 `json:"longBurnRate,omitempty"`
+	LongConclusive *bool    `json:"longConclusive,omitempty"`
+	LongSamples    *int     `json:"longSamples,omitempty"`
+
+	// LongWindowSeconds Significance window. Stored, never derived.
+	LongWindowSeconds *int `json:"longWindowSeconds,omitempty"`
+
+	// MinSamples Per-window probe floor. Below it the window is inconclusive: it does not fire, and it does not count as below-threshold for auto-resolve.
+	MinSamples *int `json:"minSamples,omitempty"`
+
+	// OverThresholdNow Both windows are conclusively over the threshold right now.
+	OverThresholdNow *bool `json:"overThresholdNow,omitempty"`
+
+	// ResolvingSince Hysteresis anchor: both windows have been below threshold since this instant, and the incident auto-resolves once that has held for a full short window.
+	ResolvingSince  *time.Time              `json:"resolvingSince,omitempty"`
+	Severity        *SLOAlertPolicySeverity `json:"severity,omitempty"`
+	ShortBurnRate   *float64                `json:"shortBurnRate,omitempty"`
+	ShortConclusive *bool                   `json:"shortConclusive,omitempty"`
+	ShortSamples    *int                    `json:"shortSamples,omitempty"`
+
+	// ShortWindowSeconds Confirmation window. Must be <= longWindowSeconds.
+	ShortWindowSeconds *int                `json:"shortWindowSeconds,omitempty"`
+	SloUid             *openapi_types.UUID `json:"sloUid,omitempty"`
+
+	// Threshold Burn-rate multiple both windows must exceed. 1.0 spends the calendar budget exactly by period end.
+	Threshold *float64            `json:"threshold,omitempty"`
+	Uid       *openapi_types.UUID `json:"uid,omitempty"`
+}
+
+// SLOAlertPolicyKind Built-in identity. Not writable.
+type SLOAlertPolicyKind string
+
+// SLOAlertPolicySeverity defines model for SLOAlertPolicy.Severity.
+type SLOAlertPolicySeverity string
+
+// SLOAlertPolicyListResponse defines model for SLOAlertPolicyListResponse.
+type SLOAlertPolicyListResponse struct {
+	Data *[]SLOAlertPolicy `json:"data,omitempty"`
 }
 
 // SLOBurndownPoint defines model for SLOBurndownPoint.
@@ -4750,20 +5564,41 @@ type StatusPage struct {
 	// CustomDomainCertStatus TLS certificate state for the custom domain when the server terminates TLS itself (config acme.enabled). "none" = nothing issued yet (issuance is on-demand, on the first HTTPS request), "issued" = a certificate is in storage, "error" = the last issuance attempt failed (see the server log). Omitted when in-server TLS is disabled or the domain is not verified yet. Authenticated endpoints only.
 	CustomDomainCertStatus *StatusPageCustomDomainCertStatus `json:"customDomainCertStatus,omitempty"`
 
+	// CustomDomainDegradedSince When the domain entered "grace". Absent otherwise. Authenticated endpoints only.
+	CustomDomainDegradedSince *time.Time `json:"customDomainDegradedSince,omitempty"`
+
+	// CustomDomainLastCheck One-line diagnostic from the last DNS re-check: the verification mode used, the CNAME target expected, what DNS actually returned, and the lookup error if any. Exists so a failing verification is diagnosable from the API instead of by correlating server logs with manual dig runs. Authenticated endpoints only.
+	CustomDomainLastCheck *string `json:"customDomainLastCheck,omitempty"`
+
 	// CustomDomainRecords The DNS records the customer must create. Since v0.8.0 this is exactly ONE entry: the routing CNAME. Its value is the installation CNAME target in "shared" mode, or the page-specific "<token>.cname.<target>" host in "token" mode (server.custom_domain_cname_mode). The TXT ownership challenge was removed. Authenticated endpoints only.
 	CustomDomainRecords *[]DnsRecord `json:"customDomainRecords,omitempty"`
+
+	// CustomDomainState Custom-domain lifecycle state (spec 2026-08-23-03). "grace" is the one customDomainStatus cannot express: the page is STILL served, but its periodic DNS re-checks are failing and it will stop being served if nothing is done. "demoted" means it already has, and is recoverable — the sweep re-promotes after several consecutive successful checks while a valid certificate is still held. Authenticated endpoints only.
+	CustomDomainState *StatusPageCustomDomainState `json:"customDomainState,omitempty"`
 
 	// CustomDomainStatus Custom-domain verification state. Authenticated endpoints only.
 	CustomDomainStatus *StatusPageCustomDomainStatus `json:"customDomainStatus,omitempty"`
 	Description        *string                       `json:"description,omitempty"`
 	Enabled            bool                          `json:"enabled"`
-	HistoryDays        int                           `json:"historyDays"`
+
+	// FaviconUrl Public path of the page's uploaded favicon, if any.
+	FaviconUrl *string `json:"faviconUrl,omitempty"`
+
+	// HasPassword Whether an unlock password is stored. The hash itself is never serialized.
+	HasPassword *bool `json:"hasPassword,omitempty"`
+
+	// HideBranding On admin payloads: the page's raw white-label opt-in. On the PUBLIC payload: the RESOLVED decision, already ANDed with the org's whiteLabel entitlement.
+	HideBranding *bool `json:"hideBranding,omitempty"`
+	HistoryDays  int   `json:"historyDays"`
 
 	// HistoryPeriod History window (24h, 7d, 30d, 90d)
 	HistoryPeriod string  `json:"historyPeriod"`
 	IsDefault     bool    `json:"isDefault"`
 	Language      *string `json:"language,omitempty"`
-	Name          string  `json:"name"`
+
+	// LogoUrl Public path of the page's uploaded logo, if any.
+	LogoUrl *string `json:"logoUrl,omitempty"`
+	Name    string  `json:"name"`
 
 	// OverallStatus Page-level rollup computed server-side from the live status of every resource on the page, so the public views, the summary endpoint, and the SVG badge always agree. Only populated on the live public view paths (GET /api/v1/status-pages/{org} and GET /api/v1/status-pages/{org}/{slug}) — omitted on the authenticated admin listing, which doesn't load live resource data.
 	OverallStatus *StatusPageOverallStatus `json:"overallStatus,omitempty"`
@@ -4780,8 +5615,11 @@ type StatusPage struct {
 	StatusCounts *StatusCounts      `json:"statusCounts,omitempty"`
 	Uid          openapi_types.UUID `json:"uid"`
 
-	// Visibility Visibility of the page (e.g. "public", "private")
-	Visibility string `json:"visibility"`
+	// Visibility public = world-readable; private = hidden entirely (public endpoints answer 404); password = shared with a secret (public endpoints answer 401 STATUS_PAGE_LOCKED until unlocked).
+	Visibility StatusPageVisibility `json:"visibility"`
+
+	// WhiteLabelAllowed Whether the org holds the whiteLabel entitlement. Admin payloads only — plan state is never disclosed publicly.
+	WhiteLabelAllowed *bool `json:"whiteLabelAllowed,omitempty"`
 }
 
 // StatusPageAutoResolve What an auto-created publication does when its incident resolves. "if_untouched" (the default) resolves it only while nobody has edited it; once a human owns the narrative the automation posts a "component recovered" note and leaves the final resolve to them.
@@ -4790,11 +5628,47 @@ type StatusPageAutoResolve string
 // StatusPageCustomDomainCertStatus TLS certificate state for the custom domain when the server terminates TLS itself (config acme.enabled). "none" = nothing issued yet (issuance is on-demand, on the first HTTPS request), "issued" = a certificate is in storage, "error" = the last issuance attempt failed (see the server log). Omitted when in-server TLS is disabled or the domain is not verified yet. Authenticated endpoints only.
 type StatusPageCustomDomainCertStatus string
 
+// StatusPageCustomDomainState Custom-domain lifecycle state (spec 2026-08-23-03). "grace" is the one customDomainStatus cannot express: the page is STILL served, but its periodic DNS re-checks are failing and it will stop being served if nothing is done. "demoted" means it already has, and is recoverable — the sweep re-promotes after several consecutive successful checks while a valid certificate is still held. Authenticated endpoints only.
+type StatusPageCustomDomainState string
+
 // StatusPageCustomDomainStatus Custom-domain verification state. Authenticated endpoints only.
 type StatusPageCustomDomainStatus string
 
 // StatusPageOverallStatus Page-level rollup computed server-side from the live status of every resource on the page, so the public views, the summary endpoint, and the SVG badge always agree. Only populated on the live public view paths (GET /api/v1/status-pages/{org} and GET /api/v1/status-pages/{org}/{slug}) — omitted on the authenticated admin listing, which doesn't load live resource data.
 type StatusPageOverallStatus string
+
+// StatusPageVisibility public = world-readable; private = hidden entirely (public endpoints answer 404); password = shared with a secret (public endpoints answer 401 STATUS_PAGE_LOCKED until unlocked).
+type StatusPageVisibility string
+
+// StatusPageEndpointSubscriber defines model for StatusPageEndpointSubscriber.
+type StatusPageEndpointSubscriber struct {
+	Channel   StatusPageEndpointSubscriberChannel `json:"channel"`
+	Confirmed bool                                `json:"confirmed"`
+	CreatedAt string                              `json:"createdAt"`
+
+	// Disabled True once repeated delivery failures tripped the circuit breaker. A `statuspage.subscriber.disabled` event records why.
+	Disabled *bool `json:"disabled,omitempty"`
+
+	// Email Absent for a webhook/Slack subscription.
+	Email *string `json:"email,omitempty"`
+
+	// Endpoint MASKED delivery URL, endpoint channels only. The real URL is stored encrypted and is never returned — an incoming-webhook URL is a credential, so a list endpoint that echoed it would turn every read into a credential disclosure.
+	Endpoint *string `json:"endpoint,omitempty"`
+
+	// FailureCount Consecutive delivery failures; reset by a success.
+	FailureCount *int                `json:"failureCount,omitempty"`
+	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
+
+	// Scope Subscription scope ("page" or "incident")
+	Scope string `json:"scope"`
+
+	// SigningSecret Returned EXACTLY ONCE, on creation. It is stored encrypted and never appears on any other response, so copy it now: without it the HMAC on every delivery is unverifiable.
+	SigningSecret string             `json:"signingSecret"`
+	Uid           openapi_types.UUID `json:"uid"`
+}
+
+// StatusPageEndpointSubscriberChannel defines model for StatusPageEndpointSubscriber.Channel.
+type StatusPageEndpointSubscriberChannel string
 
 // StatusPageListResponse defines model for StatusPageListResponse.
 type StatusPageListResponse struct {
@@ -4844,17 +5718,49 @@ type StatusPageSettings struct {
 	Availability *AvailabilitySettings `json:"availability,omitempty"`
 }
 
+// StatusPageSubscribeRequest defines model for StatusPageSubscribeRequest.
+type StatusPageSubscribeRequest struct {
+	// Channel Accepted only so a client asking for a non-email channel gets a clear refusal. Public self-serve is email-only.
+	Channel *StatusPageSubscribeRequestChannel `json:"channel,omitempty"`
+	Email   openapi_types.Email                `json:"email"`
+
+	// IncidentUid Required when scope is "incident".
+	IncidentUid *openapi_types.UUID              `json:"incidentUid,omitempty"`
+	Scope       *StatusPageSubscribeRequestScope `json:"scope,omitempty"`
+}
+
+// StatusPageSubscribeRequestChannel Accepted only so a client asking for a non-email channel gets a clear refusal. Public self-serve is email-only.
+type StatusPageSubscribeRequestChannel string
+
+// StatusPageSubscribeRequestScope defines model for StatusPageSubscribeRequest.Scope.
+type StatusPageSubscribeRequestScope string
+
 // StatusPageSubscriber defines model for StatusPageSubscriber.
 type StatusPageSubscriber struct {
-	Confirmed   bool                `json:"confirmed"`
-	CreatedAt   string              `json:"createdAt"`
-	Email       *string             `json:"email,omitempty"`
-	IncidentUid *openapi_types.UUID `json:"incidentUid,omitempty"`
+	Channel   StatusPageSubscriberChannel `json:"channel"`
+	Confirmed bool                        `json:"confirmed"`
+	CreatedAt string                      `json:"createdAt"`
+
+	// Disabled True once repeated delivery failures tripped the circuit breaker. A `statuspage.subscriber.disabled` event records why.
+	Disabled *bool `json:"disabled,omitempty"`
+
+	// Email Absent for a webhook/Slack subscription.
+	Email *string `json:"email,omitempty"`
+
+	// Endpoint MASKED delivery URL, endpoint channels only. The real URL is stored encrypted and is never returned — an incoming-webhook URL is a credential, so a list endpoint that echoed it would turn every read into a credential disclosure.
+	Endpoint *string `json:"endpoint,omitempty"`
+
+	// FailureCount Consecutive delivery failures; reset by a success.
+	FailureCount *int                `json:"failureCount,omitempty"`
+	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
 
 	// Scope Subscription scope ("page" or "incident")
 	Scope string             `json:"scope"`
 	Uid   openapi_types.UUID `json:"uid"`
 }
+
+// StatusPageSubscriberChannel defines model for StatusPageSubscriber.Channel.
+type StatusPageSubscriberChannel string
 
 // StatusPageSubscriberListResponse defines model for StatusPageSubscriberListResponse.
 type StatusPageSubscriberListResponse struct {
@@ -4881,6 +5787,12 @@ type StatusPageSummary struct {
 
 // StatusPageSummaryStatus defines model for StatusPageSummary.Status.
 type StatusPageSummaryStatus string
+
+// StatusPageUnlockRequest defines model for StatusPageUnlockRequest.
+type StatusPageUnlockRequest struct {
+	// Password The page password, as given to the visitor by the operator.
+	Password string `json:"password"`
+}
 
 // StatusUpdate defines model for StatusUpdate.
 type StatusUpdate struct {
@@ -4917,6 +5829,89 @@ type StatusUpdatePublic struct {
 	SectionUid   *openapi_types.UUID `json:"sectionUid,omitempty"`
 	Title        string              `json:"title"`
 	Uid          openapi_types.UUID  `json:"uid"`
+}
+
+// SupportMessage defines model for SupportMessage.
+type SupportMessage struct {
+	// AuthorUid The super admin who sent an outbound reply.
+	AuthorUid *string `json:"authorUid,omitempty"`
+
+	// Body Attacker-influenced free text. Never render it as HTML.
+	Body       string                  `json:"body"`
+	Channel    string                  `json:"channel"`
+	CreatedAt  time.Time               `json:"createdAt"`
+	Delivery   *map[string]interface{} `json:"delivery,omitempty"`
+	Direction  SupportMessageDirection `json:"direction"`
+	ExternalId *string                 `json:"externalId,omitempty"`
+	RawType    SupportMessageRawType   `json:"rawType"`
+	ThreadUid  string                  `json:"threadUid"`
+
+	// Truncated True when the body exceeded the stored-body cap and was cut.
+	Truncated *bool  `json:"truncated,omitempty"`
+	Uid       string `json:"uid"`
+}
+
+// SupportMessageDirection defines model for SupportMessage.Direction.
+type SupportMessageDirection string
+
+// SupportMessageRawType defines model for SupportMessage.RawType.
+type SupportMessageRawType string
+
+// SupportMessageListResponse defines model for SupportMessageListResponse.
+type SupportMessageListResponse struct {
+	Data []SupportMessage `json:"data"`
+}
+
+// SupportReplyWindow Whether a free-form reply can be sent RIGHT NOW. Derived from the last inbound message's timestamp and the channel's rule at read time, never stored — so it cannot go stale. This is a different axis from `status`: a thread can be open (unanswered) and yet expired (WhatsApp will no longer accept a free-form reply), which is exactly the state an operator most needs to see.
+type SupportReplyWindow struct {
+	// CostsMoney True for channels billed per reply (SMS).
+	CostsMoney bool `json:"costsMoney"`
+
+	// Expires Whether this channel has a window at all. Only WhatsApp does.
+	Expires   bool       `json:"expires"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	Open      bool       `json:"open"`
+
+	// Reason Operator-facing explanation of a closed window.
+	Reason *string `json:"reason,omitempty"`
+}
+
+// SupportThread defines model for SupportThread.
+type SupportThread struct {
+	// CanReply Whether an outbound adapter exists for this channel at all.
+	CanReply *bool                `json:"canReply,omitempty"`
+	Channel  SupportThreadChannel `json:"channel"`
+
+	// ChannelIdentity E.164 number, Telegram chat id, Slack/Discord user id.
+	ChannelIdentity string     `json:"channelIdentity"`
+	CreatedAt       *time.Time `json:"createdAt,omitempty"`
+	LastInboundAt   *time.Time `json:"lastInboundAt,omitempty"`
+	LastMessageAt   time.Time  `json:"lastMessageAt"`
+
+	// OrganizationUid Attribution only. Recorded when the sender resolves to a verified user contact; it does NOT grant that organization visibility of the thread.
+	OrganizationUid *string `json:"organizationUid,omitempty"`
+
+	// ReplyWindow Whether a free-form reply can be sent RIGHT NOW. Derived from the last inbound message's timestamp and the channel's rule at read time, never stored — so it cannot go stale. This is a different axis from `status`: a thread can be open (unanswered) and yet expired (WhatsApp will no longer accept a free-form reply), which is exactly the state an operator most needs to see.
+	ReplyWindow *SupportReplyWindow `json:"replyWindow,omitempty"`
+
+	// Status Set by the operator, deliberately. Not the reply window.
+	Status      SupportThreadStatus `json:"status"`
+	Subject     string              `json:"subject"`
+	Uid         string              `json:"uid"`
+	UnreadCount int                 `json:"unreadCount"`
+	UpdatedAt   *time.Time          `json:"updatedAt,omitempty"`
+	UserUid     *string             `json:"userUid,omitempty"`
+}
+
+// SupportThreadChannel defines model for SupportThread.Channel.
+type SupportThreadChannel string
+
+// SupportThreadStatus Set by the operator, deliberately. Not the reply window.
+type SupportThreadStatus string
+
+// SupportThreadListResponse defines model for SupportThreadListResponse.
+type SupportThreadListResponse struct {
+	Data []SupportThread `json:"data"`
 }
 
 // SwitchOrgRequest defines model for SwitchOrgRequest.
@@ -5040,7 +6035,13 @@ type UpdateCheckRequest struct {
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). An empty string clears it back to the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
 	Slug         *string `json:"slug,omitempty"`
+
+	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+	TracerouteOnFailure *UpdateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 }
+
+// UpdateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
+type UpdateCheckRequestTracerouteOnFailure string
 
 // UpdateDependencyRequest defines model for UpdateDependencyRequest.
 type UpdateDependencyRequest struct {
@@ -5132,6 +6133,9 @@ type UpdateOrgSettingsRequest struct {
 
 	// SessionMaxDurationSeconds Session max duration override in seconds; <=0 clears the override
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+
+	// TracerouteOnFailure Sets the organization default for path-trace-on-failure. Omit to leave unchanged.
+	TracerouteOnFailure *bool `json:"tracerouteOnFailure,omitempty"`
 }
 
 // UpdateProfileRequest defines model for UpdateProfileRequest.
@@ -5142,6 +6146,19 @@ type UpdateProfileRequest struct {
 
 // UpdateReportScheduleRequest Partial update; every field is optional.
 type UpdateReportScheduleRequest = CreateReportScheduleRequest
+
+// UpdateSLOAlertPolicyRequest Partial update. Omitted fields are left alone.
+type UpdateSLOAlertPolicyRequest struct {
+	Enabled            *bool                                `json:"enabled,omitempty"`
+	LongWindowSeconds  *int                                 `json:"longWindowSeconds,omitempty"`
+	MinSamples         *int                                 `json:"minSamples,omitempty"`
+	Severity           *UpdateSLOAlertPolicyRequestSeverity `json:"severity,omitempty"`
+	ShortWindowSeconds *int                                 `json:"shortWindowSeconds,omitempty"`
+	Threshold          *float64                             `json:"threshold,omitempty"`
+}
+
+// UpdateSLOAlertPolicyRequestSeverity defines model for UpdateSLOAlertPolicyRequest.Severity.
+type UpdateSLOAlertPolicyRequestSeverity string
 
 // UpdateSLORequest Partial update; every field is optional.
 type UpdateSLORequest = CreateSLORequest
@@ -5173,22 +6190,29 @@ type UpdateStatusPageRequest struct {
 	CustomDomain  *string `json:"customDomain,omitempty"`
 	Description   *string `json:"description,omitempty"`
 	Enabled       *bool   `json:"enabled,omitempty"`
+	HideBranding  *bool   `json:"hideBranding,omitempty"`
 	HistoryDays   *int    `json:"historyDays,omitempty"`
 	HistoryPeriod *string `json:"historyPeriod,omitempty"`
 	IsDefault     *bool   `json:"isDefault,omitempty"`
 	Language      *string `json:"language,omitempty"`
 	Name          *string `json:"name,omitempty"`
 
+	// Password WRITE-ONLY. A non-empty value sets/replaces the unlock password (invalidating every outstanding unlock cookie); "" clears it (refused while visibility is still "password"); omitting it leaves the stored one untouched.
+	Password *string `json:"password,omitempty"`
+
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
-	Settings         *StatusPageSettings `json:"settings,omitempty"`
-	ShowAvailability *bool               `json:"showAvailability,omitempty"`
-	ShowResponseTime *bool               `json:"showResponseTime,omitempty"`
-	Slug             *string             `json:"slug,omitempty"`
-	Visibility       *string             `json:"visibility,omitempty"`
+	Settings         *StatusPageSettings                `json:"settings,omitempty"`
+	ShowAvailability *bool                              `json:"showAvailability,omitempty"`
+	ShowResponseTime *bool                              `json:"showResponseTime,omitempty"`
+	Slug             *string                            `json:"slug,omitempty"`
+	Visibility       *UpdateStatusPageRequestVisibility `json:"visibility,omitempty"`
 }
 
 // UpdateStatusPageRequestAutoResolve What an auto-created publication does when its incident resolves. Omit the field to leave it unchanged; any other value is a VALIDATION_ERROR.
 type UpdateStatusPageRequestAutoResolve string
+
+// UpdateStatusPageRequestVisibility defines model for UpdateStatusPageRequest.Visibility.
+type UpdateStatusPageRequestVisibility string
 
 // UpdateStatusPageResourceRequest Supplying checkUid or checkGroupUid switches the resource's target kind; supplying both is a VALIDATION_ERROR naming both fields, and supplying neither leaves the target untouched.
 type UpdateStatusPageResourceRequest struct {
@@ -5214,15 +6238,32 @@ type UpdateStatusPageSectionRequest struct {
 
 // UpdateStatusUpdateRequest defines model for UpdateStatusUpdateRequest.
 type UpdateStatusUpdateRequest struct {
-	BodyMarkdown *string             `json:"bodyMarkdown,omitempty"`
-	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
-	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
-	Kind         *string             `json:"kind,omitempty"`
-	LinkUrl      *string             `json:"linkUrl,omitempty"`
-	PublishedAt  *time.Time          `json:"publishedAt,omitempty"`
-	SectionUid   *openapi_types.UUID `json:"sectionUid,omitempty"`
-	Title        *string             `json:"title,omitempty"`
+	BodyMarkdown *string `json:"bodyMarkdown,omitempty"`
+
+	// CheckUid Set/change the check (must be a resource of the update's status page), or clear it with null. Omit the field to leave it unchanged; "" is a VALIDATION_ERROR (send null to clear). Clearing checkUid does not implicitly clear sectionUid.
+	CheckUid *openapi_types.UUID `json:"checkUid,omitempty"`
+
+	// IncidentUid Set/change the incident, or clear it with null. Omit the field to leave it unchanged; "" is a VALIDATION_ERROR (send null to clear).
+	IncidentUid *openapi_types.UUID `json:"incidentUid,omitempty"`
+	Kind        *string             `json:"kind,omitempty"`
+
+	// LinkUrl Set/replace the link URL (must be http/https), or clear it with null or "". Omit the field to leave it unchanged.
+	LinkUrl     *string    `json:"linkUrl,omitempty"`
+	PublishedAt *time.Time `json:"publishedAt,omitempty"`
+
+	// SectionUid Set/change the section (must belong to the update's status page), or clear it with null. Omit the field to leave it unchanged; "" is a VALIDATION_ERROR (send null to clear). Clearing sectionUid does not implicitly clear checkUid.
+	SectionUid *openapi_types.UUID `json:"sectionUid,omitempty"`
+	Title      *string             `json:"title,omitempty"`
 }
+
+// UpdateSupportThreadRequest defines model for UpdateSupportThreadRequest.
+type UpdateSupportThreadRequest struct {
+	Status  *UpdateSupportThreadRequestStatus `json:"status,omitempty"`
+	Subject *string                           `json:"subject,omitempty"`
+}
+
+// UpdateSupportThreadRequestStatus defines model for UpdateSupportThreadRequest.Status.
+type UpdateSupportThreadRequestStatus string
 
 // UpsertCheckRequest defines model for UpsertCheckRequest.
 type UpsertCheckRequest struct {
@@ -5252,9 +6293,15 @@ type UpsertCheckRequest struct {
 	Name   *string `json:"name,omitempty"`
 	Period *string `json:"period,omitempty"`
 
+	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
+	TracerouteOnFailure *UpsertCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
+
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *UpsertCheckRequestType `json:"type,omitempty"`
 }
+
+// UpsertCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
+type UpsertCheckRequestTracerouteOnFailure string
 
 // UpsertCheckRequestType Check type (auto-inferred from URL if not provided)
 type UpsertCheckRequestType string
@@ -5263,9 +6310,12 @@ type UpsertCheckRequestType string
 type UserSummary struct {
 	AvatarUrl *string              `json:"avatarUrl,omitempty"`
 	Email     *openapi_types.Email `json:"email,omitempty"`
-	Name      *string              `json:"name,omitempty"`
-	Role      *UserSummaryRole     `json:"role,omitempty"`
-	Uid       *openapi_types.UUID  `json:"uid,omitempty"`
+
+	// MustChangePassword True when this account must rotate its password before it can do anything else. The session returned alongside this flag reaches only POST /auth/change-password, GET /auth/me and POST /auth/logout; every other endpoint answers 403 with code PASSWORD_CHANGE_REQUIRED. Omitted when false.
+	MustChangePassword *bool               `json:"mustChangePassword,omitempty"`
+	Name               *string             `json:"name,omitempty"`
+	Role               *UserSummaryRole    `json:"role,omitempty"`
+	Uid                *openapi_types.UUID `json:"uid,omitempty"`
 }
 
 // UserSummaryRole defines model for UserSummary.Role.
@@ -5419,6 +6469,9 @@ type ResourceUidPath = openapi_types.UUID
 // RouteUidPath defines model for RouteUidPath.
 type RouteUidPath = string
 
+// SLOAlertPolicyUidPath defines model for SLOAlertPolicyUidPath.
+type SLOAlertPolicyUidPath = openapi_types.UUID
+
 // SLOUidPath defines model for SLOUidPath.
 type SLOUidPath = string
 
@@ -5454,6 +6507,9 @@ type Forbidden = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// StatusPageLocked defines model for StatusPageLocked.
+type StatusPageLocked = Error
 
 // TooManyRequests defines model for TooManyRequests.
 type TooManyRequests = Error
@@ -5634,6 +6690,30 @@ type ListEventsParams struct {
 	// IncidentUid Filter by incident UID
 	IncidentUid *string `form:"incidentUid,omitempty" json:"incidentUid,omitempty"`
 
+	// Type Filter by event-type FAMILY (comma-separated prefixes, e.g. `auth,member`). Distinct from `eventType`, which matches exactly. The `auth` family is only returned to org admins and owners.
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+
+	// ActorUserUid Filter to the events caused by one user. `actorUid` is accepted as an alias.
+	ActorUserUid *openapi_types.UUID `form:"actorUserUid,omitempty" json:"actorUserUid,omitempty"`
+
+	// TargetType Filter to one kind of acted-on object (`integration`, `member`, `escalation_policy`, …), matched against the payload's `target_type`.
+	TargetType *string `form:"targetType,omitempty" json:"targetType,omitempty"`
+
+	// TargetUid Filter to the events about one object, matched EXACTLY against the payload's `target_uid`.
+	TargetUid *string `form:"targetUid,omitempty" json:"targetUid,omitempty"`
+
+	// Target Free-text target filter: matches an exact `target_uid`, or a case-insensitive substring of the `target_name` captured on the event. This is what the dashboard's "target name or UID" box sends.
+	Target *string `form:"target,omitempty" json:"target,omitempty"`
+
+	// SourceIp Filter to one client address. Honoured for org admins and owners ONLY; for anyone else it is silently ignored rather than rejected, so it cannot be used as an oracle for a column they are not allowed to read.
+	SourceIp *string `form:"sourceIp,omitempty" json:"sourceIp,omitempty"`
+
+	// Since Only events created at or after this RFC3339 timestamp
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+
+	// Until Only events created strictly before this RFC3339 timestamp
+	Until *time.Time `form:"until,omitempty" json:"until,omitempty"`
+
 	// Cursor Cursor for pagination
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -5809,13 +6889,23 @@ type ListOrgResultsParams struct {
 	// Region Filter by region (comma-separated for multiple)
 	Region *string `form:"region,omitempty" json:"region,omitempty"`
 
-	// PeriodType Filter by period type (comma-separated for multiple)
+	// PeriodType Filter by period type (comma-separated for multiple). Both useful indexes on `results` are partial and split on `period_type = 'raw'`, so a single request naming raw AND a rollup tier is served by neither and sequentially scans the table — ask for one side per request. A raw-only request is additionally clamped server-side to the raw-retention band (see the `window` object on the response); rows older than that were deleted by the aggregation job, so nothing is lost.
 	PeriodType *string `form:"periodType,omitempty" json:"periodType,omitempty"`
+
+	// PeriodStartAfter RFC3339 timestamp. Filters on `period_start >= value`. For a raw-only request the server may move this forward to the raw-retention boundary; the effective value is echoed in the response's `window` object.
+	PeriodStartAfter *time.Time `form:"periodStartAfter,omitempty" json:"periodStartAfter,omitempty"`
+
+	// PeriodEndBefore RFC3339 timestamp. Despite the name it filters on `period_start < value`, NOT on `period_end` — an aggregated bucket that starts inside the window and ends outside it IS returned. That is deliberate and charting depends on it: a partially visible bucket should still be drawn.
+	PeriodEndBefore *time.Time `form:"periodEndBefore,omitempty" json:"periodEndBefore,omitempty"`
 
 	// Cursor Cursor for pagination
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Size Results per page (default 20, max 100)
+	// Limit Results per page (default 100, max 1000)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Size Deprecated alias for `limit`.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 
 	// With Comma-separated optional fields to include. durationAvgMs and durationP95Ms are populated on aggregated rollup rows (hour/day/ month) from the stored duration_avg/duration_p95 columns; both are absent on raw rows, which don't store them.
@@ -5934,6 +7024,27 @@ type GetStatusPageBadgeParamsStyle string
 type ViewPublicStatusPageIncidentsParams struct {
 	// Active When "true", returns only incidents that are not resolved.
 	Active *bool `form:"active,omitempty" json:"active,omitempty"`
+}
+
+// ListSupportThreadsParams defines parameters for ListSupportThreads.
+type ListSupportThreadsParams struct {
+	Status  *ListSupportThreadsParamsStatus  `form:"status,omitempty" json:"status,omitempty"`
+	Channel *ListSupportThreadsParamsChannel `form:"channel,omitempty" json:"channel,omitempty"`
+
+	// Q Case-insensitive substring match on subject or channel identity
+	Q     *string `form:"q,omitempty" json:"q,omitempty"`
+	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListSupportThreadsParamsStatus defines parameters for ListSupportThreads.
+type ListSupportThreadsParamsStatus string
+
+// ListSupportThreadsParamsChannel defines parameters for ListSupportThreads.
+type ListSupportThreadsParamsChannel string
+
+// ListSupportMessagesParams defines parameters for ListSupportMessages.
+type ListSupportMessagesParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListSystemCheckJobsParams defines parameters for ListSystemCheckJobs.
@@ -6152,6 +7263,9 @@ type CreateSloJSONRequestBody = CreateSLORequest
 // UpdateSloJSONRequestBody defines body for UpdateSlo for application/json ContentType.
 type UpdateSloJSONRequestBody = UpdateSLORequest
 
+// UpdateSloAlertPolicyJSONRequestBody defines body for UpdateSloAlertPolicy for application/json ContentType.
+type UpdateSloAlertPolicyJSONRequestBody = UpdateSLOAlertPolicyRequest
+
 // CreateStatusPageJSONRequestBody defines body for CreateStatusPage for application/json ContentType.
 type CreateStatusPageJSONRequestBody = CreateStatusPageRequest
 
@@ -6185,6 +7299,12 @@ type ReorderStatusPageResourcesJSONRequestBody = ReorderUidsRequest
 // UpdateStatusPageResourceJSONRequestBody defines body for UpdateStatusPageResource for application/json ContentType.
 type UpdateStatusPageResourceJSONRequestBody = UpdateStatusPageResourceRequest
 
+// SubscribeToStatusPageJSONRequestBody defines body for SubscribeToStatusPage for application/json ContentType.
+type SubscribeToStatusPageJSONRequestBody = StatusPageSubscribeRequest
+
+// CreateStatusPageEndpointSubscriberJSONRequestBody defines body for CreateStatusPageEndpointSubscriber for application/json ContentType.
+type CreateStatusPageEndpointSubscriberJSONRequestBody = CreateStatusPageEndpointSubscriberRequest
+
 // CreateStatusUpdateJSONRequestBody defines body for CreateStatusUpdate for application/json ContentType.
 type CreateStatusUpdateJSONRequestBody = CreateStatusUpdateRequest
 
@@ -6202,6 +7322,18 @@ type ConfirmMyNotificationContactJSONRequestBody ConfirmMyNotificationContactJSO
 
 // UpdateMyNotificationRouteJSONRequestBody defines body for UpdateMyNotificationRoute for application/json ContentType.
 type UpdateMyNotificationRouteJSONRequestBody = UpdateNotificationRouteRequest
+
+// UnlockDefaultStatusPageJSONRequestBody defines body for UnlockDefaultStatusPage for application/json ContentType.
+type UnlockDefaultStatusPageJSONRequestBody = StatusPageUnlockRequest
+
+// UnlockStatusPageJSONRequestBody defines body for UnlockStatusPage for application/json ContentType.
+type UnlockStatusPageJSONRequestBody = StatusPageUnlockRequest
+
+// UpdateSupportThreadJSONRequestBody defines body for UpdateSupportThread for application/json ContentType.
+type UpdateSupportThreadJSONRequestBody = UpdateSupportThreadRequest
+
+// CreateSupportMessageJSONRequestBody defines body for CreateSupportMessage for application/json ContentType.
+type CreateSupportMessageJSONRequestBody = CreateSupportMessageRequest
 
 // SetSystemParameterJSONRequestBody defines body for SetSystemParameter for application/json ContentType.
 type SetSystemParameterJSONRequestBody = SetSystemParameterRequest
@@ -7520,7 +8652,7 @@ type ClientInterface interface {
 	//
 	// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 	//
-	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+	// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -7851,7 +8983,7 @@ type ClientInterface interface {
 
 	// TestReportScheduleWithBody Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -7860,7 +8992,7 @@ type ClientInterface interface {
 
 	// TestReportSchedule Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -7976,6 +9108,36 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
 	UpdateSlo(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSloAlertPolicies List an objective's burn-rate alert policies
+	//
+	// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+	ListSloAlertPolicies(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSloAlertPolicy Get one burn-rate alert policy
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+	GetSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSloAlertPolicyWithBody Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicyWithBody(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSloAlertPolicy Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSloBurndown Error-budget burn-down for the current window
 	//
@@ -8210,6 +9372,58 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `ListStatusPageSubscribers` operationId).
 	ListStatusPageSubscribers(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// SubscribeToStatusPageWithBody Subscribe an email address to a status page
+	//
+	// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+	//
+	// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+	SubscribeToStatusPageWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SubscribeToStatusPage Subscribe an email address to a status page
+	//
+	// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+	//
+	// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+	SubscribeToStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body SubscribeToStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageEndpointSubscriberWithBody Register a webhook or Slack delivery for a status page
+	//
+	// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+	//
+	// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+	//
+	// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+	//
+	// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+	CreateStatusPageEndpointSubscriberWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateStatusPageEndpointSubscriber Register a webhook or Slack delivery for a status page
+	//
+	// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+	//
+	// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+	//
+	// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+	//
+	// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+	CreateStatusPageEndpointSubscriber(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageEndpointSubscriberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RemoveStatusPageSubscriber Remove a subscriber from a status page
 	//
 	// Corresponds with DELETE /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/{uid} (the `RemoveStatusPageSubscriber` operationId).
@@ -8388,23 +9602,41 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/status-pages/{org} (the `ViewDefaultStatusPage` operationId).
 	ViewDefaultStatusPage(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UnlockDefaultStatusPageWithBody Unlock an organization's password-protected default status page
+	//
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+	UnlockDefaultStatusPageWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnlockDefaultStatusPage Unlock an organization's password-protected default status page
+	//
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+	UnlockDefaultStatusPage(ctx context.Context, org OrgPath, body UnlockDefaultStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ViewStatusPage View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 	ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStatusPageBadge SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 	GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StatusPageFeed Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 	StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8412,7 +9644,7 @@ type ClientInterface interface {
 	// ViewPublicStatusPageIncidents Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -8420,10 +9652,93 @@ type ClientInterface interface {
 
 	// ViewStatusPageSummary Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 	ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnlockStatusPageWithBody Unlock a password-protected status page
+	//
+	// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+	//
+	// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+	//
+	// Attempts are rate limited per (client IP, page).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+	UnlockStatusPageWithBody(ctx context.Context, org OrgPath, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnlockStatusPage Unlock a password-protected status page
+	//
+	// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+	//
+	// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+	//
+	// Attempts are rate limited per (client IP, page).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+	UnlockStatusPage(ctx context.Context, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSupportThreads List support threads
+	//
+	// Returns captured support conversations, most recent activity first. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+	ListSupportThreads(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSupportThread Get one support thread
+	//
+	// Returns the thread, marking it read. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+	GetSupportThread(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSupportThreadWithBody Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThreadWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSupportThread Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThread(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSupportMessages List a thread's messages
+	//
+	// Chronological order, oldest first. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+	ListSupportMessages(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSupportMessageWithBody Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessageWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSupportMessage Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetActivationFunnel Organization activation funnel
 	//
@@ -11515,7 +12830,7 @@ func (c *Client) DeleteOrgLogo(ctx context.Context, org OrgPath, reqEditors ...R
 //
 // The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 //
-// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 //
 // Takes any type of body and a specified content type.
 //
@@ -12376,7 +13691,7 @@ func (c *Client) UpdateReportSchedule(ctx context.Context, org OrgPath, uid Repo
 
 // TestReportScheduleWithBody Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes any type of body and a specified content type.
 //
@@ -12395,7 +13710,7 @@ func (c *Client) TestReportScheduleWithBody(ctx context.Context, org OrgPath, ui
 
 // TestReportSchedule Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -12692,6 +14007,76 @@ func (c *Client) UpdateSloWithBody(ctx context.Context, org OrgPath, uid SLOUidP
 // Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
 func (c *Client) UpdateSlo(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateSloRequest(c.Server, org, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSloAlertPolicies List an objective's burn-rate alert policies
+//
+// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+func (c *Client) ListSloAlertPolicies(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSloAlertPoliciesRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSloAlertPolicy Get one burn-rate alert policy
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+func (c *Client) GetSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSloAlertPolicyRequest(c.Server, org, uid, policyUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSloAlertPolicyWithBody Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *Client) UpdateSloAlertPolicyWithBody(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSloAlertPolicyRequestWithBody(c.Server, org, uid, policyUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSloAlertPolicy Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *Client) UpdateSloAlertPolicy(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSloAlertPolicyRequest(c.Server, org, uid, policyUid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -13305,6 +14690,98 @@ func (c *Client) ListStatusPageSubscribers(ctx context.Context, org OrgPath, sta
 	return c.Client.Do(req)
 }
 
+// SubscribeToStatusPageWithBody Subscribe an email address to a status page
+//
+// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+//
+// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+func (c *Client) SubscribeToStatusPageWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubscribeToStatusPageRequestWithBody(c.Server, org, statusPageUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SubscribeToStatusPage Subscribe an email address to a status page
+//
+// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+//
+// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+func (c *Client) SubscribeToStatusPage(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body SubscribeToStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSubscribeToStatusPageRequest(c.Server, org, statusPageUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStatusPageEndpointSubscriberWithBody Register a webhook or Slack delivery for a status page
+//
+// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+//
+// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+//
+// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+//
+// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+func (c *Client) CreateStatusPageEndpointSubscriberWithBody(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageEndpointSubscriberRequestWithBody(c.Server, org, statusPageUid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateStatusPageEndpointSubscriber Register a webhook or Slack delivery for a status page
+//
+// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+//
+// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+//
+// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+//
+// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+func (c *Client) CreateStatusPageEndpointSubscriber(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageEndpointSubscriberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateStatusPageEndpointSubscriberRequest(c.Server, org, statusPageUid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // RemoveStatusPageSubscriber Remove a subscriber from a status page
 //
 // Corresponds with DELETE /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/{uid} (the `RemoveStatusPageSubscriber` operationId).
@@ -13733,9 +15210,47 @@ func (c *Client) ViewDefaultStatusPage(ctx context.Context, org OrgPath, reqEdit
 	return c.Client.Do(req)
 }
 
+// UnlockDefaultStatusPageWithBody Unlock an organization's password-protected default status page
+//
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+func (c *Client) UnlockDefaultStatusPageWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnlockDefaultStatusPageRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnlockDefaultStatusPage Unlock an organization's password-protected default status page
+//
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+func (c *Client) UnlockDefaultStatusPage(ctx context.Context, org OrgPath, body UnlockDefaultStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnlockDefaultStatusPageRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ViewStatusPage View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -13752,7 +15267,7 @@ func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, r
 
 // GetStatusPageBadge SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -13769,7 +15284,7 @@ func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug strin
 
 // StatusPageFeed Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -13787,7 +15302,7 @@ func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, r
 // ViewPublicStatusPageIncidents Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -13805,11 +15320,184 @@ func (c *Client) ViewPublicStatusPageIncidents(ctx context.Context, org OrgPath,
 
 // ViewStatusPageSummary Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 func (c *Client) ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewViewStatusPageSummaryRequest(c.Server, org, slug)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnlockStatusPageWithBody Unlock a password-protected status page
+//
+// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+//
+// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+//
+// Attempts are rate limited per (client IP, page).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+func (c *Client) UnlockStatusPageWithBody(ctx context.Context, org OrgPath, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnlockStatusPageRequestWithBody(c.Server, org, slug, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnlockStatusPage Unlock a password-protected status page
+//
+// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+//
+// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+//
+// Attempts are rate limited per (client IP, page).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+func (c *Client) UnlockStatusPage(ctx context.Context, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnlockStatusPageRequest(c.Server, org, slug, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSupportThreads List support threads
+//
+// Returns captured support conversations, most recent activity first. Super-admin only.
+//
+// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+func (c *Client) ListSupportThreads(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSupportThreadsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSupportThread Get one support thread
+//
+// Returns the thread, marking it read. Super-admin only.
+//
+// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+func (c *Client) GetSupportThread(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSupportThreadRequest(c.Server, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSupportThreadWithBody Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *Client) UpdateSupportThreadWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSupportThreadRequestWithBody(c.Server, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSupportThread Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *Client) UpdateSupportThread(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSupportThreadRequest(c.Server, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSupportMessages List a thread's messages
+//
+// Chronological order, oldest first. Super-admin only.
+//
+// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+func (c *Client) ListSupportMessages(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSupportMessagesRequest(c.Server, uid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSupportMessageWithBody Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *Client) CreateSupportMessageWithBody(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSupportMessageRequestWithBody(c.Server, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSupportMessage Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *Client) CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSupportMessageRequest(c.Server, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -18615,6 +20303,102 @@ func NewListEventsRequest(server string, org OrgPath, params *ListEventsParams) 
 
 		}
 
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "type", *params.Type, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.ActorUserUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "actorUserUid", *params.ActorUserUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "uuid"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TargetType != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "targetType", *params.TargetType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TargetUid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "targetUid", *params.TargetUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Target != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "target", *params.Target, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.SourceIp != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sourceIp", *params.SourceIp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Since != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "since", *params.Since, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Until != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "until", *params.Until, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -22502,9 +24286,45 @@ func NewListOrgResultsRequest(server string, org OrgPath, params *ListOrgResults
 
 		}
 
+		if params.PeriodStartAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "periodStartAfter", *params.PeriodStartAfter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PeriodEndBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "periodEndBefore", *params.PeriodEndBefore, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Cursor != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -23087,6 +24907,156 @@ func NewUpdateSloRequestWithBody(server string, org OrgPath, uid SLOUidPath, con
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSloAlertPoliciesRequest constructs an http.Request for the ListSloAlertPolicies method
+func NewListSloAlertPoliciesRequest(server string, org OrgPath, uid SLOUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/alert-policies", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSloAlertPolicyRequest constructs an http.Request for the GetSloAlertPolicy method
+func NewGetSloAlertPolicyRequest(server string, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "policyUid", policyUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/alert-policies/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSloAlertPolicyRequest calls the generic UpdateSloAlertPolicy builder with application/json body
+func NewUpdateSloAlertPolicyRequest(server string, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSloAlertPolicyRequestWithBody(server, org, uid, policyUid, "application/json", bodyReader)
+}
+
+// NewUpdateSloAlertPolicyRequestWithBody constructs an http.Request for the UpdateSloAlertPolicy method, with any body, and a specified content type
+func NewUpdateSloAlertPolicyRequestWithBody(server string, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "policyUid", policyUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/slos/%s/alert-policies/%s", pathParam0, pathParam1, pathParam2)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -24509,6 +26479,114 @@ func NewListStatusPageSubscribersRequest(server string, org OrgPath, statusPageU
 	return req, nil
 }
 
+// NewSubscribeToStatusPageRequest calls the generic SubscribeToStatusPage builder with application/json body
+func NewSubscribeToStatusPageRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, body SubscribeToStatusPageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSubscribeToStatusPageRequestWithBody(server, org, statusPageUid, "application/json", bodyReader)
+}
+
+// NewSubscribeToStatusPageRequestWithBody constructs an http.Request for the SubscribeToStatusPage method, with any body, and a specified content type
+func NewSubscribeToStatusPageRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/subscribers", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateStatusPageEndpointSubscriberRequest calls the generic CreateStatusPageEndpointSubscriber builder with application/json body
+func NewCreateStatusPageEndpointSubscriberRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageEndpointSubscriberJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateStatusPageEndpointSubscriberRequestWithBody(server, org, statusPageUid, "application/json", bodyReader)
+}
+
+// NewCreateStatusPageEndpointSubscriberRequestWithBody constructs an http.Request for the CreateStatusPageEndpointSubscriber method, with any body, and a specified content type
+func NewCreateStatusPageEndpointSubscriberRequestWithBody(server string, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/subscribers/endpoints", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewRemoveStatusPageSubscriberRequest constructs an http.Request for the RemoveStatusPageSubscriber method
 func NewRemoveStatusPageSubscriberRequest(server string, org OrgPath, statusPageUid StatusPageUidPath, uid SubscriberUidPath) (*http.Request, error) {
 	var err error
@@ -25503,6 +27581,53 @@ func NewViewDefaultStatusPageRequest(server string, org OrgPath) (*http.Request,
 	return req, nil
 }
 
+// NewUnlockDefaultStatusPageRequest calls the generic UnlockDefaultStatusPage builder with application/json body
+func NewUnlockDefaultStatusPageRequest(server string, org OrgPath, body UnlockDefaultStatusPageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUnlockDefaultStatusPageRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewUnlockDefaultStatusPageRequestWithBody constructs an http.Request for the UnlockDefaultStatusPage method, with any body, and a specified content type
+func NewUnlockDefaultStatusPageRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/status-pages/%s/unlock", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewViewStatusPageRequest constructs an http.Request for the ViewStatusPage method
 func NewViewStatusPageRequest(server string, org OrgPath, slug string) (*http.Request, error) {
 	var err error
@@ -25794,6 +27919,339 @@ func NewViewStatusPageSummaryRequest(server string, org OrgPath, slug string) (*
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewUnlockStatusPageRequest calls the generic UnlockStatusPage builder with application/json body
+func NewUnlockStatusPageRequest(server string, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUnlockStatusPageRequestWithBody(server, org, slug, "application/json", bodyReader)
+}
+
+// NewUnlockStatusPageRequestWithBody constructs an http.Request for the UnlockStatusPage method, with any body, and a specified content type
+func NewUnlockStatusPageRequestWithBody(server string, org OrgPath, slug string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/status-pages/%s/%s/unlock", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSupportThreadsRequest constructs an http.Request for the ListSupportThreads method
+func NewListSupportThreadsRequest(server string, params *ListSupportThreadsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Channel != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "channel", *params.Channel, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSupportThreadRequest constructs an http.Request for the GetSupportThread method
+func NewGetSupportThreadRequest(server string, uid string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSupportThreadRequest calls the generic UpdateSupportThread builder with application/json body
+func NewUpdateSupportThreadRequest(server string, uid string, body UpdateSupportThreadJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSupportThreadRequestWithBody(server, uid, "application/json", bodyReader)
+}
+
+// NewUpdateSupportThreadRequestWithBody constructs an http.Request for the UpdateSupportThread method, with any body, and a specified content type
+func NewUpdateSupportThreadRequestWithBody(server string, uid string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListSupportMessagesRequest constructs an http.Request for the ListSupportMessages method
+func NewListSupportMessagesRequest(server string, uid string, params *ListSupportMessagesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSupportMessageRequest calls the generic CreateSupportMessage builder with application/json body
+func NewCreateSupportMessageRequest(server string, uid string, body CreateSupportMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSupportMessageRequestWithBody(server, uid, "application/json", bodyReader)
+}
+
+// NewCreateSupportMessageRequestWithBody constructs an http.Request for the CreateSupportMessage method, with any body, and a specified content type
+func NewCreateSupportMessageRequestWithBody(server string, uid string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -27901,7 +30359,7 @@ type ClientWithResponsesInterface interface {
 	//
 	// The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 	//
-	// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+	// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -28284,7 +30742,7 @@ type ClientWithResponsesInterface interface {
 
 	// TestReportScheduleWithBodyWithResponse Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -28293,7 +30751,7 @@ type ClientWithResponsesInterface interface {
 
 	// TestReportScheduleWithResponse Send the report immediately to the caller
 	//
-	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+	// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -28425,6 +30883,40 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid} (the `UpdateSlo` operationId).
 	UpdateSloWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, body UpdateSloJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloResult, error)
+
+	// ListSloAlertPoliciesWithResponse List an objective's burn-rate alert policies
+	//
+	// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+	ListSloAlertPoliciesWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*ListSloAlertPoliciesResult, error)
+
+	// GetSloAlertPolicyWithResponse Get one burn-rate alert policy
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+	GetSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*GetSloAlertPolicyResult, error)
+
+	// UpdateSloAlertPolicyWithBodyWithResponse Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error)
+
+	// UpdateSloAlertPolicyWithResponse Tune a burn-rate alert policy
+	//
+	// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+	UpdateSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error)
 
 	// GetSloBurndownWithResponse Error-budget burn-down for the current window
 	//
@@ -28689,6 +31181,58 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `ListStatusPageSubscribers` operationId).
 	ListStatusPageSubscribersWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*ListStatusPageSubscribersResult, error)
 
+	// SubscribeToStatusPageWithBodyWithResponse Subscribe an email address to a status page
+	//
+	// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+	//
+	// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+	SubscribeToStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubscribeToStatusPageResult, error)
+
+	// SubscribeToStatusPageWithResponse Subscribe an email address to a status page
+	//
+	// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+	//
+	// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+	SubscribeToStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body SubscribeToStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*SubscribeToStatusPageResult, error)
+
+	// CreateStatusPageEndpointSubscriberWithBodyWithResponse Register a webhook or Slack delivery for a status page
+	//
+	// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+	//
+	// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+	//
+	// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+	//
+	// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+	CreateStatusPageEndpointSubscriberWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageEndpointSubscriberResult, error)
+
+	// CreateStatusPageEndpointSubscriberWithResponse Register a webhook or Slack delivery for a status page
+	//
+	// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+	//
+	// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+	//
+	// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+	//
+	// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+	CreateStatusPageEndpointSubscriberWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageEndpointSubscriberJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageEndpointSubscriberResult, error)
+
 	// RemoveStatusPageSubscriberWithResponse Remove a subscriber from a status page
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -28893,9 +31437,27 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/status-pages/{org} (the `ViewDefaultStatusPage` operationId).
 	ViewDefaultStatusPageWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ViewDefaultStatusPageResult, error)
 
+	// UnlockDefaultStatusPageWithBodyWithResponse Unlock an organization's password-protected default status page
+	//
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+	UnlockDefaultStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UnlockDefaultStatusPageResult, error)
+
+	// UnlockDefaultStatusPageWithResponse Unlock an organization's password-protected default status page
+	//
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+	UnlockDefaultStatusPageWithResponse(ctx context.Context, org OrgPath, body UnlockDefaultStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UnlockDefaultStatusPageResult, error)
+
 	// ViewStatusPageWithResponse View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -28904,7 +31466,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -28913,7 +31475,7 @@ type ClientWithResponsesInterface interface {
 
 	// StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -28923,7 +31485,7 @@ type ClientWithResponsesInterface interface {
 	// ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -28933,12 +31495,101 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 	ViewStatusPageSummaryWithResponse(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*ViewStatusPageSummaryResult, error)
+
+	// UnlockStatusPageWithBodyWithResponse Unlock a password-protected status page
+	//
+	// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+	//
+	// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+	//
+	// Attempts are rate limited per (client IP, page).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+	UnlockStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UnlockStatusPageResult, error)
+
+	// UnlockStatusPageWithResponse Unlock a password-protected status page
+	//
+	// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+	//
+	// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+	//
+	// Attempts are rate limited per (client IP, page).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+	UnlockStatusPageWithResponse(ctx context.Context, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UnlockStatusPageResult, error)
+
+	// ListSupportThreadsWithResponse List support threads
+	//
+	// Returns captured support conversations, most recent activity first. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+	ListSupportThreadsWithResponse(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*ListSupportThreadsResult, error)
+
+	// GetSupportThreadWithResponse Get one support thread
+	//
+	// Returns the thread, marking it read. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+	GetSupportThreadWithResponse(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*GetSupportThreadResult, error)
+
+	// UpdateSupportThreadWithBodyWithResponse Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThreadWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error)
+
+	// UpdateSupportThreadWithResponse Update a support thread
+	//
+	// Change the operator-set status or the subject. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+	UpdateSupportThreadWithResponse(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error)
+
+	// ListSupportMessagesWithResponse List a thread's messages
+	//
+	// Chronological order, oldest first. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+	ListSupportMessagesWithResponse(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*ListSupportMessagesResult, error)
+
+	// CreateSupportMessageWithBodyWithResponse Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessageWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error)
+
+	// CreateSupportMessageWithResponse Reply to a support thread
+	//
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+	CreateSupportMessageWithResponse(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error)
 
 	// GetActivationFunnelWithResponse Organization activation funnel
 	//
@@ -34162,6 +36813,8 @@ type ListEventsResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *EventListResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -34171,6 +36824,11 @@ type ListEventsResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ListEventsResult) GetJSON200() *EventListResponse {
 	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListEventsResult) GetJSON400() *ValidationError {
+	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -38356,6 +41014,8 @@ type TestReportScheduleResult struct {
 	JSON401 *Unauthorized
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
@@ -38371,6 +41031,11 @@ func (r TestReportScheduleResult) GetJSON401() *Unauthorized {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r TestReportScheduleResult) GetJSON404() *NotFound {
 	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r TestReportScheduleResult) GetJSON409() *Conflict {
+	return r.JSON409
 }
 
 // GetBody returns the raw response body bytes
@@ -39153,6 +41818,178 @@ func (r UpdateSloResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateSloResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSloAlertPoliciesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOAlertPolicyListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSloAlertPoliciesResult) GetJSON200() *SLOAlertPolicyListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSloAlertPoliciesResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSloAlertPoliciesResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSloAlertPoliciesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSloAlertPoliciesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSloAlertPoliciesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSloAlertPoliciesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSloAlertPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOAlertPolicy
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSloAlertPolicyResult) GetJSON200() *SLOAlertPolicy {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSloAlertPolicyResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSloAlertPolicyResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSloAlertPolicyResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSloAlertPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSloAlertPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSloAlertPolicyResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateSloAlertPolicyResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SLOAlertPolicy
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON200() *SLOAlertPolicy {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateSloAlertPolicyResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSloAlertPolicyResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSloAlertPolicyResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSloAlertPolicyResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSloAlertPolicyResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -40624,6 +43461,144 @@ func (r ListStatusPageSubscribersResult) ContentType() string {
 	return ""
 }
 
+type SubscribeToStatusPageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *struct {
+		Data *struct {
+			// Status Example: pending_confirmation
+			Status *string `json:"status,omitempty"`
+		} `json:"data,omitempty"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StatusPageLocked
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r SubscribeToStatusPageResult) GetJSON202() *struct {
+	Data *struct {
+		// Status Example: pending_confirmation
+		Status *string `json:"status,omitempty"`
+	} `json:"data,omitempty"`
+} {
+	return r.JSON202
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SubscribeToStatusPageResult) GetJSON401() *StatusPageLocked {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SubscribeToStatusPageResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r SubscribeToStatusPageResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SubscribeToStatusPageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SubscribeToStatusPageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SubscribeToStatusPageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SubscribeToStatusPageResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateStatusPageEndpointSubscriberResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *struct {
+		Data *StatusPageEndpointSubscriber `json:"data,omitempty"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateStatusPageEndpointSubscriberResult) GetJSON201() *struct {
+	Data *StatusPageEndpointSubscriber `json:"data,omitempty"`
+} {
+	return r.JSON201
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateStatusPageEndpointSubscriberResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateStatusPageEndpointSubscriberResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateStatusPageEndpointSubscriberResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateStatusPageEndpointSubscriberResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateStatusPageEndpointSubscriberResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateStatusPageEndpointSubscriberResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateStatusPageEndpointSubscriberResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type RemoveStatusPageSubscriberResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -41598,6 +44573,8 @@ type ViewDefaultStatusPageResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StatusPage
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 }
@@ -41605,6 +44582,11 @@ type ViewDefaultStatusPageResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewDefaultStatusPageResult) GetJSON200() *StatusPage {
 	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ViewDefaultStatusPageResult) GetJSON401() *StatusPageLocked {
+	return r.JSON401
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -41641,11 +44623,82 @@ func (r ViewDefaultStatusPageResult) ContentType() string {
 	return ""
 }
 
+// UnlockDefaultStatusPageResult204Headers the declared response headers of an HTTP 204 response for UnlockDefaultStatusPage
+type UnlockDefaultStatusPageResult204Headers struct {
+	SetCookie *string
+}
+
+type UnlockDefaultStatusPageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+	// Headers204 the parsed response headers for an HTTP 204 response
+	Headers204 *UnlockDefaultStatusPageResult204Headers
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UnlockDefaultStatusPageResult) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UnlockDefaultStatusPageResult) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UnlockDefaultStatusPageResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r UnlockDefaultStatusPageResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r UnlockDefaultStatusPageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnlockDefaultStatusPageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnlockDefaultStatusPageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnlockDefaultStatusPageResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ViewStatusPageResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StatusPage
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 }
@@ -41653,6 +44706,11 @@ type ViewStatusPageResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewStatusPageResult) GetJSON200() *StatusPage {
 	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ViewStatusPageResult) GetJSON401() *StatusPageLocked {
+	return r.JSON401
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -41692,8 +44750,15 @@ func (r ViewStatusPageResult) ContentType() string {
 type GetStatusPageBadgeResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetStatusPageBadgeResult) GetJSON401() *StatusPageLocked {
+	return r.JSON401
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -41733,8 +44798,15 @@ func (r GetStatusPageBadgeResult) ContentType() string {
 type StatusPageFeedResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r StatusPageFeedResult) GetJSON401() *StatusPageLocked {
+	return r.JSON401
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -41776,6 +44848,8 @@ type ViewPublicStatusPageIncidentsResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *PublicIncidentListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 }
@@ -41783,6 +44857,11 @@ type ViewPublicStatusPageIncidentsResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewPublicStatusPageIncidentsResult) GetJSON200() *PublicIncidentListResponse {
 	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ViewPublicStatusPageIncidentsResult) GetJSON401() *StatusPageLocked {
+	return r.JSON401
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -41824,6 +44903,8 @@ type ViewStatusPageSummaryResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StatusPageSummary
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 }
@@ -41831,6 +44912,11 @@ type ViewStatusPageSummaryResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewStatusPageSummaryResult) GetJSON200() *StatusPageSummary {
 	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ViewStatusPageSummaryResult) GetJSON401() *StatusPageLocked {
+	return r.JSON401
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -41861,6 +44947,413 @@ func (r ViewStatusPageSummaryResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ViewStatusPageSummaryResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UnlockStatusPageResult204Headers the declared response headers of an HTTP 204 response for UnlockStatusPage
+type UnlockStatusPageResult204Headers struct {
+	SetCookie *string
+}
+
+type UnlockStatusPageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+	// Headers204 the parsed response headers for an HTTP 204 response
+	Headers204 *UnlockStatusPageResult204Headers
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UnlockStatusPageResult) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UnlockStatusPageResult) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UnlockStatusPageResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r UnlockStatusPageResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r UnlockStatusPageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnlockStatusPageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnlockStatusPageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnlockStatusPageResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSupportThreadsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportThreadListResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSupportThreadsResult) GetJSON200() *SupportThreadListResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListSupportThreadsResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSupportThreadsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSupportThreadsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSupportThreadsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSupportThreadsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSupportThreadsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSupportThreadsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSupportThreadResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportThread
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSupportThreadResult) GetJSON200() *SupportThread {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSupportThreadResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetSupportThreadResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSupportThreadResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSupportThreadResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSupportThreadResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSupportThreadResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSupportThreadResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateSupportThreadResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportThread
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON200() *SupportThread {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateSupportThreadResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSupportThreadResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSupportThreadResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSupportThreadResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSupportThreadResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListSupportMessagesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportMessageListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSupportMessagesResult) GetJSON200() *SupportMessageListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSupportMessagesResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListSupportMessagesResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListSupportMessagesResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSupportMessagesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSupportMessagesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSupportMessagesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSupportMessagesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateSupportMessageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SupportMessage
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *SupportMessage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSupportMessageResult) GetJSON201() *SupportMessage {
+	return r.JSON201
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r CreateSupportMessageResult) GetJSON202() *SupportMessage {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateSupportMessageResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateSupportMessageResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateSupportMessageResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateSupportMessageResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateSupportMessageResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSupportMessageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSupportMessageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSupportMessageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSupportMessageResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -45258,7 +48751,7 @@ func (c *ClientWithResponses) DeleteOrgLogoWithResponse(ctx context.Context, org
 //
 // The content type is the one the client declares in the multipart part header — the bytes are never sniffed or checked against it. The declared value is clamped to the allowlist and is what gets stored and echoed back as `Content-Type`, so an SVG uploaded as `image/png` is stored and served as `image/png`. The serving rules below never assume the type is harmless, which is what makes that safe.
 //
-// The resulting URL (`/pub/org-logos/{fileUid}`) is unsigned and stable, but authorized by state: it only serves a file that is the CURRENT logo of a live organization, so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
+// The resulting URL (`/pub/assets/{fileUid}`) is unsigned and stable, but authorized by the stored file's attachment topic: only a file attached under `organizations/{orgUid}/logo` is served there, and only while that file row is live — so replacing or clearing the logo un-publishes the previous image immediately. Uploaded SVGs are always served with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` so they cannot execute as a document on the application's origin; they still render normally in an `img` element.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -45959,7 +49452,7 @@ func (c *ClientWithResponses) UpdateReportScheduleWithResponse(ctx context.Conte
 
 // TestReportScheduleWithBodyWithResponse Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -45974,7 +49467,7 @@ func (c *ClientWithResponses) TestReportScheduleWithBodyWithResponse(ctx context
 
 // TestReportScheduleWithResponse Send the report immediately to the caller
 //
-// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list.
+// Renders the report for the period that most recently closed and mails it to the authenticated caller (or to `recipient`). It never fans out to the schedule's recipient list. Returns 409 instead of 202 when the resolved recipient is on the organization's suppression list, since nothing is actually queued in that case.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -46219,6 +49712,64 @@ func (c *ClientWithResponses) UpdateSloWithResponse(ctx context.Context, org Org
 		return nil, err
 	}
 	return ParseUpdateSloResult(rsp)
+}
+
+// ListSloAlertPoliciesWithResponse List an objective's burn-rate alert policies
+//
+// Two built-in multiwindow burn-rate policies (`fast` and `slow`), materialized on demand so an objective created before the feature existed answers exactly like a new one. Both start disabled — alerting is opt-in. `longBurnRate` / `shortBurnRate` are recomputed for the request rather than read back from the stored readout, and are null (never 0) when a window carries no countable probe.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies (the `ListSloAlertPolicies` operationId).
+func (c *ClientWithResponses) ListSloAlertPoliciesWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, reqEditors ...RequestEditorFn) (*ListSloAlertPoliciesResult, error) {
+	rsp, err := c.ListSloAlertPolicies(ctx, org, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSloAlertPoliciesResult(rsp)
+}
+
+// GetSloAlertPolicyWithResponse Get one burn-rate alert policy
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `GetSloAlertPolicy` operationId).
+func (c *ClientWithResponses) GetSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, reqEditors ...RequestEditorFn) (*GetSloAlertPolicyResult, error) {
+	rsp, err := c.GetSloAlertPolicy(ctx, org, uid, policyUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSloAlertPolicyResult(rsp)
+}
+
+// UpdateSloAlertPolicyWithBodyWithResponse Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *ClientWithResponses) UpdateSloAlertPolicyWithBodyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error) {
+	rsp, err := c.UpdateSloAlertPolicyWithBody(ctx, org, uid, policyUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSloAlertPolicyResult(rsp)
+}
+
+// UpdateSloAlertPolicyWithResponse Tune a burn-rate alert policy
+//
+// `kind` is not writable — there are exactly two built-ins. Changing a threshold or either window clears the auto-resolve hysteresis anchor, which was measured against the old numbers.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/orgs/{org}/slos/{uid}/alert-policies/{policyUid} (the `UpdateSloAlertPolicy` operationId).
+func (c *ClientWithResponses) UpdateSloAlertPolicyWithResponse(ctx context.Context, org OrgPath, uid SLOUidPath, policyUid SLOAlertPolicyUidPath, body UpdateSloAlertPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSloAlertPolicyResult, error) {
+	rsp, err := c.UpdateSloAlertPolicy(ctx, org, uid, policyUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSloAlertPolicyResult(rsp)
 }
 
 // GetSloBurndownWithResponse Error-budget burn-down for the current window
@@ -46706,6 +50257,82 @@ func (c *ClientWithResponses) ListStatusPageSubscribersWithResponse(ctx context.
 	return ParseListStatusPageSubscribersResult(rsp)
 }
 
+// SubscribeToStatusPageWithBodyWithResponse Subscribe an email address to a status page
+//
+// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+//
+// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+func (c *ClientWithResponses) SubscribeToStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SubscribeToStatusPageResult, error) {
+	rsp, err := c.SubscribeToStatusPageWithBody(ctx, org, statusPageUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubscribeToStatusPageResult(rsp)
+}
+
+// SubscribeToStatusPageWithResponse Subscribe an email address to a status page
+//
+// PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and nothing is delivered until its link is followed, which is the primary anti-abuse control.
+//
+// Email is the ONLY channel available here. A `channel` of anything else is refused — a visitor pasting a webhook URL has no verification story, and the URL is itself a credential. Webhook and Slack deliveries are registered by an operator through POST .../subscribers/endpoints instead.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers (the `SubscribeToStatusPage` operationId).
+func (c *ClientWithResponses) SubscribeToStatusPageWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body SubscribeToStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*SubscribeToStatusPageResult, error) {
+	rsp, err := c.SubscribeToStatusPage(ctx, org, statusPageUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSubscribeToStatusPageResult(rsp)
+}
+
+// CreateStatusPageEndpointSubscriberWithBodyWithResponse Register a webhook or Slack delivery for a status page
+//
+// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+//
+// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+//
+// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+//
+// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+func (c *ClientWithResponses) CreateStatusPageEndpointSubscriberWithBodyWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateStatusPageEndpointSubscriberResult, error) {
+	rsp, err := c.CreateStatusPageEndpointSubscriberWithBody(ctx, org, statusPageUid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageEndpointSubscriberResult(rsp)
+}
+
+// CreateStatusPageEndpointSubscriberWithResponse Register a webhook or Slack delivery for a status page
+//
+// AUTHENTICATED, operator-side. Creates a subscription that delivers to a URL rather than a mailbox, already confirmed — the operator registering their own endpoint IS the verification.
+//
+// The URL must be https and must not resolve to a loopback or private host; a `slack` subscription must point at hooks.slack.com. It is stored ENCRYPTED and never returned: list responses carry only a masked `endpoint` hint.
+//
+// Webhook deliveries are signed with HMAC-SHA256 over `<timestamp>.POST.<path>.<sha256 of the raw body, hex>`, carried in X-SP-Signature / X-SP-Timestamp / X-SP-Key-Id. The signing secret is returned by THIS CALL ONLY (`data.signingSecret`) and never again — a receiver that loses it needs the subscription re-created.
+//
+// The path is deliberately distinct from `.../subscribers`, which is the public email-only route: the two cannot share a pattern on the router.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints (the `CreateStatusPageEndpointSubscriber` operationId).
+func (c *ClientWithResponses) CreateStatusPageEndpointSubscriberWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, body CreateStatusPageEndpointSubscriberJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageEndpointSubscriberResult, error) {
+	rsp, err := c.CreateStatusPageEndpointSubscriber(ctx, org, statusPageUid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateStatusPageEndpointSubscriberResult(rsp)
+}
+
 // RemoveStatusPageSubscriberWithResponse Remove a subscriber from a status page
 //
 // Returns a wrapper object for the known response body format(s).
@@ -47060,9 +50687,39 @@ func (c *ClientWithResponses) ViewDefaultStatusPageWithResponse(ctx context.Cont
 	return ParseViewDefaultStatusPageResult(rsp)
 }
 
+// UnlockDefaultStatusPageWithBodyWithResponse Unlock an organization's password-protected default status page
+//
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+func (c *ClientWithResponses) UnlockDefaultStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UnlockDefaultStatusPageResult, error) {
+	rsp, err := c.UnlockDefaultStatusPageWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnlockDefaultStatusPageResult(rsp)
+}
+
+// UnlockDefaultStatusPageWithResponse Unlock an organization's password-protected default status page
+//
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/status-pages/{org}/unlock (the `UnlockDefaultStatusPage` operationId).
+func (c *ClientWithResponses) UnlockDefaultStatusPageWithResponse(ctx context.Context, org OrgPath, body UnlockDefaultStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UnlockDefaultStatusPageResult, error) {
+	rsp, err := c.UnlockDefaultStatusPage(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnlockDefaultStatusPageResult(rsp)
+}
+
 // ViewStatusPageWithResponse View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -47077,7 +50734,7 @@ func (c *ClientWithResponses) ViewStatusPageWithResponse(ctx context.Context, or
 
 // GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Response carries Cache-Control: public, max-age=60. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -47092,7 +50749,7 @@ func (c *ClientWithResponses) GetStatusPageBadgeWithResponse(ctx context.Context
 
 // StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -47108,7 +50765,7 @@ func (c *ClientWithResponses) StatusPageFeedWithResponse(ctx context.Context, or
 // ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -47124,7 +50781,7 @@ func (c *ClientWithResponses) ViewPublicStatusPageIncidentsWithResponse(ctx cont
 
 // ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Response carries Cache-Control: public, max-age=60. Same visibility gate as the full view: a disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -47135,6 +50792,149 @@ func (c *ClientWithResponses) ViewStatusPageSummaryWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseViewStatusPageSummaryResult(rsp)
+}
+
+// UnlockStatusPageWithBodyWithResponse Unlock a password-protected status page
+//
+// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+//
+// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+//
+// Attempts are rate limited per (client IP, page).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+func (c *ClientWithResponses) UnlockStatusPageWithBodyWithResponse(ctx context.Context, org OrgPath, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UnlockStatusPageResult, error) {
+	rsp, err := c.UnlockStatusPageWithBody(ctx, org, slug, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnlockStatusPageResult(rsp)
+}
+
+// UnlockStatusPageWithResponse Unlock a password-protected status page
+//
+// Verifies the page password and, on success, sets the unlock cookie every gated public read then requires.
+//
+// The cookie is HOST-ONLY (no Domain attribute), HttpOnly, SameSite=Lax, Secure when the request arrived over TLS, and lasts 12 hours. Host-only is what makes it work on a customer's own domain without ever minting a cookie for solidping.io. It is signed with a key derived from the stored password hash, so changing or clearing the password invalidates every outstanding unlock immediately.
+//
+// Attempts are rate limited per (client IP, page).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/status-pages/{org}/{slug}/unlock (the `UnlockStatusPage` operationId).
+func (c *ClientWithResponses) UnlockStatusPageWithResponse(ctx context.Context, org OrgPath, slug string, body UnlockStatusPageJSONRequestBody, reqEditors ...RequestEditorFn) (*UnlockStatusPageResult, error) {
+	rsp, err := c.UnlockStatusPage(ctx, org, slug, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnlockStatusPageResult(rsp)
+}
+
+// ListSupportThreadsWithResponse List support threads
+//
+// Returns captured support conversations, most recent activity first. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/support/threads (the `ListSupportThreads` operationId).
+func (c *ClientWithResponses) ListSupportThreadsWithResponse(ctx context.Context, params *ListSupportThreadsParams, reqEditors ...RequestEditorFn) (*ListSupportThreadsResult, error) {
+	rsp, err := c.ListSupportThreads(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSupportThreadsResult(rsp)
+}
+
+// GetSupportThreadWithResponse Get one support thread
+//
+// Returns the thread, marking it read. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/support/threads/{uid} (the `GetSupportThread` operationId).
+func (c *ClientWithResponses) GetSupportThreadWithResponse(ctx context.Context, uid string, reqEditors ...RequestEditorFn) (*GetSupportThreadResult, error) {
+	rsp, err := c.GetSupportThread(ctx, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSupportThreadResult(rsp)
+}
+
+// UpdateSupportThreadWithBodyWithResponse Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *ClientWithResponses) UpdateSupportThreadWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error) {
+	rsp, err := c.UpdateSupportThreadWithBody(ctx, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSupportThreadResult(rsp)
+}
+
+// UpdateSupportThreadWithResponse Update a support thread
+//
+// Change the operator-set status or the subject. Super-admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/support/threads/{uid} (the `UpdateSupportThread` operationId).
+func (c *ClientWithResponses) UpdateSupportThreadWithResponse(ctx context.Context, uid string, body UpdateSupportThreadJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSupportThreadResult, error) {
+	rsp, err := c.UpdateSupportThread(ctx, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSupportThreadResult(rsp)
+}
+
+// ListSupportMessagesWithResponse List a thread's messages
+//
+// Chronological order, oldest first. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/support/threads/{uid}/messages (the `ListSupportMessages` operationId).
+func (c *ClientWithResponses) ListSupportMessagesWithResponse(ctx context.Context, uid string, params *ListSupportMessagesParams, reqEditors ...RequestEditorFn) (*ListSupportMessagesResult, error) {
+	rsp, err := c.ListSupportMessages(ctx, uid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSupportMessagesResult(rsp)
+}
+
+// CreateSupportMessageWithBodyWithResponse Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *ClientWithResponses) CreateSupportMessageWithBodyWithResponse(ctx context.Context, uid string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error) {
+	rsp, err := c.CreateSupportMessageWithBody(ctx, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSupportMessageResult(rsp)
+}
+
+// CreateSupportMessageWithResponse Reply to a support thread
+//
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
+func (c *ClientWithResponses) CreateSupportMessageWithResponse(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error) {
+	rsp, err := c.CreateSupportMessage(ctx, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSupportMessageResult(rsp)
 }
 
 // GetActivationFunnelWithResponse Organization activation funnel
@@ -51109,6 +54909,13 @@ func ParseListEventsResult(rsp *http.Response) (*ListEventsResult, error) {
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -54275,6 +58082,13 @@ func ParseTestReportScheduleResult(rsp *http.Response) (*TestReportScheduleResul
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	}
 
 	return response, nil
@@ -54823,6 +58637,133 @@ func ParseUpdateSloResult(rsp *http.Response) (*UpdateSloResult, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SLO
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSloAlertPoliciesResult parses an HTTP response from a ListSloAlertPoliciesWithResponse call
+func ParseListSloAlertPoliciesResult(rsp *http.Response) (*ListSloAlertPoliciesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSloAlertPoliciesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOAlertPolicyListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSloAlertPolicyResult parses an HTTP response from a GetSloAlertPolicyWithResponse call
+func ParseGetSloAlertPolicyResult(rsp *http.Response) (*GetSloAlertPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSloAlertPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOAlertPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSloAlertPolicyResult parses an HTTP response from a UpdateSloAlertPolicyWithResponse call
+func ParseUpdateSloAlertPolicyResult(rsp *http.Response) (*UpdateSloAlertPolicyResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSloAlertPolicyResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SLOAlertPolicy
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -55947,6 +59888,107 @@ func ParseListStatusPageSubscribersResult(rsp *http.Response) (*ListStatusPageSu
 	return response, nil
 }
 
+// ParseSubscribeToStatusPageResult parses an HTTP response from a SubscribeToStatusPageWithResponse call
+func ParseSubscribeToStatusPageResult(rsp *http.Response) (*SubscribeToStatusPageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SubscribeToStatusPageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest struct {
+			Data *struct {
+				// Status Example: pending_confirmation
+				Status *string `json:"status,omitempty"`
+			} `json:"data,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StatusPageLocked
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateStatusPageEndpointSubscriberResult parses an HTTP response from a CreateStatusPageEndpointSubscriberWithResponse call
+func ParseCreateStatusPageEndpointSubscriberResult(rsp *http.Response) (*CreateStatusPageEndpointSubscriberResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateStatusPageEndpointSubscriberResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			Data *StatusPageEndpointSubscriber `json:"data,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseRemoveStatusPageSubscriberResult parses an HTTP response from a RemoveStatusPageSubscriberWithResponse call
 func ParseRemoveStatusPageSubscriberResult(rsp *http.Response) (*RemoveStatusPageSubscriberResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -56691,6 +60733,13 @@ func ParseViewDefaultStatusPageResult(rsp *http.Response) (*ViewDefaultStatusPag
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StatusPageLocked
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56698,6 +60747,69 @@ func ParseViewDefaultStatusPageResult(rsp *http.Response) (*ViewDefaultStatusPag
 		}
 		response.JSON404 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseUnlockDefaultStatusPageResult parses an HTTP response from a UnlockDefaultStatusPageWithResponse call
+func ParseUnlockDefaultStatusPageResult(rsp *http.Response) (*UnlockDefaultStatusPageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnlockDefaultStatusPageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		var headers UnlockDefaultStatusPageResult204Headers
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = &value
+		}
+		response.Headers204 = &headers
 	}
 
 	return response, nil
@@ -56723,6 +60835,13 @@ func ParseViewStatusPageResult(rsp *http.Response) (*ViewStatusPageResult, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StatusPageLocked
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -56750,6 +60869,13 @@ func ParseGetStatusPageBadgeResult(rsp *http.Response) (*GetStatusPageBadgeResul
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StatusPageLocked
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56776,6 +60902,13 @@ func ParseStatusPageFeedResult(rsp *http.Response) (*StatusPageFeedResult, error
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StatusPageLocked
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -56808,6 +60941,13 @@ func ParseViewPublicStatusPageIncidentsResult(rsp *http.Response) (*ViewPublicSt
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StatusPageLocked
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -56842,12 +60982,345 @@ func ParseViewStatusPageSummaryResult(rsp *http.Response) (*ViewStatusPageSummar
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StatusPageLocked
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUnlockStatusPageResult parses an HTTP response from a UnlockStatusPageWithResponse call
+func ParseUnlockStatusPageResult(rsp *http.Response) (*UnlockStatusPageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnlockStatusPageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		var headers UnlockStatusPageResult204Headers
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = &value
+		}
+		response.Headers204 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListSupportThreadsResult parses an HTTP response from a ListSupportThreadsWithResponse call
+func ParseListSupportThreadsResult(rsp *http.Response) (*ListSupportThreadsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSupportThreadsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportThreadListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSupportThreadResult parses an HTTP response from a GetSupportThreadWithResponse call
+func ParseGetSupportThreadResult(rsp *http.Response) (*GetSupportThreadResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSupportThreadResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportThread
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSupportThreadResult parses an HTTP response from a UpdateSupportThreadWithResponse call
+func ParseUpdateSupportThreadResult(rsp *http.Response) (*UpdateSupportThreadResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSupportThreadResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportThread
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSupportMessagesResult parses an HTTP response from a ListSupportMessagesWithResponse call
+func ParseListSupportMessagesResult(rsp *http.Response) (*ListSupportMessagesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSupportMessagesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportMessageListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSupportMessageResult parses an HTTP response from a CreateSupportMessageWithResponse call
+func ParseCreateSupportMessageResult(rsp *http.Response) (*CreateSupportMessageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSupportMessageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 

@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -163,7 +162,7 @@ func (h *GoogleOAuthHandler) handleOAuthError(
 		description = OAuthDescTokenExchange
 	default:
 		code = OAuthCodeFailed
-		description = fmt.Sprintf("OAuth failed: %v", err)
+		description = logOAuthFailure(req, "google", err)
 	}
 
 	return h.redirectWithError(writer, req, redirectURI, code, description)

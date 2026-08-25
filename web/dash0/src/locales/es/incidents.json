@@ -14,11 +14,15 @@
   "allOperational": "Todos los sistemas funcionan correctamente",
   "noResolved": "Aún no hay incidentes resueltos",
   "noIncidents": "No se han registrado incidentes",
+  "noIncidentsForCheck": "No se han encontrado incidentes para este check",
   "noIncidentsFound": "No se han encontrado incidentes",
   "incidentNotFound": "Incidente no encontrado",
   "backToIncidents": "Volver a incidentes",
   "filterByState": "Filtrar por estado",
+  "filterByCheck": "Filtrar por check",
   "relapse": "{{count}}× recaída",
+  "flapping": "inestabilidad ×{{count}}",
+  "flappingHint": "Abierto en el nivel de inestabilidad {{count}} — la recuperación adaptativa aumentó la estabilidad requerida antes de la resolución automática de este incidente.",
   "active": "Activo",
   "resolved": "Resuelto",
   "reopened": "Reabierto",
@@ -66,7 +70,8 @@
   "stateBadges": {
     "acked": "Reconocido",
     "snoozed": "Pospuesto",
-    "snoozedUntil": "Pospuesto hasta {{time}}"
+    "snoozedUntil": "Pospuesto hasta {{time}}",
+    "ackedBy": "Reconocido por {{name}}"
   },
   "stateFilter": {
     "ackedOnly": "Reconocidos",
@@ -113,6 +118,44 @@
       "truncated": "Cuerpo truncado a {{shown}} de {{total}}.",
       "binary": "Cuerpo no almacenado: es binario o UTF-8 no válido. Solo metadatos — {{size}}, SHA-256 {{hash}}.",
       "unknownSize": "un tamaño desconocido"
+    },
+    "screenshot": {
+      "title": "Captura al detectar el fallo",
+      "description": "Cómo se veía la página cuando este check informó del fallo. Tomada justo DESPUÉS de la detección, desde una sola región: es una pista, no el fotograma exacto del fallo.",
+      "alt": "Captura de la página tomada al abrirse la incidencia",
+      "caption": "Capturada {{capturedAt}} desde {{region}}, poco después de detectar el fallo.",
+      "unknownTime": "a una hora desconocida",
+      "unknownRegion": "una región desconocida"
+    },
+    "traceroute": {
+      "title": "Ruta de red durante el fallo",
+      "description": "Un traceroute estilo MTR tomado justo después de abrirse esta incidencia, desde la región de sondeo hacia la dirección que marcó el check fallido.",
+      "loadFailed": "No se pudo cargar la captura de la ruta. Su enlace de descarga es efímero: recarga la incidencia para firmar uno nuevo.",
+      "modes": {
+        "icmp": "ICMP (privilegiado)",
+        "icmp-udp": "ICMP (sin privilegios)",
+        "tcp": "TCP (solo alcanzabilidad)"
+      },
+      "target": "Destino: {{target}}",
+      "region": "Sondeado desde {{region}}",
+      "rounds": "{{rounds}} rondas",
+      "tcpModeNotice": "Este host no pudo abrir un socket ICMP, así que la ruta se sondeó con conexiones TCP simples. Eso mide hasta dónde llegaron los paquetes, pero no muestra los routers intermedios: un salto vacío aquí significa «no observable», no «sin respuesta».",
+      "truncated": "El presupuesto de tiempo se agotó antes de que el trazado llegara al destino. Lo mostrado es real, pero no es la ruta completa.",
+      "incomplete": "El trazado nunca alcanzó el destino. El último salto que respondió es donde la ruta deja de funcionar.",
+      "columns": {
+        "hop": "#",
+        "host": "Host",
+        "loss": "Pérdida",
+        "avg": "RTT medio"
+      },
+      "noReply": "sin respuesta",
+      "notObservable": "no observable en este modo",
+      "extraPaths": "+{{count}} más",
+      "targetBadge": "destino",
+      "unreachableBadge": "inalcanzable",
+      "lossValue": "{{pct}} %",
+      "msValue": "{{ms}} ms",
+      "caption": "Capturado a las {{startedAt}}, en {{durationMs}} ms; después de que la sonda fallida ya se hubiera reportado, así que nunca retrasó la incidencia."
     }
   },
   "timeline": {
@@ -122,7 +165,16 @@
     "acknowledged": "Reconocido",
     "escalated": "Escalado",
     "reopenedRelapse": "Reabierto (recaída n.º {{count}})",
-    "resolved": "Resuelto"
+    "resolved": "Resuelto",
+    "acknowledgedBy": "por {{name}}",
+    "acknowledgedByVia": "por {{name}} vía {{channel}}",
+    "ackChannels": {
+      "slack": "Slack",
+      "discord": "Discord",
+      "telegram": "Telegram",
+      "email": "correo",
+      "phone": "teléfono"
+    }
   },
   "eventLog": {
     "title": "Registro de eventos",
@@ -162,5 +214,9 @@
     "showRolledUp": "Mostrar incidentes agrupados",
     "pagingSuppressed": "notificaciones suprimidas",
     "rolledUpInactive": "agrupado"
+  },
+  "group": {
+    "header": "{{name}} — {{down}} caídos",
+    "headerWithTotal": "{{name}} — {{down}}/{{total}} caídos"
   }
 }

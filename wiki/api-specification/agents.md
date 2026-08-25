@@ -22,6 +22,52 @@ Auth (agent credentials, two phases):
   timestamp bounds replay windows and the nonce makes each signature
   single-use.
 
+### POST /api/v1/agent/attachments
+The WS route's sibling, and its counterpart: the socket is a JSON control
+channel, this is the only way an agent gets **binary bytes** into storage
+(spec 2026-08-21-01). Agents hold no object-storage credentials by design, so
+the server writes the blob on their behalf.
+
+Auth: the **same** Ed25519 signed headers as a WS reconnect
+(`X-Sp-Agent-Uid` / `X-Sp-Timestamp` / `X-Sp-Nonce` / `X-Sp-Signature`, ±5 min
+skew, cluster-wide replay guard). No bearer token, no second credential.
+
+Request: raw body (`image/png` today, **sniffed** from the magic bytes rather
+than believed from a header), with the attachment key in `?topic=`. The topic is
+`<entity>/<uid>/<kind>`, e.g.
+`incidents/9a1eb273-0a95-4d6b-b967-9af076c1f8e8/screenshot`. Per-file size cap
+and a per-agent rate limit apply.
+
+**Authorization never trusts the topic.** A prefix→authorizer registry resolves
+the topic's entity; the `incidents/` authorizer requires the incident to exist,
+derives the ORGANIZATION FROM THE INCIDENT ROW (never from the request), refuses
+an org agent whose org is not the incident's, and refuses an agent whose region
+does not serve the incident's check. An unregistered entity fails closed.
+
+Responses: `201 {"fileUid": "…"}`; `401` for any authentication failure
+(deliberately indistinguishable — no agent-existence oracle); `403` for a topic
+the caller may not write under (also deliberately unspecific); `400` malformed
+topic or empty body; `413` over the cap; `415` mime mismatch.
+
+**What triggers an upload.** An agent does not POST here spontaneously. It is
+asked, over the WebSocket, by the `upload-request` server frame (spec
+2026-08-21-05):
+
+```json
+{"type": "upload-request", "captureId": "9f2c…", "topic": "incidents/<uid>/screenshot"}
+```
+
+Unsolicited and uncorrelated (no `id`, no response frame), so an agent that
+predates it ignores it. It is emitted **only** when a result carrying a capture
+marker opens or reopens an incident — never per failing result — and its `topic`
+is always generated from the incident row the server just wrote, never echoed
+from anything the agent sent. `captureId` IS echoed from the agent's marker,
+which is safe because it names a slot in that agent's own memory.
+
+Best-effort in both directions: no live connection, an evicted capture, or a
+failed POST all mean "no screenshot on that incident". Nothing is queued and
+nothing is retried.
+
 ## Private regions
 
 A private region is the location label that agents attach to and that checks

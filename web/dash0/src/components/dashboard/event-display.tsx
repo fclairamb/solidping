@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Calendar, Cpu, Rocket } from "lucide-react";
+import { Calendar, Cpu, Rocket, Settings, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +51,62 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "statuspage.incident.published": { emoji: "📣", tone: TONE_DESTRUCTIVE },
   "statuspage.incident.updated": { emoji: "📝", tone: TONE_BLUE },
   "statuspage.incident.resolved": { emoji: "📗", tone: TONE_EMERALD },
+  // A webhook/Slack subscription that tripped the delivery circuit breaker
+  // (spec 2026-08-21-07). Destructive rather than amber on purpose: the only
+  // other symptom is notifications silently stopping, which nobody notices
+  // until the next incident — so this must read as broken, not as noise. 🔇
+  // says "this channel went quiet" rather than reusing an outage emoji, since
+  // the monitored service is fine and the delivery path is not.
+  "statuspage.subscriber.disabled": { emoji: "🔇", tone: TONE_DESTRUCTIVE },
+  // A custom domain that stayed unreachable past its grace window and stopped
+  // serving the status page (spec 2026-08-23-03). Destructive for the same
+  // reason as the row above it: the page is DARK on the hostname a customer
+  // publishes to their own customers, and the only other symptom is discovering
+  // it during an outage. 🌐 mirrors the Globe icon the custom-domain card uses,
+  // so the row is recognisable as "your domain" rather than as another
+  // publication event — the tone, not the emoji, carries the severity.
+  "statuspage.custom_domain.demoted": { emoji: "🌐", tone: TONE_DESTRUCTIVE },
+  // Security audit trail (spec 2026-08-21-09). Only the auth family gets an
+  // explicit identity: these are the rows an operator scans a security review
+  // for, and they must be told apart at a glance from the configuration
+  // changes around them. The rest of the new families (member.*,
+  // integration.*, escalation_policy.*, oncall_schedule.*, status_page.*,
+  // maintenance_window.*, config.applied, org.settings_updated) deliberately
+  // ride the family fallbacks below — see INTENTIONALLY_UNMAPPED in
+  // event-display.test.ts.
+  //
+  // Like the statuspage.* set, dash0 is the sole owner of this pairing: no
+  // backend chat integration hand-authors a message for an auth event.
+  "auth.login_succeeded": { emoji: "🔓", tone: TONE_EMERALD },
+  "auth.login_failed": { emoji: "⛔", tone: TONE_DESTRUCTIVE },
+  "auth.logout": { emoji: "🚪", tone: TONE_SLATE },
+  "auth.token_created": { emoji: "🔑", tone: TONE_BLUE },
+  "auth.token_revoked": { emoji: "🔒", tone: TONE_AMBER },
+  // A credential presented by a party it was not issued to (spec
+  // 2026-08-21-09). Destructive, not amber: this is not routine credential
+  // housekeeping like the two above it — it is a leaked token being tried, or
+  // a confused-deputy bug, and it must not read as bookkeeping in a feed.
+  "auth.token_misuse": { emoji: "🚨", tone: TONE_DESTRUCTIVE },
 };
+
+// CONFIG_EVENT_FAMILIES are the audit families that describe a configuration
+// change. They share one tone (blue, the established "configuration" colour of
+// check.* and status_update.*) and one icon, because in an audit table the
+// distinction that matters at a glance is security-vs-configuration, not which
+// of eight resources was edited — the event label already says that.
+const CONFIG_EVENT_FAMILIES = [
+  "integration.",
+  "escalation_policy.",
+  "oncall_schedule.",
+  "status_page.",
+  "maintenance_window.",
+  "config.",
+  "org.settings_updated",
+] as const;
+
+function isConfigEvent(eventType: string): boolean {
+  return CONFIG_EVENT_FAMILIES.some((family) => eventType.startsWith(family));
+}
 
 // getEventEmoji returns the registry emoji for an event type, or undefined
 // for a type with no specific pairing (the family fallback rules have no
@@ -118,6 +173,12 @@ export function getEventIcon(eventType?: string) {
   if (eventType.startsWith("org.activation.")) {
     return <Rocket className="h-4 w-4 text-purple-500" />;
   }
+  if (eventType.startsWith("member.")) {
+    return <Users className="h-4 w-4 text-violet-500" />;
+  }
+  if (isConfigEvent(eventType)) {
+    return <Settings className="h-4 w-4 text-blue-400" />;
+  }
   return <Calendar className="h-4 w-4" />;
 }
 
@@ -157,6 +218,15 @@ export function getEventTone(eventType?: string): string {
   }
   if (eventType.startsWith("org.activation.")) {
     return TONE_VIOLET;
+  }
+  // Membership changes are people-shaped, not configuration-shaped: who is in
+  // the org is the question an access review asks, so they get their own tone
+  // rather than melting into the blue configuration block.
+  if (eventType.startsWith("member.")) {
+    return TONE_VIOLET;
+  }
+  if (isConfigEvent(eventType)) {
+    return TONE_BLUE;
   }
   return "";
 }
@@ -297,4 +367,99 @@ export function getCommentSlackAuthor(event: {
 
   const id = event.payload?.slackUserId;
   return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+// ACK_EVENT_TYPE is the event a successful acknowledgment writes.
+export const ACK_EVENT_TYPE = "incident.acknowledged";
+
+// ACK_ACTOR_PAYLOAD_KEYS are the payload keys an `incident.acknowledged`
+// event may carry an actor under, most specific identity first.
+//
+// SNAKE_CASE, deliberately. Every other payload the dashboard reads is
+// camelCase (a comment's `slackUserName`), and that mismatch is exactly why
+// acknowledgments used to render with no actor at all: the keys the backend
+// writes here predate the camelCase convention and cannot be renamed without
+// orphaning every historical acknowledgment. Kept in sync with
+// server/internal/handlers/incidents/ack_actor.go — change both together.
+const ACK_ACTOR_PAYLOAD_KEYS = [
+  "slack_username",
+  "discord_username",
+  "acknowledged_by_telegram",
+  "acknowledged_by_email",
+  "acknowledged_by_phone",
+  "slack_user_id",
+  "discord_user_id",
+] as const;
+
+// isAckEvent reports whether an event is an incident acknowledgment.
+export function isAckEvent(event: { eventType?: string }): boolean {
+  return event.eventType === ACK_EVENT_TYPE;
+}
+
+// getAckActor returns the display name of whoever acknowledged, read off the
+// event payload. Returns undefined when the payload names nobody — an ack
+// performed from the dashboard by a user the payload does not repeat.
+export function getAckActor(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  if (!isAckEvent(event)) return undefined;
+
+  for (const key of ACK_ACTOR_PAYLOAD_KEYS) {
+    const value = event.payload?.[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
+}
+
+// getEventVia returns the channel an incident action came from ("web",
+// "slack", …), or undefined when the payload predates the key.
+export function getEventVia(event: {
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  const via = event.payload?.via;
+  return typeof via === "string" && via.length > 0 ? via : undefined;
+}
+
+// getEventActorName is the NAME of the human behind an event, or undefined
+// when there is no name to give.
+//
+// Resolution order: the API-resolved actor name (present for events caused by
+// a platform user), then the acknowledgment payload's own actor — which is the
+// ONLY record of a Slack, Discord or phone acker, since those people have no
+// `users` row for actorUid to point at — then the actor's email.
+//
+// Never falls back to the actor TYPE: a caller that has a localized word for
+// "user"/"system" must render that rather than the raw English slug.
+export function getEventActorName(event: {
+  eventType?: string;
+  actorName?: string;
+  actorEmail?: string;
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  if (event.actorName && event.actorName.length > 0) return event.actorName;
+
+  const ackActor = getAckActor(event);
+  if (ackActor) return ackActor;
+
+  if (event.actorEmail && event.actorEmail.length > 0) return event.actorEmail;
+
+  return undefined;
+}
+
+// getEventActorLabel is what an event row's "Actor" column should read: the
+// name when one is recoverable, otherwise the coarse actor type. Returns
+// undefined when even that is absent, so the caller renders its own
+// placeholder.
+export function getEventActorLabel(event: {
+  eventType?: string;
+  actorType?: string;
+  actorName?: string;
+  actorEmail?: string;
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  return getEventActorName(event) ?? event.actorType ?? undefined;
 }

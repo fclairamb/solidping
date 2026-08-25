@@ -40,7 +40,7 @@ func (s *Service) capturePagePublished(ctx context.Context, orgUID, visibility s
 		Name:       analytics.EventStatusPagePublished,
 		OrgUID:     orgUID,
 		UserUID:    userUID,
-		Properties: map[string]any{"visibility": visibility},
+		Properties: map[string]any{fieldVisibility: visibility},
 	})
 }
 

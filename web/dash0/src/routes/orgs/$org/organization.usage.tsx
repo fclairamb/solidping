@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertTriangle, ExternalLink } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, Minus } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
@@ -49,6 +49,49 @@ function UsageRow({ label, current, limit, unlimitedLabel, format }: UsageRowPro
         </span>
       </div>
       {!unlimited && <Progress value={current} max={limit} />}
+    </div>
+  );
+}
+
+interface FeatureRowProps {
+  label: string;
+  included: boolean;
+  includedLabel: string;
+  notIncludedLabel: string;
+  hint?: string;
+}
+
+/**
+ * A boolean entitlement, rendered as an on/off statement rather than a bar.
+ *
+ * UsageRow's progress bar is meaningless for a feature flag — there is nothing
+ * to be 40% of — so this deliberately does not reuse it. The "not included"
+ * side is muted rather than destructive: not having a feature is a plan fact,
+ * not a breach.
+ */
+function FeatureRow({
+  label,
+  included,
+  includedLabel,
+  notIncludedLabel,
+  hint,
+}: FeatureRowProps) {
+  return (
+    <div className="space-y-1" data-testid={`usage-feature-${label}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <span className="text-sm font-medium">{label}</span>
+        <span
+          className={`flex items-center gap-1.5 text-sm ${included ? "font-medium" : "text-muted-foreground"}`}
+        >
+          {included ? (
+            <Check className="h-3.5 w-3.5" aria-hidden />
+          ) : (
+            <Minus className="h-3.5 w-3.5" aria-hidden />
+          )}
+          {included ? includedLabel : notIncludedLabel}
+        </span>
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -143,6 +186,17 @@ function UsagePage() {
                 current={data.usage?.whatsappThisMonth ?? 0}
                 limit={data.limits.maxWhatsappPerMonth}
                 unlimitedLabel={t("usage.unlimited")}
+              />
+              {/*
+                White labelling is the one entitlement with no number attached,
+                so it renders as an on/off statement rather than a usage bar.
+              */}
+              <FeatureRow
+                label={t("usage.whiteLabel")}
+                included={data.limits.whiteLabel === true}
+                includedLabel={t("usage.included")}
+                notIncludedLabel={t("usage.notIncluded")}
+                hint={t("usage.whiteLabelHint")}
               />
             </div>
             {/*

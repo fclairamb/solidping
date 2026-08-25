@@ -18,6 +18,7 @@
   "designReference": "Référence design",
   "new": "Nouveau",
   "edit": "Modifier",
+  "register": "Enregistrement",
   "promote": "Promotion",
   "profile": "Profil",
   "tokens": "Jetons API",
@@ -29,6 +30,7 @@
   "invitations": "Invitations",
   "requests": "Demandes",
   "usage": "Utilisation",
+  "privateLocations": "Emplacements privés",
   "ai": "Assistants IA",
   "settings": "Paramètres",
   "web": "Web",
@@ -138,5 +140,6 @@
   },
   "security": "Sécurité",
   "slos": "SLO",
-  "reportSchedules": "Rapports de dispo."
+  "reportSchedules": "Rapports de dispo.",
+  "audit": "Audit"
 }

@@ -2,15 +2,21 @@
 
 ## Test Endpoints (Development Only)
 
-These endpoints are always available:
-
-### POST /api/v1/test/jobs
-Create a test email job. Auth: public (dev only)
+`GET /api/v1/fake` is the one route in this section that is always
+available — it is intentional, documented product surface (see
+`specs/done/2026/01/2026-01-02-fake-api.md`) with live dashboard callers, not
+a dev-only leftover. It is unauthenticated by design, so its `delay` /
+`slowResponse` params are capped (5000ms) and it carries its own strict
+per-IP rate limit (see `server/internal/app/server.go`).
 
 ### GET /api/v1/fake
-Fake API endpoint for testing. Auth: public (dev only)
+Fake API endpoint for testing. Auth: public (always available, rate-limited)
 
-These endpoints are only available when `SP_RUNMODE=test`:
+Every other endpoint below is only available when `SP_RUNMODE=test` — outside
+test mode they 404, same as any unregistered route.
+
+### POST /api/v1/test/jobs
+Create a test email job. Auth: public (test mode only)
 
 ### GET /api/v1/test/state-entries
 List internal state entries. Auth: public (test mode only)

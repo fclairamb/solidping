@@ -1,0 +1,472 @@
+package postgres
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+)
+
+// Embedded-postgres ports for this spec's migration tests. Each test owns one,
+// so siblings can run without fighting over a cluster.
+const (
+	portStatusPageBranding = 15486
+	portStatusPageRollback = 15487
+)
+
+// subscriberEndpointColumns are the columns the status-subscriber-channels
+// section adds. Named once so the apply and rollback tests cannot drift apart
+// on what "the new columns" means.
+//
+//nolint:gochecknoglobals // shared test fixture, read-only
+var subscriberEndpointColumns = []string{
+	"channel", "endpoint_private", "endpoint_hint", "endpoint_key", "failure_count", "disabled_at",
+}
+
+// The three sections spec 2026-08-21-07 contributes to 015_v0_18_0.
+const (
+	sectionBrandingPG   = "status-page-branding"
+	sectionPasswordPG   = "status-page-password"
+	sectionSubChannelPG = "status-subscriber-channels"
+)
+
+// execPGMigrationStatements runs one migration block statement by statement,
+// splitting on a lone `--bun:split` LINE exactly as bun's migrator does.
+func execPGMigrationStatements(ctx context.Context, t *testing.T, svc *Service, block string) {
+	t.Helper()
+
+	for _, stmt := range pgBunSplitRE.Split(block, -1) {
+		if !hasSQL(stmt) {
+			continue
+		}
+
+		_, err := svc.DB().ExecContext(ctx, stmt)
+		require.NoError(t, err, "statement failed:\n%s", stmt)
+	}
+}
+
+// TestStatusPageBrandingMigration_Postgres pins the Postgres half of all three
+// sections against a real cluster: the resulting schema, the behavior the new
+// constraints and index encode, and that REPLAYING the sections against a
+// populated database changes nothing.
+//
+// The replay matters for the same reason the SQLite rebuild test does, from the
+// other direction: Postgres does not rebuild the tables, so the risk here is
+// not data loss but a section that cannot be re-run at all — which is how an
+// interrupted migration turns into a cluster nobody can move forward.
+//
+//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
+func TestStatusPageBrandingMigration_Postgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, &Config{Embedded: true, Port: portStatusPageBranding, RunMode: runModeTest})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+
+	t.Cleanup(func() { _ = svc.Close() })
+
+	if initErr := svc.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	count := func(query string, args ...any) int {
+		t.Helper()
+
+		var out int
+		r.NoError(svc.DB().QueryRowContext(ctx, query, args...).Scan(&out))
+
+		return out
+	}
+
+	column := func(table, name string) int {
+		t.Helper()
+
+		return count(`select count(*) from information_schema.columns
+		              where table_name = ? and column_name = ?`, table, name)
+	}
+
+	// --- Schema landed. ---
+	r.Equal(1, column("status_pages", "password_hash"), "status_pages.password_hash must exist")
+
+	// ...and the SCHEMA GUARD (spec 2026-08-22-03): branding lives in
+	// `status_pages.settings`, so a fresh database must have NONE of the three
+	// columns. Written as an assertion because a column is what the next
+	// branding knob will reach for by reflex.
+	for _, name := range []string{"logo_file_uid", "favicon_file_uid", "hide_branding"} {
+		r.Zero(column("status_pages", name), "status_pages.%s belongs in settings, not a column", name)
+	}
+
+	// Positive controls for the Zero()s: the columns that DO stay.
+	for _, name := range []string{"uid", "settings", "custom_css", "custom_domain"} {
+		r.Equal(1, column("status_pages", name), "status_pages.%s must exist", name)
+	}
+
+	for _, name := range subscriberEndpointColumns {
+		r.Equal(1, column("status_page_subscriber", name), "status_page_subscriber.%s must exist", name)
+	}
+
+	// `email` must be NULLABLE now — a webhook subscriber has none, and the
+	// whole subscriber insert would fail on a NOT NULL left in place.
+	r.Equal(1, count(`select count(*) from information_schema.columns
+	                  where table_name = 'status_page_subscriber'
+	                    and column_name = 'email' and is_nullable = 'YES'`))
+
+	// The two brand-asset indexes existed ONLY to make the state-based public
+	// route check cheap. Nothing authorizes by state any more, so they are gone.
+	for _, index := range []string{"status_pages_logo_file_idx", "status_pages_favicon_file_idx"} {
+		r.Zero(count(`select count(*) from pg_indexes where indexname = ?`, index),
+			"%s exists only to authorize by state", index)
+	}
+
+	// Positive control for the Zero()s above.
+	r.Equal(1, count(`select count(*) from pg_indexes where indexname = 'status_pages_custom_domain_idx'`))
+
+	// --- Behavior: the widened visibility CHECK. ---
+	org := "11111111-1111-1111-1111-111111111111"
+	_, err = svc.DB().ExecContext(ctx,
+		`insert into organizations (uid, slug, name) values (?, 'acmebrand', 'Acme Brand')`, org)
+	r.NoError(err)
+
+	insertPage := func(uid, slug, visibility string) error {
+		_, execErr := svc.DB().ExecContext(ctx, `
+			insert into status_pages (uid, organization_uid, name, slug, visibility)
+			values (?, ?, 'P', ?, ?)`, uid, org, slug, visibility)
+
+		return execErr
+	}
+
+	r.NoError(insertPage("22222222-0000-0000-0000-000000000001", "page-public", "public"))
+	r.NoError(insertPage("22222222-0000-0000-0000-000000000002", "page-private", "private"))
+	r.NoError(insertPage("22222222-0000-0000-0000-000000000003", "page-password", "password"))
+	r.Error(insertPage("22222222-0000-0000-0000-000000000004", "page-bogus", "unlisted"),
+		"the CHECK must still refuse an unknown visibility")
+
+	// --- Behavior: the channel-aware live-uniqueness index. ---
+	page := "22222222-0000-0000-0000-000000000001"
+
+	insertWebhook := func(uid, key string) error {
+		_, execErr := svc.DB().ExecContext(ctx, `
+			insert into status_page_subscriber (
+				uid, organization_uid, status_page_uid, confirm_token, unsubscribe_token,
+				scope, channel, endpoint_key
+			) values (?, ?, ?, ?, ?, 'page', 'webhook', ?)`,
+			uid, org, page, "c-"+uid, "u-"+uid, key)
+
+		return execErr
+	}
+
+	r.NoError(insertWebhook("33333333-0000-0000-0000-000000000001", "key-one"))
+	r.NoError(insertWebhook("33333333-0000-0000-0000-000000000002", "key-two"),
+		"two webhooks on one page must coexist — both have a NULL email")
+	r.Error(insertWebhook("33333333-0000-0000-0000-000000000003", "key-one"),
+		"a duplicate endpoint on the same page must still be rejected")
+
+	// The channel CHECK is real.
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into status_page_subscriber (
+			uid, organization_uid, status_page_uid, confirm_token, unsubscribe_token, scope, channel
+		) values ('33333333-0000-0000-0000-000000000009', ?, ?, 'cx', 'ux', 'page', 'carrier-pigeon')`,
+		org, page)
+	r.Error(err, "an unknown channel must be refused")
+
+	// An ordinary email subscriber, to survive the replay below.
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into status_page_subscriber (
+			uid, organization_uid, status_page_uid, email, confirm_token, unsubscribe_token, scope
+		) values ('44444444-0000-0000-0000-000000000001', ?, ?, 'keeper@example.com', 'ck', 'uk', 'page')`,
+		org, page)
+	r.NoError(err)
+
+	// --- The org-logo backfill, in the shape the OLD code left behind. ---
+	// Resolved question 1 of spec 2026-08-22-03 retires /pub/org-logos/:uid, so
+	// this backfill is the difference between "already-uploaded logos keep
+	// working" and a regression.
+	const logoFile = "55555555-0000-0000-0000-000000000001"
+
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into files (uid, organization_uid, name, mime_type, file_uri, size)
+		values (?, ?, 'logo.png', 'image/png', 'local://x', 10)`, logoFile, org)
+	r.NoError(err)
+
+	_, err = svc.DB().ExecContext(ctx,
+		`update organizations set logo_file_uid = ?, logo_url = ? where uid = ?`,
+		logoFile, "/pub/org-logos/"+logoFile, org)
+	r.NoError(err)
+
+	// --- Replay: every section must be re-runnable, and change nothing. ---
+	for _, name := range []string{sectionBrandingPG, sectionPasswordPG, sectionSubChannelPG} {
+		execPGMigrationStatements(ctx, t, svc, migrationSection(t, name))
+	}
+
+	var topic *string
+
+	r.NoError(svc.DB().QueryRowContext(ctx, `select topic from files where uid = ?`, logoFile).Scan(&topic))
+	r.NotNil(topic, "an existing org logo must acquire the topic that authorizes it")
+	r.Equal("organizations/"+org+"/logo", *topic)
+
+	var logoURL string
+
+	r.NoError(svc.DB().QueryRowContext(ctx,
+		`select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
+	r.Equal("/pub/assets/"+logoFile, logoURL)
+
+	// A SECOND replay must be a no-op rather than mangling the migrated URL.
+	execPGMigrationStatements(ctx, t, svc, migrationSection(t, sectionBrandingPG))
+
+	r.NoError(svc.DB().QueryRowContext(ctx,
+		`select logo_url from organizations where uid = ?`, org).Scan(&logoURL))
+	r.Equal("/pub/assets/"+logoFile, logoURL)
+
+	r.Equal(3, count(`select count(*) from status_pages where organization_uid = ?`, org),
+		"replaying the sections must not have dropped a status page")
+	r.Equal(3, count(`select count(*) from status_page_subscriber where organization_uid = ?`, org),
+		"replaying the sections must not have dropped a subscriber")
+	r.Equal(1, count(`select count(*) from status_page_subscriber
+	                  where organization_uid = ? and email = 'keeper@example.com'`, org))
+
+	// ...and the constraints still hold afterwards, which is the half a
+	// "nothing errored" replay check would miss: a section that dropped a
+	// constraint and failed to re-add it looks like a clean replay.
+	r.Error(insertPage("22222222-0000-0000-0000-000000000005", "page-bogus2", "unlisted"))
+	r.Error(insertWebhook("33333333-0000-0000-0000-000000000004", "key-one"))
+}
+
+// TestStatusPageBrandingRollback_Postgres EXECUTES the three teardown halves
+// against a migrated, populated database.
+//
+// Reading a `.down.sql` as text proves the statements were written, not that
+// they run — a `drop column` naming a column that does not exist, or sections
+// unwound in the wrong order, is silent until somebody actually migrates down,
+// and by then the symptom is a half-migrated schema.
+//
+// The load-bearing assertions are the last ones: the tables themselves must
+// survive with their original rows. A teardown that took `status_pages` with it
+// would satisfy "the columns are gone" just as well.
+//
+//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
+func TestStatusPageBrandingRollback_Postgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, &Config{Embedded: true, Port: portStatusPageRollback, RunMode: runModeTest})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+
+	t.Cleanup(func() { _ = svc.Close() })
+
+	if initErr := svc.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	count := func(query string, args ...any) int {
+		t.Helper()
+
+		var out int
+		r.NoError(svc.DB().QueryRowContext(ctx, query, args...).Scan(&out))
+
+		return out
+	}
+
+	column := func(table, name string) int {
+		t.Helper()
+
+		return count(`select count(*) from information_schema.columns
+		              where table_name = ? and column_name = ?`, table, name)
+	}
+
+	org := "55555555-5555-5555-5555-555555555555"
+	_, err = svc.DB().ExecContext(ctx,
+		`insert into organizations (uid, slug, name) values (?, 'acmeroll2', 'Acme Rollback 2')`, org)
+	r.NoError(err)
+
+	// A password page and a webhook subscriber — precisely the rows the down
+	// halves document as lossy, so the "safe direction" claims get executed.
+	page := "66666666-0000-0000-0000-000000000001"
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into status_pages (uid, organization_uid, name, slug, visibility, password_hash, settings)
+		values (?, ?, 'Locked', 'locked-page', 'password', '$argon2id$x', '{"branding":{"hideBranding":true}}')`,
+		page, org)
+	r.NoError(err)
+
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into status_page_subscriber (
+			uid, organization_uid, status_page_uid, email, confirm_token, unsubscribe_token, scope
+		) values ('77777777-0000-0000-0000-000000000001', ?, ?, 'keeper@example.com', 'ck2', 'uk2', 'page')`,
+		org, page)
+	r.NoError(err)
+
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into status_page_subscriber (
+			uid, organization_uid, status_page_uid, confirm_token, unsubscribe_token,
+			scope, channel, endpoint_key
+		) values ('77777777-0000-0000-0000-000000000002', ?, ?, 'cw', 'uw', 'page', 'webhook', 'k')`,
+		org, page)
+	r.NoError(err)
+
+	// Applied.
+	r.Equal(1, column("status_pages", "password_hash"))
+	r.Equal(1, column("status_page_subscriber", "channel"))
+
+	// Unwind in the SAME order the .down.sql lists them (reverse of the up).
+	for _, name := range []string{sectionSubChannelPG, sectionPasswordPG, sectionBrandingPG} {
+		execPGMigrationStatements(ctx, t, svc, downMigrationSection(t, name))
+	}
+
+	// Every added column is gone.
+	r.Zero(column("status_pages", "password_hash"), "status_pages.password_hash must be dropped")
+
+	for _, name := range subscriberEndpointColumns {
+		r.Zero(column("status_page_subscriber", name), "status_page_subscriber.%s must be dropped", name)
+	}
+
+	// The documented lossy outcomes, executed rather than asserted in prose:
+	// the password page is back to `private` (never `public` — a page shared
+	// behind a secret must not be published by a rollback), and the webhook
+	// subscription is deleted while the email one survives.
+	r.Equal(1, count(`select count(*) from status_pages where uid = ? and visibility = 'private'`, page))
+	r.Equal(1, count(`select count(*) from status_page_subscriber where organization_uid = ?`, org))
+	r.Equal(1, count(`select count(*) from status_page_subscriber
+	                  where organization_uid = ? and email = 'keeper@example.com'`, org))
+
+	// The branding teardown leaves settings alone on purpose — the rolled-back
+	// binary simply ignores the `branding` key rather than losing the page's
+	// availability thresholds with it.
+	r.Equal(1, count(`select count(*) from status_pages
+	                  where uid = ? and settings::text like '%hideBranding%'`, page))
+
+	// The tables themselves survived with their identity intact.
+	r.Equal(1, column("status_pages", "uid"))
+	r.Equal(1, column("status_page_subscriber", "uid"))
+	r.Equal(1, count(`select count(*) from information_schema.columns
+	                  where table_name = 'status_page_subscriber'
+	                    and column_name = 'email' and is_nullable = 'NO'`),
+		"the NOT NULL on email must be restored")
+}
+
+// portOrgLogoBackfill is this test's own embedded-postgres port.
+const portOrgLogoBackfill = 15489
+
+// TestOrgLogoBackfillSkipsDeletedOrganizations_Postgres is the negative control
+// that keeps the backfill from WIDENING authorization.
+//
+// The retired check required a LIVE organization, and deleting an org never
+// reaped its files — so a historically-deleted org still owns a live `files`
+// row whose logo stopped being reachable only because the org row went away.
+// A backfill without `deleted_at is null` would hand those rows a public topic
+// and re-publish them, which the spec's Today/After table does not sanction.
+//
+// The Postgres backfill is written differently from the SQLite one (UPDATE ...
+// FROM rather than a correlated subquery), so the SQLite twin passing says
+// nothing about this one. The live org is the positive control: without it the
+// test would pass against a backfill that stopped working entirely.
+//
+//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
+func TestOrgLogoBackfillSkipsDeletedOrganizations_Postgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, &Config{Embedded: true, Port: portOrgLogoBackfill, RunMode: runModeTest})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+
+	t.Cleanup(func() { _ = svc.Close() })
+
+	if initErr := svc.Initialize(ctx); initErr != nil {
+		t.Skipf("embedded postgres init failed: %v", initErr)
+	}
+
+	const (
+		liveOrg   = "cccccccc-0000-0000-0000-000000000001"
+		deadOrg   = "cccccccc-0000-0000-0000-000000000002"
+		liveFile  = "cccccccc-0000-0000-0000-000000000003"
+		deadFile  = "cccccccc-0000-0000-0000-000000000004"
+		legacyURL = "/pub/org-logos/"
+	)
+
+	_, err = svc.DB().ExecContext(ctx,
+		`insert into organizations (uid, slug, name) values (?, 'acmelive', 'Acme Live')`, liveOrg)
+	r.NoError(err)
+
+	_, err = svc.DB().ExecContext(ctx, `
+		insert into organizations (uid, slug, name, deleted_at)
+		values (?, 'acmegone', 'Acme Gone', now())`, deadOrg)
+	r.NoError(err)
+
+	for fileUID, orgUID := range map[string]string{liveFile: liveOrg, deadFile: deadOrg} {
+		_, err = svc.DB().ExecContext(ctx, `
+			insert into files (uid, organization_uid, name, mime_type, file_uri, size)
+			values (?, ?, 'logo.png', 'image/png', 'local://x', 10)`, fileUID, orgUID)
+		r.NoError(err)
+
+		_, err = svc.DB().ExecContext(ctx,
+			`update organizations set logo_file_uid = ?, logo_url = ? where uid = ?`,
+			fileUID, legacyURL+fileUID, orgUID)
+		r.NoError(err)
+	}
+
+	execPGMigrationStatements(ctx, t, svc, migrationSection(t, sectionBrandingPG))
+
+	topicOf := func(fileUID string) *string {
+		t.Helper()
+
+		var topic *string
+
+		r.NoError(svc.DB().QueryRowContext(ctx, `select topic from files where uid = ?`, fileUID).Scan(&topic))
+
+		return topic
+	}
+
+	// Positive control: the live org's logo DID get its topic.
+	live := topicOf(liveFile)
+	r.NotNil(live, "the backfill must still publish a live org's logo")
+	r.Equal("organizations/"+liveOrg+"/logo", *live)
+
+	// The point of the test: the deleted org's logo did NOT.
+	r.Nil(topicOf(deadFile), "a soft-deleted org's logo must not be granted a public topic")
+
+	// ...and it therefore stays unreachable through the public read, which is
+	// the property the topic is only a proxy for.
+	filesSvc := files.NewService(svc, &config.Config{})
+
+	_, err = filesSvc.GetPublicFile(ctx, deadFile)
+	r.ErrorIs(err, files.ErrFileNotFound, "a deleted org's logo must not become publicly readable")
+
+	// Positive control for the ErrorIs above: the live one IS readable.
+	served, err := filesSvc.GetPublicFile(ctx, liveFile)
+	r.NoError(err)
+	r.Equal(liveFile, served.UID)
+
+	// The URL rewrite is scoped the same way.
+	urlOf := func(orgUID string) string {
+		t.Helper()
+
+		var url string
+
+		r.NoError(svc.DB().QueryRowContext(ctx,
+			`select logo_url from organizations where uid = ?`, orgUID).Scan(&url))
+
+		return url
+	}
+
+	r.Equal("/pub/assets/"+liveFile, urlOf(liveOrg))
+	r.Equal(legacyURL+deadFile, urlOf(deadOrg), "a deleted org's URL must not be migrated either")
+}

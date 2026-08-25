@@ -144,9 +144,9 @@ func (s *Service) UpdateOrgProfile(
 	}
 
 	// Replacing or clearing an uploaded logo retires its file row, which is
-	// also what stops /pub/org-logos/:uid from serving it. Best-effort: the org
-	// already points elsewhere, so a surviving row is wasted storage, not a
-	// leak.
+	// also what stops /pub/assets/:uid from serving it — that route reads LIVE
+	// rows only. Best-effort: the org already points elsewhere, so a surviving
+	// row is wasted storage, not a leak.
 	if (update.LogoURL != nil || update.ClearLogoURL) && org.LogoFileUID != nil {
 		if delErr := s.db.DeleteFile(ctx, org.UID, *org.LogoFileUID); delErr != nil {
 			slog.WarnContext(ctx, "failed to retire previous organization logo file",
@@ -233,8 +233,9 @@ func (s *Service) buildOrgProfileUpdate(
 		}
 
 		if logo == "" {
-			// Clearing an uploaded logo also drops the file pointer, which is
-			// what un-publishes the blob on /pub/org-logos/:uid.
+			// Clearing an uploaded logo also drops the file pointer; the
+			// file row is soft-deleted above, which is what un-publishes the
+			// blob on /pub/assets/:uid.
 			update.ClearLogoURL = true
 			update.ClearLogoFileUID = true
 		} else {
@@ -284,7 +285,7 @@ func (s *Service) attachRenameSession(
 }
 
 // normalizeLogoURL validates a client-supplied logo URL. Only absolute http(s)
-// URLs are accepted: the "/pub/org-logos/<uid>" form is produced exclusively by
+// URLs are accepted: the "/pub/assets/<uid>" form is produced exclusively by
 // the upload endpoint, so accepting it here would let a caller point one org's
 // logo at another org's file. An empty/null value means "clear".
 func normalizeLogoURL(raw *string) (string, error) {
@@ -343,11 +344,11 @@ func (s *Service) mintOrgSession(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if createTokenErr := s.db.CreateUserToken(ctx, refreshToken); createTokenErr != nil {
+	if createTokenErr := s.startSession(
+		ctx, sessionActor{UID: userUID}, org, refreshToken, role, AuthMethodOrgSession, authContext,
+	); createTokenErr != nil {
 		return nil, createTokenErr
 	}
-
-	s.enforceSessionCap(ctx, userUID)
 
 	accessToken, err := s.generateAccessToken(userUID, org.Slug, role, refreshToken.UID)
 	if err != nil {

@@ -101,3 +101,23 @@ export function sloBudgetBarClass(state: SloState): string {
       return "bg-muted-foreground/40";
   }
 }
+
+/**
+ * Renders an alert window length in the coarsest unit that stays honest.
+ *
+ * Burn windows are configured in seconds but always read as "1h" / "5m" / "6h"
+ * — printing 3600 next to a 14.4x threshold makes an already dense readout
+ * unreadable.
+ */
+export function formatWindowSeconds(seconds: number): string {
+  if (seconds >= 86400) {
+    const days = Math.round(seconds / 86400);
+    return `${days}d`;
+  }
+  if (seconds >= 3600) {
+    const hours = seconds / 3600;
+    return `${Number(hours.toFixed(1))}h`;
+  }
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return `${minutes}m`;
+}

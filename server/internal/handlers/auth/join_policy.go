@@ -36,6 +36,15 @@ const pendingMembershipParam = "membershipPending"
 // "request access / pending request" flow.
 const noOrgPath = "/dash0/no-org"
 
+// Admission rules, as recorded in the member.joined audit payload's `source`.
+const (
+	joinSourceBootstrap      = "org_bootstrap"
+	joinSourceInvitation     = "invitation_at_login"
+	joinSourceSlackWorkspace = "slack_workspace"
+	joinSourceEmailPattern   = "email_pattern"
+	joinSourceAutoJoin       = "auto_join_pattern"
+)
+
 // ProviderLoginResult is the outcome of a completed federated login for one
 // organization: either a real org-scoped session, or (Pending) an org-less
 // session plus a membership request awaiting an admin decision.
@@ -56,6 +65,12 @@ type LoginOption func(*loginOptions)
 
 // loginOptions is the resolved set of attestations for one login.
 type loginOptions struct {
+	// method names the connector completing this login ("oidc", "saml",
+	// "github", …). It is recorded as auth_method on auth.login_succeeded, so
+	// a security review can tell an SSO sign-in from a password one. A
+	// connector that does not name itself falls back to AuthMethodOAuth.
+	method string
+
 	// slackTeamID is the Slack workspace ID Slack itself returned in the
 	// OAuth token exchange. It is an *attestation*: the exchange (and the
 	// openid.connect.userInfo call that follows it) can only succeed for a
@@ -71,6 +86,15 @@ type loginOptions struct {
 func WithSlackWorkspace(teamID string) LoginOption {
 	return func(o *loginOptions) {
 		o.slackTeamID = teamID
+	}
+}
+
+// WithLoginMethod names the connector completing this login, for the audit
+// trail. Every federated connector should pass one — without it their sign-ins
+// are all recorded as the generic "oauth".
+func WithLoginMethod(method string) LoginOption {
+	return func(o *loginOptions) {
+		o.method = method
 	}
 }
 
@@ -146,7 +170,7 @@ func (s *Service) JoinOrgViaLogin(
 	}
 
 	if len(members) == 0 {
-		created, createErr := s.createLoginMembership(ctx, org.UID, user.UID, models.MemberRoleOwner, "")
+		created, createErr := s.createLoginMembership(ctx, org.UID, user, models.MemberRoleOwner, "", joinSourceBootstrap)
 		return created, false, createErr
 	}
 
@@ -154,7 +178,7 @@ func (s *Service) JoinOrgViaLogin(
 	// the invited role, exactly like AcceptInvite would.
 	if invite := s.findOrgInvitationForEmail(ctx, org.UID, user.Email); invite != nil {
 		created, createErr := s.createLoginMembership(
-			ctx, org.UID, user.UID, models.MemberRole(invite.role), invite.inviterUID,
+			ctx, org.UID, user, models.MemberRole(invite.role), invite.inviterUID, joinSourceInvitation,
 		)
 		if createErr != nil {
 			return nil, false, createErr
@@ -176,7 +200,9 @@ func (s *Service) JoinOrgViaLogin(
 			slog.WarnContext(ctx, "slack workspace auto-join blocked by the membership cap",
 				"orgUID", org.UID, "userUID", user.UID, "error", slotErr)
 		} else {
-			created, createErr := s.createLoginMembership(ctx, org.UID, user.UID, models.MemberRoleUser, "")
+			created, createErr := s.createLoginMembership(
+				ctx, org.UID, user, models.MemberRoleUser, "", joinSourceSlackWorkspace,
+			)
 
 			return created, false, createErr
 		}
@@ -184,7 +210,10 @@ func (s *Service) JoinOrgViaLogin(
 
 	// Rule 5: the org's own auto-join pattern.
 	if pattern := s.orgAutoJoinPattern(ctx, org.UID); pattern != nil && pattern.MatchString(user.Email) {
-		created, createErr := s.createLoginMembership(ctx, org.UID, user.UID, models.MemberRoleUser, "")
+		created, createErr := s.createLoginMembership(
+			ctx, org.UID, user, models.MemberRoleUser, "", joinSourceEmailPattern,
+		)
+
 		return created, false, createErr
 	}
 
@@ -207,6 +236,8 @@ func (s *Service) JoinOrgViaLogin(
 func (s *Service) CompleteOrgLogin(
 	ctx context.Context, org *models.Organization, user *models.User, opts ...LoginOption,
 ) (*ProviderLoginResult, error) {
+	resolved := resolveLoginOptions(opts)
+
 	member, pending, err := s.JoinOrgViaLogin(ctx, org, user, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure membership: %w", err)
@@ -224,7 +255,11 @@ func (s *Service) CompleteOrgLogin(
 		role = string(member.Role)
 	}
 
-	tokens, err := s.GenerateTokensForOAuth(ctx, user, org, role)
+	// No explicit Context to thread here — GenerateTokensForOAuth falls back
+	// to whatever the request-meta middleware parked on ctx (source IP, user
+	// agent); a federated callback is an ordinary HTTP request, so that is
+	// already populated.
+	tokens, err := s.GenerateTokensForOAuth(ctx, user, org, role, resolved.method, Context{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
@@ -261,14 +296,19 @@ func (s *Service) pendingSession(ctx context.Context, user *models.User) (*Provi
 // createLoginMembership creates the membership row for an admitted federated
 // login, enforcing the MaxUsers cap first. The very first member of an org
 // bypasses the cap (count=0 < cap) so bootstrapping always succeeds.
+// It is also the single point at which a federated login creates a membership,
+// so it is where member.joined is recorded — without it an SSO org's entire
+// membership would appear in the trail from nowhere (spec 2026-08-21-09).
+// `source` says WHICH admission rule let the user in, which is the fact an
+// access review actually needs.
 func (s *Service) createLoginMembership(
-	ctx context.Context, orgUID, userUID string, role models.MemberRole, inviterUID string,
+	ctx context.Context, orgUID string, user *models.User, role models.MemberRole, inviterUID, source string,
 ) (*models.OrganizationMember, error) {
 	if err := s.CheckMembershipSlot(ctx, orgUID); err != nil {
 		return nil, err
 	}
 
-	member := models.NewOrganizationMember(orgUID, userUID, role)
+	member := models.NewOrganizationMember(orgUID, user.UID, role)
 	now := time.Now()
 	member.JoinedAt = &now
 
@@ -280,6 +320,8 @@ func (s *Service) createLoginMembership(
 	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
 		return nil, fmt.Errorf("failed to create member: %w", err)
 	}
+
+	s.recordMemberJoined(ctx, orgUID, user.UID, user.Email, role, source)
 
 	return member, nil
 }

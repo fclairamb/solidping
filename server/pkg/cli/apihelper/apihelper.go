@@ -444,6 +444,17 @@ func (h *Helper) Login(ctx context.Context, org, email, password string) (string
 		return "", nil, fmt.Errorf("failed to save token: %w", err)
 	}
 
+	// A forced rotation does NOT make the login fail server-side — the whole
+	// design is that the session exists and can reach the rotation endpoint.
+	// But reporting "Login successful!" and then failing every subsequent
+	// command with a 403 is the opaque outcome this check exists to avoid: say
+	// it here, at the moment the operator is looking at a password prompt.
+	// The token is deliberately kept on disk — it is the credential the
+	// rotation itself needs.
+	if mustChange, checkErr := tmpClient.SessionRequiresPasswordChange(ctx); checkErr == nil && mustChange {
+		return "", resp.User, client.ErrPasswordChangeRequired
+	}
+
 	return tokenData.AccessToken, resp.User, nil
 }
 

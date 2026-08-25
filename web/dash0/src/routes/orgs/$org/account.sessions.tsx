@@ -12,6 +12,7 @@ import {
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { parseUserAgent } from "@/lib/user-agent";
+import { methodLabel } from "@/lib/auth-method-label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,19 +63,6 @@ function DeviceIcon({ device, className }: { device: "mobile" | "tablet" | "desk
   return <Monitor className={className} />;
 }
 
-function methodLabel(method: string | undefined, t: (key: string) => string): string | null {
-  switch (method) {
-    case "password":
-      return t("sessions.methodPassword");
-    case "oauth":
-      return t("sessions.methodOauth");
-    case "passkey":
-      return t("sessions.methodPasskey");
-    default:
-      return null;
-  }
-}
-
 function SessionRow({
   session,
   onRevoke,
@@ -99,7 +87,9 @@ function SessionRow({
           <DeviceIcon device={parsed.device} className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{deviceLabel}</span>
+              <span className="font-medium" data-testid={`session-device-label-${session.uid}`}>
+                {deviceLabel}
+              </span>
               {session.isCurrent && (
                 <Badge data-testid="session-current-badge" className="border-primary">
                   {t("sessions.currentSession")}

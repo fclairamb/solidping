@@ -37,17 +37,67 @@ external service ── SMTP ──▶ inbox provider ── JMAP ──▶ Soli
 4. **The JMAP manager subscribes to the inbox.** If the server supports
    EventSource (push), the manager streams; otherwise it polls every
    `pollIntervalSeconds` (default 900 = 15 min).
-5. **Each new email goes through the handler chain** in the order
-   handlers were registered. The `emailcheck` handler tries to match
-   the token; on a hit it records a result with the resolved status and
-   returns `OutcomeProcessed`, which moves the email to the `Processed`
-   mailbox. On a token-shaped no-match it returns `OutcomeRejected` —
-   also moves to Processed but signals "permanently invalid". On no
-   token at all it returns `OutcomeIgnored` and the email moves on to
-   the next handler.
+5. **Each new email is claimed, then handled.** The manager first asks
+   the handler chain, via the side-effect-free `ClaimsEmail` predicate,
+   which messages anyone would act on, and moves exactly those to the
+   `Processed` mailbox. The move IS the claim — see "Exactly-once"
+   below. Only the messages this process actually moved go through
+   `HandleEmail`, in registration order. The `emailcheck` handler
+   matches the token; on a hit it records a result with the resolved
+   status and returns `OutcomeProcessed`. On a token-shaped no-match it
+   returns `OutcomeRejected` — the message stays in Processed but is
+   flagged "permanently invalid". If every handler returns
+   `OutcomeIgnored`, or one errors, the claim is released (the message
+   goes back to the inbox) so the next sync retries it.
 6. **The result feeds the normal pipeline** — `ProcessCheckResult`
    evaluates streaks and opens / closes incidents the same way an HTTP
    check would.
+
+## Exactly-once: one email, one result
+
+Every server replica that shares the `email.inbox` parameter can consume
+the same mailbox. Three independent layers make that produce exactly one
+raw result per inbound email (spec 2026-08-22-01):
+
+1. **Claim-by-archive.** The move to `Processed` happens *before* any
+   handler runs, and JMAP's `Email/set` reply distinguishes `updated`
+   from `notUpdated` per id. A consumer processes only the ids it
+   successfully moved; `notUpdated` means another consumer got there
+   first, logged at debug as a lost claim. This is a compare-and-swap on
+   the mailbox itself — no shared state beyond the mail server.
+   *Crash-safety:* a process that dies between the move and the insert
+   would take that email's signal with it, so on every connect the
+   manager re-scans the newest 50 messages received in the last 24 h of
+   `Processed` and re-runs the chain over them. It moves nothing, and it
+   is safe only because of layer 3.
+2. **One active consumer.** `runJMAPManager` holds the
+   `dblock.KeyJMAPInbox` Postgres advisory lock on a dedicated
+   connection; non-holders retry every 30 s, which is also the failover
+   path when a holder dies. Deliberately not a `Node.Role` gate — a
+   static role has no failover. On SQLite there is one process by
+   construction, so the lock is skipped. This layer is an optimization
+   (fewer JMAP sessions), never the correctness mechanism.
+3. **Message-ID dedup.** Before inserting, `emailcheck` looks for an
+   existing raw result for the same check whose `output.messageId`
+   matches, within the last 7 days. No schema change backs this — the
+   query IS the constraint. It is scoped by `organization_uid` even
+   though `check_uid` alone identifies the rows, because every index on
+   `results` leads with the org column; without it neither backend can
+   seek `results_raw_idx` and the lookup becomes a full scan on every
+   inbound email.
+
+   When the lookup cannot answer — no `Message-ID` header, or the query
+   errors — the two arrival paths resolve it in **opposite** directions:
+   fresh inbox mail is recorded anyway (layers 1–2 already cover it, and
+   losing a live signal is worse), while the crash-recovery re-scan
+   records **nothing** (its whole input may already be recorded, and it
+   repeats on every reconnect, so failing open there would make the
+   repair pass a duplicate generator). `jmap.Origin` is what carries the
+   distinction to the handler.
+
+Layers 1 and 3 are the correctness pair; either alone leaves a hole
+(layer 1 cannot survive a crash mid-claim, layer 3 alone would let N
+replicas each do the work before one of them wins).
 
 ## Status resolution
 
@@ -72,7 +122,7 @@ The manager owns three mailboxes by JMAP role:
 | Role | Default name | Purpose |
 |---|---|---|
 | `Inbox` | "Inbox" | Where new mail arrives. The manager watches this. |
-| Processed (custom) | "Processed" | Move-target after a handler returns Processed/Rejected. Kept for `processedRetentionDays` (default 30) for forensic trail. |
+| Processed (custom) | "Processed" | Claim target: a message is moved here *before* it is handled, and moved back if no handler takes it. Kept for `processedRetentionDays` (default 30) for forensic trail. |
 | `Trash` | provider-default | Best-effort pickup of the standard trash role. Old "Ignored-by-everyone" emails get moved here after `failedRetentionDays` (default 7). |
 
 The cleanup loop runs alongside the watch loop; both are idempotent.
@@ -190,6 +240,7 @@ expired or the provider rate-limited us.
 | Token-lookup handler | [`server/internal/handlers/emailcheck/handler.go`](../../server/internal/handlers/emailcheck/handler.go) |
 | Token DB index | [`server/internal/db/sqlite/migrations/001_v0_1_0.up.sql`](../../server/internal/db/sqlite/migrations/001_v0_1_0.up.sql) |
 | EventSource (push) client | [`server/internal/jmap/eventsource.go`](../../server/internal/jmap/eventsource.go) |
+| Advisory-lock helper + key registry | [`server/internal/db/dblock/dblock.go`](../../server/internal/db/dblock/dblock.go) |
 
 ## Origin
 
@@ -199,3 +250,9 @@ Shipped end of April 2026 across three specs:
 - [`2026-04-29-03-email-check-frontend.md`](../../specs/done/2026/04/2026-04-29-03-email-check-frontend.md) — dashboard UI for token/address display and rotation.
 - [`2026-05-02-05-email-inbox-config-display-and-live-sync.md`](../../specs/done/2026/05/2026-05-02-05-email-inbox-config-display-and-live-sync.md) — status panel and live-sync-on-config-change.
 - [`2026-05-02-11-jmap-eventsource-url-template.md`](../../specs/done/2026/05/2026-05-02-11-jmap-eventsource-url-template.md) — `rewriteBaseUrl` support for proxied JMAP servers.
+
+Hardened in August 2026:
+- `2026-08-22-01-email-check-inbound-dedup.md` — claim-by-archive, the
+  single-consumer advisory lock, and the Message-ID dedup backstop, after
+  one inbound email was observed minting up to four duplicate results
+  across replicas.

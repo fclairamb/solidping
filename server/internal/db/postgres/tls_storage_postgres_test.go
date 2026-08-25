@@ -82,18 +82,28 @@ func TestTLSStorage_Postgres(t *testing.T) {
 // boundary on both sides — '-' is 0x2D, '0' is 0x30, 'X' is 0x58 — and include
 // a shorter "certificate/…" key, so the assertions pin both edges of the match
 // instead of only proving that something came back.
+//
+// Keep the two lists in named variables rather than returning both composite
+// literals inline from a single `return`. gofmt (Go 1.27) and gofumpt disagree
+// about how to indent that construct — one de-indents the elements, the other
+// re-indents them — and golangci-lint enables both, so no formatting of it can
+// satisfy the linter. Named locals sidestep the disagreement entirely.
 func tlsStoragePrefixFixture() ([]string, []string) {
-	return []string{
-			"certificates",
-			"certificates/acme-v02/other.acme.com/other.acme.com.crt",
-			"certificates/acme-v02/status.acme.com/status.acme.com.crt",
-			"certificates/acme-v02/status.acme.com/status.acme.com.key",
-		}, []string{
-			"certificate/acme-v02/status.acme.com/status.acme.com.crt",
-			"certificates-backup/acme-v02/status.acme.com/status.acme.com.crt",
-			"certificates0/acme-v02/status.acme.com/status.acme.com.crt",
-			"certificatesX/acme-v02/status.acme.com/status.acme.com.crt",
-		}
+	subtree := []string{
+		"certificates",
+		"certificates/acme-v02/other.acme.com/other.acme.com.crt",
+		"certificates/acme-v02/status.acme.com/status.acme.com.crt",
+		"certificates/acme-v02/status.acme.com/status.acme.com.key",
+	}
+
+	neighbors := []string{
+		"certificate/acme-v02/status.acme.com/status.acme.com.crt",
+		"certificates-backup/acme-v02/status.acme.com/status.acme.com.crt",
+		"certificates0/acme-v02/status.acme.com/status.acme.com.crt",
+		"certificatesX/acme-v02/status.acme.com/status.acme.com.crt",
+	}
+
+	return subtree, neighbors
 }
 
 // tlsStorageSeedPrefixFixture empties the table and re-seeds the fixture, so a

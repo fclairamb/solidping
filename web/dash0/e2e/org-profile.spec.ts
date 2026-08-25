@@ -197,7 +197,7 @@ test.describe("Organization profile", () => {
 
     const preview = page.getByTestId("org-profile-logo-preview");
     await expect(preview).toBeVisible({ timeout: 15000 });
-    await expect(preview).toHaveAttribute("src", /\/pub\/org-logos\//);
+    await expect(preview).toHaveAttribute("src", /\/pub\/assets\//);
 
     // The org identity in the sidebar picks it up too.
     await expect(page.getByTestId("sidebar-org-logo")).toBeVisible({

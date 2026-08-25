@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import {
+  AlertTriangle,
   CheckCircle2,
   Globe,
   Loader2,
@@ -57,7 +58,13 @@ export function StatusPageCustomDomain({
   const [quotaBlocked, setQuotaBlocked] = useState(false);
 
   const currentDomain = page.customDomain ?? "";
-  const isVerified = page.customDomainStatus === "verified";
+  const domainState = page.customDomainState;
+  // `grace` is still verified and still serving — it renders as its own warning
+  // badge rather than as "Verified", because it is the only chance the operator
+  // gets to fix DNS before the page actually goes dark.
+  const isDegraded = domainState === "grace";
+  const isVerified = page.customDomainStatus === "verified" && !isDegraded;
+  const lastCheck = page.customDomainLastCheck;
   const records = page.customDomainRecords ?? [];
   const dirty = domain.trim() !== currentDomain;
   // Only present when the server terminates TLS itself (acme.enabled). With an
@@ -144,7 +151,9 @@ export function StatusPageCustomDomain({
               disabled={update.isPending || !dirty}
               className="shrink-0"
             >
-              {update.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {update.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {t("customDomain.save")}
             </Button>
           </div>
@@ -170,12 +179,23 @@ export function StatusPageCustomDomain({
           <div className="space-y-4 border-t pt-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                {isVerified ? (
+                {isVerified && (
                   <Badge variant="success" className="gap-1">
                     <CheckCircle2 className="h-3 w-3" />
                     {t("customDomain.verified")}
                   </Badge>
-                ) : (
+                )}
+                {isDegraded && (
+                  <Badge
+                    variant="warning"
+                    className="gap-1"
+                    data-testid="custom-domain-degraded"
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    {t("customDomain.degraded")}
+                  </Badge>
+                )}
+                {!isVerified && !isDegraded && (
                   <Badge variant="secondary">
                     {t("customDomain.unverified")}
                   </Badge>
@@ -264,6 +284,29 @@ export function StatusPageCustomDomain({
               </div>
             </div>
 
+            {(isDegraded || domainState === "demoted") && (
+              <Alert
+                variant={isDegraded ? "default" : "destructive"}
+                data-testid="custom-domain-health-alert"
+              >
+                <AlertTitle>
+                  {isDegraded
+                    ? t("customDomain.degradedTitle")
+                    : t("customDomain.demotedTitle")}
+                </AlertTitle>
+                <AlertDescription className="space-y-2">
+                  <p>
+                    {isDegraded
+                      ? t("customDomain.degradedDescription")
+                      : t("customDomain.demotedDescription")}
+                  </p>
+                  {lastCheck && (
+                    <p className="break-all font-mono text-xs">{lastCheck}</p>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {isVerified && certStatus === "none" && (
               <p className="text-xs text-muted-foreground">
                 {t("customDomain.certPendingHint")}
@@ -277,7 +320,10 @@ export function StatusPageCustomDomain({
                 </p>
                 <div className="space-y-2">
                   {records.map((record) => (
-                    <DnsRecordRow key={record.type + record.name} record={record} />
+                    <DnsRecordRow
+                      key={record.type + record.name}
+                      record={record}
+                    />
                   ))}
                 </div>
               </div>

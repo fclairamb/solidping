@@ -9,6 +9,13 @@ func (m *Manager) SyncEmailsForTest(
 	return m.syncEmails(ctx, client, mboxes, cfg)
 }
 
+// RescanProcessedForTest exposes the crash-recovery re-scan for unit tests.
+func (m *Manager) RescanProcessedForTest(
+	ctx context.Context, client *Client, mboxes *Mailboxes,
+) error {
+	return m.rescanProcessed(ctx, client, mboxes)
+}
+
 // RecordErrorForTest exposes recordError for unit tests.
 func (m *Manager) RecordErrorForTest(err error) {
 	m.recordError(err)

@@ -833,7 +833,22 @@ func TestPayloadRoundTrip(t *testing.T) {
 	r.NotNil(resolved.LastSyncedAt)
 	r.Equal(synced, resolved.LastSyncedAt.UTC().Truncate(time.Second))
 
-	r.Equal(in.Limits, resolved.Limits)
+	// Every limit the caller SET round-trips verbatim.
+	r.Equal(in.Limits.MaxUsers, resolved.Limits.MaxUsers)
+	r.Equal(in.Limits.MaxChecksPerMinute, resolved.Limits.MaxChecksPerMinute)
+	r.Equal(in.Limits.MaxDeportedAgents, resolved.Limits.MaxDeportedAgents)
+
+	// Absent numeric limits stay nil = unlimited...
+	r.Nil(resolved.Limits.MaxChecks)
+	r.Nil(resolved.Limits.MaxCustomDomains)
+	r.Nil(resolved.Limits.MaxSlos)
+
+	// ...but `whiteLabel` is null-FILLED from the deployment default rather
+	// than left nil, because nil on a boolean entitlement means "use the
+	// default", not "unbounded" (spec 2026-08-21-07). The fixture runs
+	// self-hosted, whose default is true.
+	r.NotNil(resolved.Limits.WhiteLabel)
+	r.True(*resolved.Limits.WhiteLabel)
 }
 
 func TestPlanWeightFreeByDefault(t *testing.T) {

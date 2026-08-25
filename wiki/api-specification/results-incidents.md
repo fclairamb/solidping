@@ -14,11 +14,41 @@ Query parameters:
 - `status` - comma-separated: `up`, `down`, `unknown`
 - `region` - comma-separated regions
 - `periodType` - comma-separated period types
-- `periodStartAfter` - RFC3339 timestamp
-- `periodEndBefore` - RFC3339 timestamp
+- `periodStartAfter` - RFC3339 timestamp, filters on `period_start >= value`
+- `periodEndBefore` - RFC3339 timestamp. **Despite the name it filters on
+  `period_start < value`, not on `period_end`** — an aggregated bucket that
+  starts inside the window and ends outside it IS returned. That is deliberate
+  and charting depends on it: a partially visible bucket should still be drawn.
+  For raw rows the distinction is immaterial (their period is a single probe).
 - `with` - comma-separated optional fields
 - `cursor` - pagination cursor
 - `limit` - page size (default 100, max 1000). Also accepts `?size=` as a deprecated alias.
+
+### The raw-tier clamp and the `window` object
+
+Both useful indexes on `results` are partial and split on
+`period_type = 'raw'`, so ask for one side of that split per request — a single
+request naming raw *and* a rollup tier is served by neither index and
+sequentially scans the largest table in the system.
+
+A **raw-only** request (`periodType=raw`) is additionally clamped server-side:
+`periodStartAfter` is moved forward to the raw-retention boundary
+(`performance.aggregation_retention_raw_hours`, plus a small lag margin) when
+the caller asked for more. Nothing is lost — the aggregation job compacts a
+bucket and deletes its source raw rows in the same transaction, so raw older
+than the boundary does not exist. A mixed or unfiltered request is **not**
+clamped: it also selects rollup rows, whose retention is months.
+
+Every response carries a top-level `window` object alongside `data` and
+`pagination`, reporting the window that actually ran:
+
+```json
+{ "data": [], "pagination": { "size": 0 },
+  "window": { "periodStartAfter": "2026-08-21T10:00:00Z", "clamped": true } }
+```
+
+`clamped: false` is emitted too, so a client can tell a clamp from a genuinely
+empty range and size a follow-up request instead of guessing.
 
 `pagination` on this endpoint carries only `cursor` and `size` — **no `total`**.
 `results` is the largest table in the system; an unbounded `COUNT(*)` scoped to
@@ -56,6 +86,22 @@ Get a single incident. Auth: required
 
 Query parameters:
 - `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`)
+
+Response extra (detail endpoint only): `attachments[]` — the incident's stored
+evidence blobs (spec 2026-08-21-01). Today the only kind is `screenshot`: the
+PNG a browser check with `screenshot: true` captured when this incident opened
+or reopened. Each entry carries `uid`, `kind`, `name`, `mimeType`, `size`,
+`createdAt`, `capturedAt`, `region`, `checkUid`, `trigger`, and a **relative,
+short-lived signed** `downloadUrl` (`/pub/files/<uid>?exp=…&sig=…`) — relative
+so it resolves against whichever host served the client, re-signed on every
+fetch, so do not cache it.
+
+The LIST endpoint never populates `attachments`: signing a URL per attachment
+per incident across a whole page is work nobody asked for, and the list view has
+nowhere to show one.
+
+Like `details`, this block is **operator-only** and is never serialized onto a
+status page or a subscriber payload.
 
 ### GET /api/v1/orgs/:org/incidents/:uid/events
 List events for a specific incident. Auth: required
@@ -117,12 +163,42 @@ Incident **notification** history (which routes fired, and when) lives in
 ### GET /api/v1/orgs/:org/events
 List events across the organization. Auth: required
 
+This is also the **audit trail** endpoint — see
+[the event catalogue](events-catalogue.md) for every type it can return, what
+each payload carries, and the redaction rules.
+
 Query parameters:
-- `eventType` - comma-separated event types
+- `eventType` - comma-separated event types, matched **exactly**
+- `type` - comma-separated event-type **families** (prefixes), e.g.
+  `?type=auth,member`. Distinct from `eventType`: `auth` is not a type.
+- `actorUserUid` - filter to the events one user caused (`actorUid` is accepted
+  as an alias)
+- `targetType` / `targetUid` - filter by the acted-on object's kind or exact
+  identity (payload predicates: the target is polymorphic, so it lives in
+  `payload`)
+- `target` - free-text: an exact `target_uid` OR a case-insensitive substring
+  of the captured `target_name`. This is what the dashboard's "target name or
+  UID" box sends
+- `sourceIp` - filter by client address. **Admin/owner only**, and silently
+  ignored for anyone else rather than rejected — honouring it for a caller who
+  cannot see the column would turn the filter into an oracle for it.
 - `checkUid` - filter by check UID
 - `incidentUid` - filter by incident UID
-- `cursor` - pagination cursor
+- `since` / `until` - RFC3339 bounds (`since` inclusive, `until` exclusive)
+- `cursor` - pagination cursor. Opaque keyset cursor over
+  `(created_at, uid)`; hand back `pagination.cursor` verbatim. An unparseable
+  cursor is ignored (first page) rather than rejected.
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
+
+Response items carry `uid`, `eventType`, `actorType`
+(`system` | `user` | `api_token` | `service`), `actorUid` plus the resolved
+`actorName` / `actorEmail`, `payload`, `createdAt`, and — **for org admins and
+owners only** — `sourceIp` and `userAgent`.
+
+**Visibility:** the `auth.*` family is returned to org admins/owners (and super
+admins) only. The gate is a server-side filter exclusion, so it holds for an
+unfiltered listing, for `?type=auth`, and for `?eventType=auth.login_succeeded`
+alike. `sourceIp` / `userAgent` are withheld from non-admins on every event.
 
 ### GET /api/v1/orgs/:org/events/ws
 Live update hint WebSocket (v2 — per-entity subscriptions; superseded the v1

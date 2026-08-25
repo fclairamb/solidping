@@ -140,9 +140,10 @@ test.describe("Checks list hides empty groups while filtering", () => {
     await expect(hasDownSection).toBeVisible({ timeout: 10000 });
     await expect(hasDownSection.getByTestId("group-check-count")).toHaveText("2");
 
-    // Filter to status=down via the toolbar select.
+    // Filter to status=down via the toolbar's faceted popover filter.
     await page.getByTestId("status-filter").click();
-    await page.getByRole("option", { name: "Down", exact: true }).click();
+    await page.getByTestId("status-filter-option-down").click();
+    await page.keyboard.press("Escape");
     await page.waitForLoadState("networkidle");
 
     // The all-up group has zero matching checks — hidden entirely, no
@@ -157,9 +158,10 @@ test.describe("Checks list hides empty groups while filtering", () => {
     await expect(hasDownSection.getByText("HasDown Check B1")).not.toBeVisible();
     await expect(hasDownSection.getByTestId("group-check-count")).toHaveText("1");
 
-    // Clear the filter — both groups come back.
+    // Clear the filter — unticking the same checkbox brings both groups back.
     await page.getByTestId("status-filter").click();
-    await page.getByRole("option", { name: "All statuses", exact: true }).click();
+    await page.getByTestId("status-filter-option-down").click();
+    await page.keyboard.press("Escape");
     await page.waitForLoadState("networkidle");
 
     await expect(allUpSection).toBeVisible({ timeout: 10000 });

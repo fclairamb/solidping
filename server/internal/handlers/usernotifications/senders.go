@@ -42,10 +42,11 @@ func (a *EmailSenderAdapter) SendTestEmail(ctx context.Context, recipient string
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{recipient}},
-		Subject:    subject,
-		HTML:       htmlBody,
-		Text:       textBody,
+		Recipients:       email.Recipients{To: []string{recipient}},
+		Subject:          subject,
+		HTML:             htmlBody,
+		Text:             textBody,
+		SupportReplyable: email.SupportReplyable("test-email.html"),
 	}
 
 	if _, err := a.inner.Send(ctx, msg); err != nil {

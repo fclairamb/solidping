@@ -10,6 +10,10 @@ import {
   type Ipv6Capability,
 } from "@/components/shared/ipv6-capability";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
+import {
+  calculateReopenCooldownSeconds,
+  describeReopenCooldown,
+} from "@/lib/reopen-cooldown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,13 +78,18 @@ const globalDefaultPeriodSeconds = 60;
 // Server-enforced global floor (spec 2026-07-01-04): heavy types carry their
 // own minPeriodSeconds via the check-types API (browser 60s, js 30s).
 const globalMinPeriodSeconds = 10;
+// Mirrors defaultCooldownMultiplier in
+// server/internal/handlers/incidents/service.go — used when the Reopen
+// Cooldown Multiplier field is left blank, both for the computed hint and
+// the flappingSummary line below.
+const defaultReopenCooldownMultiplier = 5;
 
-const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
+export const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
   { value: "tcp", label: "TCP", description: "Check TCP port connectivity" },
   { value: "icmp", label: "ICMP", description: "Ping hosts using ICMP" },
   { value: "dns", label: "DNS", description: "Verify DNS resolution" },
-  { value: "ssl", label: "SSL", description: "Check SSL certificate validity" },
+  { value: "ssl", label: "TLS", description: "Check TLS certificate validity" },
   { value: "heartbeat", label: "Heartbeat", description: "Monitor via incoming pings" },
   { value: "email", label: "Email", description: "Receive status updates via incoming email" },
   { value: "domain", label: "Domain", description: "Monitor domain name expiration" },
@@ -230,6 +239,8 @@ export interface CheckFormData {
   regions?: string[];
   /** "" clears an existing override back to automatic; omit to leave unchanged. */
   regionSpread?: string;
+  /** `inherit` | `on` | `off` — the per-check path-trace policy. */
+  tracerouteOnFailure?: string;
   reopenCooldownMultiplier?: number | null;
   flappingWindowSeconds?: number | null;
   flapBackoffFactor?: number | null;
@@ -468,6 +479,9 @@ export function CheckForm({
   const [regionSpreadValue, setRegionSpreadValue] = useState(initialRegionSpread?.value ?? "");
   const [regionSpreadUnit, setRegionSpreadUnit] = useState<RegionSpreadUnit>(
     initialRegionSpread?.unit ?? "seconds",
+  );
+  const [tracerouteOnFailure, setTracerouteOnFailure] = useState(
+    initialData?.tracerouteOnFailure ?? "inherit",
   );
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [flappingWindowSeconds, setFlappingWindowSeconds] = useState(initialData?.flappingWindowSeconds?.toString() ?? "");
@@ -760,6 +774,10 @@ export function CheckForm({
                 : (mode === "edit" ? "" : undefined),
             }
           : {}),
+        // Always sent, including "inherit": it is the only way to put a check
+        // that carries an explicit on/off back under the org default, and an
+        // omitted field means "leave unchanged" on PATCH.
+        tracerouteOnFailure,
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         ...(flappingWindowSeconds !== "" ? { flappingWindowSeconds: parseInt(flappingWindowSeconds, 10) } : {}),
         ...(flapBackoffFactor !== "" ? { flapBackoffFactor: parseInt(flapBackoffFactor, 10) } : {}),
@@ -839,8 +857,21 @@ export function CheckForm({
     (parseInt(flappingWindowSeconds, 10) || 0) > 0
       ? formatDuration(parseInt(flappingWindowSeconds, 10))
       : "6h";
-  const flappingSummary = `window ${flappingWindowLabel}, cooldown ×${
-    reopenCooldownMultiplier.trim() || "5"
+  // The actual window, not the bare multiplier: a summary reading
+  // "cooldown ×60" told the user nothing about the 30-min clamp it silently
+  // hits on a 1-min check (spec 2026-08-24-05).
+  const reopenCooldownMultiplierValue =
+    reopenCooldownMultiplier.trim() !== ""
+      ? parseInt(reopenCooldownMultiplier, 10) || 0
+      : defaultReopenCooldownMultiplier;
+  const reopenCooldownResult = calculateReopenCooldownSeconds(
+    reopenCooldownMultiplierValue,
+    regionPeriodSeconds,
+  );
+  const flappingSummary = `window ${flappingWindowLabel}, cooldown ${
+    reopenCooldownResult.seconds > 0
+      ? formatDuration(reopenCooldownResult.seconds)
+      : "off"
   }${flappingCustomized ? "" : " (defaults)"}`;
 
   const timeoutError = getFieldError(fieldErrors, "timeout");
@@ -1417,6 +1448,9 @@ export function CheckForm({
                 <Label htmlFor="reopenCooldownMultiplier" className="text-sm">{t("form.reopenCooldown")}</Label>
                 <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.reopenCooldownHelp")}</p>
+                <p className="text-xs text-muted-foreground break-words" data-testid="reopen-cooldown-estimate">
+                  {describeReopenCooldown(reopenCooldownMultiplierValue, regionPeriodSeconds, t)}
+                </p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="flappingWindowSeconds" className="text-sm">{t("form.flappingWindow")}</Label>
@@ -1519,6 +1553,34 @@ export function CheckForm({
                   )}
                 </div>
               )}
+              <div className="mt-4 space-y-2" data-testid="check-traceroute-section">
+                <Label htmlFor="check-traceroute">
+                  {t("form.tracerouteOnFailure")}
+                </Label>
+                <Select
+                  value={tracerouteOnFailure}
+                  onValueChange={setTracerouteOnFailure}
+                >
+                  <SelectTrigger
+                    id="check-traceroute"
+                    data-testid="check-traceroute-select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inherit">
+                      {t("form.tracerouteInherit")}
+                    </SelectItem>
+                    <SelectItem value="on">{t("form.tracerouteOn")}</SelectItem>
+                    <SelectItem value="off">
+                      {t("form.tracerouteOff")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t("form.tracerouteOnFailureHelp")}
+                </p>
+              </div>
               {AdvancedTypeFields && (
                 <div className="mt-4">
                   <AdvancedTypeFields
