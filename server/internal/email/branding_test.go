@@ -397,3 +397,79 @@ func TestBranding_HelperClassesWinOverTheGenericContentRules(t *testing.T) {
 	r.Contains(update, "text-transform:uppercase")
 	r.Contains(update, "margin:0 0 6px")
 }
+
+// TestApplyOrgBrandingWritesTheKeysBaseHTMLReads asserts the helper against
+// LITERAL key names, deliberately not against the KeyOrgName/KeyBrandName/
+// KeyOrgLogoURL constants it uses: a typo inside a constant would rename the
+// key on both sides at once and a constant-based assertion would happily
+// follow it, silently unbranding every template that goes through this helper.
+func TestApplyOrgBrandingWritesTheKeysBaseHTMLReads(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	logo := "/pub/assets/org-logo-uid"
+	viewModel := map[string]any{"Existing": "kept"}
+
+	ApplyOrgBranding(viewModel, "Acme Corp", &logo)
+
+	r.Equal("Acme Corp", viewModel["OrgName"])
+	r.Equal("Acme Corp", viewModel["BrandName"])
+	r.Equal("/pub/assets/org-logo-uid", viewModel["OrgLogoURL"])
+	r.Equal("kept", viewModel["Existing"], "the helper must not clobber the caller's keys")
+
+	// A logo-less org writes an EMPTY value rather than omitting the key, so
+	// the wrapper's fallback path is taken explicitly. Presence is asserted
+	// separately from emptiness on purpose — a missing key is also "empty",
+	// and that is exactly the case this pins down.
+	logoless := map[string]any{}
+	ApplyOrgBranding(logoless, "Acme Corp", nil)
+
+	logoValue, present := logoless["OrgLogoURL"]
+	r.True(present, "the key must be written, not omitted")
+	r.Empty(logoValue)
+	r.Equal("Acme Corp", logoless["OrgName"])
+
+	// A nil view model is a no-op, not a panic: several callers build the map
+	// conditionally.
+	r.NotPanics(func() { ApplyOrgBranding(nil, "Acme Corp", &logo) })
+}
+
+// TestApplyOrgBrandingRendersThroughTheWrapper is the end-to-end half: the
+// keys the helper writes must be the keys base.html actually reads. It is what
+// catches a rename on either side — the six call sites (invitation, membership
+// request new/decision, paging nudge, custom-domain demotion, escalation) all
+// brand exclusively through this helper.
+//
+// The logo-less case is the positive control: it proves the assertion below is
+// about the ORG logo specifically and not satisfied by any <img> at all.
+func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
+	r.NoError(err)
+
+	logo := "/pub/assets/org-logo-uid"
+
+	branded := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
+	ApplyOrgBranding(branded, "Acme Corp", &logo)
+
+	_, html, _, err := formatter.Format("test-email.html", branded)
+	r.NoError(err)
+	r.Contains(html, brandingTestBaseURL+"/pub/assets/org-logo-uid")
+	r.Contains(html, `alt="Acme Corp"`)
+	r.Contains(html, "Acme Corp — sent by SolidPing")
+	r.NotContains(html, "/dash0/logo.png")
+
+	logoless := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
+	ApplyOrgBranding(logoless, "Acme Corp", nil)
+
+	_, plain, _, err := formatter.Format("test-email.html", logoless)
+	r.NoError(err)
+	r.NotContains(plain, "/pub/assets/org-logo-uid")
+	r.Contains(plain, brandingTestBaseURL+"/dash0/logo.png")
+	// The org is still named in the footer even without a logo.
+	r.Contains(plain, "Acme Corp — sent by SolidPing")
+}
