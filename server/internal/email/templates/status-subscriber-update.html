@@ -1,9 +1,9 @@
 {{define "subject"}}{{.Subject}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-    <p class="meta" style="text-transform:uppercase;letter-spacing:0.04em;margin:0 0 4px;">{{.Label}}</p>
+    <p class="eyebrow">{{.Label}}</p>
     <h1>{{.Title}}</h1>
-    {{if .BodyMarkdown}}<div style="white-space:pre-wrap;">{{.BodyMarkdown}}</div>{{end}}
+    {{if .BodyMarkdown}}<div class="prose">{{.BodyMarkdown}}</div>{{end}}
     {{if .LinkURL}}<p class="cta-wrap"><a href="{{.LinkURL}}">More information</a></p>{{end}}
     <p class="meta">You're receiving this because you subscribed to {{.PageName}}. <a href="{{.SubscriberUnsubscribeURL}}">Unsubscribe</a>.</p>
 {{end}}

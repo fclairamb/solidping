@@ -91,7 +91,12 @@ func TestFormatter_IncidentNumberOmittedWhenZero(t *testing.T) {
 	r.NoError(err)
 	r.NotContains(subject, "#0")
 	r.NotContains(subject, "#")
-	r.NotContains(html, "#0")
+	// The HTML assertion is anchored on ">#0" — i.e. "#0" rendered as element
+	// TEXT — rather than a bare "#0", which the branded palette's hex colors
+	// (#0f1a24, #0072d5, #0e8f2a) now match inside inlined style attributes.
+	// The number only ever appears as the content of a <td> or an <a>, so this
+	// still fails the moment a "#0" is rendered to the reader.
+	r.NotContains(html, ">#0")
 	r.NotContains(text, "Incident: #")
 }
 
