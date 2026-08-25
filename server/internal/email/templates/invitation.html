@@ -1,4 +1,5 @@
 {{define "subject"}}You're invited to join {{.OrgName}} on SolidPing{{end}}
+{{define "preheader"}}Join {{.OrgName}} as {{.Role}}. The invitation expires in {{.ExpiresIn}}.{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <h1>You're invited to {{.OrgName}}</h1>

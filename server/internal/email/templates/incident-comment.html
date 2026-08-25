@@ -1,4 +1,5 @@
 {{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[COMMENT] {{.CheckName}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{.CommentAuthor}} left a note on the {{.CheckName}} incident.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "comment" "Label" "Comment"}}{{end}}
 {{define "content"}}
@@ -10,11 +11,11 @@
         <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value"><span class="mono">{{.IncidentUID}}</span></td></tr>
     </table>
     {{if .IncidentURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</div>
     {{end}}
+    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
 {{define "text"}}New comment on {{.CheckName}}
 

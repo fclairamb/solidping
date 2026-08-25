@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"reflect"
 	"strings"
+	texttemplate "text/template"
 
 	"github.com/vanng822/go-premailer/premailer"
 )
@@ -259,6 +260,40 @@ func (f *TemplateFormatter) parseTemplate(templateName string) (*template.Templa
 	return tmpl, nil
 }
 
+// parseTextTemplate parses the same two files as parseTemplate, but with
+// text/template rather than html/template.
+//
+// The subject and the plaintext alternative are NOT HTML, and rendering them
+// through html/template escapes every value it interpolates: a check named
+// "Search & Discovery" arrives as "Search &amp; Discovery" — in the SUBJECT
+// LINE, where the reader sees it before opening anything, and again in the
+// plaintext part that text-only clients and screen readers display. Literal
+// template text is untouched by the escaper, which is why this went unnoticed:
+// it only corrupts values, and only those carrying & < > " or '.
+func (f *TemplateFormatter) parseTextTemplate(templateName string) (*texttemplate.Template, error) {
+	baseContent, err := templateFS.ReadFile("templates/base.html")
+	if err != nil {
+		return nil, fmt.Errorf("reading base template: %w", err)
+	}
+
+	templateContent, err := templateFS.ReadFile("templates/" + templateName)
+	if err != nil {
+		return nil, fmt.Errorf("reading template %s: %w", templateName, err)
+	}
+
+	tmpl, err := texttemplate.New("base.html").Funcs(f.funcMap).Parse(string(baseContent))
+	if err != nil {
+		return nil, fmt.Errorf("parsing base template: %w", err)
+	}
+
+	tmpl, err = tmpl.New(templateName).Parse(string(templateContent))
+	if err != nil {
+		return nil, fmt.Errorf("parsing template %s: %w", templateName, err)
+	}
+
+	return tmpl, nil
+}
+
 // Format renders a template with the given data and returns the rendered
 // subject (from a {{define "subject"}} block, or "" when the template has
 // none), the HTML body with inlined CSS, and a plaintext alternative (from a
@@ -270,12 +305,17 @@ func (f *TemplateFormatter) Format(templateName string, data any) (string, strin
 		return "", "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
 	}
 
-	subject, err := f.renderSubject(tmpl, templateName, data)
+	textTmpl, err := f.parseTextTemplate(templateName)
+	if err != nil {
+		return "", "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
+	}
+
+	subject, err := f.renderSubject(textTmpl, templateName, data)
 	if err != nil {
 		return "", "", "", err
 	}
 
-	text, err := f.renderText(tmpl, templateName, data)
+	text, err := f.renderText(textTmpl, templateName, data)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -302,7 +342,7 @@ func (f *TemplateFormatter) Format(templateName string, data any) (string, strin
 // Returns "" when no subject block is defined — callers may then fall back
 // to a static subject.
 func (f *TemplateFormatter) renderSubject(
-	tmpl *template.Template, templateName string, data any,
+	tmpl *texttemplate.Template, templateName string, data any,
 ) (string, error) {
 	subjTmpl := tmpl.Lookup("subject")
 	if subjTmpl == nil {
@@ -321,7 +361,7 @@ func (f *TemplateFormatter) renderSubject(
 // Returns "" when no text block is defined — callers then send HTML-only,
 // exactly as before this block existed.
 func (f *TemplateFormatter) renderText(
-	tmpl *template.Template, templateName string, data any,
+	tmpl *texttemplate.Template, templateName string, data any,
 ) (string, error) {
 	textTmpl := tmpl.Lookup("text")
 	if textTmpl == nil {

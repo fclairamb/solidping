@@ -94,7 +94,7 @@ func incidentFixture() map[string]any {
 		"CheckName":            fixtureCheckName,
 		"CheckType":            "http",
 		"CheckURL":             "https://solidping.example/dash0/orgs/acme/checks/prod-api",
-		"StartedAt":            "2026-07-05 10:00:00",
+		"StartedAt":            "2026-07-05 10:00:00 UTC",
 		"IncidentUID":          fixtureIncidentUID,
 		"IncidentNumber":       fixtureIncidentNumber,
 		"IncidentURL":          incidentURL,
@@ -135,8 +135,8 @@ func burnIncidentFixture() map[string]any {
 func resolvedBurnIncidentFixture() map[string]any {
 	fixture := burnIncidentFixture()
 	fixture["AckURL"] = ""
-	fixture["ResolvedAt"] = "2026-07-05 10:15:00"
-	fixture["Duration"] = "15m0s"
+	fixture["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fixture["Duration"] = "15m"
 	fixture["BurnRate"] = "1.2x"
 
 	return fixture
@@ -148,8 +148,8 @@ func resolvedBurnIncidentFixture() map[string]any {
 func resolvedIncidentFixture() map[string]any {
 	fx := incidentFixture()
 	fx["AckURL"] = ""
-	fx["ResolvedAt"] = "2026-07-05 10:15:00"
-	fx["Duration"] = "15m0s"
+	fx["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fx["Duration"] = "15m"
 
 	return fx
 }
@@ -166,7 +166,7 @@ func escalationFixture() map[string]any {
 		"CheckURL":       "https://solidping.example/dash0/orgs/acme/checks/prod-api",
 		"IncidentNumber": fixtureIncidentNumber,
 		"IncidentURL":    incidentURL,
-		"StartedAt":      "2026-07-05 10:00:00",
+		"StartedAt":      "2026-07-05 10:00:00 UTC",
 		"FailureCount":   3,
 		keyDashboardURL:  fixtureDashboardURL,
 		"DocsURL":        "https://solidping.example/docs",
@@ -323,7 +323,7 @@ func acknowledgedIncidentFixture() map[string]any {
 	fixture["AckURL"] = ""
 	fixture["AckActor"] = "Alice Admin"
 	fixture["AckVia"] = "from the dashboard"
-	fixture["AcknowledgedAt"] = "2026-07-05 10:04:00"
+	fixture["AcknowledgedAt"] = "2026-07-05 10:04:00 UTC"
 
 	return fixture
 }

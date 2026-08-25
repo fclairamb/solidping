@@ -1,4 +1,5 @@
 {{define "subject"}}[escalation] {{.CheckName}} incident escalated{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}Nobody acknowledged in time — {{.CheckName}} has been escalated to you.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Escalated"}}{{end}}
 {{define "content"}}

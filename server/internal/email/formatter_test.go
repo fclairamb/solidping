@@ -629,3 +629,41 @@ func TestDict(t *testing.T) {
 	_, err = dict(1, "a")
 	r.ErrorIs(err, errDictKeyNotString)
 }
+
+// TestSubjectAndTextAreNotHTMLEscaped pins the split between the three parts
+// Format returns: only the HTML body is HTML.
+//
+// The whole template set is parsed by html/template, whose escaper rewrites
+// every INTERPOLATED value (literal template text is left alone, which is why
+// this stayed invisible for so long). A check named "Search & Discovery"
+// therefore reached the reader as "Search &amp; Discovery" — in the subject
+// line, before they even opened the mail, and again in the plaintext part.
+// Subject and text now render through text/template.
+//
+// The last assertion is the one that matters most: the HTML body must STILL be
+// escaped. Rendering everything as text would fix the subject and quietly turn
+// every user-controlled name in the HTML part into markup injection.
+func TestSubjectAndTextAreNotHTMLEscaped(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	const hostile = `Search & Discovery "prod" <b>`
+
+	viewModel := incidentViewModel()
+	viewModel["CheckName"] = hostile
+
+	subject, htmlBody, text, err := formatter.Format("incident-created.html", viewModel)
+	r.NoError(err)
+
+	r.Contains(subject, hostile, "the subject line is a mail header, not HTML")
+	r.NotContains(subject, "&amp;")
+	r.Contains(text, hostile, "the plaintext alternative is not HTML either")
+	r.NotContains(text, "&amp;")
+
+	r.NotContains(htmlBody, "<b>", "the HTML body must keep escaping interpolated values")
+	r.Contains(htmlBody, "&amp;")
+}

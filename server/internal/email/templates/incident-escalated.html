@@ -1,4 +1,5 @@
 {{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[ESCALATED] {{.CheckName}} incident escalated{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}Still down after {{.FailureCount}} failed checks — escalated to you.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Escalated"}}{{end}}
 {{define "content"}}
@@ -10,7 +11,6 @@
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value"><span class="mono">{{.IncidentUID}}</span></td></tr>
     </table>
     {{if or .IncidentURL .AckURL}}
     <table class="actions-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
@@ -27,6 +27,7 @@
     {{if .AckURL}}
     <p class="meta">This link is valid for 7 days. Following it confirms you have seen the incident.</p>
     {{end}}
+    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
 {{define "text"}}{{.CheckName}} incident escalated
 

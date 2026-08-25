@@ -1,4 +1,5 @@
 {{define "subject"}}Your request to join {{.OrgName}} was {{.Decision}}{{end}}
+{{define "preheader"}}Your request to join {{.OrgName}} was {{.Decision}}.{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <h1>Membership request {{.Decision}}</h1>
@@ -14,7 +15,7 @@
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing was rejected.</p>
     {{if .Reason}}
     <p>Reason from the admin:</p>
-    <p class="fallback">{{.Reason}}</p>
+    <blockquote class="quote">{{.Reason}}</blockquote>
     {{end}}
     <p class="meta">You can submit a new request after the cooldown period.</p>
     {{end}}

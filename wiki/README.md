@@ -71,6 +71,7 @@ Project-wide standards and naming rules.
 - [conventions/runners.md](conventions/runners.md) — Check & job runner pools: configuration, sizing, fetching architecture, node roles
 - [conventions/state-entries.md](conventions/state-entries.md) — State entries table for Slack thread metadata
 - [conventions/frontend-urls.md](conventions/frontend-urls.md) — Dashboard URL routing (`/dash/orgs/{orgSlug}/...`)
+- [conventions/email-templates.md](conventions/email-templates.md) — Transactional email templates: required blocks (preheader, text), the label/value fact grid, and why the subject and plaintext parts render through text/template
 - [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 - [conventions/files.md](conventions/files.md) — File storage seam: backends (local FS, S3), signed URLs, group conventions

@@ -1422,7 +1422,7 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		"CheckURL":            checkURL,
 		"IncidentNumber":      incident.Number,
 		"IncidentURL":         escalationIncidentURL(baseURL, orgSlug, incident),
-		"StartedAt":           incident.StartedAt.Format("2006-01-02 15:04:05"),
+		"StartedAt":           incident.StartedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		"FailureCount":        incident.FailureCount,
 		"DashboardURL":        escalationDashboardRootURL(baseURL),
 		"DocsURL":             escalationDocsURL(baseURL),

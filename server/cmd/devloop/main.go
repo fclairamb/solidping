@@ -123,7 +123,7 @@ func run(ctx context.Context, cfg config) error {
 	if err := addWatches(watcher, rootDir); err != nil {
 		return fmt.Errorf("watch setup: %w", err)
 	}
-	log.Printf("watching server/ for .go changes")
+	log.Printf("watching server/ for .go and .html changes")
 
 	rebuilds := make(chan struct{}, 1)
 	go debounce(ctx, watcher, rebuilds)
@@ -257,7 +257,11 @@ func shouldRebuild(event fsnotify.Event) bool {
 		return false
 	}
 	name := filepath.Base(event.Name)
-	if !strings.HasSuffix(name, ".go") {
+	// .html as well as .go: the email templates in internal/email/templates are
+	// //go:embed-ed into the binary, so editing one changes nothing until a
+	// rebuild — which made the /api/mgmt/email-preview loop (whose entire point
+	// is iterating on those templates) silently serve the previous version.
+	if !strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, ".html") {
 		return false
 	}
 	if strings.HasSuffix(name, "_test.go") {

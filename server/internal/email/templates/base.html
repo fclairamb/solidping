@@ -3,6 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- iOS Mail otherwise re-flows (and shrinks) the whole message on its own. -->
+    <meta name="x-apple-disable-message-reformatting">
+    <!-- Stops clients auto-linking incident ids, durations and dates as phone
+         numbers / addresses, which turns them blue-underlined mid-sentence. -->
+    <meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
+    <!-- Dark mode is out of scope by design (see the spec), but "no dark styles"
+         is NOT the same as "renders in light": Apple Mail, Outlook.com and
+         Gmail's Android app auto-INVERT a light-only email, which turns the
+         white card grey, the navy header washed-out, and — worst — recolors the
+         status banner that carries the whole meaning of an incident alert.
+         Declaring light-only opts out of that forced inversion, so the design
+         below is what actually reaches the reader. -->
+    <meta name="color-scheme" content="light only">
+    <meta name="supported-color-schemes" content="light only">
     <title>SolidPing</title>
     <style>
         /* SolidPing email palette. Mirrors the product tokens in
@@ -11,9 +25,16 @@
            #DDE2E7, muted text #55606B — flattened to hex because email
            clients have neither CSS custom properties nor oklch().
            Dark mode is deliberately out of scope (see the spec): there is no
-           prefers-color-scheme block here on purpose. */
-        body { margin: 0; padding: 0; background-color: #f0f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.55; }
-        table { border-collapse: collapse; }
+           prefers-color-scheme block here on purpose — the color-scheme
+           declarations above pin the light rendering instead. */
+        :root { color-scheme: light only; supported-color-schemes: light only; }
+        /* text-size-adjust: iOS/Windows Phone bump small text up on their own,
+           which breaks the label/value column widths in .details-table.
+           mso-line-height-rule:exactly makes Outlook honour line-height
+           instead of adding its own leading. */
+        body { margin: 0; padding: 0; background-color: #f0f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.55; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; mso-line-height-rule: exactly; }
+        table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { border: 0; outline: none; -ms-interpolation-mode: bicubic; }
         .wrapper { width: 100%; background-color: #f0f4f8; padding: 32px 12px; }
         .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(15,26,36,0.05), 0 2px 4px -2px rgba(15,26,36,0.05); }
         /* Header: clean dark navy band matching dashboard chrome */
@@ -28,6 +49,10 @@
         .header-org-logo { display: block; border: 0; outline: none; max-height: 40px; }
         .header-attribution { vertical-align: middle; }
         .header-wordmark { color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+        /* Accent rule under the header, shown on mail that carries no status
+           banner. Height comes from the spacer cell's font-size/line-height
+           rather than CSS height, which Outlook ignores on a <td>. */
+        .accent-bar { background-color: #0072d5; font-size: 0; line-height: 0; height: 3px; }
         /* Status banner — full-width crisp status indicator */
         .status-banner { padding: 12px 32px; text-align: left; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
         .status-banner a { color: inherit; text-decoration: underline; }
@@ -54,7 +79,7 @@
         /* Bulletproof table-based buttons */
         .btn-table { border-collapse: separate; }
         .btn-table td { border-radius: 6px; text-align: center; }
-        .btn { display: inline-block; padding: 11px 22px; text-decoration: none; font-weight: 600; font-size: 14px; border-radius: 6px; }
+        .btn { display: inline-block; padding: 11px 22px; text-decoration: none; font-weight: 600; font-size: 14px; border-radius: 6px; mso-padding-alt: 0; }
         .btn-primary td { background-color: #0072d5; }
         .btn-primary a.btn { color: #ffffff !important; }
         .btn-success td { background-color: #16a34a; }
@@ -64,28 +89,76 @@
         /* Legacy single-<a> CTA classes */
         .cta { display: inline-block; padding: 11px 22px; background-color: #0072d5; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; }
         .cta-success { background-color: #16a34a; }
-        .details-table { width: 100%; margin: 16px 0 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+        /* border-collapse: SEPARATE (against the global table rule): with
+           collapse, the cells' own 1px bottom borders win the shared edges and
+           the table's outer border is only half-drawn — the grid ended at a
+           ragged right edge with no bottom rule. Separate + zero spacing draws
+           the full rounded box and clips the label column's grey at the
+           corners. */
+        .details-table { width: 100%; margin: 16px 0 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
         .details-table td { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
         .details-table tr:last-child td { border-bottom: none; }
         .details-table td.label { color: #64748b; width: 34%; background-color: #f8fafc; font-weight: 500; border-right: 1px solid #f1f5f9; }
         .details-table td.value { color: #0f172a; font-weight: 500; }
+        /* <th> falls back to the label styling: a browser's default <th> is
+           centered, bold and unpadded, which silently wrecks the two-column
+           grid when a template reaches for the semantic tag (uptime-report.html
+           did exactly that). Styling it costs nothing and keeps the failure
+           mode invisible. */
+        .details-table th { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; text-align: left; color: #64748b; width: 34%; background-color: #f8fafc; font-weight: 500; border-right: 1px solid #f1f5f9; }
+        .details-table tr:last-child th { border-bottom: none; }
+        /* Headline figure — one number that carries the mail (report totals). */
+        .metric { margin: 16px 0 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #f8fafc; padding: 20px 24px; text-align: center; border-collapse: separate; border-spacing: 0; }
+        .metric-value { display: block; font-size: 34px; line-height: 1.15; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; }
+        .metric-label { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; margin-top: 6px; }
+        /* Inline state pill, e.g. an SLO's health next to its attainment. */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+        .badge-ok { background-color: #dcfce7; color: #166534; }
+        .badge-warn { background-color: #fef3c7; color: #92400e; }
+        .badge-bad { background-color: #fee2e2; color: #991b1b; }
+        .badge-neutral { background-color: #f1f5f9; color: #475569; }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569; }
         .fallback { font-size: 13px; color: #334155; word-break: break-all; padding: 8px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
         .meta { font-size: 13px; color: #64748b; margin-top: 16px; line-height: 1.5; }
         .content p.meta { margin: 16px 0 16px; }
+        /* Reference line for support (incident uid and friends): present, but
+           never competing with the facts a human acts on. */
+        .content p.footnote { font-size: 12px; color: #94a3b8; margin: 20px 0 0; padding-top: 14px; border-top: 1px solid #f1f5f9; line-height: 1.5; }
+        .content p.footnote .mono { font-size: 12px; color: #94a3b8; }
         .footer { padding: 24px 32px; background-color: #f8fafc; color: #64748b; font-size: 12px; text-align: center; border-top: 1px solid #e2e8f0; line-height: 1.6; }
         .footer a { color: #475569; text-decoration: underline; }
         .footer p { margin: 0 0 8px; }
+        .footer p:last-child { margin: 0; }
         @media (max-width: 480px) {
             .content { padding: 24px 20px; }
             .header { padding: 18px 20px; }
             .status-banner { padding: 12px 20px; }
             .footer { padding: 20px 20px; }
-            .details-table td.label { width: 40%; }
+            .details-table td.label, .details-table th { width: 40%; }
+            .content h1 { font-size: 20px; }
+            .metric { padding: 18px 16px; }
+            .metric-value { font-size: 30px; }
+            /* Stack the action buttons: two side-by-side CTAs overflow a
+               320px-wide viewport and get clipped by the card. */
+            .action-cell { display: block; width: 100%; padding-right: 0; }
+            .action-cell .btn-table, .action-cell .btn-table td { width: 100%; }
+            /* The <a> is the tap target, so it has to stretch too — a
+               full-width cell around a 190px link is a thumb-sized miss. */
+            .action-cell .btn-table a.btn { display: block; }
         }
     </style>
 </head>
 <body>
+    {{- /* Preheader: the grey line the inbox shows next to the subject. Without
+         one, clients scrape the first visible text — which for an alert is the
+         header wordmark, and for a CTA mail the fallback URL. The trailing
+         zero-width-joiner run stops the client pulling footer text in behind a
+         short preheader. Hidden with the standard belt-and-braces set (a real
+         inline style, not a class, so it survives clients that drop <style>). */ -}}
+    <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+        {{block "preheader" .}}{{end}}
+        &#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;
+    </div>
     <table class="wrapper" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center">
@@ -130,7 +203,10 @@
                             {{end}}
                         </td>
                     </tr>
-                    {{block "statusbanner" .}}{{end}}
+                    {{- /* Incident mail overrides this with a full-width status
+                         banner; everything else gets the thin accent rule, so no
+                         template ever renders a bare navy-to-white seam. */ -}}
+                    {{block "statusbanner" .}}<tr><td class="accent-bar">&nbsp;</td></tr>{{end}}
                     <tr>
                         <td class="content">
                             {{block "content" .}}{{end}}

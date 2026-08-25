@@ -1,21 +1,35 @@
 {{define "subject"}}{{.OrgName}} uptime report — {{.PeriodLabel}}{{end}}
+{{define "preheader"}}{{if .HasData}}{{.AvailabilityPct}}% availability{{else}}No availability data{{end}} · {{.IncidentCount}} incident(s) · {{.PeriodLabel}}.{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <h1>Uptime report</h1>
     <p class="meta">{{.ScopeLabel}} &middot; {{.PeriodLabel}}{{if .Timezone}} ({{.Timezone}}){{end}}</p>
 
+    {{/* The one number the whole digest is about, promoted out of the table:
+         a report that opens with a grid of equal-weight rows makes the reader
+         hunt for its own headline. */}}
+    <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td align="center">
+                <span class="metric-value">{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</span>
+                <span class="metric-label">Availability &middot; {{.PeriodLabel}}</span>
+            </td>
+        </tr>
+    </table>
+
+    {{/* label/value cells, NOT <th>: base.html styles the two-column grid on
+         td.label/td.value, and a bare <th> renders centered and unpadded. */}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><th>Overall availability</th><td>{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</td></tr>
-        <tr><th>Checks monitored</th><td>{{.CheckCount}}</td></tr>
-        <tr><th>Incidents</th><td>{{.IncidentCount}}{{if .LongestIncident}} &middot; longest {{.LongestIncident}}{{end}}</td></tr>
-        {{if .TotalDowntime}}<tr><th>Total downtime</th><td>{{.TotalDowntime}}</td></tr>{{end}}
+        <tr><td class="label">Checks monitored</td><td class="value">{{.CheckCount}}</td></tr>
+        <tr><td class="label">Incidents</td><td class="value">{{.IncidentCount}}{{if .LongestIncident}} &middot; longest {{.LongestIncident}}{{end}}</td></tr>
+        {{if .TotalDowntime}}<tr><td class="label">Total downtime</td><td class="value">{{.TotalDowntime}}</td></tr>{{end}}
     </table>
 
     {{if .Checks}}
     <h2 class="section-title">Per check</h2>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         {{range .Checks}}
-        <tr><th>{{.Name}}</th><td>{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</td></tr>
+        <tr><td class="label">{{.Name}}</td><td class="value">{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</td></tr>
         {{end}}
     </table>
     {{end}}
@@ -25,10 +39,10 @@
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         {{range .SLOs}}
         <tr>
-            <th>{{.Name}}</th>
-            <td>
-                {{if .HasData}}{{.AttainmentPct}}%{{else}}No data{{end}}
-                / target {{.TargetPct}}% &middot; {{.StateLabel}}
+            <td class="label">{{.Name}}</td>
+            <td class="value">
+                {{if .HasData}}{{.AttainmentPct}}%{{else}}No data{{end}} / target {{.TargetPct}}%
+                <span class="badge {{if eq .StateLabel "Healthy"}}badge-ok{{else if eq .StateLabel "At risk"}}badge-warn{{else if eq .StateLabel "Breached"}}badge-bad{{else}}badge-neutral{{end}}">{{.StateLabel}}</span>
                 {{if .HasData}}<br><span class="meta">Budget remaining: {{.BudgetRemaining}}</span>{{end}}
             </td>
         </tr>
