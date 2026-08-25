@@ -45,15 +45,20 @@
         .content h2 { margin: 0 0 16px; font-size: 19px; font-weight: 700; color: #0f1a24; letter-spacing: -0.01em; }
         .content p { margin: 0 0 16px; }
         .content a { color: #0072d5; }
+        /* The three helper classes below are written as `.content <tag>.<class>`
+           rather than as a bare class on purpose: `.content h2` / `.content p`
+           above are more specific than a lone class, and premailer resolves
+           specificity exactly like a browser — a bare `.section-title` would
+           lose its font-size and margins to the generic rule. */
         /* section-title is the in-body subhead (uptime report's "Per check" /
            "Objectives"). A class rather than a per-template inline style so a
            palette change lands everywhere at once. */
-        .section-title { margin: 24px 0 8px; font-size: 16px; font-weight: 700; color: #0f1a24; }
+        .content h2.section-title { margin: 24px 0 8px; font-size: 16px; font-weight: 700; color: #0f1a24; }
         /* eyebrow is the small uppercase kicker above a title (status
            subscriber updates: "New incident" / "Resolved"). */
-        .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #55606b; margin: 0 0 6px; }
+        .content p.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #55606b; margin: 0 0 6px; }
         /* prose preserves author-entered line breaks (status update bodies). */
-        .prose { white-space: pre-wrap; margin: 0 0 16px; }
+        .content .prose { white-space: pre-wrap; margin: 0 0 16px; }
         /* quote is the quoted-body block (incident comments). */
         .quote { margin: 16px 0; padding: 12px 16px; border-left: 4px solid #0072d5; background-color: #f4f7fa; color: #1e2b38; white-space: pre-wrap; }
         .cta-wrap { padding: 8px 0 4px; }
@@ -78,6 +83,10 @@
         .details-table td.value { color: #1e2b38; font-weight: 500; }
         .fallback { font-size: 13px; color: #3d4a57; word-break: break-all; padding: 8px 12px; background-color: #f4f7fa; border: 1px solid #dde2e7; border-radius: 4px; font-family: 'SF Mono', Menlo, Consolas, monospace; }
         .meta { font-size: 13px; color: #55606b; margin-top: 24px; }
+        /* Same specificity story as the helpers above: without this, `.content p`
+           re-declares the margin shorthand after .meta's margin-top and the
+           note loses its separation from the block above it. */
+        .content p.meta { margin: 24px 0 16px; }
         .footer { padding: 20px 32px 28px; background-color: #f7f9fc; color: #55606b; font-size: 12px; text-align: center; border-top: 1px solid #e6ebf0; }
         .footer a { color: #3d4a57; text-decoration: underline; }
         .footer p { margin: 0 0 8px; }

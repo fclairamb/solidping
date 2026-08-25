@@ -337,8 +337,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// The base URL is what makes the logo <img> in base.html absolute — the
 	// same base DashboardURL / DocsURL are built from, so an email never mixes
-	// two origins.
-	emailFormatter, err := email.NewFormatter(email.WithBaseURL(cfg.Server.BaseURL))
+	// two origins. It is resolved LATE (per render) rather than captured here:
+	// the systemconfig overlay that applies SP_BASE_URL and the DB-stored
+	// `server.base_url` parameter runs after this wiring, so capturing the
+	// value now would pin every email to the pre-overlay default.
+	emailFormatter, err := email.NewFormatter(
+		email.WithBaseURLFunc(func() string { return cfg.Server.BaseURL }),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create email formatter: %w", err)
 	}

@@ -29,24 +29,46 @@ const productLogoPath = "/dash0/logo.png"
 // TemplateFormatter implements the Formatter interface using Go templates.
 type TemplateFormatter struct {
 	funcMap template.FuncMap
-	// baseURL is the server base URL — the same one DashboardURL / DocsURL are
-	// built from. Absolute asset URLs (the logo in base.html's header) are
-	// derived from it. Empty is legal: the templates then fall back to their
-	// text wordmark instead of rendering a broken image.
-	baseURL string
+	// baseURL resolves the server base URL — the same one DashboardURL /
+	// DocsURL are built from. Absolute asset URLs (the logo in base.html's
+	// header) are derived from it. nil, or a func returning "", is legal: the
+	// templates then fall back to their text wordmark instead of rendering a
+	// broken image.
+	baseURL func() string
 }
 
 // Option configures a TemplateFormatter. Variadic rather than a new required
 // parameter so the many test constructions of a bare formatter keep compiling.
 type Option func(*TemplateFormatter)
 
-// WithBaseURL sets the server base URL used to build absolute asset URLs in
-// email bodies (logos). Pass config.Server.BaseURL — the same value that
-// produces the dashboard and docs links, so an email never mixes two origins.
+// WithBaseURL pins a fixed server base URL. Convenient for tests; production
+// wiring wants WithBaseURLFunc — see why there.
 func WithBaseURL(baseURL string) Option {
+	return WithBaseURLFunc(func() string { return baseURL })
+}
+
+// WithBaseURLFunc sets a LATE-BOUND server base URL, read on every render.
+//
+// Late binding is not a nicety here. config.Server.BaseURL is not final when
+// the formatter is constructed: NewServer builds it during wiring, and the
+// systemconfig overlay (which is what actually applies SP_BASE_URL and the
+// DB-stored `server.base_url` parameter) runs afterwards, in
+// InitializeSystemConfig. A value captured at construction is therefore the
+// pre-overlay default — every email would carry a localhost logo URL in
+// production. Closing over the *config.Config the overlay mutates fixes that.
+func WithBaseURLFunc(resolve func() string) Option {
 	return func(f *TemplateFormatter) {
-		f.baseURL = strings.TrimRight(baseURL, "/")
+		f.baseURL = resolve
 	}
+}
+
+// base returns the configured base URL with any trailing slash removed.
+func (f *TemplateFormatter) base() string {
+	if f.baseURL == nil {
+		return ""
+	}
+
+	return strings.TrimRight(f.baseURL(), "/")
 }
 
 // NewFormatter creates a new template formatter.
@@ -74,11 +96,12 @@ func NewFormatter(opts ...Option) (*TemplateFormatter, error) {
 // productLogoURL returns the absolute URL of the SolidPing logo, or "" when no
 // base URL is configured (in which case base.html renders its text wordmark).
 func (f *TemplateFormatter) productLogoURL() string {
-	if f.baseURL == "" {
+	base := f.base()
+	if base == "" {
 		return ""
 	}
 
-	return f.baseURL + productLogoPath
+	return base + productLogoPath
 }
 
 // absoluteURL turns a stored logo reference into something an email client can
@@ -101,11 +124,12 @@ func (f *TemplateFormatter) absoluteURL(value any) string {
 		return raw
 	}
 
-	if !strings.HasPrefix(raw, "/") || f.baseURL == "" {
+	base := f.base()
+	if !strings.HasPrefix(raw, "/") || base == "" {
 		return ""
 	}
 
-	return f.baseURL + raw
+	return base + raw
 }
 
 // stringify renders the handful of shapes a view-model value can arrive as

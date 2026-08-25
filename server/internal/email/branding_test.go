@@ -334,3 +334,66 @@ func TestFormatterFieldHelper(t *testing.T) {
 type unexportedFieldStruct struct {
 	value string
 }
+
+// TestBranding_BaseURLIsResolvedLate pins the late-binding contract behind
+// WithBaseURLFunc: config.Server.BaseURL is not final when the formatter is
+// constructed (the systemconfig overlay applies SP_BASE_URL afterwards), so
+// the formatter must read it per render, not capture it once.
+//
+// Without this, every production email would carry the pre-overlay default
+// (a localhost logo URL) — which is exactly the bug a side-car run surfaced.
+func TestBranding_BaseURLIsResolvedLate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	current := "http://localhost:4000"
+
+	formatter, err := NewFormatter(WithBaseURLFunc(func() string { return current }))
+	r.NoError(err)
+
+	_, before, _, err := formatter.Format("welcome.html", map[string]any{})
+	r.NoError(err)
+	r.Contains(before, "http://localhost:4000/dash0/logo.png")
+
+	// The overlay lands after construction.
+	current = "https://monitoring.acme.com/"
+
+	_, after, _, err := formatter.Format("welcome.html", map[string]any{})
+	r.NoError(err)
+	r.Contains(after, "https://monitoring.acme.com/dash0/logo.png")
+	r.NotContains(after, "localhost:4000")
+}
+
+// TestBranding_HelperClassesWinOverTheGenericContentRules guards a subtle
+// premailer trap: `.content h2` / `.content p` are MORE specific than a lone
+// helper class, so a bare `.section-title` silently loses its font-size and
+// margins to the generic rule once the CSS is inlined — the exact styling the
+// per-template inline styles used to provide. The helpers are therefore
+// declared as `.content h2.section-title` / `.content p.eyebrow`.
+func TestBranding_HelperClassesWinOverTheGenericContentRules(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
+	r.NoError(err)
+
+	_, report, _, err := formatter.Format("uptime-report.html", map[string]any{
+		"HasData": true, "OrgName": "Acme Corp", "PeriodLabel": "July 2026",
+		"Checks": []map[string]any{{"Name": "API", "HasData": true, "AvailabilityPct": "99.9"}},
+	})
+	r.NoError(err)
+	// The section subhead keeps its own size, not the generic .content h2 19px.
+	r.Contains(report, "font-size:16px")
+	r.Contains(report, "margin:24px 0 8px")
+
+	_, update, _, err := formatter.Format("status-subscriber-update.html", map[string]any{
+		"Subject": "s", "Label": "New incident", "Title": "T", "BodyMarkdown": "B",
+		"PageName": "Acme Status",
+	})
+	r.NoError(err)
+	// The eyebrow keeps its uppercase treatment and its tight bottom margin.
+	r.Contains(update, "text-transform:uppercase")
+	r.Contains(update, "margin:0 0 6px")
+}
