@@ -142,18 +142,20 @@ function Consumer({
    * hook with `undefined` until useCheck resolves the check's period. */
   periodMs?: number;
 }) {
-  const { data, isLoading, rawError, rawPending } = useChartWindowResults(
-    "acme",
-    "check-1",
-    { timeRange: "month", periodMs },
-    { rawRefetchInterval },
-  );
+  const { data, isLoading, rawError, rawPending, isEmptyPending } =
+    useChartWindowResults(
+      "acme",
+      "check-1",
+      { timeRange: "month", periodMs },
+      { rawRefetchInterval },
+    );
 
   return (
     <>
       <div data-testid="loading">{String(isLoading)}</div>
       <div data-testid="rawPending">{String(rawPending)}</div>
       <div data-testid="rawError">{rawError ? "error" : "none"}</div>
+      <div data-testid="isEmptyPending">{String(isEmptyPending)}</div>
       <div data-testid="uids">{data.data.map((r) => r.uid).join(",")}</div>
     </>
   );
@@ -391,5 +393,75 @@ describe("useChartWindowResults", () => {
     // (The 3 s budget this call used to carry inline is now the file default.)
     await waitFor(() => expect(rawRequests().length).toBeGreaterThanOrEqual(3));
     expect(rollupRequests()).toHaveLength(1);
+  });
+
+  // Spec 2026-08-25-03: `isEmptyPending` is the honest "do we actually know
+  // this window is empty" signal a caller must gate a terminal "no data"
+  // state on, instead of `chartData.length === 0` alone.
+  describe("isEmptyPending", () => {
+    it("is true while raw is held back (disabled) behind pass 1", async () => {
+      mocks.apiFetch.mockImplementation(async (path: string) => {
+        const params = paramsOf(path);
+        issued.push(params);
+        if (params.get("periodType") !== "raw") {
+          // Pass 1 never settles in this test.
+          return new Promise(() => {});
+        }
+        return { data: rawRows(), pagination: {} };
+      });
+      render(<Consumer periodMs={ONE_MINUTE} />, {
+        wrapper: wrapper(newClient()),
+      });
+
+      await waitFor(() => expect(rollupRequests()).toHaveLength(1));
+      // Raw must still be disabled — held back until pass 1 settles.
+      expect(rawRequests()).toHaveLength(0);
+      expect(screen.getByTestId("loading").textContent).toBe("true");
+      expect(screen.getByTestId("isEmptyPending").textContent).toBe("true");
+    });
+
+    it("is true while raw is in flight after pass 1 settled empty", async () => {
+      serve(1, { rollup: [], raw: () => new Promise(() => {}) });
+      render(<Consumer periodMs={ONE_MINUTE} />, {
+        wrapper: wrapper(newClient()),
+      });
+
+      // Pass 1 settled (isLoading false) — this is exactly the moment the
+      // bug shipped a false "no data available".
+      await waitFor(() =>
+        expect(screen.getByTestId("loading").textContent).toBe("false"),
+      );
+      expect(screen.getByTestId("rawPending").textContent).toBe("true");
+      expect(screen.getByTestId("isEmptyPending").textContent).toBe("true");
+      expect(screen.getByTestId("uids").textContent).toBe("");
+    });
+
+    it("is false once both passes have settled with rows", async () => {
+      serve(1);
+      render(<Consumer periodMs={ONE_MINUTE} />, {
+        wrapper: wrapper(newClient()),
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("uids").textContent).toContain("r-eu"),
+      );
+      expect(screen.getByTestId("isEmptyPending").textContent).toBe("false");
+    });
+
+    it("is false once both passes have settled with nothing — the genuine empty case", async () => {
+      // Positive control: without this, a hook that reports isEmptyPending
+      // stuck at `true` forever would still pass the two cases above.
+      serve(1, { rollup: [], raw: async () => ({ data: [], pagination: {} }) });
+      render(<Consumer periodMs={ONE_MINUTE} />, {
+        wrapper: wrapper(newClient()),
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("isEmptyPending").textContent).toBe("false"),
+      );
+      expect(screen.getByTestId("loading").textContent).toBe("false");
+      expect(screen.getByTestId("rawPending").textContent).toBe("false");
+      expect(screen.getByTestId("uids").textContent).toBe("");
+    });
   });
 });
