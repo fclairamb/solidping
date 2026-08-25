@@ -1,9 +1,11 @@
 {{define "subject"}}Set up your alert notifications for {{.OrgName}}{{end}}
+{{define "preheader"}}Add a contact so SolidPing can reach you the moment something breaks.{{end}}
 {{template "base.html" .}}
 {{define "content"}}
+    <h1>Choose how SolidPing reaches you</h1>
     <p>Hi,</p>
     <p>An administrator of <strong>{{.OrgName}}</strong> asked you to set up how SolidPing should reach you when something breaks.</p>
-    <p class="cta-wrap">{{template "button" dict "URL" .NotificationsURL "Label" "Add and verify a contact" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .NotificationsURL "Label" "Add and verify a contact" "Variant" "primary"}}</div>
     <p>Until you verify a contact, alerts can only reach you by email.</p>
 {{end}}
 {{define "text"}}Hi,

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"reflect"
 	"strings"
+	texttemplate "text/template"
 
 	"github.com/vanng822/go-premailer/premailer"
 )
@@ -20,22 +22,188 @@ var (
 	errDictKeyNotString = errors.New("dict: key is not a string")
 )
 
+// productLogoPath is the SolidPing logo served on every host, embedded from
+// res/logo.png via `make sync-brand-assets`. PNG rather than SVG on purpose:
+// SVG support in mail clients is patchy to non-existent.
+const productLogoPath = "/dash0/logo.png"
+
 // TemplateFormatter implements the Formatter interface using Go templates.
 type TemplateFormatter struct {
 	funcMap template.FuncMap
+	// baseURL resolves the server base URL — the same one DashboardURL /
+	// DocsURL are built from. Absolute asset URLs (the logo in base.html's
+	// header) are derived from it. nil, or a func returning "", is legal: the
+	// templates then fall back to their text wordmark instead of rendering a
+	// broken image.
+	baseURL func() string
+}
+
+// Option configures a TemplateFormatter. Variadic rather than a new required
+// parameter so the many test constructions of a bare formatter keep compiling.
+type Option func(*TemplateFormatter)
+
+// WithBaseURL pins a fixed server base URL. Convenient for tests; production
+// wiring wants WithBaseURLFunc — see why there.
+func WithBaseURL(baseURL string) Option {
+	return WithBaseURLFunc(func() string { return baseURL })
+}
+
+// WithBaseURLFunc sets a LATE-BOUND server base URL, read on every render.
+//
+// Late binding is not a nicety here. config.Server.BaseURL is not final when
+// the formatter is constructed: NewServer builds it during wiring, and the
+// systemconfig overlay (which is what actually applies SP_BASE_URL and the
+// DB-stored `server.base_url` parameter) runs afterwards, in
+// InitializeSystemConfig. A value captured at construction is therefore the
+// pre-overlay default — every email would carry a localhost logo URL in
+// production. Closing over the *config.Config the overlay mutates fixes that.
+func WithBaseURLFunc(resolve func() string) Option {
+	return func(f *TemplateFormatter) {
+		f.baseURL = resolve
+	}
+}
+
+// base returns the configured base URL with any trailing slash removed.
+func (f *TemplateFormatter) base() string {
+	if f.baseURL == nil {
+		return ""
+	}
+
+	return strings.TrimRight(f.baseURL(), "/")
 }
 
 // NewFormatter creates a new template formatter.
-func NewFormatter() (*TemplateFormatter, error) {
-	funcMap := template.FuncMap{
+func NewFormatter(opts ...Option) (*TemplateFormatter, error) {
+	formatter := &TemplateFormatter{}
+
+	for _, opt := range opts {
+		opt(formatter)
+	}
+
+	formatter.funcMap = template.FuncMap{
 		"upper": strings.ToUpper,
 		"lower": strings.ToLower,
 		"dict":  dict,
+		"field": field,
+		// absURL and productLogoURL close over the formatter so templates never
+		// have to know the base URL — no view model carries it.
+		"absURL":         formatter.absoluteURL,
+		"productLogoURL": formatter.productLogoURL,
 	}
 
-	return &TemplateFormatter{
-		funcMap: funcMap,
-	}, nil
+	return formatter, nil
+}
+
+// productLogoURL returns the absolute URL of the SolidPing logo, or "" when no
+// base URL is configured (in which case base.html renders its text wordmark).
+func (f *TemplateFormatter) productLogoURL() string {
+	base := f.base()
+	if base == "" {
+		return ""
+	}
+
+	return base + productLogoPath
+}
+
+// absoluteURL turns a stored logo reference into something an email client can
+// actually load. Organization and status-page logos are stored either as an
+// external "https://…" URL or as a site-relative "/pub/assets/<uid>" path, and
+// a relative path in an email is simply a broken image — mail clients have no
+// origin to resolve it against.
+//
+// Anything that is neither absolute-http(s) nor site-relative returns "",
+// which the templates render as "no logo" rather than as a broken image. That
+// also means a `javascript:` or `data:` value stored by a hostile admin can
+// never reach an <img src>.
+func (f *TemplateFormatter) absoluteURL(value any) string {
+	raw := strings.TrimSpace(stringify(value))
+	if raw == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://") {
+		return raw
+	}
+
+	base := f.base()
+	if !strings.HasPrefix(raw, "/") || base == "" {
+		return ""
+	}
+
+	return base + raw
+}
+
+// stringify renders the handful of shapes a view-model value can arrive as
+// (string, *string, nil) as a plain string. Anything else yields "".
+func stringify(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	case *string:
+		if typed == nil {
+			return ""
+		}
+
+		return *typed
+	case fmt.Stringer:
+		return typed.String()
+	default:
+		return ""
+	}
+}
+
+// field looks a key up on a view model that may be either a map or a struct,
+// returning nil when it is absent.
+//
+// This exists to dodge the trap documented in supportreply.go: html/template
+// ERRORS on a missing struct field (while a missing map key is merely nil), and
+// the repo's view models are a mix of map[string]any and structs
+// (uptimereport.Data). A new `{{.OrgLogoURL}}` in base.html would therefore
+// break every struct-backed template until the field was added to each one —
+// silently, at send time. Every branding key base.html reads goes through this
+// helper instead, so a view model that does not carry it renders empty.
+func field(data any, name string) any {
+	if data == nil {
+		return nil
+	}
+
+	value := reflect.ValueOf(data)
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil
+		}
+
+		value = value.Elem()
+	}
+
+	// An if-chain rather than a switch on reflect.Kind: only two of the ~27
+	// kinds are meaningful here, and enumerating the rest to satisfy an
+	// exhaustiveness check would be noise.
+	if value.Kind() == reflect.Map {
+		if value.Type().Key().Kind() != reflect.String {
+			return nil
+		}
+
+		found := value.MapIndex(reflect.ValueOf(name).Convert(value.Type().Key()))
+		if !found.IsValid() {
+			return nil
+		}
+
+		return found.Interface()
+	}
+
+	if value.Kind() == reflect.Struct {
+		found := value.FieldByName(name)
+		if !found.IsValid() || !found.CanInterface() {
+			return nil
+		}
+
+		return found.Interface()
+	}
+
+	return nil
 }
 
 // dict builds a map[string]any from an alternating key/value argument list,
@@ -92,6 +260,40 @@ func (f *TemplateFormatter) parseTemplate(templateName string) (*template.Templa
 	return tmpl, nil
 }
 
+// parseTextTemplate parses the same two files as parseTemplate, but with
+// text/template rather than html/template.
+//
+// The subject and the plaintext alternative are NOT HTML, and rendering them
+// through html/template escapes every value it interpolates: a check named
+// "Search & Discovery" arrives as "Search &amp; Discovery" — in the SUBJECT
+// LINE, where the reader sees it before opening anything, and again in the
+// plaintext part that text-only clients and screen readers display. Literal
+// template text is untouched by the escaper, which is why this went unnoticed:
+// it only corrupts values, and only those carrying & < > " or '.
+func (f *TemplateFormatter) parseTextTemplate(templateName string) (*texttemplate.Template, error) {
+	baseContent, err := templateFS.ReadFile("templates/base.html")
+	if err != nil {
+		return nil, fmt.Errorf("reading base template: %w", err)
+	}
+
+	templateContent, err := templateFS.ReadFile("templates/" + templateName)
+	if err != nil {
+		return nil, fmt.Errorf("reading template %s: %w", templateName, err)
+	}
+
+	tmpl, err := texttemplate.New("base.html").Funcs(f.funcMap).Parse(string(baseContent))
+	if err != nil {
+		return nil, fmt.Errorf("parsing base template: %w", err)
+	}
+
+	tmpl, err = tmpl.New(templateName).Parse(string(templateContent))
+	if err != nil {
+		return nil, fmt.Errorf("parsing template %s: %w", templateName, err)
+	}
+
+	return tmpl, nil
+}
+
 // Format renders a template with the given data and returns the rendered
 // subject (from a {{define "subject"}} block, or "" when the template has
 // none), the HTML body with inlined CSS, and a plaintext alternative (from a
@@ -103,12 +305,17 @@ func (f *TemplateFormatter) Format(templateName string, data any) (string, strin
 		return "", "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
 	}
 
-	subject, err := f.renderSubject(tmpl, templateName, data)
+	textTmpl, err := f.parseTextTemplate(templateName)
+	if err != nil {
+		return "", "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
+	}
+
+	subject, err := f.renderSubject(textTmpl, templateName, data)
 	if err != nil {
 		return "", "", "", err
 	}
 
-	text, err := f.renderText(tmpl, templateName, data)
+	text, err := f.renderText(textTmpl, templateName, data)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -135,7 +342,7 @@ func (f *TemplateFormatter) Format(templateName string, data any) (string, strin
 // Returns "" when no subject block is defined — callers may then fall back
 // to a static subject.
 func (f *TemplateFormatter) renderSubject(
-	tmpl *template.Template, templateName string, data any,
+	tmpl *texttemplate.Template, templateName string, data any,
 ) (string, error) {
 	subjTmpl := tmpl.Lookup("subject")
 	if subjTmpl == nil {
@@ -154,7 +361,7 @@ func (f *TemplateFormatter) renderSubject(
 // Returns "" when no text block is defined — callers then send HTML-only,
 // exactly as before this block existed.
 func (f *TemplateFormatter) renderText(
-	tmpl *template.Template, templateName string, data any,
+	tmpl *texttemplate.Template, templateName string, data any,
 ) (string, error) {
 	textTmpl := tmpl.Lookup("text")
 	if textTmpl == nil {

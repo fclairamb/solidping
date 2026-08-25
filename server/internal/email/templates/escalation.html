@@ -1,4 +1,5 @@
 {{define "subject"}}[escalation] {{.CheckName}} incident escalated{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}Nobody acknowledged in time — {{.CheckName}} has been escalated to you.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Escalated"}}{{end}}
 {{define "content"}}
@@ -11,7 +12,7 @@
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
     </table>
     {{if .IncidentURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "Open incident" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "Open incident" "Variant" "primary"}}</div>
     {{end}}
     <p class="meta">Open the dashboard to acknowledge or resolve.</p>
 {{end}}

@@ -9,13 +9,10 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 )
 
-const (
-	defaultMembershipRequestCooldownDays = 7
-
-	emailKeyOrgName = "OrgName"
-)
+const defaultMembershipRequestCooldownDays = 7
 
 // MembershipRequestCreateRequest is the body of POST
 // /api/v1/auth/membership-requests.
@@ -394,15 +391,15 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 			continue
 		}
 
-		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html",
-			map[string]any{
-				emailKeyOrgName:  org.Name,
-				"RequesterName":  requesterName,
-				"RequesterEmail": requester.Email,
-				"Message":        msg,
-				"RequestsURL":    requestsURL,
-			},
-		)
+		viewModel := map[string]any{
+			"RequesterName":  requesterName,
+			"RequesterEmail": requester.Email,
+			"Message":        msg,
+			"RequestsURL":    requestsURL,
+		}
+		email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+
+		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html", viewModel)
 	}
 }
 
@@ -421,15 +418,15 @@ func (s *Service) notifyRequesterOfDecision(
 
 	dashboardURL := fmt.Sprintf("%s/dash0/orgs/%s", s.fullCfg.Server.BaseURL, org.Slug)
 
-	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html",
-		map[string]any{
-			emailKeyOrgName: org.Name,
-			"Decision":      decision,
-			"Role":          role,
-			"Reason":        reason,
-			"DashboardURL":  dashboardURL,
-		},
-	)
+	viewModel := map[string]any{
+		"Decision":     decision,
+		"Role":         role,
+		"Reason":       reason,
+		"DashboardURL": dashboardURL,
+	}
+	email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+
+	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html", viewModel)
 }
 
 func buildMembershipSummary(

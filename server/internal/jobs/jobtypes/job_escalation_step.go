@@ -1398,8 +1398,14 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 	baseURL := appBaseURL(jctx)
 
 	orgSlug := ""
+	orgName := ""
+
+	var orgLogoURL *string
+
 	if org, err := jctx.DBService.GetOrganization(ctx, incident.OrganizationUID); err == nil && org != nil {
 		orgSlug = org.Slug
+		orgName = org.Name
+		orgLogoURL = org.LogoURL
 	}
 
 	checkName := escalationUnknownCheckName
@@ -1411,16 +1417,20 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		checkURL = escalationCheckURL(baseURL, orgSlug, check)
 	}
 
-	return map[string]any{
+	viewModel := map[string]any{
 		viewModelKeyCheckName: checkName,
 		"CheckURL":            checkURL,
 		"IncidentNumber":      incident.Number,
 		"IncidentURL":         escalationIncidentURL(baseURL, orgSlug, incident),
-		"StartedAt":           incident.StartedAt.Format("2006-01-02 15:04:05"),
+		"StartedAt":           incident.StartedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		"FailureCount":        incident.FailureCount,
 		"DashboardURL":        escalationDashboardRootURL(baseURL),
 		"DocsURL":             escalationDocsURL(baseURL),
 	}
+	// The org row was loaded for the slug anyway, so branding is free here.
+	email.ApplyOrgBranding(viewModel, orgName, orgLogoURL)
+
+	return viewModel
 }
 
 // escalationUnknownCheckName is the fallback check name when the check has

@@ -1,21 +1,32 @@
 {{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[RECOVERED] {{.CheckName}} is back up{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{if .Duration}}Down for {{.Duration}}. {{end}}Checks are passing again — nothing left to do.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Recovered"}}{{end}}
 {{define "content"}}
     <h1>{{.CheckName}} recovered</h1>
     <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong> has been resolved.</p>
+    {{if .Duration}}
+    {{/* How long it was down is the one fact this mail exists to deliver. */}}
+    <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td align="center">
+                <span class="metric-value">{{.Duration}}</span>
+                <span class="metric-label">Total downtime</span>
+            </td>
+        </tr>
+    </table>
+    {{end}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">Check</td><td class="value">{{.CheckName}}</td></tr>
         <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         <tr><td class="label">Resolved at</td><td class="value">{{.ResolvedAt}}</td></tr>
-        {{if .Duration}}<tr><td class="label">Duration</td><td class="value">{{.Duration}}</td></tr>{{end}}
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
     </table>
     {{if .IncidentURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</div>
     {{end}}
+    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
 {{define "text"}}{{.CheckName}} recovered
 

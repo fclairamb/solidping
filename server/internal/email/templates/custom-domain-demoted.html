@@ -1,5 +1,7 @@
 {{define "subject"}}Your status page stopped serving on {{.Domain}}{{end}}
+{{define "preheader"}}DNS re-verification kept failing, so {{.Domain}} no longer serves your status page.{{end}}
 {{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Custom domain disabled"}}{{end}}
 {{define "content"}}
     <h1>{{.Domain}} is no longer serving your status page</h1>
     <p>Hi,</p>
@@ -11,14 +13,16 @@
       status page.
     </p>
     <p>The last check reported:</p>
-    <p class="meta"><code>{{.Diagnostic}}</code></p>
+    <p class="fallback">{{.Diagnostic}}</p>
     <p>
       To fix it: confirm the domain's CNAME record still points at the target
       shown on the status page's settings, then click <strong>Verify</strong>.
       If DNS starts resolving correctly again on its own, SolidPing will also
       restore the domain by itself after several consecutive successful checks.
     </p>
-    {{if .SettingsURL}}<p><a href="{{.SettingsURL}}">Open the status page settings</a></p>{{end}}
+    {{if .SettingsURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .SettingsURL "Label" "Open status page settings" "Variant" "primary"}}</div>
+    {{end}}
 {{end}}
 {{define "text"}}{{.Domain}} is no longer serving your status page
 

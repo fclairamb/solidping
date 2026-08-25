@@ -1,20 +1,21 @@
 {{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[COMMENT] {{.CheckName}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{.CommentAuthor}} left a note on the {{.CheckName}} incident.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "comment" "Label" "Comment"}}{{end}}
 {{define "content"}}
     <h1>New comment on {{.CheckName}}</h1>
     <p><strong>{{.CommentAuthor}}</strong> commented{{if .CommentSource}} {{.CommentSource}}{{end}} on the incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong>.</p>
-    <blockquote style="margin:16px 0;padding:12px 16px;border-left:4px solid #475569;background-color:#f1f5f9;white-space:pre-wrap;">{{.CommentText}}</blockquote>
+    <blockquote class="quote">{{.CommentText}}</blockquote>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">Check</td><td class="value">{{.CheckName}}</td></tr>
         <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
     </table>
     {{if .IncidentURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</div>
     {{end}}
+    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
 {{define "text"}}New comment on {{.CheckName}}
 

@@ -79,7 +79,13 @@ type SLORow struct {
 //
 //nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
 type Data struct {
-	OrgName     string `json:"OrgName"`
+	OrgName string `json:"OrgName"`
+	// BrandName and OrgLogoURL are the branding keys base.html reads (see
+	// email.ApplyOrgBranding). They live on the struct rather than being added
+	// to the map after the fact because this view model IS a struct: the
+	// report is marshaled into the email job's config and back.
+	BrandName   string `json:"BrandName,omitempty"`
+	OrgLogoURL  string `json:"OrgLogoURL,omitempty"`
 	PeriodLabel string `json:"PeriodLabel"`
 	ScopeLabel  string `json:"ScopeLabel"`
 	Timezone    string `json:"Timezone"`
@@ -137,6 +143,8 @@ func (b *Builder) Build(
 
 	data := &Data{
 		OrgName:     org.Name,
+		BrandName:   org.Name,
+		OrgLogoURL:  orgLogoURL(org),
 		PeriodLabel: periodLabel(schedule, window),
 		ScopeLabel:  scopeLabel(schedule, len(checks)),
 		Timezone:    schedule.Timezone,
@@ -438,16 +446,34 @@ func formatPct(pct float64) string {
 	return fmt.Sprintf("%.3f", math.Round(pct*1000)/1000)
 }
 
+// formatDuration renders a span for the report. A unit that lands on zero is
+// dropped rather than printed: "42m 0s" and "1h 0m" are noise next to the
+// figures they sit beside, and the digest is read, not parsed.
 func formatDuration(seconds int64) string {
 	span := time.Duration(seconds) * time.Second
 
 	switch {
 	case span >= 24*time.Hour:
-		return fmt.Sprintf("%dd %dh", int(span.Hours())/24, int(span.Hours())%24)
+		days, hours := int(span.Hours())/24, int(span.Hours())%24
+		if hours == 0 {
+			return fmt.Sprintf("%dd", days)
+		}
+
+		return fmt.Sprintf("%dd %dh", days, hours)
 	case span >= time.Hour:
-		return fmt.Sprintf("%dh %dm", int(span.Hours()), int(span.Minutes())%60)
+		hours, minutes := int(span.Hours()), int(span.Minutes())%60
+		if minutes == 0 {
+			return fmt.Sprintf("%dh", hours)
+		}
+
+		return fmt.Sprintf("%dh %dm", hours, minutes)
 	case span >= time.Minute:
-		return fmt.Sprintf("%dm %ds", int(span.Minutes()), int(span.Seconds())%60)
+		minutes, remainder := int(span.Minutes()), int(span.Seconds())%60
+		if remainder == 0 {
+			return fmt.Sprintf("%dm", minutes)
+		}
+
+		return fmt.Sprintf("%dm %ds", minutes, remainder)
 	default:
 		return fmt.Sprintf("%ds", seconds)
 	}
@@ -461,4 +487,14 @@ func formatSignedDuration(seconds int64) string {
 	}
 
 	return formatDuration(seconds)
+}
+
+// orgLogoURL reads the org's logo, "" when it has none. base.html treats an
+// empty value as "wear the SolidPing logo".
+func orgLogoURL(org *models.Organization) string {
+	if org == nil || org.LogoURL == nil {
+		return ""
+	}
+
+	return *org.LogoURL
 }

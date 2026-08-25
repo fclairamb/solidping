@@ -1,14 +1,15 @@
 {{define "subject"}}New membership request from {{.RequesterName}} on {{.OrgName}}{{end}}
+{{define "preheader"}}{{.RequesterName}} is waiting for an admin to approve their access.{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <h1>New membership request</h1>
     <p>Hi,</p>
     <p><strong>{{.RequesterName}}</strong> ({{.RequesterEmail}}) has asked to join <strong>{{.OrgName}}</strong> on SolidPing.</p>
     {{if .Message}}
-    <p class="fallback">{{.Message}}</p>
+    <blockquote class="quote">{{.Message}}</blockquote>
     {{end}}
     {{if .RequestsURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" "Review pending requests" "Variant" "primary"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" "Review pending requests" "Variant" "primary"}}</div>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.RequestsURL}}</p>
     {{end}}

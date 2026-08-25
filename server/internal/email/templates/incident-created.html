@@ -1,4 +1,5 @@
 {{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[DOWN] {{.CheckName}} is down{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}The {{.CheckType}} check has been failing since {{.StartedAt}}.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Down"}}{{end}}
 {{define "content"}}
@@ -9,15 +10,23 @@
         <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
     </table>
-    {{if .IncidentURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    {{if or .IncidentURL .AckURL}}
+    <table class="actions-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+            {{if .IncidentURL}}
+            <td class="action-cell">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</td>
+            {{end}}
+            {{if .AckURL}}
+            <td class="action-cell">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</td>
+            {{end}}
+        </tr>
+    </table>
     {{end}}
     {{if .AckURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</p>
     <p class="meta">This link is valid for 7 days. Following it confirms you have seen the incident.</p>
     {{end}}
+    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
 {{define "text"}}{{.CheckName}} is down
 

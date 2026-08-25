@@ -517,6 +517,56 @@ func (s *EmailSender) buildEmailContent(
 	return emailContent{subject: subject, htmlBody: html, textBody: text, template: templateName}, nil
 }
 
+// mailTimestamp renders a timestamp for an email body. Always in UTC and
+// always carrying the zone: a bare "2026-07-05 10:00:00" in an alert leaves the
+// reader guessing whether the outage started in their morning or the server's,
+// and an on-call reader correlating with logs cannot afford the guess. Matches
+// the format slo_burn.go already uses for projected exhaustion.
+func mailTimestamp(when time.Time) string {
+	return when.UTC().Format("2006-01-02 15:04:05 UTC")
+}
+
+// mailDuration renders an outage length for a human. time.Duration.String()
+// gives "15m0s" and "2h0m0s" — machine-exact, and now the headline figure of
+// the recovered mail, where a trailing zero unit just reads as noise.
+//
+// Seconds are kept below the hour (a 45-second blip and a 45-minute outage are
+// different incidents, and rounding the first up to "1m" hides what happened);
+// above it they are dropped, since nobody reads "2h13m7s" as anything but 2h13m.
+func mailDuration(span time.Duration) string {
+	if span < time.Second {
+		return "0s"
+	}
+
+	span = span.Round(time.Second)
+
+	switch {
+	case span < time.Minute:
+		return fmt.Sprintf("%ds", int(span.Seconds()))
+	case span < time.Hour:
+		minutes, seconds := int(span.Minutes()), int(span.Seconds())%60
+		if seconds == 0 {
+			return fmt.Sprintf("%dm", minutes)
+		}
+
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	case span < 24*time.Hour:
+		hours, minutes := int(span.Hours()), int(span.Minutes())%60
+		if minutes == 0 {
+			return fmt.Sprintf("%dh", hours)
+		}
+
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	default:
+		days, hours := int(span.Hours())/24, int(span.Hours())%24
+		if hours == 0 {
+			return fmt.Sprintf("%dd", days)
+		}
+
+		return fmt.Sprintf("%dd %dh", days, hours)
+	}
+}
+
 // buildIncidentViewModel builds the data map passed to the incident-*.html
 // templates: check/incident details, dashboard deep links (D3), the ack URL
 // (when the event is ackable), and the unsubscribe footer link (D4).
@@ -527,10 +577,16 @@ func (s *EmailSender) buildIncidentViewModel(
 	checkName string, payload *Payload, ackURL, unsubURL string,
 ) map[string]any {
 	viewModel := map[string]any{
+		// Branding: the org's name and logo, when the job runner could resolve
+		// them. base.html reads OrgLogoURL/BrandName through a nil-tolerant
+		// helper, so empty strings simply mean "wear the SolidPing logo".
+		"OrgName":        payload.OrgName,
+		"BrandName":      payload.OrgName,
+		"OrgLogoURL":     payload.OrgLogoURL,
 		"CheckName":      checkName,
 		"CheckType":      payload.Check.Type,
 		"CheckURL":       checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check),
-		"StartedAt":      payload.Incident.StartedAt.Format("2006-01-02 15:04:05"),
+		"StartedAt":      mailTimestamp(payload.Incident.StartedAt),
 		"IncidentUID":    payload.Incident.UID,
 		"IncidentNumber": payload.Incident.Number,
 		"IncidentURL":    incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
@@ -542,8 +598,8 @@ func (s *EmailSender) buildIncidentViewModel(
 	}
 
 	if payload.Incident.ResolvedAt != nil {
-		viewModel["ResolvedAt"] = payload.Incident.ResolvedAt.Format("2006-01-02 15:04:05")
-		viewModel["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Round(time.Second).String()
+		viewModel["ResolvedAt"] = mailTimestamp(*payload.Incident.ResolvedAt)
+		viewModel["Duration"] = mailDuration(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt))
 	}
 
 	if burn := BurnInfoFor(payload.Incident); burn != nil {
@@ -562,7 +618,7 @@ func (s *EmailSender) buildIncidentViewModel(
 	}
 
 	if payload.Incident.AcknowledgedAt != nil {
-		viewModel["AcknowledgedAt"] = payload.Incident.AcknowledgedAt.Format("2006-01-02 15:04:05")
+		viewModel["AcknowledgedAt"] = mailTimestamp(*payload.Incident.AcknowledgedAt)
 	}
 
 	if unsubURL != "" {

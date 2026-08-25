@@ -1,5 +1,7 @@
 package emailpreview
 
+import "sort"
+
 // Fixture constants shared across multiple templates below — pulled out
 // once a literal repeats within this file (goconst). keyOrgName/keyDashboardURL
 // are the map KEYS (not just the values), which repeat across several of the
@@ -10,6 +12,7 @@ const (
 	fixtureIncidentUID    = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
 	fixtureIncidentNumber = 42
 	fixtureCheckName      = "Production API"
+	fixtureStatusPageName = "Acme Status"
 
 	keyOrgName      = "OrgName"
 	keyDashboardURL = "DashboardURL"
@@ -48,6 +51,24 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"membership_request_new.html":      membershipRequestNewFixture,
 	"membership_request_decision.html": membershipRequestDecisionFixture,
 	"uptime-report.html":               uptimeReportFixture,
+	"incident-acknowledged.html":       acknowledgedIncidentFixture,
+	"incident-comment.html":            commentIncidentFixture,
+	"custom-domain-demoted.html":       customDomainDemotedFixture,
+}
+
+// FixtureTemplateNames returns, sorted, every template name this package can
+// build fixture data for. Exported so the index endpoint and
+// TestEveryShippedTemplateHasFixture read the same table the preview route
+// reads, rather than a second hand-maintained list that can drift from it.
+func FixtureTemplateNames() []string {
+	names := make([]string, 0, len(fixtureBuilders))
+	for name := range fixtureBuilders {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	return names
 }
 
 // fixtureFor returns the preview fixture data for a shipped template, and
@@ -73,7 +94,7 @@ func incidentFixture() map[string]any {
 		"CheckName":            fixtureCheckName,
 		"CheckType":            "http",
 		"CheckURL":             "https://solidping.example/dash0/orgs/acme/checks/prod-api",
-		"StartedAt":            "2026-07-05 10:00:00",
+		"StartedAt":            "2026-07-05 10:00:00 UTC",
 		"IncidentUID":          fixtureIncidentUID,
 		"IncidentNumber":       fixtureIncidentNumber,
 		"IncidentURL":          incidentURL,
@@ -114,8 +135,8 @@ func burnIncidentFixture() map[string]any {
 func resolvedBurnIncidentFixture() map[string]any {
 	fixture := burnIncidentFixture()
 	fixture["AckURL"] = ""
-	fixture["ResolvedAt"] = "2026-07-05 10:15:00"
-	fixture["Duration"] = "15m0s"
+	fixture["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fixture["Duration"] = "15m"
 	fixture["BurnRate"] = "1.2x"
 
 	return fixture
@@ -127,8 +148,8 @@ func resolvedBurnIncidentFixture() map[string]any {
 func resolvedIncidentFixture() map[string]any {
 	fx := incidentFixture()
 	fx["AckURL"] = ""
-	fx["ResolvedAt"] = "2026-07-05 10:15:00"
-	fx["Duration"] = "15m0s"
+	fx["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fx["Duration"] = "15m"
 
 	return fx
 }
@@ -145,7 +166,7 @@ func escalationFixture() map[string]any {
 		"CheckURL":       "https://solidping.example/dash0/orgs/acme/checks/prod-api",
 		"IncidentNumber": fixtureIncidentNumber,
 		"IncidentURL":    incidentURL,
-		"StartedAt":      "2026-07-05 10:00:00",
+		"StartedAt":      "2026-07-05 10:00:00 UTC",
 		"FailureCount":   3,
 		keyDashboardURL:  fixtureDashboardURL,
 		"DocsURL":        "https://solidping.example/docs",
@@ -176,8 +197,8 @@ func pagingNudgeFixture() map[string]any {
 // (statussubscribers.Handler.sendConfirmMail).
 func statusSubscriberConfirmFixture() map[string]any {
 	return map[string]any{
-		keySubject:   "Confirm your subscription to Acme Status",
-		"PageName":   "Acme Status",
+		keySubject:   "Confirm your subscription to " + fixtureStatusPageName,
+		"PageName":   fixtureStatusPageName,
 		"ConfirmURL": "https://solidping.example/api/v1/public/status-subscribers/confirm?token=preview-token",
 	}
 }
@@ -187,12 +208,12 @@ func statusSubscriberConfirmFixture() map[string]any {
 // three kinds, distinguished by Label/Title/Subject.
 func statusSubscriberUpdateFixture() map[string]any {
 	return map[string]any{
-		keySubject:     "[Acme Status] New incident: Elevated error rates",
+		keySubject:     "[" + fixtureStatusPageName + "] New incident: Elevated error rates",
 		"Label":        "New incident",
 		"Title":        "Elevated error rates",
 		"BodyMarkdown": "We are investigating elevated error rates on the API.",
 		"LinkURL":      "https://solidping.example/status0/acme/acme-status",
-		"PageName":     "Acme Status",
+		"PageName":     fixtureStatusPageName,
 		"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/" +
 			"unsubscribe?token=preview-token",
 	}
@@ -273,7 +294,7 @@ func uptimeReportFixture() map[string]any {
 		keyAvailability:   "99.950",
 		"CheckCount":      2,
 		"IncidentCount":   3,
-		"LongestIncident": "42m 0s",
+		"LongestIncident": "42m",
 		"TotalDowntime":   "1h 5m",
 		"Checks": []map[string]any{
 			{keyName: fixtureCheckName, keyHasData: true, keyAvailability: "99.980"},
@@ -291,5 +312,43 @@ func uptimeReportFixture() map[string]any {
 		},
 		keyDashboardURL:  fixtureDashboardURL,
 		"UnsubscribeURL": "https://solidping.example/unsubscribe?token=preview-unsub-token",
+	}
+}
+
+// acknowledgedIncidentFixture is the "somebody took it" half of the incident
+// lifecycle: the incident is still open, so the ack fields are set but there is
+// no AckURL left to click.
+func acknowledgedIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["AckURL"] = ""
+	fixture["AckActor"] = "Alice Admin"
+	fixture["AckVia"] = "from the dashboard"
+	fixture["AcknowledgedAt"] = "2026-07-05 10:04:00 UTC"
+
+	return fixture
+}
+
+// commentIncidentFixture carries a deliberately multi-line comment body so the
+// preview exercises the quote block's wrapping rather than a single short line.
+func commentIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["CommentAuthor"] = "Bob Builder"
+	fixture["CommentSource"] = "from Slack"
+	fixture["CommentText"] = "Upstream provider confirms a regional outage.\n" +
+		"Failing over to the secondary region now — next update in 15 minutes."
+
+	return fixture
+}
+
+// customDomainDemotedFixture covers the status-page custom-domain demotion
+// alert (customdomain.mailDemoted). Operator mail: no unsubscribe, no ack.
+func customDomainDemotedFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:       fixtureOrgName,
+		"StatusPageName": fixtureStatusPageName,
+		"Domain":         "status.acme.com",
+		"Diagnostic":     "CNAME lookup for status.acme.com returned NXDOMAIN",
+		"SettingsURL": "https://solidping.example/dash0/orgs/acme/status-pages/" +
+			"3f1c9a2e-77b1-4f0a-9a1e-6c2f0b8d4e51",
 	}
 }

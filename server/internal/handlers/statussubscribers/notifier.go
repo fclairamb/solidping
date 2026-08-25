@@ -50,6 +50,8 @@ func (n *Notifier) NotifyStatusUpdate(ctx context.Context, event *statusupdates.
 		LinkURL:             event.LinkURL,
 		PageName:            event.PageName,
 		IncidentUpdateCount: event.IncidentUpdateCount,
+		PageLogoURL:         event.PageLogoURL,
+		PageHideBranding:    event.PageHideBranding,
 	})
 }
 
@@ -68,6 +70,11 @@ type UpdateEvent struct {
 	// incident (excluding this one). Zero means this is the first update for
 	// the incident, which maps to the incident-opened template.
 	IncidentUpdateCount int
+	// PageLogoURL / PageHideBranding are the status page's own branding. They
+	// are the page's, never the organization's: a subscriber opted into a
+	// status page, so org branding must not leak into their mail.
+	PageLogoURL      *string
+	PageHideBranding bool
 }
 
 // Notifier fans a published status update out to confirmed subscribers, on
@@ -176,7 +183,7 @@ func (n *Notifier) sendOne(
 		data.LinkURL = *event.LinkURL
 	}
 
-	subject, htmlBody, textBody, err := n.formatter.Format("status-subscriber-update.html", map[string]any{
+	viewModel := map[string]any{
 		"Subject":                  kind.subject(data),
 		"Label":                    kind.label(),
 		"Title":                    data.Title,
@@ -184,7 +191,13 @@ func (n *Notifier) sendOne(
 		"LinkURL":                  data.LinkURL,
 		"PageName":                 data.PageName,
 		"SubscriberUnsubscribeURL": data.UnsubscribeURL,
-	})
+	}
+	// STATUS PAGE branding, and it honors hide_branding: no OrgName is set
+	// here on purpose, so neither the org's logo nor the "<org> — sent by
+	// SolidPing" footer line can reach a subscriber.
+	email.ApplyStatusPageBranding(viewModel, event.PageName, event.PageLogoURL, event.PageHideBranding)
+
+	subject, htmlBody, textBody, err := n.formatter.Format("status-subscriber-update.html", viewModel)
 	if err != nil {
 		n.logger.ErrorContext(ctx, "status subscriber fan-out: failed to format mail",
 			"subscriberUid", sub.UID, "statusPageUid", event.StatusPageUID, "error", err)

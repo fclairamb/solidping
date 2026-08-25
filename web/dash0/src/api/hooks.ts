@@ -3644,6 +3644,30 @@ export function useVersion() {
   });
 }
 
+/** One row of the dev-only email template catalog (GET /api/mgmt/email-preview). */
+export interface EmailTemplateSummary {
+  template: string;
+  subject: string;
+  hasText: boolean;
+  previewUrl: string;
+  error?: string;
+}
+
+/**
+ * Lists the previewable email templates. The endpoint only exists when the
+ * server runs with SP_RUNMODE=test — outside it the query 404s and the page
+ * shows its "not available" state rather than an error toast.
+ */
+export function useEmailPreviewIndex() {
+  return useQuery({
+    queryKey: ["email-preview-index"],
+    queryFn: () =>
+      apiFetch<{ data: EmailTemplateSummary[] }>("/api/mgmt/email-preview"),
+    staleTime: 30000,
+    retry: false,
+  });
+}
+
 export interface FeaturesResponse {
   bugReport: boolean;
 }

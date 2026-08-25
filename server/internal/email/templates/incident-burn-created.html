@@ -1,29 +1,52 @@
 {{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[BURN] {{.BurnPolicyLabel}}: {{.SLOName}} at {{.BurnRate}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{.BurnPolicyLabel}} policy fired at {{.BurnRate}} — {{.BurnBudgetRemaining}} of budget left.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Budget burning"}}{{end}}
 {{define "content"}}
     <h1>{{.SLOName}} is burning error budget</h1>
     <p>The <strong>{{.BurnPolicyLabel}}</strong> policy fired: the objective has been spending its error budget at <strong>{{.BurnRate}}</strong> over the last {{.BurnLongWindow}}, and still is over the last {{.BurnShortWindow}}.</p>
+    {{/* The two numbers an on-call reader acts on, promoted out of a
+         nine-row grid where every fact carried the same weight. */}}
+    <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td align="center" width="50%">
+                <span class="metric-value is-bad">{{.BurnRate}}</span>
+                <span class="metric-label">Burn rate &middot; {{.BurnLongWindow}}</span>
+            </td>
+            <td align="center" width="50%">
+                <span class="metric-value is-warn">{{.BurnBudgetRemaining}}</span>
+                <span class="metric-label">Budget remaining</span>
+            </td>
+        </tr>
+    </table>
+
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">Objective</td><td class="value">{{.SLOName}} ({{.BurnTarget}})</td></tr>
         <tr><td class="label">Policy</td><td class="value">{{.BurnPolicyLabel}} &middot; {{.BurnSeverity}}</td></tr>
         <tr><td class="label">Burn rate</td><td class="value">{{.BurnRate}} over {{.BurnLongWindow}}, {{.BurnShortRate}} over {{.BurnShortWindow}}</td></tr>
         <tr><td class="label">Threshold</td><td class="value">{{.BurnThreshold}}</td></tr>
-        <tr><td class="label">Budget remaining</td><td class="value">{{.BurnBudgetRemaining}}</td></tr>
         <tr><td class="label">Projected exhaustion</td><td class="value">{{.BurnProjectedExhaustion}}</td></tr>
         <tr><td class="label">Detected on</td><td class="value">{{.CheckName}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
-        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
     </table>
     <p class="meta">A burn-rate alert means the objective is being consumed faster than it can afford, not necessarily that anything is down right now.</p>
-    {{if .IncidentURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    {{if or .IncidentURL .AckURL}}
+    <table class="actions-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+            {{if .IncidentURL}}
+            <td class="action-cell">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</td>
+            {{end}}
+            {{if .AckURL}}
+            <td class="action-cell">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</td>
+            {{end}}
+        </tr>
+    </table>
     {{end}}
     {{if .AckURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</p>
     <p class="meta">This link is valid for 7 days. Following it confirms you have seen the incident.</p>
     {{end}}
+    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
 {{define "text"}}{{.SLOName}} is burning error budget
 

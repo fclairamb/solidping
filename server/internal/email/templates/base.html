@@ -3,73 +3,221 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- iOS Mail otherwise re-flows (and shrinks) the whole message on its own. -->
+    <meta name="x-apple-disable-message-reformatting">
+    <!-- Stops clients auto-linking incident ids, durations and dates as phone
+         numbers / addresses, which turns them blue-underlined mid-sentence. -->
+    <meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
+    <!-- Dark mode is out of scope by design (see the spec), but "no dark styles"
+         is NOT the same as "renders in light": Apple Mail, Outlook.com and
+         Gmail's Android app auto-INVERT a light-only email, which turns the
+         white card grey, the navy header washed-out, and — worst — recolors the
+         status banner that carries the whole meaning of an incident alert.
+         Declaring light-only opts out of that forced inversion, so the design
+         below is what actually reaches the reader. -->
+    <meta name="color-scheme" content="light only">
+    <meta name="supported-color-schemes" content="light only">
     <title>SolidPing</title>
     <style>
-        body { margin: 0; padding: 0; background-color: #f5f6f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #2d3748; line-height: 1.5; }
-        table { border-collapse: collapse; }
-        .wrapper { width: 100%; background-color: #f5f6f8; padding: 24px 12px; }
-        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-        .header { background-color: #1a1a2e; padding: 24px 32px; text-align: left; }
-        .header-logo { color: #ffffff; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
-        /* Status banner — a full-width background bar, not just colored text,
-           so the state is legible even with images/CSS partially stripped. */
-        .status-banner { padding: 14px 32px; text-align: left; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+        /* SolidPing email palette. Mirrors the product tokens in
+           web/dash0/src/index.css — --primary #0072D5, --brand (crimson,
+           reserved for chrome) #DA1D69, ink #0F1A24, wash #F0F4F8, border
+           #DDE2E7, muted text #55606B — flattened to hex because email
+           clients have neither CSS custom properties nor oklch().
+           Dark mode is deliberately out of scope (see the spec): there is no
+           prefers-color-scheme block here on purpose — the color-scheme
+           declarations above pin the light rendering instead. */
+        :root { color-scheme: light only; supported-color-schemes: light only; }
+        /* text-size-adjust: iOS/Windows Phone bump small text up on their own,
+           which breaks the label/value column widths in .details-table.
+           mso-line-height-rule:exactly makes Outlook honour line-height
+           instead of adding its own leading. */
+        body { margin: 0; padding: 0; background-color: #f0f4f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.55; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; mso-line-height-rule: exactly; }
+        table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { border: 0; outline: none; -ms-interpolation-mode: bicubic; }
+        .wrapper { width: 100%; background-color: #f0f4f8; padding: 32px 12px; }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e4e9ef; box-shadow: 0 1px 2px rgba(15,26,36,0.04), 0 12px 28px -8px rgba(15,26,36,0.14), 0 4px 10px -4px rgba(15,26,36,0.06); }
+        /* Header: clean dark navy band matching dashboard chrome */
+        /* Every gradient in this file is paired with the background-color it
+           degrades to: Outlook's Word engine ignores background-image outright,
+           and a gradient without a solid fallback there means white text on
+           white. */
+        .header { background-color: #0f1a24; background-image: linear-gradient(135deg, #16273a 0%, #0f1a24 55%, #0a121a 100%); padding: 22px 32px; text-align: left; }
+        .header-logo { color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: -0.015em; text-decoration: none; }
+        /* Logo images are remote <img> with a text alt — many clients block
+           remote images by default, and the alt (plus, for SolidPing mail, the
+           wordmark next to it) keeps the header legible when they do. */
+        .header-mark { width: 34px; padding-right: 12px; vertical-align: middle; }
+        .header-name { vertical-align: middle; }
+        .header-logo-img { display: block; border: 0; outline: none; text-decoration: none; }
+        .header-org-logo { display: block; border: 0; outline: none; max-height: 40px; }
+        .header-attribution { vertical-align: middle; }
+        .header-wordmark { color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+        /* Accent rule under the header, shown on mail that carries no status
+           banner. Height comes from the spacer cell's font-size/line-height
+           rather than CSS height, which Outlook ignores on a <td>. */
+        .accent-bar { background-color: #0072d5; background-image: linear-gradient(90deg, #0072d5 0%, #2b9bf4 45%, #da1d69 100%); font-size: 0; line-height: 0; height: 3px; }
+        /* Status banner — full-width crisp status indicator */
+        .status-banner { padding: 14px 32px; text-align: left; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+        .status-dot { font-size: 15px; line-height: 1; padding-right: 9px; opacity: 0.85; }
         .status-banner a { color: inherit; text-decoration: underline; }
-        .status-down { background-color: #d32f2f; color: #ffffff !important; }
-        .status-recovered { background-color: #16a34a; color: #ffffff !important; }
-        .status-escalated { background-color: #b45309; color: #ffffff !important; }
-        .status-reopened { background-color: #b45309; color: #ffffff !important; }
-        .status-comment { background-color: #475569; color: #ffffff !important; }
-        .status-acknowledged { background-color: #2563eb; color: #ffffff !important; }
-        .content { padding: 32px; color: #2d3748; font-size: 16px; }
-        .content h1 { margin: 0 0 16px; font-size: 22px; font-weight: 600; color: #1a1a2e; }
-        .content h2 { margin: 0 0 16px; font-size: 19px; font-weight: 600; color: #1a1a2e; }
+        .status-down { background-color: #dc2626; background-image: linear-gradient(135deg, #ef4444 0%, #dc2626 55%, #b91c1c 100%); color: #ffffff !important; }
+        .status-recovered { background-color: #16a34a; background-image: linear-gradient(135deg, #22c55e 0%, #16a34a 55%, #15803d 100%); color: #ffffff !important; }
+        .status-escalated { background-color: #d97706; background-image: linear-gradient(135deg, #f59e0b 0%, #d97706 55%, #b45309 100%); color: #ffffff !important; }
+        .status-reopened { background-color: #ea580c; background-image: linear-gradient(135deg, #fb923c 0%, #ea580c 55%, #c2410c 100%); color: #ffffff !important; }
+        .status-comment { background-color: #475569; background-image: linear-gradient(135deg, #64748b 0%, #475569 55%, #334155 100%); color: #ffffff !important; }
+        .status-acknowledged { background-color: #0284c7; background-image: linear-gradient(135deg, #0ea5e9 0%, #0284c7 55%, #0369a1 100%); color: #ffffff !important; }
+        .content { padding: 32px; color: #1e293b; font-size: 15px; }
+        .content h1 { margin: 0 0 14px; font-size: 24px; font-weight: 700; color: #0f172a; letter-spacing: -0.03em; line-height: 1.25; }
+        .content h2 { margin: 0 0 16px; font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; line-height: 1.35; }
         .content p { margin: 0 0 16px; }
-        .content a { color: #2563eb; }
-        .cta-wrap { padding: 8px 0 4px; }
-        /* Bulletproof table-based button — renders correctly in Outlook's Word
-           rendering engine, which ignores padding/border-radius on <a>. */
+        .content a { color: #0072d5; text-decoration: none; font-weight: 500; }
+        .content a:hover { text-decoration: underline; }
+        /* Helper classes */
+        .content h2.section-title { margin: 26px 0 10px; padding-left: 10px; border-left: 3px solid #0072d5; font-size: 16px; font-weight: 700; color: #0f172a; line-height: 1.25; }
+        .content p.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; margin: 0 0 6px; }
+        .content .prose { white-space: pre-wrap; margin: 0 0 16px; }
+        .quote { margin: 18px 0; padding: 14px 18px; border-left: 4px solid #0072d5; background-color: #f8fafc; background-image: linear-gradient(180deg, #fbfcfd 0%, #f1f5f9 100%); color: #1e293b; white-space: pre-wrap; border-radius: 0 10px 10px 0; }
+        .cta-wrap { margin: 20px 0 12px; }
+        .actions-table { margin: 20px 0 12px; }
+        .action-cell { padding-right: 12px; padding-bottom: 8px; vertical-align: middle; }
+        /* Bulletproof table-based buttons */
         .btn-table { border-collapse: separate; }
-        .btn-table td { border-radius: 6px; text-align: center; }
-        .btn { display: inline-block; padding: 12px 28px; color: #ffffff !important; text-decoration: none; font-weight: 600; font-size: 15px; border-radius: 6px; }
-        .btn-primary td { background-color: #2563eb; }
-        .btn-success td { background-color: #16a34a; }
-        .btn-secondary td { background-color: #64748b; }
-        /* Legacy single-<a> CTA classes — kept for templates authored before
-           the table-based button partial existed. New content should prefer
-           the "button" partial (see bottom of this file) for Outlook-safe
-           rendering. */
-        .cta { display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; }
+        .btn-table td { border-radius: 8px; text-align: center; }
+        .btn { display: inline-block; padding: 12px 24px; text-decoration: none; font-weight: 600; font-size: 14px; letter-spacing: 0.01em; border-radius: 8px; mso-padding-alt: 0; }
+        .btn-primary td { background-color: #0072d5; background-image: linear-gradient(180deg, #2b8ee6 0%, #0072d5 100%); box-shadow: 0 2px 5px -1px rgba(0,114,213,0.45); }
+        .btn-primary a.btn { color: #ffffff !important; }
+        .btn-success td { background-color: #16a34a; background-image: linear-gradient(180deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 2px 5px -1px rgba(22,163,74,0.42); }
+        .btn-success a.btn { color: #ffffff !important; }
+        .btn-secondary td { background-color: #ffffff; background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; box-shadow: 0 1px 2px rgba(15,26,36,0.06); }
+        .btn-secondary a.btn { color: #334155 !important; }
+        /* Legacy single-<a> CTA classes */
+        .cta { display: inline-block; padding: 11px 22px; background-color: #0072d5; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; }
         .cta-success { background-color: #16a34a; }
-        .details-table { width: 100%; margin: 4px 0 20px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
-        .details-table td { padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #edf2f7; }
+        /* border-collapse: SEPARATE (against the global table rule): with
+           collapse, the cells' own 1px bottom borders win the shared edges and
+           the table's outer border is only half-drawn — the grid ended at a
+           ragged right edge with no bottom rule. Separate + zero spacing draws
+           the full rounded box and clips the label column's grey at the
+           corners. */
+        .details-table { width: 100%; margin: 18px 0 22px; border: 1px solid #e4e9ef; border-radius: 12px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
+        .details-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #eef2f6; vertical-align: middle; }
         .details-table tr:last-child td { border-bottom: none; }
-        .details-table td.label { color: #718096; width: 40%; }
-        .details-table td.value { color: #2d3748; font-weight: 500; }
-        .fallback { font-size: 13px; color: #4a5568; word-break: break-all; padding: 8px 12px; background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-family: 'SF Mono', Menlo, Consolas, monospace; }
-        .meta { font-size: 13px; color: #718096; margin-top: 24px; }
-        .footer { padding: 20px 32px 28px; background-color: #f7fafc; color: #718096; font-size: 12px; text-align: center; border-top: 1px solid #edf2f7; }
-        .footer a { color: #4a5568; text-decoration: underline; }
+        .details-table td.label { color: #64748b; width: 34%; background-color: #f8fafc; background-image: linear-gradient(180deg, #fbfcfd 0%, #f4f7fa 100%); font-weight: 600; font-size: 13px; border-right: 1px solid #eef2f6; }
+        .details-table td.value { color: #0f172a; font-weight: 500; }
+        /* <th> falls back to the label styling: a browser's default <th> is
+           centered, bold and unpadded, which silently wrecks the two-column
+           grid when a template reaches for the semantic tag (uptime-report.html
+           did exactly that). Styling it costs nothing and keeps the failure
+           mode invisible. */
+        .details-table th { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; text-align: left; color: #64748b; width: 34%; background-color: #f8fafc; font-weight: 500; border-right: 1px solid #f1f5f9; }
+        .details-table tr:last-child th { border-bottom: none; }
+        /* Headline figure — one number that carries the mail (report totals). */
+        .metric { margin: 18px 0 22px; border: 1px solid #e4e9ef; border-radius: 12px; background-color: #f8fafc; background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%); padding: 22px 24px; text-align: center; border-collapse: separate; border-spacing: 0; box-shadow: inset 0 1px 0 #ffffff; }
+        .metric-value { display: block; font-size: 36px; line-height: 1.12; font-weight: 700; color: #0f172a; letter-spacing: -0.03em; }
+        /* State color on the figure itself — the one number the mail is about
+           should read as good or bad before a word of it is. */
+        .metric-value.is-bad { color: #b91c1c; }
+        .metric-value.is-good { color: #15803d; }
+        .metric-value.is-warn { color: #b45309; }
+        .metric-label { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; margin-top: 6px; }
+        /* Inline state pill, e.g. an SLO's health next to its attainment. */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+        .badge-ok { background-color: #dcfce7; color: #166534; }
+        .badge-warn { background-color: #fef3c7; color: #92400e; }
+        .badge-bad { background-color: #fee2e2; color: #991b1b; }
+        .badge-neutral { background-color: #f1f5f9; color: #475569; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569; }
+        .fallback { font-size: 13px; color: #334155; word-break: break-all; padding: 8px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+        .meta { font-size: 13px; color: #64748b; margin-top: 16px; line-height: 1.5; }
+        .content p.meta { margin: 16px 0 16px; }
+        /* Reference line for support (incident uid and friends): present, but
+           never competing with the facts a human acts on. */
+        .content p.footnote { font-size: 12px; color: #94a3b8; margin: 20px 0 0; padding-top: 14px; border-top: 1px solid #f1f5f9; line-height: 1.5; }
+        .content p.footnote .mono { font-size: 12px; color: #94a3b8; }
+        .footer { padding: 26px 32px; background-color: #f8fafc; background-image: linear-gradient(180deg, #ffffff 0%, #f4f7fa 100%); color: #64748b; font-size: 12px; text-align: center; border-top: 1px solid #eef2f6; line-height: 1.6; }
+        .footer a { color: #475569; text-decoration: underline; }
         .footer p { margin: 0 0 8px; }
+        .footer-brand { display: block; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eef2f6; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+        .footer p:last-child { margin: 0; }
         @media (max-width: 480px) {
             .content { padding: 24px 20px; }
-            .header { padding: 20px; }
+            .header { padding: 18px 20px; }
             .status-banner { padding: 12px 20px; }
-            .footer { padding: 16px 20px 20px; }
+            .footer { padding: 20px 20px; }
+            .details-table td.label, .details-table th { width: 40%; }
+            .content h1 { font-size: 20px; }
+            .metric { padding: 18px 16px; }
+            .metric-value { font-size: 30px; }
+            /* Stack the action buttons: two side-by-side CTAs overflow a
+               320px-wide viewport and get clipped by the card. */
+            .action-cell { display: block; width: 100%; padding-right: 0; }
+            .action-cell .btn-table, .action-cell .btn-table td { width: 100%; }
+            /* The <a> is the tap target, so it has to stretch too — a
+               full-width cell around a 190px link is a thumb-sized miss. */
+            .action-cell .btn-table a.btn { display: block; }
         }
     </style>
 </head>
 <body>
+    {{- /* Preheader: the grey line the inbox shows next to the subject. Without
+         one, clients scrape the first visible text — which for an alert is the
+         header wordmark, and for a CTA mail the fallback URL. The trailing
+         zero-width-joiner run stops the client pulling footer text in behind a
+         short preheader. Hidden with the standard belt-and-braces set (a real
+         inline style, not a class, so it survives clients that drop <style>). */ -}}
+    <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+        {{block "preheader" .}}{{end}}
+        &#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;&#8203;&#847;
+    </div>
     <table class="wrapper" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center">
                 <table class="container" role="presentation" width="600" cellpadding="0" cellspacing="0">
                     <tr>
                         <td class="header">
+                            {{- /* Branding, resolved here rather than per template.
+                                 Every key is read through the nil-tolerant "field"
+                                 helper so a struct-backed view model that does not
+                                 carry it renders empty instead of failing to execute
+                                 (see formatter.go's field(), and the trap written up
+                                 in supportreply.go).
+
+                                 OrgLogoURL   the sender's logo — the organization's
+                                              for operator mail, the STATUS PAGE's for
+                                              status-subscriber mail (a subscriber
+                                              opted into a page, not into an org).
+                                 BrandName    alt text / wordmark for that logo.
+                                 HideBranding white-label opt-in: no logo at all. */ -}}
+                            {{- $hideBranding := field . "HideBranding" -}}
+                            {{- $brandName := field . "BrandName" -}}
+                            {{- $orgLogo := absURL (field . "OrgLogoURL") -}}
+                            {{- $productLogo := productLogoURL -}}
+                            {{if $hideBranding}}
+                            {{- if $brandName}}<span class="header-logo">{{$brandName}}</span>{{end -}}
+                            {{else if $orgLogo}}
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td align="left"><img class="header-org-logo" src="{{$orgLogo}}" alt="{{if $brandName}}{{$brandName}}{{else}}Logo{{end}}" height="40"></td>
+                                    <td class="header-attribution" align="right"><span class="header-wordmark">sent by SolidPing</span></td>
+                                </tr>
+                            </table>
+                            {{else if $productLogo}}
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td class="header-mark"><img class="header-logo-img" src="{{$productLogo}}" alt="SolidPing" width="34" height="34"></td>
+                                    <td class="header-name"><span class="header-logo">SolidPing</span></td>
+                                </tr>
+                            </table>
+                            {{else}}
                             <span class="header-logo">SolidPing</span>
+                            {{end}}
                         </td>
                     </tr>
-                    {{block "statusbanner" .}}{{end}}
+                    {{- /* Incident mail overrides this with a full-width status
+                         banner; everything else gets the thin accent rule, so no
+                         template ever renders a bare navy-to-white seam. */ -}}
+                    {{block "statusbanner" .}}<tr><td class="accent-bar">&nbsp;</td></tr>{{end}}
                     <tr>
                         <td class="content">
                             {{block "content" .}}{{end}}
@@ -77,18 +225,32 @@
                     </tr>
                     <tr>
                         <td class="footer">
-                            {{if .OrgName}}<p>{{.OrgName}} — sent by SolidPing</p>{{end}}
+                            {{- /* Every key the shared wrapper reads goes through the
+                                 nil-tolerant "field" helper, never through a direct
+                                 `.Field` access: html/template ERRORS on a missing
+                                 STRUCT field, and several view models in this repo
+                                 are structs rather than maps. A direct access here
+                                 breaks those templates at SEND time, invisibly. */ -}}
+                            {{- $footerOrgName := field . "OrgName" -}}
+                            {{- $dashboardURL := field . "DashboardURL" -}}
+                            {{- $docsURL := field . "DocsURL" -}}
+                            {{- $unsubscribeURL := field . "UnsubscribeURL" -}}
+                            {{- $unsubscribeCheckName := field . "UnsubscribeCheckName" -}}
+                            {{if and $footerOrgName (not (field . "HideBranding"))}}<p>{{$footerOrgName}} — sent by SolidPing</p>{{end}}
                             <p>
-                                {{if .DashboardURL}}<a href="{{.DashboardURL}}">Dashboard</a>{{end}}
-                                {{if and .DashboardURL .DocsURL}} &middot; {{end}}
-                                {{if .DocsURL}}<a href="{{.DocsURL}}">Docs</a>{{end}}
+                                {{if $dashboardURL}}<a href="{{$dashboardURL}}">Dashboard</a>{{end}}
+                                {{if and $dashboardURL $docsURL}} &middot; {{end}}
+                                {{if $docsURL}}<a href="{{$docsURL}}">Docs</a>{{end}}
                             </p>
-                            {{if .UnsubscribeURL}}
-                            <p><a href="{{.UnsubscribeURL}}">{{if .UnsubscribeCheckName}}Unsubscribe from alerts for {{.UnsubscribeCheckName}}{{else}}Unsubscribe from alerts{{end}}</a></p>
+                            {{if $unsubscribeURL}}
+                            <p><a href="{{$unsubscribeURL}}">{{if $unsubscribeCheckName}}Unsubscribe from alerts for {{$unsubscribeCheckName}}{{else}}Unsubscribe from alerts{{end}}</a></p>
                             {{else}}
                             <p>You received this email because someone used your address with SolidPing.<br>
                             If this wasn't you, you can safely ignore it.</p>
                             {{end}}
+                            {{- /* Product signature. Suppressed for white-label
+                                 mail, which by definition must not name us. */ -}}
+                            {{if not (field . "HideBranding")}}<span class="footer-brand">SolidPing &middot; uptime monitoring</span>{{end}}
                         </td>
                     </tr>
                 </table>
@@ -116,6 +278,6 @@
      invoking this partial: {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Down"}}{{end}} */}}
 {{define "statusbanner-render"}}
 <tr>
-    <td class="status-banner status-{{.Variant}}">{{.Label}}</td>
+    <td class="status-banner status-{{.Variant}}"><span class="status-dot">&#9679;</span>{{.Label}}</td>
 </tr>
 {{end}}

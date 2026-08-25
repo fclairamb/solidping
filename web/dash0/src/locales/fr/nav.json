@@ -43,6 +43,7 @@
     "notAvailable": "Les outils de test ne sont disponibles qu'en mode test (SP_RUNMODE=test)",
     "tabs": {
       "templates": "Modèles",
+      "emails": "E-mails",
       "bulk": "Contrôles en masse",
       "generate": "Générer des données",
       "reset": "Réinitialiser"
@@ -121,6 +122,24 @@
       "customDelay": "Délai de réponse (ms)",
       "createCustom": "Créer un contrôle personnalisé",
       "createdCustom": "Contrôle personnalisé créé"
+    },
+    "emails": {
+      "title": "Modèles d'e-mail",
+      "description": "Tous les modèles d'e-mail livrés, rendus via le formateur réel (CSS inliné compris).",
+      "listTitle": "Modèles",
+      "subjectLabel": "Objet",
+      "noSubject": "(pas de bloc objet)",
+      "noTextPart": "Pas de version texte",
+      "openRaw": "Ouvrir brut",
+      "formatLabel": "Format d'aperçu",
+      "formatHtml": "HTML",
+      "formatText": "Texte",
+      "refresh": "Rafraîchir",
+      "retry": "Réessayer",
+      "loading": "Chargement…",
+      "iframeTitle": "Aperçu de {{template}}",
+      "unavailableTitle": "Aperçu des e-mails indisponible",
+      "unavailableBody": "Le point d'accès d'aperçu n'existe que lorsque le serveur tourne avec SP_RUNMODE=test."
     }
   },
   "command": {

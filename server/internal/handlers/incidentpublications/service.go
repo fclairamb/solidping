@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/realtime"
@@ -863,6 +864,8 @@ func (s *Service) fanOut(
 		LinkURL:             update.LinkURL,
 		PageName:            page.Name,
 		IncidentUpdateCount: priorCount,
+		PageLogoURL:         statuspageassets.PublicURL(page.Settings.LogoFileUID()),
+		PageHideBranding:    page.Settings.HideBranding(),
 	}
 
 	bgCtx := context.WithoutCancel(ctx)

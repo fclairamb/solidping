@@ -1,4 +1,5 @@
 {{define "subject"}}Your request to join {{.OrgName}} was {{.Decision}}{{end}}
+{{define "preheader"}}Your request to join {{.OrgName}} was {{.Decision}}.{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <h1>Membership request {{.Decision}}</h1>
@@ -6,7 +7,7 @@
     {{if eq .Decision "approved"}}
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing has been approved. You're now a member with role <strong>{{.Role}}</strong>.</p>
     {{if .DashboardURL}}
-    <p class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</div>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.DashboardURL}}</p>
     {{end}}
@@ -14,7 +15,7 @@
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing was rejected.</p>
     {{if .Reason}}
     <p>Reason from the admin:</p>
-    <p class="fallback">{{.Reason}}</p>
+    <blockquote class="quote">{{.Reason}}</blockquote>
     {{end}}
     <p class="meta">You can submit a new request after the cooldown period.</p>
     {{end}}

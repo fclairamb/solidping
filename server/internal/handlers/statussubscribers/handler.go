@@ -101,11 +101,15 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 		ConfirmURL: confirmURL(h.baseURL(), result.Subscriber.ConfirmToken),
 	}
 
-	subject, htmlBody, textBody, err := h.formatter.Format("status-subscriber-confirm.html", map[string]any{
+	viewModel := map[string]any{
 		"Subject":    MailKindConfirm.subject(data),
 		"PageName":   data.PageName,
 		"ConfirmURL": data.ConfirmURL,
-	})
+	}
+	// Status page branding, honoring hide_branding — never the org's.
+	email.ApplyStatusPageBranding(viewModel, data.PageName, result.PageLogoURL, result.PageHideBranding)
+
+	subject, htmlBody, textBody, err := h.formatter.Format("status-subscriber-confirm.html", viewModel)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "status subscriber confirm mail formatting failed",
 			"subscriberUid", result.Subscriber.UID, "error", err)

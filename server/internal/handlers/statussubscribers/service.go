@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
@@ -153,10 +154,15 @@ type SubscribeRequest struct {
 
 // SubscribeResult carries what the caller needs to send the confirm mail.
 type SubscribeResult struct {
-	Subscriber       *models.StatusPageSubscriber
-	PageName         string
-	PageSlug         string
-	OrgSlug          string
+	Subscriber *models.StatusPageSubscriber
+	PageName   string
+	PageSlug   string
+	OrgSlug    string
+	// PageLogoURL / PageHideBranding brand the confirm mail with the STATUS
+	// PAGE's identity rather than the organization's — same rule as the
+	// update fan-out: the recipient is subscribing to a page.
+	PageLogoURL      *string
+	PageHideBranding bool
 	AlreadyConfirmed bool
 }
 
@@ -269,10 +275,12 @@ func (s *Service) Subscribe(
 	}
 
 	return &SubscribeResult{
-		Subscriber: sub,
-		PageName:   page.Name,
-		PageSlug:   page.Slug,
-		OrgSlug:    org.Slug,
+		Subscriber:       sub,
+		PageName:         page.Name,
+		PageSlug:         page.Slug,
+		OrgSlug:          org.Slug,
+		PageLogoURL:      statuspageassets.PublicURL(page.Settings.LogoFileUID()),
+		PageHideBranding: page.Settings.HideBranding(),
 	}, nil
 }
 

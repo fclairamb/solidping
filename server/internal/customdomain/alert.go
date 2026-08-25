@@ -137,12 +137,14 @@ func mailDemoted(
 	}
 
 	data := map[string]any{
-		"OrgName":        org.Name,
 		"StatusPageName": page.Name,
 		"Domain":         domain,
 		"Diagnostic":     diagnostic,
 		"SettingsURL":    settingsURL,
 	}
+	// Operator mail about a status page, addressed to the org's admins: it
+	// wears the ORG's branding, not the page's.
+	email.ApplyOrgBranding(data, org.Name, org.LogoURL)
 
 	for _, member := range members {
 		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil || member.User.Email == "" {

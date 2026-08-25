@@ -221,10 +221,10 @@ func (s *Service) SendPagingNudge(ctx context.Context, orgSlug, memberUID string
 
 	link := s.appBaseURL + "/dash0/orgs/" + org.Slug + "/account/notifications"
 
-	subject, htmlBody, textBody, err := s.formatter.Format("paging-nudge.html", map[string]any{
-		"OrgName":          org.Name,
-		"NotificationsURL": link,
-	})
+	viewModel := map[string]any{"NotificationsURL": link}
+	email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+
+	subject, htmlBody, textBody, err := s.formatter.Format("paging-nudge.html", viewModel)
 	if err != nil {
 		return fmt.Errorf("format paging nudge: %w", err)
 	}

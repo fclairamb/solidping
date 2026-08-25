@@ -44,6 +44,7 @@
     "notAvailable": "Test tools are only available when running in test mode (SP_RUNMODE=test)",
     "tabs": {
       "templates": "Templates",
+      "emails": "Emails",
       "bulk": "Bulk Checks",
       "generate": "Generate Data",
       "reset": "Reset"
@@ -122,6 +123,24 @@
       "customDelay": "Response delay (ms)",
       "createCustom": "Create custom check",
       "createdCustom": "Created custom check"
+    },
+    "emails": {
+      "title": "Email templates",
+      "description": "Every shipped email template, rendered through the real formatter (CSS inlining included).",
+      "listTitle": "Templates",
+      "subjectLabel": "Subject",
+      "noSubject": "(no subject block)",
+      "noTextPart": "No plaintext part",
+      "openRaw": "Open raw",
+      "formatLabel": "Preview format",
+      "formatHtml": "HTML",
+      "formatText": "Text",
+      "refresh": "Refresh",
+      "retry": "Retry",
+      "loading": "Loading…",
+      "iframeTitle": "Preview of {{template}}",
+      "unavailableTitle": "Email preview unavailable",
+      "unavailableBody": "The preview endpoint only exists when the server runs with SP_RUNMODE=test."
     }
   },
   "command": {
