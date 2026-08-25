@@ -463,6 +463,7 @@ export function ResponseTimeChart({
     data: results,
     isLoading,
     rawError,
+    isEmptyPending,
   } = useChartWindowResults(
     org,
     checkUid,
@@ -925,10 +926,13 @@ export function ResponseTimeChart({
             {t("detail.chart.rawUnavailable")}
           </p>
         )}
-        {isLoading ? (
+        {isLoading || (chartData.length === 0 && isEmptyPending) ? (
           <Skeleton className="h-[300px] w-full" />
         ) : chartData.length === 0 ? (
-          <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+          <div
+            className="h-[300px] flex items-center justify-center text-muted-foreground"
+            data-testid="response-time-chart-no-data"
+          >
             {t("detail.chart.noDataAvailable")}
           </div>
         ) : (
