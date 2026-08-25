@@ -1,5 +1,7 @@
 package emailpreview
 
+import "sort"
+
 // Fixture constants shared across multiple templates below — pulled out
 // once a literal repeats within this file (goconst). keyOrgName/keyDashboardURL
 // are the map KEYS (not just the values), which repeat across several of the
@@ -48,6 +50,24 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"membership_request_new.html":      membershipRequestNewFixture,
 	"membership_request_decision.html": membershipRequestDecisionFixture,
 	"uptime-report.html":               uptimeReportFixture,
+	"incident-acknowledged.html":       acknowledgedIncidentFixture,
+	"incident-comment.html":            commentIncidentFixture,
+	"custom-domain-demoted.html":       customDomainDemotedFixture,
+}
+
+// FixtureTemplateNames returns, sorted, every template name this package can
+// build fixture data for. Exported so the index endpoint and
+// TestEveryShippedTemplateHasFixture read the same table the preview route
+// reads, rather than a second hand-maintained list that can drift from it.
+func FixtureTemplateNames() []string {
+	names := make([]string, 0, len(fixtureBuilders))
+	for name := range fixtureBuilders {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	return names
 }
 
 // fixtureFor returns the preview fixture data for a shipped template, and
@@ -291,5 +311,43 @@ func uptimeReportFixture() map[string]any {
 		},
 		keyDashboardURL:  fixtureDashboardURL,
 		"UnsubscribeURL": "https://solidping.example/unsubscribe?token=preview-unsub-token",
+	}
+}
+
+// acknowledgedIncidentFixture is the "somebody took it" half of the incident
+// lifecycle: the incident is still open, so the ack fields are set but there is
+// no AckURL left to click.
+func acknowledgedIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["AckURL"] = ""
+	fixture["AckActor"] = "Alice Admin"
+	fixture["AckVia"] = "from the dashboard"
+	fixture["AcknowledgedAt"] = "2026-07-05 10:04:00"
+
+	return fixture
+}
+
+// commentIncidentFixture carries a deliberately multi-line comment body so the
+// preview exercises the quote block's wrapping rather than a single short line.
+func commentIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["CommentAuthor"] = "Bob Builder"
+	fixture["CommentSource"] = "from Slack"
+	fixture["CommentText"] = "Upstream provider confirms a regional outage.\n" +
+		"Failing over to the secondary region now — next update in 15 minutes."
+
+	return fixture
+}
+
+// customDomainDemotedFixture covers the status-page custom-domain demotion
+// alert (customdomain.mailDemoted). Operator mail: no unsubscribe, no ack.
+func customDomainDemotedFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:       fixtureOrgName,
+		"StatusPageName": "Acme Status",
+		"Domain":         "status.acme.com",
+		"Diagnostic":     "CNAME lookup for status.acme.com returned NXDOMAIN",
+		"SettingsURL": "https://solidping.example/dash0/orgs/acme/status-pages/" +
+			"3f1c9a2e-77b1-4f0a-9a1e-6c2f0b8d4e51",
 	}
 }

@@ -2055,6 +2055,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// Not compiled out — just 404s outside test mode, like the routes
 		// above.
 		emailPreviewHandler := emailpreview.NewHandler(s.services.EmailFormatter, s.config)
+		mgmt.GET("/email-preview", emailPreviewHandler.Index)
 		mgmt.GET("/email-preview/:template", emailPreviewHandler.Preview)
 	}
 

@@ -65,6 +65,7 @@ var testModeGatedRoutes = []gatedRoute{
 	{"generate data", http.MethodPost, "/api/v1/test/generate-data"},
 	{"delete all checks", http.MethodDelete, "/api/v1/test/checks/all"},
 	{"email preview", http.MethodGet, "/api/mgmt/email-preview/welcome.html"},
+	{"email preview index", http.MethodGet, "/api/mgmt/email-preview"},
 }
 
 // TestTestModeRoutesGatedByRunMode is the positive+negative control for the

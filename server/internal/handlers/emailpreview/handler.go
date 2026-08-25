@@ -15,7 +15,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
-// Handler serves GET /api/mgmt/email-preview/{template}.
+// previewPathPrefix is the route prefix the index echoes back so the dashboard
+// does not rebuild the URL shape by hand.
+const previewPathPrefix = "/api/mgmt/email-preview/"
+
+// Handler serves GET /api/mgmt/email-preview and
+// GET /api/mgmt/email-preview/{template}.
 type Handler struct {
 	base.HandlerBase
 	formatter email.Formatter
@@ -77,4 +82,67 @@ func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"format must be 'html' or 'text'")
 	}
+}
+
+// TemplateSummary is one row of the preview index. Names are camelCase per the
+// repo's REST conventions; `template` is the on-disk file name, which is also
+// the path segment the per-template preview route takes.
+type TemplateSummary struct {
+	Template string `json:"template"`
+	// Subject is the rendered {{define "subject"}} block, "" when the template
+	// defines none. Rendered through the real Format() path, so what the index
+	// lists is what the mailer would send.
+	Subject string `json:"subject"`
+	// HasText reports whether the template ships a {{define "text"}} block. The
+	// UI uses it to disable the text toggle rather than showing a placeholder.
+	HasText bool `json:"hasText"`
+	// PreviewURL is the HTML preview URL for this template (append
+	// &format=text for the plaintext part).
+	PreviewURL string `json:"previewUrl"`
+	// Error is the render failure message when this template could not be
+	// rendered with its fixture. Non-empty here is a real bug (a view-model /
+	// template key mismatch) — the index reports it instead of failing the
+	// whole listing, so one broken template does not blind the catalog.
+	Error string `json:"error,omitempty"`
+}
+
+// Index lists every previewable template with its rendered subject.
+// GET /api/mgmt/email-preview.
+func (h *Handler) Index(writer http.ResponseWriter, _ *http.Request) error {
+	names := FixtureTemplateNames()
+	summaries := make([]TemplateSummary, 0, len(names))
+
+	for _, name := range names {
+		summaries = append(summaries, h.summarize(name))
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": summaries})
+}
+
+// summarize renders one template with its fixture to extract the subject line
+// and whether a plaintext part exists.
+func (h *Handler) summarize(name string) TemplateSummary {
+	summary := TemplateSummary{
+		Template:   name,
+		PreviewURL: previewPathPrefix + name,
+	}
+
+	data, ok := fixtureFor(name)
+	if !ok {
+		summary.Error = "no fixture"
+
+		return summary
+	}
+
+	subject, _, text, err := h.formatter.Format(name, data)
+	if err != nil {
+		summary.Error = err.Error()
+
+		return summary
+	}
+
+	summary.Subject = subject
+	summary.HasText = text != ""
+
+	return summary
 }

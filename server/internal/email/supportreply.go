@@ -2,6 +2,7 @@ package email
 
 import (
 	"io/fs"
+	"sort"
 	"strings"
 )
 
@@ -126,6 +127,17 @@ func classifiedTemplates() map[string]bool {
 // templates directory, excluding the base wrapper (which is never rendered on
 // its own and therefore has no classification of its own).
 func shippedTemplateNames() ([]string, error) {
+	return ShippedTemplateNames()
+}
+
+// ShippedTemplateNames lists every template file shipped in the embedded
+// templates directory, sorted, excluding base.html.
+//
+// Exported so other packages enumerate the real directory instead of keeping a
+// hand-maintained copy of the list: the email preview package's fixture-coverage
+// test reads this, which is what makes "a new template ships without a preview
+// fixture" a failing test rather than a silent gap.
+func ShippedTemplateNames() ([]string, error) {
 	entries, err := fs.ReadDir(templateFS, "templates")
 	if err != nil {
 		return nil, err
@@ -140,6 +152,8 @@ func shippedTemplateNames() ([]string, error) {
 
 		names = append(names, entry.Name())
 	}
+
+	sort.Strings(names)
 
 	return names, nil
 }
