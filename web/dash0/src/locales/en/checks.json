@@ -613,5 +613,62 @@
   "failed": "Failed",
   "secretHeaders": "Secret headers",
   "secretHeadersDescription": "Header values stored encrypted — use for API keys and Bearer tokens.",
-  "addSecretHeader": "Add secret header"
+  "addSecretHeader": "Add secret header",
+  "scheduling": {
+    "title": "Check scheduling",
+    "subtitle": "See where your per-minute execution demand comes from, and stretch or disable checks until it fits your plan.",
+    "backToChecks": "Back to checks",
+    "autoRebalance": "Auto-rebalance",
+    "apply": "Apply changes",
+    "reset": "Reset",
+    "pending_one": "{{count}} pending change",
+    "pending_other": "{{count}} pending changes",
+    "proposed": "proposed",
+    "customPeriod": "{{period}} (custom)",
+    "proposalSummary_one": "Proposed {{count}} new period: {{before}} → {{after}} executions/min against a cap of {{limit}}.",
+    "proposalSummary_other": "Proposed {{count}} new periods: {{before}} → {{after}} executions/min against a cap of {{limit}}.",
+    "rebalanceExhausted": "Every check is already at its longest allowed period and the demand still exceeds the cap. Disable some checks, or upgrade your plan.",
+    "passiveNote_one": "{{count}} passive check (heartbeat or email) is not listed: it is triggered by an inbound signal, so it never consumes execution budget.",
+    "passiveNote_other": "{{count}} passive checks (heartbeat or email) are not listed: they are triggered by an inbound signal, so they never consume execution budget.",
+    "meter": {
+      "label": "Executions per minute",
+      "hint": "Each selected region runs the check at the full period, so a check in three regions costs three times as much.",
+      "overHint": "Your organization is over its cap — some check executions are being skipped.",
+      "unlimited": "unlimited",
+      "unlimitedHint": "Your plan sets no per-minute execution cap."
+    },
+    "table": {
+      "check": "Check",
+      "type": "Type",
+      "period": "Period",
+      "contribution": "Per minute",
+      "enabled": "Enabled",
+      "periodFor": "Period for {{name}}",
+      "enabledFor": "Enabled for {{name}}",
+      "regionCount_one": "{{count}} region",
+      "regionCount_other": "{{count}} regions"
+    },
+    "periodUnit": {
+      "seconds_one": "{{count}} second",
+      "seconds_other": "{{count}} seconds",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "weeks_one": "{{count}} week",
+      "weeks_other": "{{count}} weeks"
+    },
+    "empty": {
+      "title": "No active checks",
+      "hint": "Only active checks consume execution budget — create one to see it here."
+    },
+    "toast": {
+      "applied_one": "{{count}} check updated.",
+      "applied_other": "{{count}} checks updated.",
+      "partial": "Updated {{applied}}, but {{failed}} failed: {{names}}",
+      "failed": "Could not apply the schedule changes."
+    }
+  }
 }

@@ -17,8 +17,10 @@ interface CheckRateLimitBannerProps {
   /** SaaS upgrade target, when the deployment configures one. */
   upgradeUrl?: string;
   /**
-   * Render the "view usage" link. Off on the Usage page itself, where the link
-   * would point at the page the reader is already on.
+   * Render the link to the remedy — the check scheduling page, where the
+   * demand can actually be brought back under the cap. Off on the scheduling
+   * page itself, where the link would point at the page the reader is already
+   * on.
    */
   showUsageLink?: boolean;
 }
@@ -77,12 +79,12 @@ export function CheckRateLimitBanner({
         {(showUsageLink || upgradeUrl) && (
           <div className="flex flex-wrap gap-2 pt-1">
             {showUsageLink && (
-              // TODO(spec 2026-08-26-04): retarget this at the dedicated
-              // scheduling page once it ships. Until then Usage is the only
-              // surface that shows the cap next to what is consuming it.
+              // The scheduling page (spec 2026-08-26-04), not the Usage page:
+              // a banner about being over the cap should hand the reader the
+              // surface that can fix it, not one that restates the number.
               <Button asChild variant="outline" size="sm">
                 <Link
-                  to="/orgs/$org/organization/usage"
+                  to="/orgs/$org/checks/scheduling"
                   params={{ org }}
                   data-testid="check-rate-limit-usage-link"
                 >

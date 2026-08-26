@@ -565,5 +565,62 @@
   "expectedValue": "Erwarteter Wert",
   "actualValue": "Tatsächlicher Wert",
   "passed": "Bestanden",
-  "failed": "Fehlgeschlagen"
+  "failed": "Fehlgeschlagen",
+  "scheduling": {
+    "title": "Prüfungsplanung",
+    "subtitle": "Sehen Sie, woher Ihr Bedarf an Ausführungen pro Minute kommt, und verlängern oder deaktivieren Sie Prüfungen, bis er zu Ihrem Tarif passt.",
+    "backToChecks": "Zurück zu den Prüfungen",
+    "autoRebalance": "Automatisch ausgleichen",
+    "apply": "Änderungen anwenden",
+    "reset": "Zurücksetzen",
+    "pending_one": "{{count}} ausstehende Änderung",
+    "pending_other": "{{count}} ausstehende Änderungen",
+    "proposed": "vorgeschlagen",
+    "customPeriod": "{{period}} (benutzerdefiniert)",
+    "proposalSummary_one": "{{count}} neues Intervall vorgeschlagen: {{before}} → {{after}} Ausführungen/Min. bei einer Grenze von {{limit}}.",
+    "proposalSummary_other": "{{count}} neue Intervalle vorgeschlagen: {{before}} → {{after}} Ausführungen/Min. bei einer Grenze von {{limit}}.",
+    "rebalanceExhausted": "Alle Prüfungen laufen bereits im längstmöglichen Intervall und der Bedarf liegt weiterhin über der Grenze. Deaktivieren Sie Prüfungen oder wechseln Sie den Tarif.",
+    "passiveNote_one": "{{count}} passive Prüfung (Heartbeat oder E-Mail) wird nicht aufgeführt: Sie wird durch ein eingehendes Signal ausgelöst und verbraucht daher nie Ausführungsbudget.",
+    "passiveNote_other": "{{count}} passive Prüfungen (Heartbeat oder E-Mail) werden nicht aufgeführt: Sie werden durch ein eingehendes Signal ausgelöst und verbrauchen daher nie Ausführungsbudget.",
+    "meter": {
+      "label": "Ausführungen pro Minute",
+      "hint": "Jede ausgewählte Region führt die Prüfung im vollen Intervall aus — eine Prüfung in drei Regionen kostet also dreimal so viel.",
+      "overHint": "Ihre Organisation liegt über der Grenze — einige Ausführungen werden übersprungen.",
+      "unlimited": "unbegrenzt",
+      "unlimitedHint": "Ihr Tarif kennt keine Grenze für Ausführungen pro Minute."
+    },
+    "table": {
+      "check": "Prüfung",
+      "type": "Typ",
+      "period": "Intervall",
+      "contribution": "Pro Minute",
+      "enabled": "Aktiv",
+      "periodFor": "Intervall von {{name}}",
+      "enabledFor": "Aktivierung von {{name}}",
+      "regionCount_one": "{{count}} Region",
+      "regionCount_other": "{{count}} Regionen"
+    },
+    "periodUnit": {
+      "seconds_one": "{{count}} Sekunde",
+      "seconds_other": "{{count}} Sekunden",
+      "minutes_one": "{{count}} Minute",
+      "minutes_other": "{{count}} Minuten",
+      "hours_one": "{{count}} Stunde",
+      "hours_other": "{{count}} Stunden",
+      "days_one": "{{count}} Tag",
+      "days_other": "{{count}} Tage",
+      "weeks_one": "{{count}} Woche",
+      "weeks_other": "{{count}} Wochen"
+    },
+    "empty": {
+      "title": "Keine aktiven Prüfungen",
+      "hint": "Nur aktive Prüfungen verbrauchen Ausführungsbudget — legen Sie eine an, um sie hier zu sehen."
+    },
+    "toast": {
+      "applied_one": "{{count}} Prüfung aktualisiert.",
+      "applied_other": "{{count}} Prüfungen aktualisiert.",
+      "partial": "{{applied}} aktualisiert, aber {{failed}} fehlgeschlagen: {{names}}",
+      "failed": "Die Planungsänderungen konnten nicht angewendet werden."
+    }
+  }
 }

@@ -243,7 +243,7 @@
     "overLimit": "Tu organización programa ~{{demand}} ejecuciones de comprobaciones por minuto, pero tu plan permite {{limit}}/min — se están omitiendo algunas ejecuciones.",
     "skippedToday_one": "Hoy se omitió {{count}} ejecución de comprobación porque tu organización superó su límite de ejecuciones.",
     "skippedToday_other": "Hoy se omitieron {{count}} ejecuciones de comprobaciones porque tu organización superó su límite de ejecuciones.",
-    "viewUsage": "Ver uso",
+    "viewUsage": "Revisar la programación",
     "upgrade": "Mejorar plan"
   }
 }

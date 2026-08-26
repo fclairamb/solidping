@@ -243,7 +243,7 @@
     "overLimit": "Votre organisation planifie environ {{demand}} exécutions de vérifications par minute alors que votre offre en autorise {{limit}}/min — certaines exécutions sont ignorées.",
     "skippedToday_one": "{{count}} exécution de vérification a été ignorée aujourd'hui car votre organisation dépassait sa limite de débit d'exécution.",
     "skippedToday_other": "{{count}} exécutions de vérifications ont été ignorées aujourd'hui car votre organisation dépassait sa limite de débit d'exécution.",
-    "viewUsage": "Voir l'utilisation",
+    "viewUsage": "Revoir la planification",
     "upgrade": "Mettre à niveau"
   }
 }

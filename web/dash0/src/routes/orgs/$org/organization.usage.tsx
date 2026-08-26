@@ -125,12 +125,15 @@ function UsagePage() {
             {/*
               Above the plan and the bars on purpose: an org whose executions
               are being dropped needs the explanation before the numbers, not
-              after them. No usage link here — this IS the usage page.
+              after them. The link is on: it now points at the scheduling page
+              (spec 2026-08-26-04), which is a different surface from this one
+              and is where the demand can actually be brought down.
             */}
             <CheckRateLimitBanner
               org={org}
               checksPerMinute={data.checksPerMinute}
               upgradeUrl={data.upgradeUrl}
+              showUsageLink
             />
             <div
               className="flex items-center justify-between gap-2 border-b pb-4"

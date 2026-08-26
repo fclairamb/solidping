@@ -22,6 +22,7 @@ import {
   Upload,
   Waypoints,
   ArrowUpRight,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -1503,6 +1504,23 @@ function ChecksIndexPage() {
             <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
+            </Button>
+            {/*
+              The scheduling page (spec 2026-08-26-04) edits one field across
+              many checks, so it belongs next to the list rather than inside a
+              row. Reachable here whether or not the org is over its cap — an
+              org can want to plan its execution budget before it breaches it.
+            */}
+            <Button asChild variant="outline">
+              <Link
+                to="/orgs/$org/checks/scheduling"
+                params={{ org }}
+                data-testid="scheduling-link"
+                aria-label={t("scheduling.title")}
+              >
+                <CalendarClock className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">{t("scheduling.title")}</span>
+              </Link>
             </Button>
             <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: undefined, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}>
               <Button data-testid="new-check-button">

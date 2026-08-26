@@ -73,6 +73,7 @@ import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
+import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
@@ -3211,6 +3212,28 @@ function FeedbackSection() {
             </div>
           }
           importLine={`import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";`}
+        />
+
+        <h3 className="text-sm font-medium">Quota meter (pending draft)</h3>
+        <p className="text-sm text-muted-foreground">
+          A quota bar on a page that <em>edits</em> what fills it. The saved
+          figure is struck through and the draft figure follows an arrow, so the
+          consequence of an unsaved change is legible before anything is
+          written — a bar showing only the saved number turns such a page into a
+          guessing game. Over the cap it goes amber, matching the over-limit
+          banner it sits with; red is reserved for destructive states. An absent
+          limit means unlimited: the figure stays, the bar goes away, because
+          there is nothing to be a fraction of.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-6">
+              <CheckRateMeter saved={84} draft={84} limit={120} />
+              <CheckRateMeter saved={240} draft={96} limit={120} />
+              <CheckRateMeter saved={240} draft={240} limit={null} />
+            </div>
+          }
+          importLine={`import { CheckRateMeter } from "@/components/shared/check-rate-meter";\n\n<CheckRateMeter saved={savedTotal} draft={draftTotal} limit={limit} />`}
         />
 
         <h3 className="text-sm font-medium">Tinted panel</h3>

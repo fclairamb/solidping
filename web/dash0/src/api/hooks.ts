@@ -783,6 +783,72 @@ export function useUpdateCheck(org: string, uid: string) {
   });
 }
 
+/** One check's pending schedule change, as the scheduling page batches them. */
+export interface CheckScheduleChange {
+  uid: string;
+  /** Human name, so a partial failure can name what did not save. */
+  name: string;
+  /** "HH:MM:SS"; omitted when only `enabled` changed. */
+  period?: string;
+  /** Omitted when only the period changed. */
+  enabled?: boolean;
+}
+
+export interface CheckScheduleResult {
+  applied: number;
+  /** One entry per check whose PATCH failed. Empty on full success. */
+  failures: { uid: string; name: string; message: string }[];
+}
+
+/**
+ * Applies a batch of period/enabled changes, one PATCH per check.
+ *
+ * Sequential and fault-tolerant on purpose. There is no bulk endpoint, and the
+ * honest failure mode for "20 checks, 3 rejected" is to report which 3 — not
+ * to abort at the first error leaving the org half-rebalanced with no idea
+ * where it stopped. Callers refetch afterwards, so the surviving rows re-read
+ * their real server state either way.
+ */
+export function useApplyCheckSchedule(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      changes: CheckScheduleChange[],
+    ): Promise<CheckScheduleResult> => {
+      const failures: CheckScheduleResult["failures"] = [];
+      let applied = 0;
+
+      for (const change of changes) {
+        const body: UpdateCheckRequest = {};
+        if (change.period !== undefined) body.period = change.period;
+        if (change.enabled !== undefined) body.enabled = change.enabled;
+
+        try {
+          await apiFetch<Check>(`/api/v1/orgs/${org}/checks/${change.uid}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+          applied += 1;
+        } catch (err) {
+          failures.push({
+            uid: change.uid,
+            name: change.name,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      return { applied, failures };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      queryClient.invalidateQueries({ queryKey: ["entitlements", org] });
+    },
+  });
+}
+
 export interface LabelSuggestion {
   value: string;
   count: number;
