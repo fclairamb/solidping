@@ -598,7 +598,8 @@
       "periodFor": "Intervall von {{name}}",
       "enabledFor": "Aktivierung von {{name}}",
       "regionCount_one": "{{count}} Region",
-      "regionCount_other": "{{count}} Regionen"
+      "regionCount_other": "{{count}} Regionen",
+      "perMinuteShort": "{{rate}}/Min."
     },
     "periodUnit": {
       "seconds_one": "{{count}} Sekunde",

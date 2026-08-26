@@ -100,7 +100,13 @@ function SchedulingTable({
                 {t("checks:scheduling.table.type")}
               </TableHead>
               <TableHead>{t("checks:scheduling.table.period")}</TableHead>
-              <TableHead className="text-right">
+              {/*
+                Below `sm` the per-minute column folds into the name cell
+                instead of sitting behind a horizontal scroll — the figure and
+                the on/off switch are the point of the page, so a phone must
+                not have to swipe sideways to reach them.
+              */}
+              <TableHead className="hidden text-right sm:table-cell">
                 {t("checks:scheduling.table.contribution")}
               </TableHead>
               <TableHead className="text-right">
@@ -121,7 +127,7 @@ function SchedulingTable({
                   data-testid={`scheduling-row-${row.uid}`}
                   data-dirty={dirty ? "true" : "false"}
                 >
-                  <TableCell className="max-w-[14rem]">
+                  <TableCell className="max-w-[8.5rem] px-2 sm:max-w-[14rem] sm:px-4">
                     <Link
                       to="/orgs/$org/checks/$checkUid"
                       params={{ org, checkUid: row.uid }}
@@ -151,12 +157,17 @@ function SchedulingTable({
                           })}
                         </span>
                       )}
+                      <span className="font-mono tabular-nums sm:hidden">
+                        {t("checks:scheduling.table.perMinuteShort", {
+                          rate: formatRate(rowContribution(row)),
+                        })}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <CheckTypeBadge type={row.type} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="px-2 sm:px-4">
                     <div className="flex flex-wrap items-center gap-2">
                       {/*
                         The per-row half of the auto-rebalance diff: the saved
@@ -184,7 +195,7 @@ function SchedulingTable({
                         disabled={disabled}
                       >
                         <SelectTrigger
-                          className="w-[9.5rem]"
+                          className="w-[7.5rem] sm:w-[9.5rem]"
                           data-testid={`scheduling-period-${row.uid}`}
                           aria-label={t("checks:scheduling.table.periodFor", {
                             name: row.name,
@@ -215,12 +226,12 @@ function SchedulingTable({
                     </div>
                   </TableCell>
                   <TableCell
-                    className="text-right font-mono text-xs tabular-nums text-muted-foreground"
+                    className="hidden text-right font-mono text-xs tabular-nums text-muted-foreground sm:table-cell"
                     data-testid={`scheduling-contribution-${row.uid}`}
                   >
                     {formatRate(rowContribution(row))}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="px-2 text-right sm:px-4">
                     <Switch
                       checked={row.enabled}
                       onCheckedChange={(checked) =>
@@ -445,6 +456,7 @@ function CheckSchedulingPage() {
           onClick={runRebalance}
           disabled={busy || isLoading || rows.length === 0}
           data-testid="scheduling-rebalance-button"
+          aria-label={t("checks:scheduling.autoRebalance")}
         >
           <Wand2 className="h-4 w-4 sm:mr-2" />
           <span className="hidden sm:inline">

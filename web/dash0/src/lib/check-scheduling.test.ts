@@ -588,6 +588,7 @@ const REQUIRED_PLACEHOLDERS: Record<string, string[]> = {
   "table.period": [],
   "table.contribution": [],
   "table.enabled": [],
+  "table.perMinuteShort": ["{{rate}}"],
   "table.periodFor": ["{{name}}"],
   "table.enabledFor": ["{{name}}"],
   "table.regionCount_one": ["{{count}}"],

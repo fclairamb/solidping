@@ -646,7 +646,8 @@
       "periodFor": "Période de {{name}}",
       "enabledFor": "Activation de {{name}}",
       "regionCount_one": "{{count}} région",
-      "regionCount_other": "{{count}} régions"
+      "regionCount_other": "{{count}} régions",
+      "perMinuteShort": "{{rate}}/min"
     },
     "periodUnit": {
       "seconds_one": "{{count}} seconde",
