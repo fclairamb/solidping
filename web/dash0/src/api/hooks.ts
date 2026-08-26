@@ -267,7 +267,10 @@ export interface CreateCheckRequest {
   regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
-  internal?: boolean;
+  /* No `internal`: it is read-only server-side (spec 2026-08-27-01). A create
+   * carrying it is refused with a VALIDATION_ERROR naming the field, so a
+   * writable type here would only let a future edit compile its way into a
+   * 422. It stays on `Check` (the response) and on the list filter. */
   period?: string;
 }
 
@@ -288,7 +291,7 @@ export interface UpdateCheckRequest {
   regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
-  internal?: boolean;
+  /* No `internal` — read-only, same as on create (spec 2026-08-27-01). */
   period?: string;
   reopenCooldownMultiplier?: number | null;
   flappingWindowSeconds?: number | null;
