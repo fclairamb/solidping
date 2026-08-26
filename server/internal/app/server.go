@@ -2319,7 +2319,13 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 			return err
 		}
 
-		writer.Header().Set("Content-Type", mime.TypeByExtension(fileName))
+		// Only when we can actually name it: setting an empty Content-Type is
+		// worse than setting none, because it suppresses net/http's sniffing
+		// (see contentTypeForFile).
+		if contentType := contentTypeForFile(fileName); contentType != "" {
+			writer.Header().Set("Content-Type", contentType)
+		}
+
 		writer.WriteHeader(http.StatusOK)
 
 		if _, err := writer.Write(fileData); err != nil {

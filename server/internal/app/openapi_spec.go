@@ -31,11 +31,11 @@ func (s *Server) serveOpenAPISpec(files embed.FS, fileName string) func(http.Res
 			return err
 		}
 
-		// Set explicitly rather than via mime.TypeByExtension: that helper takes
-		// an EXTENSION, and serveFile hands it a whole path ("openapi/x.yaml"),
-		// so it returns "" and the spec goes out untyped. RFC 9512 registers
-		// application/yaml.
-		writer.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+		// Shared with serveFile — contentTypeForFile is where the
+		// extension-vs-path trap and the YAML fallback are handled.
+		if contentType := contentTypeForFile(fileName); contentType != "" {
+			writer.Header().Set("Content-Type", contentType)
+		}
 		// The body varies with the origin the client used, and X-Forwarded-Proto
 		// is the one request header that can change it (requestScheme). Without
 		// this a shared cache could hand an http:// spec to an https:// client.
