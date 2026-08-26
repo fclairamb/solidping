@@ -25,7 +25,7 @@ type checkSpec struct {
 
 // createCheck materializes a checkSpec. Enabled/period/regions are set on the
 // row before insert so the check_job the insert derives stays consistent.
-func createCheck(t *testing.T, dbSvc *sqlite.Service, orgUID string, spec checkSpec) *models.Check {
+func createCheck(t *testing.T, dbSvc *sqlite.Service, orgUID string, spec checkSpec) {
 	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
@@ -50,8 +50,6 @@ func createCheck(t *testing.T, dbSvc *sqlite.Service, orgUID string, spec checkS
 			Exec(ctx)
 		r.NoError(err)
 	}
-
-	return check
 }
 
 // TestChecksPerMinuteDemand pins the demand formula the over-limit banner

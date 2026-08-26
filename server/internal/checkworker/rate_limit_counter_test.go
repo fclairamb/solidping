@@ -23,7 +23,7 @@ type gateFixture struct {
 	job    *models.CheckJob
 }
 
-func newGateFixture(t *testing.T, cap_ *int) *gateFixture {
+func newGateFixture(t *testing.T, perMinuteCap *int) *gateFixture {
 	t.Helper()
 	r := require.New(t)
 
@@ -43,7 +43,7 @@ func newGateFixture(t *testing.T, cap_ *int) *gateFixture {
 	)
 	r.NoError(entSvc.Set(ctx, org.UID, entitlements.Entitlements{
 		Source: models.EntitlementSourceAdmin,
-		Limits: entitlements.Limits{MaxChecksPerMinute: cap_},
+		Limits: entitlements.Limits{MaxChecksPerMinute: perMinuteCap},
 	}, "test", ""))
 	runner.services.Entitlements = entSvc
 

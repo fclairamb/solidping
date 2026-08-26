@@ -162,6 +162,45 @@ nil-means-default ambiguity.
 | `whatsappThisMonth` | Outbound WhatsApp template messages in the current UTC month. A persistent counter, not a live count. |
 | `slos` | Live service-level objectives. Enforced against `maxSlos`. |
 
+## The over-limit banner (`checksPerMinute`)
+
+An org that exceeds `maxChecksPerMinute` has its executions silently deferred by
+the rate gate. Until spec 2026-08-26-03 the only traces were an INFO log line
+and the `ChecksRateLimited` Prometheus counter — operator-facing, both of them.
+What the customer saw was unexplained gaps in their results, which reads as "the
+product is broken" (exactly how the 2026-08-26 incident presented).
+
+The GET response therefore carries a `checksPerMinute` object **outside**
+`?with=usage`:
+
+| Field | Meaning |
+|---|---|
+| `demand` | Σ over enabled, non-deleted, non-internal, **non-passive** checks of `max(1, regions) × 60s/period`. |
+| `limit` | Resolved `maxChecksPerMinute`; `null` = unlimited. |
+| `skippedToday` | Executions the gate deferred today (UTC), from `org_usage_counters` (`kind = 'check_rate_limited'`). |
+
+Three decisions worth keeping:
+
+- **Org-level, never per-check.** Once the deferral rotates across the org's
+  checks (spec 2026-08-26-02), a per-check flag lights up almost everywhere and
+  carries no information. Per-check flags/badges were explicitly rejected.
+- **`demand` excludes passive types** (heartbeat, email) while
+  `usage.checksPerMinute` keeps counting them. Passive checks return before the
+  gate (`checkworker/worker.go`), so they consume no execution budget and can
+  never be why an org is throttled. The two figures answer different questions —
+  "what does the gate meter?" versus "what has the org configured?".
+- **`skippedToday` is a daily bucket, not monthly** like the SMS/voice/WhatsApp
+  counters. Monthly would keep the banner lit for weeks after an org came back
+  under its cap. It is written from **both** claim paths — the in-process worker
+  gate and the agent dispatch gate in `handlers/agentws` — because an org
+  running entirely on private locations is throttled by a gate that lives in the
+  server, not in its agents.
+
+`dash0` renders it as an amber warning (`CheckRateLimitBanner`) on the checks
+list and the org Usage page whenever `demand > limit` (predictive) **or**
+`skippedToday > 0` (factual — the org may have just dropped back under its cap
+and still have holes in today's history).
+
 ## Sources
 
 Every row records who wrote it:
