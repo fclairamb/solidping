@@ -72,3 +72,73 @@ func TestAgentClaimRateLimitDeferralKeepsOrderingKey(t *testing.T) {
 		"the agent dispatch gate must NOT re-anchor effective_scheduled_at — that is what "+
 			"starved the late-phase checks of an over-cap org indefinitely")
 }
+
+// TestAgentClaimRateLimitDeferralCountsTheSkip covers the agent half of spec
+// 2026-08-26-03. A deported agent's executions are dropped by a gate that lives
+// in the server, not in the agent, so without an explicit tally here an org
+// running entirely on private locations would be throttled with the banner
+// staying dark — the exact failure mode the spec exists to close.
+func TestAgentClaimRateLimitDeferralCountsTheSkip(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newEnvWith(t, entitlementsWithLimits(t, entitlements.Limits{
+		MaxChecksPerMinute: entitlements.Int(0),
+	}))
+
+	env.createCheck("starved", []string{testRegion})
+
+	today := time.Now().UTC().Format("2006-01-02")
+
+	before, err := env.dbSvc.GetMonthlyUsage(
+		t.Context(), env.org.UID, models.UsageCounterKindCheckRateLimited, today,
+	)
+	r.NoError(err)
+	r.Zero(before, "nothing skipped before the agent claims")
+
+	token := env.mintToken()
+	conn, _, _ := env.enroll(token, "dc1-agent")
+
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10,
+	})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.Empty(resp.Jobs)
+
+	after, err := env.dbSvc.GetMonthlyUsage(
+		t.Context(), env.org.UID, models.UsageCounterKindCheckRateLimited, today,
+	)
+	r.NoError(err)
+	r.Equal(1, after, "the agent dispatch gate must count its skip in the org's daily tally")
+}
+
+// TestAgentClaimUnderCapCountsNothing is the positive control: an agent claim
+// that actually dispatches work must leave the skip counter alone. Without it,
+// a gate that counted unconditionally would pass the test above and light the
+// banner for every healthy org.
+func TestAgentClaimUnderCapCountsNothing(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newEnvWith(t, entitlementsWithLimits(t, entitlements.Limits{
+		MaxChecksPerMinute: entitlements.Int(600),
+	}))
+
+	env.createCheck("healthy", []string{testRegion})
+
+	token := env.mintToken()
+	conn, _, _ := env.enroll(token, "dc1-agent")
+
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10,
+	})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.NotEmpty(resp.Jobs, "an org well inside its cap must receive its work")
+
+	skipped, err := env.dbSvc.GetMonthlyUsage(
+		t.Context(), env.org.UID, models.UsageCounterKindCheckRateLimited,
+		time.Now().UTC().Format("2006-01-02"),
+	)
+	r.NoError(err)
+	r.Zero(skipped, "a dispatched job is not a skip")
+}

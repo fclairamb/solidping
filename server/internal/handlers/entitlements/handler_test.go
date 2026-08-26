@@ -590,3 +590,82 @@ func TestUpgradeTokenCarriesTheRequestedOrgOnly(t *testing.T) {
 	r.Equal(h.org.Slug, orgClaim(h.doForOrg(t, http.MethodGet, firstPath, h.org.Slug)))
 	r.Equal(other.Slug, orgClaim(h.doForOrg(t, http.MethodGet, otherPath, other.Slug)))
 }
+
+// TestGetAlwaysIncludesChecksPerMinute pins the payload contract the over-limit
+// banner depends on (spec 2026-08-26-03): checksPerMinute is NOT behind
+// ?with=usage, because the checks list renders the banner and must not pay for
+// the whole usage roll-up to learn it is being throttled.
+func TestGetAlwaysIncludesChecksPerMinute(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	// The raw shape first: camelCase keys, and a null (not absent, not 0) limit
+	// for an org on the unlimited self-hosted default.
+	var raw struct {
+		ChecksPerMinute map[string]any `json:"checksPerMinute"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &raw))
+	r.NotNil(raw.ChecksPerMinute, "checksPerMinute must be present without ?with=usage")
+	r.Contains(raw.ChecksPerMinute, "demand")
+	r.Contains(raw.ChecksPerMinute, "limit")
+	r.Contains(raw.ChecksPerMinute, "skippedToday")
+	r.Nil(raw.ChecksPerMinute["limit"], "an unlimited cap serializes as null, never as a number")
+
+	var body struct {
+		ChecksPerMinute *entcore.ChecksPerMinute `json:"checksPerMinute"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	r.NotNil(body.ChecksPerMinute)
+	r.Zero(body.ChecksPerMinute.Demand, "an org with no checks schedules nothing")
+	r.Zero(body.ChecksPerMinute.SkippedToday)
+}
+
+// TestGetChecksPerMinuteReportsDemandAndSkips walks the full path an over-limit
+// org takes: a cap written through the API, real checks producing demand, and
+// recorded skips — all surfacing on the GET the dashboard reads.
+func TestGetChecksPerMinuteReportsDemandAndSkips(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	h := newEntHandlerSetup(t)
+
+	// Two 1-minute checks, one of them in three regions: 3 + 1 = 4 per minute.
+	multi := models.NewCheck(h.org.UID, "multi-region", "http")
+	multi.Regions = []string{"eu", "us", "jp"}
+	r.NoError(h.dbSvc.CreateCheck(ctx, multi))
+
+	single := models.NewCheck(h.org.UID, "single-region", "tcp")
+	r.NoError(h.dbSvc.CreateCheck(ctx, single))
+
+	// A heartbeat consumes no execution budget and must not inflate demand.
+	passive := models.NewCheck(h.org.UID, "passive-beat", "heartbeat")
+	r.NoError(h.dbSvc.CreateCheck(ctx, passive))
+
+	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+		"limits": map[string]any{"maxChecksPerMinute": 2},
+	})
+	r.Equal(http.StatusOK, rec.Code)
+
+	svc := entcore.NewService(h.dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc.RecordRateLimitedSkip(ctx, h.org.UID)
+	svc.RecordRateLimitedSkip(ctx, h.org.UID)
+
+	rec = h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	var body struct {
+		ChecksPerMinute *entcore.ChecksPerMinute `json:"checksPerMinute"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	r.NotNil(body.ChecksPerMinute)
+	r.InDelta(4.0, body.ChecksPerMinute.Demand, 0.0001,
+		"3 regions + 1 region per minute, with the heartbeat excluded")
+	r.NotNil(body.ChecksPerMinute.Limit)
+	r.Equal(2, *body.ChecksPerMinute.Limit)
+	r.Equal(2, body.ChecksPerMinute.SkippedToday)
+	r.True(body.ChecksPerMinute.Over())
+}

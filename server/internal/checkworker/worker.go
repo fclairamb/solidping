@@ -947,40 +947,8 @@ func (r *CheckWorker) executeJob(
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrCheckerNotFound, checkType))
 	}
 
-	// Per-org MaxChecksPerMinute gate. Drained buckets reschedule the
-	// job for next period without writing a result, so the user sees
-	// missed executions in their history rather than a hard error. The
-	// entitlements service treats nil caps as unlimited (no-op). In agent
-	// mode there is no in-process entitlements service — the server enforces
-	// the same per-org cap on the agent claim path instead.
-	//
-	// Passive checks (heartbeat, email) never reach this point: they returned
-	// via executePassiveJob above, because they make no outbound request and
-	// so consume no execution budget. The cap meters probes, not rows.
-	if entSvc := r.entitlementsService(); entSvc != nil {
-		if rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID); rateErr != nil {
-			var quotaErr *entitlements.QuotaError
-			if errors.As(rateErr, &quotaErr) {
-				prommetrics.ChecksRateLimited.WithLabelValues(checkJob.OrganizationUID).Inc()
-				// A Prometheus counter and a log line reach the operator, not
-				// the customer. The daily per-org counter is what lets the
-				// dashboard tell an over-limit org why its results have gaps
-				// (spec 2026-08-26-03); best-effort, never blocks the defer.
-				entSvc.RecordRateLimitedSkip(ctx, checkJob.OrganizationUID)
-				logger.InfoContext(ctx, "Check execution rate-limited; deferring to next period",
-					"check_uid", checkJob.CheckUID, "limit", quotaErr.Limit)
-				// Defer to the next aligned tick without writing a result, and
-				// without re-anchoring the claim ordering key — this window's
-				// loser must outrank its on-time siblings next window, or the
-				// same UID-hash phases starve forever (spec 2026-08-26-02).
-				return r.deferRateLimited(ctx, checkJob)
-			}
-			// Anything else is an unexpected resolve failure — log and
-			// fall through so the check still runs (fail-open: better
-			// to occasionally over-execute than to silently halt).
-			logger.WarnContext(ctx, "ReserveCheckExecution failed; running check anyway",
-				"error", rateErr)
-		}
+	if deferred, rateErr := r.applyRateLimitGate(ctx, logger, checkJob); deferred {
+		return rateErr
 	}
 
 	// 4. Execute check with a cost-aware timeout.
@@ -1421,6 +1389,61 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 // backend write deliberately leaves effective_scheduled_at where it was: the
 // claim's ORDER BY key keeps receding, so this window's loser is next window's
 // first pick and an over-cap org rotates the deficit (spec 2026-08-26-02).
+// applyRateLimitGate is the per-org MaxChecksPerMinute gate on the in-process
+// worker path. A drained bucket reschedules the job for its next period without
+// writing a result, so the user sees missed executions in their history rather
+// than a hard error. The entitlements service treats nil caps as unlimited
+// (no-op). In agent mode there is no in-process entitlements service — the
+// server enforces the same per-org cap on the agent claim path instead.
+//
+// Passive checks (heartbeat, email) never reach this point: they returned via
+// executePassiveJob earlier, because they make no outbound request and so
+// consume no execution budget. The cap meters probes, not rows.
+//
+// Returns deferred=true when the job was turned away (the caller must stop and
+// return err); false means the check may run.
+func (r *CheckWorker) applyRateLimitGate(
+	ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob,
+) (bool, error) {
+	entSvc := r.entitlementsService()
+	if entSvc == nil {
+		return false, nil
+	}
+
+	rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID)
+	if rateErr == nil {
+		return false, nil
+	}
+
+	var quotaErr *entitlements.QuotaError
+	if !errors.As(rateErr, &quotaErr) {
+		// Anything else is an unexpected resolve failure — log and fall through
+		// so the check still runs (fail-open: better to occasionally
+		// over-execute than to silently halt).
+		logger.WarnContext(ctx, "ReserveCheckExecution failed; running check anyway",
+			"error", rateErr)
+
+		return false, nil
+	}
+
+	prommetrics.ChecksRateLimited.WithLabelValues(checkJob.OrganizationUID).Inc()
+
+	// A Prometheus counter and a log line reach the operator, not the customer.
+	// The daily per-org counter is what lets the dashboard tell an over-limit
+	// org why its results have gaps (spec 2026-08-26-03); best-effort, and it
+	// never blocks the deferral.
+	entSvc.RecordRateLimitedSkip(ctx, checkJob.OrganizationUID)
+
+	logger.InfoContext(ctx, "Check execution rate-limited; deferring to next period",
+		"check_uid", checkJob.CheckUID, "limit", quotaErr.Limit)
+
+	// Defer to the next aligned tick without writing a result, and without
+	// re-anchoring the claim ordering key — this window's loser must outrank its
+	// on-time siblings next window, or the same UID-hash phases starve forever
+	// (spec 2026-08-26-02).
+	return true, r.deferRateLimited(ctx, checkJob)
+}
+
 func (r *CheckWorker) deferRateLimited(ctx context.Context, checkJob *models.CheckJob) error {
 	// Parse period and calculate next scheduled time
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
