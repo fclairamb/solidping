@@ -3759,6 +3759,43 @@ func (s *Service) assertEdgeNoCycle(ctx context.Context, orgUID, parentUID, chil
 	return nil
 }
 
+// validateImportedCheck rejects a document entry that cannot be turned into a
+// check at all: missing required fields, an unknown type, or a client reaching
+// for the server-owned `internal` flag. Split out of importSingleCheck so the
+// per-entry contract lives in one readable place.
+func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
+	// Validate required fields
+	if exportedCheck.Slug == "" {
+		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "slug is required"}
+	}
+	if exportedCheck.Type == "" {
+		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "type is required"}
+	}
+	if exportedCheck.Config == nil {
+		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "config is required"}
+	}
+	// A document is client-supplied input like any request body, so `internal`
+	// is refused here too (spec 2026-08-27-01). This server never PRODUCES a
+	// document containing it — ExportChecks lists with the default filter,
+	// which is `internal = FALSE` — so the only way to get here is a
+	// hand-written manifest reaching for the quota exemption.
+	if exportedCheck.Internal {
+		return &ImportError{
+			Index: index, Slug: exportedCheck.Slug,
+			Error: "internal: " + ErrInternalFieldNotWritable.Error(),
+		}
+	}
+
+	// Validate check type
+	if _, ok := registry.GetChecker(checkerdef.CheckType(exportedCheck.Type)); !ok {
+		return &ImportError{
+			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
+		}
+	}
+
+	return nil
+}
+
 // importSingleCheck handles importing a single check.
 // Returns (wasCreated, error). wasCreated is true if a new check was created, false if updated.
 func (s *Service) importSingleCheck(
@@ -3770,33 +3807,8 @@ func (s *Service) importSingleCheck(
 	dryRun bool,
 	groupByName map[string]*models.CheckGroup,
 ) (bool, *ImportError) {
-	// Validate required fields
-	if exportedCheck.Slug == "" {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "slug is required"}
-	}
-	if exportedCheck.Type == "" {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "type is required"}
-	}
-	if exportedCheck.Config == nil {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "config is required"}
-	}
-	// A document is client-supplied input like any request body, so `internal`
-	// is refused here too (spec 2026-08-27-01). This server never PRODUCES a
-	// document containing it — ExportChecks lists with the default filter,
-	// which is `internal = FALSE` — so the only way to get here is a
-	// hand-written manifest reaching for the quota exemption.
-	if exportedCheck.Internal {
-		return false, &ImportError{
-			Index: index, Slug: exportedCheck.Slug,
-			Error: "internal: " + ErrInternalFieldNotWritable.Error(),
-		}
-	}
-
-	// Validate check type
-	if _, ok := registry.GetChecker(checkerdef.CheckType(exportedCheck.Type)); !ok {
-		return false, &ImportError{
-			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
-		}
+	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
+		return false, validationErr
 	}
 
 	// Check if slug exists to determine created vs updated
