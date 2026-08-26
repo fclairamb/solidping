@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.3](https://github.com/fclairamb/solidping/compare/v0.18.2...v0.18.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* **dash0:** show the region browser capability the API already advertises ([#265](https://github.com/fclairamb/solidping/issues/265)) ([22d968a](https://github.com/fclairamb/solidping/commit/22d968a988faf2527943a77dad17388f61d589a0))
+
 ## [0.18.2](https://github.com/fclairamb/solidping/compare/v0.18.1...v0.18.2) (2026-08-25)
 
 
