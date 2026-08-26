@@ -52,7 +52,7 @@ MCP-capable client needs only the URL:
 That hands the agent the tools this job actually needs: list the available check
 types, fetch a sample config for each, **validate** a candidate check before
 anything is written, then create it. An agent without MCP support can work
-straight against the [REST API](/docs/api) instead.
+straight against the [REST API](/docs/api/solidping-api) instead.
 
 Then give it your export and let it work:
 
@@ -131,7 +131,7 @@ This is where an [AI agent](#recommended-let-an-ai-agent-do-the-translation)
 earns its keep — it needs no importer, only your export and access to the MCP
 server. Failing that, the importers are thin converters onto the normal check
 API, so anything you can export as structured data can be scripted against
-[`POST /api/v1/orgs/:org/checks`](/docs/api) directly. If you would like a
+[`POST /api/v1/orgs/:org/checks`](/docs/api/solidping-api) directly. If you would like a
 first-class importer for another tool,
 [open an issue](https://github.com/fclairamb/solidping/issues) with a sample
 export — that sample is most of the work.
