@@ -71,6 +71,25 @@ workers: `agentws` reserves rate-limit tokens on the agent dispatch path too, so
 a private location cannot be used to bypass `maxChecksPerMinute`. See
 [deported-agents.md](deported-agents.md).
 
+`maxChecksPerMinute` has two properties worth knowing before reading a graph
+(spec `2026-08-26-02`):
+
+- **The bucket is per process, not per fleet.** `Service.limiterFor` keeps it
+  in memory, so an org whose checks run in R regions has R independent buckets
+  and can sustain up to `cap × R` executions per minute, even though the field
+  reads as an aggregate org rate. Deliberate: it errs generous, never stingy,
+  and needs no coordination on the hot path. Making the cap exact means a
+  shared per-org reservation, not a smaller per-process cap.
+- **A turned-away job is deferred, not dropped, and the deficit rotates.** The
+  deferral advances `scheduled_at` but preserves `effective_scheduled_at`
+  (`checkjobsvc.DeferLeaseRateLimited`), so this window's losers are next
+  window's first pick. An over-cap org therefore degrades as "every check runs
+  at roughly cap/demand of its configured rate", not as "half the checks run
+  perfectly and the other half never run" — which is exactly how it failed
+  before, since check phases are a stable hash of the check UID and never
+  reshuffle on their own. Passive checks (heartbeat, email) make no outbound
+  request and never consume a token.
+
 `maxDeportedAgents` is enforced twice: `MintEnrollmentToken` checks it first
 for early UX (the dashboard can surface an upgrade prompt before the operator
 ever starts a container), and `agentws`'s `awaitEnroll` checks it again at the

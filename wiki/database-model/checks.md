@@ -165,7 +165,7 @@ check per region.
 | encrypted | boolean | Whether config is encrypted |
 | period | interval | Execution interval |
 | scheduled_at | timestamptz | Next scheduled execution (the claim gate) |
-| effective_scheduled_at | timestamptz | Cost-adjusted claim ORDER BY key: scheduled_at + cost_ewma_ms×2 (clamped to 60s) − tier credit |
+| effective_scheduled_at | timestamptz | Cost-adjusted claim ORDER BY key: scheduled_at + cost_ewma_ms×2 (clamped to 30s) − tier credit |
 | cost_ewma_ms | double | EWMA of execution duration in ms; timeouts pinned to the ceiling |
 | delay_ewma_ms | double | EWMA of (probe start − scheduled_at) in ms. Pure telemetry; never steers claim ordering |
 | plan_weight | smallint | Denormalized plan tier from org_entitlements (0 = free) |
@@ -183,3 +183,16 @@ check per region.
 - Unique on (check_uid) where region is null; unique on (check_uid, region) where region is not null
 - Index on scheduled_at
 - Partial claim indexes on effective_scheduled_at, one per lane
+
+**Rate-limited deferrals keep their ordering key** (spec 2026-08-26-02). When
+the per-org `MaxChecksPerMinute` bucket turns a job away before its probe runs,
+the release advances `scheduled_at` to the next aligned tick but leaves
+`effective_scheduled_at` at the tick that was missed
+(`checkjobsvc.DeferLeaseRateLimited`, used by both the in-process worker gate
+and the deported-agent dispatch gate). Since the claim orders by
+`effective_scheduled_at ASC`, the deferred job grows more overdue with every
+window it loses and wins the next contended slot, so an over-cap org rotates
+its deficit across all its checks. Re-anchoring here — which is what the
+generic `ReleaseLease` does, correctly, for a job whose attempt is actually
+over — made phases (a stable hash of the check UID) into a permanent ranking
+and starved the same checks indefinitely.
