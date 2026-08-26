@@ -25,6 +25,18 @@ type gateFixture struct {
 
 func newGateFixture(t *testing.T, perMinuteCap *int) *gateFixture {
 	t.Helper()
+
+	return newGateFixtureFor(t, perMinuteCap, false)
+}
+
+// newGateFixtureFor builds the fixture with control over the check's `internal`
+// flag. The job carries its check the way a real claim does — checkjobsvc
+// attaches it inside the claim transaction (attachChecks), which is the only
+// reason the gate can see internal-ness without a column on check_jobs.
+// TestClaimAttachesInternalCheck (checkjobsvc) is what proves that attachment
+// actually happens, so this hand-attachment is a shortcut, not an assumption.
+func newGateFixtureFor(t *testing.T, perMinuteCap *int, internal bool) *gateFixture {
+	t.Helper()
 	r := require.New(t)
 
 	runner, dbSvc, ctx := setupTestRunner(t)
@@ -48,6 +60,7 @@ func newGateFixture(t *testing.T, perMinuteCap *int) *gateFixture {
 	runner.services.Entitlements = entSvc
 
 	check := models.NewCheck(org.UID, "gate-check", "http")
+	check.Internal = internal
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
 	job := new(models.CheckJob)
@@ -69,6 +82,7 @@ func newGateFixture(t *testing.T, perMinuteCap *int) *gateFixture {
 	job.ScheduledAt = &scheduledAt
 	job.EffectiveScheduledAt = &scheduledAt
 	job.LeaseWorkerUID = &worker.UID
+	job.Check = check
 
 	return &gateFixture{runner: runner, dbSvc: dbSvc, org: org, job: job}
 }
@@ -161,4 +175,68 @@ func TestWorkerRateLimitGateWithoutEntitlementsService(t *testing.T) {
 	r.NoError(err)
 	r.False(deferred)
 	r.Zero(fixture.skipsToday(t))
+}
+
+// TestWorkerRateLimitGateExemptsInternalChecks is spec 2026-08-27-01 on the
+// in-process path: an internal check is exempt from MaxChecks and absent from
+// the org's demand figure, so it must not spend a MaxChecksPerMinute token
+// either. The cap is pinned at 0 — the harshest possible bucket — so an
+// unexempted job could not possibly get through, and the exemption is the only
+// thing that can produce this result.
+//
+//nolint:paralleltest // shares the package's in-memory DB helper
+func TestWorkerRateLimitGateExemptsInternalChecks(t *testing.T) {
+	r := require.New(t)
+
+	fixture := newGateFixtureFor(t, entitlements.Int(0), true)
+
+	deferred, err := fixture.runner.applyRateLimitGate(t.Context(), slog.Default(), fixture.job)
+	r.NoError(err)
+	r.False(deferred, "an internal check must run even with the bucket fully drained")
+	r.Zero(fixture.skipsToday(t),
+		"an exempt check must not tick the org's skipped-today counter")
+
+	// Repeat: the exemption is not a one-shot allowance that a refilling bucket
+	// could explain.
+	for range 3 {
+		deferred, err = fixture.runner.applyRateLimitGate(t.Context(), slog.Default(), fixture.job)
+		r.NoError(err)
+		r.False(deferred)
+	}
+	r.Zero(fixture.skipsToday(t))
+}
+
+// TestWorkerRateLimitGateStillMetersNormalChecks is the positive control for the
+// test above, run through the same fixture with the same drained bucket: the
+// ONLY difference is the check's internal flag. Without this pair, an exemption
+// bug that waved everything through would look identical.
+//
+//nolint:paralleltest // shares the package's in-memory DB helper
+func TestWorkerRateLimitGateStillMetersNormalChecks(t *testing.T) {
+	r := require.New(t)
+
+	fixture := newGateFixtureFor(t, entitlements.Int(0), false)
+
+	deferred, err := fixture.runner.applyRateLimitGate(t.Context(), slog.Default(), fixture.job)
+	r.NoError(err)
+	r.True(deferred, "a normal check is still turned away by a drained bucket")
+	r.Equal(1, fixture.skipsToday(t), "and is still counted")
+}
+
+// TestWorkerRateLimitGateMetersAJobWithNoAttachedCheck pins the nil-Check
+// direction: a job whose check row vanished between scheduling and claim is
+// metered like a normal one. Exempting the unknown case would turn a deleted
+// check into a free pass.
+//
+//nolint:paralleltest // shares the package's in-memory DB helper
+func TestWorkerRateLimitGateMetersAJobWithNoAttachedCheck(t *testing.T) {
+	r := require.New(t)
+
+	fixture := newGateFixtureFor(t, entitlements.Int(0), true)
+	fixture.job.Check = nil
+
+	deferred, err := fixture.runner.applyRateLimitGate(t.Context(), slog.Default(), fixture.job)
+	r.NoError(err)
+	r.True(deferred)
+	r.Equal(1, fixture.skipsToday(t))
 }

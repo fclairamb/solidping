@@ -142,3 +142,94 @@ func TestAgentClaimUnderCapCountsNothing(t *testing.T) {
 	r.NoError(err)
 	r.Zero(skipped, "a dispatched job is not a skip")
 }
+
+// createInternalCheck materializes a check the way the SERVER's own plumbing
+// does — `internal` is no longer settable through any API (spec
+// 2026-08-27-01), so the db service is the only way in. Left enabled so a
+// check_job row exists to be claimed: the point under test is what the gate
+// does with an internal job it is handed, not whether one is normally
+// scheduled (production's internal checks are disabled).
+func (e *env) createInternalCheck(slug string, regions []string) *models.Check {
+	e.t.Helper()
+
+	check := e.createCheck(slug, regions)
+	internal := true
+	require.NoError(e.t, e.dbSvc.UpdateCheck(e.t.Context(), check.UID, &models.CheckUpdate{
+		Internal: &internal,
+	}))
+	check.Internal = true
+
+	return check
+}
+
+// TestAgentClaimExemptsInternalChecks is spec 2026-08-27-01 on the dispatch
+// path: an internal check costs the org no MaxChecks slot and is absent from
+// its demand figure, so it must not spend the org's per-minute budget either.
+// With the cap pinned at 0, dispatching at all is only possible via the
+// exemption.
+func TestAgentClaimExemptsInternalChecks(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newEnvWith(t, entitlementsWithLimits(t, entitlements.Limits{
+		MaxChecksPerMinute: entitlements.Int(0),
+	}))
+
+	check := env.createInternalCheck("plumbing", []string{testRegion})
+
+	token := env.mintToken()
+	conn, _, _ := env.enroll(token, "dc1-agent")
+
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10,
+	})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.Len(resp.Jobs, 1, "an internal check must be dispatched even with the bucket drained")
+
+	skipped, err := env.dbSvc.GetMonthlyUsage(
+		t.Context(), env.org.UID, models.UsageCounterKindCheckRateLimited,
+		time.Now().UTC().Format("2006-01-02"),
+	)
+	r.NoError(err)
+	r.Zero(skipped, "an exempt check must not tick the org's skipped-today counter")
+
+	// The job was really leased out, not silently dropped from the batch.
+	after := env.jobFor(check.UID)
+	r.NotNil(after.LeaseWorkerUID)
+}
+
+// TestAgentClaimStillMetersNormalChecksAlongsideInternalOnes is the positive
+// control, and it runs BOTH kinds through one claim: same org, same drained
+// bucket, same batch. The internal job goes out, the normal one is deferred and
+// counted — so the exemption is keyed on the check, not on some global escape.
+func TestAgentClaimStillMetersNormalChecksAlongsideInternalOnes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newEnvWith(t, entitlementsWithLimits(t, entitlements.Limits{
+		MaxChecksPerMinute: entitlements.Int(0),
+	}))
+
+	internalCheck := env.createInternalCheck("plumbing", []string{testRegion})
+	normalCheck := env.createCheck("customer", []string{testRegion})
+
+	token := env.mintToken()
+	conn, _, _ := env.enroll(token, "dc1-agent")
+
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10,
+	})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.Len(resp.Jobs, 1, "only the internal job may be dispatched")
+	r.Equal(internalCheck.UID, resp.Jobs[0].CheckUID)
+
+	skipped, err := env.dbSvc.GetMonthlyUsage(
+		t.Context(), env.org.UID, models.UsageCounterKindCheckRateLimited,
+		time.Now().UTC().Format("2006-01-02"),
+	)
+	r.NoError(err)
+	r.Equal(1, skipped, "exactly the normal check's skip is counted")
+
+	deferredJob := env.jobFor(normalCheck.UID)
+	r.Nil(deferredJob.LeaseWorkerUID, "the normal check's lease was released by the deferral")
+}
