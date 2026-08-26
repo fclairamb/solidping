@@ -383,6 +383,17 @@ func (s *Service) PlanWeight(ctx context.Context, orgUID string) int {
 // limiterFor returns (creating if needed) the token bucket for orgUID.
 // Capacity is taken at first construction; later changes are honored by
 // Set, which clears the cache.
+//
+// Scope: the bucket lives in THIS process's memory, so the cap is enforced
+// per process, not per organization across the fleet. An org whose checks
+// run in R regions (R server/worker processes) gets R independent buckets
+// and can sustain up to cap × R executions per minute, even though
+// MaxChecksPerMinute reads as an aggregate org rate. That is a deliberate
+// choice (spec 2026-08-26-02): it errs generous, never stingy, and needs no
+// cross-process coordination on the hot path. If the cap ever has to be
+// exact, the replacement is a shared per-org reservation (Redis/Postgres),
+// not a smaller per-process cap — dividing the cap by the region count would
+// throttle single-region orgs for a multi-region problem.
 func (s *Service) limiterFor(orgUID string, capacity int) *tokenBucket {
 	s.limitersMu.Lock()
 	defer s.limitersMu.Unlock()

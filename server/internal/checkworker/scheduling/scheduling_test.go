@@ -66,7 +66,7 @@ func TestEffectiveOrdering(t *testing.T) {
 
 // TestAntiStarvation: a permanently-skipped check has its real scheduled_at
 // recede into the past; because the cost offset is clamped to
-// MaxDeprioritizeOffset (60s), a job that far overdue sorts ahead of ANY
+// MaxDeprioritizeOffset (30s), a job that far overdue sorts ahead of ANY
 // on-time job — even one with zero offset. No cap knob is needed — the
 // absolute scheduled_at anchor plus the bounded offset is the guarantee.
 func TestAntiStarvation(t *testing.T) {

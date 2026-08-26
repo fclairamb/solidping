@@ -64,6 +64,14 @@ func Int(i int) *int { return &i }
 // from 6 to 10 checks/min on 2026-08-15: at 6 the free tier was the
 // tightest in the segment (exit1.dev free is 50 monitors at 5 min = 10,
 // UptimeRobot the same), which cost us top-of-funnel signups.
+//
+// defaultMaxChecksPerMinuteSaaS is enforced by a token bucket that is
+// PER PROCESS, not shared across the fleet (see Service.limiterFor). An
+// org whose checks run in R regions therefore has R independent buckets
+// and can sustain up to cap × R executions per minute. This is a
+// deliberate, documented approximation (spec 2026-08-26-02): it errs
+// generous, never stingy, and a shared per-org reservation is a
+// follow-up if the cap ever needs to be exact.
 const (
 	defaultMaxUsersSelfHosted     = 30
 	defaultMaxChecksSaaS          = 100

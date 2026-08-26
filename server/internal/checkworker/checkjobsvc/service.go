@@ -771,7 +771,10 @@ func (s *serviceImpl) selectAvailableJobs(
 		// effective_scheduled_at (scheduled_at + bounded cost offset −
 		// tier_credit), so deprioritization decides who wins a contended slot but
 		// can never strand a job. The offset is clamped to MaxDeprioritizeOffset
-		// (60s ≪ maxAhead), so no second gate on the effective time is needed.
+		// (30s ≪ maxAhead), so no second gate on the effective time is needed.
+		// The same ordering is what rotates a rate-limited org's deficit: a job
+		// deferred by the per-org cap keeps its old effective_scheduled_at (see
+		// DeferLeaseRateLimited) and so outranks its on-time siblings here.
 		// scheduled_at is also what the Go runner sleeps until, so a job claimed
 		// within the maxAhead window still fires on schedule. WFQ ordering
 		// applies within the lane; the lane split itself is hard isolation
