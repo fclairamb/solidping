@@ -2735,7 +2735,7 @@ type Check struct {
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
-	// Internal Whether this check is internal (hidden from default listings)
+	// Internal Whether this check is internal (hidden from default listings). READ-ONLY: `internal` marks server-created plumbing (worker self-stat checks) and is what exempts a check from `maxChecks`, from the checks-per-minute demand figure and from the per-org execution rate limit. A create, update, upsert or import that carries it is refused with a `VALIDATION_ERROR` naming the field.
 	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs for organizing and filtering checks
@@ -2911,7 +2911,7 @@ type CheckListItem struct {
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
-	// Internal Whether this check is internal (hidden from default listings)
+	// Internal Whether this check is internal (hidden from default listings). READ-ONLY: `internal` marks server-created plumbing (worker self-stat checks) and is what exempts a check from `maxChecks`, from the checks-per-minute demand figure and from the per-org execution rate limit. A create, update, upsert or import that carries it is refused with a `VALIDATION_ERROR` naming the field.
 	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs for organizing and filtering checks
@@ -3162,9 +3162,6 @@ type CreateCheckRequest struct {
 
 	// FlappingWindowSeconds Flapping (adaptive recovery) window in seconds. Outages within this rolling window accumulate the recovery backoff. 0 = off.
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
-
-	// Internal Whether this check is internal (hidden from default listings)
-	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs for organizing checks
 	//
@@ -3783,12 +3780,26 @@ type EntitlementsAuditListResponse struct {
 	Data *[]EntitlementsAudit `json:"data,omitempty"`
 }
 
+// EntitlementsChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+type EntitlementsChecksPerMinute struct {
+	// Demand Sum over enabled, non-deleted, non-internal, non-passive checks of max(1, regions) x 60s / period. Passive types (heartbeat, email) are excluded: they return before the rate gate and consume no execution budget.
+	Demand float64 `json:"demand"`
+
+	// Limit Resolved MaxChecksPerMinute cap; null means unlimited.
+	Limit *int `json:"limit,omitempty"`
+
+	// SkippedToday Check executions deferred by the per-organization rate gate today (UTC), counted across both the in-process worker path and the agent dispatch path.
+	SkippedToday int `json:"skippedToday"`
+}
+
 // EntitlementsResponse defines model for EntitlementsResponse.
 type EntitlementsResponse struct {
-	DisplayEmoji *string    `json:"displayEmoji,omitempty"`
-	DisplayName  *string    `json:"displayName,omitempty"`
-	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
-	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+	DisplayEmoji    *string                      `json:"displayEmoji,omitempty"`
+	DisplayName     *string                      `json:"displayName,omitempty"`
+	ExpiresAt       *time.Time                   `json:"expiresAt,omitempty"`
+	LastSyncedAt    *time.Time                   `json:"lastSyncedAt,omitempty"`
 
 	// Limits Per-org numeric limits; null/absent means unlimited
 	Limits EntitlementLimits `json:"limits"`
@@ -4249,12 +4260,15 @@ type InviteListResponse struct {
 
 // InviteResponse defines model for InviteResponse.
 type InviteResponse struct {
-	Email     openapi_types.Email `json:"email"`
-	ExpiresAt time.Time           `json:"expiresAt"`
-	InviteUrl string              `json:"inviteUrl"`
-	Role      string              `json:"role"`
-	Token     string              `json:"token"`
-	Uid       openapi_types.UUID  `json:"uid"`
+	Email openapi_types.Email `json:"email"`
+
+	// EmailSent Whether the invitation email was queued for delivery — NOT confirmation it reached an inbox, since delivery is async. False when email sending is disabled on this instance, or when enqueueing the job failed; the invite link (inviteUrl) is then the only channel.
+	EmailSent bool               `json:"emailSent"`
+	ExpiresAt time.Time          `json:"expiresAt"`
+	InviteUrl string             `json:"inviteUrl"`
+	Role      string             `json:"role"`
+	Token     string             `json:"token"`
+	Uid       openapi_types.UUID `json:"uid"`
 }
 
 // Job defines model for Job.
@@ -5198,6 +5212,82 @@ type RegionCapabilitiesIpv4 string
 // RegionCapabilitiesIpv6 Whether checks pinned to `ipVersion: ipv6` can leave this region. `yes` when at least one live worker there reports IPv6 egress (any-not-all: a job runs on one worker). `no` when live workers reported and none has it. `unknown` when nothing live has reported — no live worker, or only workers predating the capability report. `unknown` is a real state and MUST NOT be rendered as `no`. The value is a hint with a heartbeat of lag: it never gates execution, and the run-time egress pre-flight is the authority.
 type RegionCapabilitiesIpv6 string
 
+// RegionHealthReport defines model for RegionHealthReport.
+type RegionHealthReport struct {
+	GeneratedAt time.Time `json:"generatedAt"`
+
+	// GhostCount Count of rows where `ghost` is true.
+	GhostCount int               `json:"ghostCount"`
+	Regions    []RegionHealthRow `json:"regions"`
+}
+
+// RegionHealthRow defines model for RegionHealthRow.
+type RegionHealthRow struct {
+	// ChecksReferencing Distinct, non-deleted checks whose `regions` array names this slug.
+	ChecksReferencing int `json:"checksReferencing"`
+
+	// Declared Whether the slug is present in the `regions` system parameter.
+	Declared bool `json:"declared"`
+
+	// Ghost `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work assigned to a slug nothing live can serve.
+	Ghost bool `json:"ghost"`
+
+	// Jobs check_jobs rows carrying this slug. NULL-region jobs are never counted.
+	Jobs int `json:"jobs"`
+
+	// JobsOverdue Subset of `jobs` whose `scheduledAt` has already passed.
+	JobsOverdue int `json:"jobsOverdue"`
+
+	// LastWorkerSeenAt Max `lastActiveAt` across every matching worker, including soft-deleted ones — dates when the region went dark.
+	LastWorkerSeenAt *time.Time `json:"lastWorkerSeenAt"`
+
+	// LiveWorkers Non-deleted workers within the liveness window whose announced region has this slug as a prefix.
+	LiveWorkers int `json:"liveWorkers"`
+
+	// OldestOverdueAt Earliest `scheduledAt` among the overdue jobs, null when there are none.
+	OldestOverdueAt *time.Time `json:"oldestOverdueAt"`
+	Slug            string     `json:"slug"`
+}
+
+// RegionMigrationReport defines model for RegionMigrationReport.
+type RegionMigrationReport struct {
+	// ByOrg checksUpdated split by organization slug.
+	ByOrg map[string]int `json:"byOrg"`
+
+	// ChecksUpdated Checks the migration touches: their `regions` array was rewritten, they owned a job stranded under `from`, or both.
+	ChecksUpdated int    `json:"checksUpdated"`
+	DryRun        bool   `json:"dryRun"`
+	From          string `json:"from"`
+
+	// JobsDeleted `from` jobs removed without a replacement — the check does not declare `to`, is disabled, or already owns a `to` job (the unique `(checkUid, region)` case, where the correct job is kept).
+	JobsDeleted int `json:"jobsDeleted"`
+
+	// JobsReassigned Stranded `from` jobs that come back to life under `to`.
+	JobsReassigned int `json:"jobsReassigned"`
+
+	// OverdueRecovered Reassigned jobs whose `scheduledAt` was already in the past — the stranded backlog that starts running again.
+	OverdueRecovered int    `json:"overdueRecovered"`
+	To               string `json:"to"`
+}
+
+// RegionMigrationRequest defines model for RegionMigrationRequest.
+type RegionMigrationRequest struct {
+	// DryRun When true, returns the full report without writing anything. The numbers are computed from the same pre-state the real run uses, so a dry run and the apply that follows it agree.
+	DryRun *bool `json:"dryRun,omitempty"`
+
+	// From The region slug to migrate away from. Need NOT be a declared region — a slug that no longer exists anywhere is the normal case.
+	//
+	//
+	// Example: default
+	From string `json:"from"`
+
+	// To The region slug to migrate to. Must be declared in the `regions` system parameter or served by a live worker.
+	//
+	//
+	// Example: gravelines
+	To string `json:"to"`
+}
+
 // RegisterRequest defines model for RegisterRequest.
 type RegisterRequest struct {
 	Email    openapi_types.Email `json:"email"`
@@ -6021,9 +6111,6 @@ type UpdateCheckRequest struct {
 	// FlappingWindowSeconds Flapping (adaptive recovery) window in seconds. 0 = off. Omit to leave unchanged.
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
-	// Internal Whether this check is internal (hidden from default listings)
-	Internal *bool `json:"internal,omitempty"`
-
 	// Labels Key-value pairs (null = no change, empty object = clear all)
 	Labels *map[string]string `json:"labels,omitempty"`
 
@@ -6280,9 +6367,6 @@ type UpsertCheckRequest struct {
 
 	// EscalationPolicyUid Escalation policy for this check. Omit or empty to inherit (group → org default → none); a zero-step policy makes it silent.
 	EscalationPolicyUid *string `json:"escalationPolicyUid,omitempty"`
-
-	// Internal Whether this check is internal (hidden from default listings)
-	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs for organizing checks
 	//
@@ -7337,6 +7421,9 @@ type CreateSupportMessageJSONRequestBody = CreateSupportMessageRequest
 
 // SetSystemParameterJSONRequestBody defines body for SetSystemParameter for application/json ContentType.
 type SetSystemParameterJSONRequestBody = SetSystemParameterRequest
+
+// MigrateRegionJSONRequestBody defines body for MigrateRegion for application/json ContentType.
+type MigrateRegionJSONRequestBody = RegionMigrationRequest
 
 // SendTestEmailJSONRequestBody defines body for SendTestEmail for application/json ContentType.
 type SendTestEmailJSONRequestBody = TestEmailRequest
@@ -9849,6 +9936,49 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/system/parameters/{key} (the `SetSystemParameter` operationId).
 	SetSystemParameter(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRegionHealth Ghost-region detection report
+	//
+	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+	//
+	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	//
+	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+	GetRegionHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MigrateRegionWithBody Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MigrateRegion Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegion(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSchedulingLaneLoad Per-worker check-lane load statistics
 	//
@@ -15768,6 +15898,79 @@ func (c *Client) SetSystemParameterWithBody(ctx context.Context, key string, con
 // Corresponds with PUT /api/v1/system/parameters/{key} (the `SetSystemParameter` operationId).
 func (c *Client) SetSystemParameter(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetSystemParameterRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRegionHealth Ghost-region detection report
+//
+// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+//
+// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+//
+// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+//
+// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+func (c *Client) GetRegionHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRegionHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MigrateRegionWithBody Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *Client) MigrateRegionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMigrateRegionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MigrateRegion Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *Client) MigrateRegion(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMigrateRegionRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -28818,6 +29021,73 @@ func NewSetSystemParameterRequestWithBody(server string, key string, contentType
 	return req, nil
 }
 
+// NewGetRegionHealthRequest constructs an http.Request for the GetRegionHealth method
+func NewGetRegionHealthRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/regions/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewMigrateRegionRequest calls the generic MigrateRegion builder with application/json body
+func NewMigrateRegionRequest(server string, body MigrateRegionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMigrateRegionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewMigrateRegionRequestWithBody constructs an http.Request for the MigrateRegion method, with any body, and a specified content type
+func NewMigrateRegionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/regions/migrate")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetSchedulingLaneLoadRequest constructs an http.Request for the GetSchedulingLaneLoad method
 func NewGetSchedulingLaneLoadRequest(server string) (*http.Request, error) {
 	var err error
@@ -31728,6 +31998,51 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/system/parameters/{key} (the `SetSystemParameter` operationId).
 	SetSystemParameterWithResponse(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*SetSystemParameterResult, error)
+
+	// GetRegionHealthWithResponse Ghost-region detection report
+	//
+	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+	//
+	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	//
+	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+	GetRegionHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRegionHealthResult, error)
+
+	// MigrateRegionWithBodyWithResponse Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error)
+
+	// MigrateRegionWithResponse Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegionWithResponse(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error)
 
 	// GetSchedulingLaneLoadWithResponse Per-worker check-lane load statistics
 	//
@@ -46171,6 +46486,123 @@ func (r SetSystemParameterResult) ContentType() string {
 	return ""
 }
 
+type GetRegionHealthResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RegionHealthReport
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRegionHealthResult) GetJSON200() *RegionHealthReport {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetRegionHealthResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetRegionHealthResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRegionHealthResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRegionHealthResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRegionHealthResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRegionHealthResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MigrateRegionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RegionMigrationReport
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MigrateRegionResult) GetJSON200() *RegionMigrationReport {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r MigrateRegionResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r MigrateRegionResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r MigrateRegionResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r MigrateRegionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MigrateRegionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MigrateRegionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MigrateRegionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetSchedulingLaneLoadResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -51169,6 +51601,69 @@ func (c *ClientWithResponses) SetSystemParameterWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseSetSystemParameterResult(rsp)
+}
+
+// GetRegionHealthWithResponse Ghost-region detection report
+//
+// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+//
+// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+//
+// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+func (c *ClientWithResponses) GetRegionHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRegionHealthResult, error) {
+	rsp, err := c.GetRegionHealth(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRegionHealthResult(rsp)
+}
+
+// MigrateRegionWithBodyWithResponse Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *ClientWithResponses) MigrateRegionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error) {
+	rsp, err := c.MigrateRegionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMigrateRegionResult(rsp)
+}
+
+// MigrateRegionWithResponse Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *ClientWithResponses) MigrateRegionWithResponse(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error) {
+	rsp, err := c.MigrateRegion(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMigrateRegionResult(rsp)
 }
 
 // GetSchedulingLaneLoadWithResponse Per-worker check-lane load statistics
@@ -61910,6 +62405,93 @@ func ParseSetSystemParameterResult(rsp *http.Response) (*SetSystemParameterResul
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRegionHealthResult parses an HTTP response from a GetRegionHealthWithResponse call
+func ParseGetRegionHealthResult(rsp *http.Response) (*GetRegionHealthResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRegionHealthResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RegionHealthReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMigrateRegionResult parses an HTTP response from a MigrateRegionWithResponse call
+func ParseMigrateRegionResult(rsp *http.Response) (*MigrateRegionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MigrateRegionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RegionMigrationReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	}
 

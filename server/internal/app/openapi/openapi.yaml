@@ -9054,7 +9054,14 @@ components:
           type: boolean
         internal:
           type: boolean
-          description: Whether this check is internal (hidden from default listings)
+          readOnly: true
+          description: >-
+            Whether this check is internal (hidden from default listings).
+            READ-ONLY: `internal` marks server-created plumbing (worker
+            self-stat checks) and is what exempts a check from `maxChecks`,
+            from the checks-per-minute demand figure and from the per-org
+            execution rate limit. A create, update, upsert or import that
+            carries it is refused with a `VALIDATION_ERROR` naming the field.
         period:
           type: string
           description: Interval duration (e.g., "00:01:00" for 1 minute)
@@ -9387,10 +9394,6 @@ components:
         enabled:
           type: boolean
           default: true
-        internal:
-          type: boolean
-          default: false
-          description: Whether this check is internal (hidden from default listings)
         period:
           type: string
           default: "00:01:00"
@@ -9464,9 +9467,6 @@ components:
           type: object
         enabled:
           type: boolean
-        internal:
-          type: boolean
-          description: Whether this check is internal (hidden from default listings)
         period:
           type: string
         regionSpread:
@@ -9541,10 +9541,6 @@ components:
         enabled:
           type: boolean
           default: true
-        internal:
-          type: boolean
-          default: false
-          description: Whether this check is internal (hidden from default listings)
         period:
           type: string
           default: "00:01:00"
