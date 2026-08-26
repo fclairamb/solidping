@@ -53,10 +53,17 @@ type CheckJob struct {
 	// for paid orgs. Refreshed on entitlement change and reconcile.
 	PlanWeight int `bun:"plan_weight,notnull,default:0"`
 	// EffectiveScheduledAt is scheduled_at + cost_ewma×CostOffsetWeight −
-	// tier_credit, with the offset clamped to MaxDeprioritizeOffset (60s). The
-	// claim SELECT gates on scheduled_at but orders by this column, so
+	// tier_credit, with the offset clamped to scheduling.MaxDeprioritizeOffset.
+	// The claim SELECT gates on scheduled_at but orders by this column, so
 	// de-prioritization only bites under contention (D2/Option A). Backfilled to
 	// scheduled_at by migration 006; delay-era offsets healed by migration 008.
+	//
+	// A rate-limited deferral deliberately does NOT re-anchor this column
+	// (checkjobsvc.DeferLeaseRateLimited, spec 2026-08-26-02): a job the per-org
+	// bucket turned away keeps the tick it missed as its ordering key, so it
+	// grows more overdue every window it loses and wins the next contended slot.
+	// That is what makes an over-cap org rotate its deficit instead of starving
+	// the same UID-hash phases forever.
 	EffectiveScheduledAt *time.Time `bun:"effective_scheduled_at"`
 	// Lane is the scheduling class (spec 2026-07-01-03): 0 = fast, 1 = slow
 	// (scheduling.LaneFast / LaneSlow). Classified from the cost EWMA with
