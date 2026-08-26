@@ -125,3 +125,85 @@ never stingy. Document the actual semantics (a multi-region org can reach
 `cap × regions`) in a comment where `defaultMaxChecksPerMinuteSaaS` is
 defined and near `limiterFor`. Do NOT build a shared per-org reservation
 here — that is a follow-up spec if an exact cap is ever wanted.
+
+## Implementation Plan
+
+### 1. A dedicated deferral write in `checkjobsvc` (the core change)
+
+`checkjobsvc.ReleaseLease` stays exactly as it is — it is the *post-exec /
+no-sample* release used by `DirectBackend.SubmitResult` (error results),
+`handlers/workers` (dispatch-time errors) and the reaper, and re-anchoring
+`effective_scheduled_at` there is correct.
+
+Add a sibling on `checkjobsvc.Service`:
+
+```go
+DeferLeaseRateLimited(ctx, jobUID, workerUID, nextScheduledAt) error
+```
+
+Same UPDATE minus one `Set`: it clears `lease_worker_uid` /
+`lease_expires_at`, resets `lease_starts`, advances `scheduled_at` to
+`nextScheduledAt` and **leaves `effective_scheduled_at` untouched**, so the
+ordering key keeps receding relative to now across repeated deferrals.
+`cost_ewma_ms`, `delay_ewma_ms` and `lane` are also left untouched (item 4:
+the deferral carries no fresh sample and must not clobber the delay
+diagnostic). Same `lease_worker_uid = ?` ownership guard and
+`execRelease` no-rows mapping. No schema change; Bun emits the same SQL on
+both dialects, so Postgres and SQLite stay in sync by construction.
+
+### 2. Rename the deferral rung of the backend chain
+
+`backend.Backend.ReleaseLease` has exactly one caller — the `QuotaError`
+branch — yet its name invited the re-anchoring semantics that caused the
+bug. Rename it `DeferRateLimited` (same signature) so the intent is
+structural:
+
+- `DirectBackend.DeferRateLimited` → `checkJobSvc.DeferLeaseRateLimited`
+- `WSBackend.DeferRateLimited` → still a no-op (agent-side leases expire)
+- `CheckWorker.releaseLease` → `deferRateLimited`; `NextAligned` still
+  computes `scheduled_at` (item 3 — phases stay deterministic)
+- update the `claimFailBackend` fake in `fetcher_fatal_test.go`
+
+### 3. Agent claim path (`agentws/handler.go`)
+
+Swap `ReleaseLease` for `DeferLeaseRateLimited` in the dispatch gate. The
+`now + period` next tick is left as-is: the agent submit path
+(`handlers/workers.calculateNextScheduledAt`) is anchor-based rather than
+phase-aligned throughout, so introducing `NextAligned` on only this rung
+would be inconsistent and is out of scope.
+
+### 4. Comment/documentation debt (items 5, 6 and the resolved question)
+
+- `scheduling.go:187` and `checkjobsvc/service.go:743-744`: "60s" → 30s
+  (`MaxDeprioritizeOffset = 2 × 15s`).
+- `scheduling.go` anti-starvation invariant: state that the rate-limit
+  deferral now upholds it (advances `scheduled_at`, preserves
+  `effective_scheduled_at`).
+- `worker.go` near the gate: note that passive checks returned before it and
+  never consume tokens.
+- `entitlements/defaults.go` (`defaultMaxChecksPerMinuteSaaS`) and
+  `Service.limiterFor`: document that the bucket is per-process, so a
+  multi-region org can reach `cap × regions` — deliberate, errs generous.
+
+### 5. Tests (`checkjobsvc`, in-memory SQLite — proving the negative)
+
+A window simulator parameterized by the deferral function, so the *same*
+harness proves both directions:
+
+- `TestRateLimitFairRotation` — one org, N 1-minute checks at adversarially
+  clustered phases, cap = N/2 executions per window, M windows. With
+  `DeferLeaseRateLimited`: every check executes at least once, and each
+  lands within tolerance of `cap/demand` of its slots. **Positive control**
+  with the legacy `ReleaseLease`: the same harness must report at least one
+  check at 0 executions — if the harness cannot see starvation it cannot
+  prove its absence.
+- The same two assertions driven through `ClaimJobsForAgent`.
+- `TestDeferLeaseRateLimitedPreservesOrderingKey` — unit: `scheduled_at`
+  advances, `effective_scheduled_at` / `cost_ewma_ms` / `delay_ewma_ms` /
+  `lane` unchanged, lease cleared, wrong-worker release rejected; and the
+  no-regression half: `ReleaseLeaseWithSchedulingState` on a successful
+  execution still re-anchors `effective_scheduled_at`.
+
+### 6. QA
+
+`make build-backend lint-back test`.
