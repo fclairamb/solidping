@@ -72,6 +72,7 @@ import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { PageHeader } from "@/components/shared/page-header";
+import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
@@ -3144,6 +3145,8 @@ import {
 }
 
 function FeedbackSection() {
+  const { org } = Route.useParams();
+
   return (
     <Section
       id="feedback"
@@ -3186,6 +3189,28 @@ function FeedbackSection() {
             </div>
           }
           importLine={`import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";`}
+        />
+
+        <h3 className="text-sm font-medium">Over-limit banner</h3>
+        <p className="text-sm text-muted-foreground">
+          An org-level entitlement breach that is silently costing the customer
+          something — here, check executions dropped by the per-minute rate
+          gate. It is an amber <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          Alert, never destructive: nothing is permanently lost and the remedy
+          is the customer&apos;s to choose. It renders nothing when the org is
+          inside its cap, so a page can mount it unconditionally.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md">
+              <CheckRateLimitBanner
+                org={org}
+                checksPerMinute={{ demand: 240, limit: 120, skippedToday: 613 }}
+                showUsageLink
+              />
+            </div>
+          }
+          importLine={`import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";`}
         />
 
         <h3 className="text-sm font-medium">Tinted panel</h3>

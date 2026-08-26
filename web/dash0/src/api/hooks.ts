@@ -5912,9 +5912,39 @@ export interface EntitlementsUsage {
   smsGuard?: EntitlementsSMSGuard;
 }
 
+/**
+ * The org's scheduled check-execution rate against its `maxChecksPerMinute`
+ * cap, plus what the rate gate actually threw away today.
+ *
+ * Unlike `usage`, this is NOT behind `?with=usage`: the over-limit banner it
+ * drives also renders on the checks list, which has no business paying for the
+ * full usage roll-up just to learn it is being throttled.
+ */
+export interface EntitlementsChecksPerMinute {
+  /**
+   * Scheduled executions per minute: sum over enabled, non-deleted,
+   * non-internal, **non-passive** checks of `max(1, regions) × 60s / period`.
+   * Heartbeat and email checks are excluded — they return before the rate gate
+   * and can never be the reason an org is throttled, which is why this can be
+   * lower than `usage.checksPerMinute`.
+   */
+  demand: number;
+  /** Resolved `maxChecksPerMinute`. null/undefined = unlimited. */
+  limit?: number | null;
+  /**
+   * Executions the per-org rate gate deferred today (UTC), across both the
+   * in-process worker path and the agent dispatch path. A persistent counter:
+   * an org that has just dropped back under its cap still lost executions
+   * earlier today, and must be told so.
+   */
+  skippedToday: number;
+}
+
 export interface EntitlementsResponse {
   limits: EntitlementsLimits;
   usage?: EntitlementsUsage;
+  /** Always present unless the server could not compute it. */
+  checksPerMinute?: EntitlementsChecksPerMinute;
   source: string;
   stale: boolean;
   upgradeUrl?: string;

@@ -33,6 +33,7 @@ import {
   useConvertChecks,
   useEscalationPolicies,
   useCheckTypes,
+  useEntitlements,
   type Check,
   type CheckGroup,
   type ConversionWarning,
@@ -48,6 +49,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { PageHeader } from "@/components/shared/page-header";
+import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import {
   Table,
   TableBody,
@@ -1004,6 +1006,11 @@ function ChecksIndexPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
+  // Entitlements without ?with=usage: the over-limit banner needs only
+  // `checksPerMinute`, which the server computes unconditionally, so the checks
+  // list never pays for the full usage roll-up.
+  const { data: entitlements } = useEntitlements(org);
+
   // Status and type are both faceted (multi-value) filters. The URL is the
   // source of truth — read directly off Route.useSearch() with no local-state
   // mirror (like `groupBy` above), so a cold deep link with several values
@@ -1507,6 +1514,18 @@ function ChecksIndexPage() {
         }
         docsHref="/docs/features/check-types"
         className="flex-wrap"
+      />
+
+      {/*
+        Directly under the header, above the filters: the gaps this explains are
+        in the rows below, and an org has to see the cause before it starts
+        hunting broken checks.
+      */}
+      <CheckRateLimitBanner
+        org={org}
+        checksPerMinute={entitlements?.checksPerMinute}
+        upgradeUrl={entitlements?.upgradeUrl}
+        showUsageLink
       />
 
       <div className="flex flex-wrap items-center gap-4">
