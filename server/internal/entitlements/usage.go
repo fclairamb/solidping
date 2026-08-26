@@ -3,7 +3,6 @@ package entitlements
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -56,21 +55,11 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 		return Usage{}, fmt.Errorf("list check rates: %w", err)
 	}
 
-	var perMin float64
-	for i := range rates {
-		rate := &rates[i]
-		if rate.Enabled && time.Duration(rate.Period) > 0 {
-			// Each selected region runs the check every period, so the
-			// per-minute cost is the single-region rate times the region count
-			// (min 1 — a no-region check still runs once). Mirrors the actual
-			// worker dispatch rate the ReserveCheckExecution token bucket sees.
-			regions := len(rate.Regions)
-			if regions < 1 {
-				regions = 1
-			}
-			perMin += float64(time.Minute) / float64(time.Duration(rate.Period)) * float64(regions)
-		}
-	}
+	// Every check counts here, passive ones included: this figure describes what
+	// the org has configured. The narrower "demand actually metered by the
+	// MaxChecksPerMinute gate" lives in ChecksPerMinuteStatus, which drops
+	// passive types.
+	perMin := checksPerMinuteRate(rates, false)
 
 	members, err := s.db.CountMembersForOrg(ctx, orgUID)
 	if err != nil {

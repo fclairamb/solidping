@@ -201,11 +201,29 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 		usagePtr = &usage
 	}
 
+	// checksPerMinute is NOT behind ?with=usage: the over-limit banner it drives
+	// has to render on the checks list too, and that page must not have to pay
+	// for the full usage roll-up (member counts, agents, custom domains, SLOs)
+	// to learn it is being throttled. Two cheap queries, on an endpoint the
+	// dashboard caches for a minute.
+	//
+	// It fails soft for the same reason: an over-limit warning is worth less
+	// than the limits payload itself, so a failure here must not 500 the page
+	// that renders the plan.
+	var cpmPtr *entcore.ChecksPerMinute
+	if cpm, cpmErr := h.svc.ChecksPerMinuteStatus(req.Context(), org.UID); cpmErr != nil {
+		slog.WarnContext(req.Context(), "checks-per-minute status failed; omitting it from the payload",
+			"orgUID", org.UID, "error", cpmErr)
+	} else {
+		cpmPtr = &cpm
+	}
+
 	return h.WriteJSON(writer, http.StatusOK, struct {
 		entcore.Resolved
-		Usage      *entcore.Usage `json:"usage,omitempty"`
-		UpgradeURL string         `json:"upgradeUrl,omitempty"`
-	}{Resolved: resolved, Usage: usagePtr, UpgradeURL: upgradeURL})
+		Usage           *entcore.Usage           `json:"usage,omitempty"`
+		ChecksPerMinute *entcore.ChecksPerMinute `json:"checksPerMinute,omitempty"`
+		UpgradeURL      string                   `json:"upgradeUrl,omitempty"`
+	}{Resolved: resolved, Usage: usagePtr, ChecksPerMinute: cpmPtr, UpgradeURL: upgradeURL})
 }
 
 // Put handles PUT /api/v1/orgs/:org/entitlements — replaces the row.

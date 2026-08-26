@@ -14384,6 +14384,35 @@ components:
             Outbound WhatsApp template messages sent in the current UTC month.
             A persistent counter, not a live count.
 
+    EntitlementsChecksPerMinute:
+      type: object
+      description: >-
+        The organization's scheduled check-execution rate against its
+        MaxChecksPerMinute cap, plus how many executions the rate gate actually
+        skipped today. Always present (it is not behind `?with=usage`), because
+        it drives the over-limit banner on pages that do not need the full usage
+        roll-up. Omitted only when it could not be computed.
+      required: [demand, skippedToday]
+      properties:
+        demand:
+          type: number
+          format: double
+          description: >-
+            Sum over enabled, non-deleted, non-internal, non-passive checks of
+            max(1, regions) x 60s / period. Passive types (heartbeat, email)
+            are excluded: they return before the rate gate and consume no
+            execution budget.
+        limit:
+          type: integer
+          nullable: true
+          description: Resolved MaxChecksPerMinute cap; null means unlimited.
+        skippedToday:
+          type: integer
+          description: >-
+            Check executions deferred by the per-organization rate gate today
+            (UTC), counted across both the in-process worker path and the agent
+            dispatch path.
+
     EntitlementsResponse:
       type: object
       required: [limits, source, stale]
@@ -14407,6 +14436,8 @@ components:
           type: boolean
         usage:
           $ref: "#/components/schemas/EntitlementsUsage"
+        checksPerMinute:
+          $ref: "#/components/schemas/EntitlementsChecksPerMinute"
         upgradeUrl:
           type: string
 

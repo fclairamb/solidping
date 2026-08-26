@@ -962,6 +962,11 @@ func (r *CheckWorker) executeJob(
 			var quotaErr *entitlements.QuotaError
 			if errors.As(rateErr, &quotaErr) {
 				prommetrics.ChecksRateLimited.WithLabelValues(checkJob.OrganizationUID).Inc()
+				// A Prometheus counter and a log line reach the operator, not
+				// the customer. The daily per-org counter is what lets the
+				// dashboard tell an over-limit org why its results have gaps
+				// (spec 2026-08-26-03); best-effort, never blocks the defer.
+				entSvc.RecordRateLimitedSkip(ctx, checkJob.OrganizationUID)
 				logger.InfoContext(ctx, "Check execution rate-limited; deferring to next period",
 					"check_uid", checkJob.CheckUID, "limit", quotaErr.Limit)
 				// Defer to the next aligned tick without writing a result, and

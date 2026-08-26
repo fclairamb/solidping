@@ -17,6 +17,8 @@ plus live `usage` counts and a `stale` flag, and `upgradeUrl` when
 `entitlements.upgrade_url_template` is configured. Auth: any authenticated
 org member.
 
+`usage` is opt-in via `?with=usage`; `checksPerMinute` is always present.
+
 `usage` fields:
 
 | Field | Meaning |
@@ -26,6 +28,30 @@ org member.
 | `usage.ssoUsers` | Total member count (enforced against `limits.maxUsers`). |
 | `usage.agents` | Active deported (private-location) agents (enforced against `limits.maxDeportedAgents`). |
 | `usage.customDomains` | Live status pages with a custom domain set (enforced against `limits.maxCustomDomains`). |
+
+`checksPerMinute` fields — the over-limit banner's data source:
+
+| Field | Meaning |
+|---|---|
+| `checksPerMinute.demand` | Scheduled execution rate: Σ over enabled, non-deleted, non-internal, **non-passive** checks of `max(1, regions) × 60s/period`. |
+| `checksPerMinute.limit` | Resolved `maxChecksPerMinute`; `null` = unlimited. |
+| `checksPerMinute.skippedToday` | Executions the per-org rate gate deferred today (UTC), across both the in-process worker path and the agent dispatch path. |
+
+Two deliberate differences from `usage.checksPerMinute`:
+
+- **Passive types are excluded** from `demand`. Heartbeat and email checks
+  return before the rate gate (`checkworker/worker.go`), so they consume no
+  execution budget and cannot be the reason an org is throttled.
+  `usage.checksPerMinute` keeps counting them because it describes what the org
+  has *configured*.
+- **It is not behind `?with=usage`**, so a page that only needs to know whether
+  the org is being throttled (the checks list) does not pay for the member,
+  agent, custom-domain and SLO counts.
+
+`skippedToday` is a persistent daily counter (`org_usage_counters`,
+`kind = 'check_rate_limited'`), not a live figure: an org that has just dropped
+back under its cap still lost executions earlier today, and the banner has to
+say so. It resets at UTC midnight.
 
 ### PUT /api/v1/orgs/:org/entitlements
 Replaces the entitlement row. Returns the resolved entitlements.

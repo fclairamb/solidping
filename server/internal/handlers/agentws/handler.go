@@ -842,6 +842,11 @@ func (h *Handler) handleClaim(
 			if rateErr := h.entitlements.ReserveCheckExecution(ctx, job.OrganizationUID); rateErr != nil {
 				var quotaErr *entitlements.QuotaError
 				if errors.As(rateErr, &quotaErr) {
+					// Same daily per-org tally as the in-process worker gate:
+					// an org must see its skipped executions whichever path
+					// dropped them (spec 2026-08-26-03).
+					h.entitlements.RecordRateLimitedSkip(ctx, job.OrganizationUID)
+
 					next := time.Now().Add(time.Duration(job.Period))
 					_ = h.checkJobSvc.DeferLeaseRateLimited(ctx, job.UID, state.workerUID, next)
 
