@@ -9,6 +9,10 @@ import {
   ipv6Capability,
   type Ipv6Capability,
 } from "@/components/shared/ipv6-capability";
+import {
+  BrowserCapabilityIcon,
+  browserCapability,
+} from "@/components/shared/browser-capability";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import {
   calculateReopenCooldownSeconds,
@@ -1130,6 +1134,7 @@ export function CheckForm({
                   <div className="grid grid-cols-2 gap-2">
                     {orderedRegions.map((region) => {
                       const ipv6 = ipv6Capability(region.capabilities);
+                      const browser = browserCapability(region.capabilities);
                       // De-emphasise only when the check is pinned to ipv6 and
                       // the region does not advertise it. Never disabled, never
                       // hidden — the advertised value is a hint, not a gate.
@@ -1144,6 +1149,7 @@ export function CheckForm({
                           )}
                           data-testid={`region-option-${region.slug}`}
                           data-ipv6={ipv6}
+                          data-browser={browser}
                         >
                           <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
                           <span className="text-sm">{region.emoji} {region.name}</span>
@@ -1153,6 +1159,17 @@ export function CheckForm({
                                 Private
                               </Badge>
                             )}
+                            {/* Icon-only so it stays quiet next to the IPv6
+                                text badge — a second text badge would crowd
+                                the picker. Always meaningful for a browser
+                                check; for other types it only speaks up when
+                                it has a definite yes/no, staying silent on
+                                "unknown". */}
+                            <BrowserCapabilityIcon
+                              capability={browser}
+                              hideUnknown={type !== "browser"}
+                              data-testid={`region-browser-${region.slug}`}
+                            />
                             {/* "yes" is always marked; "no" is always shown so
                                 its absence can never be misread. "unknown" gets
                                 a neutral badge only while ipv6 is pinned, where
