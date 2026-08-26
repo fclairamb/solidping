@@ -63,8 +63,12 @@ const (
 	fieldType          = "type"
 	fieldSlug          = "slug"
 	fieldBody          = "body"
+	fieldInternal      = "internal"
 	msgInvalidJSON     = "Invalid JSON format"
 	msgSlugConflictOrg = "A check with this slug already exists in this organization"
+	// msgInternalNotWritable explains the refusal of a client-supplied
+	// `internal` (spec 2026-08-27-01) — read-only, server-owned.
+	msgInternalNotWritable = "The internal flag is read-only: it marks server-created checks and cannot be set by a client"
 	// queryTrue is the literal a boolean query flag must equal to be enabled
 	// (e.g. ?dryRun=true).
 	queryTrue = "true"
@@ -671,6 +675,16 @@ func (h *Handler) handleListError(writer http.ResponseWriter, request *http.Requ
 	}
 }
 
+// writeInternalFieldError renders the refusal of a client-supplied `internal`
+// as a field-level VALIDATION_ERROR (spec 2026-08-27-01). Naming the field is
+// the whole point: the caller has to be able to tell WHICH property of its
+// payload the server will not take, or it just retries the same body.
+func (h *Handler) writeInternalFieldError(writer http.ResponseWriter) error {
+	return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+		{Name: fieldInternal, Message: msgInternalNotWritable},
+	})
+}
+
 // handleCreateError handles errors from CreateCheck.
 func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Request, err error) error {
 	// Check for configuration validation errors
@@ -684,6 +698,8 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Re
 	}
 
 	switch {
+	case errors.Is(err, ErrInternalFieldNotWritable):
+		return h.writeInternalFieldError(writer)
 	case errors.Is(err, entcore.ErrEntitlementExceeded):
 		var qe *entcore.QuotaError
 		if !errors.As(err, &qe) {
@@ -753,6 +769,8 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 	}
 
 	switch {
+	case errors.Is(err, ErrInternalFieldNotWritable):
+		return h.writeInternalFieldError(writer)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
@@ -820,6 +838,8 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, request *http.Re
 	}
 
 	switch {
+	case errors.Is(err, ErrInternalFieldNotWritable):
+		return h.writeInternalFieldError(writer)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
