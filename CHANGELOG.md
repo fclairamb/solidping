@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.2](https://github.com/fclairamb/solidping/compare/v0.18.1...v0.18.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **email:** transactional mail is branded, and no longer mangled by real mail clients. Every message now wears the organization's logo (the status page's for subscriber mail, none at all under white-label) and carries a preheader, so the inbox preview line stops scraping the wordmark or a raw URL. Subjects and plaintext parts render through `text/template`: a check named "Search & Discovery" reached the inbox as "Search &amp; Discovery" — in the subject line — while the HTML part keeps escaping as it must. The palette is declared light-only, because Apple Mail, Outlook.com and Gmail on Android auto-invert an undeclared one, recoloring the status banner that carries an incident alert's entire meaning. The uptime report built its fact grid from unstyled `<th>` cells, which rendered centered, unpadded and ragged; it now uses the styled label/value grid the rest of the mail shares. Alerts lead with the figure they are about — total downtime, burn rate, budget remaining — timestamps carry their zone, durations read "15m" rather than "15m0s", the incident UUID moved from a table row to a support footnote, and action buttons stack full-width on a phone. Gradients, elevation and state color throughout, each paired with the flat fallback Outlook needs. A dev-only catalog at `/api/mgmt/email-preview` (Test → Emails in the dashboard) renders every template through the same formatter the mailer uses ([#258](https://github.com/fclairamb/solidping/issues/258)) ([b55b8b4](https://github.com/fclairamb/solidping/commit/b55b8b45c5d9cf2613740f937889d8513dbdcfca))
+* **deps:** update Go dependencies (non-major), including `aws-sdk-go-v2/config` v1.32.39 and `posthog-go` v1.24.1 ([#256](https://github.com/fclairamb/solidping/issues/256)) ([4c114c0](https://github.com/fclairamb/solidping/commit/4c114c0a80b2267d7702f1cf1ca0dd1c52729691)), ([#259](https://github.com/fclairamb/solidping/issues/259)) ([b7074c5](https://github.com/fclairamb/solidping/commit/b7074c563161dc1fb0f996c879fa87d2062fdd5a)), ([#260](https://github.com/fclairamb/solidping/issues/260)) ([441eb21](https://github.com/fclairamb/solidping/commit/441eb21d3343a7d175362002cfec4894335ee677)), ([#261](https://github.com/fclairamb/solidping/issues/261)) ([f4daee9](https://github.com/fclairamb/solidping/commit/f4daee9714bb903a97d8ee0b0a4c21eb9a848ab7))
+
 ## [0.18.1](https://github.com/fclairamb/solidping/compare/v0.18.0...v0.18.1) (2026-08-25)
 
 
