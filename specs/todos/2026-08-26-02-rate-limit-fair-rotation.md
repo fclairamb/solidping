@@ -113,3 +113,15 @@ Tests (this is where the spec earns its keep — prove the negative):
 - Passive checks (heartbeat/email) return before the gate
   (`worker.go:904`) and never consume tokens — unchanged, but worth a
   clarifying comment near the gate.
+
+## Resolved open questions
+
+Approved by the maintainer on 2026-08-26 with the spec itself.
+
+**Q: Bucket scope — per-process (effectively per-region) or shared per-org?**
+
+**Decision: keep the per-process bucket in this spec.** It errs generous,
+never stingy. Document the actual semantics (a multi-region org can reach
+`cap × regions`) in a comment where `defaultMaxChecksPerMinuteSaaS` is
+defined and near `limiterFor`. Do NOT build a shared per-org reservation
+here — that is a follow-up spec if an exact cap is ever wanted.
