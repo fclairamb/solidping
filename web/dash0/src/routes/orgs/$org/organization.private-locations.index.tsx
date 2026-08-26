@@ -57,6 +57,10 @@ import {
   Ipv6CapabilityBadge,
   ipv6Capability,
 } from "@/components/shared/ipv6-capability";
+import {
+  BrowserCapabilityIcon,
+  browserCapability,
+} from "@/components/shared/browser-capability";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
 
@@ -203,12 +207,21 @@ function RegionsCard({ org }: { org: string }) {
                         actually fix — by enabling IPv6 on a host they own — so
                         it belongs on the location's own page. Three states:
                         "unknown" (no live agent reporting, or an older agent)
-                        is never rendered as "no". */}
+                        is never rendered as "no". The browser icon (spec
+                        2026-08-26-01) sits right beside it — same three-state
+                        contract, icon-only so it doesn't compete with the
+                        text badge. */}
                     <TableCell>
-                      <Ipv6CapabilityBadge
-                        capability={ipv6Capability(region.capabilities)}
-                        data-testid={`private-region-ipv6-${region.slug}`}
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <Ipv6CapabilityBadge
+                          capability={ipv6Capability(region.capabilities)}
+                          data-testid={`private-region-ipv6-${region.slug}`}
+                        />
+                        <BrowserCapabilityIcon
+                          capability={browserCapability(region.capabilities)}
+                          data-testid={`private-region-browser-${region.slug}`}
+                        />
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

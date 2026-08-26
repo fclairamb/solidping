@@ -2069,7 +2069,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// OpenAPI schema + interactive (Swagger) explorer. The explorer moved from
 	// /docs to /openapi now that /docs serves the documentation site.
-	mainGroup.GET("/openapi.yaml", s.serveFile(openAPIFiles, "openapi/openapi.yaml"))
+	mainGroup.GET("/openapi.yaml", s.serveOpenAPISpec(openAPIFiles, "openapi/openapi.yaml"))
 	mainGroup.GET("/openapi", s.serveFile(openAPIFiles, "openapi/index.html"))
 
 	// llms.txt / llms-full.txt at the conventional root path (GitHub issue
@@ -2319,7 +2319,13 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 			return err
 		}
 
-		writer.Header().Set("Content-Type", mime.TypeByExtension(fileName))
+		// Only when we can actually name it: setting an empty Content-Type is
+		// worse than setting none, because it suppresses net/http's sniffing
+		// (see contentTypeForFile).
+		if contentType := contentTypeForFile(fileName); contentType != "" {
+			writer.Header().Set("Content-Type", contentType)
+		}
+
 		writer.WriteHeader(http.StatusOK)
 
 		if _, err := writer.Write(fileData); err != nil {
