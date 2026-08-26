@@ -26,7 +26,10 @@ func disabledCreds(t *testing.T) credentials.Service {
 
 // setupQuotaService builds a checks service wired to a real entitlements
 // service backed by an in-memory SQLite DB, plus an org capped at maxChecks.
-func setupQuotaService(t *testing.T, maxChecks int) (*checks.Service, *models.Organization) {
+// The db service comes back too, so a test can create a check the way the
+// SERVER does (straight through the db, bypassing the checks service) — that
+// is the only way to get an internal check since spec 2026-08-27-01.
+func setupQuotaService(t *testing.T, maxChecks int) (*checks.Service, *sqlite.Service, *models.Organization) {
 	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
@@ -47,7 +50,7 @@ func setupQuotaService(t *testing.T, maxChecks int) (*checks.Service, *models.Or
 
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
 
-	return svc, org
+	return svc, dbSvc, org
 }
 
 func httpCheckReq() checks.CreateCheckRequest {
@@ -62,7 +65,7 @@ func TestCreateCheckBlockedOverCap(t *testing.T) {
 	r := require.New(t)
 	ctx := t.Context()
 
-	svc, org := setupQuotaService(t, 1)
+	svc, _, org := setupQuotaService(t, 1)
 
 	// First check fits under the cap.
 	_, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())
@@ -78,33 +81,17 @@ func TestCreateCheckBlockedOverCap(t *testing.T) {
 	r.Equal("MaxChecks", qe.LimitName)
 }
 
-func TestCreateCheckInternalBypassesCap(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-	ctx := t.Context()
-
-	svc, org := setupQuotaService(t, 1)
-
-	// One non-internal check uses up the cap.
-	_, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())
-	r.NoError(err)
-
-	// Internal checks bypass the cap entirely.
-	internal := true
-	req := httpCheckReq()
-	req.Internal = &internal
-	for range 3 {
-		_, err = svc.CreateCheck(ctx, org.Slug, req)
-		r.NoError(err)
-	}
-}
+// The `internal: true` bypass this file used to assert (TestCreateCheckInternalBypassesCap)
+// was the bug: it let any caller create checks that never counted against
+// MaxChecks. Its replacement — the field is refused, and the cap still bites —
+// lives in internal_flag_test.go (spec 2026-08-27-01).
 
 func TestCloneCheckBlockedOverCap(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
 
-	svc, org := setupQuotaService(t, 1)
+	svc, _, org := setupQuotaService(t, 1)
 
 	// First (non-internal) check fills the cap of 1.
 	created, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())

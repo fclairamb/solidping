@@ -255,12 +255,18 @@ func TestCheckPeriodBoundsOnCreate(t *testing.T) {
 			wantStatus: http.StatusCreated,
 		},
 		{
-			name: "internal browser at 10s is exempt",
+			// `internal` used to be the period-floor escape hatch for anyone
+			// who sent it. Since spec 2026-08-27-01 the field itself is
+			// refused, so the sub-10s browser period never even gets weighed:
+			// the exemption survives only for server-created internal checks,
+			// covered at the function level by TestValidatePeriodForType.
+			name: "a client-supplied internal flag is refused, not honored",
 			body: map[string]any{
 				"type": "browser", "period": "00:00:10", "internal": true,
 				"config": map[string]any{"url": "https://example.com"},
 			},
-			wantStatus: http.StatusCreated,
+			wantStatus:  http.StatusUnprocessableEntity,
+			wantMessage: "Validation error",
 		},
 		{
 			name: "absent period falls back to the default and passes",
