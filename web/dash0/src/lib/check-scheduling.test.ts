@@ -248,6 +248,30 @@ describe("buildSchedulingRows", () => {
     expect(rows[0].maxPeriodSeconds).toBe(86400);
   });
 
+  it("carries the region list so the row can hide it when there is only one", () => {
+    // The table shows a regions cell only when regions.length > 1 (a single
+    // region is the default and would be noise on every row). That gate reads
+    // this field, so it has to distinguish 0, 1 and many.
+    const { rows } = buildSchedulingRows(
+      [
+        check({ uid: "none" }),
+        check({ uid: "one", regions: ["eu"] }),
+        check({ uid: "many", regions: ["eu", "us"] }),
+      ],
+      TYPE_INFO,
+    );
+
+    const byUid = new Map(rows.map((r) => [r.uid, r]));
+    expect(byUid.get("none")!.regions).toEqual([]);
+    expect(byUid.get("one")!.regions).toEqual(["eu"]);
+    expect(byUid.get("many")!.regions).toEqual(["eu", "us"]);
+
+    // 0 and 1 both cost one execution per period; only "many" multiplies.
+    expect(rowContribution(byUid.get("none")!)).toBe(1);
+    expect(rowContribution(byUid.get("one")!)).toBe(1);
+    expect(rowContribution(byUid.get("many")!)).toBe(2);
+  });
+
   it("counts regions from the check, defaulting a region-less check to 1", () => {
     const { rows } = buildSchedulingRows(
       [check({ uid: "multi", regions: ["eu", "us", "ap"] })],
@@ -291,22 +315,63 @@ describe("allowedStepsFor / periodOptionsFor", () => {
     // select that omitted it would display the wrong value and silently
     // rewrite it on the first save.
     const options = periodOptionsFor(
-      row({ periodSeconds: 45, minPeriodSeconds: 10 }),
+      row({ currentPeriodSeconds: 45, periodSeconds: 45, minPeriodSeconds: 10 }),
     );
 
     expect(options[0]).toEqual({ seconds: 45, custom: true });
     expect(options.filter((o) => o.custom)).toHaveLength(1);
   });
 
+  it("keeps the custom entry after the user picks a ladder step", () => {
+    // Anchored on the SAVED period, not the draft: dropping the entry the
+    // moment the user tries another option would strand them with no way back
+    // to what the check actually has, short of Reset.
+    const options = periodOptionsFor(
+      row({ currentPeriodSeconds: 45, periodSeconds: 300, minPeriodSeconds: 10 }),
+    );
+
+    expect(options[0]).toEqual({ seconds: 45, custom: true });
+  });
+
   it("keeps a custom period that is outside the type's constraints", () => {
     const options = periodOptionsFor(
-      row({ periodSeconds: 90, minPeriodSeconds: 3600, maxPeriodSeconds: 86400 }),
+      row({
+        currentPeriodSeconds: 90,
+        periodSeconds: 90,
+        minPeriodSeconds: 3600,
+        maxPeriodSeconds: 86400,
+      }),
     );
 
     expect(options[0]).toEqual({ seconds: 90, custom: true });
     expect(options.slice(1).map((o) => o.seconds)).toEqual([
       3600, 21600, 43200, 86400,
     ]);
+  });
+
+  it("floors at 10s — never 5s — for a type that declares no minimum", () => {
+    // http/tcp/dns send no minPeriodSeconds at all (omitempty), so they land
+    // on the fallback. It must match checkerdef.GlobalMinPeriod (10s) and
+    // check-form's globalMinPeriodSeconds: offering "5 seconds" here would
+    // produce an Apply the API rejects with VALIDATION_ERROR.
+    const { rows } = buildSchedulingRows(
+      [check({ uid: "bare", type: "tcp" })],
+      new Map(),
+    );
+
+    expect(rows[0].minPeriodSeconds).toBe(10);
+    expect(periodOptionsFor(rows[0])[0]).toEqual({ seconds: 10, custom: false });
+    expect(allowedStepsFor(rows[0])).not.toContain(5);
+  });
+
+  it("floors at 10s when the type is known but declares no minimum", () => {
+    const bare = new Map<string, CheckTypeInfo>([
+      ["http", { type: "http", description: "", labels: [], enabled: true }],
+    ]);
+    const { rows } = buildSchedulingRows([check({ uid: "h" })], bare);
+
+    expect(rows[0].minPeriodSeconds).toBe(10);
+    expect(allowedStepsFor(rows[0])).not.toContain(5);
   });
 });
 

@@ -111,7 +111,19 @@ export function isRowDirty(row: SchedulingRow): boolean {
   );
 }
 
-const DEFAULT_MIN_PERIOD_SECONDS = 5;
+/**
+ * Floor for a check type that declares no minimum of its own.
+ *
+ * Must stay 10, matching `globalMinPeriodSeconds` in
+ * `@/components/shared/check-form` and `checkerdef.GlobalMinPeriod` in
+ * `server/internal/checkers/checkerdef/types.go` (enforced in
+ * `handlers/checks/service.go`). `minPeriodSeconds` is `omitempty`, so the
+ * common types — http, tcp, dns — arrive with no minimum at all and land here.
+ * A lower value would offer "5 seconds" for exactly those types and Apply
+ * would then 400 with VALIDATION_ERROR: a period the UI proposed, refused by
+ * the API.
+ */
+const DEFAULT_MIN_PERIOD_SECONDS = 10;
 
 /**
  * Turns the checks list into editable rows, dropping what this page must not
@@ -193,8 +205,13 @@ export interface PeriodOption {
 }
 
 /**
- * Options for one row's period select: the allowed steps, plus the row's own
- * period as a leading `custom` entry when it is not a step.
+ * Options for one row's period select: the allowed steps, plus the check's
+ * SAVED period as a leading `custom` entry when it is not a step.
+ *
+ * Anchored on the saved period, not on the draft: the value the select must
+ * never silently rewrite is what is on the server, and anchoring on the draft
+ * would delete the custom entry the moment the user tried another option —
+ * stranding them with no way back short of Reset.
  *
  * Local to this page on purpose — spec 2026-08-26-05 owns the same treatment
  * for the check form's dropdown, and doing it there is not this spec's job.
@@ -206,8 +223,11 @@ export function periodOptionsFor(row: SchedulingRow): PeriodOption[] {
     custom: false,
   }));
 
-  if (row.periodSeconds > 0 && !steps.includes(row.periodSeconds)) {
-    options.unshift({ seconds: row.periodSeconds, custom: true });
+  if (
+    row.currentPeriodSeconds > 0 &&
+    !steps.includes(row.currentPeriodSeconds)
+  ) {
+    options.unshift({ seconds: row.currentPeriodSeconds, custom: true });
   }
 
   return options;

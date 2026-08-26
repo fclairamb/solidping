@@ -336,6 +336,11 @@ function CheckSchedulingPage() {
   );
   const dirtyRows = rows.filter(isRowDirty);
   const busy = applySchedule.isPending;
+  const showRebalanceExhausted =
+    rebalanceFailed &&
+    limit !== null &&
+    limit !== undefined &&
+    draftTotal > limit;
 
   const setPeriod = (uid: string, seconds: number) => {
     setDraft((prev) => ({
@@ -373,10 +378,9 @@ function CheckSchedulingPage() {
     const proposal = proposeRebalance(rows, rebalanceLimit);
     setRebalanceFailed(!proposal.reachedLimit);
 
-    if (proposal.proposals.size === 0) {
-      return;
-    }
-
+    // Unconditional: a run that proposes nothing must also clear the markers a
+    // previous run left behind, or rows keep claiming "proposed" for a
+    // proposal that no longer exists.
     setProposals(proposal.proposals);
     setDraft((prev) => {
       const next = { ...prev };
@@ -506,7 +510,13 @@ function CheckSchedulingPage() {
         </div>
       </div>
 
-      {rebalanceFailed && (
+      {/*
+        Gated on the LIVE total, not only on the flag: "stretching cannot get
+        you there" stops being true the moment the user disables a check and
+        the draft drops under the cap, and an alert that keeps insisting
+        otherwise trains people to ignore it.
+      */}
+      {showRebalanceExhausted && (
         <Alert variant="warning" data-testid="scheduling-rebalance-exhausted">
           <AlertDescription>
             {t("checks:scheduling.rebalanceExhausted")}

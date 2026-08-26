@@ -153,6 +153,17 @@ test.describe("Check scheduling page", () => {
       });
       created.push(heartbeatUid);
 
+      // A multi-region check: the regions cell renders only above one region.
+      const multiUid = await createCheck(page, token, {
+        name: `E2E Sched Multi ${stamp}`,
+        slug: `e2e-sched-multi-${stamp}`,
+        type: "http",
+        period: "00:01:00",
+        regions: ["eu", "us"],
+        config: { url: "https://example.com/e2e-sched-multi" },
+      });
+      created.push(multiUid);
+
       await page.goto("orgs/test/checks/scheduling");
       await page.waitForLoadState("networkidle");
 
@@ -167,6 +178,32 @@ test.describe("Check scheduling page", () => {
         page.getByTestId(`scheduling-row-${heartbeatUid}`),
       ).toHaveCount(0);
       await expect(page.getByTestId("scheduling-passive-note")).toBeVisible();
+
+      // Regions: shown only when there is more than one. A single-region (or
+      // region-less) check must not carry the cell at all — repeating the
+      // default on every row would bury the checks that actually multiply the
+      // org's demand.
+      await expect(
+        page.getByTestId(`scheduling-regions-${multiUid}`),
+      ).toHaveText("2 regions");
+      await expect(
+        page.getByTestId(`scheduling-regions-${fastUid}`),
+      ).toHaveCount(0);
+      // Two regions at a 1-minute period = 2/min, not 1.
+      await expect(
+        page.getByTestId(`scheduling-contribution-${multiUid}`),
+      ).toHaveText("2");
+
+      // The period select must never offer a period the API rejects: http
+      // declares no minimum, so it falls back to the global 10s floor.
+      await page.getByTestId(`scheduling-period-${fastUid}`).click();
+      await expect(
+        page.getByRole("option", { name: "5 seconds", exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("option", { name: "10 seconds", exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
 
       const meterTotal = page.getByTestId("check-rate-meter-total");
       const before = Number(await meterTotal.textContent());
