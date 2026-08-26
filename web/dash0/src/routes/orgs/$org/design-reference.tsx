@@ -77,6 +77,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
+import { BrowserCapabilityIcon } from "@/components/shared/browser-capability";
 import { FlappingBadge } from "@/components/shared/flapping-badge";
 import {
   formatBudgetSeconds,
@@ -1603,6 +1604,38 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Browser capability icon</h3>
+        <p className="text-sm text-muted-foreground">
+          What a region's <strong>live</strong> workers report about having a
+          headless browser available (spec 2026-08-26-01). Same three-state
+          contract as the IPv6 badge above —{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            unknown
+          </code>{" "}
+          means "not reported yet" and must <strong>never</strong> be rendered
+          as{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">no</code>
+          . Rendered as a single icon with no label text — a second text badge
+          next to IPv6 would crowd the region picker — so the state lives in
+          the icon's color and the tooltip. The value is a hint only: it never
+          hides, disables or filters a region. Use{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            hideUnknown
+          </code>{" "}
+          on dense inline surfaces (the region picker) — "no" always renders,
+          so a missing icon can never be misread as a negative.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <BrowserCapabilityIcon capability="yes" />
+              <BrowserCapabilityIcon capability="no" />
+              <BrowserCapabilityIcon capability="unknown" />
+            </>
+          }
+          importLine={`import {\n  BrowserCapabilityIcon,\n  browserCapability,\n} from "@/components/shared/browser-capability";\n\n<BrowserCapabilityIcon\n  capability={browserCapability(region.capabilities)}\n  hideUnknown={type !== "browser"}\n/>`}
         />
 
         <h3 className="text-sm font-medium">Flapping badge</h3>
