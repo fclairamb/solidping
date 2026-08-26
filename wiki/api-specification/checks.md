@@ -81,6 +81,15 @@ Semantics:
 ### POST /api/v1/orgs/:org/checks
 Create a new check. Type can be inferred from the config URL. Name and slug are auto-generated if omitted. Auth: required
 
+**`internal` is not writable.** It marks server-created plumbing (the worker
+self-stat checks) and is what exempts a check from `maxChecks`, from the
+checks-per-minute demand figure and from the per-org execution rate limit — so
+a request that carries it is refused with a `422 VALIDATION_ERROR` naming the
+field, on POST, PATCH, PUT-by-slug and on import/apply alike (spec
+`2026-08-27-01`). It stays readable on every check response, and
+`GET /checks?internal=` still filters on it. A **clone** of an internal check is
+a normal, metered check: the flag is not copied.
+
 ### GET /api/v1/orgs/:org/checks/:checkUid
 Get a single check by UID or slug. Auth: required
 

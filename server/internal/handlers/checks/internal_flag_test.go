@@ -202,6 +202,33 @@ func TestImportRejectsInternalDocument(t *testing.T) {
 	r.Equal(1, result.Created)
 }
 
+// TestValidateDocumentFlagsInternal keeps `validate` and `apply` in agreement:
+// a manifest the applier will refuse must not pass validation first. An
+// operator who validates in CI and applies in the pipeline would otherwise
+// discover the refusal only in the deploy.
+func TestValidateDocumentFlagsInternal(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	good := checks.ExportCheck{
+		Name: "sneaky", Slug: "sneaky", Type: "http",
+		Config: map[string]any{"url": "https://sneaky.example.com"},
+	}
+
+	// Positive control first: the identical check without the flag is clean.
+	doc := &checks.ExportDocument{Version: 2, Organization: "acme", Checks: []checks.ExportCheck{good}}
+	r.Empty(checks.ValidateDocument(doc))
+
+	bad := good
+	bad.Internal = true
+	doc = &checks.ExportDocument{Version: 2, Organization: "acme", Checks: []checks.ExportCheck{bad}}
+
+	issues := checks.ValidateDocument(doc)
+	r.Len(issues, 1)
+	r.Equal("sneaky", issues[0].Where)
+	r.Contains(issues[0].Message, "internal")
+}
+
 // TestCloneNeverProducesAnInternalCheck closes the same loophole one door
 // further in. An org can see its worker plumbing checks by slug, and the clone
 // path used to copy `source.Internal` AND skip the quota for internal clones —

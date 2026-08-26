@@ -30,7 +30,7 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 |---|---|---|
 | `maxChecks` | Non-internal, non-deleted checks the org may hold. | `CheckCreateAllowed` → [`checks/service.go:946,3062`](../../server/internal/handlers/checks/service.go) |
 | `maxUsers` | Total org members, however they joined. | `CheckMembership` → [`auth/service.go:413`](../../server/internal/handlers/auth/service.go) |
-| `maxChecksPerMinute` | Per-process check-execution rate (token bucket). | `ReserveCheckExecution` → [`checkworker/worker.go:961`](../../server/internal/checkworker/worker.go), [`agentws/handler.go:842`](../../server/internal/handlers/agentws/handler.go) |
+| `maxChecksPerMinute` | Per-process check-execution rate (token bucket). Internal checks are exempt. | `ReserveCheckExecution` → [`checkworker/worker.go`](../../server/internal/checkworker/worker.go) (`applyRateLimitGate`), [`agentws/handler.go`](../../server/internal/handlers/agentws/handler.go) (`handleClaim`) |
 | `maxDeportedAgents` | Active deported (private-location) agents across all private regions. | `AgentCreateAllowed` → [`agents/service.go` (`MintEnrollmentToken`)](../../server/internal/handlers/agents/service.go), [`agentws/handler.go` (`awaitEnroll`)](../../server/internal/handlers/agentws/handler.go) |
 | `maxCustomDomains` | Status pages served on a customer-owned domain. | `CustomDomainAllowed` → [`entitlements/usage.go:144`](../../server/internal/entitlements/usage.go), called from [`statuspages/custom_domain.go:208-212`](../../server/internal/handlers/statuspages/custom_domain.go) |
 | `maxSmsPerMonth` | Outbound SMS sent by the org per UTC calendar month. | notification dispatch (SMS channel) |
@@ -38,6 +38,22 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 | `maxWhatsappPerMonth` | Outbound WhatsApp template messages per UTC calendar month. | notification dispatch (WhatsApp channel) |
 | `maxSlos` | Service-level objectives the org may hold. | `SloCreateAllowed` → [`entitlements/usage.go`](../../server/internal/entitlements/usage.go), called from [`slos/service.go` (`CreateSLO`)](../../server/internal/handlers/slos/service.go) |
 | `whiteLabel` | **Boolean, not a cap.** Whether the org may drop the "powered by SolidPing" badge from its status pages (spec 2026-08-21-07). | `WhiteLabelAllowed` → [`entitlements/service.go`](../../server/internal/entitlements/service.go), called from [`statuspages/service.go`](../../server/internal/handlers/statuspages/service.go) |
+
+**An internal check counts nowhere, in all three systems** (spec
+`2026-08-27-01`). `internal` marks server-created plumbing — the worker
+self-stat checks written straight through `db.CreateCheck`, never through the
+checks service — and it is not a writable request field on any path: create,
+update, upsert and import/apply all refuse it with a `VALIDATION_ERROR`, and a
+clone never inherits it. In exchange, the three accounting systems agree about
+it: it is excluded from `maxChecks` (`ListOrgCheckRates` filters
+`internal = FALSE`), absent from the checks-per-minute **demand** figure (same
+filter), and — since this spec — exempt from both **rate gates**, so it draws no
+token and never ticks the `check_rate_limited` skip counter. Before that last
+piece, an internal check was unmetered by the quota, invisible to the predicted
+demand, and yet competing for the org's real per-minute budget: the predictive
+number and the factual skip counter could describe different fleets for the same
+org. Both gates read the flag off the check row attached at claim time
+(`checkjobsvc.attachChecks`) — there is no `internal` column on `check_jobs`.
 
 `whiteLabel` is the one non-numeric entitlement, and its `nil` means something
 different from every field above it: **`nil` = "use the deployment default"**,
