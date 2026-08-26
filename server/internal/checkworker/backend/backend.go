@@ -108,9 +108,17 @@ type WorkerBackend interface {
 		req *SubmitResultRequest,
 	) error
 
-	// ReleaseLease releases a job's lease and reschedules it without writing a
-	// result (rate-limit deferral path).
-	ReleaseLease(
+	// DeferRateLimited releases a job's lease and reschedules it without writing
+	// a result, for the one caller that needs it: the per-org
+	// MaxChecksPerMinute gate turning a job away before its probe runs.
+	//
+	// The name is deliberate. The underlying write preserves the job's
+	// effective_scheduled_at (the claim ordering key) so a deferred job keeps
+	// accumulating overdue-ness and wins the next contended slot — the
+	// anti-starvation rotation of spec 2026-08-26-02. A generic "release the
+	// lease" here is what previously re-anchored that key and starved the same
+	// checks forever.
+	DeferRateLimited(
 		ctx context.Context,
 		job *models.CheckJob,
 		workerUID string,

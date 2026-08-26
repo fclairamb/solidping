@@ -91,7 +91,37 @@ type Service interface {
 	// backend that does not measure cost), so it re-anchors effective_scheduled_at
 	// to the new schedule; the cost offset is reapplied on the next
 	// post-exec write via ReleaseLeaseWithSchedulingState.
+	//
+	// This is the *terminal* release: the attempt is over (an error result was
+	// written, or the reaper gave up on a stuck job) and the job starts its next
+	// period with a clean slate. A job that was merely DEFERRED — the per-org
+	// rate limiter turned it away before the probe ran — must use
+	// DeferLeaseRateLimited instead, or it loses the overdue-ness that earns it
+	// priority next window.
 	ReleaseLease(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
+
+	// DeferLeaseRateLimited releases the lease of a job the per-org
+	// MaxChecksPerMinute gate turned away before it ran, advancing scheduled_at
+	// to the next tick but DELIBERATELY PRESERVING effective_scheduled_at
+	// (spec 2026-08-26-02).
+	//
+	// That one omitted assignment is the whole fairness mechanism. Claim order
+	// is `ORDER BY effective_scheduled_at ASC`, so a job whose ordering key
+	// stays pinned at the tick it missed keeps receding relative to now and
+	// sorts ahead of its on-time org siblings in the next window. An org over
+	// its cap therefore rotates the deficit round-robin instead of starving the
+	// same deterministic-phase losers forever. Re-anchoring here (what
+	// ReleaseLease does) is what let a 1-minute check go 7.5 hours without a
+	// single execution while its org ran at full rate.
+	//
+	// No busy-loop risk: the claim predicate still gates on
+	// `scheduled_at <= now + ahead`, so a deferred job cannot be re-claimed
+	// inside the window it was just turned away from.
+	//
+	// cost_ewma_ms, delay_ewma_ms and lane are left untouched as well: the probe
+	// never ran, so there is no sample to fold in, and the delay EWMA is the
+	// diagnostic that exposed this pathology in production.
+	DeferLeaseRateLimited(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
 
 	// ReleaseLeaseWithSchedulingState releases the lease, reschedules, and folds
 	// the post-exec cost and delay signals into the row in the same write: it
@@ -860,12 +890,15 @@ func (s *serviceImpl) updateSingleJobLease(
 }
 
 // ReleaseLease releases the lease and reschedules the job.
-// Resets lease_starts to 0 since the job completed successfully.
+// Resets lease_starts to 0 since the attempt is over.
 //
 // This variant does not touch cost_ewma_ms; it keeps effective_scheduled_at in
 // step with the new schedule by anchoring it to nextScheduledAt (no cost sample
-// to apply). Used by the rate-limit deferral, the stuck-job reaper, and remote
-// backends that have no fresh duration to fold in.
+// to apply). Used by the stuck-job reaper, dispatch-time error results, and
+// remote backends that have no fresh duration to fold in.
+//
+// NOT the rate-limit deferral — that path is DeferLeaseRateLimited, which keeps
+// the ordering key where it was so the deficit rotates (spec 2026-08-26-02).
 func (s *serviceImpl) ReleaseLease(
 	ctx context.Context,
 	jobUID string,
@@ -876,12 +909,51 @@ func (s *serviceImpl) ReleaseLease(
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
-		Set("lease_starts = 0"). // Reset since job completed
+		Set("lease_starts = 0"). // Reset since the attempt is over
 		Set("scheduled_at = ?", nextScheduledAt).
-		// Re-anchor the ordering key to the new schedule so a deferred job does
+		// Re-anchor the ordering key to the new schedule so a released job does
 		// not keep an effective deadline from a stale (earlier) schedule. The
 		// cost offset is reapplied on the next post-exec write.
 		Set("effective_scheduled_at = ?", nextScheduledAt).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", jobUID).
+		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
+
+	return s.execRelease(ctx, update)
+}
+
+// DeferLeaseRateLimited releases the lease of a rate-limited job WITHOUT
+// re-anchoring effective_scheduled_at (spec 2026-08-26-02).
+//
+// It is ReleaseLease minus one `Set`, and that omission is the entire
+// anti-starvation fix. Because the claim orders by effective_scheduled_at ASC,
+// a deferred job that keeps its missed tick as the ordering key grows more
+// overdue with every window it loses, and therefore sorts ahead of its on-time
+// org siblings the next time the org's token bucket has room. Under a
+// permanently over-cap org the deficit rotates across all its checks instead of
+// landing on the same UID-hash-phase losers forever (the production pathology:
+// a 1-minute check with zero results for 7.5 hours while its org ran at rate).
+//
+// scheduled_at still advances to the next aligned tick, so the claim predicate
+// (`scheduled_at <= now + ahead`) keeps a deferred job out of the window it was
+// just turned away from — no busy loop, no thundering re-claim.
+//
+// cost_ewma_ms / delay_ewma_ms / lane are left untouched: no probe ran, so
+// there is no sample to fold in, and the delay EWMA is telemetry that must not
+// be reset by a deferral.
+func (s *serviceImpl) DeferLeaseRateLimited(
+	ctx context.Context,
+	jobUID string,
+	workerUID string,
+	nextScheduledAt time.Time,
+) error {
+	update := s.db.NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("lease_worker_uid = NULL").
+		Set("lease_expires_at = NULL").
+		Set("lease_starts = 0"). // The probe never started; don't count it as a crash
+		Set("scheduled_at = ?", nextScheduledAt).
+		// effective_scheduled_at is deliberately NOT set here. See the doc above.
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease

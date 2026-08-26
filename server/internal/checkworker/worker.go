@@ -953,6 +953,10 @@ func (r *CheckWorker) executeJob(
 	// entitlements service treats nil caps as unlimited (no-op). In agent
 	// mode there is no in-process entitlements service — the server enforces
 	// the same per-org cap on the agent claim path instead.
+	//
+	// Passive checks (heartbeat, email) never reach this point: they returned
+	// via executePassiveJob above, because they make no outbound request and
+	// so consume no execution budget. The cap meters probes, not rows.
 	if entSvc := r.entitlementsService(); entSvc != nil {
 		if rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID); rateErr != nil {
 			var quotaErr *entitlements.QuotaError
@@ -960,9 +964,11 @@ func (r *CheckWorker) executeJob(
 				prommetrics.ChecksRateLimited.WithLabelValues(checkJob.OrganizationUID).Inc()
 				logger.InfoContext(ctx, "Check execution rate-limited; deferring to next period",
 					"check_uid", checkJob.CheckUID, "limit", quotaErr.Limit)
-				// Release the lease (which reschedules next_run_at) and skip the
-				// outbound probe.
-				return r.releaseLease(ctx, checkJob)
+				// Defer to the next aligned tick without writing a result, and
+				// without re-anchoring the claim ordering key — this window's
+				// loser must outrank its on-time siblings next window, or the
+				// same UID-hash phases starve forever (spec 2026-08-26-02).
+				return r.deferRateLimited(ctx, checkJob)
 			}
 			// Anything else is an unexpected resolve failure — log and
 			// fall through so the check still runs (fail-open: better
@@ -1402,12 +1408,19 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 	return r.backend.SubmitResult(saveCtx, checkJob, r.getWorker().UID, req)
 }
 
-// releaseLease releases the job lease and reschedules for next execution.
-func (r *CheckWorker) releaseLease(ctx context.Context, checkJob *models.CheckJob) error {
+// deferRateLimited releases the job lease and reschedules for the next
+// phase-aligned tick after the per-org rate limiter turned the job away.
+//
+// scheduled_at moves (calculateNextScheduledAt → scheduling.NextAligned, so the
+// deterministic per-check phase of spec 2026-07-20-05 is preserved), but the
+// backend write deliberately leaves effective_scheduled_at where it was: the
+// claim's ORDER BY key keeps receding, so this window's loser is next window's
+// first pick and an over-cap org rotates the deficit (spec 2026-08-26-02).
+func (r *CheckWorker) deferRateLimited(ctx context.Context, checkJob *models.CheckJob) error {
 	// Parse period and calculate next scheduled time
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
 
-	return r.backend.ReleaseLease(ctx, checkJob, r.getWorker().UID, nextScheduledAt)
+	return r.backend.DeferRateLimited(ctx, checkJob, r.getWorker().UID, nextScheduledAt)
 }
 
 // isPassiveCheckType reports whether a check type is passive — driven by

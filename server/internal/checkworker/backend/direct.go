@@ -297,14 +297,16 @@ func (b *DirectBackend) processIncidents(ctx context.Context, job *models.CheckJ
 	}
 }
 
-// ReleaseLease releases the lease and reschedules without writing a result.
-func (b *DirectBackend) ReleaseLease(
+// DeferRateLimited releases the lease and reschedules without writing a result,
+// preserving effective_scheduled_at so the deferred job sorts ahead of its
+// on-time org siblings next window (spec 2026-08-26-02).
+func (b *DirectBackend) DeferRateLimited(
 	ctx context.Context,
 	job *models.CheckJob,
 	workerUID string,
 	nextScheduledAt time.Time,
 ) error {
-	return b.checkJobSvc.ReleaseLease(ctx, job.UID, workerUID, nextScheduledAt)
+	return b.checkJobSvc.DeferLeaseRateLimited(ctx, job.UID, workerUID, nextScheduledAt)
 }
 
 // LastResults returns the latest result per check (passive checks).

@@ -378,9 +378,11 @@ func (b *WSBackend) SubmitResult(
 	return err
 }
 
-// ReleaseLease is unused agent-side (the entitlements deferral is enforced at
-// the server's dispatch); a lease the agent abandons simply expires.
-func (b *WSBackend) ReleaseLease(_ context.Context, _ *models.CheckJob, _ string, _ time.Time) error {
+// DeferRateLimited is unused agent-side (the entitlements gate is enforced at
+// the server's dispatch, in agentws.handleClaim, which calls
+// checkjobsvc.DeferLeaseRateLimited directly); a lease the agent abandons
+// simply expires.
+func (b *WSBackend) DeferRateLimited(_ context.Context, _ *models.CheckJob, _ string, _ time.Time) error {
 	return nil
 }
 
