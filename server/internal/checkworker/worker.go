@@ -1400,11 +1400,21 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 // executePassiveJob earlier, because they make no outbound request and so
 // consume no execution budget. The cap meters probes, not rows.
 //
+// Internal checks ARE turned away here rather than earlier, because unlike a
+// passive check they still execute — they are simply not billed for it (spec
+// 2026-08-27-01): they are exempt from MaxChecks and excluded from the demand
+// figure, so charging them a per-minute token would let server plumbing eat a
+// customer's execution budget and tick their skipped-today counter.
+//
 // Returns deferred=true when the job was turned away (the caller must stop and
 // return err); false means the check may run.
 func (r *CheckWorker) applyRateLimitGate(
 	ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob,
 ) (bool, error) {
+	if checkJob.IsInternal() {
+		return false, nil
+	}
+
 	entSvc := r.entitlementsService()
 	if entSvc == nil {
 		return false, nil

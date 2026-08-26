@@ -838,7 +838,12 @@ func (h *Handler) handleClaim(
 		// in the next claim, exactly as on the in-process worker path. Otherwise
 		// an over-cap org starves whichever checks happen to sort late, forever
 		// (spec 2026-08-26-02).
-		if h.entitlements != nil {
+		//
+		// Internal (server-created) checks are exempt, exactly as on the
+		// in-process worker gate (spec 2026-08-27-01): they cost the org no
+		// MaxChecks slot and are absent from its demand figure, so they must
+		// not spend its per-minute budget or tick its skipped-today counter.
+		if h.entitlements != nil && !job.IsInternal() {
 			if rateErr := h.entitlements.ReserveCheckExecution(ctx, job.OrganizationUID); rateErr != nil {
 				var quotaErr *entitlements.QuotaError
 				if errors.As(rateErr, &quotaErr) {

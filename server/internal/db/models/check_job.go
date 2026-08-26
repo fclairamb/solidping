@@ -101,6 +101,26 @@ func NewCheckJob(orgUID string, checkUID string, period timeutils.Duration) *Che
 	}
 }
 
+// IsInternal reports whether this job belongs to an internal, server-created
+// check (worker self-stats plumbing).
+//
+// ONE HELPER SO THE TWO RATE GATES CANNOT DISAGREE — the in-process worker gate
+// (checkworker.applyRateLimitGate) and the agent dispatch gate
+// (agentws.handleClaim) both call it, the same way both delegate "what is a
+// passive check" to checkerdef. An internal check is exempt from the MaxChecks
+// quota and invisible to the checks-per-minute demand figure, so it must not
+// draw MaxChecksPerMinute tokens either (spec 2026-08-27-01): counting nowhere
+// has to mean counting nowhere, or the predicted demand and the factual skip
+// counter describe different fleets.
+//
+// Reads the check attached at claim time (checkjobsvc.attachChecks, inside the
+// claim transaction) — no column on check_jobs, no migration. A nil Check means
+// the row was deleted between scheduling and claim; that job is treated as a
+// normal metered one, which is the safe direction.
+func (j *CheckJob) IsInternal() bool {
+	return j.Check != nil && j.Check.Internal
+}
+
 // CheckJobUpdate represents fields that can be updated.
 type CheckJobUpdate struct {
 	Region            *string
