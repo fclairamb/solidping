@@ -97,7 +97,23 @@ describe("CheckRateLimitBanner", () => {
     expect(screen.getByTestId("check-rate-limit-skipped")).toBeTruthy();
   });
 
-  it("offers the usage link only where it was asked for", () => {
+  it("points the remedy link at the scheduling page, not at Usage", () => {
+    // Spec 2026-08-26-04 retargeted this: a banner about being over the cap
+    // must hand the reader the surface that can FIX it, not one that restates
+    // the number it just quoted.
+    render(
+      <CheckRateLimitBanner
+        org={ORG}
+        checksPerMinute={{ demand: 240, limit: 120, skippedToday: 0 }}
+        showUsageLink
+      />,
+    );
+
+    const link = screen.getByTestId("check-rate-limit-usage-link");
+    expect(link.getAttribute("to")).toBe("/orgs/$org/checks/scheduling");
+  });
+
+  it("offers the remedy link only where it was asked for", () => {
     const { rerender } = render(
       <CheckRateLimitBanner
         org={ORG}
@@ -107,7 +123,7 @@ describe("CheckRateLimitBanner", () => {
     );
     expect(screen.getByTestId("check-rate-limit-usage-link")).toBeTruthy();
 
-    // On the Usage page itself the link would point at the current page.
+    // On the scheduling page itself the link would point at the current page.
     rerender(
       <CheckRateLimitBanner
         org={ORG}
