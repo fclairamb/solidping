@@ -55,6 +55,26 @@ number and the factual skip counter could describe different fleets for the same
 org. Both gates read the flag off the check row attached at claim time
 (`checkjobsvc.attachChecks`) — there is no `internal` column on `check_jobs`.
 
+*Upgrade note — check for residue, no migration ships.* Any check an org
+created with `internal: true` BEFORE that spec is still exempt from `maxChecks`,
+and nothing in the code can tell it apart from a server-created one after the
+fact — except by slug, since the two legitimate creators use reserved prefixes:
+
+```sql
+SELECT o.slug AS org, c.slug, c.type, c.enabled, c.created_at
+FROM checks c JOIN organizations o ON o.uid = c.organization_uid
+WHERE c.internal = TRUE
+  AND c.deleted_at IS NULL
+  AND c.slug NOT LIKE 'int-checks-%'
+  AND c.slug NOT LIKE 'int-jobs-%';
+```
+
+Expected: zero rows. If an install has some, clear the flag on those UIDs
+(`UPDATE checks SET internal = FALSE WHERE uid IN (…)`) — after which they count
+against `maxChecks` like any other check, which is the point. Deliberately not
+automated: silently re-metering a customer's checks mid-migration is a
+billing-visible change an operator should make on purpose.
+
 `whiteLabel` is the one non-numeric entitlement, and its `nil` means something
 different from every field above it: **`nil` = "use the deployment default"**,
 not "unlimited" — a boolean has no unbounded reading. It is also only half of
