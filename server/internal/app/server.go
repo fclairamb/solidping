@@ -2069,7 +2069,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// OpenAPI schema + interactive (Swagger) explorer. The explorer moved from
 	// /docs to /openapi now that /docs serves the documentation site.
-	mainGroup.GET("/openapi.yaml", s.serveFile(openAPIFiles, "openapi/openapi.yaml"))
+	mainGroup.GET("/openapi.yaml", s.serveOpenAPISpec(openAPIFiles, "openapi/openapi.yaml"))
 	mainGroup.GET("/openapi", s.serveFile(openAPIFiles, "openapi/index.html"))
 
 	// llms.txt / llms-full.txt at the conventional root path (GitHub issue
