@@ -1092,8 +1092,18 @@ type Service interface {
 		ctx context.Context, orgUID, kind, periodStart string, limit int,
 	) (bool, error)
 
+	// IncrementUsageCounter adds one to the (orgUID, kind, periodStart)
+	// counter, inserting the row when it does not exist yet. Unlike
+	// ReserveMonthlyUsage there is no cap and no reservation semantics: the
+	// caller is recording something that already happened, so the write must
+	// never be refused. periodStart is an ISO date string whose granularity is
+	// the counter kind's business (month for the SMS/voice/WhatsApp quotas,
+	// day for models.UsageCounterKindCheckRateLimited).
+	IncrementUsageCounter(ctx context.Context, orgUID, kind, periodStart string) error
+
 	// GetMonthlyUsage returns the current count for (orgUID, kind, periodStart),
-	// or 0 when no row exists.
+	// or 0 when no row exists. Despite the name it reads any counter kind —
+	// periodStart is opaque, so a daily counter reads back through it too.
 	GetMonthlyUsage(ctx context.Context, orgUID, kind, periodStart string) (int, error)
 	// ListOrgCheckRates returns (enabled, period) for all non-deleted,
 	// non-internal checks of the given org. Used to compute usage stats

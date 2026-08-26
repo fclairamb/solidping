@@ -1636,6 +1636,10 @@ func (m *mockDBService) GetMonthlyUsage(_ context.Context, _, _, _ string) (int,
 	return 0, nil
 }
 
+func (m *mockDBService) IncrementUsageCounter(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
 func (m *mockDBService) ListOrgCheckRates(_ context.Context, _ string) ([]models.CheckRate, error) {
 	return nil, nil
 }

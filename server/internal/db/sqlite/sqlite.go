@@ -6051,16 +6051,16 @@ func (s *Service) CountMembersForOrg(ctx context.Context, orgUID string) (int, e
 	return count, err
 }
 
-// ListOrgCheckRates returns (enabled, period) for all non-deleted,
-// non-internal checks of the given org. Used by the entitlements service
-// to compute usage stats and enforce MaxChecks. No SQL arithmetic — the
-// per-minute rate is summed in Go.
+// ListOrgCheckRates returns (enabled, period, regions, type) for all
+// non-deleted, non-internal checks of the given org. Used by the entitlements
+// service to compute usage stats and enforce MaxChecks. No SQL arithmetic —
+// the per-minute rate is summed in Go.
 func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]models.CheckRate, error) {
 	var rates []models.CheckRate
 
 	err := s.db.NewSelect().
 		Model((*models.Check)(nil)).
-		Column("enabled", "period", "regions").
+		Column("enabled", "period", "regions", "type").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).

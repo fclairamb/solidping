@@ -35,6 +35,27 @@ WHERE org_usage_counters.count < ?`
 	return n > 0, nil
 }
 
+// IncrementUsageCounter adds one to the (orgUID, kind, periodStart) counter,
+// creating the row when absent. Unconditional by design: it records an event
+// that already happened, so unlike ReserveMonthlyUsage there is no cap to lose
+// the race against.
+func (s *Service) IncrementUsageCounter(
+	ctx context.Context, orgUID, kind, periodStart string,
+) error {
+	// Raw SQL for the same reason as ReserveMonthlyUsage: a bare `count` in the
+	// DO UPDATE is ambiguous on Postgres, and bun aliases the INSERT target.
+	const query = `INSERT INTO org_usage_counters (organization_uid, kind, period_start, count)
+VALUES (?, ?, ?, 1)
+ON CONFLICT (organization_uid, kind, period_start)
+DO UPDATE SET count = org_usage_counters.count + 1`
+
+	if _, err := s.db.NewRaw(query, orgUID, kind, periodStart).Exec(ctx); err != nil {
+		return fmt.Errorf("increment usage counter: %w", err)
+	}
+
+	return nil
+}
+
 // GetMonthlyUsage returns the current counter value, or 0 when no row exists.
 func (s *Service) GetMonthlyUsage(
 	ctx context.Context, orgUID, kind, periodStart string,

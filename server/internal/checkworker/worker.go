@@ -1426,8 +1426,11 @@ func (r *CheckWorker) deferRateLimited(ctx context.Context, checkJob *models.Che
 // isPassiveCheckType reports whether a check type is passive — driven by
 // inbound signals (HTTP heartbeats, incoming emails) rather than outbound
 // probes. Passive checks share the same overdue/grace-period logic.
+//
+// Delegates to checkerdef so the entitlements demand computation and this gate
+// can never disagree about what "passive" means.
 func isPassiveCheckType(t checkerdef.CheckType) bool {
-	return t == checkerdef.CheckTypeHeartbeat || t == checkerdef.CheckTypeEmail
+	return t.IsPassive()
 }
 
 // passiveSignalNoun returns the human-readable noun used in result messages
