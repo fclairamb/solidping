@@ -9,6 +9,7 @@ import { buildIntervalOptions, hmsToSeconds } from "@/components/shared/check-fo
 import {
   PERIOD_STEP_SECONDS,
   allowedStepsFor,
+  anchoredDemand,
   buildSchedulingRows,
   contributionPerMinute,
   describePeriod,
@@ -514,6 +515,44 @@ describe("proposeRebalance", () => {
       const before = rows.find((r) => r.uid === uid)!.periodSeconds;
       expect(seconds).toBeGreaterThan(before);
     }
+  });
+});
+
+describe("anchoredDemand", () => {
+  it("uses the server's figure as the saved total, not the client sum", () => {
+    // The banner on the same page quotes the server's number. Showing a
+    // second, independently-computed one right next to it is how a page ends
+    // up arguing with itself.
+    const { saved } = anchoredDemand(26.2, 25, 25);
+    expect(saved).toBe(26.2);
+  });
+
+  it("applies the unsaved delta on top of the server figure", () => {
+    const { saved, draft } = anchoredDemand(26.2, 25, 23.2);
+
+    expect(saved).toBe(26.2);
+    expect(draft).toBeCloseTo(24.4, 10);
+  });
+
+  it("shows no delta when nothing is pending", () => {
+    const { saved, draft } = anchoredDemand(26.2, 25, 25);
+    expect(draft).toBe(saved);
+  });
+
+  it("falls back to the client sum when the server sent no figure", () => {
+    expect(anchoredDemand(undefined, 7, 5)).toEqual({ saved: 7, draft: 5 });
+    expect(anchoredDemand(null, 7, 5)).toEqual({ saved: 7, draft: 5 });
+  });
+
+  it("treats a server figure of 0 as a real figure, not as absent", () => {
+    // 0 is falsy in JS — an org with nothing scheduled must not fall back to
+    // the client sum.
+    expect(anchoredDemand(0, 4, 4).saved).toBe(0);
+  });
+
+  it("never reports a negative draft", () => {
+    const { draft } = anchoredDemand(1, 10, 0);
+    expect(draft).toBe(0);
   });
 });
 

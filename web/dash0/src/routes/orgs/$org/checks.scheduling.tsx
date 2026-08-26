@@ -38,6 +38,7 @@ import { CheckTypeBadge } from "@/components/shared/check-type-identity";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import {
+  anchoredDemand,
   buildSchedulingRows,
   describePeriod,
   formatRate,
@@ -324,8 +325,15 @@ function CheckSchedulingPage() {
   );
 
   const limit = entitlements?.checksPerMinute?.limit;
-  const savedTotal = savedTotalDemand(rows);
-  const draftTotal = totalDemand(rows);
+  // The saved figure comes from the server (spec 2026-08-26-03), not from a
+  // second client-side sum — it is what the over-limit banner on this page
+  // quotes and what the rate gate enforces. Only the DELTA of the unsaved
+  // edits is computed here, because only the client knows about them.
+  const { saved: savedTotal, draft: draftTotal } = anchoredDemand(
+    entitlements?.checksPerMinute?.demand,
+    savedTotalDemand(rows),
+    totalDemand(rows),
+  );
   const dirtyRows = rows.filter(isRowDirty);
   const busy = applySchedule.isPending;
 
@@ -354,7 +362,15 @@ function CheckSchedulingPage() {
   };
 
   const runRebalance = () => {
-    const proposal = proposeRebalance(rows, limit);
+    // Target the client-side budget matching the server's cap: the meter is
+    // anchored on the server's figure, so if the two ever differ the proposal
+    // must still land the number the USER is watching under the cap.
+    const rebalanceLimit =
+      limit === null || limit === undefined
+        ? limit
+        : limit - (savedTotal - savedTotalDemand(rows));
+
+    const proposal = proposeRebalance(rows, rebalanceLimit);
     setRebalanceFailed(!proposal.reachedLimit);
 
     if (proposal.proposals.size === 0) {

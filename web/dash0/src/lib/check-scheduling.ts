@@ -322,6 +322,37 @@ export function proposeRebalance(
 }
 
 /**
+ * Anchors the meter on the server's own demand figure, then applies the delta
+ * the user's unsaved edits would make.
+ *
+ * The saved total MUST be the server's `checksPerMinute.demand` (spec
+ * 2026-08-26-03) rather than a second client-side sum: that is the number the
+ * over-limit banner on this very page quotes, and the number the rate gate
+ * actually enforces. Two independently-computed totals sitting side by side
+ * would eventually disagree — over a paginated list still loading, over an
+ * internal check the client cannot see, over any future change to the server's
+ * scope — and the page would then argue with itself.
+ *
+ * The DELTA is client-side because it has to be: it describes edits that do
+ * not exist server-side yet. Both halves use the same formula, so the delta is
+ * exact for every check the page can see.
+ *
+ * Falls back to the client sum when the server sent no figure at all.
+ */
+export function anchoredDemand(
+  serverDemand: number | null | undefined,
+  clientSaved: number,
+  clientDraft: number,
+): { saved: number; draft: number } {
+  const saved =
+    serverDemand === null || serverDemand === undefined
+      ? clientSaved
+      : serverDemand;
+
+  return { saved, draft: Math.max(0, saved + (clientDraft - clientSaved)) };
+}
+
+/**
  * Formats a per-minute rate the way the rest of the product does: whole
  * numbers stay whole, fractional rates (a check every 5 minutes contributes
  * 0.2) keep one decimal. Mirrors `formatCheckRateDemand`.
