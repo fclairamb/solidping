@@ -132,7 +132,6 @@ var (
 		"groups:read",
 		"users:read",
 		"users:read.email",
-		"team:read",
 		"commands",
 		"app_mentions:read",
 		"reactions:write",
