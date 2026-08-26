@@ -86,12 +86,21 @@ entitlements row has source=admin:
 - Resolution: admin-sourced rows still count as `PlanWeightPaid`.
 - Frontend unit tests for the unlimited/nil rendering, plus locales.
 
-## Open questions
+## Resolved open questions
 
-- Should the list view flag orgs currently over their `MaxChecksPerMinute`
-  (spec 03's demand data) so support can find struggling orgs proactively?
-  Cheap if spec 03 lands first — recommend yes.
-- Field-level vs whole-row override: this spec proposes whole-row (simplest
-  mental model; the editor pre-fills from the resolved values). If partial
-  overrides ("only bump checks/min, keep following billing for the rest")
-  turn out to matter, that is a follow-up.
+Approved by the maintainer on 2026-08-26 with the spec itself.
+
+**Q: Should the list view flag orgs currently over their
+`MaxChecksPerMinute`?**
+
+**Decision: yes.** Spec 2026-08-26-03 (implemented earlier in the same
+batch) exposes demand vs cap; the superadmin org list shows an amber
+over-limit indicator on orgs where demand exceeds the resolved cap, so
+support can find struggling orgs proactively.
+
+**Q: Field-level vs whole-row override?**
+
+**Decision: whole-row only.** The editor pre-fills from the resolved
+values and saves a complete admin-sourced row. Partial per-field
+overrides are explicitly out of scope — a follow-up spec if they ever
+matter.
