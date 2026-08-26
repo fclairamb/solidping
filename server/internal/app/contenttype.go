@@ -6,6 +6,27 @@ import (
 	"strings"
 )
 
+// pinnedContentType is consulted BEFORE Go's mime table, on purpose.
+//
+// Go seeds that table from the host's mime database, so the answer for the same
+// extension depends on the machine the binary runs on: ".yaml" resolves to
+// "application/yaml" on a typical Linux image and to nothing at all on macOS.
+// Applying a pin only when the OS says nothing therefore does not remove the
+// variance, it just hides it on one platform — the served header still differs
+// between a laptop and CI. Pinning first makes it identical everywhere.
+func pinnedContentType(ext string) (string, bool) {
+	switch ext {
+	// RFC 9512. YAML is UTF-8 by definition, so the charset is stated rather
+	// than left for the client to assume.
+	case ".yaml", ".yml":
+		return "application/yaml; charset=utf-8", true
+	case ".md":
+		return "text/markdown; charset=utf-8", true
+	default:
+		return "", false
+	}
+}
+
 // contentTypeForFile resolves the Content-Type to serve an embedded file with,
 // or "" when it cannot say.
 //
@@ -21,21 +42,11 @@ import (
 func contentTypeForFile(fileName string) string {
 	ext := strings.ToLower(path.Ext(fileName))
 
-	if contentType := mime.TypeByExtension(ext); contentType != "" {
-		return contentType
+	if pinned, ok := pinnedContentType(ext); ok {
+		return pinned
 	}
 
-	// Go's table is seeded from the OS mime database, so what it knows varies
-	// by machine — .yaml resolves on a typical Linux image and not on macOS,
-	// which is exactly the kind of difference that makes a header appear in CI
-	// and vanish locally. Pin the ones we actually embed.
-	switch ext {
-	case ".yaml", ".yml":
-		// RFC 9512.
-		return "application/yaml; charset=utf-8"
-	case ".md":
-		return "text/markdown; charset=utf-8"
-	default:
-		return ""
-	}
+	// Everything else comes from Go's table, whose built-in entries (.html,
+	// .css, .js, .json…) are compiled in and so do not vary by host.
+	return mime.TypeByExtension(ext)
 }
