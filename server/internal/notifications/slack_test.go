@@ -2058,9 +2058,9 @@ func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T)
 	r := require.New(t)
 
 	const (
-		baseURL  = "https://app.example.com"
-		orgSlug  = "acme"
-		checkSlg = "api-health"
+		baseURL = "https://app.example.com"
+		orgSlug = "acme"
+		checkID = "chk-api-health"
 	)
 	checkName := "API Health"
 	resolvedAt := time.Now()
@@ -2073,7 +2073,7 @@ func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T)
 			StartedAt:  resolvedAt.Add(-28 * time.Minute),
 			ResolvedAt: &resolvedAt,
 		},
-		Check: &models.Check{Name: &checkName, Slug: ptr(checkSlg)},
+		Check: &models.Check{UID: checkID, Name: &checkName},
 	}
 
 	sender := &SlackSender{}
@@ -2091,7 +2091,7 @@ func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T)
 
 	// Self-contained: monitor named and linked.
 	r.Contains(msg.Text, checkName, "resolved reply must name the monitor")
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg + "|" + checkName + ">"
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
 	r.Contains(msg.Text, checkLink, "resolved reply must link the monitor to its dashboard page")
 
 	// The at-a-glance success cue is kept (aligned with the dash0 registry's
@@ -2133,9 +2133,9 @@ func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T)
 	r := require.New(t)
 
 	const (
-		baseURL  = "https://app.example.com"
-		orgSlug  = "acme"
-		checkSlg = "api-health"
+		baseURL = "https://app.example.com"
+		orgSlug = "acme"
+		checkID = "chk-api-health"
 	)
 	checkName := "API Health"
 	payload := &Payload{
@@ -2147,7 +2147,7 @@ func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T)
 			StartedAt:    time.Now().Add(-5 * time.Minute),
 			RelapseCount: 2,
 		},
-		Check: &models.Check{Name: &checkName, Slug: ptr(checkSlg), RecoveryPeriodSeconds: 60},
+		Check: &models.Check{UID: checkID, Name: &checkName, RecoveryPeriodSeconds: 60},
 	}
 
 	sender := &SlackSender{}
@@ -2162,7 +2162,7 @@ func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T)
 		"status line must render exactly once")
 
 	r.Contains(msg.Text, checkName, "reopened reply must name the monitor")
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg + "|" + checkName + ">"
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
 	r.Contains(msg.Text, checkLink, "reopened reply must link the monitor to its dashboard page")
 
 	// Aligned with the dash0 registry's 🔁 for incident.reopened.
@@ -2542,14 +2542,14 @@ func TestSlackSender_DashboardLinks(t *testing.T) {
 	t.Parallel()
 
 	const (
-		baseURL  = "https://app.example.com"
-		orgSlug  = "acme"
-		checkSlg = "api-health"
-		incUID   = "incident-789"
+		baseURL = "https://app.example.com"
+		orgSlug = "acme"
+		checkID = "chk-api-health"
+		incUID  = "incident-789"
 	)
 
 	checkName := "API Health"
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID
 	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/" + incUID
 
 	newPayload := func(eventType string) *Payload {
@@ -2563,8 +2563,8 @@ func TestSlackSender_DashboardLinks(t *testing.T) {
 				FailureCount: 3,
 			},
 			Check: &models.Check{
+				UID:  checkID,
 				Name: &checkName,
-				Slug: ptr(checkSlg),
 			},
 		}
 	}

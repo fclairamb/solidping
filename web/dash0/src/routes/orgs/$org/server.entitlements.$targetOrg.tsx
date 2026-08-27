@@ -391,7 +391,7 @@ function EntitlementsEditor({
         </CardContent>
       </Card>
 
-      <AuditTrail audits={detail.audits} />
+      <AuditTrail audits={detail.audits ?? []} />
     </div>
   );
 }
@@ -537,8 +537,17 @@ function renderChangeValue(
   return formatLimit(value, unlimited);
 }
 
-function AuditTrail({ audits }: { audits: EntitlementAudit[] }) {
+function AuditTrail({
+  audits,
+}: {
+  audits?: EntitlementAudit[] | null;
+}) {
   const { t } = useTranslation("server");
+  // An absent trail is an EMPTY trail, not a broken page. This used to read
+  // `audits.length` on whatever the server sent, so an org that had never been
+  // edited — every org on a fresh install — threw and took the whole editor
+  // down behind an error boundary.
+  const rows = audits ?? [];
 
   return (
     <Card>
@@ -546,7 +555,7 @@ function AuditTrail({ audits }: { audits: EntitlementAudit[] }) {
         <CardTitle>{t("entitlements.detail.auditTitle")}</CardTitle>
       </CardHeader>
       <CardContent>
-        {audits.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {t("entitlements.detail.auditEmpty")}
           </p>
@@ -561,7 +570,7 @@ function AuditTrail({ audits }: { audits: EntitlementAudit[] }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {audits.map((audit) => (
+                {rows.map((audit) => (
                   <TableRow key={audit.uid}>
                     <TableCell>
                       <AuditSourceBadge source={audit.source} />

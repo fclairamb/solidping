@@ -395,7 +395,7 @@ func TestEmailSender_Send_RendersIncidentTemplates(t *testing.T) {
 			msg := sender.sent[0]
 			r.Contains(msg.Subject, tc.wantSubjectIn)
 			r.Contains(msg.HTML, "https://solidping.example/dash0/orgs/acme/incidents/inc-42", "View incident URL (D3)")
-			r.Contains(msg.HTML, "https://solidping.example/dash0/orgs/acme/checks/prod-api", "check name link (D3)")
+			r.Contains(msg.HTML, "https://solidping.example/dash0/orgs/acme/checks/check-1", "check name link (D3, by UID)")
 			r.Contains(msg.HTML, "https://solidping.example/dash0", "footer dashboard link")
 			r.Contains(msg.HTML, "https://solidping.example/docs", "footer docs link")
 			r.NotContains(msg.HTML, "{{", "no unresolved template syntax")

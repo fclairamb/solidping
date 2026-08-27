@@ -62,16 +62,12 @@ test.describe("Entitlements usage", () => {
     // Heading + the seven rows (Checks, Checks per minute, Users, Private
     // location agents, Service level objectives, Custom domains, WhatsApp
     // messages this month).
-    await expect(
-      page.getByRole("heading", { name: /usage/i }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /usage/i })).toBeVisible();
     await expect(page.getByTestId(/^usage-row-/)).toHaveCount(7);
     await expect(
       page.getByTestId("usage-row-Private location agents"),
     ).toBeVisible();
-    await expect(
-      page.getByTestId("usage-row-Custom domains"),
-    ).toBeVisible();
+    await expect(page.getByTestId("usage-row-Custom domains")).toBeVisible();
     await expect(
       page.getByTestId("usage-row-WhatsApp messages this month"),
     ).toBeVisible();
@@ -132,13 +128,18 @@ test.describe("Entitlements usage", () => {
 
     // With no scheduled demand at all there is nothing to be over, and the
     // banner is correctly silent — nothing to assert.
-    test.skip(demand < 1, `test org schedules ${demand}/min, too little to exceed a cap`);
+    test.skip(
+      demand < 1,
+      `test org schedules ${demand}/min, too little to exceed a cap`,
+    );
 
     const capResp = await page.request.patch(
       `${API_BASE}/api/v1/orgs/test/entitlements`,
       {
         headers: { Authorization: `Bearer ${token}` },
-        data: { limits: { maxChecksPerMinute: Math.max(0, Math.floor(demand) - 1) } },
+        data: {
+          limits: { maxChecksPerMinute: Math.max(0, Math.floor(demand) - 1) },
+        },
       },
     );
     expect(capResp.ok()).toBeTruthy();
@@ -152,7 +153,7 @@ test.describe("Entitlements usage", () => {
     await expect(listBanner).toContainText(/skipped/i);
     // It must link somewhere actionable, not just complain.
     await expect(
-      page.getByTestId("check-rate-limit-usage-link"),
+      page.getByTestId("check-rate-limit-scheduling-link"),
     ).toBeVisible();
 
     // Surface 2: the usage page, next to the bar it explains.
@@ -165,7 +166,7 @@ test.describe("Entitlements usage", () => {
     // the banner hands the reader the surface that can FIX the overage rather
     // than one restating the number it just quoted. Assert the destination,
     // not just the presence, so a future retarget cannot pass silently.
-    const usageRemedy = page.getByTestId("check-rate-limit-usage-link");
+    const usageRemedy = page.getByTestId("check-rate-limit-scheduling-link");
     await expect(usageRemedy).toBeVisible();
     await expect(usageRemedy).toHaveAttribute(
       "href",
@@ -179,7 +180,7 @@ test.describe("Entitlements usage", () => {
 
     await expect(page.getByTestId("check-rate-limit-banner")).toBeVisible();
     await expect(
-      page.getByTestId("check-rate-limit-usage-link"),
+      page.getByTestId("check-rate-limit-scheduling-link"),
     ).toHaveCount(0);
   });
 
@@ -206,7 +207,10 @@ test.describe("Entitlements usage", () => {
       `${API_BASE}/api/v1/orgs/test/checks`,
       {
         headers: { Authorization: `Bearer ${token}` },
-        data: { type: "http", config: { url: `https://example.com/${Date.now()}` } },
+        data: {
+          type: "http",
+          config: { url: `https://example.com/${Date.now()}` },
+        },
       },
     );
     expect(createResp.status()).toBe(402);

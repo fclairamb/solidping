@@ -6,7 +6,7 @@
     <h1>Escalation policy fired</h1>
     <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong> was not acknowledged in time and has been escalated to you.</p>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Check</td><td class="value">{{.CheckName}}</td></tr>
+        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
@@ -21,7 +21,8 @@
 The incident for {{.CheckName}} was not acknowledged in time and has been escalated to you.
 
 Check: {{.CheckName}}
-Started at: {{.StartedAt}}
+{{if .CheckURL}}Check URL: {{.CheckURL}}
+{{end}}Started at: {{.StartedAt}}
 Failure count: {{.FailureCount}}
 {{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
 {{end}}{{if .IncidentURL}}Open incident: {{.IncidentURL}}

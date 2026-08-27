@@ -26,7 +26,7 @@
         <tr><td class="label">Burn rate</td><td class="value">{{.BurnRate}} over {{.BurnLongWindow}}, {{.BurnShortRate}} over {{.BurnShortWindow}}</td></tr>
         <tr><td class="label">Threshold</td><td class="value">{{.BurnThreshold}}</td></tr>
         <tr><td class="label">Projected exhaustion</td><td class="value">{{.BurnProjectedExhaustion}}</td></tr>
-        <tr><td class="label">Detected on</td><td class="value">{{.CheckName}}</td></tr>
+        <tr><td class="label">Detected on</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
     </table>
@@ -59,7 +59,8 @@ Threshold: {{.BurnThreshold}}
 Budget remaining: {{.BurnBudgetRemaining}}
 Projected exhaustion: {{.BurnProjectedExhaustion}}
 Detected on: {{.CheckName}}
-Started at: {{.StartedAt}}
+{{if .CheckURL}}Check URL: {{.CheckURL}}
+{{end}}Started at: {{.StartedAt}}
 {{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
 {{end}}Incident ID: {{.IncidentUID}}
 {{if .IncidentURL}}

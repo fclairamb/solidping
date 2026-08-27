@@ -86,7 +86,17 @@ func newAdminSetup(t *testing.T) *adminSetup {
 
 	router := httpx.New()
 	api := router.NewGroup("/api/v1")
-	enthandler.RegisterAdminRoutes(api, authMW, enthandler.NewHandler(svc, dbSvc, fullCfg))
+	handler := enthandler.NewHandler(svc, dbSvc, fullCfg)
+	enthandler.RegisterAdminRoutes(api, authMW, handler)
+
+	// The org-scoped audit listing, wired the way server.go wires it (minus
+	// the service-signature doors, which no test here walks through). It is
+	// mounted so the empty-list serialization can be asserted on BOTH front
+	// doors: they share one query, so they share one way to get it wrong.
+	orgScoped := api.NewGroup("/orgs/:org/entitlements").
+		Use(authMW.RequireAuth).
+		Use(authMW.RequireOrgAccess)
+	orgScoped.GET("/audits", handler.ListAudits)
 
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
@@ -361,4 +371,33 @@ func TestAdminGetUnknownOrgIs404(t *testing.T) {
 	code, _ := setup.call(t, http.MethodGet, "/api/v1/system/entitlements/nope",
 		setup.superToken, "")
 	require.Equal(t, http.StatusNotFound, code)
+}
+
+// TestAdminGetSerializesEmptyAuditsAsArray pins the JSON *text*, not the
+// decoded value: `[]` and `null` both unmarshal into an empty Go slice, so a
+// test that decodes first cannot tell them apart — which is how a nil slice
+// shipped as `"audits":null` and crashed the editor on every organization that
+// had never been edited.
+//
+// The same trap applies to `data` on the org-scoped audit listing, so both
+// front doors are asserted here.
+func TestAdminGetSerializesEmptyAuditsAsArray(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	setup := newAdminSetup(t)
+
+	code, body := setup.call(t, http.MethodGet, "/api/v1/system/entitlements/acme",
+		setup.superToken, "")
+	r.Equal(http.StatusOK, code, string(body))
+	r.Contains(string(body), `"audits":[]`,
+		"an org with no history must serialize an empty array, never null")
+	r.NotContains(string(body), `"audits":null`)
+
+	code, body = setup.call(t, http.MethodGet, "/api/v1/orgs/acme/entitlements/audits",
+		setup.adminToken, "")
+	r.Equal(http.StatusOK, code, string(body))
+	r.Contains(string(body), `"data":[]`,
+		"the org-scoped listing must honor the same list contract")
+	r.NotContains(string(body), `"data":null`)
 }
