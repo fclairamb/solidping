@@ -171,6 +171,26 @@ connection whose absence causes the primary bug.
   spec 2026-08-27-02. Related only in that both make a Slack workspace
   unreachable; the fixes do not overlap.
 
+- **The secondary cosmetic item (Slack display names) is NOT done, deliberately.**
+  Resolving `U0ACME1234` to a handle means a `users.info` round-trip, and the
+  only place the label is used is the subject line of a thread being *created*.
+  Three things make that a bad trade here:
+  1. **It puts a provider call on the capture hot path.** `HandleEvents`
+     dispatches synchronously and answers Slack in the same request; capture is
+     the invariant this package is built around ("a capture failure must never
+     break the channel it came from"), and adding a network hop to it for a
+     nicer title inverts that priority.
+  2. **It would leak real network calls into existing tests.**
+     `support_dm_test.go` drives `DispatchEvent` against a service whose
+     `newAPIClient` is not faked, so every captured DM would try to reach
+     api.slack.com. Fixing that means reworking a test harness in an unrelated
+     package for a cosmetic gain.
+  3. **It depends on the very connection whose absence causes the primary bug** —
+     the spec says so itself. The workspaces with the ugliest subjects are
+     exactly the ones where `users.info` cannot be called at all.
+  The clean version is a lazy `SenderLabel` resolved only when a thread is
+  actually created; that is a small spec of its own, not a rider on this one.
+
 ## Implementation Plan
 
 1. **`server/internal/support/service.go` — the pre-flight primitive.**
