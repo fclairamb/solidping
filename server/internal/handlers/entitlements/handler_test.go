@@ -669,3 +669,46 @@ func TestGetChecksPerMinuteReportsDemandAndSkips(t *testing.T) {
 	r.Equal(2, body.ChecksPerMinute.SkippedToday)
 	r.True(body.ChecksPerMinute.Over())
 }
+
+// TestPutBillingOntoAdminRowReportsSuppression exercises the BILLING front
+// door (the org-scoped PUT) against the precedence rule: 200, unchanged
+// limits, and a body that says so. A 200 that quietly lied about having
+// applied the push would be worse than no editor at all.
+func TestPutBillingOntoAdminRowReportsSuppression(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+		"source": string(models.EntitlementSourceAdmin),
+		"limits": map[string]any{"maxChecks": 5000},
+	})
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	var applied struct {
+		Applied bool `json:"applied"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &applied))
+	r.True(applied.Applied)
+
+	rec = h.do(t, http.MethodPut, h.path(), map[string]any{
+		"source": string(models.EntitlementSourceBilling),
+		"limits": map[string]any{"maxChecks": 100},
+	})
+	r.Equal(http.StatusOK, rec.Code, "billing must not be made to error-loop")
+
+	var suppressed struct {
+		Applied      bool   `json:"applied"`
+		SuppressedBy string `json:"suppressedBy"`
+		Message      string `json:"message"`
+		Limits       struct {
+			MaxChecks *int `json:"maxChecks"`
+		} `json:"limits"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &suppressed))
+	r.False(suppressed.Applied)
+	r.Equal(string(models.EntitlementSourceAdmin), suppressed.SuppressedBy)
+	r.NotEmpty(suppressed.Message)
+	r.NotNil(suppressed.Limits.MaxChecks)
+	r.Equal(5000, *suppressed.Limits.MaxChecks, "the admin override must survive the push")
+}
