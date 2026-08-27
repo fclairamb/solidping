@@ -43,6 +43,13 @@ const (
 	// alongside Slack/Discord/ntfy — not the instance-level direct-channel
 	// path used by Telegram.
 	ConnectionTypeMatrix ConnectionType = "matrix"
+	// ConnectionTypeZulip is the Zulip chat integration: a stateless HTTP POST
+	// to {site_url}/api/v1/messages via Zulip's bot API, with every lifecycle
+	// event of one incident landing in the same topic (see
+	// notifications.zulipTopic) so Zulip threads the incident automatically —
+	// the same "one thread per incident" outcome Slack works hard to emulate
+	// with reverse threads.
+	ConnectionTypeZulip ConnectionType = "zulip"
 )
 
 // Capabilities describes what roles an integration type can play. The two
@@ -68,7 +75,7 @@ type Capabilities struct {
 
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
-// mattermost, msteams, ntfy, gotify, pagerduty, pushover) is CanNotify; freebox is a data source
+// mattermost, msteams, ntfy, gotify, zulip, pagerduty, pushover) is CanNotify; freebox is a data source
 // (CanSource) and cannot receive notifications. Twilio additionally carries
 // the two phone capabilities — it is the only connection type that is a
 // bring-your-own SMS *and* voice account. The default branch intentionally

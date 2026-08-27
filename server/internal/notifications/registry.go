@@ -102,6 +102,7 @@ func senderFactories() map[models.ConnectionType]func() Sender {
 		models.ConnectionTypeNtfy:       func() Sender { return &NtfySender{} },
 		models.ConnectionTypeGotify:     func() Sender { return &GotifySender{} },
 		models.ConnectionTypeMatrix:     func() Sender { return &MatrixSender{} },
+		models.ConnectionTypeZulip:      func() Sender { return &ZulipSender{} },
 		models.ConnectionTypePagerduty:  func() Sender { return &PagerDutySender{} },
 		models.ConnectionTypePushover:   func() Sender { return &PushoverSender{} },
 		models.ConnectionTypeWebPush:    func() Sender { return &WebPushSender{} },

@@ -39,6 +39,10 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// reasoning as the webhook/Discord/GoogleChat/Mattermost/MSTeams URLs
 	// above).
 	models.ConnectionTypeMatrix: {"accessToken"},
+	// Zulip: the bot's API key. site_url, bot_email and stream stay public so
+	// the dashboard can render them on the edit form (same reasoning as the
+	// webhook/Discord/GoogleChat/Mattermost/MSTeams URLs above).
+	models.ConnectionTypeZulip: {"api_key"},
 	// PagerDuty: the Events API v2 integration (routing) key. There is no
 	// OAuth, REST API v2 or schedule import — see server/CLAUDE.md.
 	models.ConnectionTypePagerduty: {"routing_key"},

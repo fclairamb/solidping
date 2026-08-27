@@ -480,6 +480,7 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 	models.ConnectionTypeNtfy:       true,
 	models.ConnectionTypeGotify:     true,
 	models.ConnectionTypeMatrix:     true,
+	models.ConnectionTypeZulip:      true,
 	models.ConnectionTypePagerduty:  true,
 	models.ConnectionTypePushover:   true,
 	models.ConnectionTypeFreebox:    true,
