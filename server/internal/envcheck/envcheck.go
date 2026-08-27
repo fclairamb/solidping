@@ -9,7 +9,12 @@
 // export arbitrary SP_* vars that a check references through the ${env:...}
 // config-as-code mechanism — names unknowable at startup. The registry follows
 // a strict "recognized = actually binds" rule, so a documented-but-unbound
-// variable (e.g. SP_ENCRYPTION_MASTER_KEY) is intentionally reported.
+// variable is intentionally reported.
+//
+// SP_ENCRYPTION_MASTER_KEY used to be the standing example here. It was not a
+// harmless one: the credentials service kept storing secrets in plaintext while
+// its own remediation message named that variable, so the warning was correct
+// and the advice it contradicted was not. It binds since applyEncryptionEnv.
 package envcheck
 
 import (
