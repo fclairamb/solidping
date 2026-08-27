@@ -529,7 +529,19 @@
     "toast.copied": "In Zwischenablage kopiert",
     "toast.slugUpdated": "Slug aktualisiert",
     "toast.slugUpdateFailed": "Aktualisieren des Slugs fehlgeschlagen",
-    "toast.deleteFailed": "Löschen der Prüfung fehlgeschlagen"
+    "toast.deleteFailed": "Löschen der Prüfung fehlgeschlagen",
+    "availabilityStrip": {
+      "loading": "Verfügbarkeit…",
+      "windowAvailability": "{{pct}} Verfügbarkeit",
+      "noData": "Keine Daten",
+      "probes": "{{up}} / {{total}} Prüfungen erfolgreich",
+      "status": {
+        "up": "Aktiv",
+        "degraded": "Beeinträchtigt",
+        "down": "Ausfall",
+        "noData": "Keine Daten"
+      }
+    }
   },
   "endpoints": {
     "heartbeat": {

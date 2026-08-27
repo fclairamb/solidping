@@ -13,13 +13,28 @@ import {
   type MouseHandlerDataParam,
 } from "recharts";
 import { format, startOfMinute } from "date-fns";
-import { useChartWindowResults, useRegions } from "@/api/hooks";
+import {
+  useChartWindowResults,
+  useCheckAvailabilityBuckets,
+  useRegions,
+} from "@/api/hooks";
 import {
   chartWindowBounds,
   type ChartTierFetch,
   type TimeRange,
   type ZoomWindow,
 } from "@/lib/chart-window";
+import {
+  CHART_PLOT_INSET_LEFT,
+  CHART_PLOT_INSET_RIGHT,
+  shouldRenderStrip,
+  stripBucketSeconds,
+} from "@/lib/availability-strip";
+import {
+  availabilityDotClass,
+  formatAvailabilityPct,
+} from "@/lib/availability-status";
+import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +43,7 @@ import { PinnedResultBox } from "@/components/checks/pinned-result-box";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
 import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
+import { cn } from "@/lib/utils";
 
 // The window/tier plan lives in @/lib/chart-window rather than here, so
 // @/api/hooks can build the same plan without importing a component. Only the
@@ -640,6 +656,61 @@ export function ResponseTimeChart({
     [domainMin, domainMax, chartData],
   );
 
+  // The window the availability strip describes. Deliberately derived from the
+  // SAME inputs as the chart's own fetch window (periodStartAfter + zoom), so the
+  // strip, the chart and the region filter can never describe different spans —
+  // which is the exact complaint this spec exists to fix.
+  //
+  // `to` is resolved inside this memo rather than read per render: it must be
+  // stable, or the react-query key would churn every render and refetch forever.
+  // It refreshes on the same trigger as periodStartAfter (a range or zoom
+  // change), exactly like the chart's own window.
+  const stripWindow = useMemo(() => {
+    if (zoomFrom != null && zoomTo != null && zoomTo > zoomFrom) {
+      return {
+        from: new Date(zoomFrom).toISOString(),
+        to: new Date(zoomTo).toISOString(),
+        spanMs: zoomTo - zoomFrom,
+      };
+    }
+
+    const to = startOfMinute(new Date()).toISOString();
+
+    return {
+      from: periodStartAfter,
+      to,
+      spanMs: Date.parse(to) - Date.parse(periodStartAfter),
+    };
+  }, [periodStartAfter, zoomFrom, zoomTo]);
+
+  const stripBucket = stripBucketSeconds(
+    timeRange,
+    zoom ? stripWindow.spanMs : undefined,
+  );
+  const stripVisible = shouldRenderStrip(stripWindow.spanMs);
+
+  // One request answers both surfaces: `data` is the cell series and `window` is
+  // the exact [from, to) fold behind the header figure. Bucket widths are the
+  // spec's, not the server's guess — see @/lib/availability-strip.
+  const { data: availability, isLoading: availabilityLoading } =
+    useCheckAvailabilityBuckets(
+      org,
+      checkUid,
+      {
+        from: stripWindow.from,
+        to: stripWindow.to,
+        // Below the 3h floor there is no strip, so let the server pick the width
+        // and use the response only for the header figure.
+        bucketSeconds: stripVisible ? stripBucket : undefined,
+        region: effectiveRegion ?? undefined,
+      },
+      { refetchInterval: chartRefetchInterval },
+    );
+
+  const windowPctLabel = formatAvailabilityPct(
+    availability?.window.availabilityPct,
+  );
+
   const regionLabel = (slug: string) =>
     regionDisplayLabel(regionsData?.regions, slug);
 
@@ -828,7 +899,32 @@ export function ResponseTimeChart({
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
-        <CardTitle>{t("detail.chart.title")}</CardTitle>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <CardTitle>{t("detail.chart.title")}</CardTitle>
+          {/* Window availability lives in the HEADER, not in the strip area.
+              Below the 3h floor it is the ONLY availability figure on the chart
+              (a single full-width cell reads as a broken 24-cell strip), and
+              keeping it here means it does not reflow when a drag-zoom crosses
+              that boundary. */}
+          <span
+            className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums"
+            data-testid="response-time-chart-window-availability"
+            data-status={availability?.window.status ?? "loading"}
+          >
+            <span
+              className={cn(
+                "inline-block h-2 w-2 rounded-full",
+                availabilityDotClass(availability?.window.status ?? "noData"),
+              )}
+              aria-hidden="true"
+            />
+            {availabilityLoading && !availability
+              ? t("detail.availabilityStrip.loading")
+              : t("detail.availabilityStrip.windowAvailability", {
+                  pct: windowPctLabel ?? t("detail.availabilityStrip.noData"),
+                })}
+          </span>
+        </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {zoomed && (
             <Button
@@ -1392,6 +1488,35 @@ export function ResponseTimeChart({
                 onClose={() => onSelectChange?.(undefined)}
               />
             )}
+          </div>
+        )}
+        {/* Availability strip, sharing the chart's x-scale, window, zoom and
+            region filter. Inset by the chart's own left gutter (YAxis width +
+            the AreaChart default margin) so a cell sits under the slice of the
+            plot it describes rather than under the y-axis labels.
+
+            Not rendered below the 3h floor: the header figure above is the
+            fallback there (see @/lib/availability-strip). */}
+        {!isLoading && chartData.length > 0 && stripVisible && (
+          <div
+            className="mt-1"
+            style={{
+              paddingLeft: CHART_PLOT_INSET_LEFT,
+              paddingRight: CHART_PLOT_INSET_RIGHT,
+            }}
+          >
+            {availabilityLoading && !availability ? (
+              <Skeleton
+                className="h-3 w-full"
+                data-testid="availability-strip-loading"
+              />
+            ) : availability?.data.length ? (
+              <AvailabilityStrip
+                cells={availability.data}
+                testIdPrefix="response-time-chart-availability-strip"
+                height="sm"
+              />
+            ) : null}
           </div>
         )}
         {!isLoading && chartData.length > 0 && (

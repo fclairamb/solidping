@@ -171,6 +171,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
+import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 import { useDebounce } from "@/lib/use-debounce";
 import { facetedFilterTriggerLabel } from "@/lib/faceted-filter";
@@ -225,6 +226,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
+  { id: "availability-strip", label: "Availability strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
   { id: "maintenance-schedule", label: "Maintenance schedule" },
   { id: "stats-strip", label: "Stats strip" },
@@ -273,6 +275,7 @@ function DesignReferencePage() {
       <TokenChipsInputSection />
       <KpiTileSection />
       <UptimeStripSection />
+      <AvailabilityStripSection />
       <JobsPrimitivesSection />
       <MaintenanceScheduleSection />
       <StatsStripSection />
@@ -4296,6 +4299,84 @@ function UptimeStripSection() {
         <p className="text-xs text-muted-foreground">
           Mostly green with one outage hour (red), one degraded hour (yellow),
           and the two most recent hours awaiting data (gray).
+        </p>
+      </div>
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+// 24 hourly cells, oldest → newest, exercising every state the server can send:
+// up, degraded, down, and no-data. Shaped exactly like the API's
+// AvailabilityBucket so the section doubles as the response's documentation.
+//
+// Built once at module scope rather than per render: the reference page is a
+// static catalog, and reading the clock during render is both impure and
+// pointless here.
+const AVAILABILITY_STRIP_SAMPLE = (() => {
+  const now = Date.now();
+
+  return Array.from({ length: 24 }, (_, i) => {
+    const start = new Date(now - (23 - i) * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    let total = 60;
+    let successful = 60;
+    if (i === 22 || i === 23) total = 0; // most recent hours: not measured yet
+    else if (i === 10) successful = 12; // a bad hour
+    else if (i === 11) successful = 59; // one failed probe: degraded, not red
+    const hasData = total > 0;
+    return {
+      periodStart: start.toISOString(),
+      periodEnd: end.toISOString(),
+      hasData,
+      availabilityPct: hasData ? (successful / total) * 100 : null,
+      totalChecks: hasData ? total : 0,
+      successfulChecks: hasData ? successful : 0,
+      status: !hasData
+        ? ("noData" as const)
+        : successful === total
+          ? ("up" as const)
+          : total - successful <= 1
+            ? ("degraded" as const)
+            : ("down" as const),
+    };
+  });
+})();
+
+function AvailabilityStripSection() {
+  const cells = AVAILABILITY_STRIP_SAMPLE;
+
+  const snippet = `import { AvailabilityStrip } from "@/components/ui/availability-strip";
+
+// Presentational only. Feed it the cells from
+// GET /api/v1/orgs/:org/checks/:check/availability/buckets?from=&to=&bucket=&region=
+// (see useCheckAvailabilityBuckets) — the colour comes from the SERVER's
+// \`status\`, so this strip, the public status page and the badge uptime bar
+// can never paint the same numbers differently.
+<AvailabilityStrip
+  cells={buckets.data}
+  testIdPrefix="my-strip"
+  height="sm" // "sm" under a chart, "md" as a standalone widget
+/>`;
+
+  return (
+    <Section
+      id="availability-strip"
+      title="Availability strip"
+      description="The colour-banded availability strip rendered under the check-detail response-time chart. One cell per bucket, oldest → newest, sharing the chart's window, zoom and region filter. Buckets are always whole-hour multiples (day → 1h, week → 6h, month → 1d); below a 3h window no strip is drawn at all and the chart header shows a single window figure instead. A cell with no probes is a distinct gray state — never a manufactured 100%."
+    >
+      <div className="rounded-md border bg-card p-4 space-y-4">
+        <AvailabilityStrip cells={cells} height="md" />
+        <p className="text-xs text-muted-foreground">
+          Mostly green, one bad hour (red), one hour with a single failed probe
+          (amber — the shared small-bucket guard never paints one failure red),
+          and the two most recent hours awaiting data (gray).
+        </p>
+        <AvailabilityStrip cells={cells} height="sm" />
+        <p className="text-xs text-muted-foreground">
+          The same cells at <code>height="sm"</code>, the size used under the
+          chart so the strip reads as an axis annotation rather than a second
+          chart.
         </p>
       </div>
       <CodeSnippet code={snippet} />

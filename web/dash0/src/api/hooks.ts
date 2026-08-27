@@ -1409,6 +1409,91 @@ export function useCheckAvailability(
   });
 }
 
+/**
+ * One cell of the chart availability strip. `availabilityPct` is `null` (and
+ * `hasData` false) when the cell has no countable probes — no data is a distinct
+ * third state, never a manufactured 100%. `status` is the SERVER's
+ * classification (uptimebar.Classify), shared with the public status page and
+ * the badge uptime bar, so two surfaces can never paint identical numbers
+ * differently.
+ */
+export interface AvailabilityBucket {
+  periodStart: string;
+  periodEnd: string;
+  hasData: boolean;
+  availabilityPct: number | null;
+  totalChecks: number;
+  successfulChecks: number;
+  status: "up" | "degraded" | "down" | "noData";
+}
+
+export interface CheckAvailabilityBucketsResponse {
+  data: AvailabilityBucket[];
+  /** The EXACT [from, to) fold — not the sum of the cells, which are aligned
+   * outward to bucket boundaries and can span more time than was requested. */
+  window: AvailabilityBucket;
+  bucketSeconds: number;
+  windowStart: string;
+  windowEnd: string;
+  region?: string;
+}
+
+export interface AvailabilityBucketsQuery {
+  /** RFC3339 window start. */
+  from: string;
+  /** RFC3339 window end. */
+  to: string;
+  /** Cell width in seconds; must be a whole multiple of 3600 (see
+   * `@/lib/availability-strip`). Omitted lets the server choose. */
+  bucketSeconds?: number;
+  /** Single probe region, or undefined to sum across every region. */
+  region?: string;
+}
+
+/**
+ * Fetches bucketed availability for one check over an arbitrary window — the
+ * data behind the chart's availability strip.
+ *
+ * Deliberately server-side: deriving cells from the chart's already-fetched rows
+ * would duplicate the counting rules (lifecycle markers and abandoned attempts
+ * out of both numerator and denominator, warning counts as up) and drift from
+ * the availability table sitting right below the chart.
+ */
+export function useCheckAvailabilityBuckets(
+  org: string,
+  checkUid: string,
+  query: AvailabilityBucketsQuery,
+  options?: { refetchInterval?: number; enabled?: boolean },
+) {
+  return useQuery<CheckAvailabilityBucketsResponse>({
+    queryKey: [
+      "checkAvailabilityBuckets",
+      org,
+      checkUid,
+      query.from,
+      query.to,
+      query.bucketSeconds ?? null,
+      query.region ?? null,
+    ],
+    queryFn: () => {
+      const params = new URLSearchParams({ from: query.from, to: query.to });
+      if (query.bucketSeconds)
+        params.set("bucket", `${Math.round(query.bucketSeconds / 3600)}h`);
+      if (query.region) params.set("region", query.region);
+      return apiFetch<CheckAvailabilityBucketsResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/availability/buckets?${params.toString()}`,
+      );
+    },
+    enabled:
+      (options?.enabled ?? true) &&
+      !!org &&
+      !!checkUid &&
+      !!query.from &&
+      !!query.to,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
 /** The per-query slice of `useAllResults`/`useResultTiers` options — everything
  * that lands in the react-query key and on the wire. `refetchInterval` is
  * deliberately NOT part of it: it is a client-side scheduling concern, and

@@ -574,7 +574,19 @@
     "toast.copied": "Copié dans le presse-papiers",
     "toast.slugUpdated": "Identifiant mis à jour",
     "toast.slugUpdateFailed": "Échec de la mise à jour de l'identifiant",
-    "toast.deleteFailed": "Échec de la suppression du contrôle"
+    "toast.deleteFailed": "Échec de la suppression du contrôle",
+    "availabilityStrip": {
+      "loading": "Disponibilité…",
+      "windowAvailability": "{{pct}} de disponibilité",
+      "noData": "Aucune donnée",
+      "probes": "{{up}} / {{total}} sondes OK",
+      "status": {
+        "up": "OK",
+        "degraded": "Dégradé",
+        "down": "Hors service",
+        "noData": "Aucune donnée"
+      }
+    }
   },
   "endpoints": {
     "heartbeat": {

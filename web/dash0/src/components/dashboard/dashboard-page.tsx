@@ -206,6 +206,10 @@ function groupResultsByCheck(
         new Date(newestStart - (UPTIME_HOURS - 1 - i) * hourMs).toISOString(),
       availabilityPct: cell?.availabilityPct,
       durationMs: cell?.durationMs,
+      // Carried so the strip can apply the shared small-bucket guard (one failed
+      // sample is never red) instead of classifying on the percentage alone.
+      totalChecks: cell?.totalChecks,
+      successfulChecks: cell?.successfulChecks,
     }));
     // Latest response time = durationMs of the most recent bucket that has one.
     let latestDurationMs: number | undefined;

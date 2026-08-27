@@ -529,7 +529,19 @@
     "toast.copied": "Copiado al portapapeles",
     "toast.slugUpdated": "Slug actualizado",
     "toast.slugUpdateFailed": "Error al actualizar el slug",
-    "toast.deleteFailed": "Error al eliminar la comprobación"
+    "toast.deleteFailed": "Error al eliminar la comprobación",
+    "availabilityStrip": {
+      "loading": "Disponibilidad…",
+      "windowAvailability": "{{pct}} de disponibilidad",
+      "noData": "Sin datos",
+      "probes": "{{up}} / {{total}} sondeos correctos",
+      "status": {
+        "up": "Activo",
+        "degraded": "Degradado",
+        "down": "Caído",
+        "noData": "Sin datos"
+      }
+    }
   },
   "endpoints": {
     "heartbeat": {

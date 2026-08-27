@@ -574,7 +574,19 @@
     "toast.copied": "Copied to clipboard",
     "toast.slugUpdated": "Slug updated",
     "toast.slugUpdateFailed": "Failed to update slug",
-    "toast.deleteFailed": "Failed to delete check"
+    "toast.deleteFailed": "Failed to delete check",
+    "availabilityStrip": {
+      "loading": "Availability…",
+      "windowAvailability": "{{pct}} availability",
+      "noData": "No data",
+      "probes": "{{up}} / {{total}} probes up",
+      "status": {
+        "up": "Up",
+        "degraded": "Degraded",
+        "down": "Down",
+        "noData": "No data"
+      }
+    }
   },
   "endpoints": {
     "heartbeat": {

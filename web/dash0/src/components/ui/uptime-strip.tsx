@@ -3,12 +3,24 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  availabilityCellClass,
+  availabilityDotClass,
+  classifyAvailability,
+  formatAvailabilityPct,
+} from "@/lib/availability-status";
 import { cn } from "@/lib/utils";
 
 export interface UptimeBucket {
   periodStart: string;
   availabilityPct?: number;
   durationMs?: number;
+  /** Probe counts when the source row carried them. They exist only to feed the
+   * shared small-bucket guard (a cell with a single failed sample is never
+   * painted red); when they are absent the guard is skipped rather than assumed
+   * satisfied. */
+  totalChecks?: number;
+  successfulChecks?: number;
 }
 
 interface UptimeStripProps {
@@ -16,21 +28,12 @@ interface UptimeStripProps {
   className?: string;
 }
 
-// Color a single hourly cell from its availability. Mirrors the green/yellow/red
-// classes used by StatusTimeline's StatusBar so the two visuals stay consistent.
-// No data for the hour → muted gray.
-function cellClass(availabilityPct?: number): string {
-  if (availabilityPct === undefined) return "bg-gray-300 dark:bg-gray-600";
-  if (availabilityPct >= 100) return "bg-green-500";
-  if (availabilityPct <= 0) return "bg-red-500";
-  return "bg-yellow-500";
-}
-
-function dotClass(availabilityPct?: number): string {
-  if (availabilityPct === undefined) return "bg-gray-400";
-  if (availabilityPct >= 100) return "bg-green-400";
-  if (availabilityPct <= 0) return "bg-red-400";
-  return "bg-yellow-400";
+/** Failures for the shared guard, or undefined when the bucket did not carry
+ * counts — see UptimeBucket. */
+function failuresOf(bucket: UptimeBucket): number | undefined {
+  if (bucket.totalChecks === undefined || bucket.successfulChecks === undefined)
+    return undefined;
+  return Math.max(0, bucket.totalChecks - bucket.successfulChecks);
 }
 
 function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
@@ -39,21 +42,26 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const availLabel =
-    bucket.availabilityPct === undefined
-      ? "No data"
-      : `${bucket.availabilityPct.toFixed(bucket.availabilityPct % 1 === 0 ? 0 : 1)}%`;
+  // The SHARED classification (mirrors the server's uptimebar.Classify), not a
+  // local 100/0/else mapping — this strip used to be a fourth green/amber/red
+  // rule that disagreed with the status page and the badge bar.
+  const status = classifyAvailability(
+    bucket.availabilityPct ?? null,
+    failuresOf(bucket),
+  );
+  const availLabel = formatAvailabilityPct(bucket.availabilityPct) ?? "No data";
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
+          data-status={status}
           className={cn(
             // rounded-[2px], not rounded-sm: at this cell width the theme's
             // radius rounded the cells into pills and the strip stopped
             // reading as a continuous timeline.
             "h-6 flex-1 min-w-[2px] rounded-[2px] origin-center transition-transform duration-150 ease-out hover:scale-y-125 cursor-pointer",
-            cellClass(bucket.availabilityPct),
+            availabilityCellClass(status),
           )}
         />
       </TooltipTrigger>
@@ -66,7 +74,7 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
             <span
               className={cn(
                 "inline-block h-2 w-2 rounded-full",
-                dotClass(bucket.availabilityPct),
+                availabilityDotClass(status),
               )}
             />
             {availLabel}
@@ -86,8 +94,11 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
 /**
  * UptimeStrip renders one hourly cell per provided bucket, oldest → newest.
  * Pure presentational component: pass already-grouped buckets in, no fetching.
- * Cell color is derived from each bucket's availabilityPct (green at 100,
- * yellow in between, red at 0, gray when the hour has no data).
+ *
+ * Cell colour comes from the shared `classifyAvailability` mapping in
+ * `@/lib/availability-status` — the TypeScript twin of the server's
+ * `uptimebar.Classify` — so this strip, the chart availability strip, the public
+ * status page and the badge uptime bar all paint the same numbers the same way.
  */
 export function UptimeStrip({ buckets, className }: UptimeStripProps) {
   return (
