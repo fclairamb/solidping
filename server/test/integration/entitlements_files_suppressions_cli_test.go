@@ -69,7 +69,7 @@ func TestCLICoverage_Entitlements(t *testing.T) {
 	r.Equal(100, *getResp2.JSON200.Limits.MaxChecks)
 	r.NotNil(getResp2.JSON200.Limits.MaxUsers)
 	r.Equal(50, *getResp2.JSON200.Limits.MaxUsers)
-	r.Equal("org-admin", getResp2.JSON200.Source)
+	r.Equal(client.EntitlementsResponseSourceOrgAdmin, getResp2.JSON200.Source)
 	r.NotNil(getResp2.JSON200.Usage)
 
 	// PATCH (partial) — only maxChecks changes; the rest is preserved.

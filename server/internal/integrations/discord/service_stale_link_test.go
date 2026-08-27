@@ -109,7 +109,7 @@ func TestOrgScopedInstallRemapsStaleGuildLink(t *testing.T) {
 }
 
 // TestOrgScopedInstallKeepsLiveForeignGuildLink is the positive control for the
-// remap above, and the behaviour the remap must not break: when the guild's home
+// remap above, and the behavior the remap must not break: when the guild's home
 // org is ALIVE, an install from another org leaves the mapping where it is. The
 // second org still gets its own connection row — only the mapping is exclusive.
 func TestOrgScopedInstallKeepsLiveForeignGuildLink(t *testing.T) {
