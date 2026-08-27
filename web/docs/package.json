@@ -11,6 +11,7 @@
     "swizzle": "docusaurus swizzle",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
+    "test:unit": "bun test ./src",
     "typecheck": "tsc"
   },
   "dependencies": {

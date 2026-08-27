@@ -214,6 +214,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Scoped to ./src on purpose, same as the status0 job: a bare `bun test`
+      # would also collect anything under build/ or node_modules.
+      - name: Run unit tests
+        run: bun run test:unit
+
       # `bun run build` runs gen-api-docs first, generating the API reference
       # from ../../server/internal/app/openapi/openapi.yaml (same repo).
       # onBrokenLinks is "throw", so a broken doc link fails the build here.

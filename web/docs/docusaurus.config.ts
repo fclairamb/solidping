@@ -29,6 +29,20 @@ const config: Config = {
 
   onBrokenLinks: "throw",
 
+  customFields: {
+    // Hosts that serve this documentation but NOT the API: handlerWithDocsHost
+    // (server/internal/app/server.go) redirects every non-/docs path on them
+    // into /docs, so docs.solidping.io/api/v1/... never reaches an API. The
+    // swizzled Base URL control (src/theme/ApiExplorer/Server) reads this to
+    // decide whether to prefer the current origin or the spec's declared cloud
+    // server. Comma-separated SP_DOCS_HOSTS lets a fork or a staging docs host
+    // set its own; matching is on hostname only, so ports are irrelevant here.
+    docsHosts: (process.env.SP_DOCS_HOSTS ?? "docs.solidping.io")
+      .split(",")
+      .map((host) => host.trim())
+      .filter((host) => host !== ""),
+  },
+
   // Enable Mermaid so ```mermaid fences render as themed diagrams.
   markdown: {
     mermaid: true,
