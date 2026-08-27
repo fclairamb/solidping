@@ -142,4 +142,13 @@ describe("canonicalPeriodHMS", () => {
     expect(canonicalPeriodHMS("")).toBe("");
     expect(canonicalPeriodHMS("00:00:00")).toBe("");
   });
+
+  it("returns an empty string for an unparseable period", () => {
+    // Never render "NaN:NaN:NaN" as an option: an unexpected wire shape falls
+    // back to the ladder rather than inventing a custom entry.
+    expect(canonicalPeriodHMS("1m30s")).toBe("");
+    expect(withCustomIntervalOption(buildIntervalOptions(0, 0), "1m30s", () => "x")).toEqual(
+      buildIntervalOptions(0, 0),
+    );
+  });
 });

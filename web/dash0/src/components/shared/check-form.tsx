@@ -248,7 +248,9 @@ export function buildIntervalOptions(minSeconds: number, maxSeconds: number): { 
 export function canonicalPeriodHMS(period: string | undefined): string {
   if (!period) return "";
   const seconds = hmsToSeconds(period);
-  if (seconds <= 0) return "";
+  // NaN when the string is not "HH:MM:SS" at all (an API shape we do not
+  // expect, but "NaN:NaN:NaN" in the dropdown would be worse than nothing).
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
   return secondsToHMS(seconds);
 }
 
