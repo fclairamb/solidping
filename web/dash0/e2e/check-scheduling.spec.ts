@@ -351,4 +351,25 @@ test.describe("Check scheduling page", () => {
     await page.waitForURL(/\/checks\/scheduling/, { timeout: 10000 });
     await expect(page.getByTestId("check-rate-meter")).toBeVisible();
   });
+
+  test("breadcrumb shows a Scheduling leaf and the Checks crumb links back", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/checks/scheduling");
+    await page.waitForLoadState("networkidle");
+
+    const header = page.locator("header");
+
+    // The leaf crumb names the page — the regression was a bare, non-clickable
+    // "Checks" crumb, identical to what the list page renders.
+    await expect(header.getByText(/^scheduling$/i)).toBeVisible();
+
+    // And the section crumb becomes a link back to the list.
+    const checksCrumb = header.getByRole("link", { name: /^checks$/i });
+    await expect(checksCrumb).toBeVisible();
+    await checksCrumb.click();
+    await page.waitForURL(/\/checks\/?(\?|$)/, { timeout: 10000 });
+  });
 });

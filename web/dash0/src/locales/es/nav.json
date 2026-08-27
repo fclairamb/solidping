@@ -1,6 +1,7 @@
 {
   "dashboard": "Panel",
   "checks": "Comprobaciones",
+  "scheduling": "Programación",
   "incidents": "Incidentes",
   "dependencies": "Dependencias",
   "onCall": "Guardia",
