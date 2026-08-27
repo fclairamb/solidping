@@ -238,13 +238,15 @@ func incidentRefPrefix(incident *models.Incident) string {
 }
 
 // checkDashURL builds the SolidPing dashboard URL for a check's detail page.
-// Returns "" when any required component is missing so callers fall back to
-// plain text.
+// Built from the check's UID rather than its slug: the UID never changes, so
+// the link keeps working after a check rename, and it never hits the
+// nil-slug fallback that would otherwise leave the check unlinked. Returns ""
+// when any required component is missing so callers fall back to plain text.
 func checkDashURL(baseURL, orgSlug string, check *models.Check) string {
-	if baseURL == "" || orgSlug == "" || check == nil || check.Slug == nil {
+	if baseURL == "" || orgSlug == "" || check == nil || check.UID == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", baseURL, orgSlug, *check.Slug)
+	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", baseURL, orgSlug, check.UID)
 }
 
 // incidentDashURL builds the SolidPing dashboard URL for an incident's detail

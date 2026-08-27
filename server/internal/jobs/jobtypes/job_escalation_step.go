@@ -1464,13 +1464,16 @@ func escalationCheckName(check *models.Check) string {
 }
 
 // escalationCheckURL builds the dashboard URL for a check's detail page.
-// Returns "" when any required component is missing.
+// Built from the check's UID rather than its slug: the UID never changes, so
+// the link keeps working after a check rename, and it never hits the
+// nil-slug fallback that would otherwise leave the check unlinked. Returns ""
+// when any required component is missing.
 func escalationCheckURL(baseURL, orgSlug string, check *models.Check) string {
-	if baseURL == "" || orgSlug == "" || check == nil || check.Slug == nil {
+	if baseURL == "" || orgSlug == "" || check == nil || check.UID == "" {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", strings.TrimRight(baseURL, "/"), orgSlug, *check.Slug)
+	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", strings.TrimRight(baseURL, "/"), orgSlug, check.UID)
 }
 
 // escalationIncidentURL builds the dashboard URL for an incident's detail
