@@ -51,17 +51,39 @@ type ValidateCheckRequest struct {
 	// reference is legal or not depending on which regions the check runs in.
 	Regions   []string             `json:"regions,omitempty"`
 	DependsOn []ExportedDependency `json:"dependsOn,omitempty"`
+	// Period is the proposed execution interval ("HH:MM:SS" or a Go duration).
+	// Optional: supplied so the period bounds and the org-rate projection
+	// (spec 2026-08-26-05) can be evaluated live. Absent means "not proposed"
+	// and neither runs.
+	Period string `json:"period,omitempty"`
+	// Enabled is the proposed enabled state; absent means enabled. A disabled
+	// check is scheduled nowhere, so it can never push the org over its rate
+	// cap.
+	Enabled *bool `json:"enabled,omitempty"`
+	// ExcludeCheckUID is the check being edited. Slug uniqueness must not flag
+	// a check's own slug, and the rate projection must REPLACE its stored row
+	// rather than add a second one. Empty for a create.
+	ExcludeCheckUID string `json:"excludeCheckUid,omitempty"`
 }
 
 // ValidateCheckResponse is the response body for the validate check endpoint.
+//
+// Every entry in either list carries a severity and a machine code (spec
+// 2026-08-26-05). The two lists are the severity split: fields holds the
+// blocking findings, warnings the advisory ones. `valid` is false exactly when
+// fields is non-empty — a warning never blocks.
 type ValidateCheckResponse struct {
-	Valid  bool                        `json:"valid"`
+	Valid bool `json:"valid"`
+	// Fields are the blocking findings, ALL of them: a validate pass no longer
+	// stops at the first error, so a form can fix everything in one round trip.
 	Fields []base.ValidationErrorField `json:"fields,omitempty"`
 	// Warnings are advisory, per-field notes that do NOT make the config
-	// invalid — `valid` stays true and the write path accepts it. Today the
-	// only source is the IPv6-in-a-region-that-reports-no-IPv6 hint (spec
-	// 2026-08-15-11), which is deliberately never a rejection: the advertised
-	// capability lags reality and the run-time probe is the authority.
+	// invalid — `valid` stays true and the write path accepts it. Sources: the
+	// IPv6/browser region-capability hints (specs 2026-08-15-11, 2026-08-19-03),
+	// which are never rejections because the advertised capability lags reality
+	// and the run-time probe is the authority; and the org checks-per-minute
+	// projection (spec 2026-08-26-05), which must not block precisely because
+	// an over-limit org has to be able to edit its way back under the cap.
 	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
 }
 
@@ -429,77 +451,6 @@ func NewService(
 	}
 }
 
-// ValidateCheck validates a check configuration without persisting it. orgSlug
-// is required when req.DependsOn is non-empty so parent slugs can be resolved
-// against the org's checks; for plain config validation it can be empty.
-func (s *Service) ValidateCheck(
-	ctx context.Context, orgSlug string, req *ValidateCheckRequest,
-) (ValidateCheckResponse, error) {
-	checkType := checkerdef.CheckType(req.Type)
-
-	checker, ok := registry.GetChecker(checkType)
-	if !ok {
-		return ValidateCheckResponse{
-			Valid: false,
-			Fields: []base.ValidationErrorField{
-				{Name: fieldType, Message: "unsupported check type"},
-			},
-		}, nil
-	}
-
-	spec := &checkerdef.CheckSpec{
-		Config: req.Config,
-	}
-
-	if cfgErr := checker.Validate(spec); cfgErr != nil {
-		// Mirror legacy behavior — surface the first config error.
-		return s.formatValidateError(cfgErr), nil
-	}
-
-	// Uniform per-check timeout cap (spec 2026-07-11-05) so live validation
-	// agrees with the create/update paths for every check type.
-	if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
-		return s.formatValidateError(timeoutErr), nil
-	}
-
-	// Uniform per-check address-family rule (spec 2026-08-09-02), same
-	// reasoning: the form must see the same verdict the write path will give.
-	if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
-		return s.formatValidateError(versionErr), nil
-	}
-
-	// Tunnel reference rules (existence, type, fingerprint, chaining, and the
-	// region rules of spec 2026-07-18-07) so the form's selector can show the
-	// error inline before the user hits save. Needs the org to resolve the
-	// referenced SSH check; skip silently when the org can't be resolved (the
-	// create/update path re-validates anyway).
-	if _, tunneled := checkerdef.TunnelCheckUIDFrom(req.Config); tunneled {
-		if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
-			if tunnelErr := s.validateTunnelConfig(
-				ctx, org.UID, req.Type, req.Config, req.Regions,
-			); tunnelErr != nil {
-				return s.formatValidateError(tunnelErr), nil
-			}
-		}
-	}
-
-	if depFields, depErr := s.validateDependsOn(ctx, orgSlug, req.Slug, req.DependsOn); depErr != nil {
-		return ValidateCheckResponse{}, depErr
-	} else if len(depFields) > 0 {
-		return ValidateCheckResponse{Valid: false, Fields: depFields}, nil
-	}
-
-	// Advisory only, and evaluated LAST so it can never mask a real error: the
-	// config is valid, we just have reason to think one of its regions cannot
-	// currently do IPv6 (or run a browser).
-	var warnings []base.ValidationErrorField
-	if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
-		warnings = s.regionCapabilityWarnings(ctx, org.UID, req.Type, req.Config, req.Regions)
-	}
-
-	return ValidateCheckResponse{Valid: true, Warnings: warnings}, nil
-}
-
 // validateDependsOn runs the same edge validators (parent existence, self,
 // cross-org, kind, cycle) that the PUT-by-slug path uses, but without
 // touching the DB beyond reads. Returns per-field validation errors when
@@ -686,26 +637,6 @@ func (s *Service) cycleMsg(
 	}
 
 	return ""
-}
-
-// formatValidateError converts a checker.Validate error into a
-// ValidateCheckResponse with one field-level entry. Unknown error shapes
-// fall back to a single generic message under the "config" field rather
-// than propagating a server-side error.
-func (s *Service) formatValidateError(err error) ValidateCheckResponse {
-	resp := ValidateCheckResponse{Valid: false}
-
-	if configErr := checkerdef.IsConfigError(err); configErr != nil {
-		resp.Fields = []base.ValidationErrorField{
-			{Name: configErr.Parameter, Message: configErr.Message},
-		}
-
-		return resp
-	}
-
-	resp.Fields = []base.ValidationErrorField{{Name: configFieldName, Message: err.Error()}}
-
-	return resp
 }
 
 // CheckResponse represents a check in API responses.
@@ -1319,31 +1250,42 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		}
 	}
 
-	// Uniform per-check timeout cap (spec 2026-07-11-05): applies to every
-	// check type regardless of the checker's own validation.
+	// Resolve regions BEFORE any config work: credential sealing (spec
+	// 2026-07-16-02) keys off the check's private regions, and the tunnel
+	// region rules (spec 2026-07-18-07) are validated against the resolved
+	// set, not the raw request.
+	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+	if err != nil {
+		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
+	}
+
+	// Normalize the config into its canonical stored shape (e.g. HTTP's
+	// username/password → basicAuth fold) before validating it, so the rules
+	// below see exactly what will be persisted.
+	effective := req.Config
+
 	if req.Config != nil {
-		if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
-			return CheckResponse{}, timeoutErr
+		normalized, normErr := normalizeCheckConfig(req.Type, req.Config)
+		if normErr != nil {
+			return CheckResponse{}, normErr
 		}
 
-		// Uniform per-check address-family rule (spec 2026-08-09-02): rejects an
-		// unknown value, the option on a type that cannot honor it, and the
-		// tunnel × ipVersion combination.
-		if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
-			return CheckResponse{}, versionErr
-		}
+		effective = normalized
+	}
 
-		// Send-mode SMTP reference validation (spec 2026-08-19-04): the
-		// delivery_check_uid reference, org/type, and the instance's
-		// email_inbox requirement.
-		if smtpErr := s.validateSMTPDeliveryConfig(ctx, org.UID, req.Type, req.Config); smtpErr != nil {
-			return CheckResponse{}, smtpErr
-		}
+	// The shared config validators — the uniform timeout cap, the
+	// address-family rule, the tunnel reference rules and the SMTP send-mode
+	// rules. Run from the same list the dry-run validate endpoint reads, so
+	// the form's preview and this enforcement cannot drift.
+	if cfgErr := s.firstConfigValidationError(
+		ctx, org.UID, req.Type, effective, resolvedRegions,
+	); cfgErr != nil {
+		return CheckResponse{}, cfgErr
 	}
 
 	// Send-mode SMTP checks need a period floor so the paired inbox can't be
 	// flooded (spec 2026-08-19-04).
-	if intervalErr := validateSMTPSendInterval(req.Type, req.Config, period); intervalErr != nil {
+	if intervalErr := validateSMTPSendInterval(req.Type, effective, period); intervalErr != nil {
 		return CheckResponse{}, intervalErr
 	}
 
@@ -1384,32 +1326,15 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.Description = &req.Description
 	}
 
-	// Resolve regions BEFORE the config split: credential sealing (spec
-	// 2026-07-16-02) keys off the check's private regions, so the resolved
-	// region set must be on the model when applyEncryption runs.
-	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
-	if err != nil {
-		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
-	}
+	// The resolved region set must be on the model before applyEncryption
+	// runs: credential sealing keys off the check's private regions.
 	check.Regions = resolvedRegions
 
-	// Set config — normalize it into its canonical stored shape (e.g. HTTP's
-	// username/password → basicAuth fold), then split secrets out and encrypt
-	// them under the org DEK (and/or seal them to the private region's agents)
-	// before persisting. Plaintext fallback when no master key.
+	// Split the (already normalized and validated) config's secrets out and
+	// encrypt them under the org DEK — and/or seal them to the private
+	// region's agents — before persisting. Plaintext fallback when no master
+	// key is configured.
 	if req.Config != nil {
-		effective, normErr := normalizeCheckConfig(req.Type, req.Config)
-		if normErr != nil {
-			return CheckResponse{}, normErr
-		}
-
-		// A `tunnelCheckUid` reference is validated against the referenced SSH
-		// check (existence, type, fingerprint, no chaining) — the checker's own
-		// Validate cannot do this: it never touches the database.
-		if tunnelErr := s.validateTunnelConfig(ctx, org.UID, req.Type, effective, check.Regions); tunnelErr != nil {
-			return CheckResponse{}, tunnelErr
-		}
-
 		if encErr := s.applyEncryption(ctx, check, effective); encErr != nil {
 			return CheckResponse{}, encErr
 		}
@@ -4265,32 +4190,15 @@ func (s *Service) applyConfigUpdate(
 		return normErr
 	}
 
-	// Uniform per-check timeout cap (spec 2026-07-11-05) — validated on
-	// the merged config so a PATCH cannot smuggle in an over-cap value.
-	if timeoutErr := validateConfigTimeout(merged); timeoutErr != nil {
-		return timeoutErr
-	}
-
-	// Same reasoning for the address family: validated on the merged config so a
-	// PATCH cannot smuggle in an invalid value, the option on a type that cannot
-	// honor it, or an ipVersion onto an already-tunneled check.
-	if versionErr := validateIPVersionConfig(check.Type, merged); versionErr != nil {
-		return versionErr
-	}
-
-	// Same reasoning for the tunnel reference: validated on the merged config so
-	// a PATCH cannot smuggle in a dangling / unverified / chained tunnel.
-	if tunnelErr := s.validateTunnelConfig(
+	// The shared config validators — the uniform timeout cap, the
+	// address-family rule, the tunnel reference rules and the SMTP send-mode
+	// rules — all on the MERGED config, so a PATCH cannot smuggle any of them
+	// past the gate. Same list the create path and the dry-run validate
+	// endpoint read.
+	if cfgErr := s.firstConfigValidationError(
 		ctx, check.OrganizationUID, check.Type, merged, check.Regions,
-	); tunnelErr != nil {
-		return tunnelErr
-	}
-
-	// Send-mode SMTP reference validation (spec 2026-08-19-04) — validated on
-	// the merged config so a PATCH cannot smuggle in a dangling reference or
-	// turn on send_email without a valid pairing.
-	if smtpErr := s.validateSMTPDeliveryConfig(ctx, check.OrganizationUID, check.Type, merged); smtpErr != nil {
-		return smtpErr
+	); cfgErr != nil {
+		return cfgErr
 	}
 
 	if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {

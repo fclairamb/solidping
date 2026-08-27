@@ -16,6 +16,18 @@ import (
 // change in response.
 const browserWarningField = "regions"
 
+// Machine codes for the advisory region-capability findings. Both are
+// warnings, never rejections: the advertised capability lags reality by a
+// heartbeat and the run-time probe is the authority.
+const (
+	// CodeRegionNoIPv6 marks a check pinned to IPv6 in a region whose live
+	// workers report no IPv6 egress.
+	CodeRegionNoIPv6 = "REGION_NO_IPV6"
+	// CodeRegionNoBrowser marks a browser check in a region whose live workers
+	// advertise no headless Chrome.
+	CodeRegionNoBrowser = "REGION_NO_BROWSER"
+)
+
 // regionCapabilityWarnings is the single advisory entry point the write paths
 // call: every region-capability warning, in one slice.
 //
@@ -73,8 +85,10 @@ func (s *Service) browserRegionWarnings(
 	}
 
 	return []base.ValidationErrorField{{
-		Name:    browserWarningField,
-		Message: browserRegionWarningMessage(lacking, browserCapableRegions(index)),
+		Name:     browserWarningField,
+		Message:  browserRegionWarningMessage(lacking, browserCapableRegions(index)),
+		Severity: base.SeverityWarning,
+		Code:     CodeRegionNoBrowser,
 	}}
 }
 

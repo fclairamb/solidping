@@ -136,8 +136,10 @@ func (s *Service) ipVersionRegionWarnings(
 	}
 
 	return []base.ValidationErrorField{{
-		Name:    ipVersionConfigField,
-		Message: ipVersionRegionWarningMessage(lacking, ipv6CapableRegions(index)),
+		Name:     ipVersionConfigField,
+		Message:  ipVersionRegionWarningMessage(lacking, ipv6CapableRegions(index)),
+		Severity: base.SeverityWarning,
+		Code:     CodeRegionNoIPv6,
 	}}
 }
 
