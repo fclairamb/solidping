@@ -15,6 +15,7 @@ package errorreporttest
 import (
 	"context"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -72,7 +73,15 @@ func (t *Transport) Len() int {
 
 // NewClient builds a real Sentry client whose events land in the returned
 // Transport.
-func NewClient() (*sentry.Client, *Transport, error) {
+//
+// The client is closed through tb.Cleanup: since sentry-go v0.49.0 dropped the
+// DisableLogs/DisableMetrics options, a client built with a custom transport
+// always starts the log and metric batcher goroutines, and only Close() stops
+// them. Without the cleanup they outlive every test and trip the goleak checks
+// the packages under test run.
+func NewClient(tb testing.TB) (*sentry.Client, *Transport, error) {
+	tb.Helper()
+
 	transport := &Transport{}
 
 	client, err := sentry.NewClient(sentry.ClientOptions{
@@ -82,23 +91,22 @@ func NewClient() (*sentry.Client, *Transport, error) {
 		// has run by the time the call that triggered it returns, so no flush
 		// or eventual-consistency dance is needed in tests.
 		EnableTracing: false,
-		// The log and metric batchers each start a background goroutine that
-		// only stops on client.Close(). Nothing here emits logs or metrics to
-		// Sentry, and the packages under test run goleak, so keep them off.
-		DisableLogs:    true,
-		DisableMetrics: true,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
+
+	tb.Cleanup(client.Close)
 
 	return client, transport, nil
 }
 
 // NewHub builds a real Sentry client bound to a fresh hub, with a capturing
 // transport. Put the hub on the context under test.
-func NewHub() (*sentry.Hub, *Transport, error) {
-	client, transport, err := NewClient()
+func NewHub(tb testing.TB) (*sentry.Hub, *Transport, error) {
+	tb.Helper()
+
+	client, transport, err := NewClient(tb)
 	if err != nil {
 		return nil, nil, err
 	}

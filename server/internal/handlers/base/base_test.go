@@ -84,7 +84,7 @@ func TestHandlerBase_ErrorWritesReportOnly5xx(t *testing.T) {
 
 			r := require.New(t)
 
-			hub, transport, err := errorreporttest.NewHub()
+			hub, transport, err := errorreporttest.NewHub(t)
 			r.NoError(err)
 
 			handlerBase := base.NewHandlerBase(nil)
@@ -110,7 +110,7 @@ func TestHandlerBase_WriteInternalErrorWithoutHubIsSafe(t *testing.T) {
 
 	r := require.New(t)
 
-	_, transport, err := errorreporttest.NewHub()
+	_, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	handlerBase := base.NewHandlerBase(nil)

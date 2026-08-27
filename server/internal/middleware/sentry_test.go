@@ -195,7 +195,7 @@ func TestSentryMiddleware_AuthenticatedRequestCarriesUserAndOrg(t *testing.T) {
 
 	fixture := newSentryAuthFixture(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	resp := serve(t, "/api/v1/orgs/:org/authed-boom",
@@ -226,7 +226,7 @@ func TestSentryMiddleware_UnauthenticatedRequestCarriesNoIdentity(t *testing.T) 
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	resp := serve(t, "/api/v1/public-boom",
@@ -256,7 +256,7 @@ func TestRecoverer_PanicIs500JSONAndExactlyOneEvent(t *testing.T) {
 
 	fixture := newSentryAuthFixture(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	resp := serve(t, "/api/v1/orgs/:org/panic",
@@ -291,7 +291,7 @@ func TestRecoverer_HealthyHandlerProducesNoEvent(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	resp := serve(t, "/api/v1/quiet",
@@ -319,7 +319,7 @@ func TestRecoverer_PanicIsLoggedAndCountedAsAnOrdinary500(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, _, err := errorreporttest.NewHub()
+	hub, _, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	const pattern = "/api/v1/panic-metrics"
@@ -365,7 +365,7 @@ func TestRecoverer_ErrAbortHandlerIsNotReported(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	router := httpx.New()
@@ -404,7 +404,7 @@ func TestRecoverer_CatchesPanicsUnderTheRequestTimeout(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	resp := serve(t, "/api/v1/timed-panic",
@@ -432,7 +432,7 @@ func TestRequireMCPAuth_AuthenticatedRequestCarriesUserAndOrg(t *testing.T) {
 
 	fixture := newSentryAuthFixture(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	resp := serve(t, "/api/v1/mcp-boom",

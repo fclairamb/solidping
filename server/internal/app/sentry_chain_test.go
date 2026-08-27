@@ -44,7 +44,7 @@ import (
 func TestBuildMainGroup_PanickingRouteIs500ReportedOnceAndCounted(t *testing.T) {
 	r := require.New(t)
 
-	client, transport, err := errorreporttest.NewClient()
+	client, transport, err := errorreporttest.NewClient(t)
 	r.NoError(err)
 
 	previous := sentry.CurrentHub().Client()

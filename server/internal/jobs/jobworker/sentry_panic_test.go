@@ -44,7 +44,7 @@ func TestExecuteWithRecovery_PanicIsReportedWithJobTags(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	ctx := sentry.SetHubOnContext(t.Context(), hub)
@@ -70,7 +70,7 @@ func TestExecuteWithRecovery_OrdinaryFailureIsNotReported(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	ctx := sentry.SetHubOnContext(t.Context(), hub)
@@ -88,7 +88,7 @@ func TestExecuteWithRecovery_SystemJobPanicHasNoOrganizationTag(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	ctx := sentry.SetHubOnContext(t.Context(), hub)

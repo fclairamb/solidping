@@ -20,7 +20,7 @@ func TestCaptureOnRequest_ReportsOnTheRequestHub(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/orgs/acme/checks", http.NoBody)
@@ -41,7 +41,7 @@ func TestCaptureOnRequest_NoHubOnRequestIsANoOp(t *testing.T) {
 
 	r := require.New(t)
 
-	_, transport, err := errorreporttest.NewHub()
+	_, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/orgs/acme/checks", http.NoBody)
@@ -59,7 +59,7 @@ func TestCaptureWithTags_TagsTheEventAndSkipsEmptyValues(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	ctx := sentry.SetHubOnContext(t.Context(), hub)
@@ -85,7 +85,7 @@ func TestCaptureWithTags_DoesNotLeakTagsOntoTheHubScope(t *testing.T) {
 
 	r := require.New(t)
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	ctx := sentry.SetHubOnContext(t.Context(), hub)
@@ -107,7 +107,7 @@ func TestCaptureWithTags_DoesNotLeakTagsOntoTheHubScope(t *testing.T) {
 func TestCaptureWithTags_FallsBackToTheCurrentHub(t *testing.T) {
 	r := require.New(t)
 
-	client, transport, err := errorreporttest.NewClient()
+	client, transport, err := errorreporttest.NewClient(t)
 	r.NoError(err)
 
 	previous := sentry.CurrentHub().Client()
