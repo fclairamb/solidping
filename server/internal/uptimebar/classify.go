@@ -2,10 +2,13 @@ package uptimebar
 
 import "github.com/fclairamb/solidping/server/internal/db/models"
 
-// The per-bucket availability vocabulary. Every surface that paints a bucket
-// green/amber/red/gray — the public status page, the badge uptime bar and the
-// dash0 chart availability strip — speaks these exact words, so the front ends
-// have a single set of values to map onto colors.
+// The per-bucket availability vocabulary spoken by the surfaces that classify
+// server-side: the public status page, the bucketed availability endpoint
+// behind dash0's chart strip, and (via that endpoint) dash0's uptime strips.
+// Those three share Classify below, so identical numbers cannot be painted
+// different colors on any of them.
+//
+// The badge SVG is deliberately NOT one of them — see Classify's doc comment.
 //
 // They are deliberately the same strings the status-page payload already
 // shipped (statuspages' statusNoData/statusUp/statusDegraded/statusDownValue),
@@ -46,8 +49,20 @@ func DefaultThresholds() (float64, float64) {
 // swing the classification anyway.
 //
 // This lives in uptimebar rather than in one of its consumers on purpose: the
-// package already owns the counting rules every strip shares, and the color
-// mapping is the last place two strips could disagree about the same numbers.
+// package already owns the counting rules every strip shares, so the color
+// mapping belongs next to them.
+//
+// EXCEPTION, and it is a real one: the badge SVG's uptime bar does NOT use this
+// function. badges.uptimeBarColor (internal/handlers/badges/service.go) keeps
+// its own FOUR-tier scale — green, yellow, an extra orange band at >= 98%, then
+// red — and applies no small-bucket guard, so it genuinely disagrees with
+// Classify on ordinary numbers (98.5% is orange there and "down" here; a single
+// failed sample at 50% is red there and "degraded" here). That is deliberate,
+// not drift: badges are check-scoped with no status-page context and stay on
+// the global default thresholds (spec 2026-08-03-01 Decisions), and converging
+// them would silently repaint every badge already embedded in the wild. What
+// the badge shares with this package is the BUCKETING engine, not the color
+// mapping. Do not "fix" one to match the other without a spec that asks for it.
 func Classify(pct float64, failures int, upThreshold, degradedThreshold float64) string {
 	switch {
 	case pct >= upThreshold:

@@ -2928,10 +2928,11 @@ const (
 // swing the classification anyway.
 //
 // The rule itself lives in uptimebar.Classify — the same package that owns the
-// counting rules every strip shares — so the status page, the badge bar and the
-// dash0 chart availability strip cannot drift into a fourth green/amber/red
-// mapping. This wrapper stays because the local vocabulary constants below are
-// what the rest of this file reads.
+// counting rules every strip shares — so the status page and the dash0 chart
+// availability strip cannot drift apart on the same numbers. (The badge SVG
+// keeps its own four-tier scale on purpose; see uptimebar.Classify.) This
+// wrapper stays because the local vocabulary constants below are what the rest
+// of this file reads.
 func availabilityToStatus(pct float64, failures int, upThreshold, degradedThreshold float64) string {
 	return uptimebar.Classify(pct, failures, upThreshold, degradedThreshold)
 }

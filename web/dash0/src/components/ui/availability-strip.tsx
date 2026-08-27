@@ -135,8 +135,9 @@ function StripCell({
  *
  * Purely presentational — pass already-bucketed cells in, no fetching. Cell
  * colour comes from the SERVER's `status` (uptimebar.Classify), the same
- * classifier the public status page and the badge uptime bar use, so identical
- * numbers can never be painted differently on two surfaces. A `noData` cell is
+ * classifier the public status page uses, so this strip and the status page
+ * cannot paint identical numbers differently. (The badge SVG keeps its own
+ * four-tier scale on purpose — see `uptimebar.Classify`.) A `noData` cell is
  * gray: no data is a distinct third state, never a manufactured 100%.
  */
 export function AvailabilityStrip({

@@ -520,6 +520,15 @@ func uptimeBarPeriodInfo(period string) (string, int, time.Duration) {
 // percentage. Badges are check-scoped (no status-page context) and
 // deliberately stay on the global default thresholds — see
 // statuspages package's spec 2026-08-03-01 Decisions.
+//
+// This is deliberately NOT uptimebar.Classify, and it is not an oversight to be
+// tidied up. This scale has FOUR tiers (the extra orange band at >= 98%) and no
+// small-bucket guard, so it really does disagree with Classify — 98.5% is orange
+// here and "down" there; a single failed sample at 50% is red here and
+// "degraded" there. Converging them would repaint every badge already embedded
+// in someone's README. What the badge shares with uptimebar is the BUCKETING
+// engine (BucketAvailability), not the color mapping. If a future spec wants one
+// scale, that is a user-visible change and needs to be asked for explicitly.
 func uptimeBarColor(pct float64) string {
 	switch {
 	case pct >= models.DefaultAvailabilityThresholdUp:

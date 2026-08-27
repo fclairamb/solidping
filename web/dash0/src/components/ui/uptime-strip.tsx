@@ -43,8 +43,8 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
     minute: "2-digit",
   });
   // The SHARED classification (mirrors the server's uptimebar.Classify), not a
-  // local 100/0/else mapping — this strip used to be a fourth green/amber/red
-  // rule that disagreed with the status page and the badge bar.
+  // local 100/0/else mapping — this strip used to carry its own green/amber/red
+  // rule that disagreed with the status page.
   const status = classifyAvailability(
     bucket.availabilityPct ?? null,
     failuresOf(bucket),
@@ -97,8 +97,9 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
  *
  * Cell colour comes from the shared `classifyAvailability` mapping in
  * `@/lib/availability-status` — the TypeScript twin of the server's
- * `uptimebar.Classify` — so this strip, the chart availability strip, the public
- * status page and the badge uptime bar all paint the same numbers the same way.
+ * `uptimebar.Classify` — so this strip, the chart availability strip and the
+ * public status page all paint the same numbers the same way. The badge SVG is
+ * the deliberate exception (its own four-tier scale); see `uptimebar.Classify`.
  */
 export function UptimeStrip({ buckets, className }: UptimeStripProps) {
   return (

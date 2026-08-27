@@ -1413,9 +1413,9 @@ export function useCheckAvailability(
  * One cell of the chart availability strip. `availabilityPct` is `null` (and
  * `hasData` false) when the cell has no countable probes — no data is a distinct
  * third state, never a manufactured 100%. `status` is the SERVER's
- * classification (uptimebar.Classify), shared with the public status page and
- * the badge uptime bar, so two surfaces can never paint identical numbers
- * differently.
+ * classification (uptimebar.Classify), shared with the public status page, so
+ * those two surfaces cannot paint identical numbers differently. The badge SVG
+ * keeps its own four-tier scale on purpose — see `uptimebar.Classify`.
  */
 export interface AvailabilityBucket {
   periodStart: string;

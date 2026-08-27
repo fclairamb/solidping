@@ -2,17 +2,20 @@
  * The single client-side mapping from a bucket's availability to a colour.
  *
  * The classification itself is the SERVER's — `uptimebar.Classify`
- * (server/internal/uptimebar/classify.go), which the public status page, the
- * badge uptime bar and the check-detail availability strip all share, including
- * the small-bucket calibration guard (a bucket with exactly one failed sample is
+ * (server/internal/uptimebar/classify.go), shared by the public status page and
+ * the bucketed availability endpoint behind the chart strip, including the
+ * small-bucket calibration guard (a bucket with exactly one failed sample is
  * never painted red). So the wire already carries a `status`; this module only
  * turns that word into Tailwind classes.
+ *
+ * The badge SVG is the deliberate exception: it keeps its own four-tier scale
+ * (with an extra orange band) and no small-bucket guard, so it does NOT agree
+ * with this mapping and is not meant to — see `uptimebar.Classify`'s doc.
  *
  * `classifyAvailability` is the local fallback for the one caller that has a
  * percentage but no server-side status yet (the dashboard's 24h uptime strip,
  * which is derived from already-fetched result rows). It reproduces the Go rule
- * exactly rather than inventing a fourth green/amber/red mapping — the spec's
- * whole complaint was that four surfaces disagreed.
+ * exactly rather than inventing yet another green/amber/red mapping.
  */
 
 /** The shared wire vocabulary. Mirrors uptimebar's Status* constants. */

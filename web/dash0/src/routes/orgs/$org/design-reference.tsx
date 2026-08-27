@@ -4351,8 +4351,8 @@ function AvailabilityStripSection() {
 // Presentational only. Feed it the cells from
 // GET /api/v1/orgs/:org/checks/:check/availability/buckets?from=&to=&bucket=&region=
 // (see useCheckAvailabilityBuckets) — the colour comes from the SERVER's
-// \`status\`, so this strip, the public status page and the badge uptime bar
-// can never paint the same numbers differently.
+// \`status\`, so this strip and the public status page can never paint the same
+// numbers differently. (The badge SVG keeps its own four-tier scale on purpose.)
 <AvailabilityStrip
   cells={buckets.data}
   testIdPrefix="my-strip"

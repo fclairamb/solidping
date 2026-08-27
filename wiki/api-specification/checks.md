@@ -167,8 +167,11 @@ Response: `{ data: [cell…], window, bucketSeconds, windowStart, windowEnd,
 region? }`. Each cell is
 `{ periodStart, periodEnd, hasData, availabilityPct|null, totalChecks,
 successfulChecks, status }` with `status` in `up|degraded|down|noData` — the
-same classifier (and small-bucket guard) the public status page and the badge
-uptime bar use.
+same classifier (and small-bucket guard) the public status page uses. The badge
+SVG's uptime bar deliberately does **not** share it — it keeps a four-tier scale
+with an extra orange band at ≥ 98% and no small-bucket guard, because badges are
+check-scoped and stay on the global default thresholds (spec 2026-08-03-01). It
+shares the bucketing engine, not the colour mapping.
 
 Two rules worth knowing before consuming it:
 

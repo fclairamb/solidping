@@ -2,10 +2,11 @@
  * The availability classification, as the public status page sees it.
  *
  * The authority is the SERVER — `uptimebar.Classify`
- * (server/internal/uptimebar/classify.go), which the availability bar, the badge
- * uptime bar and the operator dashboard all share; every response-time point
+ * (server/internal/uptimebar/classify.go), which the availability bar and the
+ * operator dashboard's availability strips share; every response-time point
  * already arrives with its `availabilityStatus` resolved against the page's own
- * thresholds.
+ * thresholds. (The badge SVG is the deliberate exception: its own four-tier
+ * scale, no small-bucket guard — see `uptimebar.Classify`.)
  *
  * This module exists for the ONE case the server cannot answer: the multi-region
  * response-time chart merges several regions into one x-axis slot on the client

@@ -194,8 +194,19 @@ above: sum up/total across regions, never average percentages.
 2. **One classification, not a fourth.** Move the green/amber/red mapping into
    `uptimebar.Classify(pct, failures, upThreshold, degradedThreshold)` with the
    `StatusUp/Degraded/Down/NoData` vocabulary; `statuspages.availabilityToStatus`
-   becomes a delegating one-liner so the status page, the badge strip and the new
-   chart strip provably share one implementation (small-bucket guard included).
+   becomes a delegating one-liner so the status page and the new chart strip
+   provably share one implementation (small-bucket guard included), and dash0's
+   `uptime-strip.tsx` converges onto its TypeScript twin.
+
+   **The badge SVG is explicitly out of scope and stays as it is.**
+   `badges.uptimeBarColor` keeps its own FOUR-tier scale (green / yellow / an
+   extra orange band at ≥ 98% / red) with no small-bucket guard, so it genuinely
+   disagrees with `Classify` — 98.5% is orange there and `down` here; 50% off a
+   single failed sample is red there and amber here. Converging it would repaint
+   every badge already embedded in the wild, which no spec asked for, and it has
+   its own standing rationale (check-scoped, no status-page context, global
+   default thresholds — spec 2026-08-03-01 Decisions). It shares the bucketing
+   engine with the strip, not the colour mapping.
 
 ### Phase 1a — the new endpoint
 

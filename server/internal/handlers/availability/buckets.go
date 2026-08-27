@@ -60,9 +60,10 @@ type Bucket struct {
 	TotalChecks      int      `json:"totalChecks"`
 	SuccessfulChecks int      `json:"successfulChecks"`
 	// Status is the shared up/degraded/down/noData vocabulary
-	// (uptimebar.Classify) — the SAME classifier the public status page and the
-	// badge uptime bar use, so identical numbers can never be painted different
-	// colors on two surfaces.
+	// (uptimebar.Classify) — the SAME classifier the public status page uses, so
+	// this strip and the status page cannot paint identical numbers differently.
+	// The badge SVG deliberately keeps its own four-tier scale instead; see
+	// uptimebar.Classify's doc comment for why.
 	Status string `json:"status"`
 }
 
