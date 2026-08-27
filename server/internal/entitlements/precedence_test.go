@@ -333,22 +333,21 @@ func TestOrgAdminNullStillInheritsTheDefault(t *testing.T) {
 
 // TestAdminRowKeepsTheDefaultWhiteLabel guards the exception inside the
 // exception. WhiteLabel is a boolean: its nil cannot mean "unbounded", and per
-// EntitlementLimits' own contract it means "use the deployment default". If
-// whole-row mode read it as false, every admin override would silently revoke
-// white-label on a deployment that grants it.
+// EntitlementLimits' own contract it means "use the deployment default". An
+// admin override that only touched numbers must therefore leave white-label
+// exactly where the deployment default put it, in either direction.
 func TestAdminRowKeepsTheDefaultWhiteLabel(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// Self-hosted defaults white-label to true — nobody should have to pay to
-	// unbrand their own instance.
+	// Self-hosted defaults white-label to false — it is what a paid plan buys.
 	svc, org, _ := setup(t)
 	ctx := t.Context()
 
 	base, err := svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.NotNil(base.Limits.WhiteLabel)
-	r.True(*base.Limits.WhiteLabel)
+	r.False(*base.Limits.WhiteLabel)
 
 	_, err = svc.Apply(ctx, org.UID, entitlements.Entitlements{
 		Source: models.EntitlementSourceAdmin,
@@ -359,21 +358,22 @@ func TestAdminRowKeepsTheDefaultWhiteLabel(t *testing.T) {
 	resolved, err := svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.NotNil(resolved.Limits.WhiteLabel,
-		"an admin override that only touched numbers must not revoke white-label")
-	r.True(*resolved.Limits.WhiteLabel)
+		"an admin override that only touched numbers must not change white-label")
+	r.False(*resolved.Limits.WhiteLabel)
 
-	// POSITIVE CONTROL: an explicit false is still honored.
-	denied := false
+	// POSITIVE CONTROL: an explicit grant is still honored — this is the path
+	// billing uses to turn white labeling on for a paid plan.
+	granted := true
 	_, err = svc.Apply(ctx, org.UID, entitlements.Entitlements{
 		Source: models.EntitlementSourceAdmin,
-		Limits: entitlements.Limits{WhiteLabel: &denied},
+		Limits: entitlements.Limits{WhiteLabel: &granted},
 	}, "superadmin:alice", "")
 	r.NoError(err)
 
 	resolved, err = svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.NotNil(resolved.Limits.WhiteLabel)
-	r.False(*resolved.Limits.WhiteLabel)
+	r.True(*resolved.Limits.WhiteLabel)
 }
 
 // TestOrgAdminRowStillCountsAsPaid keeps the scheduling behavior a self-hosted

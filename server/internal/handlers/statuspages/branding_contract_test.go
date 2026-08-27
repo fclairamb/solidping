@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 )
 
 // TestBrandingPayloadIsByteIdenticalAfterTheStorageMove is what proves spec
@@ -36,6 +37,15 @@ func TestBrandingPayloadIsByteIdenticalAfterTheStorageMove(t *testing.T) {
 	r.NoError(dbService.UpdateStatusPageBranding(ctx, page.UID, &models.StatusPageBrandingUpdate{
 		LogoFileUID: &logo, FaviconFileUID: &favicon, HideBranding: true,
 	}))
+
+	// This test is about the payload SHAPE, but hideBranding only survives to
+	// the public view while the org holds the entitlement — and no deployment
+	// mode grants it by default any more. Grant it explicitly.
+	ent := entitlements.NewService(dbService, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	r.NoError(ent.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{WhiteLabel: entitlements.Bool(true)},
+		Source: models.EntitlementSourceAdmin,
+	}, "test", "operator grant"))
 
 	admin, err := svc.GetStatusPage(ctx, "acme", testPublicSlug, GetStatusPageOptions{})
 	r.NoError(err)

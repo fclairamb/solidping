@@ -846,9 +846,9 @@ func TestPayloadRoundTrip(t *testing.T) {
 	// ...but `whiteLabel` is null-FILLED from the deployment default rather
 	// than left nil, because nil on a boolean entitlement means "use the
 	// default", not "unbounded" (spec 2026-08-21-07). The fixture runs
-	// self-hosted, whose default is true.
+	// self-hosted, whose default is false.
 	r.NotNil(resolved.Limits.WhiteLabel)
-	r.True(*resolved.Limits.WhiteLabel)
+	r.False(*resolved.Limits.WhiteLabel)
 }
 
 func TestPlanWeightFreeByDefault(t *testing.T) {

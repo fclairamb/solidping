@@ -47,10 +47,10 @@ func createPublicPage(ctx context.Context, t *testing.T, dbService db.Service, o
 	return page
 }
 
-// TestSelfHostedIsEntitledToWhiteLabel is the positive control for the
-// self-hosted default: an operator running their own instance never has to pay
-// to take our badge off their own status page.
-func TestSelfHostedIsEntitledToWhiteLabel(t *testing.T) {
+// TestSelfHostedWithoutTheEntitlementKeepsTheBadge pins the self-hosted
+// default. White labeling is what a paid plan buys, so a self-hosted instance
+// does not get it for free either — opting the page in is not enough.
+func TestSelfHostedWithoutTheEntitlementKeepsTheBadge(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -62,8 +62,32 @@ func TestSelfHostedIsEntitledToWhiteLabel(t *testing.T) {
 
 	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
 	r.NoError(err)
-	r.True(public.HideBranding, "self-hosted + opted in must drop the badge")
+	r.False(public.HideBranding, "self-hosted + opted in must still show the badge")
 	r.Nil(public.WhiteLabelAllowed, "the public payload must never disclose plan state")
+}
+
+// TestSelfHostedGrantedTheEntitlementDropsTheBadge is the positive control for
+// self-hosted: an operator who grants the entitlement on their own instance
+// gets the unbranded page. Being AGPL, that door stays open by design.
+func TestSelfHostedGrantedTheEntitlementDropsTheBadge(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, dbService, svc, org := whiteLabelSetup(t, config.DeploymentModeSelfHosted)
+	page := createPublicPage(ctx, t, dbService, org.UID)
+
+	optIn := true
+	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{HideBranding: &optIn}))
+
+	ent := entitlements.NewService(dbService, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	r.NoError(ent.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{WhiteLabel: entitlements.Bool(true)},
+		Source: models.EntitlementSourceAdmin,
+	}, "test", "operator grant"))
+
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	r.NoError(err)
+	r.True(public.HideBranding, "an explicit grant must drop the badge")
 }
 
 // TestSaaSWithoutTheEntitlementKeepsTheBadge is the negative control that
@@ -125,6 +149,15 @@ func TestEntitledButNotOptedInKeepsTheBadge(t *testing.T) {
 	ctx, dbService, svc, org := whiteLabelSetup(t, config.DeploymentModeSelfHosted)
 	createPublicPage(ctx, t, dbService, org.UID)
 
+	// Grant the entitlement explicitly — no deployment mode hands it out by
+	// default any more, so without this the assertion would pass for the wrong
+	// reason (missing entitlement rather than missing opt-in).
+	ent := entitlements.NewService(dbService, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	r.NoError(ent.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{WhiteLabel: entitlements.Bool(true)},
+		Source: models.EntitlementSourceAdmin,
+	}, "test", "operator grant"))
+
 	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
 	r.NoError(err)
 	r.False(public.HideBranding, "the entitlement alone must not hide the badge")
@@ -169,7 +202,7 @@ func TestDefaultsForWhiteLabelPerMode(t *testing.T) {
 
 	selfHosted := entitlements.DefaultsFor(config.DeploymentModeSelfHosted)
 	r.NotNil(selfHosted.Limits.WhiteLabel)
-	r.True(*selfHosted.Limits.WhiteLabel, "self-hosted is entitled by default")
+	r.False(*selfHosted.Limits.WhiteLabel, "self-hosted is not entitled by default")
 
 	saas := entitlements.DefaultsFor(config.DeploymentModeSaaS)
 	r.NotNil(saas.Limits.WhiteLabel)
