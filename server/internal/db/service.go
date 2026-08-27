@@ -823,6 +823,17 @@ type Service interface {
 	// predicate mirrors the list endpoint's `internal=false` default so the
 	// counters describe exactly the checks the operator can see in the list.
 	GetCheckStatusCounts(ctx context.Context, orgUID string) ([]models.CheckStatusCount, error)
+	// GetOrgAvailability24h returns the combined (success, countable-total)
+	// tally for the org over [since, now) — the trailing-24h window behind the
+	// dashboard's availability KPI (spec 2026-08-26-09). Folds two SQL
+	// aggregates: `hour` rollup rows (which already encode CountsAsUp into
+	// successful_checks/total_checks) and `raw` rows (folded in SQL with the
+	// same ExcludedFromAvailability/CountsAsUp predicate as
+	// models.RawAvailability, rather than loaded into Go — an org's trailing
+	// 24h of raw data can be the bulk of everything it has). day/month rollups
+	// never carry data for this window (see the implementation doc) and are
+	// deliberately excluded.
+	GetOrgAvailability24h(ctx context.Context, orgUID string, since, now time.Time) (models.AvailabilityCounts, error)
 	// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
 	// member checks — the same member set GetCheckGroupStatusCounts rolls up, so
 	// a group's public status and its aggregated availability always describe

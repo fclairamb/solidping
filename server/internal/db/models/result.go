@@ -167,6 +167,28 @@ func RawAvailability(results []*Result) (int, int) {
 	return success, total
 }
 
+// AvailabilityCounts is a (success, countable-total) tally over some window,
+// potentially folded together from more than one period_type tier (e.g. an
+// org's trailing-24h availability combines `hour` rollups and `raw` rows —
+// see checks.Service.GetCheckStats / spec 2026-08-26-09). Callers derive the
+// percentage via Pct rather than dividing directly, so "no measurable data"
+// (Total == 0) can never be silently rendered as a manufactured 100%.
+type AvailabilityCounts struct {
+	Success int64
+	Total   int64
+}
+
+// Pct returns 100*Success/Total and ok=true when Total > 0. ok=false means
+// the window had no countable data at all — the caller must render that as
+// "no data", never as a fabricated percentage.
+func (c AvailabilityCounts) Pct() (float64, bool) {
+	if c.Total == 0 {
+		return 0, false
+	}
+
+	return 100 * float64(c.Success) / float64(c.Total), true
+}
+
 // Result represents a check execution result.
 type Result struct {
 	UID             string     `bun:"uid,pk,type:varchar(36)"`

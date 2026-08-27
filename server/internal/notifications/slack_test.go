@@ -1288,6 +1288,12 @@ func (m *mockDBService) GetCheckStatusCounts(
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetOrgAvailability24h(
+	_ context.Context, _ string, _, _ time.Time,
+) (models.AvailabilityCounts, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListCheckUIDsByGroup(_ context.Context, _, _ string) ([]string, error) {
 	panic("not implemented")
 }

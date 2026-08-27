@@ -5452,6 +5452,89 @@ func (s *Service) GetCheckStatusCounts(
 	return rows, nil
 }
 
+// availabilityAgg is the (success, total) shape both GetOrgAvailability24h
+// tier queries scan into.
+type availabilityAgg struct {
+	Success int64 `bun:"success"`
+	Total   int64 `bun:"total"`
+}
+
+// GetOrgAvailability24h returns the org's combined (success, countable-total)
+// tally over [since, now) (spec 2026-08-26-09) — the query behind the
+// dashboard's "24h Availability" KPI, which the old client-side computation
+// could never produce a real number for (the day bucket it queried never
+// exists for "today").
+//
+// TWO tier-aligned SQL aggregates, mirroring uptimebar's split
+// (uptimebar/window.go) and for the same reason: `results` has exactly two
+// useful indexes and both are PARTIAL (period_type = 'raw' vs. <> 'raw'), so a
+// predicate straddling both tiers forces a full scan. Each half rides its own
+// partial index:
+//
+//   - `hour` rollup rows already encode CountsAsUp into
+//     successful_checks/total_checks (the aggregation job folds warning into
+//     "up" when it writes the bucket), so this tier is a plain SUM.
+//   - `raw` rows are folded with the same predicate as models.RawAvailability
+//     (ExcludedFromAvailability excludes lifecycle markers + abandoned;
+//     CountsAsUp counts up + warning) — done in SQL, not by loading rows into
+//     Go, because an org's trailing 24h of raw data can be the bulk of
+//     everything it has.
+//
+// day/month rollups are deliberately excluded: their period_start granularity
+// (UTC midnight / month start) means a bucket can only start inside a
+// trailing-24h window on the day it is created, and the aggregation job never
+// creates a day row for "today" — it only compacts once the hour-retention
+// window has passed (job_aggregation.go). So day/month rows never carry data
+// for this window; including that tier would only cost a query for nothing.
+//
+// Raw and hour rows in the window are disjoint by construction — the
+// aggregation job deletes the raw rows it rolls up in the same transaction —
+// so summing both tiers never double-counts.
+func (s *Service) GetOrgAvailability24h(
+	ctx context.Context, orgUID string, since, now time.Time,
+) (models.AvailabilityCounts, error) {
+	var hourAgg availabilityAgg
+
+	err := s.db.NewSelect().
+		TableExpr("results").
+		ColumnExpr("COALESCE(SUM(successful_checks), 0) AS success").
+		ColumnExpr("COALESCE(SUM(total_checks), 0) AS total").
+		Where("organization_uid = ?", orgUID).
+		Where("period_type = ?", models.PeriodTypeHour).
+		Where("period_start >= ?", since).
+		Where("period_start < ?", now).
+		Scan(ctx, &hourAgg)
+	if err != nil {
+		return models.AvailabilityCounts{}, fmt.Errorf("get org hour availability: %w", err)
+	}
+
+	var rawAgg availabilityAgg
+
+	err = s.db.NewSelect().
+		TableExpr("results").
+		ColumnExpr(
+			"COALESCE(SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END), 0) AS success",
+			int(models.ResultStatusUp), int(models.ResultStatusWarning),
+		).
+		ColumnExpr(
+			"COALESCE(SUM(CASE WHEN status NOT IN (?, ?, ?) THEN 1 ELSE 0 END), 0) AS total",
+			int(models.ResultStatusCreated), int(models.ResultStatusRunning), int(models.ResultStatusAbandoned),
+		).
+		Where("organization_uid = ?", orgUID).
+		Where("period_type = ?", models.PeriodTypeRaw).
+		Where("period_start >= ?", since).
+		Where("period_start < ?", now).
+		Scan(ctx, &rawAgg)
+	if err != nil {
+		return models.AvailabilityCounts{}, fmt.Errorf("get org raw availability: %w", err)
+	}
+
+	return models.AvailabilityCounts{
+		Success: hourAgg.Success + rawAgg.Success,
+		Total:   hourAgg.Total + rawAgg.Total,
+	}, nil
+}
+
 // ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
 // member checks — deliberately the same member predicate as
 // GetCheckGroupStatusCounts so a group's rolled-up status and its aggregated
