@@ -1,0 +1,63 @@
+name: PR Title
+
+# This repository squash-merges exclusively, with squash_merge_commit_title set
+# to PR_TITLE — so a pull request's title is not a label, it IS the commit
+# subject that lands on main. release-please (release-type: simple) then parses
+# those subjects to decide the next version and build the changelog.
+#
+# A non-conventional title therefore does not merely read badly: the commit
+# becomes invisible to release-please, which reports success while silently
+# releasing nothing. That happened in #269, where a 147-commit batch titled
+# "Batch 2026-08-26-2: …" left the release PR pinned to a patch covering an
+# unrelated one-line fix. This job makes that failure impossible to merge.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-title:
+    name: Conventional commit title
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate the PR title
+        env:
+          # Via env, never inlined into the script: a title is attacker-controlled
+          # text and would otherwise be a shell injection.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          # Types kept in step with release-please-config.json's changelog-sections.
+          TYPES='feat|fix|perf|revert|docs|style|chore|refactor|test|build|ci'
+
+          # <type>[optional (scope)][optional !]: <description>
+          if [[ ! "$TITLE" =~ ^($TYPES)(\([a-z0-9._/-]+\))?!?:\ .+ ]]; then
+            {
+              echo "### ❌ PR title is not a conventional commit"
+              echo
+              echo '```'
+              echo "$TITLE"
+              echo '```'
+              echo
+              echo "This repo squash-merges with the **PR title as the commit subject**, and"
+              echo "release-please parses those subjects. A title it cannot parse is dropped"
+              echo "from the changelog and from version selection — silently, with a green"
+              echo "pipeline (see #269)."
+              echo
+              echo "Retitle as \`<type>(<optional scope>): <description>\`, for example:"
+              echo
+              echo "- \`feat(dash0): add the check scheduling page\`"
+              echo "- \`fix: exempt internal checks from the per-org rate gate\`"
+              echo
+              echo "Allowed types: \`${TYPES//|/\`, \`}\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "::error title=PR title is not a conventional commit::$TITLE"
+            exit 1
+          fi
+
+          echo "✅ '$TITLE' is a conventional commit subject."
