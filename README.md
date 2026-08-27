@@ -310,4 +310,4 @@ make build-cli
 
 ## License
 
-AGPL-3.0 - See [LICENSE.md](LICENSE.md).
+AGPL-3.0 - See [LICENSE](LICENSE).
