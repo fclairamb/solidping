@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -181,8 +182,8 @@ func (s *Service) ValidateCheck(
 		return ValidateCheckResponse{}, depErr
 	}
 
-	for _, field := range depFields {
-		findings.addError(field.Name, CodeInvalidDependsOn, field.Message)
+	for i := range depFields {
+		findings.addError(depFields[i].Name, CodeInvalidDependsOn, depFields[i].Message)
 	}
 
 	// Advisory only, and evaluated LAST so it can never mask a real error.
@@ -352,7 +353,7 @@ func (s *Service) orgRateWarning(
 // bare, fractions to one decimal.
 func formatRate(rate float64) string {
 	if rate == float64(int64(rate)) {
-		return fmt.Sprintf("%d", int64(rate))
+		return strconv.FormatInt(int64(rate), 10)
 	}
 
 	return fmt.Sprintf("%.1f", rate)

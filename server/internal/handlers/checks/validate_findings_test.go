@@ -61,15 +61,14 @@ func newValidateEnv(t *testing.T, maxPerMinute int) *validateEnv {
 }
 
 // httpCheck creates a real check through the service, the way a user would.
-func (e *validateEnv) httpCheck(slug, period string, regions []string) checks.CheckResponse {
+func (e *validateEnv) httpCheck(slug, period string) checks.CheckResponse {
 	e.t.Helper()
 
 	resp, err := e.svc.CreateCheck(e.t.Context(), e.org.Slug, checks.CreateCheckRequest{
-		Type:    "http",
-		Slug:    slug,
-		Config:  map[string]any{"url": "https://example.com"},
-		Period:  &period,
-		Regions: regions,
+		Type:   "http",
+		Slug:   slug,
+		Config: map[string]any{"url": "https://example.com"},
+		Period: &period,
 	})
 	require.NoError(e.t, err)
 
@@ -137,7 +136,7 @@ func TestValidateEveryFindingCarriesSeverityAndCode(t *testing.T) {
 	r := require.New(t)
 
 	env := newValidateEnv(t, 1)
-	env.httpCheck("taken", "00:01:00", nil)
+	env.httpCheck("taken", "00:01:00")
 
 	resp := env.validate(&checks.ValidateCheckRequest{
 		Type:   "http",
@@ -190,7 +189,7 @@ func TestValidateSlugUniqueness(t *testing.T) {
 		r := require.New(t)
 
 		env := newValidateEnv(t, 0)
-		env.httpCheck("already-used", "00:01:00", nil)
+		env.httpCheck("already-used", "00:01:00")
 
 		resp := env.validate(&checks.ValidateCheckRequest{
 			Type: "http", Slug: "already-used",
@@ -206,7 +205,7 @@ func TestValidateSlugUniqueness(t *testing.T) {
 		r := require.New(t)
 
 		env := newValidateEnv(t, 0)
-		existing := env.httpCheck("edited-check", "00:01:00", nil)
+		existing := env.httpCheck("edited-check", "00:01:00")
 
 		resp := env.validate(&checks.ValidateCheckRequest{
 			Type: "http", Slug: "edited-check", ExcludeCheckUID: existing.UID,
@@ -222,7 +221,7 @@ func TestValidateSlugUniqueness(t *testing.T) {
 		r := require.New(t)
 
 		env := newValidateEnv(t, 0)
-		env.httpCheck("recycled", "00:01:00", nil)
+		env.httpCheck("recycled", "00:01:00")
 		r.NoError(env.svc.DeleteCheck(t.Context(), env.org.Slug, "recycled"))
 
 		resp := env.validate(&checks.ValidateCheckRequest{
@@ -259,7 +258,7 @@ func TestValidateOrgRateProjection(t *testing.T) {
 		r := require.New(t)
 
 		env := newValidateEnv(t, 2)
-		env.httpCheck("existing", "00:00:30", nil) // 2/min — exactly at the cap
+		env.httpCheck("existing", "00:00:30") // 2/min — exactly at the cap
 
 		resp := env.validate(&checks.ValidateCheckRequest{
 			Type: "http", Slug: "newcomer", Period: "00:01:00", // +1/min → 3/min
@@ -278,7 +277,7 @@ func TestValidateOrgRateProjection(t *testing.T) {
 		r := require.New(t)
 
 		env := newValidateEnv(t, 10)
-		env.httpCheck("existing", "00:00:30", nil)
+		env.httpCheck("existing", "00:00:30")
 
 		resp := env.validate(&checks.ValidateCheckRequest{
 			Type: "http", Slug: "newcomer", Period: "00:01:00",
@@ -293,7 +292,7 @@ func TestValidateOrgRateProjection(t *testing.T) {
 		r := require.New(t)
 
 		env := newValidateEnv(t, 2)
-		existing := env.httpCheck("greedy", "00:00:10", nil) // 6/min, already over
+		existing := env.httpCheck("greedy", "00:00:10") // 6/min, already over
 
 		// Without the exclusion the stored 6/min would still be in the sum and
 		// the warning would fire; with it, the proposal REPLACES the row.
@@ -320,7 +319,7 @@ func TestValidateOrgRateProjection(t *testing.T) {
 		r := require.New(t)
 
 		env := newValidateEnv(t, 2)
-		existing := env.httpCheck("modest", "00:01:00", nil) // 1/min
+		existing := env.httpCheck("modest", "00:01:00") // 1/min
 
 		resp := env.validate(&checks.ValidateCheckRequest{
 			Type: "http", Slug: "modest", ExcludeCheckUID: existing.UID,
@@ -491,7 +490,7 @@ func TestValidateAndPatchPathShareTheValidator(t *testing.T) {
 
 	env := newValidateEnv(t, 0)
 	ctx := t.Context()
-	env.httpCheck("patched", "00:01:00", nil)
+	env.httpCheck("patched", "00:01:00")
 
 	badConfig := map[string]any{"url": "https://example.com", "timeout": "45s"}
 
@@ -531,8 +530,8 @@ func TestProjectChecksPerMinuteReusesTheDemandFormula(t *testing.T) {
 	r := require.New(t)
 
 	env := newValidateEnv(t, 5)
-	env.httpCheck("one", "00:00:30", nil)
-	env.httpCheck("two", "00:01:00", nil)
+	env.httpCheck("one", "00:00:30")
+	env.httpCheck("two", "00:01:00")
 
 	ctx := context.Background()
 
