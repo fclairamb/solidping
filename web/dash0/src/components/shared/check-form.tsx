@@ -1,7 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
-import { useCheckValidationResult, getFieldError } from "@/hooks/use-check-validation";
+import {
+  useCheckValidationResult,
+  getFieldError,
+  findFinding,
+  VALIDATION_CODES,
+} from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
 import { resolveCheckRefLabel } from "@/lib/dependency-graph";
 import {
@@ -44,6 +49,7 @@ import { LabelInput } from "@/components/shared/label-input";
 import { DocsLink } from "@/components/shared/docs-link";
 import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { CheckTypeIcon } from "@/components/shared/check-type-identity";
+import { Link } from "@tanstack/react-router";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
 import {
@@ -230,6 +236,47 @@ export function buildIntervalOptions(minSeconds: number, maxSeconds: number): { 
   return allOptions
     .filter((opt) => opt.seconds >= minSeconds && (maxSeconds === 0 || opt.seconds <= maxSeconds))
     .map(({ value, label }) => ({ value, label }));
+}
+
+/**
+ * Canonical "HH:MM:SS" form of a stored period, or "" when there is none.
+ *
+ * The select matches its options by string, so the value seeded from the API
+ * and the option describing it have to be spelled identically — otherwise a
+ * period that IS on the ladder still renders blank.
+ */
+export function canonicalPeriodHMS(period: string | undefined): string {
+  if (!period) return "";
+  const seconds = hmsToSeconds(period);
+  if (seconds <= 0) return "";
+  return secondsToHMS(seconds);
+}
+
+/**
+ * The interval ladder with the check's SAVED period prepended when that period
+ * is not one of the steps.
+ *
+ * A check can hold any period the API accepts — an import, an API caller, a
+ * period whose type constraints have since changed. Without this the select
+ * renders empty for such a check: the user never sees the real configured
+ * period, and the first save silently rewrites it to whatever they pick to get
+ * out of the empty state. The entry is added regardless of the type's min/max
+ * bounds, because a value OUTSIDE them is exactly the case that must stay
+ * visible; picking another option is then an explicit, deliberate change.
+ *
+ * Anchored on the saved period, never on the live selection — anchoring on the
+ * draft would delete the custom entry the moment the user tried another
+ * option, stranding them with no way back.
+ */
+export function withCustomIntervalOption(
+  options: { value: string; label: string }[],
+  savedPeriod: string | undefined,
+  labelFor: (hms: string) => string,
+): { value: string; label: string }[] {
+  const canonical = canonicalPeriodHMS(savedPeriod);
+  if (!canonical) return options;
+  if (options.some((opt) => opt.value === canonical)) return options;
+  return [{ value: canonical, label: labelFor(canonical) }, ...options];
 }
 
 export interface CheckFormData {
@@ -442,7 +489,9 @@ export function CheckForm({
   function removeParent(uid: string) {
     setDependsOnParents((prev) => (prev ?? []).filter((p) => p.uid !== uid));
   }
-  const [period, setPeriod] = useState(initialData?.period || getDefaultPeriodHMS(initialType));
+  const [period, setPeriod] = useState(
+    canonicalPeriodHMS(initialData?.period) || getDefaultPeriodHMS(initialType),
+  );
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
   const [periodValue, setPeriodValue] = useState(initialPeriod.value);
   const [periodUnit, setPeriodUnit] = useState<PeriodUnit>(initialPeriod.unit);
@@ -549,9 +598,17 @@ export function CheckForm({
   // Interval options filtered by type constraints
   const intervalOptions = useMemo(() => {
     const { minSec, maxSec } = getPeriodConstraints(type);
-    return buildIntervalOptions(minSec, maxSec);
+    return withCustomIntervalOption(
+      buildIntervalOptions(minSec, maxSec),
+      initialData?.period,
+      (hms) =>
+        t("form.customPeriod", {
+          period: formatDuration(hmsToSeconds(hms)),
+          defaultValue: `${formatDuration(hmsToSeconds(hms))} (custom)`,
+        }),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, checkTypeInfoMap]);
+  }, [type, checkTypeInfoMap, initialData?.period, t]);
 
   // Live polling interval (seconds) used by the Confirmation / Recovery estimate
   // lines. Active checks have a real cadence (the selected HMS interval); passive
@@ -664,10 +721,31 @@ export function CheckForm({
 
   const { errors: fieldErrors, warnings: fieldWarnings } = useCheckValidationResult(
     org,
-    type,
-    currentConfig,
-    selectedRegions,
+    {
+      type,
+      config: currentConfig,
+      regions: selectedRegions,
+      slug,
+      // Passive checks have no probe cadence, so their "expected interval" is
+      // not a schedule and must not be projected against the rate cap.
+      period: isPassiveType(type) ? undefined : period,
+      enabled,
+      // On edit, the check must not collide with its own slug, and the rate
+      // projection must replace its stored row rather than add a second one.
+      excludeCheckUid: mode === "edit" ? initialData?.uid : undefined,
+    },
     300,
+  );
+
+  // Server-side slug findings, split by code: a collision is a distinct
+  // problem from a malformed slug, and only the client already covers format.
+  const slugTakenError = findFinding(fieldErrors, VALIDATION_CODES.slugTaken);
+  // Advisory (spec 2026-08-26-05): this schedule would put the org over its
+  // per-minute execution cap. Never blocks the save — an over-limit org has to
+  // be able to edit its way back under the cap.
+  const rateWarning = findFinding(
+    fieldWarnings,
+    VALIDATION_CODES.orgRateOverLimit,
   );
 
   const toggleRegion = (slug: string) => {
@@ -1120,6 +1198,34 @@ export function CheckForm({
                     </SelectContent>
                   </Select>
                 )}
+                {/* Advisory only (spec 2026-08-26-05): this schedule would put
+                    the organization over its per-minute execution cap, so some
+                    executions would be skipped. Never blocks submit — an
+                    over-limit org has to be able to edit its way back under the
+                    cap, and blocking would take that away. */}
+                {rateWarning && (
+                  <Alert
+                    variant="warning"
+                    className="mt-2"
+                    data-testid="check-rate-limit-warning"
+                  >
+                    <AlertTriangle />
+                    <AlertDescription className="space-y-2">
+                      <span>{rateWarning.message}</span>
+                      <Button asChild variant="outline" size="sm">
+                        <Link
+                          to="/orgs/$org/checks/scheduling"
+                          params={{ org }}
+                          data-testid="check-rate-limit-warning-link"
+                        >
+                          {t("form.reviewScheduling", {
+                            defaultValue: "Review check scheduling",
+                          })}
+                        </Link>
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {type === "heartbeat" && (
                   <p className="text-xs text-muted-foreground">Check will be marked as down if no heartbeat is received within this interval</p>
                 )}
@@ -1352,14 +1458,25 @@ export function CheckForm({
             summary={orgSummary}
             customized={orgCustomized}
             defaultOpen={sectionOpen("organization", orgCustomized)}
-            expandSignal={slugError ? submitAttempts : 0}
+            expandSignal={slugError || slugTakenError ? submitAttempts : 0}
           >
 
               <div className="space-y-2">
                 <Label htmlFor="slug">Slug {mode === "create" && "(optional)"}</Label>
-                <Input id="slug" type="text" placeholder="my-check" value={slug} onChange={(e) => setSlug(e.target.value)} data-testid="check-slug-input" className={slugError ? "border-destructive" : ""} />
+                <Input id="slug" type="text" placeholder="my-check" value={slug} onChange={(e) => setSlug(e.target.value)} data-testid="check-slug-input" className={slugError || slugTakenError ? "border-destructive" : ""} />
                 {slugError ? (
                   <p className="text-xs text-destructive">{slugError}</p>
+                ) : slugTakenError ? (
+                  // Live collision (spec 2026-08-26-05). Advisory by nature —
+                  // the slug can be claimed between this answer and the save,
+                  // which is why creation still answers 409 — but seeing it
+                  // while typing beats seeing it after a failed submit.
+                  <p
+                    className="text-xs text-destructive"
+                    data-testid="check-slug-taken-error"
+                  >
+                    {slugTakenError.message}
+                  </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">URL-friendly identifier for the check</p>
                 )}

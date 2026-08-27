@@ -236,7 +236,9 @@
     "tracerouteInherit": "Inherit organization default",
     "tracerouteOn": "Always capture",
     "tracerouteOff": "Never capture",
-    "tracerouteOnFailureHelp": "When this check goes down because the target could not be REACHED (connect timeout, refusal, ICMP loss, TLS handshake stall), capture an MTR-style path trace and attach it to the incident. Application-level failures such as HTTP 5xx, a keyword mismatch or an expiring certificate never trigger one — the server answered, so the path is fine."
+    "tracerouteOnFailureHelp": "When this check goes down because the target could not be REACHED (connect timeout, refusal, ICMP loss, TLS handshake stall), capture an MTR-style path trace and attach it to the incident. Application-level failures such as HTTP 5xx, a keyword mismatch or an expiring certificate never trigger one — the server answered, so the path is fine.",
+    "customPeriod": "{{period}} (custom)",
+    "reviewScheduling": "Review check scheduling"
   },
   "types": {
     "http": "HTTP",

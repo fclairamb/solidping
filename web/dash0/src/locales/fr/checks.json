@@ -236,7 +236,9 @@
     "tracerouteInherit": "Hériter du réglage de l'organisation",
     "tracerouteOn": "Toujours capturer",
     "tracerouteOff": "Ne jamais capturer",
-    "tracerouteOnFailureHelp": "Quand ce check tombe parce que la cible n'a pas pu être JOINTE (timeout de connexion, refus, perte ICMP, blocage du handshake TLS), capturer un traceroute façon MTR et l'attacher à l'incident. Les échecs applicatifs — HTTP 5xx, mot-clé absent, certificat qui expire — n'en déclenchent jamais : le serveur a répondu, donc le chemin est bon."
+    "tracerouteOnFailureHelp": "Quand ce check tombe parce que la cible n'a pas pu être JOINTE (timeout de connexion, refus, perte ICMP, blocage du handshake TLS), capturer un traceroute façon MTR et l'attacher à l'incident. Les échecs applicatifs — HTTP 5xx, mot-clé absent, certificat qui expire — n'en déclenchent jamais : le serveur a répondu, donc le chemin est bon.",
+    "customPeriod": "{{period}} (personnalisé)",
+    "reviewScheduling": "Revoir la planification des checks"
   },
   "types": {
     "http": "HTTP",

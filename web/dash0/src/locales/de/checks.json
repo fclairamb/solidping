@@ -236,7 +236,9 @@
     "tracerouteInherit": "Organisationsvorgabe übernehmen",
     "tracerouteOn": "Immer aufzeichnen",
     "tracerouteOff": "Nie aufzeichnen",
-    "tracerouteOnFailureHelp": "Wenn dieser Check ausfällt, weil das Ziel nicht ERREICHT werden konnte (Verbindungs-Timeout, Ablehnung, ICMP-Verlust, hängender TLS-Handshake), einen Traceroute im MTR-Stil aufzeichnen und an den Vorfall anhängen. Anwendungsfehler wie HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat lösen nie einen aus — der Server hat geantwortet, der Pfad ist also in Ordnung."
+    "tracerouteOnFailureHelp": "Wenn dieser Check ausfällt, weil das Ziel nicht ERREICHT werden konnte (Verbindungs-Timeout, Ablehnung, ICMP-Verlust, hängender TLS-Handshake), einen Traceroute im MTR-Stil aufzeichnen und an den Vorfall anhängen. Anwendungsfehler wie HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat lösen nie einen aus — der Server hat geantwortet, der Pfad ist also in Ordnung.",
+    "customPeriod": "{{period}} (benutzerdefiniert)",
+    "reviewScheduling": "Check-Planung überprüfen"
   },
   "types": {
     "http": "HTTP",
