@@ -15,6 +15,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TimeAgo } from "@/components/ui/time-ago";
+import { ApiError } from "@/api/client";
+import { PermissionDenied } from "@/components/shared/error-views";
 import { useAdminEntitlementsList } from "@/api/hooks";
 import type { AdminEntitlementsRow } from "@/api/hooks";
 import { formatCheckRateDemand } from "@/lib/check-rate-limit";
@@ -64,6 +66,10 @@ function EntitlementsListPage() {
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
+        ) : error instanceof ApiError && error.status === 403 ? (
+          // 403 renders Permission Denied in place — never a redirect, which
+          // would loop an authenticated-but-unauthorized user.
+          <PermissionDenied org={org} />
         ) : error ? (
           <p className="text-sm text-destructive">
             {t("entitlements.loadError")}

@@ -38,6 +38,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TimeAgo } from "@/components/ui/time-ago";
+import { ApiError } from "@/api/client";
+import { PermissionDenied } from "@/components/shared/error-views";
 import {
   useAdminEntitlementsDetail,
   useReleaseAdminEntitlements,
@@ -86,6 +88,10 @@ function EntitlementsDetailPage() {
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : error instanceof ApiError && error.status === 403 ? (
+        // 403 renders Permission Denied in place — never a redirect, which
+        // would loop an authenticated-but-unauthorized user.
+        <PermissionDenied org={org} />
       ) : error || !data ? (
         <p className="text-sm text-destructive">
           {t("entitlements.detail.loadError")}

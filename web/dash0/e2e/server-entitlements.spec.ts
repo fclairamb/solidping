@@ -173,6 +173,32 @@ test.describe("Superadmin entitlements editor", () => {
     await expect(page.getByTestId("audit-suppressed")).toBeVisible();
   });
 
+  test("an API 403 renders Permission Denied in place, never a redirect", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // The client still believes it is a superadmin (the layout gate passes);
+    // the SERVER says no. That combination is the one that used to loop.
+    await page.route("**/api/v1/system/entitlements*", async (route) => {
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({
+          title: "Super admin access required",
+          code: "FORBIDDEN",
+        }),
+      });
+    });
+
+    await page.goto("orgs/test/server/entitlements");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByText("Permission Denied")).toBeVisible();
+    expect(page.url()).toContain("/server/entitlements");
+    expect(page.url()).not.toContain("/login");
+  });
+
   test("a non-superadmin never reaches the editor", async ({
     authenticatedPage,
   }) => {
