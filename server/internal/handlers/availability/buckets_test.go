@@ -257,7 +257,7 @@ func (f *bucketsFixture) get(
 }
 
 // cellAt finds the cell whose periodStart is exactly `at`.
-func cellAt(t *testing.T, resp *ListAvailabilityBucketsResponse, at time.Time) AvailabilityBucket {
+func cellAt(t *testing.T, resp *ListAvailabilityBucketsResponse, at time.Time) Bucket {
 	t.Helper()
 
 	for _, cell := range resp.Data {
@@ -268,12 +268,12 @@ func cellAt(t *testing.T, resp *ListAvailabilityBucketsResponse, at time.Time) A
 
 	t.Fatalf("no bucket starting at %s in %d cells (first %s)", at, len(resp.Data), resp.Data[0].PeriodStart)
 
-	return AvailabilityBucket{}
+	return Bucket{}
 }
 
 // TestGetAvailabilityBuckets_BoundaryAlignmentAndNoData pins the two rules the
 // strip is built on: a probe lands in the hour that contains it (never the
-// neighbouring cell), and an hour with no probes at all is a distinct no-data
+// neighboring cell), and an hour with no probes at all is a distinct no-data
 // state — NOT 100%.
 func TestGetAvailabilityBuckets_BoundaryAlignmentAndNoData(t *testing.T) {
 	t.Parallel()

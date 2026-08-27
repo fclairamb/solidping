@@ -528,7 +528,7 @@ func BucketAvailability(
 
 // BucketAvailabilityInRegions is BucketAvailability restricted to a set of
 // probe regions. `regions` nil or empty means "every region", which is the
-// historical behaviour: the engine then SUMS up/total across regions rather
+// historical behavior: the engine then SUMS up/total across regions rather
 // than averaging their percentages, so a check probed from three regions is
 // weighted by how many probes each region actually contributed (the
 // statuspages mergeBuckets rule). Naming one region instead buckets that

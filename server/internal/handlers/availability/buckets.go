@@ -23,7 +23,7 @@ var ErrInvalidWindow = errors.New("invalid availability window")
 const (
 	// minBucket is the hard floor on bucket width. Below an hour a percentage is
 	// noise: a 5-minute slice of a 1-minute check quantizes to 0/20/40/…%, so the
-	// cell colour would swing on a single probe. At an hour a 1-minute check has
+	// cell color would swing on a single probe. At an hour a 1-minute check has
 	// ~60 samples and the number means something. Every accepted bucket is a
 	// whole multiple of this.
 	minBucket = time.Hour
@@ -43,14 +43,14 @@ const (
 	maxBucketCells = 200
 )
 
-// AvailabilityBucket is one cell of the strip: a half-open [periodStart,
+// Bucket is one cell of the strip: a half-open [periodStart,
 // periodEnd) slice of the window with its probe-ratio availability.
 //
 // AvailabilityPct is null (and HasData false) when the slice has no countable
 // probes. That is the whole point of carrying both fields: "no data" is a
 // distinct third state and must render gray, never as a manufactured 100%. It
 // mirrors uptimebar.BucketStats.AvailabilityPct() (float64, bool).
-type AvailabilityBucket struct {
+type Bucket struct {
 	PeriodStart time.Time `json:"periodStart"`
 	PeriodEnd   time.Time `json:"periodEnd"`
 	HasData     bool      `json:"hasData"`
@@ -62,7 +62,7 @@ type AvailabilityBucket struct {
 	// Status is the shared up/degraded/down/noData vocabulary
 	// (uptimebar.Classify) — the SAME classifier the public status page and the
 	// badge uptime bar use, so identical numbers can never be painted different
-	// colours on two surfaces.
+	// colors on two surfaces.
 	Status string `json:"status"`
 }
 
@@ -71,13 +71,13 @@ type AvailabilityBucket struct {
 // `window` is the EXACT [from, to) fold, which is what a caller renders when the
 // window is too short for a legible strip.
 type ListAvailabilityBucketsResponse struct {
-	Data []AvailabilityBucket `json:"data"`
+	Data []Bucket `json:"data"`
 	// Window is the whole-window availability over exactly the requested
 	// [from, to) — not the sum of the cells. The cells are aligned OUTWARD to
 	// bucket boundaries, so on a short window their sum would cover more time
 	// than was asked for; the header figure must answer the question the user
 	// actually asked.
-	Window AvailabilityBucket `json:"window"`
+	Window Bucket `json:"window"`
 	// BucketSeconds is the resolved bucket width — echoed because the server may
 	// have chosen it (when the request omitted `bucket`).
 	BucketSeconds int `json:"bucketSeconds"`
@@ -105,10 +105,10 @@ type GetAvailabilityBucketsOptions struct {
 // the series is aligned outward to a multiple of `width`. Alignment can add one
 // cell relative to a naive ceil(span/width), which is exactly why the auto rule
 // below counts AFTER aligning instead of before.
-func alignedCount(from, to time.Time, width time.Duration) (time.Time, int) {
+func alignedCount(from, until time.Time, width time.Duration) (time.Time, int) {
 	start := from.UTC().Truncate(width)
 
-	count := int(math.Ceil(float64(to.UTC().Sub(start)) / float64(width)))
+	count := int(math.Ceil(float64(until.UTC().Sub(start)) / float64(width)))
 	if count < 1 {
 		count = 1
 	}
@@ -124,15 +124,15 @@ func alignedCount(from, to time.Time, width time.Duration) (time.Time, int) {
 // estimate alone would let a drag-zoom return 61 cells from a rule that promises
 // at most 60. Expressed in whole hours throughout, so the 1-hour floor holds by
 // construction.
-func autoBucket(from, to time.Time) time.Duration {
-	hours := int(math.Ceil(to.Sub(from).Hours() / float64(autoMaxCells)))
+func autoBucket(from, until time.Time) time.Duration {
+	hours := int(math.Ceil(until.Sub(from).Hours() / float64(autoMaxCells)))
 	if hours < 1 {
 		hours = 1
 	}
 
 	for {
 		width := time.Duration(hours) * time.Hour
-		if _, count := alignedCount(from, to, width); count <= autoMaxCells {
+		if _, count := alignedCount(from, until, width); count <= autoMaxCells {
 			return width
 		}
 
@@ -142,9 +142,9 @@ func autoBucket(from, to time.Time) time.Duration {
 
 // resolveBucket validates the requested bucket width against the window, or
 // picks one when the caller left it to the server.
-func resolveBucket(from, to time.Time, requested time.Duration) (time.Duration, error) {
+func resolveBucket(from, until time.Time, requested time.Duration) (time.Duration, error) {
 	if requested == 0 {
-		return autoBucket(from, to), nil
+		return autoBucket(from, until), nil
 	}
 
 	if requested < minBucket || requested%minBucket != 0 {
@@ -169,13 +169,13 @@ type bucketPlan struct {
 // periodStart.Truncate(bucketDuration), and Truncate is relative to the zero
 // instant, so cells only line up with the rows that fall in them when the series
 // starts on a multiple of the width too. An unaligned start would shift every
-// row into the neighbouring cell.
-func planBuckets(from, to time.Time, requested time.Duration) (bucketPlan, error) {
-	if from.IsZero() || to.IsZero() {
+// row into the neighboring cell.
+func planBuckets(from, until time.Time, requested time.Duration) (bucketPlan, error) {
+	if from.IsZero() || until.IsZero() {
 		return bucketPlan{}, fmt.Errorf("%w: from and to are both required", ErrInvalidWindow)
 	}
 
-	span := to.Sub(from)
+	span := until.Sub(from)
 	if span <= 0 {
 		return bucketPlan{}, fmt.Errorf("%w: to must be after from", ErrInvalidWindow)
 	}
@@ -185,12 +185,12 @@ func planBuckets(from, to time.Time, requested time.Duration) (bucketPlan, error
 			"%w: window exceeds the %d-year sanity bound", ErrInvalidWindow, maxLookbackYears)
 	}
 
-	width, err := resolveBucket(from, to, requested)
+	width, err := resolveBucket(from, until, requested)
 	if err != nil {
 		return bucketPlan{}, err
 	}
 
-	start, count := alignedCount(from, to, width)
+	start, count := alignedCount(from, until, width)
 
 	if count > maxBucketCells {
 		return bucketPlan{}, fmt.Errorf(
@@ -202,15 +202,15 @@ func planBuckets(from, to time.Time, requested time.Duration) (bucketPlan, error
 }
 
 // bucketDTO converts one folded BucketStats into the wire cell.
-func bucketDTO(stats uptimebar.BucketStats, start, end time.Time) AvailabilityBucket {
-	up, degraded := uptimebar.DefaultThresholds()
+func bucketDTO(stats uptimebar.BucketStats, start, end time.Time) Bucket {
+	upThreshold, degradedThreshold := uptimebar.DefaultThresholds()
 
-	cell := AvailabilityBucket{
+	cell := Bucket{
 		PeriodStart:      start,
 		PeriodEnd:        end,
 		TotalChecks:      stats.Total,
 		SuccessfulChecks: stats.Up,
-		Status:           uptimebar.ClassifyStats(stats, up, degraded),
+		Status:           uptimebar.ClassifyStats(stats, upThreshold, degradedThreshold),
 	}
 
 	if pct, ok := stats.AvailabilityPct(); ok {
@@ -260,8 +260,8 @@ func (s *Service) GetAvailabilityBuckets(
 		regions = []string{opts.Region}
 	}
 
-	from := opts.From.UTC()
-	to := opts.To.UTC()
+	windowStart := opts.From.UTC()
+	windowEnd := opts.To.UTC()
 
 	var (
 		byBucket map[time.Time]uptimebar.BucketStats
@@ -290,7 +290,7 @@ func (s *Service) GetAvailabilityBuckets(
 
 	errg.Go(func() error {
 		stats, windowErr := uptimebar.WindowAvailabilityInRegions(
-			errgCtx, s.db, org.UID, []string{check.UID}, regions, from, to, hints)
+			errgCtx, s.db, org.UID, []string{check.UID}, regions, windowStart, windowEnd, hints)
 		if windowErr != nil {
 			return windowErr
 		}
@@ -304,7 +304,7 @@ func (s *Service) GetAvailabilityBuckets(
 		return nil, err
 	}
 
-	cells := make([]AvailabilityBucket, 0, plan.count)
+	cells := make([]Bucket, 0, plan.count)
 
 	for i := range plan.count {
 		cellStart := plan.start.Add(time.Duration(i) * plan.width)
@@ -316,10 +316,10 @@ func (s *Service) GetAvailabilityBuckets(
 
 	return &ListAvailabilityBucketsResponse{
 		Data:          cells,
-		Window:        bucketDTO(windowed, from, to),
+		Window:        bucketDTO(windowed, windowStart, windowEnd),
 		BucketSeconds: int(plan.width.Seconds()),
-		WindowStart:   from,
-		WindowEnd:     to,
+		WindowStart:   windowStart,
+		WindowEnd:     windowEnd,
 		Region:        opts.Region,
 	}, nil
 }
@@ -352,7 +352,7 @@ func (h *Handler) GetAvailabilityBuckets(writer http.ResponseWriter, req *http.R
 			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid window", err)
 	}
 
-	to, err := parseInstant("to", query.Get("to"))
+	until, err := parseInstant("to", query.Get("to"))
 	if err != nil {
 		return h.WriteErrorErr(
 			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid window", err)
@@ -371,7 +371,7 @@ func (h *Handler) GetAvailabilityBuckets(writer http.ResponseWriter, req *http.R
 	resp, err := h.svc.GetAvailabilityBuckets(req.Context(), orgSlug, checkIdent,
 		&GetAvailabilityBucketsOptions{
 			From:   from,
-			To:     to,
+			To:     until,
 			Bucket: bucket,
 			Region: query.Get("region"),
 		})

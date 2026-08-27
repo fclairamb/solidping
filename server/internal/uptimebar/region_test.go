@@ -9,19 +9,22 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// regionCheckUID is the single check every fixture in this file uses; the region
+// rule is about splitting ONE check's probes by where they ran, so a second
+// check would only add noise.
+const regionCheckUID = "c1"
+
 // regionRawRow is rawRow with a region tag.
-func regionRawRow(
-	checkUID string, status models.ResultStatus, start time.Time, region string,
-) *models.Result {
-	row := rawRow(checkUID, status, start, 0.1)
+func regionRawRow(status models.ResultStatus, start time.Time, region string) *models.Result {
+	row := rawRow(regionCheckUID, status, start, 0.1)
 	row.Region = &region
 
 	return row
 }
 
 // regionHourRow is hourRow with a region tag.
-func regionHourRow(checkUID string, total, success int, start time.Time, region string) *models.Result {
-	row := hourRow(checkUID, total, success, start)
+func regionHourRow(total, success int, start time.Time, region string) *models.Result {
+	row := hourRow(regionCheckUID, total, success, start)
 	row.Region = &region
 
 	return row
@@ -40,10 +43,10 @@ func TestBucketAvailabilityInRegions(t *testing.T) {
 	hour := time.Now().UTC().Truncate(time.Hour).Add(-time.Hour)
 
 	lister := &fakeLister{results: []*models.Result{
-		regionRawRow("c1", models.ResultStatusDown, hour.Add(time.Minute), "eu-1"),
-		regionRawRow("c1", models.ResultStatusUp, hour.Add(2*time.Minute), "us-1"),
-		regionRawRow("c1", models.ResultStatusUp, hour.Add(3*time.Minute), "us-1"),
-		regionRawRow("c1", models.ResultStatusUp, hour.Add(4*time.Minute), "us-1"),
+		regionRawRow(models.ResultStatusDown, hour.Add(time.Minute), "eu-1"),
+		regionRawRow(models.ResultStatusUp, hour.Add(2*time.Minute), "us-1"),
+		regionRawRow(models.ResultStatusUp, hour.Add(3*time.Minute), "us-1"),
+		regionRawRow(models.ResultStatusUp, hour.Add(4*time.Minute), "us-1"),
 	}}
 
 	all, err := BucketAvailability(ctx, lister, "org", []string{"c1"}, time.Hour, hour, 1, hints())
@@ -98,8 +101,8 @@ func TestBucketAvailabilityInRegions_ReachesRollups(t *testing.T) {
 	hour := time.Now().UTC().Truncate(time.Hour).Add(-2 * time.Hour)
 
 	lister := &fakeLister{results: []*models.Result{
-		regionHourRow("c1", 60, 30, hour, "eu-1"),
-		regionHourRow("c1", 60, 60, hour, "us-1"),
+		regionHourRow(60, 30, hour, "eu-1"),
+		regionHourRow(60, 60, hour, "us-1"),
 	}}
 
 	eu, err := BucketAvailabilityInRegions(
@@ -125,10 +128,10 @@ func TestWindowAvailabilityInRegions(t *testing.T) {
 	end := start.Add(time.Hour)
 
 	lister := &fakeLister{results: []*models.Result{
-		regionRawRow("c1", models.ResultStatusDown, start.Add(time.Minute), "eu-1"),
-		regionRawRow("c1", models.ResultStatusUp, start.Add(2*time.Minute), "us-1"),
-		regionRawRow("c1", models.ResultStatusUp, start.Add(3*time.Minute), "us-1"),
-		regionRawRow("c1", models.ResultStatusUp, start.Add(4*time.Minute), "us-1"),
+		regionRawRow(models.ResultStatusDown, start.Add(time.Minute), "eu-1"),
+		regionRawRow(models.ResultStatusUp, start.Add(2*time.Minute), "us-1"),
+		regionRawRow(models.ResultStatusUp, start.Add(3*time.Minute), "us-1"),
+		regionRawRow(models.ResultStatusUp, start.Add(4*time.Minute), "us-1"),
 	}}
 
 	all, err := WindowAvailability(ctx, lister, "org", []string{"c1"}, start, end, hints())
