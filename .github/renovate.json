@@ -52,6 +52,15 @@
       "automergeType": "pr",
       "automergeStrategy": "squash",
       "platformAutomerge": true
+    },
+    {
+      "description": "chromedp/headless-shell: always automerge, whatever the update type. Its version IS the Chrome version (151.0.7922.109 -> 152.x), so every ~4-week Chrome release reads to renovate as a major and is held by the no-major-automerge rule above, even though nothing breaking happened (PR #263). It is pinned only in docker-compose.yml — local dev and the E2E browser, never a shipped artifact — and CI's E2E job exercises it on every PR. Must stay AFTER the major rule: renovate applies packageRules in order and the last match wins.",
+      "matchDepNames": ["chromedp/headless-shell"],
+      "addLabels": ["deps"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash",
+      "platformAutomerge": true
     }
   ]
 }
