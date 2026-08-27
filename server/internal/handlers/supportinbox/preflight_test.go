@@ -210,7 +210,7 @@ func TestResendMessage_RetriesAFailedReply(t *testing.T) {
 	harness := newPreflightHarness(t, inbox)
 
 	// A genuine send failure: attempted, rejected, and therefore RECORDED — the
-	// behaviour the pre-flight must not sweep away.
+	// behavior the pre-flight must not sweep away.
 	status, payload := harness.call(t, http.MethodPost,
 		"/api/v1/support/threads/"+thread.UID+"/messages", `{"body":"we are on it"}`)
 	r.Equal(http.StatusAccepted, status)

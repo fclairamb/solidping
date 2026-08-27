@@ -20,7 +20,9 @@ import (
 
 // threadClock is a fixed creation time — none of these pre-flights look at it,
 // and a fixed value keeps the fixtures readable.
-var threadClock = time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+func threadClock() time.Time {
+	return time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+}
 
 // routeTestDB spins an in-memory database for the adapter pre-flights, which
 // resolve LOCAL state and therefore need a real store rather than a mock.
@@ -37,7 +39,7 @@ func routeTestDB(t *testing.T) db.Service {
 }
 
 func slackThread(teamID, channelID string) *models.SupportThread {
-	thread := models.NewSupportThread(models.SupportChannelSlack, "U0ACME1234", threadClock)
+	thread := models.NewSupportThread(models.SupportChannelSlack, "U0ACME1234", threadClock())
 	thread.ChannelContext = models.JSONMap{}
 
 	if teamID != "" {
@@ -118,7 +120,7 @@ func TestDiscordReplyRoute_RequiresAChannelIDAndABot(t *testing.T) {
 	withBot.Discord.BotToken = "bot-token"
 
 	newThread := func(channelID string) *models.SupportThread {
-		thread := models.NewSupportThread(models.SupportChannelDiscord, "998877", threadClock)
+		thread := models.NewSupportThread(models.SupportChannelDiscord, "998877", threadClock())
 		thread.ChannelContext = models.JSONMap{}
 
 		if channelID != "" {
@@ -165,7 +167,7 @@ func TestSMSReplyRoute_RequiresAResolvedSender(t *testing.T) {
 	ctx := t.Context()
 	dbSvc := routeTestDB(t)
 
-	thread := models.NewSupportThread(models.SupportChannelSMS, "+33600000000", threadClock)
+	thread := models.NewSupportThread(models.SupportChannelSMS, "+33600000000", threadClock())
 
 	// No SMS service wired at all.
 	noService := &Server{services: &services.Registry{}}
@@ -229,14 +231,14 @@ func TestRegisterSupportRepliers_RoutesTheChannelsThatNeedIt(t *testing.T) {
 
 	// Discord: a real pre-flight too — an adapter exists, this thread has no
 	// channel id.
-	discordThread := models.NewSupportThread(models.SupportChannelDiscord, "998877", threadClock)
+	discordThread := models.NewSupportThread(models.SupportChannelDiscord, "998877", threadClock())
 
 	noChannel := route(t, inbox, discordThread)
 	r.False(noChannel.CanReply)
 	r.Contains(noChannel.Reason, "no channel id")
 
 	// Email is deliberately unregistered: replies go through the human mailbox.
-	emailThread := models.NewSupportThread(models.SupportChannelEmail, "alice@acme.com", threadClock)
+	emailThread := models.NewSupportThread(models.SupportChannelEmail, "alice@acme.com", threadClock())
 
 	noAdapter := route(t, inbox, emailThread)
 	r.False(noAdapter.CanReply)

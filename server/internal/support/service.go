@@ -311,7 +311,7 @@ func (s *Service) ReplyRoutes(
 
 // routeMemoKey builds the memo key from everything a RouteFunc may read.
 //
-// A marshalling failure falls back to the thread uid, which simply defeats the
+// A marshaling failure falls back to the thread uid, which simply defeats the
 // memo for that one row — never shares an answer between threads that might not
 // deserve it.
 func routeMemoKey(thread *models.SupportThread) string {
@@ -672,10 +672,10 @@ func (s *Service) Reply(
 	// what stops a stale tab, a scripted caller or a race from storing an
 	// outbound message that never had anywhere to go.
 	//
-	// Note what does NOT happen below: no message row, no thread touch. An
-	// unroutable reply was never attempted, so there is no attempt to record —
-	// unlike a send that reached the provider and was rejected, which is stored
-	// with `Delivery failed` further down for exactly the opposite reason.
+	// Nothing is written below on this path: no message row, no thread touch.
+	// An unroutable reply was never attempted, so there is no attempt to
+	// record — unlike a send that reached the provider and was rejected, which
+	// is stored with `Delivery failed` further down for the opposite reason.
 	if route := s.routeFor(ctx, thread, entry); !route.CanReply {
 		return nil, fmt.Errorf("%w: %s", ErrNoReplyRoute, route.Reason)
 	}
