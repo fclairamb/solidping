@@ -4,5 +4,7 @@
   "compilerOptions": {
     "baseUrl": "."
   },
-  "exclude": [".docusaurus", "build"]
+  // src/**/*.test.ts runs under `bun test` (see the test:unit script) and relies
+  // on bun's ambient globals, which this project's libs do not carry.
+  "exclude": [".docusaurus", "build", "src/**/*.test.ts"]
 }

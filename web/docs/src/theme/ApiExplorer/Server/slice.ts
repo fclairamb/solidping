@@ -19,11 +19,16 @@
  * swizzled version is what the store is built from.
  */
 
-import originalReducer from "@theme-original/ApiExplorer/Server/slice";
+import originalReducer, {
+  setServer,
+  setServerVariable,
+  slice,
+} from "@theme-original/ApiExplorer/Server/slice";
 
 import type { ApiServer } from "@site/src/lib/apiBaseUrl";
 
-export * from "@theme-original/ApiExplorer/Server/slice";
+// Everything the theme exported stays exported, unchanged.
+export { setServer, setServerVariable, slice };
 
 export interface ServerState {
   value?: ApiServer;

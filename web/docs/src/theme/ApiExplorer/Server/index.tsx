@@ -20,8 +20,11 @@ import React, { useEffect } from "react";
 
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import OriginalServer from "@theme-original/ApiExplorer/Server";
-import { setServer, setServerOptions } from "@theme/ApiExplorer/Server/slice";
 import { useTypedDispatch, useTypedSelector } from "@theme/ApiItem/hooks";
+
+// Relative, like the theme's own component: this is the swizzled slice sitting
+// next to us, which `@theme/ApiItem/store` also picks up through the alias.
+import { setServer, setServerOptions } from "./slice";
 
 import {
   docsHostsFrom,
