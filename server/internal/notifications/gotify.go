@@ -39,9 +39,12 @@ var (
 type GotifySender struct{}
 
 // gotifySettings is the per-connection settings shape for a Gotify channel.
+// The keys use snake_case to match the dashboard form field names
+// (integration-form.tsx writes "server_url" / "app_token"), not Go's default
+// camelCase convention.
 type gotifySettings struct {
-	ServerURL string `json:"server_url"`
-	AppToken  string `json:"app_token"`
+	ServerURL string `json:"server_url"` //nolint:tagliatelle // matches dashboard form key
+	AppToken  string `json:"app_token"`  //nolint:tagliatelle // matches dashboard form key
 	Priority  *int   `json:"priority"`
 }
 
