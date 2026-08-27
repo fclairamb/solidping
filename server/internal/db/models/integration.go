@@ -21,6 +21,11 @@ const (
 	ConnectionTypeGoogleChat ConnectionType = "googlechat"
 	ConnectionTypeMattermost ConnectionType = "mattermost"
 	ConnectionTypeNtfy       ConnectionType = "ntfy"
+	// ConnectionTypeGotify is a self-hosted Gotify push server: a stateless
+	// HTTP POST to {server_url}/message with the app token in the
+	// X-Gotify-Key header, alongside ntfy/Matrix/Mattermost/Pushover in the
+	// self-hosted/homelab notification lineup.
+	ConnectionTypeGotify     ConnectionType = "gotify"
 	ConnectionTypePagerduty  ConnectionType = "pagerduty"
 	ConnectionTypePushover   ConnectionType = "pushover"
 	ConnectionTypeFreebox    ConnectionType = "freebox"
@@ -63,7 +68,7 @@ type Capabilities struct {
 
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
-// mattermost, msteams, ntfy, pagerduty, pushover) is CanNotify; freebox is a data source
+// mattermost, msteams, ntfy, gotify, pagerduty, pushover) is CanNotify; freebox is a data source
 // (CanSource) and cannot receive notifications. Twilio additionally carries
 // the two phone capabilities — it is the only connection type that is a
 // bring-your-own SMS *and* voice account. The default branch intentionally

@@ -30,6 +30,10 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	models.ConnectionTypeWebhook: {secretKeyAuthToken, "signingSecret", "signingSecretPrevious"},
 	models.ConnectionTypeEmail:   {"smtp_password"},
 	models.ConnectionTypeNtfy:    {secretKeyAuthToken},
+	// Gotify: the application token. server_url stays public (self-hosted
+	// endpoint URL, same reasoning as the webhook/Discord/GoogleChat/
+	// Mattermost/MSTeams URLs above).
+	models.ConnectionTypeGotify: {"app_token"},
 	// Matrix: the bot/dedicated user's access token. homeserverUrl and roomId
 	// stay public so the dashboard can render them on the edit form (same
 	// reasoning as the webhook/Discord/GoogleChat/Mattermost/MSTeams URLs
