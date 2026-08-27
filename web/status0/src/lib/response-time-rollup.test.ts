@@ -318,3 +318,83 @@ describe("samplingInterval", () => {
     ).toBeNull();
   });
 });
+
+// Spec 2026-08-26-10 phase 2: a slot's availability is the SUM of the regions
+// that reported in it, never an average of their percentages.
+describe("buildCombinedRows availability summing", () => {
+  const point = (
+    time: string,
+    totalChecks?: number,
+    successfulChecks?: number,
+  ) => ({
+    time,
+    durationP95: 100,
+    status: "up",
+    totalChecks,
+    successfulChecks,
+    availabilityPct:
+      totalChecks && totalChecks > 0
+        ? ((successfulChecks ?? 0) / totalChecks) * 100
+        : undefined,
+  });
+
+  // Two points per region so a sampling interval is derivable (one point each
+  // would leave tolerance at 0 and put every timestamp in its own slot), with
+  // the regions phase-shifted by five seconds the way real workers are.
+  const twoRegions = (
+    euFirst: ReturnType<typeof point>,
+    usFirst: ReturnType<typeof point>,
+  ): ResponseTimeSeries[] => [
+    {
+      region: "eu",
+      points: [euFirst, point("2026-08-26T10:01:00Z", 60, 60)],
+    },
+    {
+      region: "us",
+      points: [usFirst, point("2026-08-26T10:01:05Z", 60, 60)],
+    },
+  ];
+
+  test("sums up/total across the regions in one slot", () => {
+    const rows = buildCombinedRows(
+      twoRegions(
+        point("2026-08-26T10:00:00Z", 60, 60),
+        point("2026-08-26T10:00:05Z", 1, 0),
+      ),
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].availTotal).toBe(61);
+    expect(rows[0].availUp).toBe(60);
+    // The positive control against averaging: averaging the two regions'
+    // percentages would have produced 50%, a different number entirely.
+    expect(
+      ((rows[0].availUp ?? 0) / (rows[0].availTotal ?? 1)) * 100,
+    ).toBeCloseTo(98.36, 1);
+  });
+
+  test("a point with no countable probe contributes nothing, not zero", () => {
+    const rows = buildCombinedRows(
+      twoRegions(
+        point("2026-08-26T10:00:00Z", 60, 60),
+        // A lifecycle marker: the server sends no counts at all for it.
+        point("2026-08-26T10:00:05Z"),
+      ),
+    );
+
+    expect(rows[0].availTotal).toBe(60);
+    expect(rows[0].availUp).toBe(60);
+  });
+
+  test("leaves the counters undefined when no region reported any probe", () => {
+    const rows = buildCombinedRows(
+      twoRegions(
+        point("2026-08-26T10:00:00Z"),
+        point("2026-08-26T10:00:05Z"),
+      ),
+    );
+
+    expect(rows[0].availTotal).toBeUndefined();
+    expect(rows[0].availUp).toBeUndefined();
+  });
+});

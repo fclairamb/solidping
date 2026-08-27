@@ -7,13 +7,23 @@ import {
   YAxis,
   Tooltip,
 } from "recharts";
-import type { ResponseTimePoint, ResponseTimeSeries } from "@/api/hooks";
+import type {
+  AvailabilityStatus,
+  AvailabilityThresholds,
+  ResponseTimePoint,
+  ResponseTimeSeries,
+} from "@/api/hooks";
 import {
   buildCombinedRows,
   pointKey,
   statusFieldKey,
   type CombinedRow,
 } from "@/lib/response-time-rollup";
+import {
+  availabilityFill,
+  classifyAvailabilityCounts,
+  formatAvailabilityPct,
+} from "@/lib/availability-status";
 
 function formatTick(isoStr: string, spansDays: boolean, locale: string) {
   const date = new Date(isoStr);
@@ -186,11 +196,88 @@ function seriesColor(index: number): string {
   return `var(--chart-${(index % 5) + 1})`;
 }
 
-interface ResponseTimeChartProps {
-  series: ResponseTimeSeries[];
+/** One cell of the availability strip drawn under the chart. */
+interface AvailabilityCell {
+  time: string;
+  status: AvailabilityStatus;
+  up: number;
+  total: number;
+  pct?: number;
 }
 
-export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
+/**
+ * The colour-banded availability strip under the response-time chart.
+ *
+ * One cell per CHART POINT — which is why it is aligned to the chart's own time
+ * slots with nothing left to reconcile: the point IS the slot (spec
+ * 2026-08-26-10 phase 2). It replaces the old incident strip, which was drawn
+ * from the probe's raw outcome and so answered "was it down" but never "how
+ * much". The `ml-[50px] mr-[4px]` inset matches the chart's YAxis width and its
+ * right margin, so a cell sits under the slice of the plot it describes.
+ *
+ * Colours come from the shared availability vocabulary, so this strip and the
+ * availability bar above it can never paint the same numbers differently.
+ */
+function AvailabilityStrip({
+  cells,
+  locale,
+  noDataLabel,
+  testId,
+}: {
+  cells: AvailabilityCell[];
+  locale: string;
+  noDataLabel: string;
+  testId: string;
+}) {
+  if (cells.length === 0) return null;
+
+  return (
+    <div
+      className="ml-[50px] mr-[4px] mt-1 flex h-1.5 w-auto overflow-hidden rounded-sm"
+      data-testid={testId}
+    >
+      {cells.map((cell, index) => {
+        const { fill, opacity } = availabilityFill(cell.status);
+        const when = new Date(cell.time);
+        const pctLabel = formatAvailabilityPct(cell.pct) ?? noDataLabel;
+        const stamp = `${when.toLocaleDateString(locale, {
+          month: "short",
+          day: "numeric",
+        })} ${when.toLocaleTimeString(locale, {
+          hour: "numeric",
+          minute: "2-digit",
+        })}`;
+
+        return (
+          <div
+            key={`${cell.time}-${index}`}
+            className="flex-1"
+            style={{ backgroundColor: fill, opacity }}
+            data-status={cell.status}
+            title={
+              cell.total > 0
+                ? `${stamp} — ${pctLabel} (${cell.up}/${cell.total})`
+                : `${stamp} — ${noDataLabel}`
+            }
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+interface ResponseTimeChartProps {
+  series: ResponseTimeSeries[];
+  /** The page's resolved availability thresholds. Only the multi-region path
+   * needs them (it classifies a client-merged slot); the single-region path
+   * uses the server's own per-point classification. */
+  thresholds?: AvailabilityThresholds;
+}
+
+export function ResponseTimeChart({
+  series,
+  thresholds,
+}: ResponseTimeChartProps) {
   const { t, i18n } = useTranslation();
 
   const isMultiSeries = series.length > 1;
@@ -208,10 +295,16 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
           24 * 60 * 60 * 1000
         : false;
 
-    const hasIncidents = data.some(
-      (d) =>
-        d.status === "down" || d.status === "timeout" || d.status === "error",
-    );
+    // The server already classified each point against the page's thresholds,
+    // so the single-region strip renders exactly what it was told — no client
+    // availability math at all.
+    const singleSeriesCells: AvailabilityCell[] = data.map((point) => ({
+      time: point.time,
+      status: point.availabilityStatus ?? "noData",
+      up: point.successfulChecks ?? 0,
+      total: point.totalChecks ?? 0,
+      pct: point.availabilityPct,
+    }));
 
     const ticks = pickTicks(data.map((d) => d.time));
     const tickLabels = buildTickLabels(ticks, spansDays, i18n.language);
@@ -266,23 +359,12 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
             />
           </AreaChart>
         </ResponsiveContainer>
-        {hasIncidents && (
-          <div
-            className="ml-[50px] mr-[4px] mt-1 flex h-1.5 w-auto overflow-hidden rounded-sm"
-            aria-hidden="true"
-          >
-            {data.map((point, idx) => {
-              const color = statusColor(point.status);
-              return (
-                <div
-                  key={`${point.time}-${idx}`}
-                  className="flex-1"
-                  style={{ backgroundColor: color }}
-                />
-              );
-            })}
-          </div>
-        )}
+        <AvailabilityStrip
+          cells={singleSeriesCells}
+          locale={i18n.language}
+          noDataLabel={t("noData")}
+          testId="response-time-chart-availability-strip"
+        />
       </div>
     );
   }
@@ -302,12 +384,28 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
         24 * 60 * 60 * 1000
       : false;
 
-  const hasIncidents = rows.some(
-    (row) =>
-      row.status === "down" ||
-      row.status === "timeout" ||
-      row.status === "error",
-  );
+  // Several regions land in one slot, so the merged cell has to be classified
+  // here — over the SUMMED up/total (buildCombinedRows), never over an average
+  // of the regions' percentages, which is the same rule the server applies when
+  // it buckets "all regions".
+  const upThreshold = thresholds?.thresholdUp;
+  const degradedThreshold = thresholds?.thresholdDegraded;
+  const multiSeriesCells: AvailabilityCell[] = rows.map((row) => {
+    const up = (row.availUp as number | undefined) ?? 0;
+    const total = (row.availTotal as number | undefined) ?? 0;
+    return {
+      time: row.time,
+      status: classifyAvailabilityCounts(
+        up,
+        total,
+        upThreshold,
+        degradedThreshold,
+      ),
+      up,
+      total,
+      pct: total > 0 ? (up / total) * 100 : undefined,
+    };
+  });
 
   const ticks = pickTicks(rows.map((row) => row.time));
   const tickLabels = buildTickLabels(ticks, spansDays, i18n.language);
@@ -447,25 +545,12 @@ export function ResponseTimeChart({ series }: ResponseTimeChartProps) {
           ))}
         </AreaChart>
       </ResponsiveContainer>
-      {hasIncidents && (
-        <div
-          className="ml-[50px] mr-[4px] mt-1 flex h-1.5 w-auto overflow-hidden rounded-sm"
-          aria-hidden="true"
-          data-testid="response-time-chart-incident-strip"
-        >
-          {rows.map((row, idx) => {
-            const color = statusColor(row.status);
-            return (
-              <div
-                key={`${row.time}-${idx}`}
-                className="flex-1"
-                style={{ backgroundColor: color }}
-                data-status={row.status ?? ""}
-              />
-            );
-          })}
-        </div>
-      )}
+      <AvailabilityStrip
+        cells={multiSeriesCells}
+        locale={i18n.language}
+        noDataLabel={t("noData")}
+        testId="response-time-chart-availability-strip"
+      />
     </div>
   );
 }

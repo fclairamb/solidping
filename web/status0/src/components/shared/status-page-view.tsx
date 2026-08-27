@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   useVersion,
+  type AvailabilityThresholds,
   type StatusPage,
   type StatusPageSection,
   type StatusPageResource,
@@ -99,6 +100,11 @@ function getOverallStatusLabelKey(overallStatus: string | undefined): string {
 }
 
 interface ResourceCardProps {
+  /** The page's resolved availability thresholds, threaded down so the
+   * response-time chart's availability strip classifies a client-merged
+   * multi-region slot against the SAME numbers the availability bar above it
+   * was coloured with. */
+  availabilityThresholds?: AvailabilityThresholds;
   resource: StatusPageResource;
   showAvailability: boolean;
   showResponseTime: boolean;
@@ -118,6 +124,7 @@ interface ResourceCardProps {
 }
 
 function ResourceCard({
+  availabilityThresholds,
   resource,
   showAvailability,
   showResponseTime,
@@ -223,13 +230,17 @@ function ResourceCard({
 
       {/* Response time chart */}
       {showResponseTime && avail?.responseTimeSeries && (
-        <ResponseTimeChart series={avail.responseTimeSeries} />
+        <ResponseTimeChart
+          series={avail.responseTimeSeries}
+          thresholds={availabilityThresholds}
+        />
       )}
     </div>
   );
 }
 
 interface SectionCardProps {
+  availabilityThresholds?: AvailabilityThresholds;
   section: StatusPageSection;
   showAvailability: boolean;
   showResponseTime: boolean;
@@ -238,6 +249,7 @@ interface SectionCardProps {
 }
 
 function SectionCard({
+  availabilityThresholds,
   section,
   showAvailability,
   showResponseTime,
@@ -275,6 +287,7 @@ function SectionCard({
                   showAvailability={showAvailability}
                   showResponseTime={showResponseTime}
                   historyDays={historyDays}
+                  availabilityThresholds={availabilityThresholds}
                   affectedSeverities={affectedSeverities}
                 />
               ))}
@@ -548,6 +561,7 @@ export function StatusPageView({
                   showAvailability={page.showAvailability}
                   showResponseTime={page.showResponseTime}
                   historyDays={page.historyDays}
+                  availabilityThresholds={page.availabilityThresholds}
                   affectedSeverities={affectedSeverities}
                 />
               ))

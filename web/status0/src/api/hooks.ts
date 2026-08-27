@@ -20,10 +20,28 @@ export interface AvailabilityPoint {
   status: string;
 }
 
+/** The shared availability vocabulary — mirrors uptimebar's Status* constants. */
+export type AvailabilityStatus = "up" | "degraded" | "down" | "noData";
+
 export interface ResponseTimePoint {
   time: string;
   durationP95?: number;
   status?: "up" | "down" | "timeout" | "error" | "created" | "running" | string;
+  /**
+   * Probe-ratio availability of the slice this point covers: 100 or 0 for a
+   * single raw probe, the rollup's successful/total × 100 for an aggregated
+   * one. Absent when the row carried no countable probe (a lifecycle marker, an
+   * abandoned attempt) — no data is not 100%.
+   */
+  availabilityPct?: number;
+  /** Counts behind availabilityPct, so the strip can say "59 / 60 probes up"
+   * without doing availability math of its own. */
+  totalChecks?: number;
+  successfulChecks?: number;
+  /** The SERVER's classification of availabilityPct against the PAGE's
+   * thresholds — the same classifier the availability bar above the chart uses.
+   * Distinct from `status`, which is the probe's own outcome. */
+  availabilityStatus?: AvailabilityStatus;
 }
 
 // ResponseTimeSeries is one region's response-time points for a resource.
@@ -183,6 +201,21 @@ export interface StatusPage {
   autoPublish?: boolean;
   autoPublishDelaySeconds?: number;
   autoResolve?: string;
+  /**
+   * The RESOLVED effective availability thresholds (never omitted by the
+   * server, but optional here so an older cached payload cannot crash the
+   * page). They are what the availability bar's colours already encode; the
+   * response-time chart's availability strip needs them explicitly because it
+   * merges several regions into one slot client-side and must classify the sum
+   * itself.
+   */
+  availabilityThresholds?: AvailabilityThresholds;
+}
+
+/** Resolved page availability thresholds (defaults 99.9 / 99.0). */
+export interface AvailabilityThresholds {
+  thresholdUp: number;
+  thresholdDegraded: number;
 }
 
 /**

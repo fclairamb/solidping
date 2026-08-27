@@ -137,28 +137,31 @@ test.describe("Public status page — response-time chart", () => {
     await expect(legend).toContainText("us1");
   });
 
-  test("incident strip rolls up worst status across regions at a shared timestamp", async ({
+  test("availability strip sums regions at a shared timestamp, not their percentages", async ({
     page,
   }) => {
-    // eu2 and us1 share the SAME three timestamps: eu2 is "down" at the
-    // middle one, us1 is "up" at all three. The single incident strip must
-    // render that shared slot as down (worst-status-wins), not up — pins the
-    // rollup end-to-end, not just at the buildCombinedRows unit level. Each
-    // timestamp is computed once and reused across both series so the rows
-    // merge by exact string equality (buildCombinedRows keys on the raw
-    // `time` string, not a parsed/rounded value).
+    // Spec 2026-08-26-10 phase 2: the strip under the chart is coloured by
+    // AVAILABILITY, and a slot several regions report into is the SUM of their
+    // up/total — never an average of their percentages.
+    //
+    // The middle slot is the discriminator: eu2 contributes 20/60 and us1
+    // 60/60, so the sum is 80/120 = 66.7% (red), while averaging the two
+    // regions' percentages would give (33.3 + 100) / 2 = 66.7% too — so the
+    // fixture also makes the regions unequal in WEIGHT at the first slot
+    // (1 probe vs 60) where the two rules diverge: summed 60/61 = 98.4%
+    // (amber, one failed sample), averaged (0 + 100) / 2 = 50% (red).
     const t0 = isoMinutesAgo(10);
     const t1 = isoMinutesAgo(5);
     const t2 = isoMinutesAgo(0);
     const eu2Points = [
-      { time: t0, durationP95: 40, status: "up" },
-      { time: t1, durationP95: 40, status: "down" },
-      { time: t2, durationP95: 40, status: "up" },
+      { time: t0, durationP95: 40, status: "down", totalChecks: 1, successfulChecks: 0, availabilityPct: 0, availabilityStatus: "degraded" },
+      { time: t1, durationP95: 40, status: "down", totalChecks: 60, successfulChecks: 20, availabilityPct: 33.3, availabilityStatus: "down" },
+      { time: t2, durationP95: 40, status: "up", totalChecks: 60, successfulChecks: 60, availabilityPct: 100, availabilityStatus: "up" },
     ];
     const us1Points = [
-      { time: t0, durationP95: 160, status: "up" },
-      { time: t1, durationP95: 160, status: "up" },
-      { time: t2, durationP95: 160, status: "up" },
+      { time: t0, durationP95: 160, status: "up", totalChecks: 60, successfulChecks: 60, availabilityPct: 100, availabilityStatus: "up" },
+      { time: t1, durationP95: 160, status: "up", totalChecks: 60, successfulChecks: 60, availabilityPct: 100, availabilityStatus: "up" },
+      { time: t2, durationP95: 160, status: "up", totalChecks: 60, successfulChecks: 60, availabilityPct: 100, availabilityStatus: "up" },
     ];
     await mockStatusPage(page, [
       { region: "eu2", points: eu2Points },
@@ -168,13 +171,50 @@ test.describe("Public status page — response-time chart", () => {
     await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
-    const strip = page.getByTestId("response-time-chart-incident-strip");
-    await expect(strip).toBeVisible({ timeout: 10000 });
+    const strip = page.getByTestId("response-time-chart-availability-strip");
+    await expect(strip.first()).toBeVisible({ timeout: 10000 });
 
-    const statuses = await strip.locator("[data-status]").evaluateAll(
+    const statuses = await strip.first().locator("[data-status]").evaluateAll(
       (nodes) => nodes.map((n) => n.getAttribute("data-status")),
     );
-    expect(statuses).toEqual(["up", "down", "up"]);
+    // ["degraded", "down", "up"] — the first slot is the one that would read
+    // "down" if the merge averaged percentages instead of summing counts.
+    expect(statuses).toEqual(["degraded", "down", "up"]);
+  });
+
+  test("single-region strip renders the server's own classification, gray for no data", async ({
+    page,
+  }) => {
+    // With one region there is nothing to merge, so the strip must render the
+    // status the SERVER already resolved against the page's thresholds — no
+    // client availability math at all. A point with no countable probe (a
+    // lifecycle marker) must render as a distinct gray cell, never as green.
+    const points = [
+      { time: isoMinutesAgo(10), durationP95: 40, status: "up", totalChecks: 60, successfulChecks: 60, availabilityPct: 100, availabilityStatus: "up" },
+      { time: isoMinutesAgo(5), durationP95: 40, status: "down", totalChecks: 60, successfulChecks: 20, availabilityPct: 33.3, availabilityStatus: "down" },
+      { time: isoMinutesAgo(2), durationP95: 40, status: "up", totalChecks: 60, successfulChecks: 59, availabilityPct: 98.3, availabilityStatus: "degraded" },
+      { time: isoMinutesAgo(0), durationP95: 40, status: "created" },
+    ];
+    await mockStatusPage(page, [{ region: "eu2", points }]);
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.waitForLoadState("networkidle");
+
+    const strip = page.getByTestId("response-time-chart-availability-strip");
+    await expect(strip.first()).toBeVisible({ timeout: 10000 });
+
+    const statuses = await strip.first().locator("[data-status]").evaluateAll(
+      (nodes) => nodes.map((n) => n.getAttribute("data-status")),
+    );
+    expect(statuses).toEqual(["up", "down", "degraded", "noData"]);
+
+    // The no-data cell must say so rather than claim a percentage.
+    const lastTitle = await strip
+      .first()
+      .locator("[data-status='noData']")
+      .first()
+      .getAttribute("title");
+    expect(lastTitle).not.toContain("%");
   });
 
   test("regions sampling on staggered timestamps still draw one line each", async ({

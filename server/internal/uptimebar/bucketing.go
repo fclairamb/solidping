@@ -161,6 +161,36 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 	}
 }
 
+// StatsForResult folds ONE result row into a BucketStats, choosing the raw or
+// the aggregated accumulator from its period_type.
+//
+// It exists for readers that key on individual rows rather than on time buckets
+// — the public status page's response-time series, whose x-axis slots ARE the
+// rows (spec 2026-08-26-10 phase 2). Routing them through here rather than
+// letting them count statuses themselves is the whole point: lifecycle markers
+// and abandoned attempts leave both numerator and denominator alone, warning
+// counts as up, and a rollup's SuccessfulChecks already encodes that rule. A
+// second implementation of any of those is how surfaces start disagreeing.
+//
+// A row that contributes nothing (a lifecycle marker, an abandoned attempt)
+// returns the zero BucketStats, whose AvailabilityPct reports ok=false — "no
+// data", explicitly not 100%.
+func StatsForResult(result *models.Result) BucketStats {
+	var stats BucketStats
+
+	if result == nil {
+		return stats
+	}
+
+	if result.PeriodType == models.PeriodTypeRaw {
+		stats.accumulateRaw(result)
+	} else {
+		stats.accumulateAgg(result)
+	}
+
+	return stats
+}
+
 // accumulateAgg merges an aggregated rollup row (hour/day, plus month on the
 // WindowAvailability path) into the bucket. Rollup rows already encode the
 // CountsAsUp rule in SuccessfulChecks (the aggregation job counts warning as
