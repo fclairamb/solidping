@@ -40,6 +40,8 @@
     "allGreen": "Tous les systèmes opérationnels",
     "allGreenSub_one": "{{count}} sonde surveillée, {{availability}}% de disponibilité sur 24h",
     "allGreenSub_other": "{{count}} sondes surveillées, {{availability}}% de disponibilité sur 24h",
+    "allGreenSubNoData_one": "{{count}} sonde surveillée, pas encore de données de disponibilité",
+    "allGreenSubNoData_other": "{{count}} sondes surveillées, pas encore de données de disponibilité",
     "issues": "Problèmes détectés",
     "issuesSub_zero": "Aucun incident actif",
     "issuesSub_one": "{{down}} sonde en panne, {{incidents}} incidents actifs",
@@ -53,7 +55,14 @@
     "down": "En panne",
     "downSubNone": "Tout est en ligne",
     "incidents": "Incidents actifs",
-    "incidentsSubNone": "Aucun actif"
+    "incidentsSubNone": "Aucun actif",
+    "availabilityBadge": {
+      "noData": "Aucune donnée",
+      "operational": "Opérationnel",
+      "degraded": "Dégradé",
+      "down": "En panne"
+    },
+    "availabilityNoDataSub": "Pas encore de données"
   },
   "glance": {
     "title": "Sondes en un coup d'œil",

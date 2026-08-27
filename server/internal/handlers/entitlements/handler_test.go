@@ -96,6 +96,41 @@ func (h *entHandlerSetup) doWithRole(
 	return rec
 }
 
+// doAsService sends a request the handler recognizes as the BILLING SERVICE
+// rather than a signed-in human, via the legacy static bearer. A user
+// principal can never claim to be billing (sourceFor decides the source, not
+// the body), so a precedence test has to come through this door to be testing
+// the real thing.
+func (h *entHandlerSetup) doAsService(
+	t *testing.T, method, path string, body any,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	const serviceBearer = "svc-token-for-precedence-tests"
+
+	require.NoError(t, h.dbSvc.SetSystemParameter(
+		t.Context(), enthandler.ParamServiceToken, serviceBearer, true))
+	require.NoError(t, h.dbSvc.SetSystemParameter(
+		t.Context(), enthandler.ParamAllowLegacyServiceToken, true, false))
+
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		require.NoError(t, err)
+	}
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), method, path, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+serviceBearer)
+
+	rec := httptest.NewRecorder()
+	h.router.ServeHTTP(rec, req)
+
+	return rec
+}
+
 func (h *entHandlerSetup) path() string {
 	return "/api/v1/orgs/" + h.org.Slug + "/entitlements"
 }
@@ -589,4 +624,223 @@ func TestUpgradeTokenCarriesTheRequestedOrgOnly(t *testing.T) {
 
 	r.Equal(h.org.Slug, orgClaim(h.doForOrg(t, http.MethodGet, firstPath, h.org.Slug)))
 	r.Equal(other.Slug, orgClaim(h.doForOrg(t, http.MethodGet, otherPath, other.Slug)))
+}
+
+// TestGetAlwaysIncludesChecksPerMinute pins the payload contract the over-limit
+// banner depends on (spec 2026-08-26-03): checksPerMinute is NOT behind
+// ?with=usage, because the checks list renders the banner and must not pay for
+// the whole usage roll-up to learn it is being throttled.
+func TestGetAlwaysIncludesChecksPerMinute(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	rec := h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	// The raw shape first: camelCase keys, and a null (not absent, not 0) limit
+	// for an org on the unlimited self-hosted default.
+	var raw struct {
+		ChecksPerMinute map[string]any `json:"checksPerMinute"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &raw))
+	r.NotNil(raw.ChecksPerMinute, "checksPerMinute must be present without ?with=usage")
+	r.Contains(raw.ChecksPerMinute, "demand")
+	r.Contains(raw.ChecksPerMinute, "limit")
+	r.Contains(raw.ChecksPerMinute, "skippedToday")
+	r.Nil(raw.ChecksPerMinute["limit"], "an unlimited cap serializes as null, never as a number")
+
+	var body struct {
+		ChecksPerMinute *entcore.ChecksPerMinute `json:"checksPerMinute"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	r.NotNil(body.ChecksPerMinute)
+	r.Zero(body.ChecksPerMinute.Demand, "an org with no checks schedules nothing")
+	r.Zero(body.ChecksPerMinute.SkippedToday)
+}
+
+// TestGetChecksPerMinuteReportsDemandAndSkips walks the full path an over-limit
+// org takes: a cap written through the API, real checks producing demand, and
+// recorded skips — all surfacing on the GET the dashboard reads.
+func TestGetChecksPerMinuteReportsDemandAndSkips(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	h := newEntHandlerSetup(t)
+
+	// Two 1-minute checks, one of them in three regions: 3 + 1 = 4 per minute.
+	multi := models.NewCheck(h.org.UID, "multi-region", "http")
+	multi.Regions = []string{"eu", "us", "jp"}
+	r.NoError(h.dbSvc.CreateCheck(ctx, multi))
+
+	single := models.NewCheck(h.org.UID, "single-region", "tcp")
+	r.NoError(h.dbSvc.CreateCheck(ctx, single))
+
+	// A heartbeat consumes no execution budget and must not inflate demand.
+	passive := models.NewCheck(h.org.UID, "passive-beat", "heartbeat")
+	r.NoError(h.dbSvc.CreateCheck(ctx, passive))
+
+	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+		"limits": map[string]any{"maxChecksPerMinute": 2},
+	})
+	r.Equal(http.StatusOK, rec.Code)
+
+	svc := entcore.NewService(h.dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc.RecordRateLimitedSkip(ctx, h.org.UID)
+	svc.RecordRateLimitedSkip(ctx, h.org.UID)
+
+	rec = h.do(t, http.MethodGet, h.path(), nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	var body struct {
+		ChecksPerMinute *entcore.ChecksPerMinute `json:"checksPerMinute"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	r.NotNil(body.ChecksPerMinute)
+	r.InDelta(4.0, body.ChecksPerMinute.Demand, 0.0001,
+		"3 regions + 1 region per minute, with the heartbeat excluded")
+	r.NotNil(body.ChecksPerMinute.Limit)
+	r.Equal(2, *body.ChecksPerMinute.Limit)
+	r.Equal(2, body.ChecksPerMinute.SkippedToday)
+	r.True(body.ChecksPerMinute.Over())
+}
+
+// TestPutBillingOntoAdminRowReportsSuppression exercises the BILLING front
+// door (the org-scoped PUT) against the precedence rule: 200, unchanged
+// limits, and a body that says so. A 200 that quietly lied about having
+// applied the push would be worse than no editor at all.
+func TestPutBillingOntoAdminRowReportsSuppression(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+
+	// A SUPERADMIN write is what mints the suppressing override, even when it
+	// arrives on the org-scoped route.
+	h.user.SuperAdmin = true
+
+	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+		"source": string(models.EntitlementSourceAdmin),
+		"limits": map[string]any{"maxChecks": 5000},
+	})
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	var applied struct {
+		Applied bool `json:"applied"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &applied))
+	r.True(applied.Applied)
+
+	rec = h.doAsService(t, http.MethodPut, h.path(), map[string]any{
+		"limits": map[string]any{"maxChecks": 100},
+	})
+	r.Equal(http.StatusOK, rec.Code, "billing must not be made to error-loop")
+
+	var suppressed struct {
+		Applied      bool   `json:"applied"`
+		SuppressedBy string `json:"suppressedBy"`
+		Message      string `json:"message"`
+		Limits       struct {
+			MaxChecks *int `json:"maxChecks"`
+		} `json:"limits"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &suppressed))
+	r.False(suppressed.Applied)
+	r.Equal(string(models.EntitlementSourceAdmin), suppressed.SuppressedBy)
+	r.NotEmpty(suppressed.Message)
+	r.NotNil(suppressed.Limits.MaxChecks)
+	r.Equal(5000, *suppressed.Limits.MaxChecks, "the admin override must survive the push")
+}
+
+// TestOrgAdminWriteDoesNotOutrankBilling is the security half of the
+// precedence rule, and the reason `org-admin` exists as a separate source.
+//
+// The org-scoped PUT is open to any org admin whenever
+// entitlements.admin_writes_enabled is unset (it defaults to TRUE), which on a
+// SaaS install that never set SP_ENTITLEMENTS_ADMIN_WRITES is every org admin.
+// Before the precedence rule that door was harmless — billing's next reconcile
+// corrected whatever it wrote. If such a write could mint `admin`, it would now
+// be a permanent lockout: any org admin could grant themselves limits AND stop
+// the billing service from ever correcting them, until a superadmin noticed.
+//
+// So: an ORG admin's write must be overwritable by billing. The superadmin's
+// must not. Both halves are asserted here, because either one alone passes on a
+// broken implementation.
+func TestOrgAdminWriteDoesNotOutrankBilling(t *testing.T) {
+	t.Parallel()
+
+	t.Run("an org admin's write is corrected by the next billing push", func(t *testing.T) {
+		t.Parallel()
+		rr := require.New(t)
+		h := newEntHandlerSetup(t)
+
+		// Not a superadmin. It even ASKS to be recorded as `admin` — the source
+		// is a server decision, not something a body may assert.
+		rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+			"source": string(models.EntitlementSourceAdmin),
+			"limits": map[string]any{"maxChecks": 5000},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var written struct {
+			Source  string `json:"source"`
+			Applied bool   `json:"applied"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &written))
+		rr.Equal(string(models.EntitlementSourceOrgAdmin), written.Source,
+			"an org admin may not mint the superadmin override source")
+		rr.True(written.Applied)
+
+		rec = h.doAsService(t, http.MethodPut, h.path(), map[string]any{
+			"limits": map[string]any{"maxChecks": 100},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var pushed struct {
+			Applied bool `json:"applied"`
+			Limits  struct {
+				MaxChecks *int `json:"maxChecks"`
+			} `json:"limits"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &pushed))
+		rr.True(pushed.Applied, "billing must still be able to correct an org-admin row")
+		rr.NotNil(pushed.Limits.MaxChecks)
+		rr.Equal(100, *pushed.Limits.MaxChecks)
+	})
+
+	// POSITIVE CONTROL: the same sequence, from a superadmin, DOES suppress.
+	// Without this the assertion above would pass just as happily on an
+	// implementation where suppression never fires at all.
+	t.Run("a superadmin's write is not", func(t *testing.T) {
+		t.Parallel()
+		rr := require.New(t)
+		h := newEntHandlerSetup(t)
+		h.user.SuperAdmin = true
+
+		rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+			"limits": map[string]any{"maxChecks": 5000},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var written struct {
+			Source string `json:"source"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &written))
+		rr.Equal(string(models.EntitlementSourceAdmin), written.Source)
+
+		rec = h.doAsService(t, http.MethodPut, h.path(), map[string]any{
+			"limits": map[string]any{"maxChecks": 100},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var pushed struct {
+			Applied bool `json:"applied"`
+			Limits  struct {
+				MaxChecks *int `json:"maxChecks"`
+			} `json:"limits"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &pushed))
+		rr.False(pushed.Applied)
+		rr.NotNil(pushed.Limits.MaxChecks)
+		rr.Equal(5000, *pushed.Limits.MaxChecks)
+	})
 }

@@ -10,8 +10,8 @@
   "sections": {
     "active": "Aktiv",
     "activeHelp": "Offene und wartende Konversationen, auf die wir noch antworten können.",
-    "expired": "Antwortfenster abgelaufen",
-    "expiredHelp": "Weiterhin unbeantwortet, aber der Kanal akzeptiert keine freie Antwort mehr.",
+    "expired": "Nicht beantwortbar",
+    "expiredHelp": "Weiterhin unbeantwortet, und wir können nicht antworten — das Antwortfenster ist abgelaufen, oder es gibt keinen Rückweg zum Absender.",
     "closed": "Geschlossen",
     "closedHelp": "Erledigt. Wird nach der Aufbewahrungsfrist gelöscht."
   },
@@ -38,7 +38,8 @@
     "open": "Antwortfenster offen",
     "expired": "Antwortfenster geschlossen",
     "expiresAt": "Freie Antworten möglich bis {{time}}",
-    "costsMoney": "Jede Antwort kostet Geld"
+    "costsMoney": "Jede Antwort kostet Geld",
+    "cannotReply": "Antwort auf diese Konversation nicht möglich"
   },
   "reply": {
     "placeholder": "Antwort schreiben…",
@@ -46,8 +47,12 @@
     "sending": "Wird gesendet…",
     "sent": "Antwort gesendet",
     "failed": "Antwort konnte nicht gesendet werden",
-    "disabledNoAdapter": "Für diesen Kanal gibt es auf dieser Instanz keinen Antwort-Adapter.",
-    "costWarning": "Dieser Kanal wird pro Segment abgerechnet. Antworten durchlaufen dieselben Ausgabengrenzen wie Alarme."
+    "disabledNoRoute": "Auf diese Konversation kann von hier aus nicht geantwortet werden.",
+    "costWarning": "Dieser Kanal wird pro Segment abgerechnet. Antworten durchlaufen dieselben Ausgabengrenzen wie Alarme.",
+    "resend": "Erneut senden",
+    "resending": "Wird erneut gesendet…",
+    "resent": "Antwort erneut gesendet",
+    "resendFailed": "Antwort konnte nicht erneut gesendet werden"
   },
   "actions": {
     "markPending": "Als wartend markieren",

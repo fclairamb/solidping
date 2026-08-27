@@ -90,11 +90,17 @@ func NewHandler(svc *entcore.Service, dbService db.Service, cfg *config.Config) 
 	}
 }
 
-// principal records who is making the call so the audit log can attribute it.
+// principal records who is making the call so the audit log can attribute it,
+// and — since spec 2026-08-26-06 — so the write path can decide WHICH source a
+// user-driven write is allowed to mint.
 type principal struct {
 	actor     string
 	isService bool
 	isAdmin   bool
+	// isSuperAdmin is what separates an instance operator from an org admin.
+	// Only a superadmin may mint models.EntitlementSourceAdmin, the source that
+	// outranks billing until explicitly released.
+	isSuperAdmin bool
 }
 
 // authorize accepts a trusted service caller (preferred for SaaS) or an admin
@@ -154,7 +160,7 @@ func (h *Handler) authorize(req *http.Request, requireWrite bool) (*principal, e
 
 	actor := "user:" + user.UID
 
-	return &principal{actor: actor, isAdmin: isAdmin}, nil
+	return &principal{actor: actor, isAdmin: isAdmin, isSuperAdmin: user.SuperAdmin}, nil
 }
 
 var (
@@ -201,11 +207,29 @@ func (h *Handler) Get(writer http.ResponseWriter, req *http.Request) error {
 		usagePtr = &usage
 	}
 
+	// checksPerMinute is NOT behind ?with=usage: the over-limit banner it drives
+	// has to render on the checks list too, and that page must not have to pay
+	// for the full usage roll-up (member counts, agents, custom domains, SLOs)
+	// to learn it is being throttled. Two cheap queries, on an endpoint the
+	// dashboard caches for a minute.
+	//
+	// It fails soft for the same reason: an over-limit warning is worth less
+	// than the limits payload itself, so a failure here must not 500 the page
+	// that renders the plan.
+	var cpmPtr *entcore.ChecksPerMinute
+	if cpm, cpmErr := h.svc.ChecksPerMinuteStatus(req.Context(), org.UID); cpmErr != nil {
+		slog.WarnContext(req.Context(), "checks-per-minute status failed; omitting it from the payload",
+			"orgUID", org.UID, "error", cpmErr)
+	} else {
+		cpmPtr = &cpm
+	}
+
 	return h.WriteJSON(writer, http.StatusOK, struct {
 		entcore.Resolved
-		Usage      *entcore.Usage `json:"usage,omitempty"`
-		UpgradeURL string         `json:"upgradeUrl,omitempty"`
-	}{Resolved: resolved, Usage: usagePtr, UpgradeURL: upgradeURL})
+		Usage           *entcore.Usage           `json:"usage,omitempty"`
+		ChecksPerMinute *entcore.ChecksPerMinute `json:"checksPerMinute,omitempty"`
+		UpgradeURL      string                   `json:"upgradeUrl,omitempty"`
+	}{Resolved: resolved, Usage: usagePtr, ChecksPerMinute: cpmPtr, UpgradeURL: upgradeURL})
 }
 
 // Put handles PUT /api/v1/orgs/:org/entitlements — replaces the row.
@@ -243,13 +267,7 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 		})
 	}
 
-	if input.Source == "" {
-		if prin.isService {
-			input.Source = models.EntitlementSourceBilling
-		} else {
-			input.Source = models.EntitlementSourceAdmin
-		}
-	}
+	input.Source = h.sourceFor(prin, input.Source)
 
 	if partial {
 		input = h.mergePartial(req.Context(), org.UID, input)
@@ -257,8 +275,14 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 
 	reason := req.Header.Get("X-Entitlements-Reason")
 
-	if setErr := h.svc.Set(req.Context(), org.UID, input, prin.actor, reason); setErr != nil {
-		return h.WriteInternalError(writer, req, setErr)
+	// Apply, not Set: the precedence rule lives in the service so both front
+	// doors (this one and the superadmin editor) obey it. A billing push onto
+	// an admin override answers 200 with applied=false rather than an error —
+	// billing must not error-loop over a decision we made on purpose — and the
+	// body says exactly what happened.
+	outcome, applyErr := h.svc.Apply(req.Context(), org.UID, input, prin.actor, reason)
+	if applyErr != nil {
+		return h.WriteInternalError(writer, req, applyErr)
 	}
 
 	resolved, err := h.svc.Resolve(req.Context(), org.UID)
@@ -266,7 +290,71 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 		return h.WriteInternalError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, resolved)
+	return h.WriteJSON(writer, http.StatusOK, newWriteResponse(resolved, outcome))
+}
+
+// sourceFor decides the source a write is recorded under. It is a decision the
+// SERVER makes, never one the body gets to assert, because since spec
+// 2026-08-26-06 the source is an authorization outcome and not a label:
+// `admin` suppresses every subsequent billing push until a superadmin releases
+// it, so a caller that could name its own source could mint an unreleasable
+// override for itself.
+//
+//   - A trusted service keeps the old behavior (it may name a source; absent,
+//     it is the billing service). Nothing else can reach that branch: the
+//     signature/bypass middleware is what sets it.
+//
+//     FOOTGUN, deliberately left alone: because a service may name its own
+//     source, the billing service — or anything holding the legacy static
+//     bearer — can write `source: "admin"` and thereby suppress its OWN future
+//     pushes until a superadmin releases the org. That is pre-existing
+//     behavior which spec 2026-08-26-06 chose to preserve, and no caller does
+//     it today. If it ever needs closing, the fix is to pin service writes to
+//     billing-service here; it is one line, and this comment is the marker.
+//
+//   - A superadmin on this org-scoped route mints `admin` — same authority as
+//     the dedicated superadmin editor, reached through a different URL.
+//
+//   - Everyone else — including an org OWNER — mints `org-admin`: a real,
+//     paid-tier provisioning row that billing's next reconcile still corrects.
+//     That is exactly what this door did before the precedence rule existed.
+func (h *Handler) sourceFor(prin *principal, requested models.EntitlementSource) models.EntitlementSource {
+	if prin.isService {
+		if requested == "" {
+			return models.EntitlementSourceBilling
+		}
+
+		return requested
+	}
+
+	if prin.isSuperAdmin {
+		return models.EntitlementSourceAdmin
+	}
+
+	return models.EntitlementSourceOrgAdmin
+}
+
+// writeResponse is the entitlements write payload: the resolved row plus an
+// honest report of whether this particular write changed anything.
+type writeResponse struct {
+	entcore.Resolved
+	// Applied is false when the precedence rule discarded the write.
+	Applied bool `json:"applied"`
+	// SuppressedBy names the source that won, when Applied is false.
+	SuppressedBy models.EntitlementSource `json:"suppressedBy,omitempty"`
+	// Message explains a suppression in words, for a log line or a UI toast.
+	Message string `json:"message,omitempty"`
+}
+
+//nolint:gocritic // resolved is the wire shape, passed by value like everywhere else
+func newWriteResponse(resolved entcore.Resolved, outcome entcore.WriteOutcome) writeResponse {
+	out := writeResponse{Resolved: resolved, Applied: outcome.Applied}
+	if !outcome.Applied {
+		out.SuppressedBy = outcome.SuppressedBy
+		out.Message = entcore.SuppressedByAdminMessage
+	}
+
+	return out
 }
 
 // ListAudits handles GET /api/v1/orgs/:org/entitlements/audits.

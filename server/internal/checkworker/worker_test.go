@@ -445,7 +445,7 @@ func TestFormatISO8601Duration(t *testing.T) {
 }
 
 //nolint:paralleltest // Test uses shared database state
-func TestReleaseLease(t *testing.T) {
+func TestDeferRateLimited(t *testing.T) {
 	runner, dbSvc, ctx := setupTestRunner(t)
 	defer func() { _ = dbSvc.Close() }()
 
@@ -480,10 +480,12 @@ func TestReleaseLease(t *testing.T) {
 		_, err = dbSvc.DB().NewUpdate().
 			Model((*models.CheckJob)(nil)).
 			Set("scheduled_at = ?", scheduledAt).
+			Set("effective_scheduled_at = ?", scheduledAt).
 			Where("uid = ?", checkJob.UID).
 			Exec(ctx)
 		require.NoError(t, err)
 		checkJob.ScheduledAt = &scheduledAt
+		checkJob.EffectiveScheduledAt = &scheduledAt
 
 		// Claim the job first by setting lease_worker_uid
 		leaseExpiry := now.Add(60 * time.Second)
@@ -501,8 +503,8 @@ func TestReleaseLease(t *testing.T) {
 		checkJob.LeaseExpiresAt = &leaseExpiry
 		checkJob.LeaseStarts = 1
 
-		// Release lease
-		err = runner.releaseLease(ctx, checkJob)
+		// Defer the rate-limited job
+		err = runner.deferRateLimited(ctx, checkJob)
 		require.NoError(t, err)
 
 		// Verify the job was rescheduled
@@ -515,6 +517,19 @@ func TestReleaseLease(t *testing.T) {
 
 		// Verify lease was released (worker UID should be nil)
 		assert.Nil(t, updatedJob.LeaseWorkerUID)
+
+		// scheduled_at moves forward so the job cannot be re-claimed inside the
+		// window it was just turned away from...
+		require.NotNil(t, updatedJob.ScheduledAt)
+		assert.True(t, updatedJob.ScheduledAt.After(scheduledAt),
+			"a rate-limited deferral must advance scheduled_at")
+
+		// ...but the claim ordering key stays pinned at the missed tick, which
+		// is what makes the deficit rotate instead of starving this check
+		// forever (spec 2026-08-26-02).
+		require.NotNil(t, updatedJob.EffectiveScheduledAt)
+		assert.WithinDuration(t, scheduledAt, *updatedJob.EffectiveScheduledAt, time.Millisecond,
+			"a rate-limited deferral must NOT re-anchor effective_scheduled_at")
 	})
 }
 

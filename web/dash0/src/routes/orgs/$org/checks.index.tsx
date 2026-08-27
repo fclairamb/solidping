@@ -22,6 +22,7 @@ import {
   Upload,
   Waypoints,
   ArrowUpRight,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -33,6 +34,7 @@ import {
   useConvertChecks,
   useEscalationPolicies,
   useCheckTypes,
+  useEntitlements,
   type Check,
   type CheckGroup,
   type ConversionWarning,
@@ -48,6 +50,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { PageHeader } from "@/components/shared/page-header";
+import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import {
   Table,
   TableBody,
@@ -1004,6 +1007,11 @@ function ChecksIndexPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
+  // Entitlements without ?with=usage: the over-limit banner needs only
+  // `checksPerMinute`, which the server computes unconditionally, so the checks
+  // list never pays for the full usage roll-up.
+  const { data: entitlements } = useEntitlements(org);
+
   // Status and type are both faceted (multi-value) filters. The URL is the
   // source of truth — read directly off Route.useSearch() with no local-state
   // mirror (like `groupBy` above), so a cold deep link with several values
@@ -1497,6 +1505,23 @@ function ChecksIndexPage() {
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
             </Button>
+            {/*
+              The scheduling page (spec 2026-08-26-04) edits one field across
+              many checks, so it belongs next to the list rather than inside a
+              row. Reachable here whether or not the org is over its cap — an
+              org can want to plan its execution budget before it breaches it.
+            */}
+            <Button asChild variant="outline">
+              <Link
+                to="/orgs/$org/checks/scheduling"
+                params={{ org }}
+                data-testid="scheduling-link"
+                aria-label={t("scheduling.title")}
+              >
+                <CalendarClock className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">{t("scheduling.title")}</span>
+              </Link>
+            </Button>
             <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: undefined, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}>
               <Button data-testid="new-check-button">
                 <Plus className="sm:mr-2 h-4 w-4" />
@@ -1507,6 +1532,18 @@ function ChecksIndexPage() {
         }
         docsHref="/docs/features/check-types"
         className="flex-wrap"
+      />
+
+      {/*
+        Directly under the header, above the filters: the gaps this explains are
+        in the rows below, and an org has to see the cause before it starts
+        hunting broken checks.
+      */}
+      <CheckRateLimitBanner
+        org={org}
+        checksPerMinute={entitlements?.checksPerMinute}
+        upgradeUrl={entitlements?.upgradeUrl}
+        showUsageLink
       />
 
       <div className="flex flex-wrap items-center gap-4">

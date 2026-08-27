@@ -265,7 +265,7 @@ func entitlementsAuditsAction(ctx context.Context, cmd *cli.Command) error {
 
 // renderEntitlements prints an EntitlementsResponse in text mode.
 func renderEntitlements(ent *client.EntitlementsResponse) {
-	output.PrintMessage(os.Stdout, "Source:               "+ent.Source)
+	output.PrintMessage(os.Stdout, "Source:               "+string(ent.Source))
 	output.PrintMessage(os.Stdout, "Max checks:           "+limitStr(ent.Limits.MaxChecks))
 	output.PrintMessage(os.Stdout, "Max users:            "+limitStr(ent.Limits.MaxUsers))
 	output.PrintMessage(os.Stdout, "Max checks/minute:    "+limitStr(ent.Limits.MaxChecksPerMinute))

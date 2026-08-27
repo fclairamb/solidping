@@ -366,6 +366,10 @@ function Breadcrumbs({ org }: { org: string }) {
       "/orgs/$org/checks/$checkUid/results/$resultUid",
     );
     const isNewCheck = routeIds.has("/orgs/$org/checks/new");
+    // Scheduling is a sibling page of the list (no checkUid), so it needs its
+    // own leaf crumb — without it the page rendered a bare, non-clickable
+    // "Checks" crumb indistinguishable from the list page.
+    const isScheduling = routeIds.has("/orgs/$org/checks/scheduling");
     const checkName = check?.name || check?.slug || checkUid?.slice(0, 8);
     const resultLabel = result?.periodStart
       ? new Date(result.periodStart).toLocaleString()
@@ -373,7 +377,7 @@ function Breadcrumbs({ org }: { org: string }) {
 
     return (
       <>
-        {checkUid || isNewCheck ? (
+        {checkUid || isNewCheck || isScheduling ? (
           <Link to="/orgs/$org/checks" params={{ org }} className={linkClass}><ListChecks className={iconClass} />{t("checks")}</Link>
         ) : (
           <span className={activeClass}><ListChecks className={iconClass} />{t("checks")}</span>
@@ -382,6 +386,12 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {isScheduling && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("scheduling")}</span>
           </>
         )}
         {checkUid && (

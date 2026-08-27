@@ -31,4 +31,5 @@ func RegisterRoutes(api *httpx.Group, authMW *middleware.AuthMiddleware, handler
 	group.PATCH("/threads/:uid", handler.UpdateThread)
 	group.GET("/threads/:uid/messages", handler.ListMessages)
 	group.POST("/threads/:uid/messages", handler.CreateMessage)
+	group.POST("/threads/:uid/messages/:messageUid/resend", handler.ResendMessage)
 }

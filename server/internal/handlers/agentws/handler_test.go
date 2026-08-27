@@ -51,10 +51,15 @@ func newEnv(t *testing.T) *env {
 	return newEnvWith(t, nil)
 }
 
-// newEnvWith is newEnv but wires the given entitlements service into the
-// handler (nil disables entitlement enforcement entirely, matching the
+// entitlementsProvisioner builds the entitlements service for a test env, once
+// the database and the org it must be written against exist.
+type entitlementsProvisioner func(*sqlite.Service, *models.Organization) *entitlements.Service
+
+// newEnvWith is newEnv but lets the caller provision a real entitlements
+// service against the freshly-created DB and org, and wires it into the handler
+// (a nil provisioner disables entitlement enforcement entirely, matching the
 // production optionality of Handler.entitlements).
-func newEnvWith(t *testing.T, entSvc *entitlements.Service) *env {
+func newEnvWith(t *testing.T, provision entitlementsProvisioner) *env {
 	t.Helper()
 
 	ctx := t.Context()
@@ -67,6 +72,11 @@ func newEnvWith(t *testing.T, entSvc *entitlements.Service) *env {
 
 	org := models.NewOrganization("acme", "Acme")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	var entSvc *entitlements.Service
+	if provision != nil {
+		entSvc = provision(dbSvc, org)
+	}
 
 	events := notifier.NewLocalEventNotifier()
 	t.Cleanup(func() { _ = events.Close() })
@@ -95,42 +105,25 @@ func newEnvWith(t *testing.T, entSvc *entitlements.Service) *env {
 func newEnvWithAgentCap(t *testing.T, maxDeportedAgents int) *env {
 	t.Helper()
 
-	ctx := t.Context()
-	r := require.New(t)
+	return newEnvWith(t, entitlementsWithLimits(t, entitlements.Limits{
+		MaxDeportedAgents: entitlements.Int(maxDeportedAgents),
+	}))
+}
 
-	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
-	r.NoError(err)
-	r.NoError(dbSvc.Initialize(ctx))
-	t.Cleanup(func() { _ = dbSvc.Close() })
+// entitlementsWithLimits builds a provisioner that writes the given limits on
+// the env's org as an admin-sourced entitlement row.
+func entitlementsWithLimits(t *testing.T, limits entitlements.Limits) entitlementsProvisioner {
+	t.Helper()
 
-	org := models.NewOrganization("acme", "Acme")
-	r.NoError(dbSvc.CreateOrganization(ctx, org))
+	return func(dbSvc *sqlite.Service, org *models.Organization) *entitlements.Service {
+		entSvc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+		require.NoError(t, entSvc.Set(t.Context(), org.UID, entitlements.Entitlements{
+			Limits: limits,
+			Source: models.EntitlementSourceAdmin,
+		}, "user:tester", ""))
 
-	entSvc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
-	r.NoError(entSvc.Set(ctx, org.UID, entitlements.Entitlements{
-		Limits: entitlements.Limits{MaxDeportedAgents: entitlements.Int(maxDeportedAgents)},
-		Source: models.EntitlementSourceAdmin,
-	}, "user:tester", ""))
-
-	events := notifier.NewLocalEventNotifier()
-	t.Cleanup(func() { _ = events.Close() })
-
-	checkJobSvc := checkjobsvc.NewService(dbSvc.DB())
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, events, nil)
-
-	workersSvc := workers.NewService(
-		dbSvc, checkJobSvc, incidents.NewService(dbSvc, jobs, clock.Real{}, nil), scheduling.Params{},
-	)
-
-	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil, nil)
-
-	router := httpx.New()
-	router.GET("/api/v1/agent/ws", handler.Serve)
-
-	server := httptest.NewServer(router)
-	t.Cleanup(server.Close)
-
-	return &env{t: t, dbSvc: dbSvc, server: server, org: org}
+		return entSvc
+	}
 }
 
 // mintToken creates a live enrollment token bound to (org, region) and returns

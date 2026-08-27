@@ -252,7 +252,7 @@ func (s *Service) Set(
 // the weight matches the row we just persisted.
 func (s *Service) denormalizePlanWeight(ctx context.Context, orgUID string, source models.EntitlementSource) {
 	weight := PlanWeightFree
-	if source == models.EntitlementSourceBilling || source == models.EntitlementSourceAdmin {
+	if isProvisionedSource(source) {
 		weight = PlanWeightPaid
 	}
 
@@ -370,19 +370,48 @@ func (s *Service) PlanWeight(ctx context.Context, orgUID string) int {
 		return PlanWeightFree
 	}
 
-	switch resolved.Source {
-	case models.EntitlementSourceBilling, models.EntitlementSourceAdmin:
+	if isProvisionedSource(resolved.Source) {
 		return PlanWeightPaid
+	}
+
+	return PlanWeightFree
+}
+
+// isProvisionedSource reports whether a source means "somebody explicitly
+// provisioned this org beyond the in-code defaults" — the only thing the
+// scheduler's coarse free/paid split cares about.
+//
+// org-admin counts, exactly as it did when the org-scoped door still wrote
+// `admin`: splitting the two sources is about who may outrank billing, not
+// about who gets scheduling protection, and letting a self-hosted operator's
+// own write silently demote their org would be a regression.
+func isProvisionedSource(source models.EntitlementSource) bool {
+	switch source {
+	case models.EntitlementSourceBilling,
+		models.EntitlementSourceAdmin,
+		models.EntitlementSourceOrgAdmin:
+		return true
 	case models.EntitlementSourceDefault, models.EntitlementSourceSelfHosted:
-		return PlanWeightFree
+		return false
 	default:
-		return PlanWeightFree
+		return false
 	}
 }
 
 // limiterFor returns (creating if needed) the token bucket for orgUID.
 // Capacity is taken at first construction; later changes are honored by
 // Set, which clears the cache.
+//
+// Scope: the bucket lives in THIS process's memory, so the cap is enforced
+// per process, not per organization across the fleet. An org whose checks
+// run in R regions (R server/worker processes) gets R independent buckets
+// and can sustain up to cap × R executions per minute, even though
+// MaxChecksPerMinute reads as an aggregate org rate. That is a deliberate
+// choice (spec 2026-08-26-02): it errs generous, never stingy, and needs no
+// cross-process coordination on the hot path. If the cap ever has to be
+// exact, the replacement is a shared per-org reservation (Redis/Postgres),
+// not a smaller per-process cap — dividing the cap by the region count would
+// throttle single-region orgs for a multi-region problem.
 func (s *Service) limiterFor(orgUID string, capacity int) *tokenBucket {
 	s.limitersMu.Lock()
 	defer s.limitersMu.Unlock()
@@ -402,8 +431,25 @@ func (s *Service) Defaults() Entitlements {
 	return s.defaults
 }
 
-// merge produces a Resolved by filling nulls from defaults. If stale is
-// true, the entire payload is dropped in favor of defaults.
+// merge produces a Resolved from the stored row and the deployment defaults.
+// If stale is true, the entire payload is dropped in favor of defaults.
+//
+// There are TWO resolution modes, and which one applies is decided by the row's
+// source:
+//
+//   - **Null-fill** (billing-service, org-admin, self-hosted): a nil field means
+//     "not stated", so the deployment default shows through. This is what lets
+//     billing push a partial plan and still get sane numbers for everything the
+//     SKU says nothing about.
+//   - **Whole-row** (admin, i.e. the superadmin editor): a nil field means
+//     UNLIMITED. The editor pre-fills every cap from the resolved values and
+//     saves a complete row (spec 2026-08-26-06, resolved question "whole-row
+//     only"), so a nil there is a deliberate statement, not an omission.
+//
+// The distinction is load-bearing on SaaS, where every default is non-nil:
+// under null-fill an operator who switched a cap to "Unlimited" would watch the
+// SaaS default (100 checks, 10/min…) reappear and the org stay capped, with the
+// UI cheerfully reporting the number it just failed to change.
 func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out := Resolved{
 		Limits:       s.defaults.Limits,
@@ -420,10 +466,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out.ExpiresAt = row.ExpiresAt
 	out.LastSyncedAt = row.LastSyncedAt
 
-	// Display identity: a row with its own name/emoji (e.g. billing-written)
-	// keeps it; a row that never got one (e.g. an admin override that only
-	// touched limits) inherits the default — same null-fill semantics as
-	// the limits below.
+	// Display identity keeps null-fill semantics in BOTH modes: it is a label,
+	// not a quota, and "unlimited" is meaningless for it. An admin override
+	// that only touched numbers still shows the plan name it inherited.
 	if row.Payload.DisplayName != nil {
 		out.DisplayName = row.Payload.DisplayName
 	}
@@ -432,38 +477,61 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	}
 
 	limits := row.Payload.Limits
-	if limits.MaxChecks != nil {
-		out.Limits.MaxChecks = limits.MaxChecks
-	}
-	if limits.MaxUsers != nil {
-		out.Limits.MaxUsers = limits.MaxUsers
-	}
-	if limits.MaxChecksPerMinute != nil {
-		out.Limits.MaxChecksPerMinute = limits.MaxChecksPerMinute
-	}
-	if limits.MaxDeportedAgents != nil {
-		out.Limits.MaxDeportedAgents = limits.MaxDeportedAgents
-	}
-	if limits.MaxCustomDomains != nil {
-		out.Limits.MaxCustomDomains = limits.MaxCustomDomains
-	}
-	if limits.MaxSmsPerMonth != nil {
-		out.Limits.MaxSmsPerMonth = limits.MaxSmsPerMonth
-	}
-	if limits.MaxCallsPerMonth != nil {
-		out.Limits.MaxCallsPerMonth = limits.MaxCallsPerMonth
-	}
-	if limits.MaxWhatsappPerMonth != nil {
-		out.Limits.MaxWhatsappPerMonth = limits.MaxWhatsappPerMonth
-	}
-	if limits.MaxSlos != nil {
-		out.Limits.MaxSlos = limits.MaxSlos
-	}
-	if limits.WhiteLabel != nil {
-		out.Limits.WhiteLabel = limits.WhiteLabel
+
+	if row.Payload.Source == models.EntitlementSourceAdmin {
+		out.Limits = limits
+
+		// WhiteLabel is the exception inside the exception: it is a boolean, so
+		// its nil cannot mean "unbounded". Per EntitlementLimits' own contract
+		// nil there means "use the deployment default", and that reading holds
+		// in whole-row mode too — otherwise every admin override would silently
+		// revoke white-label on a deployment that grants it by default.
+		if limits.WhiteLabel == nil {
+			out.Limits.WhiteLabel = s.defaults.Limits.WhiteLabel
+		}
+
+		return out
 	}
 
+	nullFillLimits(&out.Limits, &limits)
+
 	return out
+}
+
+// nullFillLimits overlays src onto dst, field by field, skipping nils — the
+// "a nil field was not stated, so the default shows through" reading used by
+// every source except the superadmin `admin` override.
+func nullFillLimits(dst, src *Limits) {
+	if src.MaxChecks != nil {
+		dst.MaxChecks = src.MaxChecks
+	}
+	if src.MaxUsers != nil {
+		dst.MaxUsers = src.MaxUsers
+	}
+	if src.MaxChecksPerMinute != nil {
+		dst.MaxChecksPerMinute = src.MaxChecksPerMinute
+	}
+	if src.MaxDeportedAgents != nil {
+		dst.MaxDeportedAgents = src.MaxDeportedAgents
+	}
+	if src.MaxCustomDomains != nil {
+		dst.MaxCustomDomains = src.MaxCustomDomains
+	}
+	if src.MaxSmsPerMonth != nil {
+		dst.MaxSmsPerMonth = src.MaxSmsPerMonth
+	}
+	if src.MaxCallsPerMonth != nil {
+		dst.MaxCallsPerMonth = src.MaxCallsPerMonth
+	}
+	if src.MaxWhatsappPerMonth != nil {
+		dst.MaxWhatsappPerMonth = src.MaxWhatsappPerMonth
+	}
+	if src.MaxSlos != nil {
+		dst.MaxSlos = src.MaxSlos
+	}
+	if src.WhiteLabel != nil {
+		dst.WhiteLabel = src.WhiteLabel
+	}
 }
 
 // isStale returns true if the row is past its sync window. Only billing-
@@ -523,6 +591,24 @@ func toModel(
 //nolint:musttag // OrgEntitlements is bun-tagged; default JSON encoding is acceptable for the audit blob
 func modelToJSON(row *models.OrgEntitlements) (models.JSONMap, error) {
 	raw, err := json.Marshal(row)
+	if err != nil {
+		return nil, err
+	}
+
+	var out models.JSONMap
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+// entitlementsToJSON serializes a wire-shape Entitlements into a JSON map, for
+// audit rows that need to record an INTENDED write rather than a stored row.
+//
+//nolint:gocritic // input is the wire shape, passed by value like everywhere else
+func entitlementsToJSON(input Entitlements) (models.JSONMap, error) {
+	raw, err := json.Marshal(input)
 	if err != nil {
 		return nil, err
 	}

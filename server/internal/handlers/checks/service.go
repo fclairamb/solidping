@@ -51,17 +51,39 @@ type ValidateCheckRequest struct {
 	// reference is legal or not depending on which regions the check runs in.
 	Regions   []string             `json:"regions,omitempty"`
 	DependsOn []ExportedDependency `json:"dependsOn,omitempty"`
+	// Period is the proposed execution interval ("HH:MM:SS" or a Go duration).
+	// Optional: supplied so the period bounds and the org-rate projection
+	// (spec 2026-08-26-05) can be evaluated live. Absent means "not proposed"
+	// and neither runs.
+	Period string `json:"period,omitempty"`
+	// Enabled is the proposed enabled state; absent means enabled. A disabled
+	// check is scheduled nowhere, so it can never push the org over its rate
+	// cap.
+	Enabled *bool `json:"enabled,omitempty"`
+	// ExcludeCheckUID is the check being edited. Slug uniqueness must not flag
+	// a check's own slug, and the rate projection must REPLACE its stored row
+	// rather than add a second one. Empty for a create.
+	ExcludeCheckUID string `json:"excludeCheckUid,omitempty"`
 }
 
 // ValidateCheckResponse is the response body for the validate check endpoint.
+//
+// Every entry in either list carries a severity and a machine code (spec
+// 2026-08-26-05). The two lists are the severity split: fields holds the
+// blocking findings, warnings the advisory ones. `valid` is false exactly when
+// fields is non-empty — a warning never blocks.
 type ValidateCheckResponse struct {
-	Valid  bool                        `json:"valid"`
+	Valid bool `json:"valid"`
+	// Fields are the blocking findings, ALL of them: a validate pass no longer
+	// stops at the first error, so a form can fix everything in one round trip.
 	Fields []base.ValidationErrorField `json:"fields,omitempty"`
 	// Warnings are advisory, per-field notes that do NOT make the config
-	// invalid — `valid` stays true and the write path accepts it. Today the
-	// only source is the IPv6-in-a-region-that-reports-no-IPv6 hint (spec
-	// 2026-08-15-11), which is deliberately never a rejection: the advertised
-	// capability lags reality and the run-time probe is the authority.
+	// invalid — `valid` stays true and the write path accepts it. Sources: the
+	// IPv6/browser region-capability hints (specs 2026-08-15-11, 2026-08-19-03),
+	// which are never rejections because the advertised capability lags reality
+	// and the run-time probe is the authority; and the org checks-per-minute
+	// projection (spec 2026-08-26-05), which must not block precisely because
+	// an over-limit org has to be able to edit its way back under the cap.
 	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
 }
 
@@ -103,6 +125,21 @@ var (
 	// check whose secrets cannot be sealed cannot run on an agent anyway (the
 	// agent would receive public config only and merge nothing).
 	ErrNoAgentsToSealTo = errors.New("no active agent to seal credentials to")
+	// ErrInternalFieldNotWritable is returned when a write request carries the
+	// `internal` field (spec 2026-08-27-01).
+	//
+	// `internal` marks server-created plumbing (worker self-stat checks) and is
+	// the flag that exempts a check from the MaxChecks quota, from the
+	// checks-per-minute demand figure and — since this spec — from the per-org
+	// rate gates. A client able to set it would create checks that count
+	// nowhere, so this service refuses the field on EVERY write path it owns:
+	// create, update, upsert and import. Legitimate internal checks are written
+	// straight through db.CreateCheck by the workers and never reach here.
+	//
+	// Refused rather than silently dropped, on purpose: a caller that sends
+	// `internal` is either automating against a stale contract or probing the
+	// quota, and both deserve to be told.
+	ErrInternalFieldNotWritable = errors.New("internal is not a writable field")
 	// ErrSlugConflict is returned when a slug already exists.
 	ErrSlugConflict = errors.New("slug already exists")
 	// ErrSlugGenerationFailed is returned when a unique slug cannot be
@@ -414,77 +451,6 @@ func NewService(
 	}
 }
 
-// ValidateCheck validates a check configuration without persisting it. orgSlug
-// is required when req.DependsOn is non-empty so parent slugs can be resolved
-// against the org's checks; for plain config validation it can be empty.
-func (s *Service) ValidateCheck(
-	ctx context.Context, orgSlug string, req *ValidateCheckRequest,
-) (ValidateCheckResponse, error) {
-	checkType := checkerdef.CheckType(req.Type)
-
-	checker, ok := registry.GetChecker(checkType)
-	if !ok {
-		return ValidateCheckResponse{
-			Valid: false,
-			Fields: []base.ValidationErrorField{
-				{Name: fieldType, Message: "unsupported check type"},
-			},
-		}, nil
-	}
-
-	spec := &checkerdef.CheckSpec{
-		Config: req.Config,
-	}
-
-	if cfgErr := checker.Validate(spec); cfgErr != nil {
-		// Mirror legacy behavior — surface the first config error.
-		return s.formatValidateError(cfgErr), nil
-	}
-
-	// Uniform per-check timeout cap (spec 2026-07-11-05) so live validation
-	// agrees with the create/update paths for every check type.
-	if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
-		return s.formatValidateError(timeoutErr), nil
-	}
-
-	// Uniform per-check address-family rule (spec 2026-08-09-02), same
-	// reasoning: the form must see the same verdict the write path will give.
-	if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
-		return s.formatValidateError(versionErr), nil
-	}
-
-	// Tunnel reference rules (existence, type, fingerprint, chaining, and the
-	// region rules of spec 2026-07-18-07) so the form's selector can show the
-	// error inline before the user hits save. Needs the org to resolve the
-	// referenced SSH check; skip silently when the org can't be resolved (the
-	// create/update path re-validates anyway).
-	if _, tunneled := checkerdef.TunnelCheckUIDFrom(req.Config); tunneled {
-		if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
-			if tunnelErr := s.validateTunnelConfig(
-				ctx, org.UID, req.Type, req.Config, req.Regions,
-			); tunnelErr != nil {
-				return s.formatValidateError(tunnelErr), nil
-			}
-		}
-	}
-
-	if depFields, depErr := s.validateDependsOn(ctx, orgSlug, req.Slug, req.DependsOn); depErr != nil {
-		return ValidateCheckResponse{}, depErr
-	} else if len(depFields) > 0 {
-		return ValidateCheckResponse{Valid: false, Fields: depFields}, nil
-	}
-
-	// Advisory only, and evaluated LAST so it can never mask a real error: the
-	// config is valid, we just have reason to think one of its regions cannot
-	// currently do IPv6 (or run a browser).
-	var warnings []base.ValidationErrorField
-	if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
-		warnings = s.regionCapabilityWarnings(ctx, org.UID, req.Type, req.Config, req.Regions)
-	}
-
-	return ValidateCheckResponse{Valid: true, Warnings: warnings}, nil
-}
-
 // validateDependsOn runs the same edge validators (parent existence, self,
 // cross-org, kind, cycle) that the PUT-by-slug path uses, but without
 // touching the DB beyond reads. Returns per-field validation errors when
@@ -671,26 +637,6 @@ func (s *Service) cycleMsg(
 	}
 
 	return ""
-}
-
-// formatValidateError converts a checker.Validate error into a
-// ValidateCheckResponse with one field-level entry. Unknown error shapes
-// fall back to a single generic message under the "config" field rather
-// than propagating a server-side error.
-func (s *Service) formatValidateError(err error) ValidateCheckResponse {
-	resp := ValidateCheckResponse{Valid: false}
-
-	if configErr := checkerdef.IsConfigError(err); configErr != nil {
-		resp.Fields = []base.ValidationErrorField{
-			{Name: configErr.Parameter, Message: configErr.Message},
-		}
-
-		return resp
-	}
-
-	resp.Fields = []base.ValidationErrorField{{Name: configFieldName, Message: err.Error()}}
-
-	return resp
 }
 
 // CheckResponse represents a check in API responses.
@@ -1200,17 +1146,20 @@ func (s *Service) decodeTargetHostCursor(cursor string) (string, string, string,
 
 // CreateCheckRequest represents a request to create a new check.
 type CreateCheckRequest struct {
-	Name          string            `json:"name"`
-	Slug          string            `json:"slug"`
-	Description   string            `json:"description"`
-	CheckGroupUID *string           `json:"checkGroupUid"`
-	Type          string            `json:"type"`
-	Config        map[string]any    `json:"config"`
-	Regions       []string          `json:"regions"`
-	Enabled       *bool             `json:"enabled"`
-	Internal      *bool             `json:"internal,omitempty"`
-	Period        *string           `json:"period"`
-	Labels        map[string]string `json:"labels"`
+	Name          string         `json:"name"`
+	Slug          string         `json:"slug"`
+	Description   string         `json:"description"`
+	CheckGroupUID *string        `json:"checkGroupUid"`
+	Type          string         `json:"type"`
+	Config        map[string]any `json:"config"`
+	Regions       []string       `json:"regions"`
+	Enabled       *bool          `json:"enabled"`
+	// Internal is DECODED ONLY SO IT CAN BE REFUSED (spec 2026-08-27-01).
+	// Any non-nil value — including an explicit `false` — fails the request
+	// with ErrInternalFieldNotWritable. See that error for why.
+	Internal *bool             `json:"internal,omitempty"`
+	Period   *string           `json:"period"`
+	Labels   map[string]string `json:"labels"`
 
 	// RegionSpread is the optional inter-region scheduling offset (spec
 	// 2026-07-20-05), a duration string like the period. Absent/empty = the
@@ -1250,10 +1199,18 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		return CheckResponse{}, ErrOrganizationNotFound
 	}
 
-	// Enforce the MaxChecks quota before doing any work. Internal /
-	// system-created checks (discovery hosts, heartbeats) are exempt.
-	isInternal := req.Internal != nil && *req.Internal
-	if !isInternal && s.entitlements != nil {
+	// `internal` is never writable from a request (spec 2026-08-27-01): it is
+	// what exempts a check from the quota below, so accepting it here would
+	// hand every caller a quota bypass.
+	if req.Internal != nil {
+		return CheckResponse{}, ErrInternalFieldNotWritable
+	}
+
+	// Enforce the MaxChecks quota before doing any work. Nothing reaching this
+	// path can be internal (rejected above), so the quota always applies —
+	// server-created internal checks are written through db.CreateCheck and
+	// never pass here.
+	if s.entitlements != nil {
 		if quotaErr := s.entitlements.CheckCreateAllowed(ctx, org.UID); quotaErr != nil {
 			return CheckResponse{}, quotaErr
 		}
@@ -1277,8 +1234,9 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// Enforce per-type period bounds (spec 2026-07-01-04 D1). Internal
 	// checks and the synthetic sleep type are exempt; an absent period
-	// falls back to the default and needs no validation.
-	if periodErr := validatePeriodForType(req.Type, period, isInternal); periodErr != nil {
+	// falls back to the default and needs no validation. Nothing created
+	// here is internal any more (spec 2026-08-27-01), hence the constant.
+	if periodErr := validatePeriodForType(req.Type, period, false); periodErr != nil {
 		return CheckResponse{}, periodErr
 	}
 
@@ -1292,31 +1250,42 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		}
 	}
 
-	// Uniform per-check timeout cap (spec 2026-07-11-05): applies to every
-	// check type regardless of the checker's own validation.
+	// Resolve regions BEFORE any config work: credential sealing (spec
+	// 2026-07-16-02) keys off the check's private regions, and the tunnel
+	// region rules (spec 2026-07-18-07) are validated against the resolved
+	// set, not the raw request.
+	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+	if err != nil {
+		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
+	}
+
+	// Normalize the config into its canonical stored shape (e.g. HTTP's
+	// username/password → basicAuth fold) before validating it, so the rules
+	// below see exactly what will be persisted.
+	effective := req.Config
+
 	if req.Config != nil {
-		if timeoutErr := validateConfigTimeout(req.Config); timeoutErr != nil {
-			return CheckResponse{}, timeoutErr
+		normalized, normErr := normalizeCheckConfig(req.Type, req.Config)
+		if normErr != nil {
+			return CheckResponse{}, normErr
 		}
 
-		// Uniform per-check address-family rule (spec 2026-08-09-02): rejects an
-		// unknown value, the option on a type that cannot honor it, and the
-		// tunnel × ipVersion combination.
-		if versionErr := validateIPVersionConfig(req.Type, req.Config); versionErr != nil {
-			return CheckResponse{}, versionErr
-		}
+		effective = normalized
+	}
 
-		// Send-mode SMTP reference validation (spec 2026-08-19-04): the
-		// delivery_check_uid reference, org/type, and the instance's
-		// email_inbox requirement.
-		if smtpErr := s.validateSMTPDeliveryConfig(ctx, org.UID, req.Type, req.Config); smtpErr != nil {
-			return CheckResponse{}, smtpErr
-		}
+	// The shared config validators — the uniform timeout cap, the
+	// address-family rule, the tunnel reference rules and the SMTP send-mode
+	// rules. Run from the same list the dry-run validate endpoint reads, so
+	// the form's preview and this enforcement cannot drift.
+	if cfgErr := s.firstConfigValidationError(
+		ctx, org.UID, req.Type, effective, resolvedRegions,
+	); cfgErr != nil {
+		return CheckResponse{}, cfgErr
 	}
 
 	// Send-mode SMTP checks need a period floor so the paired inbox can't be
 	// flooded (spec 2026-08-19-04).
-	if intervalErr := validateSMTPSendInterval(req.Type, req.Config, period); intervalErr != nil {
+	if intervalErr := validateSMTPSendInterval(req.Type, effective, period); intervalErr != nil {
 		return CheckResponse{}, intervalErr
 	}
 
@@ -1357,32 +1326,15 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.Description = &req.Description
 	}
 
-	// Resolve regions BEFORE the config split: credential sealing (spec
-	// 2026-07-16-02) keys off the check's private regions, so the resolved
-	// region set must be on the model when applyEncryption runs.
-	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
-	if err != nil {
-		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
-	}
+	// The resolved region set must be on the model before applyEncryption
+	// runs: credential sealing keys off the check's private regions.
 	check.Regions = resolvedRegions
 
-	// Set config — normalize it into its canonical stored shape (e.g. HTTP's
-	// username/password → basicAuth fold), then split secrets out and encrypt
-	// them under the org DEK (and/or seal them to the private region's agents)
-	// before persisting. Plaintext fallback when no master key.
+	// Split the (already normalized and validated) config's secrets out and
+	// encrypt them under the org DEK — and/or seal them to the private
+	// region's agents — before persisting. Plaintext fallback when no master
+	// key is configured.
 	if req.Config != nil {
-		effective, normErr := normalizeCheckConfig(req.Type, req.Config)
-		if normErr != nil {
-			return CheckResponse{}, normErr
-		}
-
-		// A `tunnelCheckUid` reference is validated against the referenced SSH
-		// check (existence, type, fingerprint, no chaining) — the checker's own
-		// Validate cannot do this: it never touches the database.
-		if tunnelErr := s.validateTunnelConfig(ctx, org.UID, req.Type, effective, check.Regions); tunnelErr != nil {
-			return CheckResponse{}, tunnelErr
-		}
-
 		if encErr := s.applyEncryption(ctx, check, effective); encErr != nil {
 			return CheckResponse{}, encErr
 		}
@@ -1393,10 +1345,9 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.Enabled = *req.Enabled
 	}
 
-	// Set internal flag
-	if req.Internal != nil {
-		check.Internal = *req.Internal
-	}
+	// No internal flag to set: a request carrying one was refused at the top
+	// of this function (spec 2026-08-27-01), so every check created here is a
+	// normal, fully metered customer check.
 
 	// Set period (default is 1 minute from NewCheck)
 	if req.Period != nil && *req.Period != "" {
@@ -1588,16 +1539,18 @@ func (s *Service) GetCheck(
 
 // UpdateCheckRequest represents a request to update a check.
 type UpdateCheckRequest struct {
-	Name          *string            `json:"name,omitempty"`
-	Slug          *string            `json:"slug,omitempty"`
-	Description   *string            `json:"description,omitempty"`
-	CheckGroupUID *string            `json:"checkGroupUid"`
-	Config        *map[string]any    `json:"config,omitempty"`
-	Regions       *[]string          `json:"regions,omitempty"`
-	Enabled       *bool              `json:"enabled,omitempty"`
-	Internal      *bool              `json:"internal,omitempty"`
-	Period        *string            `json:"period,omitempty"`
-	Labels        *map[string]string `json:"labels,omitempty"`
+	Name          *string         `json:"name,omitempty"`
+	Slug          *string         `json:"slug,omitempty"`
+	Description   *string         `json:"description,omitempty"`
+	CheckGroupUID *string         `json:"checkGroupUid"`
+	Config        *map[string]any `json:"config,omitempty"`
+	Regions       *[]string       `json:"regions,omitempty"`
+	Enabled       *bool           `json:"enabled,omitempty"`
+	// Internal is decoded only so it can be refused — see
+	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
+	Internal *bool              `json:"internal,omitempty"`
+	Period   *string            `json:"period,omitempty"`
+	Labels   *map[string]string `json:"labels,omitempty"`
 
 	// RegionSpread is the optional inter-region scheduling offset override
 	// (spec 2026-07-20-05). A duration string sets it; an explicit empty
@@ -1636,16 +1589,18 @@ type UpdateCheckRequest struct {
 // to a non-nil zero-length slice — wipe all edges for this check), and
 // non-empty (set the edges to exactly this list).
 type UpsertCheckRequest struct {
-	Name          string            `json:"name"`
-	Description   string            `json:"description"`
-	CheckGroupUID *string           `json:"checkGroupUid"`
-	Type          string            `json:"type"`
-	Config        map[string]any    `json:"config"`
-	Regions       []string          `json:"regions,omitempty"`
-	Enabled       *bool             `json:"enabled"`
-	Internal      *bool             `json:"internal,omitempty"`
-	Period        *string           `json:"period"`
-	Labels        map[string]string `json:"labels"`
+	Name          string         `json:"name"`
+	Description   string         `json:"description"`
+	CheckGroupUID *string        `json:"checkGroupUid"`
+	Type          string         `json:"type"`
+	Config        map[string]any `json:"config"`
+	Regions       []string       `json:"regions,omitempty"`
+	Enabled       *bool          `json:"enabled"`
+	// Internal is decoded only so it can be refused — see
+	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
+	Internal *bool             `json:"internal,omitempty"`
+	Period   *string           `json:"period"`
+	Labels   map[string]string `json:"labels"`
 
 	// Wall-clock incident-tracking periods (seconds), per spec
 	// 2026-05-08-02. 0 means "open / resolve immediately on first signal".
@@ -1672,6 +1627,13 @@ type UpsertCheckRequest struct {
 func (s *Service) UpdateCheck(
 	ctx context.Context, orgSlug, identifier string, req *UpdateCheckRequest,
 ) (CheckResponse, error) {
+	// `internal` is not writable, on update no more than on create (spec
+	// 2026-08-27-01): flipping it on would un-meter an existing check, and
+	// flipping it off would re-meter a plumbing check the server owns.
+	if req.Internal != nil {
+		return CheckResponse{}, ErrInternalFieldNotWritable
+	}
+
 	// Get organization by slug
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -1750,9 +1712,6 @@ func (s *Service) UpdateCheck(
 	if req.Enabled != nil {
 		update.Enabled = req.Enabled
 	}
-	if req.Internal != nil {
-		update.Internal = req.Internal
-	}
 	if req.Period != nil {
 		var duration timeutils.Duration
 		if errScan := duration.Scan(*req.Period); errScan != nil {
@@ -1760,13 +1719,10 @@ func (s *Service) UpdateCheck(
 		}
 		// Enforce per-type period bounds on the new value (spec
 		// 2026-07-01-04 D1) — existing rows are grandfathered until the
-		// next write to the period. The effective internal flag accounts
-		// for the same PATCH toggling it; the type cannot change on PATCH.
-		internal := check.Internal
-		if req.Internal != nil {
-			internal = *req.Internal
-		}
-		if periodErr := validatePeriodForType(check.Type, time.Duration(duration), internal); periodErr != nil {
+		// next write to the period. The internal flag comes from the stored
+		// row: a PATCH can no longer toggle it (spec 2026-08-27-01), and the
+		// type cannot change on PATCH either.
+		if periodErr := validatePeriodForType(check.Type, time.Duration(duration), check.Internal); periodErr != nil {
 			return CheckResponse{}, periodErr
 		}
 		update.Period = &duration
@@ -1962,6 +1918,14 @@ func (s *Service) RotateHeartbeatToken(ctx context.Context, orgSlug, identifier 
 func (s *Service) UpsertCheck(
 	ctx context.Context, orgSlug, slug string, req *UpsertCheckRequest,
 ) (CheckResponse, bool, error) {
+	// Same refusal as create/update — PUT-by-slug is the third door into the
+	// same write (spec 2026-08-27-01). Checked here rather than only in the
+	// branches below so an upsert that would UPDATE fails identically to one
+	// that would CREATE.
+	if req.Internal != nil {
+		return CheckResponse{}, false, ErrInternalFieldNotWritable
+	}
+
 	// Get organization by slug
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -1977,12 +1941,13 @@ func (s *Service) UpsertCheck(
 	if existingCheck != nil {
 		// Check exists - update it
 		updateReq := UpdateCheckRequest{
-			Name:                      &req.Name,
-			Description:               &req.Description,
-			CheckGroupUID:             req.CheckGroupUID,
-			Config:                    &req.Config,
-			Enabled:                   req.Enabled,
-			Internal:                  req.Internal,
+			Name:          &req.Name,
+			Description:   &req.Description,
+			CheckGroupUID: req.CheckGroupUID,
+			Config:        &req.Config,
+			Enabled:       req.Enabled,
+			// Internal is deliberately NOT forwarded: it was refused above,
+			// so it is always nil here (spec 2026-08-27-01).
 			Period:                    req.Period,
 			Labels:                    &req.Labels,
 			ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
@@ -2011,15 +1976,15 @@ func (s *Service) UpsertCheck(
 
 	// Check doesn't exist - create it
 	createReq := CreateCheckRequest{
-		Name:                      req.Name,
-		Slug:                      slug,
-		Description:               req.Description,
-		CheckGroupUID:             req.CheckGroupUID,
-		Type:                      req.Type,
-		Config:                    req.Config,
-		Regions:                   req.Regions,
-		Enabled:                   req.Enabled,
-		Internal:                  req.Internal,
+		Name:          req.Name,
+		Slug:          slug,
+		Description:   req.Description,
+		CheckGroupUID: req.CheckGroupUID,
+		Type:          req.Type,
+		Config:        req.Config,
+		Regions:       req.Regions,
+		Enabled:       req.Enabled,
+		// Internal is deliberately NOT forwarded (spec 2026-08-27-01).
 		Period:                    req.Period,
 		Labels:                    req.Labels,
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
@@ -3719,6 +3684,43 @@ func (s *Service) assertEdgeNoCycle(ctx context.Context, orgUID, parentUID, chil
 	return nil
 }
 
+// validateImportedCheck rejects a document entry that cannot be turned into a
+// check at all: missing required fields, an unknown type, or a client reaching
+// for the server-owned `internal` flag. Split out of importSingleCheck so the
+// per-entry contract lives in one readable place.
+func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
+	// Validate required fields
+	if exportedCheck.Slug == "" {
+		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "slug is required"}
+	}
+	if exportedCheck.Type == "" {
+		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "type is required"}
+	}
+	if exportedCheck.Config == nil {
+		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "config is required"}
+	}
+	// A document is client-supplied input like any request body, so `internal`
+	// is refused here too (spec 2026-08-27-01). This server never PRODUCES a
+	// document containing it — ExportChecks lists with the default filter,
+	// which is `internal = FALSE` — so the only way to get here is a
+	// hand-written manifest reaching for the quota exemption.
+	if exportedCheck.Internal {
+		return &ImportError{
+			Index: index, Slug: exportedCheck.Slug,
+			Error: "internal: " + ErrInternalFieldNotWritable.Error(),
+		}
+	}
+
+	// Validate check type
+	if _, ok := registry.GetChecker(checkerdef.CheckType(exportedCheck.Type)); !ok {
+		return &ImportError{
+			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
+		}
+	}
+
+	return nil
+}
+
 // importSingleCheck handles importing a single check.
 // Returns (wasCreated, error). wasCreated is true if a new check was created, false if updated.
 func (s *Service) importSingleCheck(
@@ -3730,22 +3732,8 @@ func (s *Service) importSingleCheck(
 	dryRun bool,
 	groupByName map[string]*models.CheckGroup,
 ) (bool, *ImportError) {
-	// Validate required fields
-	if exportedCheck.Slug == "" {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "slug is required"}
-	}
-	if exportedCheck.Type == "" {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "type is required"}
-	}
-	if exportedCheck.Config == nil {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "config is required"}
-	}
-
-	// Validate check type
-	if _, ok := registry.GetChecker(checkerdef.CheckType(exportedCheck.Type)); !ok {
-		return false, &ImportError{
-			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
-		}
+	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
+		return false, validationErr
 	}
 
 	// Check if slug exists to determine created vs updated
@@ -3780,14 +3768,14 @@ func (s *Service) importSingleCheck(
 	// (check value → document default → absent) by the time the document is
 	// decoded, so a nil pointer here means "use the system default".
 	upsertReq := UpsertCheckRequest{
-		Name:                      exportedCheck.Name,
-		Description:               exportedCheck.Description,
-		CheckGroupUID:             checkGroupUID,
-		Type:                      exportedCheck.Type,
-		Config:                    exportedCheck.Config,
-		Regions:                   exportedCheck.Regions,
-		Enabled:                   &exportedCheck.Enabled,
-		Internal:                  &exportedCheck.Internal,
+		Name:          exportedCheck.Name,
+		Description:   exportedCheck.Description,
+		CheckGroupUID: checkGroupUID,
+		Type:          exportedCheck.Type,
+		Config:        exportedCheck.Config,
+		Regions:       exportedCheck.Regions,
+		Enabled:       &exportedCheck.Enabled,
+		// Internal is never forwarded — refused above (spec 2026-08-27-01).
 		Labels:                    exportedCheck.Labels,
 		ConfirmationPeriodSeconds: exportedCheck.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     exportedCheck.RecoveryPeriodSeconds,
@@ -3865,9 +3853,9 @@ func (s *Service) CloneCheck(
 	clone := s.cloneBuildCheck(org.UID, source, req, finalSlug)
 
 	// Clone bypasses CreateCheck (calls s.db.CreateCheck directly), so the
-	// MaxChecks quota guard must be applied here too. Internal clones are
-	// exempt, mirroring CreateCheck.
-	if !clone.Internal && s.entitlements != nil {
+	// MaxChecks quota guard must be applied here too. Every clone is metered:
+	// cloneBuildCheck never marks one internal (spec 2026-08-27-01).
+	if s.entitlements != nil {
 		if quotaErr := s.entitlements.CheckCreateAllowed(ctx, org.UID); quotaErr != nil {
 			return CheckResponse{}, quotaErr
 		}
@@ -3962,7 +3950,12 @@ func (s *Service) cloneBuildCheck(
 	clone.Config = source.Config
 	clone.Regions = append([]string(nil), source.Regions...)
 	clone.Period = source.Period
-	clone.Internal = source.Internal
+	// A clone is NEVER internal, whatever the source is (spec 2026-08-27-01).
+	// Copying the flag would be the same quota bypass as accepting `internal`
+	// on create, one door further in: an org can see its worker plumbing
+	// checks by slug, and cloning one would mint an unmetered check.
+	// models.NewCheck already leaves Internal false — this comment is the
+	// assignment, deliberately absent.
 	clone.ConfirmationPeriodSeconds = source.ConfirmationPeriodSeconds
 	clone.EscalationThreshold = source.EscalationThreshold
 	clone.RecoveryPeriodSeconds = source.RecoveryPeriodSeconds
@@ -4197,32 +4190,15 @@ func (s *Service) applyConfigUpdate(
 		return normErr
 	}
 
-	// Uniform per-check timeout cap (spec 2026-07-11-05) — validated on
-	// the merged config so a PATCH cannot smuggle in an over-cap value.
-	if timeoutErr := validateConfigTimeout(merged); timeoutErr != nil {
-		return timeoutErr
-	}
-
-	// Same reasoning for the address family: validated on the merged config so a
-	// PATCH cannot smuggle in an invalid value, the option on a type that cannot
-	// honor it, or an ipVersion onto an already-tunneled check.
-	if versionErr := validateIPVersionConfig(check.Type, merged); versionErr != nil {
-		return versionErr
-	}
-
-	// Same reasoning for the tunnel reference: validated on the merged config so
-	// a PATCH cannot smuggle in a dangling / unverified / chained tunnel.
-	if tunnelErr := s.validateTunnelConfig(
+	// The shared config validators — the uniform timeout cap, the
+	// address-family rule, the tunnel reference rules and the SMTP send-mode
+	// rules — all on the MERGED config, so a PATCH cannot smuggle any of them
+	// past the gate. Same list the create path and the dry-run validate
+	// endpoint read.
+	if cfgErr := s.firstConfigValidationError(
 		ctx, check.OrganizationUID, check.Type, merged, check.Regions,
-	); tunnelErr != nil {
-		return tunnelErr
-	}
-
-	// Send-mode SMTP reference validation (spec 2026-08-19-04) — validated on
-	// the merged config so a PATCH cannot smuggle in a dangling reference or
-	// turn on send_email without a valid pairing.
-	if smtpErr := s.validateSMTPDeliveryConfig(ctx, check.OrganizationUID, check.Type, merged); smtpErr != nil {
-		return smtpErr
+	); cfgErr != nil {
+		return cfgErr
 	}
 
 	if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {

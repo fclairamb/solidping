@@ -14,7 +14,8 @@
     "aggregation": "Agrégation",
     "slack": "Slack",
     "analytics": "Analytique",
-    "discord": "Discord"
+    "discord": "Discord",
+    "entitlements": "Droits"
   },
   "aggregation": {
     "title": "Agrégation",
@@ -340,6 +341,93 @@
       "lastError": "Last error",
       "noError": "None",
       "never": "Never"
+    }
+  },
+  "entitlements": {
+    "title": "Droits des organisations",
+    "description": "Modifiez les limites d'une organisation sans attendre un déploiement de la facturation. Une dérogation admin prime tant qu'elle n'est pas explicitement levée.",
+    "search": "Rechercher une organisation…",
+    "empty": "Aucune organisation ne correspond à cette recherche.",
+    "loadError": "Impossible de charger les organisations.",
+    "unlimited": "Illimité",
+    "notSet": "Non défini",
+    "overLimitBadge": "Au-dessus du plafond",
+    "overLimit": "{{demand}} planifiés par minute pour un plafond de {{limit}}",
+    "columns": {
+      "organization": "Organisation",
+      "plan": "Offre",
+      "source": "Source",
+      "maxChecks": "Contrôles",
+      "maxUsers": "Sièges",
+      "maxChecksPerMinute": "Contrôles / min",
+      "override": "Dérogation depuis"
+    },
+    "provenance": {
+      "default": "Valeurs par défaut",
+      "billing": "Facturation : {{plan}}",
+      "billingPlain": "Facturation",
+      "admin": "Dérogation admin depuis {{since}}",
+      "adminPlain": "Dérogation admin",
+      "other": "Source : {{source}}",
+      "orgAdminPlain": "Admin d'organisation",
+      "orgAdmin": "Écriture admin d'organisation depuis {{since}}"
+    },
+    "limits": {
+      "maxChecks": "Contrôles",
+      "maxChecksPerMinute": "Contrôles par minute",
+      "maxUsers": "Sièges",
+      "maxDeportedAgents": "Agents privés",
+      "maxCustomDomains": "Domaines personnalisés",
+      "maxSlos": "SLO",
+      "maxSmsPerMonth": "SMS par mois",
+      "maxCallsPerMonth": "Appels par mois",
+      "maxWhatsappPerMonth": "WhatsApp par mois",
+      "whiteLabel": "Marque blanche"
+    },
+    "whiteLabel": {
+      "default": "Défaut du déploiement",
+      "allowed": "Autorisée",
+      "denied": "Non autorisée"
+    },
+    "detail": {
+      "back": "Retour aux organisations",
+      "limitsTitle": "Limites",
+      "limitsDescription": "Un plafond illimité vaut null côté API — utilisez l'interrupteur plutôt que de vider le champ.",
+      "identityTitle": "Identité de l'offre",
+      "identityDescription": "Affichage seul. Visible sur la page Usage de l'organisation.",
+      "displayName": "Nom affiché",
+      "displayEmoji": "Emoji affiché",
+      "reason": "Motif",
+      "reasonPlaceholder": "Consigné dans le journal d'audit",
+      "save": "Enregistrer la dérogation",
+      "release": "Rendre à la facturation",
+      "auditTitle": "Journal d'audit",
+      "auditEmpty": "Aucune modification de droits enregistrée.",
+      "invalid": "Saisissez un nombre entier, ou basculez le plafond sur illimité.",
+      "loadError": "Impossible de charger les droits de cette organisation.",
+      "unlimitedToggle": "Illimité",
+      "defaultsNote": "Sans enregistrement, cette organisation utilise les valeurs par défaut du déploiement."
+    },
+    "confirmSave": {
+      "title": "Enregistrer une dérogation admin pour {{org}} ?",
+      "body": "Une ligne de type admin sera écrite. Les envois de la facturation pour {{org}} seront acceptés mais ignorés tant que la dérogation subsiste.",
+      "noChanges": "Aucune limite modifiée — seule l'identité de l'offre sera écrite.",
+      "confirm": "Enregistrer"
+    },
+    "confirmRelease": {
+      "title": "Rendre {{org}} à la facturation ?",
+      "body": "L'enregistrement est supprimé. {{org}} revient immédiatement aux valeurs par défaut, et la prochaine synchronisation de facturation écrira ses propres limites.",
+      "confirm": "Rendre"
+    },
+    "saved": "Droits enregistrés pour {{org}}.",
+    "released": "{{org}} rendue à la facturation.",
+    "notReleased": "{{org}} n'avait aucune dérogation admin à lever.",
+    "saveError": "Échec de l'enregistrement des droits.",
+    "audit": {
+      "suppressed": "Envoi de facturation ignoré",
+      "released": "Rendue à la facturation",
+      "admin": "Dérogation admin",
+      "billing": "Synchronisation facturation"
     }
   }
 }

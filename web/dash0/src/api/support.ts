@@ -49,7 +49,17 @@ export interface SupportThread {
   createdAt: string;
   updatedAt: string;
   replyWindow: SupportReplyWindow;
+  /**
+   * Whether a reply can be routed back to THIS thread right now — resolved
+   * server-side per thread from local routing state (a stored Slack connection
+   * for the thread's workspace, a Discord channel id, an SMS sender), never by
+   * calling the provider. A registered adapter is not enough: a Slack workspace
+   * whose app was installed outside SolidPing sends messages we capture and
+   * holds no token we can answer with.
+   */
   canReply: boolean;
+  /** Why `canReply` is false, in operator-facing terms. Absent when it is true. */
+  canReplyReason?: string;
 }
 
 export interface SupportMessage {
@@ -147,6 +157,31 @@ export function useSendSupportReply(uid: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["support-messages", uid] });
       void queryClient.invalidateQueries({ queryKey: ["support-thread", uid] });
+      void queryClient.invalidateQueries({ queryKey: ["support-threads"] });
+    },
+  });
+}
+
+/**
+ * Retry the provider send for an outbound reply whose delivery failed.
+ *
+ * The server re-runs the same pre-flight before sending, so a message queued
+ * against a workspace that has since been connected simply goes, and one that
+ * still has no route is refused with the current reason instead of failing at
+ * the provider again.
+ */
+export function useResendSupportReply(threadUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (messageUid: string) =>
+      apiFetch<SupportMessage>(
+        `/api/v1/support/threads/${threadUid}/messages/${messageUid}/resend`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["support-messages", threadUid] });
+      void queryClient.invalidateQueries({ queryKey: ["support-thread", threadUid] });
       void queryClient.invalidateQueries({ queryKey: ["support-threads"] });
     },
   });

@@ -607,6 +607,29 @@ func (s *Service) ListOrganizationProviders(
 	return providers, err
 }
 
+// CountDanglingOrganizationProviders counts live organization_providers rows
+// pointing at an organization that no longer resolves. Soft-deleting an org
+// does not cascade to its links, so such a row keeps winning the partial unique
+// lookup on (provider_type, provider_id) and blocks every later SSO login and
+// app install for that workspace/guild until it is healed.
+func (s *Service) CountDanglingOrganizationProviders(ctx context.Context) (int, error) {
+	liveOrgs := s.db.NewSelect().
+		Model((*models.Organization)(nil)).
+		Column("uid").
+		Where("deleted_at IS NULL")
+
+	count, err := s.db.NewSelect().
+		Model((*models.OrganizationProvider)(nil)).
+		Where("deleted_at IS NULL").
+		Where("organization_uid NOT IN (?)", liveOrgs).
+		Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 func (s *Service) UpdateOrganizationProvider(
 	ctx context.Context, uid string, update models.OrganizationProviderUpdate,
 ) error {
@@ -5398,6 +5421,89 @@ func (s *Service) GetCheckStatusCounts(
 	return rows, nil
 }
 
+// availabilityAgg is the (success, total) shape both GetOrgAvailability24h
+// tier queries scan into.
+type availabilityAgg struct {
+	Success int64 `bun:"success"`
+	Total   int64 `bun:"total"`
+}
+
+// GetOrgAvailability24h returns the org's combined (success, countable-total)
+// tally over [since, now) (spec 2026-08-26-09) — the query behind the
+// dashboard's "24h Availability" KPI, which the old client-side computation
+// could never produce a real number for (the day bucket it queried never
+// exists for "today").
+//
+// TWO tier-aligned SQL aggregates, mirroring uptimebar's split
+// (uptimebar/window.go) and for the same reason: `results` has exactly two
+// useful indexes and both are PARTIAL (period_type = 'raw' vs. <> 'raw'), so a
+// predicate straddling both tiers forces a full scan. Each half rides its own
+// partial index:
+//
+//   - `hour` rollup rows already encode CountsAsUp into
+//     successful_checks/total_checks (the aggregation job folds warning into
+//     "up" when it writes the bucket), so this tier is a plain SUM.
+//   - `raw` rows are folded with the same predicate as models.RawAvailability
+//     (ExcludedFromAvailability excludes lifecycle markers + abandoned;
+//     CountsAsUp counts up + warning) — done in SQL, not by loading rows into
+//     Go, because an org's trailing 24h of raw data can be the bulk of
+//     everything it has.
+//
+// day/month rollups are deliberately excluded: their period_start granularity
+// (UTC midnight / month start) means a bucket can only start inside a
+// trailing-24h window on the day it is created, and the aggregation job never
+// creates a day row for "today" — it only compacts once the hour-retention
+// window has passed (job_aggregation.go). So day/month rows never carry data
+// for this window; including that tier would only cost a query for nothing.
+//
+// Raw and hour rows in the window are disjoint by construction — the
+// aggregation job deletes the raw rows it rolls up in the same transaction —
+// so summing both tiers never double-counts.
+func (s *Service) GetOrgAvailability24h(
+	ctx context.Context, orgUID string, since, now time.Time,
+) (models.AvailabilityCounts, error) {
+	var hourAgg availabilityAgg
+
+	err := s.db.NewSelect().
+		TableExpr("results").
+		ColumnExpr("COALESCE(SUM(successful_checks), 0) AS success").
+		ColumnExpr("COALESCE(SUM(total_checks), 0) AS total").
+		Where("organization_uid = ?", orgUID).
+		Where("period_type = ?", models.PeriodTypeHour).
+		Where("period_start >= ?", since).
+		Where("period_start < ?", now).
+		Scan(ctx, &hourAgg)
+	if err != nil {
+		return models.AvailabilityCounts{}, fmt.Errorf("get org hour availability: %w", err)
+	}
+
+	var rawAgg availabilityAgg
+
+	err = s.db.NewSelect().
+		TableExpr("results").
+		ColumnExpr(
+			"COALESCE(SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END), 0) AS success",
+			int(models.ResultStatusUp), int(models.ResultStatusWarning),
+		).
+		ColumnExpr(
+			"COALESCE(SUM(CASE WHEN status NOT IN (?, ?, ?) THEN 1 ELSE 0 END), 0) AS total",
+			int(models.ResultStatusCreated), int(models.ResultStatusRunning), int(models.ResultStatusAbandoned),
+		).
+		Where("organization_uid = ?", orgUID).
+		Where("period_type = ?", models.PeriodTypeRaw).
+		Where("period_start >= ?", since).
+		Where("period_start < ?", now).
+		Scan(ctx, &rawAgg)
+	if err != nil {
+		return models.AvailabilityCounts{}, fmt.Errorf("get org raw availability: %w", err)
+	}
+
+	return models.AvailabilityCounts{
+		Success: hourAgg.Success + rawAgg.Success,
+		Total:   hourAgg.Total + rawAgg.Total,
+	}, nil
+}
+
 // ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
 // member checks — deliberately the same member predicate as
 // GetCheckGroupStatusCounts so a group's rolled-up status and its aggregated
@@ -6009,6 +6115,38 @@ func (s *Service) UpsertOrgEntitlements(
 	})
 }
 
+// CreateOrgEntitlementAudit inserts a standalone audit row (no entitlements
+// write). Used by the suppression path, where the record exists precisely
+// because the stored row did not change.
+func (s *Service) CreateOrgEntitlementAudit(
+	ctx context.Context, audit *models.OrgEntitlementAudit,
+) error {
+	_, err := s.db.NewInsert().Model(audit).Exec(ctx)
+
+	return err
+}
+
+// DeleteOrgEntitlements drops an org's entitlements row and records the audit
+// in the same tx.
+func (s *Service) DeleteOrgEntitlements(
+	ctx context.Context, orgUID string, audit *models.OrgEntitlementAudit,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewDelete().
+			Model((*models.OrgEntitlements)(nil)).
+			Where("organization_uid = ?", orgUID).
+			Exec(ctx); err != nil {
+			return err
+		}
+
+		if _, err := tx.NewInsert().Model(audit).Exec(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
 // ListOrgEntitlementAudits returns audit rows for an org, newest first.
 func (s *Service) ListOrgEntitlementAudits(
 	ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
@@ -6051,16 +6189,16 @@ func (s *Service) CountMembersForOrg(ctx context.Context, orgUID string) (int, e
 	return count, err
 }
 
-// ListOrgCheckRates returns (enabled, period) for all non-deleted,
-// non-internal checks of the given org. Used by the entitlements service
-// to compute usage stats and enforce MaxChecks. No SQL arithmetic — the
-// per-minute rate is summed in Go.
+// ListOrgCheckRates returns (uid, enabled, period, regions, type) for all
+// non-deleted, non-internal checks of the given org. Used by the entitlements
+// service to compute usage stats and enforce MaxChecks. No SQL arithmetic —
+// the per-minute rate is summed in Go.
 func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]models.CheckRate, error) {
 	var rates []models.CheckRate
 
 	err := s.db.NewSelect().
 		Model((*models.Check)(nil)).
-		Column("enabled", "period", "regions").
+		Column("uid", "enabled", "period", "regions", "type").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).

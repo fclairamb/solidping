@@ -40,6 +40,8 @@
     "allGreen": "Todos los sistemas operativos",
     "allGreenSub_one": "{{count}} comprobación monitoreada, {{availability}}% de disponibilidad en 24h",
     "allGreenSub_other": "{{count}} comprobaciones monitoreadas, {{availability}}% de disponibilidad en 24h",
+    "allGreenSubNoData_one": "{{count}} comprobación monitoreada, aún sin datos de disponibilidad",
+    "allGreenSubNoData_other": "{{count}} comprobaciones monitoreadas, aún sin datos de disponibilidad",
     "issues": "Problemas detectados",
     "issuesSub_zero": "Sin incidentes activos",
     "issuesSub_one": "{{down}} comprobación caída, {{incidents}} incidentes activos",
@@ -53,7 +55,14 @@
     "down": "Caídas actualmente",
     "downSubNone": "Todas activas",
     "incidents": "Incidentes activos",
-    "incidentsSubNone": "Ninguno activo"
+    "incidentsSubNone": "Ninguno activo",
+    "availabilityBadge": {
+      "noData": "Sin datos",
+      "operational": "Operativo",
+      "degraded": "Degradado",
+      "down": "Caído"
+    },
+    "availabilityNoDataSub": "Sin datos aún"
   },
   "glance": {
     "title": "Comprobaciones de un vistazo",

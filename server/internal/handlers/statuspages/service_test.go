@@ -768,7 +768,8 @@ func TestBuildResponseTimeSeries_GroupsAndSortsByRegion(t *testing.T) {
 		"":    {mkResult(nil, 1)},
 	}
 
-	series := buildResponseTimeSeries(byRegion)
+	series := buildResponseTimeSeries(
+		byRegion, models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded)
 	r.Len(series, 3, "one series per region key")
 
 	// Sorted order: "" < "eu2" < "us1".
@@ -784,8 +785,11 @@ func TestBuildResponseTimeSeries_GroupsAndSortsByRegion(t *testing.T) {
 	r.Len(series[2].Points, 2)
 
 	// Empty input yields no series at all (not a slice of zero-length groups).
-	r.Nil(buildResponseTimeSeries(nil))
-	r.Nil(buildResponseTimeSeries(map[string][]*models.Result{}))
+	r.Nil(buildResponseTimeSeries(
+		nil, models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded))
+	r.Nil(buildResponseTimeSeries(
+		map[string][]*models.Result{},
+		models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded))
 
 	// A region group with no real duration signal (e.g. the check-creation
 	// "created" lifecycle marker on its own) is dropped entirely — it must
@@ -794,7 +798,10 @@ func TestBuildResponseTimeSeries_GroupsAndSortsByRegion(t *testing.T) {
 	markerOnly := map[string][]*models.Result{
 		"": {{UID: "marker", CheckUID: "check-1", PeriodStart: time.Now(), Status: &created}},
 	}
-	r.Nil(buildResponseTimeSeries(markerOnly), "a signal-less region group must not produce a series")
+	r.Nil(buildResponseTimeSeries(
+		markerOnly,
+		models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded),
+		"a signal-less region group must not produce a series")
 
 	// But a marker mixed into a group that otherwise has real data is kept —
 	// matching the old single-series behavior, which always tolerated it.
@@ -804,7 +811,8 @@ func TestBuildResponseTimeSeries_GroupsAndSortsByRegion(t *testing.T) {
 			mkResult(nil, 1),
 		},
 	}
-	mixedSeries := buildResponseTimeSeries(mixed)
+	mixedSeries := buildResponseTimeSeries(
+		mixed, models.DefaultAvailabilityThresholdUp, models.DefaultAvailabilityThresholdDegraded)
 	r.Len(mixedSeries, 1)
 	r.Len(mixedSeries[0].Points, 2, "the marker point is kept once the group has real signal")
 }

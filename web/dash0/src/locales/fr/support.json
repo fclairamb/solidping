@@ -10,8 +10,8 @@
   "sections": {
     "active": "Actifs",
     "activeHelp": "Fils ouverts ou en attente auxquels on peut encore répondre.",
-    "expired": "Fenêtre de réponse expirée",
-    "expiredHelp": "Toujours sans réponse, mais le canal n'accepte plus de réponse libre.",
+    "expired": "Sans réponse possible",
+    "expiredHelp": "Toujours sans réponse, et nous ne pouvons pas répondre — la fenêtre de réponse libre est écoulée, ou aucune route ne mène à l'expéditeur.",
     "closed": "Clôturés",
     "closedHelp": "Traités. Purgés après la période de rétention."
   },
@@ -38,7 +38,8 @@
     "open": "Fenêtre de réponse ouverte",
     "expired": "Fenêtre de réponse fermée",
     "expiresAt": "Réponses libres possibles jusqu'à {{time}}",
-    "costsMoney": "Chaque réponse est facturée"
+    "costsMoney": "Chaque réponse est facturée",
+    "cannotReply": "Réponse impossible sur ce fil"
   },
   "reply": {
     "placeholder": "Écrire une réponse…",
@@ -46,8 +47,12 @@
     "sending": "Envoi…",
     "sent": "Réponse envoyée",
     "failed": "Impossible d'envoyer la réponse",
-    "disabledNoAdapter": "Ce canal n'a pas d'adaptateur de réponse sur cette instance.",
-    "costWarning": "Ce canal est facturé par segment. Les réponses passent par les mêmes garde-fous de dépense que les alertes."
+    "disabledNoRoute": "Impossible de répondre à ce fil depuis ici.",
+    "costWarning": "Ce canal est facturé par segment. Les réponses passent par les mêmes garde-fous de dépense que les alertes.",
+    "resend": "Renvoyer",
+    "resending": "Renvoi…",
+    "resent": "Réponse renvoyée",
+    "resendFailed": "Impossible de renvoyer la réponse"
   },
   "actions": {
     "markPending": "Marquer en attente",

@@ -165,12 +165,17 @@ function SupportInbox() {
 }
 
 /**
- * "Active / expired" is the REPLY WINDOW, not the thread status — two
+ * "Active / unanswerable" is ANSWERABILITY, not the thread status — two
  * independent axes, and conflating them produces a confusing UI. A thread can be
- * open (the customer's question is unanswered) and expired (WhatsApp will no
- * longer accept a free-form reply); that combination is precisely the state an
- * operator most needs to see, so it gets its own section rather than being
- * mixed in with the answerable ones.
+ * open (the customer's question is unanswered) and unanswerable; that
+ * combination is precisely the state an operator most needs to see, so it gets
+ * its own section rather than being mixed in with the answerable ones.
+ *
+ * Unanswerable has two causes, and both belong in that section: a lapsed
+ * free-form window (WhatsApp), and no route back to the conversation at all —
+ * a Slack workspace with no stored connection, a thread with no channel id, an
+ * org with no SMS sender (spec 2026-08-27-03). Leaving a routeless thread in
+ * "Active" would advertise as answerable the exact threads that are not.
  */
 function splitThreads(threads: SupportThread[]) {
   const active: SupportThread[] = [];
@@ -180,7 +185,7 @@ function splitThreads(threads: SupportThread[]) {
   for (const thread of threads) {
     if (thread.status === "closed") {
       closed.push(thread);
-    } else if (thread.replyWindow.open) {
+    } else if (thread.canReply && thread.replyWindow.open) {
       active.push(thread);
     } else {
       expired.push(thread);

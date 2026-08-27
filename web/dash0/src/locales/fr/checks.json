@@ -236,7 +236,9 @@
     "tracerouteInherit": "Hériter du réglage de l'organisation",
     "tracerouteOn": "Toujours capturer",
     "tracerouteOff": "Ne jamais capturer",
-    "tracerouteOnFailureHelp": "Quand ce check tombe parce que la cible n'a pas pu être JOINTE (timeout de connexion, refus, perte ICMP, blocage du handshake TLS), capturer un traceroute façon MTR et l'attacher à l'incident. Les échecs applicatifs — HTTP 5xx, mot-clé absent, certificat qui expire — n'en déclenchent jamais : le serveur a répondu, donc le chemin est bon."
+    "tracerouteOnFailureHelp": "Quand ce check tombe parce que la cible n'a pas pu être JOINTE (timeout de connexion, refus, perte ICMP, blocage du handshake TLS), capturer un traceroute façon MTR et l'attacher à l'incident. Les échecs applicatifs — HTTP 5xx, mot-clé absent, certificat qui expire — n'en déclenchent jamais : le serveur a répondu, donc le chemin est bon.",
+    "customPeriod": "{{period}} (personnalisé)",
+    "reviewScheduling": "Revoir la planification des checks"
   },
   "types": {
     "http": "HTTP",
@@ -572,7 +574,19 @@
     "toast.copied": "Copié dans le presse-papiers",
     "toast.slugUpdated": "Identifiant mis à jour",
     "toast.slugUpdateFailed": "Échec de la mise à jour de l'identifiant",
-    "toast.deleteFailed": "Échec de la suppression du contrôle"
+    "toast.deleteFailed": "Échec de la suppression du contrôle",
+    "availabilityStrip": {
+      "loading": "Disponibilité…",
+      "windowAvailability": "{{pct}} de disponibilité",
+      "noData": "Aucune donnée",
+      "probes": "{{up}} / {{total}} sondes OK",
+      "status": {
+        "up": "OK",
+        "degraded": "Dégradé",
+        "down": "Hors service",
+        "noData": "Aucune donnée"
+      }
+    }
   },
   "endpoints": {
     "heartbeat": {
@@ -613,5 +627,63 @@
   "failed": "Échoué",
   "secretHeaders": "En-têtes secrets",
   "secretHeadersDescription": "Valeurs d'en-têtes stockées chiffrées — utilisez pour les clés API et les tokens Bearer.",
-  "addSecretHeader": "Ajouter un en-tête secret"
+  "addSecretHeader": "Ajouter un en-tête secret",
+  "scheduling": {
+    "title": "Planification des vérifications",
+    "subtitle": "Voyez d'où vient votre demande d'exécutions par minute, puis espacez ou désactivez des vérifications jusqu'à ce qu'elle rentre dans votre offre.",
+    "backToChecks": "Retour aux vérifications",
+    "autoRebalance": "Rééquilibrage automatique",
+    "apply": "Appliquer les modifications",
+    "reset": "Réinitialiser",
+    "pending_one": "{{count}} modification en attente",
+    "pending_other": "{{count}} modifications en attente",
+    "proposed": "proposé",
+    "customPeriod": "{{period}} (personnalisé)",
+    "proposalSummary_one": "{{count}} nouvelle période proposée : {{before}} → {{after}} exécutions/min pour un plafond de {{limit}}.",
+    "proposalSummary_other": "{{count}} nouvelles périodes proposées : {{before}} → {{after}} exécutions/min pour un plafond de {{limit}}.",
+    "rebalanceExhausted": "Toutes les vérifications sont déjà à leur période maximale et la demande dépasse encore le plafond. Désactivez des vérifications ou changez d'offre.",
+    "passiveNote_one": "{{count}} vérification passive (heartbeat ou email) n'est pas listée : elle est déclenchée par un signal entrant et ne consomme donc jamais de budget d'exécution.",
+    "passiveNote_other": "{{count}} vérifications passives (heartbeat ou email) ne sont pas listées : elles sont déclenchées par un signal entrant et ne consomment donc jamais de budget d'exécution.",
+    "meter": {
+      "label": "Exécutions par minute",
+      "hint": "Chaque région sélectionnée exécute la vérification à la période complète : une vérification dans trois régions coûte donc trois fois plus.",
+      "overHint": "Votre organisation dépasse son plafond — certaines exécutions sont ignorées.",
+      "unlimited": "illimité",
+      "unlimitedHint": "Votre offre n'impose aucun plafond d'exécutions par minute."
+    },
+    "table": {
+      "check": "Vérification",
+      "type": "Type",
+      "period": "Période",
+      "contribution": "Par minute",
+      "enabled": "Activée",
+      "periodFor": "Période de {{name}}",
+      "enabledFor": "Activation de {{name}}",
+      "regionCount_one": "{{count}} région",
+      "regionCount_other": "{{count}} régions",
+      "perMinuteShort": "{{rate}}/min"
+    },
+    "periodUnit": {
+      "seconds_one": "{{count}} seconde",
+      "seconds_other": "{{count}} secondes",
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} heure",
+      "hours_other": "{{count}} heures",
+      "days_one": "{{count}} jour",
+      "days_other": "{{count}} jours",
+      "weeks_one": "{{count}} semaine",
+      "weeks_other": "{{count}} semaines"
+    },
+    "empty": {
+      "title": "Aucune vérification active",
+      "hint": "Seules les vérifications actives consomment du budget d'exécution — créez-en une pour la voir ici."
+    },
+    "toast": {
+      "applied_one": "{{count}} vérification mise à jour.",
+      "applied_other": "{{count}} vérifications mises à jour.",
+      "partial": "{{applied}} mise(s) à jour, mais {{failed}} en échec : {{names}}",
+      "failed": "Impossible d'appliquer les modifications de planification."
+    }
+  }
 }

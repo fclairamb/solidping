@@ -31,6 +31,12 @@ export function statusFieldKey(index: number): string {
 export interface CombinedRow {
   time: string;
   status?: string;
+  /** Probes counted as up across every region contributing to this slot, and
+   * the countable total. SUMMED, never averaged as percentages — a region that
+   * reported sixty probes must weigh sixty times one that reported one (the
+   * server applies the same rule when it buckets "all regions"). */
+  availUp?: number;
+  availTotal?: number;
   [field: string]: string | number | null | undefined;
 }
 
@@ -129,6 +135,14 @@ export function buildCombinedRows(series: ResponseTimeSeries[]): CombinedRow[] {
     const row = current as CombinedRow;
     row[pointKey(sample.index)] = sample.point.durationP95 ?? null;
     row[statusFieldKey(sample.index)] = sample.point.status;
+    // Availability sums across the regions that actually reported in this slot.
+    // A point with no countable probe (a lifecycle marker, an abandoned
+    // attempt) carries no counts and therefore contributes nothing — which is
+    // not the same as contributing zero.
+    if (sample.point.totalChecks) {
+      row.availUp = (row.availUp ?? 0) + (sample.point.successfulChecks ?? 0);
+      row.availTotal = (row.availTotal ?? 0) + sample.point.totalChecks;
+    }
     filled.add(sample.index);
   }
 

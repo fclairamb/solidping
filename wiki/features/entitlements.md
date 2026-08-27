@@ -30,7 +30,7 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 |---|---|---|
 | `maxChecks` | Non-internal, non-deleted checks the org may hold. | `CheckCreateAllowed` → [`checks/service.go:946,3062`](../../server/internal/handlers/checks/service.go) |
 | `maxUsers` | Total org members, however they joined. | `CheckMembership` → [`auth/service.go:413`](../../server/internal/handlers/auth/service.go) |
-| `maxChecksPerMinute` | Aggregate check-execution rate (token bucket). | `ReserveCheckExecution` → [`checkworker/worker.go:877`](../../server/internal/checkworker/worker.go), [`agentws/handler.go:502`](../../server/internal/handlers/agentws/handler.go) |
+| `maxChecksPerMinute` | Per-process check-execution rate (token bucket). Internal checks are exempt. | `ReserveCheckExecution` → [`checkworker/worker.go`](../../server/internal/checkworker/worker.go) (`applyRateLimitGate`), [`agentws/handler.go`](../../server/internal/handlers/agentws/handler.go) (`handleClaim`) |
 | `maxDeportedAgents` | Active deported (private-location) agents across all private regions. | `AgentCreateAllowed` → [`agents/service.go` (`MintEnrollmentToken`)](../../server/internal/handlers/agents/service.go), [`agentws/handler.go` (`awaitEnroll`)](../../server/internal/handlers/agentws/handler.go) |
 | `maxCustomDomains` | Status pages served on a customer-owned domain. | `CustomDomainAllowed` → [`entitlements/usage.go:144`](../../server/internal/entitlements/usage.go), called from [`statuspages/custom_domain.go:208-212`](../../server/internal/handlers/statuspages/custom_domain.go) |
 | `maxSmsPerMonth` | Outbound SMS sent by the org per UTC calendar month. | notification dispatch (SMS channel) |
@@ -38,6 +38,42 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 | `maxWhatsappPerMonth` | Outbound WhatsApp template messages per UTC calendar month. | notification dispatch (WhatsApp channel) |
 | `maxSlos` | Service-level objectives the org may hold. | `SloCreateAllowed` → [`entitlements/usage.go`](../../server/internal/entitlements/usage.go), called from [`slos/service.go` (`CreateSLO`)](../../server/internal/handlers/slos/service.go) |
 | `whiteLabel` | **Boolean, not a cap.** Whether the org may drop the "powered by SolidPing" badge from its status pages (spec 2026-08-21-07). | `WhiteLabelAllowed` → [`entitlements/service.go`](../../server/internal/entitlements/service.go), called from [`statuspages/service.go`](../../server/internal/handlers/statuspages/service.go) |
+
+**An internal check counts nowhere, in all three systems** (spec
+`2026-08-27-01`). `internal` marks server-created plumbing — the worker
+self-stat checks written straight through `db.CreateCheck`, never through the
+checks service — and it is not a writable request field on any path: create,
+update, upsert and import/apply all refuse it with a `VALIDATION_ERROR`, and a
+clone never inherits it. In exchange, the three accounting systems agree about
+it: it is excluded from `maxChecks` (`ListOrgCheckRates` filters
+`internal = FALSE`), absent from the checks-per-minute **demand** figure (same
+filter), and — since this spec — exempt from both **rate gates**, so it draws no
+token and never ticks the `check_rate_limited` skip counter. Before that last
+piece, an internal check was unmetered by the quota, invisible to the predicted
+demand, and yet competing for the org's real per-minute budget: the predictive
+number and the factual skip counter could describe different fleets for the same
+org. Both gates read the flag off the check row attached at claim time
+(`checkjobsvc.attachChecks`) — there is no `internal` column on `check_jobs`.
+
+*Upgrade note — check for residue, no migration ships.* Any check an org
+created with `internal: true` BEFORE that spec is still exempt from `maxChecks`,
+and nothing in the code can tell it apart from a server-created one after the
+fact — except by slug, since the two legitimate creators use reserved prefixes:
+
+```sql
+SELECT o.slug AS org, c.slug, c.type, c.enabled, c.created_at
+FROM checks c JOIN organizations o ON o.uid = c.organization_uid
+WHERE c.internal = TRUE
+  AND c.deleted_at IS NULL
+  AND c.slug NOT LIKE 'int-checks-%'
+  AND c.slug NOT LIKE 'int-jobs-%';
+```
+
+Expected: zero rows. If an install has some, clear the flag on those UIDs
+(`UPDATE checks SET internal = FALSE WHERE uid IN (…)`) — after which they count
+against `maxChecks` like any other check, which is the point. Deliberately not
+automated: silently re-metering a customer's checks mid-migration is a
+billing-visible change an operator should make on purpose.
 
 `whiteLabel` is the one non-numeric entitlement, and its `nil` means something
 different from every field above it: **`nil` = "use the deployment default"**,
@@ -70,6 +106,25 @@ Note the enforcement path covers **deported agents** as well as in-cluster
 workers: `agentws` reserves rate-limit tokens on the agent dispatch path too, so
 a private location cannot be used to bypass `maxChecksPerMinute`. See
 [deported-agents.md](deported-agents.md).
+
+`maxChecksPerMinute` has two properties worth knowing before reading a graph
+(spec `2026-08-26-02`):
+
+- **The bucket is per process, not per fleet.** `Service.limiterFor` keeps it
+  in memory, so an org whose checks run in R regions has R independent buckets
+  and can sustain up to `cap × R` executions per minute, even though the field
+  reads as an aggregate org rate. Deliberate: it errs generous, never stingy,
+  and needs no coordination on the hot path. Making the cap exact means a
+  shared per-org reservation, not a smaller per-process cap.
+- **A turned-away job is deferred, not dropped, and the deficit rotates.** The
+  deferral advances `scheduled_at` but preserves `effective_scheduled_at`
+  (`checkjobsvc.DeferLeaseRateLimited`), so this window's losers are next
+  window's first pick. An over-cap org therefore degrades as "every check runs
+  at roughly cap/demand of its configured rate", not as "half the checks run
+  perfectly and the other half never run" — which is exactly how it failed
+  before, since check phases are a stable hash of the check UID and never
+  reshuffle on their own. Passive checks (heartbeat, email) make no outbound
+  request and never consume a token.
 
 `maxDeportedAgents` is enforced twice: `MintEnrollmentToken` checks it first
 for early UX (the dashboard can surface an upgrade prompt before the operator
@@ -125,11 +180,30 @@ own, the mode defaults above apply — self-hosted deliberately gets a plain
 composing three things:
 
 1. **Defaults** for the deployment mode.
-2. **The org's stored row** — any non-nil field overrides the default.
+2. **The org's stored row** — merged in one of two modes, see below.
 3. **Live usage**, recomputed on every resolve.
 
 The resolver always merges defaults in first, so external callers never see a
 nil-means-default ambiguity.
+
+### Two merge modes, decided by the row's source
+
+| Row source | nil field means | Why |
+|---|---|---|
+| `billing-service`, `org-admin`, `self-hosted` | **not stated** → the deployment default shows through | Billing pushes a partial plan; everything the SKU is silent about must still get sane numbers. |
+| `admin` (the superadmin editor) | **unlimited** | The editor pre-fills every cap from the resolved values and saves a *complete* row (spec 2026-08-26-06, "whole-row only"), so a nil there is a deliberate statement, not an omission. |
+
+This distinction is load-bearing on SaaS, where **every default is non-nil**.
+Under null-fill, a superadmin who flipped a cap to "Unlimited" would store
+`null`, watch the SaaS default (100 checks, 10/min…) reappear on the way back
+out, and see the toggle silently flip itself off — org still capped, UI
+reporting the number it had just failed to change.
+
+**One exception inside the exception:** `whiteLabel` is a boolean, so its nil
+cannot mean "unbounded". It keeps null-fill semantics in *both* modes — nil
+means "use the deployment default" — otherwise every admin override that only
+touched numbers would silently revoke white-label on a deployment that grants
+it by default.
 
 `Usage` has seven fields:
 
@@ -143,6 +217,45 @@ nil-means-default ambiguity.
 | `whatsappThisMonth` | Outbound WhatsApp template messages in the current UTC month. A persistent counter, not a live count. |
 | `slos` | Live service-level objectives. Enforced against `maxSlos`. |
 
+## The over-limit banner (`checksPerMinute`)
+
+An org that exceeds `maxChecksPerMinute` has its executions silently deferred by
+the rate gate. Until spec 2026-08-26-03 the only traces were an INFO log line
+and the `ChecksRateLimited` Prometheus counter — operator-facing, both of them.
+What the customer saw was unexplained gaps in their results, which reads as "the
+product is broken" (exactly how the 2026-08-26 incident presented).
+
+The GET response therefore carries a `checksPerMinute` object **outside**
+`?with=usage`:
+
+| Field | Meaning |
+|---|---|
+| `demand` | Σ over enabled, non-deleted, non-internal, **non-passive** checks of `max(1, regions) × 60s/period`. |
+| `limit` | Resolved `maxChecksPerMinute`; `null` = unlimited. |
+| `skippedToday` | Executions the gate deferred today (UTC), from `org_usage_counters` (`kind = 'check_rate_limited'`). |
+
+Three decisions worth keeping:
+
+- **Org-level, never per-check.** Once the deferral rotates across the org's
+  checks (spec 2026-08-26-02), a per-check flag lights up almost everywhere and
+  carries no information. Per-check flags/badges were explicitly rejected.
+- **`demand` excludes passive types** (heartbeat, email) while
+  `usage.checksPerMinute` keeps counting them. Passive checks return before the
+  gate (`checkworker/worker.go`), so they consume no execution budget and can
+  never be why an org is throttled. The two figures answer different questions —
+  "what does the gate meter?" versus "what has the org configured?".
+- **`skippedToday` is a daily bucket, not monthly** like the SMS/voice/WhatsApp
+  counters. Monthly would keep the banner lit for weeks after an org came back
+  under its cap. It is written from **both** claim paths — the in-process worker
+  gate and the agent dispatch gate in `handlers/agentws` — because an org
+  running entirely on private locations is throttled by a gate that lives in the
+  server, not in its agents.
+
+`dash0` renders it as an amber warning (`CheckRateLimitBanner`) on the checks
+list and the org Usage page whenever `demand > limit` (predictive) **or**
+`skippedToday > 0` (factual — the org may have just dropped back under its cap
+and still have holes in today's history).
+
 ## Sources
 
 Every row records who wrote it:
@@ -151,8 +264,85 @@ Every row records who wrote it:
 |---|---|---|
 | `default` | Auto-create path when an org first resolves with no row. | no |
 | `self-hosted` | Startup hook establishing local defaults. | no |
-| `admin` | Manual override via PUT/PATCH from an org admin (when admin writes are enabled). | no |
-| `billing-service` | External billing service via service-token auth. | yes |
+| `admin` | **Superadmin override.** Minted only by a superadmin — through the instance editor (`PUT /api/v1/system/entitlements/:org`) or by a superadmin calling the org-scoped route. Resolves whole-row, and **suppresses billing pushes** until released. | no |
+| `org-admin` | Manual write via org-scoped PUT/PATCH from an org admin (when admin writes are enabled). Ordinary null-fill resolution; billing's next reconcile overwrites it. | no |
+| `billing-service` | External billing service via signed (or legacy static-bearer) service auth. | yes |
+
+### Why `admin` and `org-admin` are separate
+
+The source is an **authorization outcome, not a label** — `admin` is what makes
+a row outrank billing — so the server decides it and a request body never gets
+to assert it (`Handler.sourceFor`).
+
+The org-scoped PUT is open to any org admin whenever
+`entitlements.admin_writes_enabled` is unset, since it **defaults to true**; on
+SaaS that parameter is only written when `SP_ENTITLEMENTS_ADMIN_WRITES` is set
+explicitly. Before the precedence rule that door was harmless — billing's next
+reconcile corrected whatever it wrote. If such a write could mint `admin`, it
+would instead be a permanent lockout: any org admin could grant themselves
+limits *and* stop billing from ever correcting them. Hence the split. Both
+sources carry the same paid plan weight, so self-hosted scheduling behaviour is
+unchanged.
+
+**Migration (v0.19.0): legacy `admin` rows are relabelled to `org-admin`.**
+
+Every row that could hold `source = 'admin'` predates the superadmin editor —
+until spec 2026-08-26-06 landed, *every* non-service write got `admin`: org
+admins, self-hosted operators and the CLI alike. Such rows are routinely
+**partial**, because the API has never required a complete payload on `PUT`.
+
+Leaving them would have handed them **both** new powers of `admin`, and the
+second one is the dangerous half:
+
+- they would start suppressing billing pushes, and
+- they would start resolving **whole-row**, so every cap they never mentioned
+  would flip from the deployment default to **unlimited** — on SaaS
+  `maxChecksPerMinute` 10 → ∞ (the very cap this feature exists to manage),
+  `maxUsers` 5 → ∞, `maxSlos` 2 → ∞, and
+  `maxSmsPerMonth`/`maxCallsPerMonth`/`maxWhatsappPerMonth` 0 → ∞, i.e.
+  unbounded spend on the instance's own Twilio/Meta credentials. On
+  self-hosted, where that door is the *normal* one because
+  `entitlements.admin_writes_enabled` defaults to true, `maxUsers` 30 → ∞
+  lifts the seat guard.
+
+That escalation lands on the **first resolve after deploy**, long before any
+operator opens the editor, so a release note would not have been a control.
+Migration `016_v0_19_0` therefore relabels `payload.source` from `admin` to
+`org-admin` in both dialects. It is semantically lossless: by construction
+those rows *were* org-scoped writes, and `org-admin` is the old behaviour under
+a new name.
+
+**What an operator sees.** Nothing changes for a legacy row: same limits, same
+paid plan weight, same null-fill resolution, still overwritten by billing's
+next reconcile. Each relabelled org gains one audit entry (source
+`migration:org-admin-relabel`) explaining the change, visible in the superadmin
+editor. If a row was *meant* to be a genuine override, re-save it from
+**Server → Entitlements** — one click — and it becomes `admin` again, this time
+with the complete payload the whole-row reading assumes.
+
+`org_entitlement_audits.source` is **not** rewritten by the migration. It is
+the historical log of what each past write claimed, is read for display only,
+and falsifying it to match today's vocabulary would be worse than the
+vocabulary drifting. The audit row the migration inserts is what bridges the
+two.
+
+**Known footgun (pre-existing, deliberately unchanged).** A *trusted service*
+may still name its own source, so the billing service — or anything holding the
+legacy static bearer — can write `source: "admin"` and thereby suppress its own
+future pushes until a superadmin releases the org. No caller does this today;
+the marker comment sits on `Handler.sourceFor` if it ever needs closing.
+
+### Superadmin override lifecycle
+
+1. A superadmin writes limits → row becomes `admin`.
+2. Billing pushes → **200, nothing applied**; the response carries
+   `applied: false` and `suppressedBy: "admin"`, and an audit row is written
+   with source `billing-service:suppressed` carrying the rejected payload.
+   Billing answering 200 is deliberate: it must not error-loop over a decision
+   we made on purpose.
+3. A superadmin releases (`DELETE /api/v1/system/entitlements/:org`) → the row
+   is **deleted** (audited as `admin:released`), the org resolves to the
+   deployment defaults, and the next billing push applies normally.
 
 ## Stale fallback
 

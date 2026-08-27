@@ -947,29 +947,8 @@ func (r *CheckWorker) executeJob(
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrCheckerNotFound, checkType))
 	}
 
-	// Per-org MaxChecksPerMinute gate. Drained buckets reschedule the
-	// job for next period without writing a result, so the user sees
-	// missed executions in their history rather than a hard error. The
-	// entitlements service treats nil caps as unlimited (no-op). In agent
-	// mode there is no in-process entitlements service — the server enforces
-	// the same per-org cap on the agent claim path instead.
-	if entSvc := r.entitlementsService(); entSvc != nil {
-		if rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID); rateErr != nil {
-			var quotaErr *entitlements.QuotaError
-			if errors.As(rateErr, &quotaErr) {
-				prommetrics.ChecksRateLimited.WithLabelValues(checkJob.OrganizationUID).Inc()
-				logger.InfoContext(ctx, "Check execution rate-limited; deferring to next period",
-					"check_uid", checkJob.CheckUID, "limit", quotaErr.Limit)
-				// Release the lease (which reschedules next_run_at) and skip the
-				// outbound probe.
-				return r.releaseLease(ctx, checkJob)
-			}
-			// Anything else is an unexpected resolve failure — log and
-			// fall through so the check still runs (fail-open: better
-			// to occasionally over-execute than to silently halt).
-			logger.WarnContext(ctx, "ReserveCheckExecution failed; running check anyway",
-				"error", rateErr)
-		}
+	if deferred, rateErr := r.applyRateLimitGate(ctx, logger, checkJob); deferred {
+		return rateErr
 	}
 
 	// 4. Execute check with a cost-aware timeout.
@@ -1402,19 +1381,94 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 	return r.backend.SubmitResult(saveCtx, checkJob, r.getWorker().UID, req)
 }
 
-// releaseLease releases the job lease and reschedules for next execution.
-func (r *CheckWorker) releaseLease(ctx context.Context, checkJob *models.CheckJob) error {
+// deferRateLimited releases the job lease and reschedules for the next
+// phase-aligned tick after the per-org rate limiter turned the job away.
+//
+// scheduled_at moves (calculateNextScheduledAt → scheduling.NextAligned, so the
+// deterministic per-check phase of spec 2026-07-20-05 is preserved), but the
+// backend write deliberately leaves effective_scheduled_at where it was: the
+// claim's ORDER BY key keeps receding, so this window's loser is next window's
+// first pick and an over-cap org rotates the deficit (spec 2026-08-26-02).
+// applyRateLimitGate is the per-org MaxChecksPerMinute gate on the in-process
+// worker path. A drained bucket reschedules the job for its next period without
+// writing a result, so the user sees missed executions in their history rather
+// than a hard error. The entitlements service treats nil caps as unlimited
+// (no-op). In agent mode there is no in-process entitlements service — the
+// server enforces the same per-org cap on the agent claim path instead.
+//
+// Passive checks (heartbeat, email) never reach this point: they returned via
+// executePassiveJob earlier, because they make no outbound request and so
+// consume no execution budget. The cap meters probes, not rows.
+//
+// Internal checks ARE turned away here rather than earlier, because unlike a
+// passive check they still execute — they are simply not billed for it (spec
+// 2026-08-27-01): they are exempt from MaxChecks and excluded from the demand
+// figure, so charging them a per-minute token would let server plumbing eat a
+// customer's execution budget and tick their skipped-today counter.
+//
+// Returns deferred=true when the job was turned away (the caller must stop and
+// return err); false means the check may run.
+func (r *CheckWorker) applyRateLimitGate(
+	ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob,
+) (bool, error) {
+	if checkJob.IsInternal() {
+		return false, nil
+	}
+
+	entSvc := r.entitlementsService()
+	if entSvc == nil {
+		return false, nil
+	}
+
+	rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID)
+	if rateErr == nil {
+		return false, nil
+	}
+
+	var quotaErr *entitlements.QuotaError
+	if !errors.As(rateErr, &quotaErr) {
+		// Anything else is an unexpected resolve failure — log and fall through
+		// so the check still runs (fail-open: better to occasionally
+		// over-execute than to silently halt).
+		logger.WarnContext(ctx, "ReserveCheckExecution failed; running check anyway",
+			"error", rateErr)
+
+		return false, nil
+	}
+
+	prommetrics.ChecksRateLimited.WithLabelValues(checkJob.OrganizationUID).Inc()
+
+	// A Prometheus counter and a log line reach the operator, not the customer.
+	// The daily per-org counter is what lets the dashboard tell an over-limit
+	// org why its results have gaps (spec 2026-08-26-03); best-effort, and it
+	// never blocks the deferral.
+	entSvc.RecordRateLimitedSkip(ctx, checkJob.OrganizationUID)
+
+	logger.InfoContext(ctx, "Check execution rate-limited; deferring to next period",
+		"check_uid", checkJob.CheckUID, "limit", quotaErr.Limit)
+
+	// Defer to the next aligned tick without writing a result, and without
+	// re-anchoring the claim ordering key — this window's loser must outrank its
+	// on-time siblings next window, or the same UID-hash phases starve forever
+	// (spec 2026-08-26-02).
+	return true, r.deferRateLimited(ctx, checkJob)
+}
+
+func (r *CheckWorker) deferRateLimited(ctx context.Context, checkJob *models.CheckJob) error {
 	// Parse period and calculate next scheduled time
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
 
-	return r.backend.ReleaseLease(ctx, checkJob, r.getWorker().UID, nextScheduledAt)
+	return r.backend.DeferRateLimited(ctx, checkJob, r.getWorker().UID, nextScheduledAt)
 }
 
 // isPassiveCheckType reports whether a check type is passive — driven by
 // inbound signals (HTTP heartbeats, incoming emails) rather than outbound
 // probes. Passive checks share the same overdue/grace-period logic.
+//
+// Delegates to checkerdef so the entitlements demand computation and this gate
+// can never disagree about what "passive" means.
 func isPassiveCheckType(t checkerdef.CheckType) bool {
-	return t == checkerdef.CheckTypeHeartbeat || t == checkerdef.CheckTypeEmail
+	return t.IsPassive()
 }
 
 // passiveSignalNoun returns the human-readable noun used in result messages

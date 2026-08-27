@@ -204,6 +204,19 @@ const (
 	CheckTypeSleep CheckType = "sleep"
 )
 
+// IsPassive reports whether the check type is passive — driven by an inbound
+// signal (an HTTP heartbeat, an incoming email) rather than by an outbound
+// probe the worker makes.
+//
+// This matters beyond the worker loop: a passive check returns before the
+// per-org MaxChecksPerMinute token gate, so it never consumes execution budget
+// and must be excluded when computing an org's scheduled demand against that
+// cap (spec 2026-08-26-03). Keep this the single definition — a second copy
+// would silently drift the gate and the demand figure apart.
+func (t CheckType) IsPassive() bool {
+	return t == CheckTypeHeartbeat || t == CheckTypeEmail
+}
+
 // Common output and config map keys used across checker implementations.
 const (
 	OutputKeyError      = "error"

@@ -820,17 +820,27 @@ func (s *Service) findOrCreateOrganizationByTeamID(
 ) (*models.Organization, error) {
 	// Primary lookup: check organization_providers table (single source of truth)
 	orgProvider, err := s.db.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, teamID)
-	if err == nil && orgProvider != nil {
-		org, getErr := s.db.GetOrganization(ctx, orgProvider.OrganizationUID)
-		if getErr != nil {
-			return nil, fmt.Errorf("failed to get organization: %w", getErr)
-		}
-
-		return org, nil
-	}
-
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("failed to check organization provider: %w", err)
+	}
+
+	if err == nil && orgProvider != nil {
+		// The dereference goes through the SHARED healer, not a local
+		// GetOrganization: a link left pointing at a soft-deleted org would
+		// otherwise win this lookup on every retry and fail the install
+		// forever, which is exactly what happened in the field
+		// (spec 2026-08-27-02). The helper clears such a link and returns
+		// (nil, nil) so we fall through to the create path below.
+		org, resolveErr := auth.ResolveLinkedOrganization(
+			ctx, s.db, models.ProviderTypeSlack, teamID, orgProvider,
+		)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("failed to get organization: %w", resolveErr)
+		}
+
+		if org != nil {
+			return org, nil
+		}
 	}
 
 	// Create new organization from Slack team
@@ -883,6 +893,25 @@ func (s *Service) findOrCreateUser(
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeSlack, userInfo.Sub)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("failed to check user provider: %w", err)
+	}
+
+	if err == nil && provider != nil {
+		// Same shared healer as the org link above. The user lookup two blocks
+		// up is by EMAIL, so a soft-deleted user yields a freshly created one —
+		// and without this the stale link pointing at the dead user would take
+		// the "already linked" branch and leave that new user with no Slack
+		// identity at all (spec 2026-08-27-02). The helper clears the stale row;
+		// provider == nil then drives the linking below.
+		linked, resolveErr := auth.ResolveLinkedUser(
+			ctx, s.db, models.ProviderTypeSlack, userInfo.Sub, provider,
+		)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("failed to check user provider: %w", resolveErr)
+		}
+
+		if linked == nil {
+			provider = nil
+		}
 	}
 
 	if provider == nil {

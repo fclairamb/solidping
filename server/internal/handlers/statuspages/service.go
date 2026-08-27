@@ -770,6 +770,28 @@ type ResponseTimePoint struct {
 	// Status indicates the check's outcome at this point: "up", "down",
 	// "timeout", "error", or "" when not applicable.
 	Status string `json:"status,omitempty"`
+	// AvailabilityPct is the probe-ratio availability of the slice this point
+	// covers: 100 or 0 for a single raw probe, the rollup's
+	// successful/total × 100 for an aggregated one. Null when the row carries
+	// no countable probe (a lifecycle marker, an abandoned attempt) — no data
+	// is not 100%.
+	//
+	// It exists so the strip under the public response-time chart can be
+	// colored by AVAILABILITY while staying aligned to the chart's own slots:
+	// the point IS the slot, so there is nothing left to align (spec
+	// 2026-08-26-10 phase 2).
+	AvailabilityPct *float64 `json:"availabilityPct,omitempty"`
+	// TotalChecks / SuccessfulChecks are the counts behind AvailabilityPct,
+	// carried so the front end can render "59 / 60 probes up" without doing any
+	// availability math of its own.
+	TotalChecks      int `json:"totalChecks,omitempty"`
+	SuccessfulChecks int `json:"successfulChecks,omitempty"`
+	// AvailabilityStatus is the shared up/degraded/down/noData vocabulary
+	// (uptimebar.Classify) applied to AvailabilityPct with the PAGE's effective
+	// thresholds — the same classifier and the same thresholds as the
+	// availability bar above the chart, so the two can never disagree about the
+	// same numbers. Distinct from Status, which is the probe's own outcome.
+	AvailabilityStatus string `json:"availabilityStatus,omitempty"`
 }
 
 // ResponseTimeSeries is one region's response-time points for a resource.
@@ -2700,7 +2722,8 @@ func buildHourlyAvailabilityData(
 	}
 
 	if showResponseTime {
-		data.ResponseTimeSeries = buildResponseTimeSeries(recentResultsByRegion)
+		data.ResponseTimeSeries = buildResponseTimeSeries(
+			recentResultsByRegion, upThreshold, degradedThreshold)
 	}
 
 	return data
@@ -2758,7 +2781,8 @@ func buildAvailabilityData(
 	}
 
 	if showResponseTime {
-		data.ResponseTimeSeries = buildResponseTimeSeries(recentResultsByRegion)
+		data.ResponseTimeSeries = buildResponseTimeSeries(
+			recentResultsByRegion, upThreshold, degradedThreshold)
 	}
 
 	return data
@@ -2778,7 +2802,9 @@ func buildAvailabilityData(
 // "unknown region" series (and legend entry) for every single-region check. A
 // region group that mixes the marker with real data keeps it, exactly as the
 // old single-series behavior always did.
-func buildResponseTimeSeries(recentResultsByRegion map[string][]*models.Result) []ResponseTimeSeries {
+func buildResponseTimeSeries(
+	recentResultsByRegion map[string][]*models.Result, upThreshold, degradedThreshold float64,
+) []ResponseTimeSeries {
 	if len(recentResultsByRegion) == 0 {
 		return nil
 	}
@@ -2793,7 +2819,7 @@ func buildResponseTimeSeries(recentResultsByRegion map[string][]*models.Result) 
 	series := make([]ResponseTimeSeries, 0, len(regionKeys))
 
 	for _, key := range regionKeys {
-		points := buildResponseTimeData(recentResultsByRegion[key])
+		points := buildResponseTimeData(recentResultsByRegion[key], upThreshold, degradedThreshold)
 		if !responseTimePointsHaveSignal(points) {
 			continue
 		}
@@ -2828,7 +2854,9 @@ func responseTimePointsHaveSignal(points []ResponseTimePoint) bool {
 	return false
 }
 
-func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
+func buildResponseTimeData(
+	recentResults []*models.Result, upThreshold, degradedThreshold float64,
+) []ResponseTimePoint {
 	rtData := make([]ResponseTimePoint, 0, len(recentResults))
 
 	for _, recentResult := range recentResults {
@@ -2844,11 +2872,25 @@ func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
 			statusStr = strings.ToLower(models.StatusToString(*recentResult.Status))
 		}
 
-		rtData = append(rtData, ResponseTimePoint{
-			Time:        recentResult.PeriodStart.UTC().Format(time.RFC3339),
-			DurationP95: duration,
-			Status:      statusStr,
-		})
+		// The canonical fold, never a local status count: lifecycle markers and
+		// abandoned attempts leave both numerator and denominator alone, and
+		// warning counts as up.
+		stats := uptimebar.StatsForResult(recentResult)
+
+		point := ResponseTimePoint{
+			Time:               recentResult.PeriodStart.UTC().Format(time.RFC3339),
+			DurationP95:        duration,
+			Status:             statusStr,
+			TotalChecks:        stats.Total,
+			SuccessfulChecks:   stats.Up,
+			AvailabilityStatus: uptimebar.ClassifyStats(stats, upThreshold, degradedThreshold),
+		}
+
+		if pct, ok := stats.AvailabilityPct(); ok {
+			point.AvailabilityPct = &pct
+		}
+
+		rtData = append(rtData, point)
 	}
 
 	for i, j := 0, len(rtData)-1; i < j; i, j = i+1, j-1 {
@@ -2864,12 +2906,12 @@ func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
 const (
 	// statusNoData is the availability-point status for a bucket that has no
 	// rows in the shared raw+hour+day union — the front end renders it gray.
-	statusNoData    = "noData"
+	statusNoData    = uptimebar.StatusNoData
 	statusCreated   = "created"
-	statusUp        = "up"
+	statusUp        = uptimebar.StatusUp
 	statusWarning   = "warning"
-	statusDegraded  = "degraded"
-	statusDownValue = "down"
+	statusDegraded  = uptimebar.StatusDegraded
+	statusDownValue = uptimebar.StatusDown
 )
 
 // availabilityToStatus classifies a bucket's availability percentage into the
@@ -2884,17 +2926,15 @@ const (
 // fixes the hourly "one failed minute = red hour" cliff without changing
 // percentage-threshold behavior on buckets large enough that one sample can't
 // swing the classification anyway.
+//
+// The rule itself lives in uptimebar.Classify — the same package that owns the
+// counting rules every strip shares — so the status page and the dash0 chart
+// availability strip cannot drift apart on the same numbers. (The badge SVG
+// keeps its own four-tier scale on purpose; see uptimebar.Classify.) This
+// wrapper stays because the local vocabulary constants below are what the rest
+// of this file reads.
 func availabilityToStatus(pct float64, failures int, upThreshold, degradedThreshold float64) string {
-	switch {
-	case pct >= upThreshold:
-		return statusUp
-	case pct >= degradedThreshold:
-		return statusDegraded
-	case failures <= 1:
-		return statusDegraded
-	default:
-		return statusDownValue
-	}
+	return uptimebar.Classify(pct, failures, upThreshold, degradedThreshold)
 }
 
 // --- Helpers ---

@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 build-docs copy-dash copy-dash0 copy-status0 copy-docs \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-scenario test-dash test-dash0 lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
+	test test-scenario test-dash test-dash0 test-docs lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
 	showcase \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -325,6 +325,11 @@ test-dash0: ## Run dash0 unit tests (mirrors the CI step)
 	@echo "Running dash0 unit tests..."
 	@cd $(DASH0_DIR) && bun run test:unit
 	@echo "Dash0 unit tests complete"
+
+test-docs: ## Run docs site unit tests (mirrors the CI step)
+	@echo "Running docs unit tests..."
+	@cd $(DOCS_DIR) && bun run test:unit
+	@echo "Docs unit tests complete"
 
 showcase: ## Regenerate the docs showcase media (screenshots + AV1 video) from the real dash0 UI
 	@echo "Recording showcase media (needs a running SolidPing server)..."

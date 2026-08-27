@@ -34,7 +34,9 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   msteams: Users,
   "msteams-bot": Bot,
   ntfy: Bell,
+  gotify: Bell,
   matrix: MessageSquareText,
+  zulip: Hash,
   pagerduty: Siren,
   pushover: Bell,
   freebox: Router,
@@ -72,8 +74,12 @@ export function integrationLabel(type: ConnectionType): string {
       return "Microsoft Teams (bot)";
     case "ntfy":
       return "ntfy";
+    case "gotify":
+      return "Gotify";
     case "matrix":
       return "Matrix";
+    case "zulip":
+      return "Zulip";
     case "pagerduty":
       return "PagerDuty";
     case "pushover":

@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/oauthstate"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
@@ -407,17 +408,26 @@ func (s *Service) findOrCreateOrganizationByGuildID(
 	ctx context.Context, guildID, guildName string,
 ) (*models.Organization, error) {
 	provider, err := s.db.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeDiscord, guildID)
-	if err == nil && provider != nil {
-		org, getErr := s.db.GetOrganization(ctx, provider.OrganizationUID)
-		if getErr != nil {
-			return nil, fmt.Errorf("failed to get organization: %w", getErr)
-		}
-
-		return org, nil
-	}
-
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("failed to check organization provider: %w", err)
+	}
+
+	if err == nil && provider != nil {
+		// Through the SHARED healer rather than a local GetOrganization: a link
+		// left pointing at a soft-deleted org wins this lookup on every retry,
+		// and the bare dereference behind it used to fail the install forever
+		// (spec 2026-08-27-02, found on the Slack twin of this function). A
+		// cleared link returns (nil, nil) and we create a fresh org below.
+		org, resolveErr := auth.ResolveLinkedOrganization(
+			ctx, s.db, models.ProviderTypeDiscord, guildID, provider,
+		)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("failed to get organization: %w", resolveErr)
+		}
+
+		if org != nil {
+			return org, nil
+		}
 	}
 
 	slug := orgslug.GenerateUnique(ctx, s.db, guildName)
@@ -441,21 +451,37 @@ func (s *Service) findOrCreateOrganizationByGuildID(
 // reporting would then disagree about which org a guild is.
 func (s *Service) linkGuildToOrg(ctx context.Context, orgUID, guildID, guildName string) error {
 	existing, err := s.db.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeDiscord, guildID)
-	if err == nil && existing != nil {
-		if existing.OrganizationUID != orgUID {
-			// Not an error: an org may install the bot into a guild whose home
-			// org is another one (the same "two orgs, one workspace" case Slack
-			// supports). The mapping stays with the first org; this install
-			// still gets its own connection row.
-			slog.InfoContext(ctx, "Discord guild already mapped to another org — keeping the existing mapping",
-				"guild_id", guildID, "home_org_uid", existing.OrganizationUID, "installing_org_uid", orgUID)
-		}
-
-		return nil
-	}
-
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to check organization provider: %w", err)
+	}
+
+	if err == nil && existing != nil {
+		// "Already mapped" only counts when the mapping still points somewhere.
+		// An org-scoped install never goes through findOrCreateOrganizationByGuildID,
+		// so without this heal a link to a soft-deleted org would take the
+		// keep-the-existing-mapping branch below and leave the guild with no
+		// live mapping at all — permanently (spec 2026-08-27-02).
+		home, resolveErr := auth.ResolveLinkedOrganization(
+			ctx, s.db, models.ProviderTypeDiscord, guildID, existing,
+		)
+		if resolveErr != nil {
+			return fmt.Errorf("failed to check organization provider: %w", resolveErr)
+		}
+
+		if home != nil {
+			if existing.OrganizationUID != orgUID {
+				// Not an error: an org may install the bot into a guild whose home
+				// org is another one (the same "two orgs, one workspace" case Slack
+				// supports). The mapping stays with the first org; this install
+				// still gets its own connection row.
+				slog.InfoContext(ctx, "Discord guild already mapped to another org — keeping the existing mapping",
+					"guild_id", guildID, "home_org_uid", existing.OrganizationUID, "installing_org_uid", orgUID)
+			}
+
+			return nil
+		}
+		// Stale link cleared — fall through and map the guild to this install's
+		// org instead.
 	}
 
 	provider := models.NewOrganizationProvider(orgUID, models.ProviderTypeDiscord, guildID)

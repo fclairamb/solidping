@@ -1294,3 +1294,60 @@ func TestClaimJobsForAgentRejectsInvalidScope(t *testing.T) {
 		assert.Len(t, jobs, 1, "a well-formed system scope claims the shared region's job")
 	})
 }
+
+// TestClaimAttachesInternalCheck is the load-bearing assumption of both rate
+// gates (spec 2026-08-27-01): they read internal-ness off the check attached at
+// claim time rather than off a column on check_jobs, which is what let the fix
+// ship without a migration. If attachChecks ever stopped populating Check — or
+// stopped carrying the internal flag — the gates would silently start metering
+// server plumbing again, with nothing else in the suite noticing.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimAttachesInternalCheck(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	r := require.New(t)
+
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	// The server-side creation path: internal, and (unlike production's
+	// disabled plumbing checks) enabled, so a job row exists to claim.
+	check := models.NewCheck(org.UID, "int-checks-claim", "http")
+	check.Internal = true
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
+	r.NoError(err)
+	r.Len(jobs, 1)
+	r.NotNil(jobs[0].Check, "the claim must attach the check row")
+	r.True(jobs[0].Check.Internal)
+	r.True(jobs[0].IsInternal(), "which is exactly what both rate gates ask")
+}
+
+// TestClaimAttachesNonInternalCheck is its positive control: the same claim on
+// an ordinary check reports NOT internal, so IsInternal is reading the flag and
+// not just "a check is attached".
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimAttachesNonInternalCheck(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	r := require.New(t)
+
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+	createTestCheckJob(t, ctx, dbSvc, org.UID, time.Now().Add(-time.Minute), nil)
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+
+	jobs, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
+	r.NoError(err)
+	r.Len(jobs, 1)
+	r.NotNil(jobs[0].Check)
+	r.False(jobs[0].IsInternal())
+}

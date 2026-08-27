@@ -40,6 +40,8 @@
     "allGreen": "All systems operational",
     "allGreenSub_one": "{{count}} check monitored, {{availability}}% uptime over 24h",
     "allGreenSub_other": "{{count}} checks monitored, {{availability}}% uptime over 24h",
+    "allGreenSubNoData_one": "{{count}} check monitored, no uptime data yet",
+    "allGreenSubNoData_other": "{{count}} checks monitored, no uptime data yet",
     "issues": "Issues detected",
     "issuesSub_zero": "No active incidents",
     "issuesSub_one": "{{down}} check down, {{incidents}} active incidents",
@@ -53,7 +55,14 @@
     "down": "Currently down",
     "downSubNone": "All up",
     "incidents": "Active incidents",
-    "incidentsSubNone": "None active"
+    "incidentsSubNone": "None active",
+    "availabilityBadge": {
+      "noData": "No data",
+      "operational": "Operational",
+      "degraded": "Degraded",
+      "down": "Down"
+    },
+    "availabilityNoDataSub": "No data yet"
   },
   "glance": {
     "title": "Checks at a glance",

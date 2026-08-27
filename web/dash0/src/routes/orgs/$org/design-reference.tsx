@@ -72,6 +72,8 @@ import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { PageHeader } from "@/components/shared/page-header";
+import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
+import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
@@ -169,6 +171,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
+import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 import { useDebounce } from "@/lib/use-debounce";
 import { facetedFilterTriggerLabel } from "@/lib/faceted-filter";
@@ -223,6 +226,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
+  { id: "availability-strip", label: "Availability strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
   { id: "maintenance-schedule", label: "Maintenance schedule" },
   { id: "stats-strip", label: "Stats strip" },
@@ -271,6 +275,7 @@ function DesignReferencePage() {
       <TokenChipsInputSection />
       <KpiTileSection />
       <UptimeStripSection />
+      <AvailabilityStripSection />
       <JobsPrimitivesSection />
       <MaintenanceScheduleSection />
       <StatsStripSection />
@@ -500,10 +505,16 @@ function ExampleRow({
   preview: React.ReactNode;
   importLine: string;
 }) {
+  // Both tracks are minmax(0,…) and both children carry min-w-0: a grid item
+  // defaults to min-width:auto, so without this a preview whose intrinsic
+  // min-content is wider than the column (e.g. a max-w-md card at 375px)
+  // widens the track and overflows the page instead of wrapping.
   return (
-    <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[1fr_minmax(0,1fr)] md:items-start">
-      <div className="flex flex-wrap items-center gap-2">{preview}</div>
-      <CodeSnippet code={importLine} />
+    <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">{preview}</div>
+      <div className="min-w-0">
+        <CodeSnippet code={importLine} />
+      </div>
     </div>
   );
 }
@@ -3144,6 +3155,8 @@ import {
 }
 
 function FeedbackSection() {
+  const { org } = Route.useParams();
+
   return (
     <Section
       id="feedback"
@@ -3186,6 +3199,50 @@ function FeedbackSection() {
             </div>
           }
           importLine={`import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";`}
+        />
+
+        <h3 className="text-sm font-medium">Over-limit banner</h3>
+        <p className="text-sm text-muted-foreground">
+          An org-level entitlement breach that is silently costing the customer
+          something — here, check executions dropped by the per-minute rate
+          gate. It is an amber <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          Alert, never destructive: nothing is permanently lost and the remedy
+          is the customer&apos;s to choose. It renders nothing when the org is
+          inside its cap, so a page can mount it unconditionally.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md">
+              <CheckRateLimitBanner
+                org={org}
+                checksPerMinute={{ demand: 240, limit: 120, skippedToday: 613 }}
+                showUsageLink
+              />
+            </div>
+          }
+          importLine={`import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";`}
+        />
+
+        <h3 className="text-sm font-medium">Quota meter (pending draft)</h3>
+        <p className="text-sm text-muted-foreground">
+          A quota bar on a page that <em>edits</em> what fills it. The saved
+          figure is struck through and the draft figure follows an arrow, so the
+          consequence of an unsaved change is legible before anything is
+          written — a bar showing only the saved number turns such a page into a
+          guessing game. Over the cap it goes amber, matching the over-limit
+          banner it sits with; red is reserved for destructive states. An absent
+          limit means unlimited: the figure stays, the bar goes away, because
+          there is nothing to be a fraction of.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-6">
+              <CheckRateMeter saved={84} draft={84} limit={120} />
+              <CheckRateMeter saved={240} draft={96} limit={120} />
+              <CheckRateMeter saved={240} draft={240} limit={null} />
+            </div>
+          }
+          importLine={`import { CheckRateMeter } from "@/components/shared/check-rate-meter";\n\n<CheckRateMeter saved={savedTotal} draft={draftTotal} limit={limit} />`}
         />
 
         <h3 className="text-sm font-medium">Tinted panel</h3>
@@ -4248,6 +4305,84 @@ function UptimeStripSection() {
         <p className="text-xs text-muted-foreground">
           Mostly green with one outage hour (red), one degraded hour (yellow),
           and the two most recent hours awaiting data (gray).
+        </p>
+      </div>
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+// 24 hourly cells, oldest → newest, exercising every state the server can send:
+// up, degraded, down, and no-data. Shaped exactly like the API's
+// AvailabilityBucket so the section doubles as the response's documentation.
+//
+// Built once at module scope rather than per render: the reference page is a
+// static catalog, and reading the clock during render is both impure and
+// pointless here.
+const AVAILABILITY_STRIP_SAMPLE = (() => {
+  const now = Date.now();
+
+  return Array.from({ length: 24 }, (_, i) => {
+    const start = new Date(now - (23 - i) * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    let total = 60;
+    let successful = 60;
+    if (i === 22 || i === 23) total = 0; // most recent hours: not measured yet
+    else if (i === 10) successful = 12; // a bad hour
+    else if (i === 11) successful = 59; // one failed probe: degraded, not red
+    const hasData = total > 0;
+    return {
+      periodStart: start.toISOString(),
+      periodEnd: end.toISOString(),
+      hasData,
+      availabilityPct: hasData ? (successful / total) * 100 : null,
+      totalChecks: hasData ? total : 0,
+      successfulChecks: hasData ? successful : 0,
+      status: !hasData
+        ? ("noData" as const)
+        : successful === total
+          ? ("up" as const)
+          : total - successful <= 1
+            ? ("degraded" as const)
+            : ("down" as const),
+    };
+  });
+})();
+
+function AvailabilityStripSection() {
+  const cells = AVAILABILITY_STRIP_SAMPLE;
+
+  const snippet = `import { AvailabilityStrip } from "@/components/ui/availability-strip";
+
+// Presentational only. Feed it the cells from
+// GET /api/v1/orgs/:org/checks/:check/availability/buckets?from=&to=&bucket=&region=
+// (see useCheckAvailabilityBuckets) — the colour comes from the SERVER's
+// \`status\`, so this strip and the public status page can never paint the same
+// numbers differently. (The badge SVG keeps its own four-tier scale on purpose.)
+<AvailabilityStrip
+  cells={buckets.data}
+  testIdPrefix="my-strip"
+  height="sm" // "sm" under a chart, "md" as a standalone widget
+/>`;
+
+  return (
+    <Section
+      id="availability-strip"
+      title="Availability strip"
+      description="The colour-banded availability strip rendered under the check-detail response-time chart. One cell per bucket, oldest → newest, sharing the chart's window, zoom and region filter. Buckets are always whole-hour multiples (day → 1h, week → 6h, month → 1d); below a 3h window no strip is drawn at all and the chart header shows a single window figure instead. A cell with no probes is a distinct gray state — never a manufactured 100%."
+    >
+      <div className="rounded-md border bg-card p-4 space-y-4">
+        <AvailabilityStrip cells={cells} height="md" />
+        <p className="text-xs text-muted-foreground">
+          Mostly green, one bad hour (red), one hour with a single failed probe
+          (amber — the shared small-bucket guard never paints one failure red),
+          and the two most recent hours awaiting data (gray).
+        </p>
+        <AvailabilityStrip cells={cells} height="sm" />
+        <p className="text-xs text-muted-foreground">
+          The same cells at <code>height="sm"</code>, the size used under the
+          chart so the strip reads as an axis annotation rather than a second
+          chart.
         </p>
       </div>
       <CodeSnippet code={snippet} />

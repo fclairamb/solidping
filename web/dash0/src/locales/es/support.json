@@ -10,8 +10,8 @@
   "sections": {
     "active": "Activos",
     "activeHelp": "Hilos abiertos o pendientes a los que aún podemos responder.",
-    "expired": "Ventana de respuesta caducada",
-    "expiredHelp": "Siguen sin respuesta, pero el canal ya no acepta una respuesta libre.",
+    "expired": "Sin respuesta posible",
+    "expiredHelp": "Sigue sin respuesta y no podemos responder: la ventana de respuesta libre ha expirado o no hay ruta de vuelta al remitente.",
     "closed": "Cerrados",
     "closedHelp": "Resueltos. Se purgan tras el periodo de retención."
   },
@@ -38,7 +38,8 @@
     "open": "Ventana de respuesta abierta",
     "expired": "Ventana de respuesta cerrada",
     "expiresAt": "Respuestas libres permitidas hasta {{time}}",
-    "costsMoney": "Cada respuesta cuesta dinero"
+    "costsMoney": "Cada respuesta cuesta dinero",
+    "cannotReply": "No se puede responder a este hilo"
   },
   "reply": {
     "placeholder": "Escribe una respuesta…",
@@ -46,8 +47,12 @@
     "sending": "Enviando…",
     "sent": "Respuesta enviada",
     "failed": "No se pudo enviar la respuesta",
-    "disabledNoAdapter": "Este canal no tiene adaptador de respuesta en esta instancia.",
-    "costWarning": "Este canal se factura por segmento. Las respuestas pasan por los mismos límites de gasto que las alertas."
+    "disabledNoRoute": "No se puede responder a este hilo desde aquí.",
+    "costWarning": "Este canal se factura por segmento. Las respuestas pasan por los mismos límites de gasto que las alertas.",
+    "resend": "Reenviar",
+    "resending": "Reenviando…",
+    "resent": "Respuesta reenviada",
+    "resendFailed": "No se pudo reenviar la respuesta"
   },
   "actions": {
     "markPending": "Marcar pendiente",

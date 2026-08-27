@@ -455,6 +455,37 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           </div>
         </div>
       );
+    case "gotify":
+      return (
+        <div className="space-y-3">
+          <UrlPanel
+            label={t("form.gotifyServer", "Server URL")}
+            value={(settings.server_url as string) || ""}
+            onChange={(v) => update("server_url", v)}
+          />
+          <SecretPanel
+            id="ch-gotify-token"
+            label={t("form.gotifyAppToken", "Application token")}
+            value={(settings.app_token as string) || ""}
+            onChange={(v) => update("app_token", v)}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="ch-gotify-priority">
+              {t("form.gotifyPriority", "Priority (0-10, default 5)")}
+            </Label>
+            <Input
+              id="ch-gotify-priority"
+              type="number"
+              min={0}
+              max={10}
+              value={(settings.priority as number) ?? 5}
+              onChange={(e) =>
+                update("priority", Number.parseInt(e.target.value, 10))
+              }
+            />
+          </div>
+        </div>
+      );
     case "matrix":
       return (
         <div className="space-y-3">
@@ -490,6 +521,43 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
                 "Room ID (!room:server) or alias (#room:server). Invite the bot to the room first.",
               )}
             </p>
+          </div>
+        </div>
+      );
+    case "zulip":
+      return (
+        <div className="space-y-3">
+          <UrlPanel
+            label={t("form.zulipSiteUrl", "Site URL")}
+            value={(settings.site_url as string) || ""}
+            onChange={(v) => update("site_url", v)}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="ch-zulip-bot-email">
+              {t("form.zulipBotEmail", "Bot email")}
+            </Label>
+            <Input
+              id="ch-zulip-bot-email"
+              type="email"
+              value={(settings.bot_email as string) || ""}
+              onChange={(e) => update("bot_email", e.target.value)}
+              placeholder="solidping-bot@acme.zulipchat.com"
+            />
+          </div>
+          <SecretPanel
+            id="ch-zulip-api-key"
+            label={t("form.zulipApiKey", "API key")}
+            value={(settings.api_key as string) || ""}
+            onChange={(v) => update("api_key", v)}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="ch-zulip-stream">{t("form.zulipStream", "Stream")}</Label>
+            <Input
+              id="ch-zulip-stream"
+              value={(settings.stream as string) || ""}
+              onChange={(e) => update("stream", e.target.value)}
+              placeholder="alerts"
+            />
           </div>
         </div>
       );

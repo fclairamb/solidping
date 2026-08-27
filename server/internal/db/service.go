@@ -121,6 +121,12 @@ type Service interface {
 		ctx context.Context, providerType models.ProviderType, providerID string,
 	) (*models.OrganizationProvider, error)
 	ListOrganizationProviders(ctx context.Context, orgUID string) ([]*models.OrganizationProvider, error)
+	// CountDanglingOrganizationProviders counts LIVE organization_providers rows
+	// whose organization no longer resolves (soft-deleted, or gone). Each such
+	// row bricks SSO and app install for that workspace/guild until it is
+	// healed, and is otherwise invisible — see auth.ResolveLinkedOrganization
+	// and auth.Service.ReportDanglingProviderLinks.
+	CountDanglingOrganizationProviders(ctx context.Context) (int, error)
 	UpdateOrganizationProvider(ctx context.Context, uid string, update models.OrganizationProviderUpdate) error
 	DeleteOrganizationProvider(ctx context.Context, uid string) error
 
@@ -823,6 +829,17 @@ type Service interface {
 	// predicate mirrors the list endpoint's `internal=false` default so the
 	// counters describe exactly the checks the operator can see in the list.
 	GetCheckStatusCounts(ctx context.Context, orgUID string) ([]models.CheckStatusCount, error)
+	// GetOrgAvailability24h returns the combined (success, countable-total)
+	// tally for the org over [since, now) — the trailing-24h window behind the
+	// dashboard's availability KPI (spec 2026-08-26-09). Folds two SQL
+	// aggregates: `hour` rollup rows (which already encode CountsAsUp into
+	// successful_checks/total_checks) and `raw` rows (folded in SQL with the
+	// same ExcludedFromAvailability/CountsAsUp predicate as
+	// models.RawAvailability, rather than loaded into Go — an org's trailing
+	// 24h of raw data can be the bulk of everything it has). day/month rollups
+	// never carry data for this window (see the implementation doc) and are
+	// deliberately excluded.
+	GetOrgAvailability24h(ctx context.Context, orgUID string, since, now time.Time) (models.AvailabilityCounts, error)
 	// ListCheckUIDsByGroup returns the UIDs of the group's enabled, non-deleted
 	// member checks — the same member set GetCheckGroupStatusCounts rolls up, so
 	// a group's public status and its aggregated availability always describe
@@ -1078,6 +1095,17 @@ type Service interface {
 	ListOrgEntitlementAudits(
 		ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
 	) ([]*models.OrgEntitlementAudit, error)
+	// CreateOrgEntitlementAudit inserts an audit row on its own, with no
+	// accompanying entitlements write. Used when a write was deliberately NOT
+	// applied — a billing push onto an admin override — where the whole point
+	// of the record is that the stored row did not move.
+	CreateOrgEntitlementAudit(ctx context.Context, audit *models.OrgEntitlementAudit) error
+	// DeleteOrgEntitlements removes an org's entitlements row and writes the
+	// audit in the same transaction. A released org then resolves exactly like
+	// an org that was never configured.
+	DeleteOrgEntitlements(
+		ctx context.Context, orgUID string, audit *models.OrgEntitlementAudit,
+	) error
 	// CountMembersForOrg counts every organization member, regardless of
 	// how they joined. Used by the entitlements service to enforce
 	// MaxUsers.
@@ -1092,8 +1120,18 @@ type Service interface {
 		ctx context.Context, orgUID, kind, periodStart string, limit int,
 	) (bool, error)
 
+	// IncrementUsageCounter adds one to the (orgUID, kind, periodStart)
+	// counter, inserting the row when it does not exist yet. Unlike
+	// ReserveMonthlyUsage there is no cap and no reservation semantics: the
+	// caller is recording something that already happened, so the write must
+	// never be refused. periodStart is an ISO date string whose granularity is
+	// the counter kind's business (month for the SMS/voice/WhatsApp quotas,
+	// day for models.UsageCounterKindCheckRateLimited).
+	IncrementUsageCounter(ctx context.Context, orgUID, kind, periodStart string) error
+
 	// GetMonthlyUsage returns the current count for (orgUID, kind, periodStart),
-	// or 0 when no row exists.
+	// or 0 when no row exists. Despite the name it reads any counter kind —
+	// periodStart is opaque, so a daily counter reads back through it too.
 	GetMonthlyUsage(ctx context.Context, orgUID, kind, periodStart string) (int, error)
 	// ListOrgCheckRates returns (enabled, period) for all non-deleted,
 	// non-internal checks of the given org. Used to compute usage stats

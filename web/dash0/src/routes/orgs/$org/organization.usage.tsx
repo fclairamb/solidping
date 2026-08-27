@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { useEntitlements } from "@/api/hooks";
 
 export const Route = createFileRoute("/orgs/$org/organization/usage")({
@@ -121,6 +122,19 @@ function UsagePage() {
           <p className="text-sm text-destructive">{t("usage.loadError")}</p>
         ) : (
           <>
+            {/*
+              Above the plan and the bars on purpose: an org whose executions
+              are being dropped needs the explanation before the numbers, not
+              after them. The link is on: it now points at the scheduling page
+              (spec 2026-08-26-04), which is a different surface from this one
+              and is where the demand can actually be brought down.
+            */}
+            <CheckRateLimitBanner
+              org={org}
+              checksPerMinute={data.checksPerMinute}
+              upgradeUrl={data.upgradeUrl}
+              showUsageLink
+            />
             <div
               className="flex items-center justify-between gap-2 border-b pb-4"
               data-testid="current-plan"

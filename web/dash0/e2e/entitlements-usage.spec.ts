@@ -109,6 +109,80 @@ test.describe("Entitlements usage", () => {
     await expect(row).not.toContainText(/unlimited/i);
   });
 
+  // Spec 2026-08-26-03: an org over its per-minute execution cap used to learn
+  // it from a support ticket — the only traces were an INFO log and a
+  // Prometheus counter. The banner is the customer-visible half.
+  //
+  // The cap is set just BELOW the org's real demand rather than to 0: that is
+  // enough to make the banner render, while keeping the actual skip rate (and
+  // so the `skippedToday` residue this shared org carries into later suites)
+  // as close to nothing as the fixture allows.
+  test("an org over its per-minute cap is told so on the checks list and the usage page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const entResp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/entitlements`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(entResp.ok()).toBeTruthy();
+    const demand = (await entResp.json()).checksPerMinute.demand as number;
+
+    // With no scheduled demand at all there is nothing to be over, and the
+    // banner is correctly silent — nothing to assert.
+    test.skip(demand < 1, `test org schedules ${demand}/min, too little to exceed a cap`);
+
+    const capResp = await page.request.patch(
+      `${API_BASE}/api/v1/orgs/test/entitlements`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { limits: { maxChecksPerMinute: Math.max(0, Math.floor(demand) - 1) } },
+      },
+    );
+    expect(capResp.ok()).toBeTruthy();
+
+    // Surface 1: the checks list, where the unexplained gaps actually show up.
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    const listBanner = page.getByTestId("check-rate-limit-banner");
+    await expect(listBanner).toBeVisible();
+    await expect(listBanner).toContainText(/skipped/i);
+    // It must link somewhere actionable, not just complain.
+    await expect(
+      page.getByTestId("check-rate-limit-usage-link"),
+    ).toBeVisible();
+
+    // Surface 2: the usage page, next to the bar it explains.
+    await page.goto("orgs/test/organization/usage");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-rate-limit-banner")).toBeVisible();
+    // The remedy link is deliberately ON here, and is no longer a self-link:
+    // spec 2026-08-26-04 retargeted it from Usage to the scheduling page, so
+    // the banner hands the reader the surface that can FIX the overage rather
+    // than one restating the number it just quoted. Assert the destination,
+    // not just the presence, so a future retarget cannot pass silently.
+    const usageRemedy = page.getByTestId("check-rate-limit-usage-link");
+    await expect(usageRemedy).toBeVisible();
+    await expect(usageRemedy).toHaveAttribute(
+      "href",
+      /\/orgs\/test\/checks\/scheduling$/,
+    );
+
+    // Surface 3: the scheduling page — the one surface that must NOT link to
+    // itself. This is the invariant the old (mis-placed) assertion reached for.
+    await page.goto("orgs/test/checks/scheduling");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-rate-limit-banner")).toBeVisible();
+    await expect(
+      page.getByTestId("check-rate-limit-usage-link"),
+    ).toHaveCount(0);
+  });
+
   test("creating a check over the maxChecks cap returns 402 QUOTA_EXCEEDED", async ({
     authenticatedPage,
   }) => {

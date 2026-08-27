@@ -150,6 +150,17 @@ func validateSingleCheck(check *ExportCheck, index int, seenSlugs map[string]str
 		seenSlugs[check.Slug] = struct{}{}
 	}
 
+	// `internal` is server-owned and refused on import (spec 2026-08-27-01).
+	// Reported here too so `validate` and `apply` agree about what a document
+	// may contain — a validator that green-lights a manifest the applier will
+	// reject is worse than no validator.
+	if check.Internal {
+		issues = append(issues, DocumentIssue{
+			Where:   where,
+			Message: "internal: " + ErrInternalFieldNotWritable.Error(),
+		})
+	}
+
 	issues = append(issues, validateCheckType(where, check)...)
 	issues = append(issues, validateCheckFormats(where, check)...)
 

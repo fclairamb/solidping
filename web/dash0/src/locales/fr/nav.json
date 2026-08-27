@@ -1,6 +1,7 @@
 {
   "dashboard": "Tableau de bord",
   "checks": "Contrôles",
+  "scheduling": "Planification",
   "incidents": "Incidents",
   "dependencies": "Dépendances",
   "onCall": "Astreintes",

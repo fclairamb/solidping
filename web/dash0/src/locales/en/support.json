@@ -10,8 +10,8 @@
   "sections": {
     "active": "Active",
     "activeHelp": "Open and pending threads we can still reply to.",
-    "expired": "Expired reply window",
-    "expiredHelp": "Still unanswered, but the channel will no longer accept a free-form reply.",
+    "expired": "Unanswerable",
+    "expiredHelp": "Still unanswered, and we cannot reply — the free-form window has lapsed, or there is no route back to the sender.",
     "closed": "Closed",
     "closedHelp": "Dealt with. Purged after the retention period."
   },
@@ -38,7 +38,8 @@
     "open": "Reply window open",
     "expired": "Reply window closed",
     "expiresAt": "Free-form replies allowed until {{time}}",
-    "costsMoney": "Every reply costs money"
+    "costsMoney": "Every reply costs money",
+    "cannotReply": "Cannot reply to this thread"
   },
   "reply": {
     "placeholder": "Write a reply…",
@@ -46,8 +47,12 @@
     "sending": "Sending…",
     "sent": "Reply sent",
     "failed": "Could not send the reply",
-    "disabledNoAdapter": "This channel has no reply adapter on this instance.",
-    "costWarning": "This channel bills per message segment. Replies pass the same spend guards as alerting."
+    "disabledNoRoute": "This thread cannot be replied to from here.",
+    "costWarning": "This channel bills per message segment. Replies pass the same spend guards as alerting.",
+    "resend": "Resend",
+    "resending": "Resending…",
+    "resent": "Reply resent",
+    "resendFailed": "Could not resend the reply"
   },
   "actions": {
     "markPending": "Mark pending",

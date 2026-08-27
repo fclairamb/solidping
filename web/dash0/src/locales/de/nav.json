@@ -1,6 +1,7 @@
 {
   "dashboard": "Dashboard",
   "checks": "Prüfungen",
+  "scheduling": "Planung",
   "incidents": "Vorfälle",
   "dependencies": "Abhängigkeiten",
   "onCall": "Bereitschaft",

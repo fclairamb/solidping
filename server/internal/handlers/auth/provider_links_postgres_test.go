@@ -3,7 +3,10 @@ package auth
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 )
 
@@ -56,6 +59,57 @@ func TestProviderLinkHealing_Postgres(t *testing.T) {
 	t.Run("slack stale user link", func(t *testing.T) {
 		testSlackStaleUserLinkHeals(t, dbService)
 	})
+
+	t.Run("dangling link count", func(t *testing.T) {
+		testDanglingProviderLinkCount(t, dbService)
+	})
+}
+
+// testDanglingProviderLinkCount is the real-engine twin of
+// TestCountDanglingOrganizationProviders. The count is a `NOT IN (subselect)`
+// written once per dialect, so proving it on SQLite alone would prove only
+// half of it — and this number is what an operator sees at boot.
+//
+// It runs against the same shared instance as the healing cases above, which
+// may have left cleared (soft-deleted) rows behind: those are NOT dangling, so
+// the assertion is on the delta this case creates, not on an absolute zero.
+func testDanglingProviderLinkCount(t *testing.T, dbService db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	before, err := dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+
+	fixture := nextFixture()
+
+	// Positive control: a live org's link never counts.
+	live := models.NewOrganization("acme-live-"+fixture, "Acme")
+	r.NoError(dbService.CreateOrganization(ctx, live))
+	r.NoError(dbService.CreateOrganizationProvider(
+		ctx, models.NewOrganizationProvider(live.UID, models.ProviderTypeSlack, "T-LIVE-"+fixture)))
+
+	unchanged, err := dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+	r.Equal(before, unchanged, "a live link must not be counted as dangling")
+
+	doomed := models.NewOrganization("acme-dead-"+fixture, "Acme")
+	r.NoError(dbService.CreateOrganization(ctx, doomed))
+
+	staleLink := models.NewOrganizationProvider(doomed.UID, models.ProviderTypeSlack, "T-DANGLE-"+fixture)
+	r.NoError(dbService.CreateOrganizationProvider(ctx, staleLink))
+	r.NoError(dbService.DeleteOrganization(ctx, doomed.UID))
+
+	dangling, err := dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+	r.Equal(before+1, dangling, "a link pointing at a soft-deleted org is dangling")
+
+	r.NoError(dbService.DeleteOrganizationProvider(ctx, staleLink.UID))
+
+	cleared, err := dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+	r.Equal(before, cleared, "a cleared link is no longer dangling")
 }
 
 // newPostgresDBService boots one embedded Postgres shared by every sub-test

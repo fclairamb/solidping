@@ -1,6 +1,7 @@
 {
   "dashboard": "Dashboard",
   "checks": "Checks",
+  "scheduling": "Scheduling",
   "incidents": "Incidents",
   "dependencies": "Dependencies",
   "onCall": "On-call",

@@ -105,7 +105,18 @@ already stored, and a bounced notification is a smaller problem than a lost one.
 
 Replies go back through the channel the message arrived on. The channels are not
 equally capable, and the inbox tells you the truth about that rather than failing
-at send time:
+at send time.
+
+Two things have to be true before you can answer a thread, and either one can
+disable the reply box:
+
+1. **The channel's reply window is open** — a question of time.
+2. **There is a route back to that conversation** — a question of setup.
+
+When the box is disabled, the inbox says which of the two is missing and why, so
+you know whether to wait or to go and fix something.
+
+### The reply window
 
 | Channel | Reply window |
 |---|---|
@@ -117,18 +128,55 @@ at send time:
 The window is **derived** from the last inbound message and the channel's rule,
 never stored, so it cannot go stale.
 
-### "Active" and "expired" are not the same as the status
+### The route back
+
+Capturing a message and answering it need different things. A Slack workspace can
+send us direct messages we record perfectly while SolidPing holds no credentials
+to answer with — that happens when the app was added from Slack's own app
+directory instead of through **Integrations → Slack**, or when the workspace's
+connection was later removed.
+
+The reply box is disabled, with the reason, when:
+
+- **Slack** — the thread's workspace has no connection in SolidPing. Install the
+  app through Integrations and the existing threads become answerable.
+- **Discord** — the thread has no direct-message channel recorded, or no Discord
+  bot is configured on this instance.
+- **SMS** — no SMS sender is available, on this instance or on the thread's
+  organization.
+
+This is checked **per thread**, not per channel: one connected Slack workspace
+does not make every Slack thread answerable, and the inbox no longer pretends
+otherwise.
+
+### "Active" and "unanswerable" are not the same as the status
 
 Two independent axes, and conflating them is confusing:
 
 | | Meaning | Set by |
 |---|---|---|
 | Status (open / pending / closed) | Where the operator has put it | You, deliberately |
-| Reply window | Can we send a free-form reply *right now* | The channel's rules, by the clock |
+| Answerable | Can we send a reply *right now* | The channel's clock, and whether a route exists |
 
-A thread can be **open but expired** — the customer's question is unanswered and
-WhatsApp will no longer accept a free-form reply. That is the state you most need
-to see, so the inbox gives it its own section.
+A thread can be **open and unanswerable** — the customer's question is unanswered
+and we cannot reply, either because a window lapsed or because there is no route
+back to them. That is the state you most need to see, so the inbox gives it its
+own **Unanswerable** section rather than mixing it in with the active threads.
+
+### Resending a failed reply
+
+A reply that reached the provider and was rejected is kept, marked **Delivery
+failed**, so you never lose what you wrote or answer the same person twice by
+mistake. Those messages carry a **Resend** button.
+
+Resend is not a blind retry: it runs the same two checks again before sending. So
+a reply that failed while a Slack workspace was unconnected goes out for real
+once you connect it — and if the thread is still unanswerable, the resend is
+refused and tells you why instead of failing at the provider a second time.
+
+A reply that was never sent at all, because there was no route when you wrote it,
+is not stored — the inbox refuses it up front rather than keeping words it never
+delivered.
 
 ## Attribution
 

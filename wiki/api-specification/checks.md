@@ -53,7 +53,8 @@ Aggregate check counters for the org, computed server-side with one SQL
     "validating": 0, "degraded": 2, "warning": 0, "unknown": 0
   },
   "down": 6,
-  "hardDown": 3
+  "hardDown": 3,
+  "availability24h": 99.97
 }
 ```
 
@@ -73,6 +74,12 @@ Semantics:
 - `down` = status in (`down`, `error`, `timeout`); `hardDown` = status in
   (`down`, `error`). `error`/`timeout` are *result*-level statuses that a
   check-level status never holds, so today both equal `byStatus.down`.
+- `availability24h` — `100 * success / total` over the trailing 24h window of
+  **results**, not checks: combines `hour` rollup rows
+  (`successful_checks`/`total_checks`) and `raw` rows (success = up +
+  warning; excludes lifecycle markers and reaped/abandoned attempts, mirroring
+  `RawAvailability`). `null` when the window has no countable data (an empty
+  or brand-new org) — never a fabricated 100 (spec 2026-08-26-09).
 - **Cached ~1 minute per org, in memory.** The response can lag a check
   create/delete or a status flip by up to the TTL; there is no invalidation.
   Consumers needing an exact, immediately consistent count should read
@@ -80,6 +87,15 @@ Semantics:
 
 ### POST /api/v1/orgs/:org/checks
 Create a new check. Type can be inferred from the config URL. Name and slug are auto-generated if omitted. Auth: required
+
+**`internal` is not writable.** It marks server-created plumbing (the worker
+self-stat checks) and is what exempts a check from `maxChecks`, from the
+checks-per-minute demand figure and from the per-org execution rate limit — so
+a request that carries it is refused with a `422 VALIDATION_ERROR` naming the
+field, on POST, PATCH, PUT-by-slug and on import/apply alike (spec
+`2026-08-27-01`). It stays readable on every check response, and
+`GET /checks?internal=` still filters on it. A **clone** of an internal check is
+a normal, metered check: the flag is not copied.
 
 ### GET /api/v1/orgs/:org/checks/:checkUid
 Get a single check by UID or slug. Auth: required
@@ -134,16 +150,87 @@ Get one result of a check by uid, with the full payload
 ### GET /api/v1/orgs/:org/checks/:check/availability
 Availability (uptime ratio) for a check over a window. Auth: required
 
+### GET /api/v1/orgs/:org/checks/:check/availability/buckets
+Bucketed availability over an **arbitrary** window — the data behind the check
+detail chart's availability strip. Auth: required
+
+| Query | Required | Meaning |
+|---|---|---|
+| `from` / `to` | yes | RFC3339 window bounds, `to > from` |
+| `bucket` | no | Cell width, a Go duration that must be a whole positive multiple of **1h** (max 200 cells). Omitted → the smallest hour-multiple keeping the count ≤ 60 |
+| `region` | no | Scope to one probe region; omitted sums up/total across regions (never averages their percentages) |
+
+Deliberately a separate route from `/availability`: that one speaks trailing
+calendar tokens plus a `tz`, has no `from`/`to`, and caps at 12 periods.
+
+Response: `{ data: [cell…], window, bucketSeconds, windowStart, windowEnd,
+region? }`. Each cell is
+`{ periodStart, periodEnd, hasData, availabilityPct|null, totalChecks,
+successfulChecks, status }` with `status` in `up|degraded|down|noData` — the
+same classifier (and small-bucket guard) the public status page uses. The badge
+SVG's uptime bar deliberately does **not** share it — it keeps a four-tier scale
+with an extra orange band at ≥ 98% and no small-bucket guard, because badges are
+check-scoped and stay on the global default thresholds (spec 2026-08-03-01). It
+shares the bucketing engine, not the colour mapping.
+
+Two rules worth knowing before consuming it:
+
+- **Cells are aligned outward** to bucket boundaries, so the series can start
+  before `from` and end after `to` (the engine keys every row on
+  `periodStart.Truncate(bucket)`). `window` is the **exact** `[from, to)` fold —
+  use it, not the sum of the cells, for a single headline figure.
+- **`hasData: false` is a third state**, not zero and not 100. It is what a
+  window reaching past day-tier retention returns, because a month rollup spans
+  many cells and is never attributed to one.
+
+Maintenance probes count exactly like any other probe here, matching the
+availability table, status pages and badges — maintenance exclusion is
+SLO-only.
+
 ## Validation
 
 ### POST /api/v1/orgs/:org/checks/validate
 Validate a check configuration without persisting. Auth: required
 
-Request body accepts the same shape as `POST /checks` plus optional
-`dependsOn` (slug-keyed) and `slug` (so cycle / self-edge / duplicate /
-cross-org / unknown-parent validators can run before the check exists).
-Returns `{"valid": true}` or `{"valid": false, "fields": [...]}` with one
-field-level entry per failing validator.
+Request body accepts the same shape as `POST /checks` plus:
+
+| Field | Purpose |
+|---|---|
+| `dependsOn` | slug-keyed edges, so the cycle / self-edge / duplicate / cross-org / unknown-parent validators run before the check exists |
+| `slug` | validated for format **and** for uniqueness against the org's live checks |
+| `regions` | the proposed region set (tunnel region rules, capability hints, and the per-minute projection — a check runs once per region per period) |
+| `period` | the proposed interval (`HH:MM:SS` or a Go duration); unlocks the per-type bounds and the checks-per-minute projection |
+| `enabled` | proposed enabled state, default true; a disabled check draws no rate budget |
+| `excludeCheckUid` | the check being edited, so its own slug is not a collision and the projection REPLACES its stored row |
+
+Returns `{"valid": …, "fields": [...], "warnings": [...]}`. Since spec
+2026-08-26-05 the response reports **every** finding it can compute, not just
+the first, and each entry carries a `severity`
+(`error` | `warning` | `info`, **absent means `error`**) plus a stable machine
+`code`. `valid` is false exactly when `fields` is non-empty — a warning never
+blocks.
+
+Blocking codes: `UNSUPPORTED_TYPE`, `INVALID_CONFIG`, `INVALID_PERIOD`,
+`INVALID_SLUG`, `SLUG_TAKEN`, `INVALID_DEPENDS_ON`. `SLUG_TAKEN` is advisory by
+nature — the value can be claimed between the answer and the save, which is why
+creation still answers `409`.
+
+Advisory codes: `REGION_NO_IPV6` / `REGION_NO_BROWSER` (a selected region's live
+workers advertise no IPv6 egress / no headless Chrome — never a rejection,
+because the advertised capability lags reality and the run-time probe is the
+authority) and `ORG_RATE_OVER_LIMIT` on the `period` field (the proposed
+period × regions would put the org's scheduled checks-per-minute demand over
+its `maxChecksPerMinute` cap, so executions would be skipped; passive types are
+exempt). `ORG_RATE_OVER_LIMIT` is deliberately never blocking — an over-limit
+org has to be able to edit its way back under the cap — and it is the frontend's
+cue to link to the check scheduling page.
+
+**One validator, two callers.** The config-level rules (uniform timeout cap,
+address family, tunnel reference, SMTP send-mode) live in one list that both
+this dry run and the real create/update paths read
+(`Service.configValidationErrors`): the write paths take the first error, this
+endpoint turns every one into a finding. A rule added there is previewed and
+enforced at once, or not at all.
 
 ## Config-as-code: export / import / apply
 

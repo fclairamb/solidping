@@ -267,7 +267,10 @@ export interface CreateCheckRequest {
   regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
-  internal?: boolean;
+  /* No `internal`: it is read-only server-side (spec 2026-08-27-01). A create
+   * carrying it is refused with a VALIDATION_ERROR naming the field, so a
+   * writable type here would only let a future edit compile its way into a
+   * 422. It stays on `Check` (the response) and on the list filter. */
   period?: string;
 }
 
@@ -288,7 +291,7 @@ export interface UpdateCheckRequest {
   regionSpread?: string;
   labels?: Record<string, string>;
   enabled?: boolean;
-  internal?: boolean;
+  /* No `internal` — read-only, same as on create (spec 2026-08-27-01). */
   period?: string;
   reopenCooldownMultiplier?: number | null;
   flappingWindowSeconds?: number | null;
@@ -660,6 +663,13 @@ export interface CheckStats {
   down: number;
   /** status in (down, error) — down excluding timeouts. */
   hardDown: number;
+  /**
+   * 100 * successful / total over the trailing 24h window, combining `hour`
+   * rollup rows and `raw` result rows server-side. `null` when the window
+   * has no countable data (an empty or brand-new org) — render that as "no
+   * data", never as a fabricated 100.
+   */
+  availability24h: number | null;
 }
 
 /**
@@ -779,6 +789,72 @@ export function useUpdateCheck(org: string, uid: string) {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
       queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
+    },
+  });
+}
+
+/** One check's pending schedule change, as the scheduling page batches them. */
+export interface CheckScheduleChange {
+  uid: string;
+  /** Human name, so a partial failure can name what did not save. */
+  name: string;
+  /** "HH:MM:SS"; omitted when only `enabled` changed. */
+  period?: string;
+  /** Omitted when only the period changed. */
+  enabled?: boolean;
+}
+
+export interface CheckScheduleResult {
+  applied: number;
+  /** One entry per check whose PATCH failed. Empty on full success. */
+  failures: { uid: string; name: string; message: string }[];
+}
+
+/**
+ * Applies a batch of period/enabled changes, one PATCH per check.
+ *
+ * Sequential and fault-tolerant on purpose. There is no bulk endpoint, and the
+ * honest failure mode for "20 checks, 3 rejected" is to report which 3 — not
+ * to abort at the first error leaving the org half-rebalanced with no idea
+ * where it stopped. Callers refetch afterwards, so the surviving rows re-read
+ * their real server state either way.
+ */
+export function useApplyCheckSchedule(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      changes: CheckScheduleChange[],
+    ): Promise<CheckScheduleResult> => {
+      const failures: CheckScheduleResult["failures"] = [];
+      let applied = 0;
+
+      for (const change of changes) {
+        const body: UpdateCheckRequest = {};
+        if (change.period !== undefined) body.period = change.period;
+        if (change.enabled !== undefined) body.enabled = change.enabled;
+
+        try {
+          await apiFetch<Check>(`/api/v1/orgs/${org}/checks/${change.uid}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+          applied += 1;
+        } catch (err) {
+          failures.push({
+            uid: change.uid,
+            name: change.name,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      return { applied, failures };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      queryClient.invalidateQueries({ queryKey: ["entitlements", org] });
     },
   });
 }
@@ -1329,6 +1405,91 @@ export function useCheckAvailability(
       );
     },
     enabled: !!org && !!checkUid && !!periods,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
+/**
+ * One cell of the chart availability strip. `availabilityPct` is `null` (and
+ * `hasData` false) when the cell has no countable probes — no data is a distinct
+ * third state, never a manufactured 100%. `status` is the SERVER's
+ * classification (uptimebar.Classify), shared with the public status page, so
+ * those two surfaces cannot paint identical numbers differently. The badge SVG
+ * keeps its own four-tier scale on purpose — see `uptimebar.Classify`.
+ */
+export interface AvailabilityBucket {
+  periodStart: string;
+  periodEnd: string;
+  hasData: boolean;
+  availabilityPct: number | null;
+  totalChecks: number;
+  successfulChecks: number;
+  status: "up" | "degraded" | "down" | "noData";
+}
+
+export interface CheckAvailabilityBucketsResponse {
+  data: AvailabilityBucket[];
+  /** The EXACT [from, to) fold — not the sum of the cells, which are aligned
+   * outward to bucket boundaries and can span more time than was requested. */
+  window: AvailabilityBucket;
+  bucketSeconds: number;
+  windowStart: string;
+  windowEnd: string;
+  region?: string;
+}
+
+export interface AvailabilityBucketsQuery {
+  /** RFC3339 window start. */
+  from: string;
+  /** RFC3339 window end. */
+  to: string;
+  /** Cell width in seconds; must be a whole multiple of 3600 (see
+   * `@/lib/availability-strip`). Omitted lets the server choose. */
+  bucketSeconds?: number;
+  /** Single probe region, or undefined to sum across every region. */
+  region?: string;
+}
+
+/**
+ * Fetches bucketed availability for one check over an arbitrary window — the
+ * data behind the chart's availability strip.
+ *
+ * Deliberately server-side: deriving cells from the chart's already-fetched rows
+ * would duplicate the counting rules (lifecycle markers and abandoned attempts
+ * out of both numerator and denominator, warning counts as up) and drift from
+ * the availability table sitting right below the chart.
+ */
+export function useCheckAvailabilityBuckets(
+  org: string,
+  checkUid: string,
+  query: AvailabilityBucketsQuery,
+  options?: { refetchInterval?: number; enabled?: boolean },
+) {
+  return useQuery<CheckAvailabilityBucketsResponse>({
+    queryKey: [
+      "checkAvailabilityBuckets",
+      org,
+      checkUid,
+      query.from,
+      query.to,
+      query.bucketSeconds ?? null,
+      query.region ?? null,
+    ],
+    queryFn: () => {
+      const params = new URLSearchParams({ from: query.from, to: query.to });
+      if (query.bucketSeconds)
+        params.set("bucket", `${Math.round(query.bucketSeconds / 3600)}h`);
+      if (query.region) params.set("region", query.region);
+      return apiFetch<CheckAvailabilityBucketsResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/availability/buckets?${params.toString()}`,
+      );
+    },
+    enabled:
+      (options?.enabled ?? true) &&
+      !!org &&
+      !!checkUid &&
+      !!query.from &&
+      !!query.to,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -4547,7 +4708,9 @@ export type ConnectionType =
   | "msteams"
   | "msteams-bot"
   | "ntfy"
+  | "gotify"
   | "matrix"
+  | "zulip"
   | "pagerduty"
   | "pushover"
   | "freebox"
@@ -4578,7 +4741,9 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   msteams: NOTIFY,
   "msteams-bot": NOTIFY,
   ntfy: NOTIFY,
+  gotify: NOTIFY,
   matrix: NOTIFY,
+  zulip: NOTIFY,
   pagerduty: NOTIFY,
   pushover: NOTIFY,
   freebox: SOURCE,
@@ -5857,6 +6022,10 @@ export interface EntitlementsLimits {
   maxDeportedAgents?: number | null;
   /** Cap on status pages served on a customer-owned domain. null = unlimited. */
   maxCustomDomains?: number | null;
+  /** Cap on outbound SMS per UTC month. null = unlimited. */
+  maxSmsPerMonth?: number | null;
+  /** Cap on outbound voice calls per UTC month. null = unlimited. */
+  maxCallsPerMonth?: number | null;
   /** Cap on outbound WhatsApp template messages per UTC month. null = unlimited. */
   maxWhatsappPerMonth?: number | null;
   /** Cap on service-level objectives. null = unlimited. */
@@ -5912,9 +6081,39 @@ export interface EntitlementsUsage {
   smsGuard?: EntitlementsSMSGuard;
 }
 
+/**
+ * The org's scheduled check-execution rate against its `maxChecksPerMinute`
+ * cap, plus what the rate gate actually threw away today.
+ *
+ * Unlike `usage`, this is NOT behind `?with=usage`: the over-limit banner it
+ * drives also renders on the checks list, which has no business paying for the
+ * full usage roll-up just to learn it is being throttled.
+ */
+export interface EntitlementsChecksPerMinute {
+  /**
+   * Scheduled executions per minute: sum over enabled, non-deleted,
+   * non-internal, **non-passive** checks of `max(1, regions) × 60s / period`.
+   * Heartbeat and email checks are excluded — they return before the rate gate
+   * and can never be the reason an org is throttled, which is why this can be
+   * lower than `usage.checksPerMinute`.
+   */
+  demand: number;
+  /** Resolved `maxChecksPerMinute`. null/undefined = unlimited. */
+  limit?: number | null;
+  /**
+   * Executions the per-org rate gate deferred today (UTC), across both the
+   * in-process worker path and the agent dispatch path. A persistent counter:
+   * an org that has just dropped back under its cap still lost executions
+   * earlier today, and must be told so.
+   */
+  skippedToday: number;
+}
+
 export interface EntitlementsResponse {
   limits: EntitlementsLimits;
   usage?: EntitlementsUsage;
+  /** Always present unless the server could not compute it. */
+  checksPerMinute?: EntitlementsChecksPerMinute;
   source: string;
   stale: boolean;
   upgradeUrl?: string;
@@ -5932,6 +6131,162 @@ export function useEntitlements(org: string, opts?: { withUsage?: boolean }) {
       ),
     enabled: !!org,
     staleTime: 60 * 1000,
+  });
+}
+
+// ----- Superadmin entitlements editor (spec 2026-08-26-06) -----
+
+/** One entitlement change, as the audit log records it. */
+export interface EntitlementAudit {
+  uid: string;
+  organizationUid: string;
+  /**
+   * `admin`, `billing-service`, `default` … plus two markers the editor cares
+   * about: `billing-service:suppressed` (a billing push that an admin override
+   * discarded) and `admin:released` (the override was handed back to billing).
+   */
+  source: string;
+  actor: string;
+  beforeSnapshot?: Record<string, unknown> | null;
+  afterSnapshot?: Record<string, unknown>;
+  reason?: string | null;
+  createdAt: string;
+}
+
+/** The stored org_entitlements row; absent when the org has never had one. */
+export interface AdminEntitlementsStored {
+  source: string;
+  limits: EntitlementsLimits;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  externalRef?: string | null;
+  expiresAt?: string | null;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminEntitlementsRow {
+  organizationUid: string;
+  slug: string;
+  name: string;
+  limits: EntitlementsLimits;
+  source: string;
+  stale: boolean;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  lastSyncedAt?: string | null;
+  checksPerMinute?: EntitlementsChecksPerMinute;
+  /** Scheduled demand exceeds the resolved cap. Unlimited is never over. */
+  overCheckRate: boolean;
+  /** When the current admin override was written; absent unless one holds. */
+  adminOverrideSince?: string | null;
+}
+
+export interface AdminEntitlementsListResponse {
+  data: AdminEntitlementsRow[];
+  total: number;
+}
+
+export interface AdminEntitlementsDetail extends AdminEntitlementsRow {
+  stored?: AdminEntitlementsStored | null;
+  /** What this deployment resolves to with no row — where a release lands. */
+  defaults: EntitlementsLimits;
+  audits: EntitlementAudit[];
+}
+
+export function useAdminEntitlementsList(params: {
+  q?: string;
+  limit?: number;
+  enabled?: boolean;
+}) {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.limit) search.set("limit", String(params.limit));
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+
+  return useQuery({
+    queryKey: ["adminEntitlements", params.q ?? "", params.limit ?? 0],
+    queryFn: () =>
+      apiFetch<AdminEntitlementsListResponse>(
+        `/api/v1/system/entitlements${suffix}`,
+      ),
+    enabled: params.enabled !== false,
+  });
+}
+
+export function useAdminEntitlementsDetail(orgSlug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["adminEntitlements", "detail", orgSlug],
+    queryFn: () =>
+      apiFetch<AdminEntitlementsDetail>(
+        `/api/v1/system/entitlements/${orgSlug}`,
+      ),
+    enabled: enabled && !!orgSlug,
+  });
+}
+
+/** What the superadmin PUT / DELETE answer with. */
+export interface AdminEntitlementsWriteResponse {
+  limits: EntitlementsLimits;
+  source: string;
+  stale: boolean;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  /** False only if the precedence rule discarded the write. */
+  applied: boolean;
+  /**
+   * A stored row was actually removed. False when releasing an organization
+   * that had no override — a no-op, not an error.
+   */
+  released?: boolean;
+}
+
+export interface SetAdminEntitlementsRequest {
+  limits: EntitlementsLimits;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  /** Stored on the audit row; sent as a header, not a body field. */
+  reason?: string;
+}
+
+export function useSetAdminEntitlements(orgSlug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ reason, ...body }: SetAdminEntitlementsRequest) =>
+      apiFetch<AdminEntitlementsWriteResponse>(
+        `/api/v1/system/entitlements/${orgSlug}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(body),
+          headers: reason ? { "X-Entitlements-Reason": reason } : undefined,
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminEntitlements"] });
+      queryClient.invalidateQueries({ queryKey: ["entitlements", orgSlug] });
+    },
+  });
+}
+
+export function useReleaseAdminEntitlements(orgSlug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (reason?: string) =>
+      apiFetch<AdminEntitlementsWriteResponse>(
+        `/api/v1/system/entitlements/${orgSlug}`,
+        {
+          method: "DELETE",
+          headers: reason ? { "X-Entitlements-Reason": reason } : undefined,
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminEntitlements"] });
+      queryClient.invalidateQueries({ queryKey: ["entitlements", orgSlug] });
+    },
   });
 }
 

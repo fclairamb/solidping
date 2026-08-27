@@ -324,7 +324,7 @@ func (s *MicrosoftOAuthService) findOrCreateUser(
 		// A link pointing at a soft-deleted user is stale: it is cleared
 		// and we fall through to the email lookup / create path rather
 		// than failing this login (and every later one) forever.
-		user, resolveErr := resolveLinkedUser(ctx, s.db, models.ProviderTypeMicrosoft, userInfo.ID, provider)
+		user, resolveErr := ResolveLinkedUser(ctx, s.db, models.ProviderTypeMicrosoft, userInfo.ID, provider)
 		if resolveErr != nil {
 			return nil, resolveErr
 		}

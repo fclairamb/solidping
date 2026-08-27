@@ -258,6 +258,18 @@ history. Also carries `overallStatus` and `statusCounts` — the page-level
 rollup computed server-side (see below). Sets `Cache-Control` per the shared
 visibility rule described in **Caching on the public surface** below.
 
+Each `responseTimeSeries[].points[]` entry carries, alongside `time`,
+`durationP95` and the probe's own `status`, the **availability** of the slice
+it covers (spec 2026-08-26-10): `availabilityPct` (null when the row has no
+countable probe — no data is not 100%), `totalChecks`, `successfulChecks`, and
+`availabilityStatus` in `up|degraded|down|noData`. The status is resolved
+server-side against the page's own `availabilityThresholds` with the shared
+classifier (`uptimebar.Classify`, small-bucket guard included), so the strip
+under the response-time chart and the availability bar above it can never paint
+the same numbers differently. Lifecycle markers and abandoned attempts are
+excluded from both numerator and denominator; warning counts as up; maintenance
+probes count like any other.
+
 ### GET /api/v1/status-pages/:org/:slug/summary
 Lightweight "is it up?" companion to the full view above. Auth: public. Same
 visibility gate, and the rollup comes from the exact same live data via the

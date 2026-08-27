@@ -831,13 +831,29 @@ func (h *Handler) handleClaim(
 	for _, job := range jobs {
 		// Per-org MaxChecksPerMinute gate — the agent-side worker loop has no
 		// in-process entitlements service, so the cap is enforced here, at
-		// dispatch. Drained buckets release the job to its next period.
-		if h.entitlements != nil {
+		// dispatch. Drained buckets defer the job to its next period.
+		//
+		// DeferLeaseRateLimited, not ReleaseLease: the deferral must preserve
+		// effective_scheduled_at so this job outranks its on-time org siblings
+		// in the next claim, exactly as on the in-process worker path. Otherwise
+		// an over-cap org starves whichever checks happen to sort late, forever
+		// (spec 2026-08-26-02).
+		//
+		// Internal (server-created) checks are exempt, exactly as on the
+		// in-process worker gate (spec 2026-08-27-01): they cost the org no
+		// MaxChecks slot and are absent from its demand figure, so they must
+		// not spend its per-minute budget or tick its skipped-today counter.
+		if h.entitlements != nil && !job.IsInternal() {
 			if rateErr := h.entitlements.ReserveCheckExecution(ctx, job.OrganizationUID); rateErr != nil {
 				var quotaErr *entitlements.QuotaError
 				if errors.As(rateErr, &quotaErr) {
+					// Same daily per-org tally as the in-process worker gate:
+					// an org must see its skipped executions whichever path
+					// dropped them (spec 2026-08-26-03).
+					h.entitlements.RecordRateLimitedSkip(ctx, job.OrganizationUID)
+
 					next := time.Now().Add(time.Duration(job.Period))
-					_ = h.checkJobSvc.ReleaseLease(ctx, job.UID, state.workerUID, next)
+					_ = h.checkJobSvc.DeferLeaseRateLimited(ctx, job.UID, state.workerUID, next)
 
 					continue
 				}

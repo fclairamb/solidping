@@ -60,6 +60,87 @@ func (e AddMemberRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for AdminEntitlementsDetailSource.
+const (
+	AdminEntitlementsDetailSourceAdmin          AdminEntitlementsDetailSource = "admin"
+	AdminEntitlementsDetailSourceBillingService AdminEntitlementsDetailSource = "billing-service"
+	AdminEntitlementsDetailSourceDefault        AdminEntitlementsDetailSource = "default"
+	AdminEntitlementsDetailSourceOrgAdmin       AdminEntitlementsDetailSource = "org-admin"
+	AdminEntitlementsDetailSourceSelfHosted     AdminEntitlementsDetailSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the AdminEntitlementsDetailSource enum.
+func (e AdminEntitlementsDetailSource) Valid() bool {
+	switch e {
+	case AdminEntitlementsDetailSourceAdmin:
+		return true
+	case AdminEntitlementsDetailSourceBillingService:
+		return true
+	case AdminEntitlementsDetailSourceDefault:
+		return true
+	case AdminEntitlementsDetailSourceOrgAdmin:
+		return true
+	case AdminEntitlementsDetailSourceSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdminEntitlementsRowSource.
+const (
+	AdminEntitlementsRowSourceAdmin          AdminEntitlementsRowSource = "admin"
+	AdminEntitlementsRowSourceBillingService AdminEntitlementsRowSource = "billing-service"
+	AdminEntitlementsRowSourceDefault        AdminEntitlementsRowSource = "default"
+	AdminEntitlementsRowSourceOrgAdmin       AdminEntitlementsRowSource = "org-admin"
+	AdminEntitlementsRowSourceSelfHosted     AdminEntitlementsRowSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the AdminEntitlementsRowSource enum.
+func (e AdminEntitlementsRowSource) Valid() bool {
+	switch e {
+	case AdminEntitlementsRowSourceAdmin:
+		return true
+	case AdminEntitlementsRowSourceBillingService:
+		return true
+	case AdminEntitlementsRowSourceDefault:
+		return true
+	case AdminEntitlementsRowSourceOrgAdmin:
+		return true
+	case AdminEntitlementsRowSourceSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdminEntitlementsWriteResponseSource.
+const (
+	AdminEntitlementsWriteResponseSourceAdmin          AdminEntitlementsWriteResponseSource = "admin"
+	AdminEntitlementsWriteResponseSourceBillingService AdminEntitlementsWriteResponseSource = "billing-service"
+	AdminEntitlementsWriteResponseSourceDefault        AdminEntitlementsWriteResponseSource = "default"
+	AdminEntitlementsWriteResponseSourceOrgAdmin       AdminEntitlementsWriteResponseSource = "org-admin"
+	AdminEntitlementsWriteResponseSourceSelfHosted     AdminEntitlementsWriteResponseSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the AdminEntitlementsWriteResponseSource enum.
+func (e AdminEntitlementsWriteResponseSource) Valid() bool {
+	switch e {
+	case AdminEntitlementsWriteResponseSourceAdmin:
+		return true
+	case AdminEntitlementsWriteResponseSourceBillingService:
+		return true
+	case AdminEntitlementsWriteResponseSourceDefault:
+		return true
+	case AdminEntitlementsWriteResponseSourceOrgAdmin:
+		return true
+	case AdminEntitlementsWriteResponseSourceSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdminJobStatus.
 const (
 	AdminJobStatusFailed  AdminJobStatus = "failed"
@@ -132,6 +213,30 @@ func (e ApproveMembershipRequestRequestRole) Valid() bool {
 	case ApproveMembershipRequestRequestRoleUser:
 		return true
 	case ApproveMembershipRequestRequestRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AvailabilityBucketStatus.
+const (
+	AvailabilityBucketStatusDegraded AvailabilityBucketStatus = "degraded"
+	AvailabilityBucketStatusDown     AvailabilityBucketStatus = "down"
+	AvailabilityBucketStatusNoData   AvailabilityBucketStatus = "noData"
+	AvailabilityBucketStatusUp       AvailabilityBucketStatus = "up"
+)
+
+// Valid indicates whether the value is a known member of the AvailabilityBucketStatus enum.
+func (e AvailabilityBucketStatus) Valid() bool {
+	switch e {
+	case AvailabilityBucketStatusDegraded:
+		return true
+	case AvailabilityBucketStatusDown:
+		return true
+	case AvailabilityBucketStatusNoData:
+		return true
+	case AvailabilityBucketStatusUp:
 		return true
 	default:
 		return false
@@ -774,6 +879,33 @@ func (e DiscoveryScanProgressDerivedStatus) Valid() bool {
 	case DiscoveryScanProgressDerivedStatusRunning:
 		return true
 	case DiscoveryScanProgressDerivedStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntitlementsResponseSource.
+const (
+	EntitlementsResponseSourceAdmin          EntitlementsResponseSource = "admin"
+	EntitlementsResponseSourceBillingService EntitlementsResponseSource = "billing-service"
+	EntitlementsResponseSourceDefault        EntitlementsResponseSource = "default"
+	EntitlementsResponseSourceOrgAdmin       EntitlementsResponseSource = "org-admin"
+	EntitlementsResponseSourceSelfHosted     EntitlementsResponseSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the EntitlementsResponseSource enum.
+func (e EntitlementsResponseSource) Valid() bool {
+	switch e {
+	case EntitlementsResponseSourceAdmin:
+		return true
+	case EntitlementsResponseSourceBillingService:
+		return true
+	case EntitlementsResponseSourceDefault:
+		return true
+	case EntitlementsResponseSourceOrgAdmin:
+		return true
+	case EntitlementsResponseSourceSelfHosted:
 		return true
 	default:
 		return false
@@ -2265,6 +2397,27 @@ func (e UserSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for ValidationErrorFieldSeverity.
+const (
+	ValidationErrorFieldSeverityError   ValidationErrorFieldSeverity = "error"
+	ValidationErrorFieldSeverityInfo    ValidationErrorFieldSeverity = "info"
+	ValidationErrorFieldSeverityWarning ValidationErrorFieldSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the ValidationErrorFieldSeverity enum.
+func (e ValidationErrorFieldSeverity) Valid() bool {
+	switch e {
+	case ValidationErrorFieldSeverityError:
+		return true
+	case ValidationErrorFieldSeverityInfo:
+		return true
+	case ValidationErrorFieldSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListChecksParamsInternal.
 const (
 	ListChecksParamsInternalAll   ListChecksParamsInternal = "all"
@@ -2526,6 +2679,144 @@ type AddNotificationContactRequest struct {
 	Value string `json:"value"`
 }
 
+// AdminEntitlementsDetail defines model for AdminEntitlementsDetail.
+type AdminEntitlementsDetail struct {
+	// Applied Present on write responses only. False when the precedence rule discarded the write — a billing push onto an admin override is accepted with 200 (billing must not error-loop) but changes nothing.
+	Applied *bool               `json:"applied,omitempty"`
+	Audits  []EntitlementsAudit `json:"audits"`
+
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+
+	// Defaults Per-org numeric limits; null/absent means unlimited
+	Defaults     EntitlementLimits `json:"defaults"`
+	DisplayEmoji *string           `json:"displayEmoji,omitempty"`
+	DisplayName  *string           `json:"displayName,omitempty"`
+	ExpiresAt    *time.Time        `json:"expiresAt,omitempty"`
+	LastSyncedAt *time.Time        `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits EntitlementLimits `json:"limits"`
+
+	// Message Why the write was not applied, in words.
+	Message         *string `json:"message,omitempty"`
+	Name            string  `json:"name"`
+	OrganizationUid string  `json:"organizationUid"`
+	OverCheckRate   *bool   `json:"overCheckRate,omitempty"`
+	Slug            string  `json:"slug"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source AdminEntitlementsDetailSource `json:"source"`
+	Stale  bool                          `json:"stale"`
+
+	// Stored The raw stored org_entitlements row. Absent entirely when the organization has never had one, which is exactly the "resolving to deployment defaults" state.
+	Stored *AdminEntitlementsStoredRow `json:"stored,omitempty"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
+}
+
+// AdminEntitlementsDetailSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type AdminEntitlementsDetailSource string
+
+// AdminEntitlementsListResponse defines model for AdminEntitlementsListResponse.
+type AdminEntitlementsListResponse struct {
+	Data []AdminEntitlementsRow `json:"data"`
+
+	// Total Organizations matching the search, before paging.
+	Total int `json:"total"`
+}
+
+// AdminEntitlementsRow One organization in the super-admin entitlements list.
+type AdminEntitlementsRow struct {
+	// AdminOverrideSince When the current admin override was written. Absent unless the stored row is admin-sourced.
+	AdminOverrideSince *time.Time `json:"adminOverrideSince,omitempty"`
+
+	// Applied Present on write responses only. False when the precedence rule discarded the write — a billing push onto an admin override is accepted with 200 (billing must not error-loop) but changes nothing.
+	Applied *bool `json:"applied,omitempty"`
+
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+	DisplayEmoji    *string                      `json:"displayEmoji,omitempty"`
+	DisplayName     *string                      `json:"displayName,omitempty"`
+	ExpiresAt       *time.Time                   `json:"expiresAt,omitempty"`
+	LastSyncedAt    *time.Time                   `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits EntitlementLimits `json:"limits"`
+
+	// Message Why the write was not applied, in words.
+	Message         *string `json:"message,omitempty"`
+	Name            string  `json:"name"`
+	OrganizationUid string  `json:"organizationUid"`
+
+	// OverCheckRate Scheduled check demand exceeds the resolved MaxChecksPerMinute cap. An unlimited cap is never over.
+	OverCheckRate bool   `json:"overCheckRate"`
+	Slug          string `json:"slug"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source AdminEntitlementsRowSource `json:"source"`
+	Stale  bool                       `json:"stale"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
+}
+
+// AdminEntitlementsRowSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type AdminEntitlementsRowSource string
+
+// AdminEntitlementsStoredRow The raw stored org_entitlements row. Absent entirely when the organization has never had one, which is exactly the "resolving to deployment defaults" state.
+type AdminEntitlementsStoredRow struct {
+	CreatedAt    time.Time  `json:"createdAt"`
+	DisplayEmoji *string    `json:"displayEmoji,omitempty"`
+	DisplayName  *string    `json:"displayName,omitempty"`
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
+	ExternalRef  *string    `json:"externalRef,omitempty"`
+	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits    EntitlementLimits `json:"limits"`
+	Source    string            `json:"source"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+}
+
+// AdminEntitlementsWriteResponse defines model for AdminEntitlementsWriteResponse.
+type AdminEntitlementsWriteResponse struct {
+	Applied bool `json:"applied"`
+
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+	DisplayEmoji    *string                      `json:"displayEmoji,omitempty"`
+	DisplayName     *string                      `json:"displayName,omitempty"`
+	ExpiresAt       *time.Time                   `json:"expiresAt,omitempty"`
+	LastSyncedAt    *time.Time                   `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits EntitlementLimits `json:"limits"`
+
+	// Message Why the write was not applied, in words.
+	Message *string `json:"message,omitempty"`
+
+	// Released A stored row was actually removed. False when releasing an organization that had no override.
+	Released *bool `json:"released,omitempty"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source AdminEntitlementsWriteResponseSource `json:"source"`
+	Stale  bool                                 `json:"stale"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
+}
+
+// AdminEntitlementsWriteResponseSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type AdminEntitlementsWriteResponseSource string
+
 // AdminJob A background-jobs queue row as returned by the admin/system views.
 type AdminJob struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
@@ -2602,6 +2893,33 @@ type AuthProvidersResponse struct {
 	PasskeysEnabled     *bool           `json:"passkeysEnabled,omitempty"`
 	RegistrationEnabled *bool           `json:"registrationEnabled,omitempty"`
 }
+
+// AvailabilityBucket defines model for AvailabilityBucket.
+type AvailabilityBucket struct {
+	// AvailabilityPct successfulChecks / totalChecks × 100. Null when totalChecks == 0 — no data is not 100%.
+	AvailabilityPct *float32 `json:"availabilityPct"`
+
+	// HasData False when the cell has no countable probes (then availabilityPct is null).
+	HasData bool `json:"hasData"`
+
+	// PeriodEnd End of the cell (exclusive).
+	PeriodEnd time.Time `json:"periodEnd"`
+
+	// PeriodStart Start of the cell (inclusive).
+	PeriodStart time.Time `json:"periodStart"`
+
+	// Status The shared availability colour vocabulary — the same classifier the public status page and the badge uptime bar use, including the small-bucket guard (a cell with exactly one failed sample is never "down").
+	Status AvailabilityBucketStatus `json:"status"`
+
+	// SuccessfulChecks Probes counted as up (up + warning).
+	SuccessfulChecks int `json:"successfulChecks"`
+
+	// TotalChecks Countable probes in the cell.
+	TotalChecks int `json:"totalChecks"`
+}
+
+// AvailabilityBucketStatus The shared availability colour vocabulary — the same classifier the public status page and the badge uptime bar use, including the small-bucket guard (a cell with exactly one failed sample is never "down").
+type AvailabilityBucketStatus string
 
 // AvailabilityPeriod defines model for AvailabilityPeriod.
 type AvailabilityPeriod struct {
@@ -2735,7 +3053,7 @@ type Check struct {
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
-	// Internal Whether this check is internal (hidden from default listings)
+	// Internal Whether this check is internal (hidden from default listings). READ-ONLY: `internal` marks server-created plumbing (worker self-stat checks) and is what exempts a check from `maxChecks`, from the checks-per-minute demand figure and from the per-org execution rate limit. A create, update, upsert or import that carries it is refused with a `VALIDATION_ERROR` naming the field.
 	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs for organizing and filtering checks
@@ -2792,6 +3110,29 @@ type CheckTracerouteOnFailure string
 
 // CheckType defines model for Check.Type.
 type CheckType string
+
+// CheckAvailabilityBucketsResponse defines model for CheckAvailabilityBucketsResponse.
+type CheckAvailabilityBucketsResponse struct {
+	// BucketSeconds The resolved cell width in seconds (always a multiple of 3600).
+	//
+	// Example: 21600
+	BucketSeconds int `json:"bucketSeconds"`
+
+	// Data The cell series, oldest first, aligned to bucketSeconds boundaries.
+	Data []AvailabilityBucket `json:"data"`
+
+	// Region The region filter, omitted when the read summed every region.
+	Region *string `json:"region,omitempty"`
+
+	// Window The whole-window fold over exactly [from, to) — NOT the sum of the cells, which are aligned outward and can span more time than was requested.
+	Window AvailabilityBucket `json:"window"`
+
+	// WindowEnd The requested window end, echoed back.
+	WindowEnd time.Time `json:"windowEnd"`
+
+	// WindowStart The requested window start, echoed back.
+	WindowStart time.Time `json:"windowStart"`
+}
 
 // CheckAvailabilityResponse defines model for CheckAvailabilityResponse.
 type CheckAvailabilityResponse struct {
@@ -2911,7 +3252,7 @@ type CheckListItem struct {
 	// FlappingWindowSeconds Flapping (adaptive recovery) window. If a check flaps repeatedly within this rolling window, it must stay stable progressively longer before each auto-resolve. 0 = adaptive recovery off (constant recovery period).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 
-	// Internal Whether this check is internal (hidden from default listings)
+	// Internal Whether this check is internal (hidden from default listings). READ-ONLY: `internal` marks server-created plumbing (worker self-stat checks) and is what exempts a check from `maxChecks`, from the checks-per-minute demand figure and from the per-org execution rate limit. A create, update, upsert or import that carries it is refused with a `VALIDATION_ERROR` naming the field.
 	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs for organizing and filtering checks
@@ -3004,6 +3345,11 @@ type CheckScheduling struct {
 
 // CheckStats defines model for CheckStats.
 type CheckStats struct {
+	// Availability24h 100 * successful / total over the trailing 24h window, combining `hour` rollup rows and `raw` result rows (successful = up + warning; lifecycle markers and reaped/abandoned raw rows are excluded from both sides). `null` when the window has no countable data (an empty or brand-new org) — never a fabricated 100.
+	//
+	// Example: 99.97
+	Availability24h *float32 `json:"availability24h"`
+
 	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
 	//
 	// Example: {"created":2,"degraded":2,"down":6,"unknown":0,"up":240,"validating":0,"warning":0}
@@ -3162,9 +3508,6 @@ type CreateCheckRequest struct {
 
 	// FlappingWindowSeconds Flapping (adaptive recovery) window in seconds. Outages within this rolling window accumulate the recovery backoff. 0 = off.
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
-
-	// Internal Whether this check is internal (hidden from default listings)
-	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs for organizing checks
 	//
@@ -3783,22 +4126,48 @@ type EntitlementsAuditListResponse struct {
 	Data *[]EntitlementsAudit `json:"data,omitempty"`
 }
 
+// EntitlementsChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+type EntitlementsChecksPerMinute struct {
+	// Demand Sum over enabled, non-deleted, non-internal, non-passive checks of max(1, regions) x 60s / period. Passive types (heartbeat, email) are excluded: they return before the rate gate and consume no execution budget.
+	Demand float64 `json:"demand"`
+
+	// Limit Resolved MaxChecksPerMinute cap; null means unlimited.
+	Limit *int `json:"limit,omitempty"`
+
+	// SkippedToday Check executions deferred by the per-organization rate gate today (UTC), counted across both the in-process worker path and the agent dispatch path.
+	SkippedToday int `json:"skippedToday"`
+}
+
 // EntitlementsResponse defines model for EntitlementsResponse.
 type EntitlementsResponse struct {
-	DisplayEmoji *string    `json:"displayEmoji,omitempty"`
-	DisplayName  *string    `json:"displayName,omitempty"`
-	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
-	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+	// Applied Present on write responses only. False when the precedence rule discarded the write — a billing push onto an admin override is accepted with 200 (billing must not error-loop) but changes nothing.
+	Applied *bool `json:"applied,omitempty"`
+
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+	DisplayEmoji    *string                      `json:"displayEmoji,omitempty"`
+	DisplayName     *string                      `json:"displayName,omitempty"`
+	ExpiresAt       *time.Time                   `json:"expiresAt,omitempty"`
+	LastSyncedAt    *time.Time                   `json:"lastSyncedAt,omitempty"`
 
 	// Limits Per-org numeric limits; null/absent means unlimited
 	Limits EntitlementLimits `json:"limits"`
 
-	// Source Where the entitlements came from (default, billing, admin)
-	Source     string             `json:"source"`
-	Stale      bool               `json:"stale"`
-	UpgradeUrl *string            `json:"upgradeUrl,omitempty"`
-	Usage      *EntitlementsUsage `json:"usage,omitempty"`
+	// Message Why the write was not applied, in words.
+	Message *string `json:"message,omitempty"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source EntitlementsResponseSource `json:"source"`
+	Stale  bool                       `json:"stale"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
 }
+
+// EntitlementsResponseSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type EntitlementsResponseSource string
 
 // EntitlementsUsage defines model for EntitlementsUsage.
 type EntitlementsUsage struct {
@@ -4249,12 +4618,15 @@ type InviteListResponse struct {
 
 // InviteResponse defines model for InviteResponse.
 type InviteResponse struct {
-	Email     openapi_types.Email `json:"email"`
-	ExpiresAt time.Time           `json:"expiresAt"`
-	InviteUrl string              `json:"inviteUrl"`
-	Role      string              `json:"role"`
-	Token     string              `json:"token"`
-	Uid       openapi_types.UUID  `json:"uid"`
+	Email openapi_types.Email `json:"email"`
+
+	// EmailSent Whether the invitation email was queued for delivery — NOT confirmation it reached an inbox, since delivery is async. False when email sending is disabled on this instance, or when enqueueing the job failed; the invite link (inviteUrl) is then the only channel.
+	EmailSent bool               `json:"emailSent"`
+	ExpiresAt time.Time          `json:"expiresAt"`
+	InviteUrl string             `json:"inviteUrl"`
+	Role      string             `json:"role"`
+	Token     string             `json:"token"`
+	Uid       openapi_types.UUID `json:"uid"`
 }
 
 // Job defines model for Job.
@@ -5198,6 +5570,82 @@ type RegionCapabilitiesIpv4 string
 // RegionCapabilitiesIpv6 Whether checks pinned to `ipVersion: ipv6` can leave this region. `yes` when at least one live worker there reports IPv6 egress (any-not-all: a job runs on one worker). `no` when live workers reported and none has it. `unknown` when nothing live has reported — no live worker, or only workers predating the capability report. `unknown` is a real state and MUST NOT be rendered as `no`. The value is a hint with a heartbeat of lag: it never gates execution, and the run-time egress pre-flight is the authority.
 type RegionCapabilitiesIpv6 string
 
+// RegionHealthReport defines model for RegionHealthReport.
+type RegionHealthReport struct {
+	GeneratedAt time.Time `json:"generatedAt"`
+
+	// GhostCount Count of rows where `ghost` is true.
+	GhostCount int               `json:"ghostCount"`
+	Regions    []RegionHealthRow `json:"regions"`
+}
+
+// RegionHealthRow defines model for RegionHealthRow.
+type RegionHealthRow struct {
+	// ChecksReferencing Distinct, non-deleted checks whose `regions` array names this slug.
+	ChecksReferencing int `json:"checksReferencing"`
+
+	// Declared Whether the slug is present in the `regions` system parameter.
+	Declared bool `json:"declared"`
+
+	// Ghost `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work assigned to a slug nothing live can serve.
+	Ghost bool `json:"ghost"`
+
+	// Jobs check_jobs rows carrying this slug. NULL-region jobs are never counted.
+	Jobs int `json:"jobs"`
+
+	// JobsOverdue Subset of `jobs` whose `scheduledAt` has already passed.
+	JobsOverdue int `json:"jobsOverdue"`
+
+	// LastWorkerSeenAt Max `lastActiveAt` across every matching worker, including soft-deleted ones — dates when the region went dark.
+	LastWorkerSeenAt *time.Time `json:"lastWorkerSeenAt"`
+
+	// LiveWorkers Non-deleted workers within the liveness window whose announced region has this slug as a prefix.
+	LiveWorkers int `json:"liveWorkers"`
+
+	// OldestOverdueAt Earliest `scheduledAt` among the overdue jobs, null when there are none.
+	OldestOverdueAt *time.Time `json:"oldestOverdueAt"`
+	Slug            string     `json:"slug"`
+}
+
+// RegionMigrationReport defines model for RegionMigrationReport.
+type RegionMigrationReport struct {
+	// ByOrg checksUpdated split by organization slug.
+	ByOrg map[string]int `json:"byOrg"`
+
+	// ChecksUpdated Checks the migration touches: their `regions` array was rewritten, they owned a job stranded under `from`, or both.
+	ChecksUpdated int    `json:"checksUpdated"`
+	DryRun        bool   `json:"dryRun"`
+	From          string `json:"from"`
+
+	// JobsDeleted `from` jobs removed without a replacement — the check does not declare `to`, is disabled, or already owns a `to` job (the unique `(checkUid, region)` case, where the correct job is kept).
+	JobsDeleted int `json:"jobsDeleted"`
+
+	// JobsReassigned Stranded `from` jobs that come back to life under `to`.
+	JobsReassigned int `json:"jobsReassigned"`
+
+	// OverdueRecovered Reassigned jobs whose `scheduledAt` was already in the past — the stranded backlog that starts running again.
+	OverdueRecovered int    `json:"overdueRecovered"`
+	To               string `json:"to"`
+}
+
+// RegionMigrationRequest defines model for RegionMigrationRequest.
+type RegionMigrationRequest struct {
+	// DryRun When true, returns the full report without writing anything. The numbers are computed from the same pre-state the real run uses, so a dry run and the apply that follows it agree.
+	DryRun *bool `json:"dryRun,omitempty"`
+
+	// From The region slug to migrate away from. Need NOT be a declared region — a slug that no longer exists anywhere is the normal case.
+	//
+	//
+	// Example: default
+	From string `json:"from"`
+
+	// To The region slug to migrate to. Must be declared in the `regions` system parameter or served by a live worker.
+	//
+	//
+	// Example: gravelines
+	To string `json:"to"`
+}
+
 // RegisterRequest defines model for RegisterRequest.
 type RegisterRequest struct {
 	Email    openapi_types.Email `json:"email"`
@@ -5470,7 +5918,7 @@ type SetEntitlementsRequest struct {
 	Limits   *EntitlementLimits      `json:"limits,omitempty"`
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 
-	// Source Entitlement source (default set server-side)
+	// Source IGNORED for user-driven writes — the server decides the source, because it is an authorization outcome rather than a label. A superadmin write records `admin`, any other authenticated caller records `org-admin`, and a trusted service defaults to `billing-service`.
 	Source *string `json:"source,omitempty"`
 }
 
@@ -5878,9 +6326,12 @@ type SupportReplyWindow struct {
 
 // SupportThread defines model for SupportThread.
 type SupportThread struct {
-	// CanReply Whether an outbound adapter exists for this channel at all.
-	CanReply *bool                `json:"canReply,omitempty"`
-	Channel  SupportThreadChannel `json:"channel"`
+	// CanReply Whether a reply can be routed back to THIS thread right now. Resolved per thread from local routing state — a stored Slack connection for the thread's workspace, a Discord channel id, an SMS sender for the attributed org — never by calling the provider. A registered adapter is not enough: a Slack workspace whose app was installed outside SolidPing sends messages we capture and holds no token we can answer with, and reports false here.
+	CanReply *bool `json:"canReply,omitempty"`
+
+	// CanReplyReason Why canReply is false, in operator-facing terms. Absent when the thread is answerable. The dashboard renders this in place of the reply box.
+	CanReplyReason *string              `json:"canReplyReason,omitempty"`
+	Channel        SupportThreadChannel `json:"channel"`
 
 	// ChannelIdentity E.164 number, Telegram chat id, Slack/Discord user id.
 	ChannelIdentity string     `json:"channelIdentity"`
@@ -6020,9 +6471,6 @@ type UpdateCheckRequest struct {
 
 	// FlappingWindowSeconds Flapping (adaptive recovery) window in seconds. 0 = off. Omit to leave unchanged.
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
-
-	// Internal Whether this check is internal (hidden from default listings)
-	Internal *bool `json:"internal,omitempty"`
 
 	// Labels Key-value pairs (null = no change, empty object = clear all)
 	Labels *map[string]string `json:"labels,omitempty"`
@@ -6281,9 +6729,6 @@ type UpsertCheckRequest struct {
 	// EscalationPolicyUid Escalation policy for this check. Omit or empty to inherit (group → org default → none); a zero-step policy makes it silent.
 	EscalationPolicyUid *string `json:"escalationPolicyUid,omitempty"`
 
-	// Internal Whether this check is internal (hidden from default listings)
-	Internal *bool `json:"internal,omitempty"`
-
 	// Labels Key-value pairs for organizing checks
 	//
 	// Example: {"app":"api","env":"prod"}
@@ -6325,29 +6770,55 @@ type UserSummaryRole string
 type ValidateCheckRequest struct {
 	Config    map[string]interface{} `json:"config"`
 	DependsOn *[]ExportedDependency  `json:"dependsOn,omitempty"`
-	Slug      *string                `json:"slug,omitempty"`
+
+	// Enabled Proposed enabled state; absent means enabled. A disabled check is scheduled nowhere and can never push the organization over its checks-per-minute cap.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// ExcludeCheckUid UID of the check being edited. Its slug is then not reported as a collision with itself, and the checks-per-minute projection replaces its stored row instead of adding a second one. Omit when creating.
+	ExcludeCheckUid *string `json:"excludeCheckUid,omitempty"`
+
+	// Period Proposed execution interval (`HH:MM:SS` or a Go duration). Optional; when absent, neither the per-type period bounds nor the checks-per-minute projection are evaluated.
+	Period *string `json:"period,omitempty"`
+
+	// Regions Proposed region set. Needed by the tunnel region rules, the region-capability hints and the checks-per-minute projection — a check executes once per region per period.
+	Regions *[]string `json:"regions,omitempty"`
+
+	// Slug Proposed slug. Validated for format and, within the organization, for uniqueness against live checks.
+	Slug *string `json:"slug,omitempty"`
 
 	// Type Check type (http, tcp, ping, dns, ssl, ...)
 	Type string `json:"type"`
 }
 
-// ValidateCheckResponse defines model for ValidateCheckResponse.
+// ValidateCheckResponse The result of a dry run. Every finding it can compute is reported, not just the first, and each entry carries a `severity` and a machine `code`. The two arrays are the severity split: `fields` blocks, `warnings` advises.
 type ValidateCheckResponse struct {
+	// Fields Every blocking finding, not just the first. Codes in use: `UNSUPPORTED_TYPE`, `INVALID_CONFIG`, `INVALID_PERIOD`, `INVALID_SLUG`, `SLUG_TAKEN`, `INVALID_DEPENDS_ON`. `SLUG_TAKEN` is advisory by nature — the value can be claimed between this answer and the save, so creation still answers 409.
 	Fields *[]ValidationErrorField `json:"fields,omitempty"`
-	Valid  bool                    `json:"valid"`
 
-	// Warnings Advisory, per-field notes that do NOT make the configuration invalid — `valid` stays true and the write path accepts it. Today the only source is pinning `ipVersion: ipv6` in a region whose live workers report no IPv6 egress; that is deliberately a warning and never a rejection, because the advertised capability lags reality and the run-time probe is the authority.
+	// Valid False exactly when `fields` is non-empty. Warnings never make a configuration invalid.
+	Valid bool `json:"valid"`
+
+	// Warnings Advisory, per-field notes that do NOT make the configuration invalid — `valid` stays true and the write path accepts it. `REGION_NO_IPV6` / `REGION_NO_BROWSER` report a region whose live workers advertise no IPv6 egress or no headless Chrome; those are deliberately warnings and never rejections, because the advertised capability lags reality and the run-time probe is the authority. `ORG_RATE_OVER_LIMIT` on the `period` field reports that the proposed period/regions would put the organization's scheduled checks-per-minute demand over its `maxChecksPerMinute` cap, so some executions would be skipped; it never blocks, precisely because an over-limit organization has to be able to edit its way back under the cap. Passive check types (heartbeat, email) are exempt from it.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
 // ValidationErrorField defines model for ValidationErrorField.
 type ValidationErrorField struct {
-	// Message Validation error message for this field
+	// Code Stable machine identifier for the rule that produced this finding (e.g. `SLUG_TAKEN`, `ORG_RATE_OVER_LIMIT`). Absent when the producer has no code to offer, in which case clients fall back to `name` + `message`.
+	Code *string `json:"code,omitempty"`
+
+	// Message Human-readable message for this field
 	Message string `json:"message"`
 
-	// Name Field name that failed validation
+	// Name Field name the finding is about
 	Name string `json:"name"`
+
+	// Severity How the finding should be treated. ABSENT MEANS `error`: the field was added after this shape shipped, and a producer that omits it is always reporting a blocking error. Only `error` findings make a validation response invalid; `warning` and `info` never block.
+	Severity *ValidationErrorFieldSeverity `json:"severity,omitempty"`
 }
+
+// ValidationErrorFieldSeverity How the finding should be treated. ABSENT MEANS `error`: the field was added after this shape shipped, and a producer that omits it is always reporting a blocking error. Only `error` findings make a validation response invalid; `warning` and `info` never block.
+type ValidationErrorFieldSeverity string
 
 // VersionResponse defines model for VersionResponse.
 type VersionResponse struct {
@@ -6617,6 +7088,21 @@ type GetCheckAvailabilityParams struct {
 
 	// Tz IANA time zone used to resolve the calendar tokens (today/mtd/ytd). Trailing durations are tz-independent. Defaults to UTC.
 	Tz *string `form:"tz,omitempty" json:"tz,omitempty"`
+}
+
+// GetCheckAvailabilityBucketsParams defines parameters for GetCheckAvailabilityBuckets.
+type GetCheckAvailabilityBucketsParams struct {
+	// From Window start (inclusive), RFC3339.
+	From time.Time `form:"from" json:"from"`
+
+	// To Window end (exclusive), RFC3339. Must be after `from`.
+	To time.Time `form:"to" json:"to"`
+
+	// Bucket Cell width as a Go duration. Must be a whole positive multiple of one hour — below an hour a percentage is noise (a 5-minute slice of a 1-minute check quantizes to 0/20/40/…%). At most 200 cells per request. When omitted the server picks the smallest hour-multiple keeping the cell count at or below 60.
+	Bucket *string `form:"bucket,omitempty" json:"bucket,omitempty"`
+
+	// Region Scope the read to one probe region. Omitted sums up/total across every region rather than averaging their percentages.
+	Region *string `form:"region,omitempty" json:"region,omitempty"`
 }
 
 // GetBadgeParams defines parameters for GetBadge.
@@ -7056,6 +7542,22 @@ type ListSystemCheckJobsParams struct {
 	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListAdminEntitlementsParams defines parameters for ListAdminEntitlements.
+type ListAdminEntitlementsParams struct {
+	// Q Case-insensitive substring match on the org slug or name
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (1-200, default 50)
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetAdminEntitlementsParams defines parameters for GetAdminEntitlements.
+type GetAdminEntitlementsParams struct {
+	// Limit Maximum audit entries (1-200, default 50)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListSystemJobsParams defines parameters for ListSystemJobs.
 type ListSystemJobsParams struct {
 	// Status Filter by job status
@@ -7335,8 +7837,14 @@ type UpdateSupportThreadJSONRequestBody = UpdateSupportThreadRequest
 // CreateSupportMessageJSONRequestBody defines body for CreateSupportMessage for application/json ContentType.
 type CreateSupportMessageJSONRequestBody = CreateSupportMessageRequest
 
+// SetAdminEntitlementsJSONRequestBody defines body for SetAdminEntitlements for application/json ContentType.
+type SetAdminEntitlementsJSONRequestBody = SetEntitlementsRequest
+
 // SetSystemParameterJSONRequestBody defines body for SetSystemParameter for application/json ContentType.
 type SetSystemParameterJSONRequestBody = SetSystemParameterRequest
+
+// MigrateRegionJSONRequestBody defines body for MigrateRegion for application/json ContentType.
+type MigrateRegionJSONRequestBody = RegionMigrationRequest
 
 // SendTestEmailJSONRequestBody defines body for SendTestEmail for application/json ContentType.
 type SendTestEmailJSONRequestBody = TestEmailRequest
@@ -8034,6 +8542,17 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability (the `GetCheckAvailability` operationId).
 	GetCheckAvailability(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckAvailabilityBuckets Bucketed availability over an arbitrary window for a single check
+	//
+	// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+	//
+	// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+	//
+	// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+	GetCheckAvailabilityBuckets(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetBadge Get status badge for a check
 	//
@@ -9724,7 +10243,7 @@ type ClientInterface interface {
 
 	// CreateSupportMessageWithBody Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -9733,12 +10252,19 @@ type ClientInterface interface {
 
 	// CreateSupportMessage Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
 	CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResendSupportMessage Resend a failed outbound reply
+	//
+	// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+	ResendSupportMessage(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetActivationFunnel Organization activation funnel
 	//
@@ -9786,6 +10312,82 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/system/email-inbox/test (the `TestEmailInbox` operationId).
 	TestEmailInbox(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAdminEntitlements List organizations with their resolved entitlements (super admin)
+	//
+	// One row per organization: resolved limits, their source, plan display
+	// identity, and the checks-per-minute demand/cap pair so orgs currently
+	// over their execution cap can be spotted without opening each one.
+	//
+	// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+	ListAdminEntitlements(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReleaseAdminEntitlements Release an organization back to billing (super admin)
+	//
+	// Drops the stored entitlements row. The organization immediately
+	// resolves to the deployment-mode defaults, and the next billing push is
+	// applied normally. Releasing an organization that has no stored row is a
+	// no-op (`released: false`), not an error.
+	//
+	// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+	ReleaseAdminEntitlements(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAdminEntitlements Get one organization's entitlements and audit trail (super admin)
+	//
+	// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+	GetAdminEntitlements(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAdminEntitlementsWithBody Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlementsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAdminEntitlements Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlements(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSystemJobs List background jobs (all orgs)
 	//
@@ -9849,6 +10451,49 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/system/parameters/{key} (the `SetSystemParameter` operationId).
 	SetSystemParameter(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRegionHealth Ghost-region detection report
+	//
+	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+	//
+	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	//
+	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+	GetRegionHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MigrateRegionWithBody Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MigrateRegion Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegion(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSchedulingLaneLoad Per-worker check-lane load statistics
 	//
@@ -11373,6 +12018,27 @@ func (c *Client) RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid
 // Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability (the `GetCheckAvailability` operationId).
 func (c *Client) GetCheckAvailability(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCheckAvailabilityRequest(c.Server, org, check, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCheckAvailabilityBuckets Bucketed availability over an arbitrary window for a single check
+//
+// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+//
+// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+//
+// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+func (c *Client) GetCheckAvailabilityBuckets(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckAvailabilityBucketsRequest(c.Server, org, check, params)
 	if err != nil {
 		return nil, err
 	}
@@ -15472,7 +16138,7 @@ func (c *Client) ListSupportMessages(ctx context.Context, uid string, params *Li
 
 // CreateSupportMessageWithBody Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -15491,13 +16157,30 @@ func (c *Client) CreateSupportMessageWithBody(ctx context.Context, uid string, c
 
 // CreateSupportMessage Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
 func (c *Client) CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateSupportMessageRequest(c.Server, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResendSupportMessage Resend a failed outbound reply
+//
+// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+func (c *Client) ResendSupportMessage(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResendSupportMessageRequest(c.Server, uid, messageUid)
 	if err != nil {
 		return nil, err
 	}
@@ -15615,6 +16298,132 @@ func (c *Client) SyncEmailInbox(ctx context.Context, reqEditors ...RequestEditor
 // Corresponds with POST /api/v1/system/email-inbox/test (the `TestEmailInbox` operationId).
 func (c *Client) TestEmailInbox(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestEmailInboxRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListAdminEntitlements List organizations with their resolved entitlements (super admin)
+//
+// One row per organization: resolved limits, their source, plan display
+// identity, and the checks-per-minute demand/cap pair so orgs currently
+// over their execution cap can be spotted without opening each one.
+//
+// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+func (c *Client) ListAdminEntitlements(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAdminEntitlementsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReleaseAdminEntitlements Release an organization back to billing (super admin)
+//
+// Drops the stored entitlements row. The organization immediately
+// resolves to the deployment-mode defaults, and the next billing push is
+// applied normally. Releasing an organization that has no stored row is a
+// no-op (`released: false`), not an error.
+//
+// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+func (c *Client) ReleaseAdminEntitlements(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReleaseAdminEntitlementsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAdminEntitlements Get one organization's entitlements and audit trail (super admin)
+//
+// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+func (c *Client) GetAdminEntitlements(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAdminEntitlementsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAdminEntitlementsWithBody Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *Client) SetAdminEntitlementsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAdminEntitlementsRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAdminEntitlements Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *Client) SetAdminEntitlements(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAdminEntitlementsRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -15768,6 +16577,79 @@ func (c *Client) SetSystemParameterWithBody(ctx context.Context, key string, con
 // Corresponds with PUT /api/v1/system/parameters/{key} (the `SetSystemParameter` operationId).
 func (c *Client) SetSystemParameter(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetSystemParameterRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRegionHealth Ghost-region detection report
+//
+// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+//
+// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+//
+// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+//
+// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+func (c *Client) GetRegionHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRegionHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MigrateRegionWithBody Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *Client) MigrateRegionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMigrateRegionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MigrateRegion Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *Client) MigrateRegion(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMigrateRegionRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -18593,6 +19475,102 @@ func NewGetCheckAvailabilityRequest(server string, org OrgPath, check string, pa
 		if params.Tz != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tz", *params.Tz, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckAvailabilityBucketsRequest constructs an http.Request for the GetCheckAvailabilityBuckets method
+func NewGetCheckAvailabilityBucketsRequest(server string, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "check", check, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/availability/buckets", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Bucket != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "bucket", *params.Bucket, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Region != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "region", *params.Region, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -28256,6 +29234,47 @@ func NewCreateSupportMessageRequestWithBody(server string, uid string, contentTy
 	return req, nil
 }
 
+// NewResendSupportMessageRequest constructs an http.Request for the ResendSupportMessage method
+func NewResendSupportMessageRequest(server string, uid string, messageUid string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "messageUid", messageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s/messages/%s/resend", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetActivationFunnelRequest constructs an http.Request for the GetActivationFunnel method
 func NewGetActivationFunnelRequest(server string) (*http.Request, error) {
 	var err error
@@ -28487,6 +29506,226 @@ func NewTestEmailInboxRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListAdminEntitlementsRequest constructs an http.Request for the ListAdminEntitlements method
+func NewListAdminEntitlementsRequest(server string, params *ListAdminEntitlementsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReleaseAdminEntitlementsRequest constructs an http.Request for the ReleaseAdminEntitlements method
+func NewReleaseAdminEntitlementsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAdminEntitlementsRequest constructs an http.Request for the GetAdminEntitlements method
+func NewGetAdminEntitlementsRequest(server string, org OrgPath, params *GetAdminEntitlementsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAdminEntitlementsRequest calls the generic SetAdminEntitlements builder with application/json body
+func NewSetAdminEntitlementsRequest(server string, org OrgPath, body SetAdminEntitlementsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAdminEntitlementsRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewSetAdminEntitlementsRequestWithBody constructs an http.Request for the SetAdminEntitlements method, with any body, and a specified content type
+func NewSetAdminEntitlementsRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -28809,6 +30048,73 @@ func NewSetSystemParameterRequestWithBody(server string, key string, contentType
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetRegionHealthRequest constructs an http.Request for the GetRegionHealth method
+func NewGetRegionHealthRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/regions/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewMigrateRegionRequest calls the generic MigrateRegion builder with application/json body
+func NewMigrateRegionRequest(server string, body MigrateRegionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMigrateRegionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewMigrateRegionRequestWithBody constructs an http.Request for the MigrateRegion method, with any body, and a specified content type
+func NewMigrateRegionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/regions/migrate")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -29647,6 +30953,19 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability (the `GetCheckAvailability` operationId).
 	GetCheckAvailabilityWithResponse(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*GetCheckAvailabilityResult, error)
+
+	// GetCheckAvailabilityBucketsWithResponse Bucketed availability over an arbitrary window for a single check
+	//
+	// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+	//
+	// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+	//
+	// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+	GetCheckAvailabilityBucketsWithResponse(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*GetCheckAvailabilityBucketsResult, error)
 
 	// GetBadgeWithResponse Get status badge for a check
 	//
@@ -31575,7 +32894,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSupportMessageWithBodyWithResponse Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -31584,12 +32903,21 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSupportMessageWithResponse Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
 	CreateSupportMessageWithResponse(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error)
+
+	// ResendSupportMessageWithResponse Resend a failed outbound reply
+	//
+	// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+	ResendSupportMessageWithResponse(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*ResendSupportMessageResult, error)
 
 	// GetActivationFunnelWithResponse Organization activation funnel
 	//
@@ -31651,6 +32979,88 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/system/email-inbox/test (the `TestEmailInbox` operationId).
 	TestEmailInboxWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TestEmailInboxResult, error)
+
+	// ListAdminEntitlementsWithResponse List organizations with their resolved entitlements (super admin)
+	//
+	// One row per organization: resolved limits, their source, plan display
+	// identity, and the checks-per-minute demand/cap pair so orgs currently
+	// over their execution cap can be spotted without opening each one.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+	ListAdminEntitlementsWithResponse(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*ListAdminEntitlementsResult, error)
+
+	// ReleaseAdminEntitlementsWithResponse Release an organization back to billing (super admin)
+	//
+	// Drops the stored entitlements row. The organization immediately
+	// resolves to the deployment-mode defaults, and the next billing push is
+	// applied normally. Releasing an organization that has no stored row is a
+	// no-op (`released: false`), not an error.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+	ReleaseAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ReleaseAdminEntitlementsResult, error)
+
+	// GetAdminEntitlementsWithResponse Get one organization's entitlements and audit trail (super admin)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+	GetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*GetAdminEntitlementsResult, error)
+
+	// SetAdminEntitlementsWithBodyWithResponse Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlementsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error)
+
+	// SetAdminEntitlementsWithResponse Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error)
 
 	// ListSystemJobsWithResponse List background jobs (all orgs)
 	//
@@ -31728,6 +33138,51 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/system/parameters/{key} (the `SetSystemParameter` operationId).
 	SetSystemParameterWithResponse(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*SetSystemParameterResult, error)
+
+	// GetRegionHealthWithResponse Ghost-region detection report
+	//
+	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+	//
+	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	//
+	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+	GetRegionHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRegionHealthResult, error)
+
+	// MigrateRegionWithBodyWithResponse Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error)
+
+	// MigrateRegionWithResponse Migrate every reference to a region slug
+	//
+	// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+	//
+	// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+	//
+	// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+	//
+	// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+	MigrateRegionWithResponse(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error)
 
 	// GetSchedulingLaneLoadWithResponse Per-worker check-lane load statistics
 	//
@@ -35023,6 +36478,68 @@ func (r GetCheckAvailabilityResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCheckAvailabilityResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCheckAvailabilityBucketsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckAvailabilityBucketsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON200() *CheckAvailabilityBucketsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCheckAvailabilityBucketsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckAvailabilityBucketsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckAvailabilityBucketsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCheckAvailabilityBucketsResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -45360,6 +46877,82 @@ func (r CreateSupportMessageResult) ContentType() string {
 	return ""
 }
 
+type ResendSupportMessageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportMessage
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *SupportMessage
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResendSupportMessageResult) GetJSON200() *SupportMessage {
+	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r ResendSupportMessageResult) GetJSON202() *SupportMessage {
+	return r.JSON202
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ResendSupportMessageResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ResendSupportMessageResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ResendSupportMessageResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ResendSupportMessageResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r ResendSupportMessageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResendSupportMessageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResendSupportMessageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResendSupportMessageResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetActivationFunnelResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -45732,6 +47325,254 @@ func (r TestEmailInboxResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r TestEmailInboxResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAdminEntitlementsResult) GetJSON200() *AdminEntitlementsListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAdminEntitlementsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReleaseAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsWriteResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON200() *AdminEntitlementsWriteResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ReleaseAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReleaseAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReleaseAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReleaseAdminEntitlementsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsDetail
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON200() *AdminEntitlementsDetail {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAdminEntitlementsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsWriteResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON200() *AdminEntitlementsWriteResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetAdminEntitlementsResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -46165,6 +48006,123 @@ func (r SetSystemParameterResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetSystemParameterResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRegionHealthResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RegionHealthReport
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRegionHealthResult) GetJSON200() *RegionHealthReport {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetRegionHealthResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetRegionHealthResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRegionHealthResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRegionHealthResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRegionHealthResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRegionHealthResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MigrateRegionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RegionMigrationReport
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MigrateRegionResult) GetJSON200() *RegionMigrationReport {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r MigrateRegionResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r MigrateRegionResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r MigrateRegionResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r MigrateRegionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MigrateRegionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MigrateRegionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MigrateRegionResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -47540,6 +49498,25 @@ func (c *ClientWithResponses) GetCheckAvailabilityWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseGetCheckAvailabilityResult(rsp)
+}
+
+// GetCheckAvailabilityBucketsWithResponse Bucketed availability over an arbitrary window for a single check
+//
+// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+//
+// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+//
+// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+func (c *ClientWithResponses) GetCheckAvailabilityBucketsWithResponse(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*GetCheckAvailabilityBucketsResult, error) {
+	rsp, err := c.GetCheckAvailabilityBuckets(ctx, org, check, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckAvailabilityBucketsResult(rsp)
 }
 
 // GetBadgeWithResponse Get status badge for a check
@@ -50909,7 +52886,7 @@ func (c *ClientWithResponses) ListSupportMessagesWithResponse(ctx context.Contex
 
 // CreateSupportMessageWithBodyWithResponse Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -50924,7 +52901,7 @@ func (c *ClientWithResponses) CreateSupportMessageWithBodyWithResponse(ctx conte
 
 // CreateSupportMessageWithResponse Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -50935,6 +52912,21 @@ func (c *ClientWithResponses) CreateSupportMessageWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseCreateSupportMessageResult(rsp)
+}
+
+// ResendSupportMessageWithResponse Resend a failed outbound reply
+//
+// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+func (c *ClientWithResponses) ResendSupportMessageWithResponse(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*ResendSupportMessageResult, error) {
+	rsp, err := c.ResendSupportMessage(ctx, uid, messageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResendSupportMessageResult(rsp)
 }
 
 // GetActivationFunnelWithResponse Organization activation funnel
@@ -51038,6 +53030,118 @@ func (c *ClientWithResponses) TestEmailInboxWithResponse(ctx context.Context, re
 		return nil, err
 	}
 	return ParseTestEmailInboxResult(rsp)
+}
+
+// ListAdminEntitlementsWithResponse List organizations with their resolved entitlements (super admin)
+//
+// One row per organization: resolved limits, their source, plan display
+// identity, and the checks-per-minute demand/cap pair so orgs currently
+// over their execution cap can be spotted without opening each one.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+func (c *ClientWithResponses) ListAdminEntitlementsWithResponse(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*ListAdminEntitlementsResult, error) {
+	rsp, err := c.ListAdminEntitlements(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAdminEntitlementsResult(rsp)
+}
+
+// ReleaseAdminEntitlementsWithResponse Release an organization back to billing (super admin)
+//
+// Drops the stored entitlements row. The organization immediately
+// resolves to the deployment-mode defaults, and the next billing push is
+// applied normally. Releasing an organization that has no stored row is a
+// no-op (`released: false`), not an error.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+func (c *ClientWithResponses) ReleaseAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ReleaseAdminEntitlementsResult, error) {
+	rsp, err := c.ReleaseAdminEntitlements(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReleaseAdminEntitlementsResult(rsp)
+}
+
+// GetAdminEntitlementsWithResponse Get one organization's entitlements and audit trail (super admin)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+func (c *ClientWithResponses) GetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*GetAdminEntitlementsResult, error) {
+	rsp, err := c.GetAdminEntitlements(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAdminEntitlementsResult(rsp)
+}
+
+// SetAdminEntitlementsWithBodyWithResponse Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *ClientWithResponses) SetAdminEntitlementsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error) {
+	rsp, err := c.SetAdminEntitlementsWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAdminEntitlementsResult(rsp)
+}
+
+// SetAdminEntitlementsWithResponse Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *ClientWithResponses) SetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error) {
+	rsp, err := c.SetAdminEntitlements(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAdminEntitlementsResult(rsp)
 }
 
 // ListSystemJobsWithResponse List background jobs (all orgs)
@@ -51169,6 +53273,69 @@ func (c *ClientWithResponses) SetSystemParameterWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseSetSystemParameterResult(rsp)
+}
+
+// GetRegionHealthWithResponse Ghost-region detection report
+//
+// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
+//
+// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+//
+// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/regions/health (the `GetRegionHealth` operationId).
+func (c *ClientWithResponses) GetRegionHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRegionHealthResult, error) {
+	rsp, err := c.GetRegionHealth(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRegionHealthResult(rsp)
+}
+
+// MigrateRegionWithBodyWithResponse Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *ClientWithResponses) MigrateRegionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error) {
+	rsp, err := c.MigrateRegionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMigrateRegionResult(rsp)
+}
+
+// MigrateRegionWithResponse Migrate every reference to a region slug
+//
+// Reassigns a region slug server-wide and across every organization: `checks.regions` is rewritten in one transaction, then each affected check's `check_jobs` are re-materialized under the new slug through the normal reconcile (so the unique `(checkUid, region)` pair, the phase stagger, the plan weight and the schedule are all recomputed).
+//
+// This exists because renaming a worker region — an `SP_NODE_REGION` / `SP_REGIONS` change, with no check ever edited — leaves every job row under the old spelling, and a worker only claims a job whose region its own region matches by prefix. Those jobs become unclaimable by every worker, silently and forever. The migration is the recovery, and it is server-scope because org-scoped credentials cannot reach the jobs of the other tenants a rename breaks.
+//
+// `to` must be a declared region (present in the `regions` system parameter) or served by a live worker — migrating to a slug nobody serves would only move the stranding. `from` deliberately need not be declared: cleaning up a slug that no longer exists is the point. A private (`@…`) region may only migrate to another private region, since its sealed configs are encrypted to the private region's agent keys and cannot be re-targeted server-side.
+//
+// Idempotent: a second call with the same pair finds no references and returns zeros. Super-admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/system/regions/migrate (the `MigrateRegion` operationId).
+func (c *ClientWithResponses) MigrateRegionWithResponse(ctx context.Context, body MigrateRegionJSONRequestBody, reqEditors ...RequestEditorFn) (*MigrateRegionResult, error) {
+	rsp, err := c.MigrateRegion(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMigrateRegionResult(rsp)
 }
 
 // GetSchedulingLaneLoadWithResponse Per-worker check-lane load statistics
@@ -53551,6 +55718,53 @@ func ParseGetCheckAvailabilityResult(rsp *http.Response) (*GetCheckAvailabilityR
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest CheckAvailabilityResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckAvailabilityBucketsResult parses an HTTP response from a GetCheckAvailabilityBucketsWithResponse call
+func ParseGetCheckAvailabilityBucketsResult(rsp *http.Response) (*GetCheckAvailabilityBucketsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckAvailabilityBucketsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckAvailabilityBucketsResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -61327,6 +63541,67 @@ func ParseCreateSupportMessageResult(rsp *http.Response) (*CreateSupportMessageR
 	return response, nil
 }
 
+// ParseResendSupportMessageResult parses an HTTP response from a ResendSupportMessageWithResponse call
+func ParseResendSupportMessageResult(rsp *http.Response) (*ResendSupportMessageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResendSupportMessageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetActivationFunnelResult parses an HTTP response from a GetActivationFunnelWithResponse call
 func ParseGetActivationFunnelResult(rsp *http.Response) (*GetActivationFunnelResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -61594,6 +63869,194 @@ func ParseTestEmailInboxResult(rsp *http.Response) (*TestEmailInboxResult, error
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAdminEntitlementsResult parses an HTTP response from a ListAdminEntitlementsWithResponse call
+func ParseListAdminEntitlementsResult(rsp *http.Response) (*ListAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReleaseAdminEntitlementsResult parses an HTTP response from a ReleaseAdminEntitlementsWithResponse call
+func ParseReleaseAdminEntitlementsResult(rsp *http.Response) (*ReleaseAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReleaseAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsWriteResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAdminEntitlementsResult parses an HTTP response from a GetAdminEntitlementsWithResponse call
+func ParseGetAdminEntitlementsResult(rsp *http.Response) (*GetAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetAdminEntitlementsResult parses an HTTP response from a SetAdminEntitlementsWithResponse call
+func ParseSetAdminEntitlementsResult(rsp *http.Response) (*SetAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsWriteResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	}
 
@@ -61910,6 +64373,93 @@ func ParseSetSystemParameterResult(rsp *http.Response) (*SetSystemParameterResul
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRegionHealthResult parses an HTTP response from a GetRegionHealthWithResponse call
+func ParseGetRegionHealthResult(rsp *http.Response) (*GetRegionHealthResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRegionHealthResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RegionHealthReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMigrateRegionResult parses an HTTP response from a MigrateRegionWithResponse call
+func ParseMigrateRegionResult(rsp *http.Response) (*MigrateRegionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MigrateRegionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RegionMigrationReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	}
 

@@ -236,7 +236,9 @@
     "tracerouteInherit": "Heredar el valor de la organización",
     "tracerouteOn": "Capturar siempre",
     "tracerouteOff": "No capturar nunca",
-    "tracerouteOnFailureHelp": "Cuando este check caiga porque no se pudo ALCANZAR el destino (tiempo de conexión agotado, rechazo, pérdida ICMP, handshake TLS colgado), captura un traceroute estilo MTR y adjúntalo a la incidencia. Los fallos de aplicación como HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo activan: el servidor respondió, así que la ruta está bien."
+    "tracerouteOnFailureHelp": "Cuando este check caiga porque no se pudo ALCANZAR el destino (tiempo de conexión agotado, rechazo, pérdida ICMP, handshake TLS colgado), captura un traceroute estilo MTR y adjúntalo a la incidencia. Los fallos de aplicación como HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo activan: el servidor respondió, así que la ruta está bien.",
+    "customPeriod": "{{period}} (personalizado)",
+    "reviewScheduling": "Revisar la planificación de checks"
   },
   "types": {
     "http": "HTTP",
@@ -527,7 +529,19 @@
     "toast.copied": "Copiado al portapapeles",
     "toast.slugUpdated": "Slug actualizado",
     "toast.slugUpdateFailed": "Error al actualizar el slug",
-    "toast.deleteFailed": "Error al eliminar la comprobación"
+    "toast.deleteFailed": "Error al eliminar la comprobación",
+    "availabilityStrip": {
+      "loading": "Disponibilidad…",
+      "windowAvailability": "{{pct}} de disponibilidad",
+      "noData": "Sin datos",
+      "probes": "{{up}} / {{total}} sondeos correctos",
+      "status": {
+        "up": "Activo",
+        "degraded": "Degradado",
+        "down": "Caído",
+        "noData": "Sin datos"
+      }
+    }
   },
   "endpoints": {
     "heartbeat": {
@@ -565,5 +579,63 @@
   "expectedValue": "Valor esperado",
   "actualValue": "Valor real",
   "passed": "Superada",
-  "failed": "Fallida"
+  "failed": "Fallida",
+  "scheduling": {
+    "title": "Programación de comprobaciones",
+    "subtitle": "Vea de dónde viene su demanda de ejecuciones por minuto y espacie o desactive comprobaciones hasta que encaje en su plan.",
+    "backToChecks": "Volver a las comprobaciones",
+    "autoRebalance": "Reequilibrar automáticamente",
+    "apply": "Aplicar cambios",
+    "reset": "Restablecer",
+    "pending_one": "{{count}} cambio pendiente",
+    "pending_other": "{{count}} cambios pendientes",
+    "proposed": "propuesto",
+    "customPeriod": "{{period}} (personalizado)",
+    "proposalSummary_one": "{{count}} nuevo periodo propuesto: {{before}} → {{after}} ejecuciones/min frente a un límite de {{limit}}.",
+    "proposalSummary_other": "{{count}} nuevos periodos propuestos: {{before}} → {{after}} ejecuciones/min frente a un límite de {{limit}}.",
+    "rebalanceExhausted": "Todas las comprobaciones ya están en su periodo más largo permitido y la demanda sigue superando el límite. Desactive comprobaciones o mejore su plan.",
+    "passiveNote_one": "{{count}} comprobación pasiva (heartbeat o correo) no aparece en la lista: se activa con una señal entrante, por lo que nunca consume presupuesto de ejecución.",
+    "passiveNote_other": "{{count}} comprobaciones pasivas (heartbeat o correo) no aparecen en la lista: se activan con una señal entrante, por lo que nunca consumen presupuesto de ejecución.",
+    "meter": {
+      "label": "Ejecuciones por minuto",
+      "hint": "Cada región seleccionada ejecuta la comprobación con el periodo completo, así que una comprobación en tres regiones cuesta el triple.",
+      "overHint": "Su organización supera su límite: algunas ejecuciones se están omitiendo.",
+      "unlimited": "sin límite",
+      "unlimitedHint": "Su plan no fija ningún límite de ejecuciones por minuto."
+    },
+    "table": {
+      "check": "Comprobación",
+      "type": "Tipo",
+      "period": "Periodo",
+      "contribution": "Por minuto",
+      "enabled": "Activada",
+      "periodFor": "Periodo de {{name}}",
+      "enabledFor": "Activación de {{name}}",
+      "regionCount_one": "{{count}} región",
+      "regionCount_other": "{{count}} regiones",
+      "perMinuteShort": "{{rate}}/min"
+    },
+    "periodUnit": {
+      "seconds_one": "{{count}} segundo",
+      "seconds_other": "{{count}} segundos",
+      "minutes_one": "{{count}} minuto",
+      "minutes_other": "{{count}} minutos",
+      "hours_one": "{{count}} hora",
+      "hours_other": "{{count}} horas",
+      "days_one": "{{count}} día",
+      "days_other": "{{count}} días",
+      "weeks_one": "{{count}} semana",
+      "weeks_other": "{{count}} semanas"
+    },
+    "empty": {
+      "title": "Sin comprobaciones activas",
+      "hint": "Solo las comprobaciones activas consumen presupuesto de ejecución: cree una para verla aquí."
+    },
+    "toast": {
+      "applied_one": "{{count}} comprobación actualizada.",
+      "applied_other": "{{count}} comprobaciones actualizadas.",
+      "partial": "{{applied}} actualizadas, pero {{failed}} fallaron: {{names}}",
+      "failed": "No se pudieron aplicar los cambios de programación."
+    }
+  }
 }

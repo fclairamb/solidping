@@ -253,6 +253,45 @@ func TestResultStatusExcludedFromAvailability(t *testing.T) {
 	}
 }
 
+// TestAvailabilityCountsPct pins the "no data, never a fabricated
+// percentage" contract: ok=false — not a manufactured 0 or 100 — is the only
+// honest answer when Total is zero.
+func TestAvailabilityCountsPct(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		counts  AvailabilityCounts
+		wantPct float64
+		wantOK  bool
+	}{
+		{name: "zero total is not ok", counts: AvailabilityCounts{Success: 0, Total: 0}, wantPct: 0, wantOK: false},
+		{
+			name: "zero total with a nonzero success is still not ok",
+			// Defensive: this combination should never occur from a real
+			// query, but the zero-total check must not be fooled by it.
+			counts: AvailabilityCounts{Success: 5, Total: 0}, wantPct: 0, wantOK: false,
+		},
+		{name: "all success is 100", counts: AvailabilityCounts{Success: 10, Total: 10}, wantPct: 100, wantOK: true},
+		{name: "all failure is 0", counts: AvailabilityCounts{Success: 0, Total: 10}, wantPct: 0, wantOK: true},
+		{name: "partial success", counts: AvailabilityCounts{Success: 3, Total: 4}, wantPct: 75, wantOK: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			pct, ok := tt.counts.Pct()
+			r.Equal(tt.wantOK, ok)
+
+			if tt.wantOK {
+				r.InDelta(tt.wantPct, pct, 0.0001)
+			}
+		})
+	}
+}
+
 func TestAbandonedResultThreshold(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

@@ -182,9 +182,23 @@ func (p Params) TierCredit(planWeight int) time.Duration {
 // (spec 2026-07-01-02). A paid job sorts earlier via the tier credit. The
 // claim SELECT gates on the real scheduled_at and only orders by this value,
 // so with spare capacity every check runs on time; the offset only decides who
-// wins a slot when the due-batch exceeds capacity (Option A). Anti-starvation:
-// the offset is clamped to MaxDeprioritizeOffset (60s), so a skipped job's
-// receding scheduled_at sorts it ahead of any on-time job within a minute.
+// wins a slot when the due-batch exceeds capacity (Option A).
+//
+// Anti-starvation invariant: the offset is clamped to MaxDeprioritizeOffset
+// (30s = CostOffsetWeight × the 15s execution ceiling), so a job that is more
+// than 30s overdue sorts ahead of ANY on-time job, however cheap. A skipped
+// job's receding scheduled_at therefore buys it priority within half a minute.
+//
+// Every write path that skips an execution must uphold this by leaving the
+// job's stored effective_scheduled_at behind (receding), not by re-anchoring it
+// to the new schedule. The per-org rate-limit deferral used to violate it — it
+// advanced scheduled_at AND re-anchored effective_scheduled_at, so a job turned
+// away by the token bucket never accumulated overdue-ness and, with phases
+// being a stable hash of the check UID, the same checks lost every single
+// window (a 1-minute check went 7.5 hours with zero results in production).
+// checkjobsvc.DeferLeaseRateLimited now upholds the invariant on both the
+// in-process worker path and the deported-agent claim path (spec
+// 2026-08-26-02).
 func (p Params) EffectiveScheduledAt(scheduledAt time.Time, costEWMAMs float64, planWeight int) time.Time {
 	return scheduledAt.
 		Add(p.deprioritizeOffset(costEWMAMs)).
@@ -196,7 +210,7 @@ func (p Params) EffectiveScheduledAt(scheduledAt time.Time, costEWMAMs float64, 
 // value reaches SlowThresholdMs. Below the threshold it returns 0 (effective
 // stays at scheduled_at), so trivial cost never reorders fast checks. A
 // non-positive threshold disables the dead-band (any positive offset applies).
-// The result is clamped to MaxDeprioritizeOffset so the offset stays
+// The result is clamped to MaxDeprioritizeOffset (30s) so the offset stays
 // structurally bounded no matter what the inputs are.
 func (p Params) deprioritizeOffset(costEWMAMs float64) time.Duration {
 	total := costEWMAMs * CostOffsetWeight

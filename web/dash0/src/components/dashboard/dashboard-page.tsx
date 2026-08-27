@@ -32,6 +32,10 @@ import {
   type OrgResult,
 } from "@/api/hooks";
 import {
+  availabilityTier,
+  type AvailabilityTier,
+} from "@/lib/availability-tier";
+import {
   groupHeaderCounts,
   groupIncidentsByCheckGroup,
   type IncidentGroupRow,
@@ -89,6 +93,7 @@ const EMPTY_CHECK_STATS: CheckStats = {
   byStatus: {},
   down: 0,
   hardDown: 0,
+  availability24h: null,
 };
 // Hours rendered by each row's 24h uptime strip.
 const UPTIME_HOURS = 24;
@@ -201,6 +206,10 @@ function groupResultsByCheck(
         new Date(newestStart - (UPTIME_HOURS - 1 - i) * hourMs).toISOString(),
       availabilityPct: cell?.availabilityPct,
       durationMs: cell?.durationMs,
+      // Carried so the strip can apply the shared small-bucket guard (one failed
+      // sample is never red) instead of classifying on the percentage alone.
+      totalChecks: cell?.totalChecks,
+      successfulChecks: cell?.successfulChecks,
     }));
     // Latest response time = durationMs of the most recent bucket that has one.
     let latestDurationMs: number | undefined;
@@ -215,21 +224,32 @@ function groupResultsByCheck(
   return out;
 }
 
-function weightedAvailability(results: OrgResult[]): number | null {
-  let totalChecks = 0;
-  let successfulChecks = 0;
-  for (const r of results) {
-    if (
-      typeof r.totalChecks === "number" &&
-      typeof r.successfulChecks === "number"
-    ) {
-      totalChecks += r.totalChecks;
-      successfulChecks += r.successfulChecks;
-    }
-  }
-  if (totalChecks === 0) return null;
-  return (successfulChecks / totalChecks) * 100;
-}
+// Tailwind classes per tier, matching the emerald/amber/destructive/muted
+// conventions the other KPI tiles on this page already use. The tier logic
+// itself (thresholds, availabilityTier) lives in lib/availability-tier.ts —
+// a pure, directly unit-testable module, and split out so this file's export
+// surface stays component-only (react-refresh/only-export-components).
+const AVAILABILITY_TIER_CLASSES: Record<
+  AvailabilityTier,
+  { badge: string; icon: string }
+> = {
+  noData: {
+    badge: "text-muted-foreground bg-muted",
+    icon: "text-muted-foreground",
+  },
+  operational: {
+    badge: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
+    icon: "text-emerald-500",
+  },
+  degraded: {
+    badge: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
+    icon: "text-amber-500",
+  },
+  down: {
+    badge: "text-destructive bg-destructive/10",
+    icon: "text-destructive",
+  },
+};
 
 export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t } = useTranslation("dashboard");
@@ -271,17 +291,14 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     [],
   );
-  // Results ride the `checks` collection scope: v2 hints results/status
-  // transitions to `checks` subscribers alongside membership changes.
-  const resultsQuery = useResults(org, {
-    periodType: "day",
-    periodStartAfter: since24h,
-    size: 1000,
-    refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
-  });
   // One aggregated hourly query feeds every glance-card uptime strip — grouped
-  // client-side by checkUid, so the card costs a single HTTP call regardless of
-  // fleet size. The day query above keeps feeding the availability KPI.
+  // client-side by checkUid, so the card costs a single HTTP call regardless
+  // of fleet size. The 24h availability KPI does NOT ride this query (or any
+  // client-side results query): hour rows only exist once raw rows age past
+  // retention_raw, so the newest hour row typically lags ~24h behind and the
+  // trailing day lives almost entirely in raw rows the dashboard must never
+  // pull fleet-wide. It comes from the server-computed
+  // stats.availability24h instead (see statsQuery below).
   const hourlyResultsQuery = useResults(org, {
     periodType: "hour",
     periodStartAfter: since24h,
@@ -306,7 +323,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   const checks = checksQuery.data || [];
   const incidents = incidentsQuery.data?.data || [];
-  const results = resultsQuery.data?.data || [];
   const hourlyResults = hourlyResultsQuery.data?.data || [];
   const events = eventsQuery.data?.data || [];
 
@@ -314,7 +330,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     checksQuery.isPending ||
     statsQuery.isPending ||
     incidentsQuery.isPending ||
-    resultsQuery.isPending ||
     eventsQuery.isPending;
 
   // Every counter below reads the server-side aggregate. `stats` falls back to
@@ -335,7 +350,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   // page length — the query below caps at `size: 5` for the "needs
   // attention" list, so `incidents.length` alone silently truncates at 5.
   const incidentsCount = incidentsQuery.data?.total ?? incidents.length;
-  const availabilityPct = weightedAvailability(results);
+  // Server-computed (spec 2026-08-26-09) — see CheckStats.availability24h.
+  const availabilityPct = stats.availability24h;
+  const availabilityTierValue = availabilityTier(availabilityPct);
+  const availabilityTierClasses =
+    AVAILABILITY_TIER_CLASSES[availabilityTierValue];
 
   const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
   const uptimeByCheck = useMemo(
@@ -347,7 +366,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     checksQuery.refetch();
     statsQuery.refetch();
     incidentsQuery.refetch();
-    resultsQuery.refetch();
     hourlyResultsQuery.refetch();
     eventsQuery.refetch();
   };
@@ -356,7 +374,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     checksQuery.isRefetching ||
     statsQuery.isRefetching ||
     incidentsQuery.isRefetching ||
-    resultsQuery.isRefetching ||
     hourlyResultsQuery.isRefetching ||
     eventsQuery.isRefetching;
 
@@ -364,7 +381,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     checksQuery.dataUpdatedAt || 0,
     statsQuery.dataUpdatedAt || 0,
     incidentsQuery.dataUpdatedAt || 0,
-    resultsQuery.dataUpdatedAt || 0,
     hourlyResultsQuery.dataUpdatedAt || 0,
     eventsQuery.dataUpdatedAt || 0,
   );
@@ -458,16 +474,26 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 label="24h Availability"
                 value={
                   availabilityPct === null
-                    ? "100%"
+                    ? "—"
                     : `${availabilityPct.toFixed(2)}%`
                 }
-                icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
+                icon={
+                  <TrendingUp
+                    className={`h-4 w-4 ${availabilityTierClasses.icon}`}
+                  />
+                }
                 badge={
-                  <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                    Operational
+                  <span
+                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${availabilityTierClasses.badge}`}
+                  >
+                    {t(`kpi.availabilityBadge.${availabilityTierValue}`)}
                   </span>
                 }
-                sub="Fleet uptime health"
+                sub={
+                  availabilityPct === null
+                    ? t("kpi.availabilityNoDataSub")
+                    : "Fleet uptime health"
+                }
                 className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </div>
@@ -687,7 +713,10 @@ function OverallStatusBanner({
 
   if (allGreen) {
     return (
-      <div className="relative overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.08] via-green-500/[0.03] to-transparent p-3.5 sm:p-4 shadow-sm">
+      <div
+        data-testid="overall-status-banner"
+        className="relative overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.08] via-green-500/[0.03] to-transparent p-3.5 sm:p-4 shadow-sm"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="relative flex h-3 w-3 shrink-0">
@@ -699,20 +728,24 @@ function OverallStatusBanner({
                 {t("banner.allGreen")}
               </h2>
               <span className="text-xs text-muted-foreground">
-                {t("banner.allGreenSub", {
-                  count: checksCount,
-                  availability:
-                    availabilityPct === null
-                      ? "100"
-                      : availabilityPct.toFixed(2),
-                })}
+                {availabilityPct === null
+                  ? t("banner.allGreenSubNoData", { count: checksCount })
+                  : t("banner.allGreenSub", {
+                      count: checksCount,
+                      availability: availabilityPct.toFixed(2),
+                    })}
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-            <CheckCircle className="h-3.5 w-3.5" />
-            <span>24h SLA Operational</span>
-          </div>
+          {/* The "24h SLA Operational" pill asserts a real SLA figure — with
+              no data yet there is nothing honest to claim, so it is
+              suppressed rather than shown against a fabricated number. */}
+          {availabilityPct !== null ? (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              <CheckCircle className="h-3.5 w-3.5" />
+              <span>24h SLA Operational</span>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -720,7 +753,10 @@ function OverallStatusBanner({
 
   if (hardDownCount > 0 || incidentsCount > 0) {
     return (
-      <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm">
+      <div
+        data-testid="overall-status-banner"
+        className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="relative flex h-3 w-3 shrink-0">
@@ -751,7 +787,10 @@ function OverallStatusBanner({
 
   // Only timeouts (degraded but not hard-down).
   return (
-    <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm">
+    <div
+      data-testid="overall-status-banner"
+      className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />

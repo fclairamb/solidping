@@ -237,5 +237,13 @@
       "nudgeSent": "Erinnerungs-E-Mail gesendet",
       "nudgeFailed": "Erinnerungs-E-Mail konnte nicht gesendet werden"
     }
+  },
+  "checkRateLimit": {
+    "title": "Einige Prüfungsausführungen werden übersprungen",
+    "overLimit": "Ihre Organisation plant ca. {{demand}} Prüfungsausführungen pro Minute, Ihr Tarif erlaubt jedoch {{limit}}/Min. — einige Ausführungen werden übersprungen.",
+    "skippedToday_one": "{{count}} Prüfungsausführung wurde heute übersprungen, weil Ihre Organisation ihr Ausführungslimit überschritten hat.",
+    "skippedToday_other": "{{count}} Prüfungsausführungen wurden heute übersprungen, weil Ihre Organisation ihr Ausführungslimit überschritten hat.",
+    "viewUsage": "Planung überprüfen",
+    "upgrade": "Upgrade"
   }
 }

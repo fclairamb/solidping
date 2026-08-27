@@ -19,6 +19,10 @@ import (
 // transitions from the worker pipeline) to a cache buster.
 const defaultCheckStatsTTL = time.Minute
 
+// availability24hWindow is the trailing window Availability24h is computed
+// over (spec 2026-08-26-09) — "24h Availability" on the dashboard tile.
+const availability24hWindow = 24 * time.Hour
+
 // CheckStatsResponse is the org-wide check aggregate served by
 // GET /api/v1/orgs/{org}/checks/stats.
 //
@@ -53,6 +57,13 @@ type CheckStatsResponse struct {
 	// stats endpoint must report what the UI already reports, not a different
 	// (even if arguably better) truth.
 	HardDown int `json:"hardDown"`
+	// Availability24h is 100*success/total over the trailing 24h window,
+	// combining `hour` rollup and `raw` result rows (spec 2026-08-26-09) —
+	// db.Service.GetOrgAvailability24h does the actual fold, in SQL, mirroring
+	// models.RawAvailability's exclusion rules for the raw tier. nil when the
+	// window has no countable data (empty or brand-new org): the dashboard
+	// must render that as "no data", never as a fabricated 100%.
+	Availability24h *float64 `json:"availability24h"`
 }
 
 // checkStatsEntry is one cached org snapshot.
@@ -120,7 +131,18 @@ func (s *Service) GetCheckStats(ctx context.Context, orgSlug string) (CheckStats
 		return CheckStatsResponse{}, err
 	}
 
+	now := s.now()
+
+	availCounts, err := s.db.GetOrgAvailability24h(ctx, org.UID, now.Add(-availability24hWindow), now)
+	if err != nil {
+		return CheckStatsResponse{}, err
+	}
+
 	stats := foldCheckStatusCounts(rows)
+	if pct, ok := availCounts.Pct(); ok {
+		stats.Availability24h = &pct
+	}
+
 	s.checkStats.put(org.UID, stats)
 
 	return stats, nil

@@ -53,10 +53,17 @@ type CheckJob struct {
 	// for paid orgs. Refreshed on entitlement change and reconcile.
 	PlanWeight int `bun:"plan_weight,notnull,default:0"`
 	// EffectiveScheduledAt is scheduled_at + cost_ewma×CostOffsetWeight −
-	// tier_credit, with the offset clamped to MaxDeprioritizeOffset (60s). The
-	// claim SELECT gates on scheduled_at but orders by this column, so
+	// tier_credit, with the offset clamped to scheduling.MaxDeprioritizeOffset.
+	// The claim SELECT gates on scheduled_at but orders by this column, so
 	// de-prioritization only bites under contention (D2/Option A). Backfilled to
 	// scheduled_at by migration 006; delay-era offsets healed by migration 008.
+	//
+	// A rate-limited deferral deliberately does NOT re-anchor this column
+	// (checkjobsvc.DeferLeaseRateLimited, spec 2026-08-26-02): a job the per-org
+	// bucket turned away keeps the tick it missed as its ordering key, so it
+	// grows more overdue every window it loses and wins the next contended slot.
+	// That is what makes an over-cap org rotate its deficit instead of starving
+	// the same UID-hash phases forever.
 	EffectiveScheduledAt *time.Time `bun:"effective_scheduled_at"`
 	// Lane is the scheduling class (spec 2026-07-01-03): 0 = fast, 1 = slow
 	// (scheduling.LaneFast / LaneSlow). Classified from the cost EWMA with
@@ -92,6 +99,26 @@ func NewCheckJob(orgUID string, checkUID string, period timeutils.Duration) *Che
 		Lane:      0,
 		UpdatedAt: now,
 	}
+}
+
+// IsInternal reports whether this job belongs to an internal, server-created
+// check (worker self-stats plumbing).
+//
+// ONE HELPER SO THE TWO RATE GATES CANNOT DISAGREE — the in-process worker gate
+// (checkworker.applyRateLimitGate) and the agent dispatch gate
+// (agentws.handleClaim) both call it, the same way both delegate "what is a
+// passive check" to checkerdef. An internal check is exempt from the MaxChecks
+// quota and invisible to the checks-per-minute demand figure, so it must not
+// draw MaxChecksPerMinute tokens either (spec 2026-08-27-01): counting nowhere
+// has to mean counting nowhere, or the predicted demand and the factual skip
+// counter describe different fleets.
+//
+// Reads the check attached at claim time (checkjobsvc.attachChecks, inside the
+// claim transaction) — no column on check_jobs, no migration. A nil Check means
+// the row was deleted between scheduling and claim; that job is treated as a
+// normal metered one, which is the safe direction.
+func (j *CheckJob) IsInternal() bool {
+	return j.Check != nil && j.Check.Internal
 }
 
 // CheckJobUpdate represents fields that can be updated.

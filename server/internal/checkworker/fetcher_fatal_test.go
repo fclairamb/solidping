@@ -71,7 +71,7 @@ func (b *claimFailBackend) SubmitResult(
 	return nil
 }
 
-func (b *claimFailBackend) ReleaseLease(context.Context, *models.CheckJob, string, time.Time) error {
+func (b *claimFailBackend) DeferRateLimited(context.Context, *models.CheckJob, string, time.Time) error {
 	return nil
 }
 

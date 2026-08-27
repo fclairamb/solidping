@@ -2,8 +2,10 @@ package supportinbox_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/support"
 )
+
+// errFirstSendFails makes the first outbound send fail, so the resend route has
+// a failed message to act on. err113 forbids inline dynamic errors in tests too.
+var errFirstSendFails = errors.New("provider was down")
 
 // operation is one endpoint of the support API, named the way the spec lists it.
 type operation struct {
@@ -89,9 +95,26 @@ func TestSupportRoutesRequireSuperAdmin(t *testing.T) {
 	// A real thread so the per-thread routes resolve rather than 404ing before
 	// the gate has anything to prove.
 	inbox := support.NewService(dbSvc, support.Options{BaseURL: "https://solidping.example"})
+
+	// The first send fails so there is a resendable message to drive the resend
+	// route with; every later send succeeds.
+	firstSend := true
+	sendCount := 0
+
 	inbox.RegisterReplier(models.SupportChannelTelegram,
 		func(_ context.Context, _ *models.SupportThread, _ string) (string, error) {
-			return "sent-1", nil
+			if firstSend {
+				firstSend = false
+
+				return "", errFirstSendFails
+			}
+
+			sendCount++
+
+			// Distinct ids, because support_messages is uniquely indexed on
+			// (channel, external_id) — a fake that returned a constant would be
+			// testing the index, not the route.
+			return "sent-" + strconv.Itoa(sendCount), nil
 		})
 
 	thread, _, err := inbox.Capture(ctx, &support.Inbound{
@@ -99,6 +122,10 @@ func TestSupportRoutesRequireSuperAdmin(t *testing.T) {
 		ExternalID: "42:1", Body: "is the api down?",
 	})
 	r.NoError(err)
+
+	failed, err := inbox.Reply(ctx, thread.UID, "queued while the provider was down", "")
+	r.Error(err)
+	r.NotNil(failed)
 
 	router := httpx.New()
 	api := router.NewGroup("/api/v1")
@@ -116,6 +143,11 @@ func TestSupportRoutesRequireSuperAdmin(t *testing.T) {
 		{
 			"send reply", http.MethodPost, base + "/" + thread.UID + "/messages",
 			`{"body":"on it"}`, http.StatusCreated,
+		},
+		{
+			"resend reply", http.MethodPost,
+			base + "/" + thread.UID + "/messages/" + failed.UID + "/resend",
+			"", http.StatusOK,
 		},
 	}
 

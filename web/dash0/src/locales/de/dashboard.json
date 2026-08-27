@@ -40,6 +40,8 @@
     "allGreen": "Alle Systeme betriebsbereit",
     "allGreenSub_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
     "allGreenSub_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
+    "allGreenSubNoData_one": "{{count}} Prüfung überwacht, noch keine Verfügbarkeitsdaten",
+    "allGreenSubNoData_other": "{{count}} Prüfungen überwacht, noch keine Verfügbarkeitsdaten",
     "issues": "Probleme erkannt",
     "issuesSub_zero": "Keine aktiven Vorfälle",
     "issuesSub_one": "{{down}} Prüfung ausgefallen, {{incidents}} aktive Vorfälle",
@@ -53,7 +55,14 @@
     "down": "Derzeit ausgefallen",
     "downSubNone": "Alle aktiv",
     "incidents": "Aktive Vorfälle",
-    "incidentsSubNone": "Keine aktiv"
+    "incidentsSubNone": "Keine aktiv",
+    "availabilityBadge": {
+      "noData": "Keine Daten",
+      "operational": "Betriebsbereit",
+      "degraded": "Beeinträchtigt",
+      "down": "Ausgefallen"
+    },
+    "availabilityNoDataSub": "Noch keine Daten"
   },
   "glance": {
     "title": "Prüfungen auf einen Blick",

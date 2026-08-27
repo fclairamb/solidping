@@ -353,10 +353,18 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 // Period is not portable for a SUM(60/period) across Postgres and SQLite).
 // Regions is needed because a multi-region check executes once per region per
 // period, so its per-minute cost is (60s/period) × max(1, len(Regions)).
+// Type is needed to exclude passive types (heartbeat, email) from the demand
+// measured against MaxChecksPerMinute: they return before the token gate and
+// consume no execution budget (spec 2026-08-26-03).
 type CheckRate struct {
+	// UID identifies the row so a caller can project a hypothetical change:
+	// drop the check being edited out of the sum and add its proposed shape
+	// back (spec 2026-08-26-05's validate-time rate warning).
+	UID     string             `bun:"uid"`
 	Enabled bool               `bun:"enabled"`
 	Period  timeutils.Duration `bun:"period"`
 	Regions []string           `bun:"regions,type:text[],array"`
+	Type    string             `bun:"type"`
 }
 
 // CheckUpdate represents fields that can be updated.

@@ -12,6 +12,7 @@
 package supportinbox
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -53,6 +54,10 @@ type ThreadResponse struct {
 	UpdatedAt       time.Time                 `json:"updatedAt"`
 	ReplyWindow     models.SupportReplyWindow `json:"replyWindow"`
 	CanReply        bool                      `json:"canReply"`
+	// CanReplyReason explains a false CanReply in operator-facing terms, so the
+	// dashboard can say WHY the reply box is disabled instead of showing a
+	// generic "no adapter" that is wrong for most of the cases that produce it.
+	CanReplyReason string `json:"canReplyReason,omitempty"`
 }
 
 // MessageResponse is the API shape of a support message.
@@ -81,7 +86,14 @@ type CreateMessageRequest struct {
 	Body string `json:"body"`
 }
 
-func (h *Handler) toThread(thread *models.SupportThread) *ThreadResponse {
+// toThread renders one thread, running the per-thread reply pre-flight.
+func (h *Handler) toThread(ctx context.Context, thread *models.SupportThread) *ThreadResponse {
+	return toThreadWithRoute(thread, h.svc.ReplyRouteFor(ctx, thread))
+}
+
+// toThreadWithRoute renders a thread against an already-computed pre-flight, so
+// a listing can memoize the routing lookups instead of repeating one per row.
+func toThreadWithRoute(thread *models.SupportThread, route support.ReplyRoute) *ThreadResponse {
 	return &ThreadResponse{
 		UID:             thread.UID,
 		Channel:         thread.Channel,
@@ -97,7 +109,11 @@ func (h *Handler) toThread(thread *models.SupportThread) *ThreadResponse {
 		UpdatedAt:       thread.UpdatedAt,
 		// Derived at read time, never stored, so it cannot go stale.
 		ReplyWindow: thread.ReplyWindow(time.Now()),
-		CanReply:    h.svc.CanReply(thread.Channel),
+		// PER THREAD, not per channel: a Slack workspace with no stored
+		// connection reports false here even though the Slack adapter is
+		// registered instance-wide.
+		CanReply:       route.CanReply,
+		CanReplyReason: route.Reason,
 	}
 }
 
@@ -148,9 +164,11 @@ func (h *Handler) ListThreads(writer http.ResponseWriter, req *http.Request) err
 		return h.WriteInternalError(writer, req, err)
 	}
 
+	routes := h.svc.ReplyRoutes(req.Context(), threads)
+
 	out := make([]*ThreadResponse, 0, len(threads))
 	for _, thread := range threads {
-		out = append(out, h.toThread(thread))
+		out = append(out, toThreadWithRoute(thread, routes[thread.UID]))
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": out})
@@ -171,7 +189,7 @@ func (h *Handler) GetThread(writer http.ResponseWriter, req *http.Request) error
 		thread.UnreadCount = 0
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, h.toThread(thread))
+	return h.WriteJSON(writer, http.StatusOK, h.toThread(req.Context(), thread))
 }
 
 // UpdateThread handles PATCH /api/v1/support/threads/:uid.
@@ -192,7 +210,7 @@ func (h *Handler) UpdateThread(writer http.ResponseWriter, req *http.Request) er
 		return h.threadError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, h.toThread(thread))
+	return h.WriteJSON(writer, http.StatusOK, h.toThread(req.Context(), thread))
 }
 
 // ListMessages handles GET /api/v1/support/threads/:uid/messages.
@@ -252,6 +270,14 @@ func (h *Handler) CreateMessage(writer http.ResponseWriter, req *http.Request) e
 	case errors.Is(err, support.ErrNoReplier):
 		return h.WriteErrorErr(writer, req, http.StatusConflict, base.ErrorCodeConflict,
 			"This channel cannot be replied to from the support inbox", err)
+	case errors.Is(err, support.ErrNoReplyRoute):
+		// 409 and NOTHING STORED. The dashboard already disables the box from
+		// the same pre-flight, so reaching here means a stale tab, a scripted
+		// caller, or a connection that disappeared between render and send —
+		// and in none of those cases was a send attempted, so recording a
+		// failed delivery would be inventing an event that never happened.
+		return h.WriteErrorErr(writer, req, http.StatusConflict, base.ErrorCodeConflict,
+			err.Error(), err)
 	case err != nil && msg != nil:
 		// The send failed but the attempt IS recorded, delivery status and all.
 		// Returning the row rather than a bare error is what stops an operator
@@ -262,6 +288,40 @@ func (h *Handler) CreateMessage(writer http.ResponseWriter, req *http.Request) e
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, toMessage(msg))
+}
+
+// ResendMessage handles POST /api/v1/support/threads/:uid/messages/:messageUid/resend.
+//
+// It re-runs the full pre-flight and the send for an outbound reply whose
+// delivery failed, rewriting that row rather than appending a second copy. This
+// is the operator's way out of text that is visibly stored and permanently
+// unsent — including every reply queued against a Slack workspace before it was
+// connected.
+func (h *Handler) ResendMessage(writer http.ResponseWriter, req *http.Request) error {
+	msg, err := h.svc.Resend(req.Context(), httpx.Param(req, "uid"), httpx.Param(req, "messageUid"))
+
+	switch {
+	case errors.Is(err, support.ErrMessageNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound,
+			"Support message not found")
+	case errors.Is(err, support.ErrNotResendable):
+		return h.WriteErrorErr(writer, req, http.StatusConflict, base.ErrorCodeConflict,
+			"Only an outbound reply whose delivery failed can be resent", err)
+	case errors.Is(err, support.ErrReplyWindowClosed),
+		errors.Is(err, support.ErrNoReplier),
+		errors.Is(err, support.ErrNoReplyRoute):
+		return h.WriteErrorErr(writer, req, http.StatusConflict, base.ErrorCodeConflict,
+			err.Error(), err)
+	case err != nil && msg != nil:
+		// Attempted and rejected again: the row's delivery record is updated
+		// with the new provider error, and the operator sees the fresh reason
+		// rather than the stale one.
+		return h.WriteJSON(writer, http.StatusAccepted, toMessage(msg))
+	case err != nil:
+		return h.threadError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, toMessage(msg))
 }
 
 // threadError maps service errors onto the repo's error shape.

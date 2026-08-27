@@ -161,6 +161,36 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 	}
 }
 
+// StatsForResult folds ONE result row into a BucketStats, choosing the raw or
+// the aggregated accumulator from its period_type.
+//
+// It exists for readers that key on individual rows rather than on time buckets
+// — the public status page's response-time series, whose x-axis slots ARE the
+// rows (spec 2026-08-26-10 phase 2). Routing them through here rather than
+// letting them count statuses themselves is the whole point: lifecycle markers
+// and abandoned attempts leave both numerator and denominator alone, warning
+// counts as up, and a rollup's SuccessfulChecks already encodes that rule. A
+// second implementation of any of those is how surfaces start disagreeing.
+//
+// A row that contributes nothing (a lifecycle marker, an abandoned attempt)
+// returns the zero BucketStats, whose AvailabilityPct reports ok=false — "no
+// data", explicitly not 100%.
+func StatsForResult(result *models.Result) BucketStats {
+	var stats BucketStats
+
+	if result == nil {
+		return stats
+	}
+
+	if result.PeriodType == models.PeriodTypeRaw {
+		stats.accumulateRaw(result)
+	} else {
+		stats.accumulateAgg(result)
+	}
+
+	return stats
+}
+
 // accumulateAgg merges an aggregated rollup row (hour/day, plus month on the
 // WindowAvailability path) into the bucket. Rollup rows already encode the
 // CountsAsUp rule in SuccessfulChecks (the aggregation job counts warning as
@@ -522,6 +552,28 @@ func BucketAvailability(
 	bucketDuration time.Duration, bucketStart time.Time, n int,
 	hints Hints,
 ) (map[string]map[time.Time]BucketStats, error) {
+	return BucketAvailabilityInRegions(
+		ctx, db, orgUID, checkUIDs, nil, bucketDuration, bucketStart, n, hints)
+}
+
+// BucketAvailabilityInRegions is BucketAvailability restricted to a set of
+// probe regions. `regions` nil or empty means "every region", which is the
+// historical behavior: the engine then SUMS up/total across regions rather
+// than averaging their percentages, so a check probed from three regions is
+// weighted by how many probes each region actually contributed (the
+// statuspages mergeBuckets rule). Naming one region instead buckets that
+// region alone.
+//
+// The filter is pushed into the query (ListResultsFilter.Regions) rather than
+// applied to the returned rows on purpose: hour and day rollups keep the
+// region they were rolled up from (job_aggregation.go), so a region-scoped
+// read is a real per-region rollup read at every tier — filtering afterwards
+// would work only for the raw tier and silently lose the rollups.
+func BucketAvailabilityInRegions(
+	ctx context.Context, db ResultsLister, orgUID string, checkUIDs, regions []string,
+	bucketDuration time.Duration, bucketStart time.Time, n int,
+	hints Hints,
+) (map[string]map[time.Time]BucketStats, error) {
 	out := make(map[string]map[time.Time]BucketStats, len(checkUIDs))
 
 	if len(checkUIDs) == 0 || n <= 0 {
@@ -536,6 +588,7 @@ func BucketAvailability(
 	rollupRows, err := listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        checkUIDs,
+		Regions:          regions,
 		PeriodTypes:      []string{models.PeriodTypeHour, models.PeriodTypeDay},
 		PeriodStartAfter: &start,
 		Limit:            rollupRowCap(hints, len(checkUIDs), windowSpan, false),
@@ -553,6 +606,7 @@ func BucketAvailability(
 	rawRows, err := listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        checkUIDs,
+		Regions:          regions,
 		PeriodTypes:      []string{models.PeriodTypeRaw},
 		PeriodStartAfter: &rawStart,
 		Limit:            rawRowCap(hints, len(checkUIDs), windowSpan),

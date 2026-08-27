@@ -20,7 +20,9 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Google Chat | Available | Webhook |
 | Mattermost | Available | Webhook |
 | ntfy | Available | HTTP push |
+| Gotify | Available | HTTP push |
 | Matrix | Available | Client-Server API |
+| Zulip | Available | Bot API |
 | PagerDuty | Available | Events API v2 |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
@@ -557,6 +559,28 @@ Add a ntfy connection in SolidPing with:
 ntfy subscribe solidping-alerts
 ```
 
+## Gotify
+
+[Gotify](https://gotify.net) is a simple self-hosted push notification server, popular
+alongside ntfy in the homelab/self-hosted crowd. SolidPing posts alerts to a Gotify
+application via its HTTP API.
+
+### Configuration
+
+1. In your Gotify web UI, go to **Apps** and create a new application for SolidPing. Copy
+   the generated application token.
+2. Add a Gotify connection in SolidPing with:
+   - **Server URL**: your Gotify instance's base URL (e.g. `https://gotify.example.com`) —
+     Gotify is always self-hosted, there's no default.
+   - **Application token**: the token from step 1. Treated as a secret — stored encrypted,
+     never shown again after you save it.
+   - **Priority** (optional): the default Gotify priority (0-10) for alerts, default `5`. A
+     resolved incident always sends at a low priority (2) so a recovery doesn't re-buzz your
+     phone the way a page does.
+
+Notifications carry a click-through link to the incident when SolidPing's base URL is
+configured, so tapping the push notification opens the incident directly.
+
 ## Matrix
 
 [Matrix](https://matrix.org) is an open, decentralized chat protocol — the standard for
@@ -595,6 +619,50 @@ Add a Matrix connection in SolidPing with:
 - End-to-end encrypted rooms are not supported (posting into one would require a full Matrix
   crypto SDK). Use an unencrypted room for alerts.
 - SolidPing does not auto-join a room on invite — join it manually as the bot account first.
+
+## Zulip
+
+[Zulip](https://zulip.com) is an open-source chat tool whose threading model — every
+message lives in a named **topic** inside a stream — maps naturally onto "one thread per
+incident". SolidPing posts through Zulip's bot API, using the same topic string for every
+lifecycle event of an incident (created, escalated, comments, acknowledgment, resolved) so
+Zulip threads the whole incident together automatically, without any extra configuration.
+
+### Configuration
+
+Add a Zulip connection in SolidPing with:
+- **Site URL**: your Zulip realm's base URL (e.g. `https://acme.zulipchat.com` for Zulip
+  Cloud, or your self-hosted realm's URL).
+- **Bot email**: the bot's email identity (e.g. `solidping-bot@acme.zulipchat.com`).
+- **API key**: the bot's API key. Treated as a secret — stored encrypted, never shown again
+  after you save it.
+- **Stream**: the name of the stream (channel) to post into. The bot must already be
+  subscribed to it — SolidPing does not auto-subscribe.
+
+### Creating a bot and finding its API key
+
+1. In your Zulip organization, go to **Settings → Personal → Bots** (or, for an
+   organization-wide bot, **Organization settings → Bots**) and add a new bot — a
+   **Generic bot** is the right type for posting alerts.
+2. Zulip shows the bot's email and API key on its bot detail page immediately after
+   creation. If you need the key again later, open the bot's row in **Bots** and click the
+   key icon to reveal it.
+3. Subscribe the bot to the stream you want SolidPing to post into — as an organization
+   admin, add the bot's email as a subscriber from **Organization settings → Channels**
+   (streams), or invite it into the stream the same way you'd invite any other user.
+
+### Topic per incident
+
+Each incident's Zulip topic is derived deterministically from the check name and the
+incident's short reference, e.g. `API health (#42)`, truncated to Zulip's 60-character
+topic limit when needed. Every event for that incident reuses the same string, so the
+whole lifecycle — the initial alert, any escalation, comments, an acknowledgment, and the
+eventual resolution — reads as one continuous thread in Zulip instead of separate,
+unrelated messages.
+
+When a check name is long enough that the full string would exceed 60 characters, the
+check name is shortened, never the `(#42)` reference — that reference is the only part of
+the topic that tells two incidents on the same check apart, so it always survives intact.
 
 ## PagerDuty
 

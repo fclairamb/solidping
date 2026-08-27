@@ -408,7 +408,9 @@ func TestReply_NoAdapterIsRefusedNotCrashed(t *testing.T) {
 	})
 	r.NoError(err)
 
-	r.False(h.svc.CanReply(models.SupportChannelDiscord))
+	route := h.svc.ReplyRouteFor(t.Context(), thread)
+	r.False(route.CanReply)
+	r.Contains(route.Reason, "no reply adapter")
 
 	_, err = h.svc.Reply(t.Context(), thread.UID, "hello", "")
 	r.ErrorIs(err, support.ErrNoReplier)

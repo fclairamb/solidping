@@ -240,5 +240,13 @@
       "nudgeSent": "Nudge email sent",
       "nudgeFailed": "Could not send the nudge email"
     }
+  },
+  "checkRateLimit": {
+    "title": "Some check executions are being skipped",
+    "overLimit": "Your organization schedules ~{{demand}} check executions per minute but your plan allows {{limit}}/min — some executions are being skipped.",
+    "skippedToday_one": "{{count}} check execution was skipped today because your organization was over its execution rate limit.",
+    "skippedToday_other": "{{count}} check executions were skipped today because your organization was over its execution rate limit.",
+    "viewUsage": "Review scheduling",
+    "upgrade": "Upgrade"
   }
 }

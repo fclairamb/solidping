@@ -413,8 +413,8 @@ func (s *SlackOAuthService) findOrCreateOrganization(
 	if err == nil && orgProvider != nil {
 		// A link pointing at a soft-deleted org is stale: it is cleared and we
 		// fall through to the create path rather than failing this login (and
-		// every later one) forever. See resolveLinkedOrganization.
-		org, resolveErr := resolveLinkedOrganization(
+		// every later one) forever. See ResolveLinkedOrganization.
+		org, resolveErr := ResolveLinkedOrganization(
 			ctx, s.db, models.ProviderTypeSlack, teamID, orgProvider,
 		)
 		if resolveErr != nil {
@@ -456,7 +456,7 @@ func (s *SlackOAuthService) findOrCreateUser(
 	}
 
 	if err == nil && provider != nil {
-		user, resolveErr := resolveLinkedUser(
+		user, resolveErr := ResolveLinkedUser(
 			ctx, s.db, models.ProviderTypeSlack, userInfo.Sub, provider,
 		)
 		if resolveErr != nil {

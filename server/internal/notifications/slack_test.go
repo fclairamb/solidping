@@ -164,6 +164,10 @@ func (m *mockDBService) ListOrganizationProviders(_ context.Context, _ string) (
 	panic("not implemented")
 }
 
+func (m *mockDBService) CountDanglingOrganizationProviders(_ context.Context) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateOrganizationProvider(
 	_ context.Context, _ string, _ models.OrganizationProviderUpdate,
 ) error {
@@ -1288,6 +1292,12 @@ func (m *mockDBService) GetCheckStatusCounts(
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetOrgAvailability24h(
+	_ context.Context, _ string, _, _ time.Time,
+) (models.AvailabilityCounts, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListCheckUIDsByGroup(_ context.Context, _, _ string) ([]string, error) {
 	panic("not implemented")
 }
@@ -1622,6 +1632,18 @@ func (m *mockDBService) ListOrgEntitlementAudits(
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateOrgEntitlementAudit(
+	_ context.Context, _ *models.OrgEntitlementAudit,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteOrgEntitlements(
+	_ context.Context, _ string, _ *models.OrgEntitlementAudit,
+) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CountMembersForOrg(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }
@@ -1634,6 +1656,10 @@ func (m *mockDBService) ReserveMonthlyUsage(
 
 func (m *mockDBService) GetMonthlyUsage(_ context.Context, _, _, _ string) (int, error) {
 	return 0, nil
+}
+
+func (m *mockDBService) IncrementUsageCounter(_ context.Context, _, _, _ string) error {
+	return nil
 }
 
 func (m *mockDBService) ListOrgCheckRates(_ context.Context, _ string) ([]models.CheckRate, error) {

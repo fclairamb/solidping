@@ -30,6 +30,15 @@ var errNoReplyRoute = errors.New("thread has no reply routing context")
 // A channel with no adapter registered is not a crash — it reports canReply:
 // false to the dashboard, which disables the reply box with a reason instead of
 // letting the operator type into something that will fail at send time.
+//
+// REGISTRATION IS NOT REACHABILITY. Whether an adapter exists is an instance
+// fact; whether it can reach one particular conversation is a per-thread fact,
+// and the two diverge constantly — a Slack workspace whose app was installed
+// from Slack's own dashboard sends us DMs we can capture and holds no bot token
+// we could answer with. Every channel whose reachability varies per thread is
+// therefore registered with RegisterRoutedReplier and a RouteFunc that resolves
+// LOCAL state only (spec 2026-08-27-03). WhatsApp and Telegram stay on the plain
+// form because their `if` above already is the whole answer.
 func (s *Server) registerSupportRepliers(
 	svc *support.Service, slackService *slack.Service, discordService *discord.Service,
 ) {
@@ -46,15 +55,17 @@ func (s *Server) registerSupportRepliers(
 	}
 
 	if s.config.SMS.Active() {
-		svc.RegisterReplier(models.SupportChannelSMS, s.smsReplier)
+		svc.RegisterRoutedReplier(models.SupportChannelSMS, s.smsReplier, s.smsReplyRoute)
 	}
 
 	if slackService != nil {
-		svc.RegisterReplier(models.SupportChannelSlack, slackReplier(slackService))
+		svc.RegisterRoutedReplier(
+			models.SupportChannelSlack, slackReplier(slackService), slackReplyRoute(slackService))
 	}
 
 	if discordService != nil {
-		svc.RegisterReplier(models.SupportChannelDiscord, discordReplier(discordService))
+		svc.RegisterRoutedReplier(
+			models.SupportChannelDiscord, discordReplier(discordService), discordReplyRoute(discordService))
 	}
 
 	// Email is deliberately absent. In v1 email support is a human mailbox, not
@@ -208,4 +219,101 @@ func discordReplier(svc *discord.Service) support.ReplyFunc {
 
 		return result.ID, nil
 	}
+}
+
+// slackReplyRoute is the pre-flight for a Slack thread.
+//
+// This is the failure the spec was written from: capture authenticates with the
+// instance-level signing secret and needs no connection at all, while replying
+// needs a stored bot token for that specific workspace. A workspace whose app
+// was installed from Slack's dashboard rather than through SolidPing's OAuth
+// callback — or whose connection was later deleted — opens support threads that
+// can never be answered, and until now said "canReply: true" about every one of
+// them.
+//
+// GetConnectionByTeamID is a local lookup (organization_providers, then
+// integrations). No Slack API call happens here, deliberately: this runs once
+// per thread on every inbox render.
+func slackReplyRoute(svc *slack.Service) support.RouteFunc {
+	return func(ctx context.Context, thread *models.SupportThread) support.ReplyRoute {
+		teamID, _ := thread.ChannelContext["teamId"].(string)
+		channelID, _ := thread.ChannelContext["channelId"].(string)
+
+		if teamID == "" || channelID == "" {
+			return support.ReplyRoute{
+				Reason: "this Slack thread carries no workspace or channel id, so there is " +
+					"nowhere to send a reply",
+			}
+		}
+
+		if _, err := svc.GetConnectionByTeamID(ctx, teamID); err != nil {
+			if errors.Is(err, slack.ErrConnectionNotFound) {
+				return support.ReplyRoute{
+					Reason: "SolidPing holds no bot token for this Slack workspace — the app " +
+						"must be installed through SolidPing before replies can be sent",
+				}
+			}
+
+			return support.ReplyRoute{
+				Reason: "the Slack connection for this workspace could not be resolved",
+			}
+		}
+
+		return support.ReplyRoute{CanReply: true}
+	}
+}
+
+// discordReplyRoute is the pre-flight for a Discord thread: a DM channel id on
+// the thread, and a bot token on the instance.
+func discordReplyRoute(svc *discord.Service) support.RouteFunc {
+	return func(ctx context.Context, thread *models.SupportThread) support.ReplyRoute {
+		channelID, _ := thread.ChannelContext["channelId"].(string)
+		if channelID == "" {
+			return support.ReplyRoute{
+				Reason: "this Discord thread carries no channel id, so there is nowhere to " +
+					"send a reply",
+			}
+		}
+
+		// GetClient only reads the configured bot token — no Discord API call.
+		if _, err := svc.GetClient(ctx, ""); err != nil {
+			return support.ReplyRoute{
+				Reason: "the Discord bot is not configured on this instance",
+			}
+		}
+
+		return support.ReplyRoute{CanReply: true}
+	}
+}
+
+// smsReplyRoute is the pre-flight for an SMS thread: does this thread's org
+// resolve to a sender at all?
+//
+// It runs the SAME resolution smsReplier runs and stops there. It deliberately
+// does NOT touch the instance spend guards: a reservation consumed by rendering
+// a list would bill an operator's inbox against the runaway ceiling that exists
+// to cap actual sends.
+func (s *Server) smsReplyRoute(ctx context.Context, thread *models.SupportThread) support.ReplyRoute {
+	if s.services.SMS == nil {
+		return support.ReplyRoute{Reason: "SMS is not configured on this instance"}
+	}
+
+	orgUID := ""
+	if thread.OrganizationUID != nil {
+		orgUID = *thread.OrganizationUID
+	}
+
+	resolution, err := s.services.SMS.Resolve(ctx, orgUID)
+	if err != nil {
+		return support.ReplyRoute{Reason: "an SMS route for this thread could not be resolved"}
+	}
+
+	if !resolution.SMSAvailable() {
+		return support.ReplyRoute{
+			Reason: "no SMS sender is available for this thread — neither this instance nor " +
+				"the attributed organization has one configured",
+		}
+	}
+
+	return support.ReplyRoute{CanReply: true}
 }

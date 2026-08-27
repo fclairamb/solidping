@@ -237,5 +237,13 @@
       "nudgeSent": "Recordatorio enviado",
       "nudgeFailed": "No se pudo enviar el recordatorio"
     }
+  },
+  "checkRateLimit": {
+    "title": "Se están omitiendo algunas ejecuciones de comprobaciones",
+    "overLimit": "Tu organización programa ~{{demand}} ejecuciones de comprobaciones por minuto, pero tu plan permite {{limit}}/min — se están omitiendo algunas ejecuciones.",
+    "skippedToday_one": "Hoy se omitió {{count}} ejecución de comprobación porque tu organización superó su límite de ejecuciones.",
+    "skippedToday_other": "Hoy se omitieron {{count}} ejecuciones de comprobaciones porque tu organización superó su límite de ejecuciones.",
+    "viewUsage": "Revisar la programación",
+    "upgrade": "Mejorar plan"
   }
 }

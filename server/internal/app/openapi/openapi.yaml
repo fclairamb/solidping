@@ -717,12 +717,16 @@ paths:
       summary: Reply to a support thread
       description: >
         Sends the reply through the channel the thread arrived on AND records it.
-        Returns 409 when the channel will not accept a free-form reply right now
-        — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter —
-        which is a refusal we make deliberately rather than a provider error
-        surfaced after the fact. Returns 202 when the row was recorded but the
-        provider send failed, so an operator is never left unsure whether the
-        attempt happened. Super-admin only.
+        Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp
+        24-hour window, a channel with no reply adapter, or a thread with no
+        route back (an unconnected Slack workspace, a missing channel id, no SMS
+        sender) — which is a refusal we make deliberately rather than a provider
+        error surfaced after the fact. **Nothing is stored on a 409**: no send was
+        attempted, so there is no attempt to record. Returns 202 when a send WAS
+        attempted and the provider rejected it: that row is recorded with
+        delivery.status = failed, so an operator is never left unsure whether the
+        attempt happened, and it can be retried through the resend endpoint.
+        Super-admin only.
       operationId: createSupportMessage
       security:
         - bearerAuth: []
@@ -753,6 +757,54 @@ paths:
                 $ref: "#/components/schemas/SupportMessage"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/support/threads/{uid}/messages/{messageUid}/resend:
+    post:
+      tags: [Support]
+      summary: Resend a failed outbound reply
+      description: >
+        Re-runs the reply pre-flight (window, then routing) and the provider send
+        for an outbound message whose delivery failed, rewriting that message's
+        delivery record in place rather than appending a second copy. Only a
+        failed outbound message qualifies — resending a delivered reply would
+        send the same text to a customer twice. Returns 409 when the thread still
+        cannot be replied to, and 202 when the provider rejected the retry as
+        well. Super-admin only.
+      operationId: resendSupportMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageUid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reply sent and its delivery record updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+        "202":
+          description: The retry was attempted and the provider rejected it again
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2395,6 +2447,95 @@ paths:
                 $ref: "#/components/schemas/CheckAvailabilityResponse"
         "400":
           description: Invalid period or timezone parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{check}/availability/buckets:
+    get:
+      tags: [Results]
+      summary: Bucketed availability over an arbitrary window for a single check
+      description: >
+        Cuts [from, to) into uniform, hour-aligned availability cells — the data
+        behind the check-detail chart's availability strip. Deliberately a
+        separate route from
+        /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing
+        calendar tokens with a tz, has no from/to at all and is capped at 12
+        periods.
+
+
+        Counting is the shared engine's: lifecycle markers and abandoned
+        attempts are excluded from BOTH numerator and denominator, warning
+        counts as up, and maintenance probes count exactly like any other
+        (maintenance exclusion is SLO-only). A cell with no countable probes has
+        hasData=false, availabilityPct=null and status="noData" — no data is not
+        100%.
+
+
+        Cells are aligned OUTWARD to bucket boundaries, so the series may start
+        before `from` and end after `to`. The `window` object is the exact
+        [from, to) fold (it also includes the month tier, which is deliberately
+        never attributed to a single cell) and is what a client renders when the
+        window is too short for a legible strip.
+      operationId: getCheckAvailabilityBuckets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check UID (UUID) or slug
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          description: Window start (inclusive), RFC3339.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: Window end (exclusive), RFC3339. Must be after `from`.
+          schema:
+            type: string
+            format: date-time
+        - name: bucket
+          in: query
+          required: false
+          description: >
+            Cell width as a Go duration. Must be a whole positive multiple of
+            one hour — below an hour a percentage is noise (a 5-minute slice of
+            a 1-minute check quantizes to 0/20/40/…%). At most 200 cells per
+            request. When omitted the server picks the smallest hour-multiple
+            keeping the cell count at or below 60.
+          schema:
+            type: string
+          example: "6h"
+        - name: region
+          in: query
+          required: false
+          description: >
+            Scope the read to one probe region. Omitted sums up/total across
+            every region rather than averaging their percentages.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bucketed availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckAvailabilityBucketsResponse"
+        "400":
+          description: Invalid window or bucket parameter
           content:
             application/json:
               schema:
@@ -7499,6 +7640,154 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Superadmin entitlements editor (spec 2026-08-26-06). Instance-level, NOT
+  # org-scoped: a super admin edits somebody else's limits, so these routes
+  # deliberately sit outside the /orgs/{org} chain (which would pin them to the
+  # organization they happen to be signed into).
+  /api/v1/system/entitlements:
+    get:
+      tags: [Entitlements]
+      summary: List organizations with their resolved entitlements (super admin)
+      operationId: listAdminEntitlements
+      description: |
+        One row per organization: resolved limits, their source, plan display
+        identity, and the checks-per-minute demand/cap pair so orgs currently
+        over their execution cap can be spotted without opening each one.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive substring match on the org slug or name
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size (1-200, default 50)
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Organizations with resolved entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/entitlements/{org}:
+    get:
+      tags: [Entitlements]
+      summary: Get one organization's entitlements and audit trail (super admin)
+      operationId: getAdminEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum audit entries (1-200, default 50)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entitlements detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Entitlements]
+      summary: Write an organization's entitlements as an admin override (super admin)
+      operationId: setAdminEntitlements
+      description: |
+        Writes a complete admin-sourced row (whole-row only; there are no
+        per-field overrides). The request body's `source` is ignored — a super
+        admin write is always `admin`, so a body claiming to be the billing
+        service cannot launder itself past the precedence rule.
+
+        Because the row is complete, an `admin` row resolves whole-row: a
+        `null` cap means **unlimited**, not "inherit the deployment default".
+        That is what makes the editor's Unlimited switch mean what it says on a
+        SaaS deployment, where every default is a real number. `whiteLabel` is
+        the exception — being a boolean, its `null` keeps meaning "use the
+        deployment default".
+
+        While the stored row is admin-sourced, billing pushes to
+        `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+        applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+        audit log. Use `DELETE` on this path to release the override.
+
+        An optional `X-Entitlements-Reason` header is stored on the audit row.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEntitlementsRequest"
+      responses:
+        "200":
+          description: Updated entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Entitlements]
+      summary: Release an organization back to billing (super admin)
+      operationId: releaseAdminEntitlements
+      description: |
+        Drops the stored entitlements row. The organization immediately
+        resolves to the deployment-mode defaults, and the next billing push is
+        applied normally. Releasing an organization that has no stored row is a
+        no-op (`released: false`), not an error.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Entitlements after the release
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # File storage APIs (org-scoped metadata + content)
   /api/v1/orgs/{org}/files:
     get:
@@ -8161,7 +8450,20 @@ components:
           $ref: "#/components/schemas/SupportReplyWindow"
         canReply:
           type: boolean
-          description: Whether an outbound adapter exists for this channel at all.
+          description: >
+            Whether a reply can be routed back to THIS thread right now. Resolved
+            per thread from local routing state — a stored Slack connection for
+            the thread's workspace, a Discord channel id, an SMS sender for the
+            attributed org — never by calling the provider. A registered adapter
+            is not enough: a Slack workspace whose app was installed outside
+            SolidPing sends messages we capture and holds no token we can answer
+            with, and reports false here.
+        canReplyReason:
+          type: string
+          description: >
+            Why canReply is false, in operator-facing terms. Absent when the
+            thread is answerable. The dashboard renders this in place of the
+            reply box.
 
     SupportThreadListResponse:
       type: object
@@ -8276,10 +8578,25 @@ components:
       properties:
         name:
           type: string
-          description: Field name that failed validation
+          description: Field name the finding is about
         message:
           type: string
-          description: Validation error message for this field
+          description: Human-readable message for this field
+        severity:
+          type: string
+          enum: [error, warning, info]
+          description: >
+            How the finding should be treated. ABSENT MEANS `error`: the field
+            was added after this shape shipped, and a producer that omits it is
+            always reporting a blocking error. Only `error` findings make a
+            validation response invalid; `warning` and `info` never block.
+        code:
+          type: string
+          description: >
+            Stable machine identifier for the rule that produced this finding
+            (e.g. `SLUG_TAKEN`, `ORG_RATE_OVER_LIMIT`). Absent when the producer
+            has no code to offer, in which case clients fall back to
+            `name` + `message`.
 
     # Management schemas
     VersionResponse:
@@ -9054,7 +9371,14 @@ components:
           type: boolean
         internal:
           type: boolean
-          description: Whether this check is internal (hidden from default listings)
+          readOnly: true
+          description: >-
+            Whether this check is internal (hidden from default listings).
+            READ-ONLY: `internal` marks server-created plumbing (worker
+            self-stat checks) and is what exempts a check from `maxChecks`,
+            from the checks-per-minute demand figure and from the per-org
+            execution rate limit. A create, update, upsert or import that
+            carries it is refused with a `VALIDATION_ERROR` naming the field.
         period:
           type: string
           description: Interval duration (e.g., "00:01:00" for 1 minute)
@@ -9306,7 +9630,7 @@ components:
 
     CheckStats:
       type: object
-      required: [total, enabled, disabled, byStatus, down, hardDown]
+      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h]
       properties:
         total:
           type: integer
@@ -9350,6 +9674,17 @@ components:
             Checks failing hard (status down or error), i.e. down excluding
             timeouts.
           example: 6
+        availability24h:
+          type: number
+          nullable: true
+          description: >-
+            100 * successful / total over the trailing 24h window, combining
+            `hour` rollup rows and `raw` result rows (successful = up +
+            warning; lifecycle markers and reaped/abandoned raw rows are
+            excluded from both sides). `null` when the window has no
+            countable data (an empty or brand-new org) — never a fabricated
+            100.
+          example: 99.97
 
     CreateCheckRequest:
       type: object
@@ -9387,10 +9722,6 @@ components:
         enabled:
           type: boolean
           default: true
-        internal:
-          type: boolean
-          default: false
-          description: Whether this check is internal (hidden from default listings)
         period:
           type: string
           default: "00:01:00"
@@ -9464,9 +9795,6 @@ components:
           type: object
         enabled:
           type: boolean
-        internal:
-          type: boolean
-          description: Whether this check is internal (hidden from default listings)
         period:
           type: string
         regionSpread:
@@ -9541,10 +9869,6 @@ components:
         enabled:
           type: boolean
           default: true
-        internal:
-          type: boolean
-          default: false
-          description: Whether this check is internal (hidden from default listings)
         period:
           type: string
           default: "00:01:00"
@@ -9578,9 +9902,38 @@ components:
           description: Check type (http, tcp, ping, dns, ssl, ...)
         slug:
           type: string
+          description: >
+            Proposed slug. Validated for format and, within the organization,
+            for uniqueness against live checks.
         config:
           type: object
           additionalProperties: true
+        regions:
+          type: array
+          description: >
+            Proposed region set. Needed by the tunnel region rules, the
+            region-capability hints and the checks-per-minute projection — a
+            check executes once per region per period.
+          items:
+            type: string
+        period:
+          type: string
+          description: >
+            Proposed execution interval (`HH:MM:SS` or a Go duration). Optional;
+            when absent, neither the per-type period bounds nor the
+            checks-per-minute projection are evaluated.
+        enabled:
+          type: boolean
+          description: >
+            Proposed enabled state; absent means enabled. A disabled check is
+            scheduled nowhere and can never push the organization over its
+            checks-per-minute cap.
+        excludeCheckUid:
+          type: string
+          description: >
+            UID of the check being edited. Its slug is then not reported as a
+            collision with itself, and the checks-per-minute projection replaces
+            its stored row instead of adding a second one. Omit when creating.
         dependsOn:
           type: array
           items:
@@ -9589,22 +9942,42 @@ components:
     ValidateCheckResponse:
       type: object
       required: [valid]
+      description: >
+        The result of a dry run. Every finding it can compute is reported, not
+        just the first, and each entry carries a `severity` and a machine
+        `code`. The two arrays are the severity split: `fields` blocks,
+        `warnings` advises.
       properties:
         valid:
           type: boolean
+          description: >
+            False exactly when `fields` is non-empty. Warnings never make a
+            configuration invalid.
         fields:
           type: array
+          description: >
+            Every blocking finding, not just the first. Codes in use:
+            `UNSUPPORTED_TYPE`, `INVALID_CONFIG`, `INVALID_PERIOD`,
+            `INVALID_SLUG`, `SLUG_TAKEN`, `INVALID_DEPENDS_ON`.
+            `SLUG_TAKEN` is advisory by nature — the value can be claimed
+            between this answer and the save, so creation still answers 409.
           items:
             $ref: "#/components/schemas/ValidationErrorField"
         warnings:
           type: array
           description: >
             Advisory, per-field notes that do NOT make the configuration
-            invalid — `valid` stays true and the write path accepts it. Today
-            the only source is pinning `ipVersion: ipv6` in a region whose live
-            workers report no IPv6 egress; that is deliberately a warning and
-            never a rejection, because the advertised capability lags reality
-            and the run-time probe is the authority.
+            invalid — `valid` stays true and the write path accepts it.
+            `REGION_NO_IPV6` / `REGION_NO_BROWSER` report a region whose live
+            workers advertise no IPv6 egress or no headless Chrome; those are
+            deliberately warnings and never rejections, because the advertised
+            capability lags reality and the run-time probe is the authority.
+            `ORG_RATE_OVER_LIMIT` on the `period` field reports that the
+            proposed period/regions would put the organization's scheduled
+            checks-per-minute demand over its `maxChecksPerMinute` cap, so some
+            executions would be skipped; it never blocks, precisely because an
+            over-limit organization has to be able to edit its way back under
+            the cap. Passive check types (heartbeat, email) are exempt from it.
           items:
             $ref: "#/components/schemas/ValidationErrorField"
 
@@ -9792,6 +10165,74 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AvailabilityPeriod"
+
+    CheckAvailabilityBucketsResponse:
+      type: object
+      required: [data, window, bucketSeconds, windowStart, windowEnd]
+      properties:
+        data:
+          type: array
+          description: The cell series, oldest first, aligned to bucketSeconds boundaries.
+          items:
+            $ref: "#/components/schemas/AvailabilityBucket"
+        window:
+          allOf:
+            - $ref: "#/components/schemas/AvailabilityBucket"
+          description: >
+            The whole-window fold over exactly [from, to) — NOT the sum of the
+            cells, which are aligned outward and can span more time than was
+            requested.
+        bucketSeconds:
+          type: integer
+          description: The resolved cell width in seconds (always a multiple of 3600).
+          example: 21600
+        windowStart:
+          type: string
+          format: date-time
+          description: The requested window start, echoed back.
+        windowEnd:
+          type: string
+          format: date-time
+          description: The requested window end, echoed back.
+        region:
+          type: string
+          description: The region filter, omitted when the read summed every region.
+
+    AvailabilityBucket:
+      type: object
+      required: [periodStart, periodEnd, hasData, availabilityPct, totalChecks, successfulChecks, status]
+      properties:
+        periodStart:
+          type: string
+          format: date-time
+          description: Start of the cell (inclusive).
+        periodEnd:
+          type: string
+          format: date-time
+          description: End of the cell (exclusive).
+        hasData:
+          type: boolean
+          description: False when the cell has no countable probes (then availabilityPct is null).
+        availabilityPct:
+          type: number
+          nullable: true
+          description: >
+            successfulChecks / totalChecks × 100. Null when totalChecks == 0 —
+            no data is not 100%.
+        totalChecks:
+          type: integer
+          description: Countable probes in the cell.
+        successfulChecks:
+          type: integer
+          description: Probes counted as up (up + warning).
+        status:
+          type: string
+          enum: [up, degraded, down, noData]
+          description: >
+            The shared availability colour vocabulary — the same classifier the
+            public status page and the badge uptime bar use, including the
+            small-bucket guard (a cell with exactly one failed sample is never
+            "down").
 
     AvailabilityPeriod:
       type: object
@@ -14384,6 +14825,35 @@ components:
             Outbound WhatsApp template messages sent in the current UTC month.
             A persistent counter, not a live count.
 
+    EntitlementsChecksPerMinute:
+      type: object
+      description: >-
+        The organization's scheduled check-execution rate against its
+        MaxChecksPerMinute cap, plus how many executions the rate gate actually
+        skipped today. Always present (it is not behind `?with=usage`), because
+        it drives the over-limit banner on pages that do not need the full usage
+        roll-up. Omitted only when it could not be computed.
+      required: [demand, skippedToday]
+      properties:
+        demand:
+          type: number
+          format: double
+          description: >-
+            Sum over enabled, non-deleted, non-internal, non-passive checks of
+            max(1, regions) x 60s / period. Passive types (heartbeat, email)
+            are excluded: they return before the rate gate and consume no
+            execution budget.
+        limit:
+          type: integer
+          nullable: true
+          description: Resolved MaxChecksPerMinute cap; null means unlimited.
+        skippedToday:
+          type: integer
+          description: >-
+            Check executions deferred by the per-organization rate gate today
+            (UTC), counted across both the in-process worker path and the agent
+            dispatch path.
+
     EntitlementsResponse:
       type: object
       required: [limits, source, stale]
@@ -14392,7 +14862,13 @@ components:
           $ref: "#/components/schemas/EntitlementLimits"
         source:
           type: string
-          description: Where the entitlements came from (default, billing, admin)
+          description: >-
+            Where the entitlements came from. `default` / `self-hosted` (no
+            stored row), `billing-service`, `org-admin` (org-scoped write by an
+            org admin) or `admin` (superadmin override). An `admin` row resolves
+            WHOLE-ROW — a null cap means unlimited rather than "inherit the
+            deployment default" — and suppresses billing pushes until released.
+          enum: [default, self-hosted, org-admin, admin, billing-service]
         displayName:
           type: string
         displayEmoji:
@@ -14407,8 +14883,25 @@ components:
           type: boolean
         usage:
           $ref: "#/components/schemas/EntitlementsUsage"
+        checksPerMinute:
+          $ref: "#/components/schemas/EntitlementsChecksPerMinute"
         upgradeUrl:
           type: string
+        applied:
+          type: boolean
+          description: >-
+            Present on write responses only. False when the precedence rule
+            discarded the write — a billing push onto an admin override is
+            accepted with 200 (billing must not error-loop) but changes
+            nothing.
+        suppressedBy:
+          type: string
+          description: >-
+            The entitlement source that won, when `applied` is false. Today
+            always `admin`.
+        message:
+          type: string
+          description: Why the write was not applied, in words.
 
     SetEntitlementsRequest:
       type: object
@@ -14417,7 +14910,12 @@ components:
           $ref: "#/components/schemas/EntitlementLimits"
         source:
           type: string
-          description: Entitlement source (default set server-side)
+          description: >-
+            IGNORED for user-driven writes — the server decides the source,
+            because it is an authorization outcome rather than a label. A
+            superadmin write records `admin`, any other authenticated caller
+            records `org-admin`, and a trusted service defaults to
+            `billing-service`.
         displayName:
           type: string
         displayEmoji:
@@ -14467,6 +14965,114 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntitlementsAudit"
+
+    AdminEntitlementsRow:
+      type: object
+      description: One organization in the super-admin entitlements list.
+      required: [organizationUid, slug, name, limits, source, stale, overCheckRate]
+      allOf:
+        - $ref: "#/components/schemas/EntitlementsResponse"
+        - type: object
+          properties:
+            organizationUid:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+            overCheckRate:
+              type: boolean
+              description: >-
+                Scheduled check demand exceeds the resolved MaxChecksPerMinute
+                cap. An unlimited cap is never over.
+            adminOverrideSince:
+              type: string
+              format: date-time
+              description: >-
+                When the current admin override was written. Absent unless the
+                stored row is admin-sourced.
+
+    AdminEntitlementsListResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminEntitlementsRow"
+        total:
+          type: integer
+          description: Organizations matching the search, before paging.
+
+    AdminEntitlementsStoredRow:
+      type: object
+      description: >-
+        The raw stored org_entitlements row. Absent entirely when the
+        organization has never had one, which is exactly the "resolving to
+        deployment defaults" state.
+      required: [source, limits, createdAt, updatedAt]
+      properties:
+        source:
+          type: string
+        limits:
+          $ref: "#/components/schemas/EntitlementLimits"
+        displayName:
+          type: string
+        displayEmoji:
+          type: string
+        externalRef:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AdminEntitlementsDetail:
+      type: object
+      required: [organizationUid, slug, name, limits, source, stale, defaults, audits]
+      allOf:
+        - $ref: "#/components/schemas/EntitlementsResponse"
+        - type: object
+          properties:
+            organizationUid:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+            overCheckRate:
+              type: boolean
+            stored:
+              $ref: "#/components/schemas/AdminEntitlementsStoredRow"
+            defaults:
+              $ref: "#/components/schemas/EntitlementLimits"
+            audits:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntitlementsAudit"
+
+    AdminEntitlementsWriteResponse:
+      type: object
+      required: [limits, source, stale, applied]
+      allOf:
+        - $ref: "#/components/schemas/EntitlementsResponse"
+        - type: object
+          properties:
+            applied:
+              type: boolean
+            released:
+              type: boolean
+              description: >-
+                A stored row was actually removed. False when releasing an
+                organization that had no override.
 
     # File schemas
     FileResponse:
