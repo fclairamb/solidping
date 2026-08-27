@@ -14,6 +14,7 @@ package support
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -31,6 +32,12 @@ import (
 // deliveryStatusKey is the key under which an outbound reply's delivery state
 // lives in support_messages.delivery.
 const deliveryStatusKey = "status"
+
+// Delivery states stored under deliveryStatusKey.
+const (
+	deliveryStatusSent   = "sent"
+	deliveryStatusFailed = "failed"
+)
 
 // Capture outcomes, used as the `outcome` metric label.
 const (
@@ -50,6 +57,21 @@ var (
 	ErrReplyWindowClosed = errors.New("the reply window for this thread has closed")
 	// ErrNoReplier is returned when no adapter is registered for the channel.
 	ErrNoReplier = errors.New("this channel cannot be replied to from the support inbox")
+	// ErrNoReplyRoute is returned when the channel HAS an adapter but this
+	// particular thread cannot be routed back through it — a Slack workspace
+	// with no stored connection, a Discord thread with no channel id, an org
+	// with no SMS sender.
+	//
+	// It is the per-thread sibling of ErrNoReplier, and like it, it is a refusal
+	// we make BEFORE touching the provider. Nothing is stored on this path: the
+	// send was never attempted, so there is no attempt to record.
+	ErrNoReplyRoute = errors.New("this thread cannot be routed back to its channel")
+	// ErrMessageNotFound is returned when a resend names a message that is not
+	// in the thread.
+	ErrMessageNotFound = errors.New("support message not found in this thread")
+	// ErrNotResendable is returned when a resend names a message that is not a
+	// failed outbound reply.
+	ErrNotResendable = errors.New("only an outbound reply whose delivery failed can be resent")
 	// ErrEmptyReply is returned for a blank reply body.
 	ErrEmptyReply = errors.New("reply body is empty")
 	// ErrUnknownChannel is returned for an inbound message on a channel the
@@ -100,6 +122,46 @@ type Inbound struct {
 // anyway, is where the wiring lives.
 type ReplyFunc func(ctx context.Context, thread *models.SupportThread, body string) (string, error)
 
+// ReplyRoute is the PER-THREAD answer to "can we answer this person right now?".
+//
+// It is deliberately not a bare bool: an operator staring at a disabled reply
+// box needs to know whether the workspace was never installed, the thread lost
+// its channel id, or the instance has no SMS at all — three very different
+// things to go and fix.
+type ReplyRoute struct {
+	// CanReply is false when the adapter has no usable route for this thread.
+	CanReply bool
+	// Reason explains a false CanReply in operator-facing terms. Empty when
+	// CanReply is true.
+	Reason string
+}
+
+// RouteFunc is the PRE-FLIGHT companion to a ReplyFunc: it answers, for one
+// specific thread, whether the adapter could route a reply — without sending
+// anything.
+//
+// It is a separate function rather than a dry-run flag on ReplyFunc precisely
+// because its type cannot send: it returns an answer and a reason, not a
+// provider message id, so there is nowhere for an accidental send to put its
+// result. A dry-run boolean would leave every adapter one missed branch away
+// from posting a message to a customer while merely rendering a list.
+//
+// It must NOT call the provider. It resolves local routing state — is there a
+// stored connection, a channel id, an SMS sender — and nothing more: this runs
+// once per thread on every inbox render, and a provider that is merely slow
+// must never start reading as "cannot reply".
+type RouteFunc func(ctx context.Context, thread *models.SupportThread) ReplyRoute
+
+// replier pairs a channel's outbound adapter with its optional pre-flight.
+type replier struct {
+	send ReplyFunc
+	// route is nil for channels whose reachability is decided entirely by
+	// instance config at registration time (WhatsApp, Telegram): there is
+	// nothing per-thread left to resolve, and a stub that always said yes would
+	// only be one more thing to keep in sync.
+	route RouteFunc
+}
+
 // Mailer is the subset of the email stack the mirror notification needs.
 type Mailer interface {
 	Send(ctx context.Context, msg *email.Message) (*email.SendResult, error)
@@ -115,7 +177,7 @@ type Service struct {
 	// replyTo is the instance support mailbox. Empty disables the mirror
 	// notification entirely — the feature stays off as a whole, deliberately.
 	replyTo  string
-	repliers map[string]ReplyFunc
+	repliers map[string]replier
 
 	messagesPerThread  *windowCounter
 	threadsPerIdentity *windowCounter
@@ -151,7 +213,7 @@ func NewService(dbSvc db.Service, opts Options) *Service {
 		now:                nowFn,
 		baseURL:            strings.TrimRight(opts.BaseURL, "/"),
 		replyTo:            opts.ReplyTo,
-		repliers:           make(map[string]ReplyFunc),
+		repliers:           make(map[string]replier),
 		messagesPerThread:  newWindowCounter(time.Hour, DefaultMessagesPerThreadPerHour),
 		threadsPerIdentity: newWindowCounter(24*time.Hour, DefaultThreadsPerIdentityPerDay),
 		mirrorsPerHour:     newWindowCounter(time.Hour, DefaultMirrorsPerHour),
@@ -159,25 +221,112 @@ func NewService(dbSvc db.Service, opts Options) *Service {
 	}
 }
 
-// RegisterReplier wires an outbound adapter for one channel. Calling it twice
-// for the same channel replaces the previous adapter.
+// RegisterReplier wires an outbound adapter for one channel, with no per-thread
+// pre-flight: registered means routable. Calling it twice for the same channel
+// replaces the previous adapter.
+//
+// Use it only where reachability is genuinely a property of the instance rather
+// than of the thread — WhatsApp and Telegram, whose registration is already
+// gated on their config being present.
 func (s *Service) RegisterReplier(channel string, fn ReplyFunc) {
+	s.RegisterRoutedReplier(channel, fn, nil)
+}
+
+// RegisterRoutedReplier wires an outbound adapter together with the pre-flight
+// that decides, per thread, whether that adapter has a route.
+//
+// This is the form every channel whose reachability varies by thread must use —
+// Slack (is there a stored connection for THIS workspace?), Discord (does the
+// thread carry a channel id?), SMS (does this org resolve to a sender?).
+// Registering such a channel with RegisterReplier is the exact bug this
+// distinction exists to prevent.
+func (s *Service) RegisterRoutedReplier(channel string, fn ReplyFunc, route RouteFunc) {
 	if s == nil || fn == nil {
 		return
 	}
 
-	s.repliers[channel] = fn
+	s.repliers[channel] = replier{send: fn, route: route}
 }
 
-// CanReply reports whether an outbound adapter exists for a channel.
-func (s *Service) CanReply(channel string) bool {
-	if s == nil {
-		return false
+// ReplyRouteFor answers, for ONE thread, whether a reply can be routed.
+//
+// This replaced a channel-level CanReply(channel) lookup, which asked a
+// per-thread question of a boot-time map and therefore reported every Slack
+// thread as answerable whether or not its workspace had ever been connected.
+// The channel-level form is deliberately gone rather than deprecated: leaving it
+// callable is leaving the bug callable.
+func (s *Service) ReplyRouteFor(ctx context.Context, thread *models.SupportThread) ReplyRoute {
+	if s == nil || thread == nil {
+		return ReplyRoute{}
 	}
 
-	_, ok := s.repliers[channel]
+	entry, ok := s.repliers[thread.Channel]
+	if !ok {
+		return ReplyRoute{Reason: "this channel has no reply adapter on this instance"}
+	}
 
-	return ok
+	if entry.route == nil {
+		return ReplyRoute{CanReply: true}
+	}
+
+	return entry.route(ctx, thread)
+}
+
+// ReplyRoutes answers the pre-flight for a whole listing, memoized on the inputs
+// a route decision actually depends on.
+//
+// Without the memo an inbox page is an N+1: the Slack pre-flight is a connection
+// lookup, and a 500-thread listing from one busy workspace would run 500
+// identical ones. Threads sharing a channel, an attributed org and a channel
+// context resolve identically by construction — that tuple is exactly what the
+// registered RouteFuncs read.
+func (s *Service) ReplyRoutes(
+	ctx context.Context, threads []*models.SupportThread,
+) map[string]ReplyRoute {
+	routes := make(map[string]ReplyRoute, len(threads))
+	if s == nil {
+		return routes
+	}
+
+	memo := make(map[string]ReplyRoute, len(threads))
+
+	for _, thread := range threads {
+		if thread == nil {
+			continue
+		}
+
+		key := routeMemoKey(thread)
+
+		route, hit := memo[key]
+		if !hit {
+			route = s.ReplyRouteFor(ctx, thread)
+			memo[key] = route
+		}
+
+		routes[thread.UID] = route
+	}
+
+	return routes
+}
+
+// routeMemoKey builds the memo key from everything a RouteFunc may read.
+//
+// A marshalling failure falls back to the thread uid, which simply defeats the
+// memo for that one row — never shares an answer between threads that might not
+// deserve it.
+func routeMemoKey(thread *models.SupportThread) string {
+	orgUID := ""
+	if thread.OrganizationUID != nil {
+		orgUID = *thread.OrganizationUID
+	}
+
+	// encoding/json sorts map keys, so this is stable across threads.
+	encoded, err := json.Marshal(thread.ChannelContext)
+	if err != nil {
+		return "uid\x00" + thread.UID
+	}
+
+	return thread.Channel + "\x00" + orgUID + "\x00" + string(encoded)
 }
 
 // CaptureSafe records an inbound message and NEVER returns an error or panics.
@@ -509,7 +658,7 @@ func (s *Service) Reply(
 		return nil, err
 	}
 
-	replier, ok := s.repliers[thread.Channel]
+	entry, ok := s.repliers[thread.Channel]
 	if !ok {
 		return nil, ErrNoReplier
 	}
@@ -518,7 +667,20 @@ func (s *Service) Reply(
 		return nil, fmt.Errorf("%w: %s", ErrReplyWindowClosed, window.Reason)
 	}
 
-	externalID, sendErr := replier(ctx, thread, body)
+	// The SAME pre-flight the dashboard rendered its disabled box from, run
+	// again here. The UI check is a courtesy; this one is the rule, and it is
+	// what stops a stale tab, a scripted caller or a race from storing an
+	// outbound message that never had anywhere to go.
+	//
+	// Note what does NOT happen below: no message row, no thread touch. An
+	// unroutable reply was never attempted, so there is no attempt to record —
+	// unlike a send that reached the provider and was rejected, which is stored
+	// with `Delivery failed` further down for exactly the opposite reason.
+	if route := s.routeFor(ctx, thread, entry); !route.CanReply {
+		return nil, fmt.Errorf("%w: %s", ErrNoReplyRoute, route.Reason)
+	}
+
+	externalID, sendErr := entry.send(ctx, thread, body)
 
 	occurredAt := s.now()
 	msg := models.NewSupportMessage(thread.UID, thread.Channel, models.SupportDirectionOutbound, body, occurredAt)
@@ -537,9 +699,9 @@ func (s *Service) Reply(
 	// that failed and left no trace is how an operator ends up answering the
 	// same person twice.
 	if sendErr != nil {
-		msg.Delivery = models.JSONMap{deliveryStatusKey: "failed", "error": sendErr.Error()}
+		msg.Delivery = models.JSONMap{deliveryStatusKey: deliveryStatusFailed, "error": sendErr.Error()}
 	} else {
-		msg.Delivery = models.JSONMap{deliveryStatusKey: "sent"}
+		msg.Delivery = models.JSONMap{deliveryStatusKey: deliveryStatusSent}
 	}
 
 	if err := s.insertMessage(ctx, msg); err != nil {
@@ -553,6 +715,119 @@ func (s *Service) Reply(
 
 	if sendErr != nil {
 		return msg, fmt.Errorf("sending reply on %s: %w", thread.Channel, sendErr)
+	}
+
+	return msg, nil
+}
+
+// routeFor runs one registered replier's pre-flight, or reports "routable" when
+// the channel registered none.
+func (s *Service) routeFor(
+	ctx context.Context, thread *models.SupportThread, entry replier,
+) ReplyRoute {
+	if entry.route == nil {
+		return ReplyRoute{CanReply: true}
+	}
+
+	return entry.route(ctx, thread)
+}
+
+// Resend re-attempts delivery of an outbound reply whose send failed, rewriting
+// that message's delivery record in place.
+//
+// This is the way out of the state the pre-flight cannot undo: replies stored
+// before a route existed (or during a provider outage) are the operator's own
+// words, visibly kept and permanently unsent. Resending re-runs the full
+// pre-flight — window, then route — so a message queued against a workspace
+// that has since been connected simply goes, and one that still has no route is
+// refused with the current reason rather than failing again at the provider.
+//
+// Only a FAILED OUTBOUND message qualifies. Resending a delivered reply would
+// send a customer the same text twice, which is worse than the problem.
+func (s *Service) Resend(
+	ctx context.Context, threadUID, messageUID string,
+) (*models.SupportMessage, error) {
+	thread, err := s.GetThread(ctx, threadUID)
+	if err != nil {
+		return nil, err
+	}
+
+	msg, err := s.findMessage(ctx, threadUID, messageUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if msg.Direction != models.SupportDirectionOutbound ||
+		msg.Delivery[deliveryStatusKey] != deliveryStatusFailed {
+		return nil, ErrNotResendable
+	}
+
+	entry, ok := s.repliers[thread.Channel]
+	if !ok {
+		return nil, ErrNoReplier
+	}
+
+	if window := thread.ReplyWindow(s.now()); !window.Open {
+		return nil, fmt.Errorf("%w: %s", ErrReplyWindowClosed, window.Reason)
+	}
+
+	if route := s.routeFor(ctx, thread, entry); !route.CanReply {
+		return nil, fmt.Errorf("%w: %s", ErrNoReplyRoute, route.Reason)
+	}
+
+	externalID, sendErr := entry.send(ctx, thread, msg.Body)
+
+	if externalID != "" {
+		id := externalID
+		msg.ExternalID = &id
+	}
+
+	if sendErr != nil {
+		msg.Delivery = models.JSONMap{deliveryStatusKey: deliveryStatusFailed, "error": sendErr.Error()}
+	} else {
+		msg.Delivery = models.JSONMap{deliveryStatusKey: deliveryStatusSent}
+	}
+
+	occurredAt := s.now()
+	msg.UpdatedAt = occurredAt
+
+	if _, updErr := s.bun().NewUpdate().Model(msg).
+		Column("delivery", "external_id", "updated_at").
+		WherePK().
+		Exec(ctx); updErr != nil {
+		return nil, updErr
+	}
+
+	if sendErr != nil {
+		return msg, fmt.Errorf("resending reply on %s: %w", thread.Channel, sendErr)
+	}
+
+	if err := s.touchThreadOutbound(ctx, thread, occurredAt); err != nil {
+		s.log.WarnContext(ctx, "failed to update support thread after resend",
+			"threadUid", thread.UID, "error", err)
+	}
+
+	return msg, nil
+}
+
+// findMessage loads one message, scoped to its thread so a uid from another
+// conversation cannot be resent through this one.
+func (s *Service) findMessage(
+	ctx context.Context, threadUID, messageUID string,
+) (*models.SupportMessage, error) {
+	msg := new(models.SupportMessage)
+
+	err := s.bun().NewSelect().Model(msg).
+		Where("uid = ?", messageUID).
+		Where("thread_uid = ?", threadUID).
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, errNoRows) {
+			return nil, ErrMessageNotFound
+		}
+
+		return nil, err
 	}
 
 	return msg, nil
