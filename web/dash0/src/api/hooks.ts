@@ -663,6 +663,13 @@ export interface CheckStats {
   down: number;
   /** status in (down, error) — down excluding timeouts. */
   hardDown: number;
+  /**
+   * 100 * successful / total over the trailing 24h window, combining `hour`
+   * rollup rows and `raw` result rows server-side. `null` when the window
+   * has no countable data (an empty or brand-new org) — render that as "no
+   * data", never as a fabricated 100.
+   */
+  availability24h: number | null;
 }
 
 /**
