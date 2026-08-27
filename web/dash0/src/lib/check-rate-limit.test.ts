@@ -61,18 +61,19 @@ describe("shouldWarnAboutCheckRate", () => {
     ).toBe(true);
   });
 
-  it("warns factually when executions were skipped today, even back under the cap", () => {
-    // The org deleted checks and is now under its cap, but today's history
-    // still has holes and nothing else on the page explains them.
+  it("clears as soon as the org is back under its cap, despite today's skips", () => {
+    // The org reviewed its scheduling and dropped under the cap — the exact
+    // remedy the banner asks for. It must disappear right away, not linger
+    // until the UTC-midnight reset of the skippedToday counter.
     expect(
       shouldWarnAboutCheckRate({ demand: 4, limit: 10, skippedToday: 613 }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("warns on skips even when the cap has since been lifted to unlimited", () => {
+  it("clears when the cap is lifted to unlimited, despite today's skips", () => {
     expect(
       shouldWarnAboutCheckRate({ demand: 4, limit: null, skippedToday: 12 }),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

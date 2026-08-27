@@ -69,19 +69,17 @@ describe("CheckRateLimitBanner", () => {
     expect(screen.queryByTestId("check-rate-limit-skipped")).toBeNull();
   });
 
-  it("reports skipped executions even when demand is back under the cap", () => {
+  it("disappears once demand is back under the cap, despite today's skips", () => {
+    // Reviewing the scheduling back under the cap is the remedy the banner
+    // asks for — once done, the warning must clear immediately, not persist
+    // until skippedToday resets at UTC midnight.
     render(
       <CheckRateLimitBanner
         org={ORG}
         checksPerMinute={{ demand: 4, limit: 10, skippedToday: 613 }}
       />,
     );
-
-    const banner = screen.getByTestId("check-rate-limit-banner");
-    expect(banner).toBeTruthy();
-    expect(screen.getByTestId("check-rate-limit-skipped").textContent).toContain(
-      "613",
-    );
+    expect(screen.queryByTestId("check-rate-limit-banner")).toBeNull();
   });
 
   it("shows both halves when the org is over its cap AND lost executions", () => {

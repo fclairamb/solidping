@@ -77,7 +77,23 @@ function StripCell({
   const headline = pctLabel ?? t("detail.availabilityStrip.noData");
 
   return (
-    <Tooltip>
+    <Tooltip
+      // Cells are a few pixels wide and packed edge to edge; the shared
+      // TooltipProvider's hoverable-content "grace area" tracks a
+      // POINTER-IN-TRANSIT flag at the PROVIDER level, not per Tooltip root.
+      // The flag is set the instant the pointer leaves an open cell's trigger
+      // heading toward its much wider floating content, and while it is set
+      // every OTHER trigger's onPointerMove is a no-op (Radix source:
+      // TooltipTrigger gates onPointerMove on
+      // `!providerContext.isPointerInTransitRef.current`). Sliding along the
+      // strip then leaves the neighbouring cell's tooltip never asked to open
+      // while the previous one stays up — the popup keeps showing the period
+      // you just left. These tooltips are read-only labels; nothing in them
+      // needs the pointer to travel into the content, so dropping the grace
+      // area makes every cell open and close independently. Same fix as
+      // status0's availability bar (components/shared/availability-bar.tsx).
+      disableHoverableContent
+    >
       <TooltipTrigger asChild>
         <div
           role="img"

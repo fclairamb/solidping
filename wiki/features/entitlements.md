@@ -245,16 +245,18 @@ Three decisions worth keeping:
   never be why an org is throttled. The two figures answer different questions —
   "what does the gate meter?" versus "what has the org configured?".
 - **`skippedToday` is a daily bucket, not monthly** like the SMS/voice/WhatsApp
-  counters. Monthly would keep the banner lit for weeks after an org came back
-  under its cap. It is written from **both** claim paths — the in-process worker
-  gate and the agent dispatch gate in `handlers/agentws` — because an org
-  running entirely on private locations is throttled by a gate that lives in the
-  server, not in its agents.
+  counters — a monthly figure would misstate the current damage for weeks after
+  an org came back under its cap. It is written from **both** claim paths — the
+  in-process worker gate and the agent dispatch gate in `handlers/agentws` —
+  because an org running entirely on private locations is throttled by a gate
+  that lives in the server, not in its agents.
 
 `dash0` renders it as an amber warning (`CheckRateLimitBanner`) on the checks
-list and the org Usage page whenever `demand > limit` (predictive) **or**
-`skippedToday > 0` (factual — the org may have just dropped back under its cap
-and still have holes in today's history).
+list, the scheduling page and the org Usage page whenever `demand > limit`.
+Visibility is keyed on the live state only: reviewing the scheduling back under
+the cap clears the banner immediately, rather than leaving it lit until the
+UTC-midnight `skippedToday` reset. While the banner shows, `skippedToday > 0`
+adds today's skip count as supporting detail.
 
 ## Sources
 
