@@ -2265,6 +2265,27 @@ func (e UserSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for ValidationErrorFieldSeverity.
+const (
+	ValidationErrorFieldSeverityError   ValidationErrorFieldSeverity = "error"
+	ValidationErrorFieldSeverityInfo    ValidationErrorFieldSeverity = "info"
+	ValidationErrorFieldSeverityWarning ValidationErrorFieldSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the ValidationErrorFieldSeverity enum.
+func (e ValidationErrorFieldSeverity) Valid() bool {
+	switch e {
+	case ValidationErrorFieldSeverityError:
+		return true
+	case ValidationErrorFieldSeverityInfo:
+		return true
+	case ValidationErrorFieldSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListChecksParamsInternal.
 const (
 	ListChecksParamsInternalAll   ListChecksParamsInternal = "all"
@@ -6409,29 +6430,55 @@ type UserSummaryRole string
 type ValidateCheckRequest struct {
 	Config    map[string]interface{} `json:"config"`
 	DependsOn *[]ExportedDependency  `json:"dependsOn,omitempty"`
-	Slug      *string                `json:"slug,omitempty"`
+
+	// Enabled Proposed enabled state; absent means enabled. A disabled check is scheduled nowhere and can never push the organization over its checks-per-minute cap.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// ExcludeCheckUid UID of the check being edited. Its slug is then not reported as a collision with itself, and the checks-per-minute projection replaces its stored row instead of adding a second one. Omit when creating.
+	ExcludeCheckUid *string `json:"excludeCheckUid,omitempty"`
+
+	// Period Proposed execution interval (`HH:MM:SS` or a Go duration). Optional; when absent, neither the per-type period bounds nor the checks-per-minute projection are evaluated.
+	Period *string `json:"period,omitempty"`
+
+	// Regions Proposed region set. Needed by the tunnel region rules, the region-capability hints and the checks-per-minute projection — a check executes once per region per period.
+	Regions *[]string `json:"regions,omitempty"`
+
+	// Slug Proposed slug. Validated for format and, within the organization, for uniqueness against live checks.
+	Slug *string `json:"slug,omitempty"`
 
 	// Type Check type (http, tcp, ping, dns, ssl, ...)
 	Type string `json:"type"`
 }
 
-// ValidateCheckResponse defines model for ValidateCheckResponse.
+// ValidateCheckResponse The result of a dry run. Every finding it can compute is reported, not just the first, and each entry carries a `severity` and a machine `code`. The two arrays are the severity split: `fields` blocks, `warnings` advises.
 type ValidateCheckResponse struct {
+	// Fields Every blocking finding, not just the first. Codes in use: `UNSUPPORTED_TYPE`, `INVALID_CONFIG`, `INVALID_PERIOD`, `INVALID_SLUG`, `SLUG_TAKEN`, `INVALID_DEPENDS_ON`. `SLUG_TAKEN` is advisory by nature — the value can be claimed between this answer and the save, so creation still answers 409.
 	Fields *[]ValidationErrorField `json:"fields,omitempty"`
-	Valid  bool                    `json:"valid"`
 
-	// Warnings Advisory, per-field notes that do NOT make the configuration invalid — `valid` stays true and the write path accepts it. Today the only source is pinning `ipVersion: ipv6` in a region whose live workers report no IPv6 egress; that is deliberately a warning and never a rejection, because the advertised capability lags reality and the run-time probe is the authority.
+	// Valid False exactly when `fields` is non-empty. Warnings never make a configuration invalid.
+	Valid bool `json:"valid"`
+
+	// Warnings Advisory, per-field notes that do NOT make the configuration invalid — `valid` stays true and the write path accepts it. `REGION_NO_IPV6` / `REGION_NO_BROWSER` report a region whose live workers advertise no IPv6 egress or no headless Chrome; those are deliberately warnings and never rejections, because the advertised capability lags reality and the run-time probe is the authority. `ORG_RATE_OVER_LIMIT` on the `period` field reports that the proposed period/regions would put the organization's scheduled checks-per-minute demand over its `maxChecksPerMinute` cap, so some executions would be skipped; it never blocks, precisely because an over-limit organization has to be able to edit its way back under the cap. Passive check types (heartbeat, email) are exempt from it.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
 // ValidationErrorField defines model for ValidationErrorField.
 type ValidationErrorField struct {
-	// Message Validation error message for this field
+	// Code Stable machine identifier for the rule that produced this finding (e.g. `SLUG_TAKEN`, `ORG_RATE_OVER_LIMIT`). Absent when the producer has no code to offer, in which case clients fall back to `name` + `message`.
+	Code *string `json:"code,omitempty"`
+
+	// Message Human-readable message for this field
 	Message string `json:"message"`
 
-	// Name Field name that failed validation
+	// Name Field name the finding is about
 	Name string `json:"name"`
+
+	// Severity How the finding should be treated. ABSENT MEANS `error`: the field was added after this shape shipped, and a producer that omits it is always reporting a blocking error. Only `error` findings make a validation response invalid; `warning` and `info` never block.
+	Severity *ValidationErrorFieldSeverity `json:"severity,omitempty"`
 }
+
+// ValidationErrorFieldSeverity How the finding should be treated. ABSENT MEANS `error`: the field was added after this shape shipped, and a producer that omits it is always reporting a blocking error. Only `error` findings make a validation response invalid; `warning` and `info` never block.
+type ValidationErrorFieldSeverity string
 
 // VersionResponse defines model for VersionResponse.
 type VersionResponse struct {
