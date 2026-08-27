@@ -163,11 +163,33 @@ build time:
      `@theme-original/ApiExplorer/Server` and, on mount, dispatches the resolved
      option list plus the preferred selection. Because the code samples read the
      same `state.server.value`, the rendered `curl` examples follow the control.
+     A `sessionStorage` marker records the URL *we* selected, so a reader's own
+     pick survives navigation to another reference page: the theme persists its
+     automatic default exactly as it persists a click, so the stored selection
+     alone cannot tell the two apart.
 
 4. **Tests** — `web/docs/src/lib/apiBaseUrl.test.ts` run with `bun test`
    (`test:unit` script + a `test-docs` Makefile target + a CI step in the docs
    job), including the positive control that an instance host wins over the
    spec's list, so an always-return-the-cloud resolver cannot pass.
 
-5. **Gate** — `make build-docs` and `make test-docs`. No Go changes;
-   `openapi.yaml`'s `servers:` list is left alone.
+5. **Gate** — `make build-docs` and `make test-docs`, plus the backend gates
+   for the comment-only Go edits (`make build-backend lint-back test`). No Go
+   behaviour changes; `openapi.yaml`'s `servers:` list is left alone.
+
+### Decisions
+
+- **The hostname match is deliberately more lenient than the server's.**
+  `docsHostMatches` (`server/internal/app/server.go`) strips the port from the
+  request host but compares the *configured* host raw, so a docs host
+  configured with a port (`SP_DOCS_HOST="docs.acme.com:8443"`) is never
+  redirected server-side, while `isKnownDocsHost` — which strips the port from
+  both — calls it a docs host and falls back to the cloud. Hostname-only is
+  what this spec asked for and matches the documented config shape, and fixing
+  the Go side would change which requests get redirected, so the divergence is
+  recorded in a comment on *both* functions instead. That invariant is not
+  enforced by code, which is exactly why it is written down.
+- **The build-time and runtime docs-host lists are separate on purpose.** The
+  docs bundle is static, so `SP_DOCS_HOSTS` (build) cannot read
+  `SP_DOCS_HOST` (runtime). A self-hoster with their own docs host has to
+  rebuild the docs site; `config.go`'s `DocsHost` comment now says so.

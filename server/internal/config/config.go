@@ -1238,6 +1238,14 @@ type ServerConfig struct {
 	// at the host root, e.g. "docs.solidping.io". Empty disables host-served
 	// docs. Multi-word koanf key → read via applyServerEnv (SP_DOCS_HOST /
 	// SP_SERVER_DOCS_HOST), not the auto env loader.
+	//
+	// This is a runtime setting, but the docs bundle also carries a *build-time*
+	// copy of the same list: web/docs's SP_DOCS_HOSTS (customFields.docsHosts)
+	// tells the generated API reference which hosts serve docs but not the API,
+	// so its Base URL control does not advertise a host that redirects API paths
+	// away. Changing SP_DOCS_HOST on a prebuilt binary does not update that
+	// bundle — self-hosters who want their own docs host handled there have to
+	// rebuild the docs site with SP_DOCS_HOSTS set to match.
 	DocsHost string `koanf:"docs_host"`
 	// CustomDomainCNAMETarget is the hostname customers point their status-page
 	// CNAME at (e.g. "cname.solidping.io"). Empty derives it from the host of

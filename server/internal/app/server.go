@@ -2383,6 +2383,18 @@ func (s *Server) handlerWithDocsHost() http.Handler {
 
 // docsHostMatches reports whether the request Host (which may carry a port)
 // equals the configured docs host, case-insensitively.
+//
+// The docs bundle mirrors this check in the browser — isKnownDocsHost in
+// web/docs/src/lib/apiBaseUrl.ts — to decide whether the generated API
+// reference may advertise the current origin as the API base URL. The two agree
+// on every documented config shape, with one known exception: this function
+// strips the port from reqHost but compares docsHost *raw*, so a docs host
+// configured **with** a port (SP_DOCS_HOST="docs.acme.com:8443") never matches
+// here and is therefore never redirected, while the browser side — which
+// strips the port from both — treats it as a docs host and falls back to the
+// cloud URL. The browser side is the lenient one; this one is arguably the bug.
+// Fixing it means changing when requests get redirected, so it belongs in its
+// own spec rather than as a side effect of a docs-site change.
 func docsHostMatches(reqHost, docsHost string) bool {
 	host := reqHost
 	if h, _, err := net.SplitHostPort(reqHost); err == nil {
