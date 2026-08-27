@@ -178,3 +178,90 @@ delivering "region filter parity with the chart" will most likely mean
 threading a region filter through the engine rather than filtering after the
 fact. Whatever the shape, the summing rule on "all regions" stays as decided
 above: sum up/total across regions, never average percentages.
+
+## Implementation Plan
+
+### Phase 0 — shared backend primitives
+
+1. **Region filtering in `uptimebar`.** `BucketAvailability` / `WindowAvailability`
+   keep their signatures (every existing caller is unchanged) and delegate to new
+   `BucketAvailabilityInRegions` / `WindowAvailabilityInRegions` variants that take
+   an extra `regions []string` and set `ListResultsFilter.Regions`. The filter field
+   already exists and hour/day rollups preserve `region`
+   (`job_aggregation.go:1205`), so a region-scoped bucket is a real per-region
+   rollup read, not a post-hoc slice. `nil` regions = "all regions", which is the
+   engine's existing sum-across-regions behaviour — the `mergeBuckets` rule.
+2. **One classification, not a fourth.** Move the green/amber/red mapping into
+   `uptimebar.Classify(pct, failures, upThreshold, degradedThreshold)` with the
+   `StatusUp/Degraded/Down/NoData` vocabulary; `statuspages.availabilityToStatus`
+   becomes a delegating one-liner so the status page, the badge strip and the new
+   chart strip provably share one implementation (small-bucket guard included).
+
+### Phase 1a — the new endpoint
+
+`GET /api/v1/orgs/:org/checks/:check/availability/buckets?from=&to=&bucket=&region=`
+in the existing `handlers/availability` package (new `buckets.go` +
+`buckets_test.go`), registered next to the existing route in `app/server.go`.
+
+- `from`/`to` are required RFC3339 instants, `to > from`, window ≤ the existing
+  `maxLookbackYears` sanity bound.
+- `bucket` is an optional Go duration. It must be a **whole positive multiple of
+  one hour** (the spec's hard floor) and must not produce more than
+  `maxBucketCells` (200) cells. When omitted the server picks the smallest
+  hour-multiple keeping the count ≤ 60 — which is exactly the drag-zoom rule, so
+  the client can simply not send one for a zoom.
+- Buckets are **aligned**: `alignedStart = from.Truncate(bucket)` and
+  `n = ceil((to − alignedStart) / bucket)`, because `BucketAvailability` keys on
+  `periodStart.Truncate(bucketDuration)` (epoch-relative). Returning unaligned
+  edges would make the cells disagree with the rows that fall in them.
+- Response: `{ data: [...], bucketSeconds, windowStart, windowEnd, region }`, each
+  cell `{ periodStart, periodEnd, hasData, availabilityPct|null, totalChecks,
+  successfulChecks, status }`. `hasData=false` ⇒ `availabilityPct` null and
+  `status:"noData"` — never 100.
+- `window` carries the **exact** `[from, to)` fold from `WindowAvailability` (same
+  cell shape) for the sub-3h header stat. It is a separate engine call rather than
+  a sum of the cells because the cells are aligned outward and would over-count the
+  hour view's edges; the two calls are fanned out with `errgroup`.
+- Maintenance is **not** excluded — `BucketStats.ExcludingMaintenance()` is never
+  called here, matching the availability table, status pages and badges.
+
+### Phase 1b — dash0
+
+- `src/lib/availability-strip.ts`: `bucketSecondsFor(spanMs)` (day→1h, week→6h,
+  month→1d, otherwise the smallest hour-multiple with ≤60 cells) and
+  `STRIP_MIN_SPAN_MS` (3h) — pure, unit-tested.
+- `src/lib/availability-status.ts`: the TS twin of `uptimebar.Classify` plus the
+  cell/dot colour classes. `ui/uptime-strip.tsx` converges onto it (it currently
+  carries its own 100/0/else mapping).
+- `src/api/hooks.ts`: `useCheckAvailabilityBuckets(org, checkUid, {from, to,
+  bucketSeconds, region})`.
+- `src/components/ui/availability-strip.tsx`: the presentational strip — one cell
+  per bucket, tooltip with exact pct, up/total and the bucket's time span, gray
+  `noData` cells, `aria-label`, `data-testid`s.
+- `response-time-chart.tsx`: header stat (window availability, always rendered) +
+  the strip under the x-axis, inset by the chart's own left gutter
+  (`YAxis width=60` + the AreaChart default 5px margin) so cells sit under the plot
+  area. The strip is not rendered at all when the window span < 3h. Window/zoom/
+  region come from the chart's existing state, so the strip re-buckets on range
+  change and on drag-zoom for free.
+- `design-reference.tsx`: an `AvailabilityStripSection` with the import line and
+  live green/amber/red/no-data cells.
+- Locale keys in all four locales (en/fr/de/es).
+
+### Phase 1c — tests
+
+- Go table-driven `buckets_test.go` over a real in-memory SQLite service:
+  boundary alignment, tier seams (raw + hour + day in one window), no-data cells,
+  region summing vs. region filtering, maintenance counted, lifecycle/abandoned
+  excluded — each exclusion paired with a **positive control** that moves the
+  number when the excluded row is replaced by a countable one.
+- `uptimebar` unit tests for the region-filtered variants and `Classify`.
+- Vitest for `bucketSecondsFor` / the status mapping.
+- Playwright `web/dash0/e2e/` coverage: strip renders per range, re-buckets on
+  drag-zoom, gray no-data cells, tooltip content, region parity.
+
+### Phase 2 — status0
+
+Only after phase 1 is green: carry chart-aligned buckets in the pub status-page
+payload (`statuspages/service.go:736-780`) and render the shared strip under
+status0's response-time chart.
