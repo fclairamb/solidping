@@ -9476,7 +9476,7 @@ components:
 
     CheckStats:
       type: object
-      required: [total, enabled, disabled, byStatus, down, hardDown]
+      required: [total, enabled, disabled, byStatus, down, hardDown, availability24h]
       properties:
         total:
           type: integer
@@ -9520,6 +9520,17 @@ components:
             Checks failing hard (status down or error), i.e. down excluding
             timeouts.
           example: 6
+        availability24h:
+          type: number
+          nullable: true
+          description: >-
+            100 * successful / total over the trailing 24h window, combining
+            `hour` rollup rows and `raw` result rows (successful = up +
+            warning; lifecycle markers and reaped/abandoned raw rows are
+            excluded from both sides). `null` when the window has no
+            countable data (an empty or brand-new org) — never a fabricated
+            100.
+          example: 99.97
 
     CreateCheckRequest:
       type: object
