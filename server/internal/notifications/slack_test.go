@@ -164,6 +164,10 @@ func (m *mockDBService) ListOrganizationProviders(_ context.Context, _ string) (
 	panic("not implemented")
 }
 
+func (m *mockDBService) CountDanglingOrganizationProviders(_ context.Context) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateOrganizationProvider(
 	_ context.Context, _ string, _ models.OrganizationProviderUpdate,
 ) error {

@@ -652,6 +652,29 @@ func (s *Service) ListOrganizationProviders(
 	return providers, err
 }
 
+// CountDanglingOrganizationProviders counts live organization_providers rows
+// pointing at an organization that no longer resolves. Soft-deleting an org
+// does not cascade to its links, so such a row keeps winning the partial unique
+// lookup on (provider_type, provider_id) and blocks every later SSO login and
+// app install for that workspace/guild until it is healed.
+func (s *Service) CountDanglingOrganizationProviders(ctx context.Context) (int, error) {
+	liveOrgs := s.db.NewSelect().
+		Model((*models.Organization)(nil)).
+		Column("uid").
+		Where("deleted_at IS NULL")
+
+	count, err := s.db.NewSelect().
+		Model((*models.OrganizationProvider)(nil)).
+		Where("deleted_at IS NULL").
+		Where("organization_uid NOT IN (?)", liveOrgs).
+		Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 func (s *Service) UpdateOrganizationProvider(
 	ctx context.Context, uid string, update models.OrganizationProviderUpdate,
 ) error {

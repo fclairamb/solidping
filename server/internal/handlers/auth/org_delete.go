@@ -102,7 +102,7 @@ func (s *Service) DeleteOrg(
 	// for HARD deletes, so a soft-deleted org used to leave its links live —
 	// and a live link pointing at a dead org bricked every later SSO login for
 	// that workspace/guild (spec 2026-08-25-01). Releasing them here prevents
-	// the class; resolveLinkedOrganization heals rows that already went stale.
+	// the class; ResolveLinkedOrganization heals rows that already went stale.
 	if linkErr := s.releaseOrgProviderLinks(ctx, org.UID); linkErr != nil {
 		return nil, linkErr
 	}

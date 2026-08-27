@@ -519,6 +519,25 @@ var (
 		[]string{labelChannel},
 	)
 
+	// OrgProviderLinksDangling reports how many LIVE organization_providers rows
+	// point at an organization that no longer resolves.
+	//
+	// Same "degrade cleanly and observably" treatment as SupportDMUnavailable,
+	// and for a failure mode that is even quieter: such a link silently wins the
+	// partial unique lookup on (provider_type, provider_id), so the workspace or
+	// guild behind it cannot sign in or reinstall, and the only symptom is a
+	// server-side error nobody reads. The healers clear a row the moment someone
+	// tries again — this gauge is what makes the rows visible BEFORE that.
+	//
+	// A gauge, not a counter: it is a state (how many rows are dangling right
+	// now), sampled once at boot.
+	OrgProviderLinksDangling = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_org_provider_links_dangling",
+			Help: "Live organization_providers rows whose organization no longer resolves",
+		},
+	)
+
 	// WatchdogAnomalies reports how many platform anomalies the hourly
 	// watchdog found, per detector and severity (spec 2026-08-24-10).
 	//
@@ -577,7 +596,7 @@ var (
 	)
 
 	allCollectors = []prometheus.Collector{
-		SupportCapture, SupportMirror, SupportDMUnavailable,
+		SupportCapture, SupportMirror, SupportDMUnavailable, OrgProviderLinksDangling,
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,

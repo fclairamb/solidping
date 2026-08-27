@@ -1816,6 +1816,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// their DMs arrive. Slack does not grant new scopes to existing installs, so
 	// the only other symptom is an inbox that stays quiet.
 	slackService.ReportDMCapability(ctx)
+	// And one line naming how many workspace/guild links point at an org that
+	// no longer resolves. Such a link bricks both SSO and reinstall for that
+	// workspace until something trips over it and heals it (spec 2026-08-27-02),
+	// so counting them at boot is the only way an operator hears about it first.
+	s.authService.ReportDanglingProviderLinks(ctx)
 	// Auto-match members to workspace users right after an install so the first
 	// alert can already mention the on-call person (spec 2026-08-12-03). The
 	// dependency can only point this way — handlers/integrations imports the

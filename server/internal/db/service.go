@@ -121,6 +121,12 @@ type Service interface {
 		ctx context.Context, providerType models.ProviderType, providerID string,
 	) (*models.OrganizationProvider, error)
 	ListOrganizationProviders(ctx context.Context, orgUID string) ([]*models.OrganizationProvider, error)
+	// CountDanglingOrganizationProviders counts LIVE organization_providers rows
+	// whose organization no longer resolves (soft-deleted, or gone). Each such
+	// row bricks SSO and app install for that workspace/guild until it is
+	// healed, and is otherwise invisible — see auth.ResolveLinkedOrganization
+	// and auth.Service.ReportDanglingProviderLinks.
+	CountDanglingOrganizationProviders(ctx context.Context) (int, error)
 	UpdateOrganizationProvider(ctx context.Context, uid string, update models.OrganizationProviderUpdate) error
 	DeleteOrganizationProvider(ctx context.Context, uid string) error
 
