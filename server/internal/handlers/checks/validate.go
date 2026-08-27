@@ -321,11 +321,20 @@ func (s *Service) orgRateWarning(
 		return
 	}
 
+	// Resolve the region set the same way the write path does: an empty
+	// selection means "the org's defaults", which is frequently more than one
+	// region — projecting the raw request would under-count exactly the case
+	// (a fresh check, no regions touched) the warning exists for.
+	proposedRegions := req.Regions
+	if resolved, resolveErr := s.regions.ResolveRegionsForCheck(ctx, req.Regions, orgUID); resolveErr == nil {
+		proposedRegions = resolved
+	}
+
 	projected, err := s.entitlements.ProjectChecksPerMinute(ctx, orgUID, entcore.CheckRateProposal{
 		ExcludeCheckUID: req.ExcludeCheckUID,
 		Type:            req.Type,
 		Period:          period,
-		Regions:         req.Regions,
+		Regions:         proposedRegions,
 		Enabled:         true,
 	})
 	if err != nil || !projected.Over() {
