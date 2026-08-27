@@ -67,12 +67,16 @@ func TestRecognizedEnvVars(t *testing.T) {
 	r.Contains(set, "SP_DB_MIGRATION_GUARD_MODE")
 	r.Contains(set, "SP_SENTRY_TRACES_SAMPLE_RATE")
 
-	// Confirmed-broken bindings must NOT be recognized (see spec open question):
-	// SP_ENCRYPTION_MASTER_KEY transforms to encryption.master.key but the tag
-	// is master_key, so it never binds. Adding it here would paper over the bug.
-	r.NotContains(set, "SP_ENCRYPTION_MASTER_KEY")
-	r.NotContains(set, "SP_ENCRYPTION_MASTER_KEY_FILE")
-	r.NotContains(set, "SP_ENCRYPTION_AUTO_MIGRATE")
+	// These three were the standing "confirmed-broken binding" example: the env
+	// provider turns SP_ENCRYPTION_MASTER_KEY into encryption.master.key while
+	// the tag is master_key, so nothing bound and the credentials service stayed
+	// in plaintext mode. The old assertion was NotContains, with a comment that
+	// registering the names would paper over the bug — correct at the time. They
+	// are recognized now because applyEncryptionEnv actually binds them; the bug
+	// was fixed at the source rather than silenced here.
+	r.Contains(set, "SP_ENCRYPTION_MASTER_KEY")
+	r.Contains(set, "SP_ENCRYPTION_MASTER_KEY_FILE")
+	r.Contains(set, "SP_ENCRYPTION_AUTO_MIGRATE")
 	// The typo must not be recognized (it is the near-miss the check warns on).
 	r.NotContains(set, "SP_RATE_LIMITING_TRUSTED_PROXIES")
 }

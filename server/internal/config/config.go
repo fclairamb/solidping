@@ -1711,6 +1711,7 @@ func Load() (*Config, error) {
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
 	applyACMEEnv(&cfg.ACME)
+	applyEncryptionEnv(&cfg.Encryption)
 	applyAuditEnv(&cfg.Audit)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
@@ -2103,6 +2104,39 @@ func splitAndTrim(value string) []string {
 	}
 
 	return out
+}
+
+// applyEncryptionEnv reads the multi-word SP_ENCRYPTION_* knobs koanf's env
+// loader cannot bind: it collapses every underscore after the SP_ prefix to a
+// dot, so SP_ENCRYPTION_MASTER_KEY arrives as "encryption.master.key" and never
+// reaches the snake_case koanf tag "master_key".
+//
+// This one is worth more than the usual quirk. Without it the credentials
+// service silently stays in disabled mode and stores secrets in PLAINTEXT,
+// while its own remediation message tells the operator to set exactly the
+// variable that does not bind — envcheck's package doc named
+// SP_ENCRYPTION_MASTER_KEY as the standing example of a documented-but-unbound
+// name. Setting it now does what the message always promised.
+//
+// AutoMigrate defaults to true, so supplying a key also encrypts rows still in
+// plaintext at the next start. Rows encrypted under a key that is no longer
+// available stay unreadable — a different key cannot recover them, and only the
+// original one can.
+func applyEncryptionEnv(cfg *EncryptionConfig) {
+	// Literal os.Getenv calls rather than a loop over a slice of names: the
+	// registry guard in envvars_test.go scans this file for them, so a name read
+	// indirectly would slip past both the guard and the startup env check.
+	if v := os.Getenv("SP_ENCRYPTION_MASTER_KEY"); v != "" {
+		cfg.MasterKey = v
+	}
+
+	if v := os.Getenv("SP_ENCRYPTION_MASTER_KEY_FILE"); v != "" {
+		cfg.MasterKeyFile = v
+	}
+
+	if v := os.Getenv("SP_ENCRYPTION_AUTO_MIGRATE"); v != "" {
+		cfg.AutoMigrate = v == envTrue || v == "1"
+	}
 }
 
 // applySchedulingEnv reads the multi-word SP_SCHEDULING_* knobs koanf's env

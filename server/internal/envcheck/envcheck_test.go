@@ -56,17 +56,26 @@ func TestCheckEnvironIgnoresNonSPAndAllowlist(t *testing.T) {
 	r.Empty(warnings)
 }
 
-// TestCheckEnvironEncryptionMasterKeyWarns is the required acceptance criterion:
-// SP_ENCRYPTION_MASTER_KEY never binds (confirmed broken), so under the
-// "recognized = actually binds" rule the check must flag it when set. Silencing
-// this by adding the name to the registry would paper over the underlying bug.
-func TestCheckEnvironEncryptionMasterKeyWarns(t *testing.T) {
+// TestCheckEnvironEncryptionMasterKeySilent inverts what used to be
+// TestCheckEnvironEncryptionMasterKeyWarns.
+//
+// That test was right to demand a warning: under "recognized = actually binds",
+// a name that binds nothing must be flagged, and its comment warned that adding
+// the name to the registry would paper over the bug. The bug is now fixed at the
+// source — applyEncryptionEnv binds all three SP_ENCRYPTION_* names — so the
+// registry entry states a fact rather than hiding one, and a warning here would
+// now be the false alarm.
+//
+// The stakes are why this is asserted rather than left to the generic cases:
+// while the name did not bind, the credentials service stored secrets in
+// plaintext and told the operator to set precisely this variable.
+func TestCheckEnvironEncryptionMasterKeySilent(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	warnings := checkEnviron([]string{"SP_ENCRYPTION_MASTER_KEY=deadbeef"})
-	r.Len(warnings, 1)
-	r.Equal("SP_ENCRYPTION_MASTER_KEY", warnings[0].Name)
+	r.Empty(checkEnviron([]string{"SP_ENCRYPTION_MASTER_KEY=deadbeef"}))
+	r.Empty(checkEnviron([]string{"SP_ENCRYPTION_MASTER_KEY_FILE=/run/secrets/kek"}))
+	r.Empty(checkEnviron([]string{"SP_ENCRYPTION_AUTO_MIGRATE=false"}))
 }
 
 // TestCheckEnvironDedupes: a name appearing twice yields a single warning.

@@ -176,6 +176,14 @@ func manualReaderServerEnvVars() []string {
 		"SP_ACME_FALLBACK_UPSTREAM_HTTPS",
 		"SP_ACME_FALLBACK_UPSTREAM_HTTP",
 		"SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL",
+		// applyEncryptionEnv — encryption.master_key and master_key_file are
+		// snake_case, so koanf's env loader lands on encryption.master.key and
+		// binds nothing. Absent from this list the credentials service stayed in
+		// plaintext mode while telling the operator to set the very name it then
+		// reported as unrecognized.
+		"SP_ENCRYPTION_MASTER_KEY",
+		"SP_ENCRYPTION_MASTER_KEY_FILE",
+		"SP_ENCRYPTION_AUTO_MIGRATE",
 		// applySchedulingEnv
 		"SP_SCHEDULING_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_CHECK_TIMEOUT_MS",
