@@ -6060,6 +6060,38 @@ func (s *Service) UpsertOrgEntitlements(
 	})
 }
 
+// CreateOrgEntitlementAudit inserts a standalone audit row (no entitlements
+// write). Used by the suppression path, where the record exists precisely
+// because the stored row did not change.
+func (s *Service) CreateOrgEntitlementAudit(
+	ctx context.Context, audit *models.OrgEntitlementAudit,
+) error {
+	_, err := s.db.NewInsert().Model(audit).Exec(ctx)
+
+	return err
+}
+
+// DeleteOrgEntitlements drops an org's entitlements row and records the audit
+// in the same tx.
+func (s *Service) DeleteOrgEntitlements(
+	ctx context.Context, orgUID string, audit *models.OrgEntitlementAudit,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewDelete().
+			Model((*models.OrgEntitlements)(nil)).
+			Where("organization_uid = ?", orgUID).
+			Exec(ctx); err != nil {
+			return err
+		}
+
+		if _, err := tx.NewInsert().Model(audit).Exec(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
 // ListOrgEntitlementAudits returns audit rows for an org, newest first.
 func (s *Service) ListOrgEntitlementAudits(
 	ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,

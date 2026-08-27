@@ -546,6 +546,24 @@ func modelToJSON(row *models.OrgEntitlements) (models.JSONMap, error) {
 	return out, nil
 }
 
+// entitlementsToJSON serializes a wire-shape Entitlements into a JSON map, for
+// audit rows that need to record an INTENDED write rather than a stored row.
+//
+//nolint:gocritic // input is the wire shape, passed by value like everywhere else
+func entitlementsToJSON(input Entitlements) (models.JSONMap, error) {
+	raw, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+
+	var out models.JSONMap
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
 // tokenBucket is a minimal per-org token bucket. Tokens refill at
 // rate (capacity / 60) tokens per second; capacity is the burst.
 type tokenBucket struct {

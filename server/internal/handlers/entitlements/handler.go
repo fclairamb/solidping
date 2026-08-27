@@ -275,8 +275,14 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 
 	reason := req.Header.Get("X-Entitlements-Reason")
 
-	if setErr := h.svc.Set(req.Context(), org.UID, input, prin.actor, reason); setErr != nil {
-		return h.WriteInternalError(writer, req, setErr)
+	// Apply, not Set: the precedence rule lives in the service so both front
+	// doors (this one and the superadmin editor) obey it. A billing push onto
+	// an admin override answers 200 with applied=false rather than an error —
+	// billing must not error-loop over a decision we made on purpose — and the
+	// body says exactly what happened.
+	outcome, applyErr := h.svc.Apply(req.Context(), org.UID, input, prin.actor, reason)
+	if applyErr != nil {
+		return h.WriteInternalError(writer, req, applyErr)
 	}
 
 	resolved, err := h.svc.Resolve(req.Context(), org.UID)
@@ -284,7 +290,30 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 		return h.WriteInternalError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, resolved)
+	return h.WriteJSON(writer, http.StatusOK, newWriteResponse(resolved, outcome))
+}
+
+// writeResponse is the entitlements write payload: the resolved row plus an
+// honest report of whether this particular write changed anything.
+type writeResponse struct {
+	entcore.Resolved
+	// Applied is false when the precedence rule discarded the write.
+	Applied bool `json:"applied"`
+	// SuppressedBy names the source that won, when Applied is false.
+	SuppressedBy models.EntitlementSource `json:"suppressedBy,omitempty"`
+	// Message explains a suppression in words, for a log line or a UI toast.
+	Message string `json:"message,omitempty"`
+}
+
+//nolint:gocritic // resolved is the wire shape, passed by value like everywhere else
+func newWriteResponse(resolved entcore.Resolved, outcome entcore.WriteOutcome) writeResponse {
+	out := writeResponse{Resolved: resolved, Applied: outcome.Applied}
+	if !outcome.Applied {
+		out.SuppressedBy = outcome.SuppressedBy
+		out.Message = entcore.SuppressedByAdminMessage
+	}
+
+	return out
 }
 
 // ListAudits handles GET /api/v1/orgs/:org/entitlements/audits.

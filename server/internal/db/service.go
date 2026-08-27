@@ -1078,6 +1078,17 @@ type Service interface {
 	ListOrgEntitlementAudits(
 		ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
 	) ([]*models.OrgEntitlementAudit, error)
+	// CreateOrgEntitlementAudit inserts an audit row on its own, with no
+	// accompanying entitlements write. Used when a write was deliberately NOT
+	// applied — a billing push onto an admin override — where the whole point
+	// of the record is that the stored row did not move.
+	CreateOrgEntitlementAudit(ctx context.Context, audit *models.OrgEntitlementAudit) error
+	// DeleteOrgEntitlements removes an org's entitlements row and writes the
+	// audit in the same transaction. A released org then resolves exactly like
+	// an org that was never configured.
+	DeleteOrgEntitlements(
+		ctx context.Context, orgUID string, audit *models.OrgEntitlementAudit,
+	) error
 	// CountMembersForOrg counts every organization member, regardless of
 	// how they joined. Used by the entitlements service to enforce
 	// MaxUsers.

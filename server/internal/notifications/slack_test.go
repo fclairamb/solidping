@@ -1622,6 +1622,18 @@ func (m *mockDBService) ListOrgEntitlementAudits(
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateOrgEntitlementAudit(
+	_ context.Context, _ *models.OrgEntitlementAudit,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteOrgEntitlements(
+	_ context.Context, _ string, _ *models.OrgEntitlementAudit,
+) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CountMembersForOrg(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }
