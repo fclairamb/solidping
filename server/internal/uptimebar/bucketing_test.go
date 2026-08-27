@@ -78,6 +78,15 @@ func (f *fakeLister) ListResults(
 			continue
 		}
 
+		// Region fidelity matters for the same reason tier fidelity does: without
+		// it a region-filtered read would return every region's rows and the
+		// filter would be untestable (see TestBucketAvailabilityInRegions).
+		if len(filter.Regions) > 0 {
+			if row.Region == nil || !slices.Contains(filter.Regions, *row.Region) {
+				continue
+			}
+		}
+
 		if filter.PeriodStartAfter != nil && row.PeriodStart.Before(*filter.PeriodStartAfter) {
 			continue
 		}

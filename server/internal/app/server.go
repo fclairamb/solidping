@@ -1217,6 +1217,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	availabilityHandler := availability.NewHandler(availabilityService, s.config)
 	orgChecksAvail := orgGroup("/orgs/:org/checks/:check/availability")
 	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
+	// Bucketed availability for an ARBITRARY window (the chart's availability
+	// strip). Deliberately a separate route rather than a mode on the one above:
+	// that one speaks trailing-window calendar tokens with a tz and no from/to at
+	// all, and is capped at 12 periods (spec 2026-08-26-10).
+	orgChecksAvail.GET("/buckets", availabilityHandler.GetAvailabilityBuckets)
 
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
