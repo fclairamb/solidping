@@ -70,6 +70,18 @@ export function hostnameOf(originOrHost: string): string {
  * Whether `origin` is one of the hosts that serve the documentation but not the
  * API. An empty or missing list means "no docs host is known", i.e. every host
  * is treated as an instance.
+ *
+ * KNOWN DIVERGENCE from `docsHostMatches` (server/internal/app/server.go), not
+ * enforced by any code, hence this note. Go strips the port from the *request*
+ * host but compares the *configured* host raw; we strip the port from both. So
+ * a docs host configured with a port — `SP_DOCS_HOST="docs.acme.com:8443"` —
+ * never matches server-side (that host is not redirected, and does serve the
+ * API), while this function calls it a docs host and hands back the cloud URL.
+ * We are the lenient side. Hostname-only is the semantics this bundle wants and
+ * matches the documented config shape (a bare hostname), so the fix belongs on
+ * the Go side, where it would change which requests get redirected — a server
+ * behaviour change that needs its own spec. If you touch either function, read
+ * the other.
  */
 export function isKnownDocsHost(
   origin: string,
@@ -142,6 +154,35 @@ export function resolveApiBaseUrl(
   specServers: readonly ApiServer[] | undefined,
 ): string {
   return resolveApiServers(origin, docsHosts, specServers)[0]?.url ?? "";
+}
+
+/**
+ * Whether the host-resolved default should be (re-)selected, or the reader's
+ * own pick left alone.
+ *
+ * The theme persists the selected server and restores it on the next page, but
+ * it persists its *own* automatic default the same way it persists a click — so
+ * "something is stored" cannot distinguish the two. `autoSelectedUrl` is the
+ * value we last defaulted to, remembered separately by the caller: if the
+ * restored selection is still that value, it is ours to refresh; if it differs,
+ * the reader chose it and we leave it.
+ *
+ * @param currentUrl      the currently selected server URL, if any
+ * @param autoSelectedUrl the URL this resolver last selected on its own
+ */
+export function shouldApplyDefaultSelection(
+  currentUrl: string | undefined,
+  autoSelectedUrl: string | null | undefined,
+): boolean {
+  if (!currentUrl) {
+    return true; // Nothing selected yet.
+  }
+
+  if (!autoSelectedUrl) {
+    return true; // We never defaulted here, so this is the theme's own default.
+  }
+
+  return currentUrl === autoSelectedUrl;
 }
 
 /** Whether two server lists carry the same URLs in the same order. */

@@ -8,6 +8,7 @@ import {
   resolveApiBaseUrl,
   resolveApiServers,
   sameServerUrls,
+  shouldApplyDefaultSelection,
   type ApiServer,
 } from "./apiBaseUrl";
 
@@ -40,6 +41,10 @@ describe("isKnownDocsHost", () => {
     expect(isKnownDocsHost("https://DOCS.solidping.io:8443", DOCS_HOSTS)).toBe(
       true,
     );
+    // Deliberately lenient on a *configured* host carrying a port: Go's
+    // docsHostMatches compares the configured value raw and would NOT match
+    // here. See the divergence note on isKnownDocsHost — hostname-only is the
+    // semantics this bundle wants, and the Go side is the one to change.
     expect(
       isKnownDocsHost("http://docs.solidping.io", ["DOCS.SolidPing.io:443"]),
     ).toBe(true);
@@ -210,5 +215,46 @@ describe("docsHostsFrom", () => {
     [{ docsHosts: 42 }, []],
   ])("%p -> %p", (customFields, expected) => {
     expect(docsHostsFrom(customFields)).toEqual(expected);
+  });
+});
+
+describe("shouldApplyDefaultSelection", () => {
+  test("applies when nothing is selected yet", () => {
+    expect(shouldApplyDefaultSelection(undefined, null)).toBe(true);
+    expect(shouldApplyDefaultSelection("", null)).toBe(true);
+  });
+
+  test("applies when the selection is the theme's own default, not ours", () => {
+    // First visit: the theme selected the spec's first server during render and
+    // persisted it, but we have never defaulted here.
+    expect(shouldApplyDefaultSelection("https://solidping.io", null)).toBe(true);
+    expect(shouldApplyDefaultSelection("https://solidping.io", undefined)).toBe(
+      true,
+    );
+  });
+
+  test("re-applies its own previous default", () => {
+    expect(
+      shouldApplyDefaultSelection(
+        "https://monitor.acme.com",
+        "https://monitor.acme.com",
+      ),
+    ).toBe(true);
+  });
+
+  test("leaves a deliberate pick alone", () => {
+    // We defaulted to the instance; the reader then picked the cloud.
+    expect(
+      shouldApplyDefaultSelection(
+        "https://solidping.io",
+        "https://monitor.acme.com",
+      ),
+    ).toBe(false);
+    expect(
+      shouldApplyDefaultSelection(
+        "http://localhost:4000",
+        "https://monitor.acme.com",
+      ),
+    ).toBe(false);
   });
 });
