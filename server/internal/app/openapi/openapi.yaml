@@ -7582,6 +7582,13 @@ paths:
         admin write is always `admin`, so a body claiming to be the billing
         service cannot launder itself past the precedence rule.
 
+        Because the row is complete, an `admin` row resolves whole-row: a
+        `null` cap means **unlimited**, not "inherit the deployment default".
+        That is what makes the editor's Unlimited switch mean what it says on a
+        SaaS deployment, where every default is a real number. `whiteLabel` is
+        the exception — being a boolean, its `null` keeps meaning "use the
+        deployment default".
+
         While the stored row is admin-sourced, billing pushes to
         `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
         applied (`applied: false`, `suppressedBy: admin`) and recorded in the
@@ -14622,7 +14629,13 @@ components:
           $ref: "#/components/schemas/EntitlementLimits"
         source:
           type: string
-          description: Where the entitlements came from (default, billing, admin)
+          description: >-
+            Where the entitlements came from. `default` / `self-hosted` (no
+            stored row), `billing-service`, `org-admin` (org-scoped write by an
+            org admin) or `admin` (superadmin override). An `admin` row resolves
+            WHOLE-ROW — a null cap means unlimited rather than "inherit the
+            deployment default" — and suppresses billing pushes until released.
+          enum: [default, self-hosted, org-admin, admin, billing-service]
         displayName:
           type: string
         displayEmoji:
@@ -14664,7 +14677,12 @@ components:
           $ref: "#/components/schemas/EntitlementLimits"
         source:
           type: string
-          description: Entitlement source (default set server-side)
+          description: >-
+            IGNORED for user-driven writes — the server decides the source,
+            because it is an authorization outcome rather than a label. A
+            superadmin write records `admin`, any other authenticated caller
+            records `org-admin`, and a trusted service defaults to
+            `billing-service`.
         displayName:
           type: string
         displayEmoji:

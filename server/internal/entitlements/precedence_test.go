@@ -236,3 +236,162 @@ func TestAdminRowStillCountsAsPaid(t *testing.T) {
 	r.NoError(err)
 	r.Equal(entitlements.PlanWeightFree, svc.PlanWeight(ctx, org.UID))
 }
+
+// TestAdminNullMeansUnlimitedOnSaaS is the gap the audit caught: on SaaS every
+// default is a real number, so the ordinary null-fill merge turned the
+// superadmin editor's "Unlimited" switch into a no-op — the stored null was
+// overwritten by the SaaS default on the way back out, the toggle flipped
+// itself off on the next refetch, and the org stayed capped while the UI
+// claimed otherwise.
+//
+// An `admin` row is whole-row: nil means unlimited.
+func TestAdminNullMeansUnlimitedOnSaaS(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, org, _ := saasSetup(t)
+	ctx := t.Context()
+
+	// Sanity: with no row at all the SaaS defaults are non-nil. Without this,
+	// the assertion below could pass on a deployment where nothing was capped.
+	base, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(base.Limits.MaxChecks)
+	r.Equal(100, *base.Limits.MaxChecks)
+
+	_, err = svc.Apply(ctx, org.UID, entitlements.Entitlements{
+		Source: models.EntitlementSourceAdmin,
+		Limits: entitlements.Limits{
+			MaxChecks:          nil, // explicitly unlimited
+			MaxChecksPerMinute: entitlements.Int(600),
+		},
+	}, "superadmin:alice", "")
+	r.NoError(err)
+
+	resolved, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.Nil(resolved.Limits.MaxChecks,
+		"an admin row's nil cap is UNLIMITED, not an invitation to re-apply the SaaS default")
+	// POSITIVE CONTROL: a stated cap in the same row still resolves to itself,
+	// so the assertion above is not passing because everything became nil.
+	r.NotNil(resolved.Limits.MaxChecksPerMinute)
+	r.Equal(600, *resolved.Limits.MaxChecksPerMinute)
+}
+
+// TestBillingNullStillInheritsTheDefault is the negative control for the rule
+// above: the whole-row reading is scoped to `admin`. Billing pushes a partial
+// plan and must keep getting the deployment default for everything its SKU
+// says nothing about — changing that would silently uncap every SaaS org the
+// moment billing omitted a field.
+func TestBillingNullStillInheritsTheDefault(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, org, _ := saasSetup(t)
+	ctx := t.Context()
+
+	_, err := svc.Apply(ctx, org.UID, entitlements.Entitlements{
+		Source: models.EntitlementSourceBilling,
+		Limits: entitlements.Limits{
+			MaxChecks:          nil, // "the SKU does not mention checks"
+			MaxChecksPerMinute: entitlements.Int(60),
+		},
+	}, "service:entitlements", "")
+	r.NoError(err)
+
+	resolved, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.Limits.MaxChecks, "a billing row's nil still means 'not stated'")
+	r.Equal(100, *resolved.Limits.MaxChecks)
+	r.NotNil(resolved.Limits.MaxChecksPerMinute)
+	r.Equal(60, *resolved.Limits.MaxChecksPerMinute)
+}
+
+// TestOrgAdminNullStillInheritsTheDefault pins the same for the org-scoped
+// door: it behaves exactly as it did before this spec, so a self-hosted
+// operator's partial write does not become an accidental uncapping.
+func TestOrgAdminNullStillInheritsTheDefault(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, org, _ := saasSetup(t)
+	ctx := t.Context()
+
+	_, err := svc.Apply(ctx, org.UID, entitlements.Entitlements{
+		Source: models.EntitlementSourceOrgAdmin,
+		Limits: entitlements.Limits{MaxUsers: entitlements.Int(20)},
+	}, "user:bob", "")
+	r.NoError(err)
+
+	resolved, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.Limits.MaxChecks)
+	r.Equal(100, *resolved.Limits.MaxChecks)
+	r.NotNil(resolved.Limits.MaxUsers)
+	r.Equal(20, *resolved.Limits.MaxUsers)
+}
+
+// TestAdminRowKeepsTheDefaultWhiteLabel guards the exception inside the
+// exception. WhiteLabel is a boolean: its nil cannot mean "unbounded", and per
+// EntitlementLimits' own contract it means "use the deployment default". If
+// whole-row mode read it as false, every admin override would silently revoke
+// white-label on a deployment that grants it.
+func TestAdminRowKeepsTheDefaultWhiteLabel(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// Self-hosted defaults white-label to true — nobody should have to pay to
+	// unbrand their own instance.
+	svc, org, _ := setup(t)
+	ctx := t.Context()
+
+	base, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(base.Limits.WhiteLabel)
+	r.True(*base.Limits.WhiteLabel)
+
+	_, err = svc.Apply(ctx, org.UID, entitlements.Entitlements{
+		Source: models.EntitlementSourceAdmin,
+		Limits: entitlements.Limits{MaxChecks: entitlements.Int(50)},
+	}, "superadmin:alice", "")
+	r.NoError(err)
+
+	resolved, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.Limits.WhiteLabel,
+		"an admin override that only touched numbers must not revoke white-label")
+	r.True(*resolved.Limits.WhiteLabel)
+
+	// POSITIVE CONTROL: an explicit false is still honored.
+	denied := false
+	_, err = svc.Apply(ctx, org.UID, entitlements.Entitlements{
+		Source: models.EntitlementSourceAdmin,
+		Limits: entitlements.Limits{WhiteLabel: &denied},
+	}, "superadmin:alice", "")
+	r.NoError(err)
+
+	resolved, err = svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.Limits.WhiteLabel)
+	r.False(*resolved.Limits.WhiteLabel)
+}
+
+// TestOrgAdminRowStillCountsAsPaid keeps the scheduling behaviour a self-hosted
+// operator already had: splitting `org-admin` out of `admin` is about who may
+// outrank billing, not about who gets scheduling protection.
+func TestOrgAdminRowStillCountsAsPaid(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, org, _ := saasSetup(t)
+	ctx := t.Context()
+
+	_, err := svc.Apply(ctx, org.UID, entitlements.Entitlements{
+		Source: models.EntitlementSourceOrgAdmin,
+		Limits: entitlements.Limits{MaxChecks: entitlements.Int(500)},
+	}, "user:bob", "")
+	r.NoError(err)
+
+	r.Equal(entitlements.PlanWeightPaid, svc.PlanWeight(ctx, org.UID),
+		"an org-admin row is still a provisioned org")
+}

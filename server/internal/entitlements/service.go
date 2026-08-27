@@ -252,7 +252,7 @@ func (s *Service) Set(
 // the weight matches the row we just persisted.
 func (s *Service) denormalizePlanWeight(ctx context.Context, orgUID string, source models.EntitlementSource) {
 	weight := PlanWeightFree
-	if source == models.EntitlementSourceBilling || source == models.EntitlementSourceAdmin {
+	if isProvisionedSource(source) {
 		weight = PlanWeightPaid
 	}
 
@@ -370,13 +370,31 @@ func (s *Service) PlanWeight(ctx context.Context, orgUID string) int {
 		return PlanWeightFree
 	}
 
-	switch resolved.Source {
-	case models.EntitlementSourceBilling, models.EntitlementSourceAdmin:
+	if isProvisionedSource(resolved.Source) {
 		return PlanWeightPaid
+	}
+
+	return PlanWeightFree
+}
+
+// isProvisionedSource reports whether a source means "somebody explicitly
+// provisioned this org beyond the in-code defaults" — the only thing the
+// scheduler's coarse free/paid split cares about.
+//
+// org-admin counts, exactly as it did when the org-scoped door still wrote
+// `admin`: splitting the two sources is about who may outrank billing, not
+// about who gets scheduling protection, and letting a self-hosted operator's
+// own write silently demote their org would be a regression.
+func isProvisionedSource(source models.EntitlementSource) bool {
+	switch source {
+	case models.EntitlementSourceBilling,
+		models.EntitlementSourceAdmin,
+		models.EntitlementSourceOrgAdmin:
+		return true
 	case models.EntitlementSourceDefault, models.EntitlementSourceSelfHosted:
-		return PlanWeightFree
+		return false
 	default:
-		return PlanWeightFree
+		return false
 	}
 }
 
@@ -413,8 +431,25 @@ func (s *Service) Defaults() Entitlements {
 	return s.defaults
 }
 
-// merge produces a Resolved by filling nulls from defaults. If stale is
-// true, the entire payload is dropped in favor of defaults.
+// merge produces a Resolved from the stored row and the deployment defaults.
+// If stale is true, the entire payload is dropped in favor of defaults.
+//
+// There are TWO resolution modes, and which one applies is decided by the row's
+// source:
+//
+//   - **Null-fill** (billing-service, org-admin, self-hosted): a nil field means
+//     "not stated", so the deployment default shows through. This is what lets
+//     billing push a partial plan and still get sane numbers for everything the
+//     SKU says nothing about.
+//   - **Whole-row** (admin, i.e. the superadmin editor): a nil field means
+//     UNLIMITED. The editor pre-fills every cap from the resolved values and
+//     saves a complete row (spec 2026-08-26-06, resolved question "whole-row
+//     only"), so a nil there is a deliberate statement, not an omission.
+//
+// The distinction is load-bearing on SaaS, where every default is non-nil:
+// under null-fill an operator who switched a cap to "Unlimited" would watch the
+// SaaS default (100 checks, 10/min…) reappear and the org stay capped, with the
+// UI cheerfully reporting the number it just failed to change.
 func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out := Resolved{
 		Limits:       s.defaults.Limits,
@@ -431,10 +466,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out.ExpiresAt = row.ExpiresAt
 	out.LastSyncedAt = row.LastSyncedAt
 
-	// Display identity: a row with its own name/emoji (e.g. billing-written)
-	// keeps it; a row that never got one (e.g. an admin override that only
-	// touched limits) inherits the default — same null-fill semantics as
-	// the limits below.
+	// Display identity keeps null-fill semantics in BOTH modes: it is a label,
+	// not a quota, and "unlimited" is meaningless for it. An admin override
+	// that only touched numbers still shows the plan name it inherited.
 	if row.Payload.DisplayName != nil {
 		out.DisplayName = row.Payload.DisplayName
 	}
@@ -443,6 +477,22 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	}
 
 	limits := row.Payload.Limits
+
+	if row.Payload.Source == models.EntitlementSourceAdmin {
+		out.Limits = limits
+
+		// WhiteLabel is the exception inside the exception: it is a boolean, so
+		// its nil cannot mean "unbounded". Per EntitlementLimits' own contract
+		// nil there means "use the deployment default", and that reading holds
+		// in whole-row mode too — otherwise every admin override would silently
+		// revoke white-label on a deployment that grants it by default.
+		if limits.WhiteLabel == nil {
+			out.Limits.WhiteLabel = s.defaults.Limits.WhiteLabel
+		}
+
+		return out
+	}
+
 	if limits.MaxChecks != nil {
 		out.Limits.MaxChecks = limits.MaxChecks
 	}

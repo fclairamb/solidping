@@ -180,11 +180,30 @@ own, the mode defaults above apply — self-hosted deliberately gets a plain
 composing three things:
 
 1. **Defaults** for the deployment mode.
-2. **The org's stored row** — any non-nil field overrides the default.
+2. **The org's stored row** — merged in one of two modes, see below.
 3. **Live usage**, recomputed on every resolve.
 
 The resolver always merges defaults in first, so external callers never see a
 nil-means-default ambiguity.
+
+### Two merge modes, decided by the row's source
+
+| Row source | nil field means | Why |
+|---|---|---|
+| `billing-service`, `org-admin`, `self-hosted` | **not stated** → the deployment default shows through | Billing pushes a partial plan; everything the SKU is silent about must still get sane numbers. |
+| `admin` (the superadmin editor) | **unlimited** | The editor pre-fills every cap from the resolved values and saves a *complete* row (spec 2026-08-26-06, "whole-row only"), so a nil there is a deliberate statement, not an omission. |
+
+This distinction is load-bearing on SaaS, where **every default is non-nil**.
+Under null-fill, a superadmin who flipped a cap to "Unlimited" would store
+`null`, watch the SaaS default (100 checks, 10/min…) reappear on the way back
+out, and see the toggle silently flip itself off — org still capped, UI
+reporting the number it had just failed to change.
+
+**One exception inside the exception:** `whiteLabel` is a boolean, so its nil
+cannot mean "unbounded". It keeps null-fill semantics in *both* modes — nil
+means "use the deployment default" — otherwise every admin override that only
+touched numbers would silently revoke white-label on a deployment that grants
+it by default.
 
 `Usage` has seven fields:
 
@@ -245,8 +264,43 @@ Every row records who wrote it:
 |---|---|---|
 | `default` | Auto-create path when an org first resolves with no row. | no |
 | `self-hosted` | Startup hook establishing local defaults. | no |
-| `admin` | Manual override via PUT/PATCH from an org admin (when admin writes are enabled). | no |
-| `billing-service` | External billing service via service-token auth. | yes |
+| `admin` | **Superadmin override.** Minted only by a superadmin — through the instance editor (`PUT /api/v1/system/entitlements/:org`) or by a superadmin calling the org-scoped route. Resolves whole-row, and **suppresses billing pushes** until released. | no |
+| `org-admin` | Manual write via org-scoped PUT/PATCH from an org admin (when admin writes are enabled). Ordinary null-fill resolution; billing's next reconcile overwrites it. | no |
+| `billing-service` | External billing service via signed (or legacy static-bearer) service auth. | yes |
+
+### Why `admin` and `org-admin` are separate
+
+The source is an **authorization outcome, not a label** — `admin` is what makes
+a row outrank billing — so the server decides it and a request body never gets
+to assert it (`Handler.sourceFor`).
+
+The org-scoped PUT is open to any org admin whenever
+`entitlements.admin_writes_enabled` is unset, since it **defaults to true**; on
+SaaS that parameter is only written when `SP_ENTITLEMENTS_ADMIN_WRITES` is set
+explicitly. Before the precedence rule that door was harmless — billing's next
+reconcile corrected whatever it wrote. If such a write could mint `admin`, it
+would instead be a permanent lockout: any org admin could grant themselves
+limits *and* stop billing from ever correcting them. Hence the split. Both
+sources carry the same paid plan weight, so self-hosted scheduling behaviour is
+unchanged.
+
+**Migration note.** Rows already stored as `admin` were written through the
+org-scoped door and now read as superadmin overrides — meaning they will
+suppress billing pushes. They are visible in the superadmin editor
+(`/dash0/orgs/<org>/server/entitlements`) and releasing one is a single click,
+so they are left alone rather than rewritten blind.
+
+### Superadmin override lifecycle
+
+1. A superadmin writes limits → row becomes `admin`.
+2. Billing pushes → **200, nothing applied**; the response carries
+   `applied: false` and `suppressedBy: "admin"`, and an audit row is written
+   with source `billing-service:suppressed` carrying the rejected payload.
+   Billing answering 200 is deliberate: it must not error-loop over a decision
+   we made on purpose.
+3. A superadmin releases (`DELETE /api/v1/system/entitlements/:org`) → the row
+   is **deleted** (audited as `admin:released`), the org resolves to the
+   deployment defaults, and the next billing push applies normally.
 
 ## Stale fallback
 

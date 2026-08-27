@@ -90,11 +90,17 @@ func NewHandler(svc *entcore.Service, dbService db.Service, cfg *config.Config) 
 	}
 }
 
-// principal records who is making the call so the audit log can attribute it.
+// principal records who is making the call so the audit log can attribute it,
+// and — since spec 2026-08-26-06 — so the write path can decide WHICH source a
+// user-driven write is allowed to mint.
 type principal struct {
 	actor     string
 	isService bool
 	isAdmin   bool
+	// isSuperAdmin is what separates an instance operator from an org admin.
+	// Only a superadmin may mint models.EntitlementSourceAdmin, the source that
+	// outranks billing until explicitly released.
+	isSuperAdmin bool
 }
 
 // authorize accepts a trusted service caller (preferred for SaaS) or an admin
@@ -154,7 +160,7 @@ func (h *Handler) authorize(req *http.Request, requireWrite bool) (*principal, e
 
 	actor := "user:" + user.UID
 
-	return &principal{actor: actor, isAdmin: isAdmin}, nil
+	return &principal{actor: actor, isAdmin: isAdmin, isSuperAdmin: user.SuperAdmin}, nil
 }
 
 var (
@@ -261,13 +267,7 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 		})
 	}
 
-	if input.Source == "" {
-		if prin.isService {
-			input.Source = models.EntitlementSourceBilling
-		} else {
-			input.Source = models.EntitlementSourceAdmin
-		}
-	}
+	input.Source = h.sourceFor(prin, input.Source)
 
 	if partial {
 		input = h.mergePartial(req.Context(), org.UID, input)
@@ -291,6 +291,37 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, newWriteResponse(resolved, outcome))
+}
+
+// sourceFor decides the source a write is recorded under. It is a decision the
+// SERVER makes, never one the body gets to assert, because since spec
+// 2026-08-26-06 the source is an authorization outcome and not a label:
+// `admin` suppresses every subsequent billing push until a superadmin releases
+// it, so a caller that could name its own source could mint an unreleasable
+// override for itself.
+//
+//   - A trusted service keeps the old behavior (it may name a source; absent,
+//     it is the billing service). Nothing else can reach that branch: the
+//     signature/bypass middleware is what sets it.
+//   - A superadmin on this org-scoped route mints `admin` — same authority as
+//     the dedicated superadmin editor, reached through a different URL.
+//   - Everyone else — including an org OWNER — mints `org-admin`: a real,
+//     paid-tier provisioning row that billing's next reconcile still corrects.
+//     That is exactly what this door did before the precedence rule existed.
+func (h *Handler) sourceFor(prin *principal, requested models.EntitlementSource) models.EntitlementSource {
+	if prin.isService {
+		if requested == "" {
+			return models.EntitlementSourceBilling
+		}
+
+		return requested
+	}
+
+	if prin.isSuperAdmin {
+		return models.EntitlementSourceAdmin
+	}
+
+	return models.EntitlementSourceOrgAdmin
 }
 
 // writeResponse is the entitlements write payload: the resolved row plus an

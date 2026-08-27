@@ -96,6 +96,41 @@ func (h *entHandlerSetup) doWithRole(
 	return rec
 }
 
+// doAsService sends a request the handler recognizes as the BILLING SERVICE
+// rather than a signed-in human, via the legacy static bearer. A user
+// principal can never claim to be billing (sourceFor decides the source, not
+// the body), so a precedence test has to come through this door to be testing
+// the real thing.
+func (h *entHandlerSetup) doAsService(
+	t *testing.T, method, path string, body any,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	const serviceBearer = "svc-token-for-precedence-tests"
+
+	require.NoError(t, h.dbSvc.SetSystemParameter(
+		t.Context(), enthandler.ParamServiceToken, serviceBearer, true))
+	require.NoError(t, h.dbSvc.SetSystemParameter(
+		t.Context(), enthandler.ParamAllowLegacyServiceToken, true, false))
+
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		require.NoError(t, err)
+	}
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), method, path, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+serviceBearer)
+
+	rec := httptest.NewRecorder()
+	h.router.ServeHTTP(rec, req)
+
+	return rec
+}
+
 func (h *entHandlerSetup) path() string {
 	return "/api/v1/orgs/" + h.org.Slug + "/entitlements"
 }
@@ -679,6 +714,10 @@ func TestPutBillingOntoAdminRowReportsSuppression(t *testing.T) {
 	r := require.New(t)
 	h := newEntHandlerSetup(t)
 
+	// A SUPERADMIN write is what mints the suppressing override, even when it
+	// arrives on the org-scoped route.
+	h.user.SuperAdmin = true
+
 	rec := h.do(t, http.MethodPut, h.path(), map[string]any{
 		"source": string(models.EntitlementSourceAdmin),
 		"limits": map[string]any{"maxChecks": 5000},
@@ -691,8 +730,7 @@ func TestPutBillingOntoAdminRowReportsSuppression(t *testing.T) {
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &applied))
 	r.True(applied.Applied)
 
-	rec = h.do(t, http.MethodPut, h.path(), map[string]any{
-		"source": string(models.EntitlementSourceBilling),
+	rec = h.doAsService(t, http.MethodPut, h.path(), map[string]any{
 		"limits": map[string]any{"maxChecks": 100},
 	})
 	r.Equal(http.StatusOK, rec.Code, "billing must not be made to error-loop")
@@ -711,4 +749,102 @@ func TestPutBillingOntoAdminRowReportsSuppression(t *testing.T) {
 	r.NotEmpty(suppressed.Message)
 	r.NotNil(suppressed.Limits.MaxChecks)
 	r.Equal(5000, *suppressed.Limits.MaxChecks, "the admin override must survive the push")
+}
+
+
+// TestOrgAdminWriteDoesNotOutrankBilling is the security half of the
+// precedence rule, and the reason `org-admin` exists as a separate source.
+//
+// The org-scoped PUT is open to any org admin whenever
+// entitlements.admin_writes_enabled is unset (it defaults to TRUE), which on a
+// SaaS install that never set SP_ENTITLEMENTS_ADMIN_WRITES is every org admin.
+// Before the precedence rule that door was harmless — billing's next reconcile
+// corrected whatever it wrote. If such a write could mint `admin`, it would now
+// be a permanent lockout: any org admin could grant themselves limits AND stop
+// the billing service from ever correcting them, until a superadmin noticed.
+//
+// So: an ORG admin's write must be overwritable by billing. The superadmin's
+// must not. Both halves are asserted here, because either one alone passes on a
+// broken implementation.
+func TestOrgAdminWriteDoesNotOutrankBilling(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	t.Run("an org admin's write is corrected by the next billing push", func(t *testing.T) {
+		t.Parallel()
+		rr := require.New(t)
+		h := newEntHandlerSetup(t)
+
+		// Not a superadmin. It even ASKS to be recorded as `admin` — the source
+		// is a server decision, not something a body may assert.
+		rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+			"source": string(models.EntitlementSourceAdmin),
+			"limits": map[string]any{"maxChecks": 5000},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var written struct {
+			Source  string `json:"source"`
+			Applied bool   `json:"applied"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &written))
+		rr.Equal(string(models.EntitlementSourceOrgAdmin), written.Source,
+			"an org admin may not mint the superadmin override source")
+		rr.True(written.Applied)
+
+		rec = h.doAsService(t, http.MethodPut, h.path(), map[string]any{
+			"limits": map[string]any{"maxChecks": 100},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var pushed struct {
+			Applied bool `json:"applied"`
+			Limits  struct {
+				MaxChecks *int `json:"maxChecks"`
+			} `json:"limits"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &pushed))
+		rr.True(pushed.Applied, "billing must still be able to correct an org-admin row")
+		rr.NotNil(pushed.Limits.MaxChecks)
+		rr.Equal(100, *pushed.Limits.MaxChecks)
+	})
+
+	// POSITIVE CONTROL: the same sequence, from a superadmin, DOES suppress.
+	// Without this the assertion above would pass just as happily on an
+	// implementation where suppression never fires at all.
+	t.Run("a superadmin's write is not", func(t *testing.T) {
+		t.Parallel()
+		rr := require.New(t)
+		h := newEntHandlerSetup(t)
+		h.user.SuperAdmin = true
+
+		rec := h.do(t, http.MethodPut, h.path(), map[string]any{
+			"limits": map[string]any{"maxChecks": 5000},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var written struct {
+			Source string `json:"source"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &written))
+		rr.Equal(string(models.EntitlementSourceAdmin), written.Source)
+
+		rec = h.doAsService(t, http.MethodPut, h.path(), map[string]any{
+			"limits": map[string]any{"maxChecks": 100},
+		})
+		rr.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var pushed struct {
+			Applied bool `json:"applied"`
+			Limits  struct {
+				MaxChecks *int `json:"maxChecks"`
+			} `json:"limits"`
+		}
+		rr.NoError(json.Unmarshal(rec.Body.Bytes(), &pushed))
+		rr.False(pushed.Applied)
+		rr.NotNil(pushed.Limits.MaxChecks)
+		rr.Equal(5000, *pushed.Limits.MaxChecks)
+	})
+
+	r.True(true) // the subtests carry the assertions
 }

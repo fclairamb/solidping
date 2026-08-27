@@ -183,3 +183,64 @@ Document the four endpoints and the new response fields in
 - Frontend: vitest over the pure helpers (unlimited/nil rendering, diffing)
   plus locale parity across the four locales.
 - E2E: a Playwright spec for the superadmin page.
+
+## Decisions taken during implementation
+
+Both were raised by the completeness audit on 2026-08-27 and fixed before the
+spec closed.
+
+### 1. An `admin` row resolves whole-row: nil means unlimited
+
+`Service.Resolve` starts from `DefaultsFor(mode)` and only overwrites a field
+when the stored pointer is non-nil. On SaaS **every default is non-nil**, so
+the editor's "Unlimited" switch was a no-op: the stored `null` was refilled
+with the SaaS default on the way out, the form re-seeded from the resolved
+values, and the toggle flipped itself off with the org still capped.
+
+The resolved open question already made admin rows **whole-row only** (the
+editor pre-fills from resolved values and saves a complete row), so nil in such
+a row is a deliberate statement, not an omission. `merge` now branches on the
+row's source: `admin` takes the payload wholesale, everything else keeps the
+existing null-fill.
+
+`whiteLabel` is exempt in both modes. It is a boolean, so its nil cannot mean
+"unbounded"; per `EntitlementLimits`' own contract it means "use the deployment
+default", and reading it as `false` would make every admin override silently
+revoke white-label on a deployment that grants it.
+
+Billing and org-admin resolution is deliberately untouched — a billing push
+that omits a field must still inherit the default, or a partial SKU would
+uncap an org.
+
+### 2. The org-scoped door mints `org-admin`, not `admin`
+
+`PUT /api/v1/orgs/:org/entitlements` accepts any org admin whenever
+`entitlements.admin_writes_enabled` is unset, because it **defaults to true**,
+and on SaaS that parameter is only written when `SP_ENTITLEMENTS_ADMIN_WRITES`
+is set explicitly. Before this spec such a row was harmless: billing's next
+reconcile corrected it. With the precedence rule it would have become a
+permanent lockout — any org admin could grant themselves limits *and* stop
+billing from ever correcting them.
+
+So `models.EntitlementSourceOrgAdmin` now exists, suppression does not trigger
+on it, and it carries the same paid plan weight as before so self-hosted
+scheduling does not regress. The source is chosen by `Handler.sourceFor` and
+never by the request body: it is an authorization outcome, so a body asking to
+be recorded as `admin` (or as the billing service) is ignored. A superadmin
+calling the org-scoped route still mints `admin`.
+
+**Migration:** rows already stored as `admin` were written through the
+org-scoped door and will now read as superadmin overrides, i.e. they suppress
+billing. They are listed in the superadmin editor and releasing one is a single
+click, so they are left alone rather than rewritten blind. Recorded in
+`wiki/features/entitlements.md`.
+
+### 3. Not changed: the `server.tsx` layout gate still redirects
+
+The audit flagged the shared Server-area layout redirecting non-superadmins as
+a possible violation of "403 → Permission Denied, never redirect". Adjudicated
+as out of scope: the repo convention is about HTTP 403 *responses*, this spec's
+own clause says to follow the existing `server.tsx` gating, and changing the
+shared layout would silently alter all fourteen `/server` tabs. Both new pages
+do render `PermissionDenied` in place on an API 403, with a comment recording
+the split.
