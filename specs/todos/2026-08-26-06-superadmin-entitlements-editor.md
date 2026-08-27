@@ -279,9 +279,14 @@ Two details worth recording:
   because falsifying an audit trail to match today's vocabulary is worse than
   the vocabulary drifting. The audit row the migration inserts bridges the two.)
 - **The `down` maps `org-admin` back to `admin`**, which is the correct inverse
-  rather than a lossy approximation: a downgraded binary has never heard of
+  *for the schema being downgraded to*: a downgraded binary has never heard of
   `org-admin` and would resolve such a row through the default branch, demoting
-  the org to the free tier.
+  the org to the free tier. It is lossy in exactly one direction — rows a
+  superadmin created through the new editor after the upgrade fold back in with
+  the legacy ones, because the distinction they encode does not exist in the
+  older schema. That loss is in the safe direction (caps tighten, billing
+  regains authority), and a subsequent `up` leaves an audit row telling the
+  operator to re-save the override. The SQL file says the same thing.
 
 ### 5. Not changed: a trusted service may still name its own source
 

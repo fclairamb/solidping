@@ -193,15 +193,18 @@ shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
 migration, unrelated to that draft; see the consolidation rule above for why
 reusing the number is safe here and what it costs dev databases.)
 
-**The current unreleased target is `015_v0_18_0`.** v0.17.0 shipped, so `014`
-is frozen: everything this cycle produces is appended to `015_v0_18_0.up.sql` /
+**The current unreleased target is `016_v0_19_0`.** v0.18.3 shipped, so `015`
+is frozen: everything this cycle produces is appended to `016_v0_19_0.up.sql` /
 `.down.sql` (both dialects) instead. That number is unreleased, so it costs dev
-databases nothing — a database that already ran `014` simply picks `015` up as
+databases nothing — a database that already ran `015` simply picks `016` up as
 the next unapplied migration, with no reset, no hand-apply and no
 `solidping migrate repair`. Check the latest `vX.Y.Z` tag before appending to a
-migration, not the previous cycle's habit: `015` acquired its first section
-only after a change had already been written into `014` on the stale belief
-that v0.17.0 was still pending.
+migration, not the previous cycle's habit — and **update this paragraph when
+you are the one who moves past a frozen number**, because a stale pointer here
+is what causes the mistake it is meant to prevent. It has already happened
+twice: `015` acquired its first section only after a change had already been
+written into `014` on the stale belief that v0.17.0 was still pending, and this
+paragraph then went on naming `015` after v0.18.0–v0.18.3 had all shipped.
 
 ## Development workflow
 
