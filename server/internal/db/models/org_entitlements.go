@@ -63,13 +63,13 @@ func NewOrgEntitlements(orgUID string, source EntitlementSource) *OrgEntitlement
 // audit-listing endpoint, and without them Go would emit Go field names while
 // the OpenAPI spec (and the client generated from it) promise camelCase.
 type OrgEntitlementAudit struct {
-	UID             string    `bun:"uid,pk,type:varchar(36)" json:"uid"`
-	OrganizationUID string    `bun:"organization_uid,notnull" json:"organizationUid"`
-	Source          string    `bun:"source,notnull" json:"source"`
-	Actor           string    `bun:"actor,notnull" json:"actor"`
-	BeforeSnapshot  JSONMap   `bun:"before_snapshot,type:jsonb,nullzero" json:"beforeSnapshot,omitempty"`
-	AfterSnapshot   JSONMap   `bun:"after_snapshot,type:jsonb,notnull" json:"afterSnapshot"`
-	Reason          *string   `bun:"reason" json:"reason,omitempty"`
+	UID             string    `bun:"uid,pk,type:varchar(36)"                      json:"uid"`
+	OrganizationUID string    `bun:"organization_uid,notnull"                     json:"organizationUid"`
+	Source          string    `bun:"source,notnull"                               json:"source"`
+	Actor           string    `bun:"actor,notnull"                                json:"actor"`
+	BeforeSnapshot  JSONMap   `bun:"before_snapshot,type:jsonb,nullzero"          json:"beforeSnapshot,omitempty"`
+	AfterSnapshot   JSONMap   `bun:"after_snapshot,type:jsonb,notnull"            json:"afterSnapshot"`
+	Reason          *string   `bun:"reason"                                       json:"reason,omitempty"`
 	CreatedAt       time.Time `bun:"created_at,notnull,default:current_timestamp" json:"createdAt"`
 }
 
