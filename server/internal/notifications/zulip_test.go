@@ -248,7 +248,10 @@ func TestZulipSender_SameIncidentProducesIdenticalTopicAcrossEvents(t *testing.T
 
 // TestZulipTopic_TruncatesTo60Chars asserts a topic longer than Zulip's
 // 60-character limit is truncated deterministically, purely from the
-// payload.
+// payload — and that the incident-ref suffix survives the truncation. The
+// suffix is the only part of the topic that distinguishes one incident from
+// another on the same check, so a truncation that drops it would defeat the
+// point of having a topic per incident at all.
 func TestZulipTopic_TruncatesTo60Chars(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -260,6 +263,46 @@ func TestZulipTopic_TruncatesTo60Chars(t *testing.T) {
 	topic := zulipTopic(payload)
 	r.LessOrEqual(len([]rune(topic)), zulipTopicMaxLen)
 	r.True(strings.HasPrefix(topic, longName[:20]))
+	r.True(strings.HasSuffix(topic, " (#42)"), "topic must keep the incident ref, got %q", topic)
+}
+
+// TestZulipTopic_DifferentIncidentsProduceDifferentTopics_OrdinaryName is the
+// positive control for topic derivation: two different incidents on an
+// ordinary-length check name must never produce the same topic, regardless
+// of check name length.
+func TestZulipTopic_DifferentIncidentsProduceDifferentTopics_OrdinaryName(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	settings := zulipSettingsMap("https://acme.zulipchat.com")
+	payloadA := zulipPayload(eventTypeIncidentCreated, 42, settings)
+	payloadB := zulipPayload(eventTypeIncidentCreated, 99, settings)
+
+	r.NotEqual(zulipTopic(payloadA), zulipTopic(payloadB))
+}
+
+// TestZulipTopic_DifferentIncidentsProduceDifferentTopics_OverlongName is the
+// regression test for the truncation bug this test suite originally missed:
+// naively truncating the whole "<name> (#<N>)" string from the right eats
+// the incident-ref suffix first once the check name alone is long enough,
+// which collapses every incident on that check into one identical topic —
+// the opposite of "one thread per incident". composeZulipTopic budgets the
+// suffix before truncating the name, so this must diverge just like the
+// ordinary-length case above.
+func TestZulipTopic_DifferentIncidentsProduceDifferentTopics_OverlongName(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	longName := strings.Repeat("a very long check name indeed ", 5) // well over 60 chars
+	settings := zulipSettingsMap("https://acme.zulipchat.com")
+
+	payloadA := zulipPayload(eventTypeIncidentCreated, 42, settings)
+	payloadA.Check = zulipCheck(longName)
+
+	payloadB := zulipPayload(eventTypeIncidentCreated, 99, settings)
+	payloadB.Check = zulipCheck(longName)
+
+	r.NotEqual(zulipTopic(payloadA), zulipTopic(payloadB))
 }
 
 // TestZulipTopic_FallsBackToCheckNameWithoutIncidentNumber asserts the topic

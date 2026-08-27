@@ -660,6 +660,10 @@ whole lifecycle — the initial alert, any escalation, comments, an acknowledgme
 eventual resolution — reads as one continuous thread in Zulip instead of separate,
 unrelated messages.
 
+When a check name is long enough that the full string would exceed 60 characters, the
+check name is shortened, never the `(#42)` reference — that reference is the only part of
+the topic that tells two incidents on the same check apart, so it always survives intact.
+
 ## PagerDuty
 
 PagerDuty integration for incident management and on-call alerting, via the

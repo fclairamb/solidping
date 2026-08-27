@@ -159,12 +159,13 @@ func (s *ZulipSender) parseSettings(payload *Payload) (*zulipSettings, error) {
 func zulipTopic(payload *Payload) string {
 	checkName := getCheckName(payload.Check)
 
-	topic := checkName
-	if payload.Incident != nil && payload.Incident.Number > 0 {
-		topic = fmt.Sprintf("%s (#%d)", checkName, payload.Incident.Number)
+	if payload.Incident == nil || payload.Incident.Number <= 0 {
+		return truncateZulipTopic(checkName)
 	}
 
-	return truncateZulipTopic(topic)
+	suffix := fmt.Sprintf(" (#%d)", payload.Incident.Number)
+
+	return composeZulipTopic(checkName, suffix)
 }
 
 // truncateZulipTopic hard-truncates topic to zulipTopicMaxLen runes. No
@@ -179,6 +180,33 @@ func truncateZulipTopic(topic string) string {
 	}
 
 	return string(runes[:zulipTopicMaxLen])
+}
+
+// composeZulipTopic joins checkName and the incident-ref suffix (e.g.
+// " (#42)"), budgeting the suffix FIRST and truncating checkName to
+// whatever's left — never the naive "truncate the whole joined string from
+// the right". The suffix is the only part of the topic that distinguishes
+// one incident from another on the same check: truncating from the right
+// eats the suffix first once the check name alone is long enough, which
+// would collapse distinct incidents into the same Zulip thread forever —
+// the exact opposite of what this integration exists to do (Zulip groups on
+// byte-for-byte topic equality). When the suffix alone would meet or exceed
+// zulipTopicMaxLen (an absurd incident number), the suffix wins outright and
+// is itself hard-truncated rather than producing a negative slice bound.
+func composeZulipTopic(checkName, suffix string) string {
+	suffixRunes := []rune(suffix)
+	if len(suffixRunes) >= zulipTopicMaxLen {
+		return truncateZulipTopic(suffix)
+	}
+
+	nameBudget := zulipTopicMaxLen - len(suffixRunes)
+
+	nameRunes := []rune(checkName)
+	if len(nameRunes) > nameBudget {
+		nameRunes = nameRunes[:nameBudget]
+	}
+
+	return string(nameRunes) + suffix
 }
 
 // buildContent renders the Zulip Markdown message body, reusing the
