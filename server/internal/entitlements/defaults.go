@@ -105,15 +105,21 @@ const (
 	defaultMaxSlosSaaS = 2
 )
 
-// White-label defaults. Self-hosted gets it unconditionally — an operator
-// running their own instance should never have to pay to take our badge off
-// their own status page — while the SaaS Free tier does not, which is the
-// point: white labeling is one of the things a paid plan buys.
+// White-label defaults. Neither mode grants it: white labeling is what a paid
+// plan buys, so the SaaS Free tier does not get it and neither does a
+// self-hosted instance. Billing raises it per paid SKU by sending an explicit
+// `whiteLabel: true` (solidping-billing internal/plans/plans.go).
+//
+// This reverses the earlier self-hosted grant. The argument for that grant was
+// that nobody should pay to unbrand their own instance; the argument against is
+// that the badge is the project's only distribution channel on an install we
+// otherwise never see. Being AGPL, a self-hoster can of course flip this
+// constant themselves — the default is a request, not a lock.
 //
 // Keep the SaaS value in sync with solidping-billing's Free SKU, the same rule
 // as every numeric default above.
 const (
-	defaultWhiteLabelSelfHosted = true
+	defaultWhiteLabelSelfHosted = false
 	defaultWhiteLabelSaaS       = false
 )
 
