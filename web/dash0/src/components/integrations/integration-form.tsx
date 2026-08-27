@@ -455,6 +455,37 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           </div>
         </div>
       );
+    case "gotify":
+      return (
+        <div className="space-y-3">
+          <UrlPanel
+            label={t("form.gotifyServer", "Server URL")}
+            value={(settings.server_url as string) || ""}
+            onChange={(v) => update("server_url", v)}
+          />
+          <SecretPanel
+            id="ch-gotify-token"
+            label={t("form.gotifyAppToken", "Application token")}
+            value={(settings.app_token as string) || ""}
+            onChange={(v) => update("app_token", v)}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="ch-gotify-priority">
+              {t("form.gotifyPriority", "Priority (0-10, default 5)")}
+            </Label>
+            <Input
+              id="ch-gotify-priority"
+              type="number"
+              min={0}
+              max={10}
+              value={(settings.priority as number) ?? 5}
+              onChange={(e) =>
+                update("priority", Number.parseInt(e.target.value, 10))
+              }
+            />
+          </div>
+        </div>
+      );
     case "matrix":
       return (
         <div className="space-y-3">

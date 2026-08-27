@@ -4616,6 +4616,7 @@ export type ConnectionType =
   | "msteams"
   | "msteams-bot"
   | "ntfy"
+  | "gotify"
   | "matrix"
   | "pagerduty"
   | "pushover"
@@ -4647,6 +4648,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   msteams: NOTIFY,
   "msteams-bot": NOTIFY,
   ntfy: NOTIFY,
+  gotify: NOTIFY,
   matrix: NOTIFY,
   pagerduty: NOTIFY,
   pushover: NOTIFY,
