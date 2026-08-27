@@ -522,6 +522,28 @@ func BucketAvailability(
 	bucketDuration time.Duration, bucketStart time.Time, n int,
 	hints Hints,
 ) (map[string]map[time.Time]BucketStats, error) {
+	return BucketAvailabilityInRegions(
+		ctx, db, orgUID, checkUIDs, nil, bucketDuration, bucketStart, n, hints)
+}
+
+// BucketAvailabilityInRegions is BucketAvailability restricted to a set of
+// probe regions. `regions` nil or empty means "every region", which is the
+// historical behaviour: the engine then SUMS up/total across regions rather
+// than averaging their percentages, so a check probed from three regions is
+// weighted by how many probes each region actually contributed (the
+// statuspages mergeBuckets rule). Naming one region instead buckets that
+// region alone.
+//
+// The filter is pushed into the query (ListResultsFilter.Regions) rather than
+// applied to the returned rows on purpose: hour and day rollups keep the
+// region they were rolled up from (job_aggregation.go), so a region-scoped
+// read is a real per-region rollup read at every tier — filtering afterwards
+// would work only for the raw tier and silently lose the rollups.
+func BucketAvailabilityInRegions(
+	ctx context.Context, db ResultsLister, orgUID string, checkUIDs, regions []string,
+	bucketDuration time.Duration, bucketStart time.Time, n int,
+	hints Hints,
+) (map[string]map[time.Time]BucketStats, error) {
 	out := make(map[string]map[time.Time]BucketStats, len(checkUIDs))
 
 	if len(checkUIDs) == 0 || n <= 0 {
@@ -536,6 +558,7 @@ func BucketAvailability(
 	rollupRows, err := listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        checkUIDs,
+		Regions:          regions,
 		PeriodTypes:      []string{models.PeriodTypeHour, models.PeriodTypeDay},
 		PeriodStartAfter: &start,
 		Limit:            rollupRowCap(hints, len(checkUIDs), windowSpan, false),
@@ -553,6 +576,7 @@ func BucketAvailability(
 	rawRows, err := listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        checkUIDs,
+		Regions:          regions,
 		PeriodTypes:      []string{models.PeriodTypeRaw},
 		PeriodStartAfter: &rawStart,
 		Limit:            rawRowCap(hints, len(checkUIDs), windowSpan),

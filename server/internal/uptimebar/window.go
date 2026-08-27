@@ -50,6 +50,17 @@ func WindowAvailability(
 	ctx context.Context, db ResultsLister, orgUID string, checkUIDs []string,
 	start, end time.Time, hints Hints,
 ) (map[string]BucketStats, error) {
+	return WindowAvailabilityInRegions(ctx, db, orgUID, checkUIDs, nil, start, end, hints)
+}
+
+// WindowAvailabilityInRegions is WindowAvailability restricted to a set of
+// probe regions — see BucketAvailabilityInRegions for why the filter is pushed
+// into the query and what nil/empty means (every region, summed rather than
+// averaged).
+func WindowAvailabilityInRegions(
+	ctx context.Context, db ResultsLister, orgUID string, checkUIDs, regions []string,
+	start, end time.Time, hints Hints,
+) (map[string]BucketStats, error) {
 	out := make(map[string]BucketStats, len(checkUIDs))
 
 	if len(checkUIDs) == 0 || !end.After(start) {
@@ -67,6 +78,7 @@ func WindowAvailability(
 	rollupRows, err := listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       checkUIDs,
+		Regions:         regions,
 		PeriodTypes: []string{
 			models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth,
 		},
@@ -91,6 +103,7 @@ func WindowAvailability(
 		rawRows, err = listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
 			OrganizationUID:  orgUID,
 			CheckUIDs:        checkUIDs,
+			Regions:          regions,
 			PeriodTypes:      []string{models.PeriodTypeRaw},
 			PeriodStartAfter: &rawStart,
 			PeriodEndBefore:  &endUTC,

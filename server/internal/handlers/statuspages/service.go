@@ -2864,12 +2864,12 @@ func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
 const (
 	// statusNoData is the availability-point status for a bucket that has no
 	// rows in the shared raw+hour+day union — the front end renders it gray.
-	statusNoData    = "noData"
+	statusNoData    = uptimebar.StatusNoData
 	statusCreated   = "created"
-	statusUp        = "up"
+	statusUp        = uptimebar.StatusUp
 	statusWarning   = "warning"
-	statusDegraded  = "degraded"
-	statusDownValue = "down"
+	statusDegraded  = uptimebar.StatusDegraded
+	statusDownValue = uptimebar.StatusDown
 )
 
 // availabilityToStatus classifies a bucket's availability percentage into the
@@ -2884,17 +2884,14 @@ const (
 // fixes the hourly "one failed minute = red hour" cliff without changing
 // percentage-threshold behavior on buckets large enough that one sample can't
 // swing the classification anyway.
+//
+// The rule itself lives in uptimebar.Classify — the same package that owns the
+// counting rules every strip shares — so the status page, the badge bar and the
+// dash0 chart availability strip cannot drift into a fourth green/amber/red
+// mapping. This wrapper stays because the local vocabulary constants below are
+// what the rest of this file reads.
 func availabilityToStatus(pct float64, failures int, upThreshold, degradedThreshold float64) string {
-	switch {
-	case pct >= upThreshold:
-		return statusUp
-	case pct >= degradedThreshold:
-		return statusDegraded
-	case failures <= 1:
-		return statusDegraded
-	default:
-		return statusDownValue
-	}
+	return uptimebar.Classify(pct, failures, upThreshold, degradedThreshold)
 }
 
 // --- Helpers ---
