@@ -148,11 +148,45 @@ Availability (uptime ratio) for a check over a window. Auth: required
 ### POST /api/v1/orgs/:org/checks/validate
 Validate a check configuration without persisting. Auth: required
 
-Request body accepts the same shape as `POST /checks` plus optional
-`dependsOn` (slug-keyed) and `slug` (so cycle / self-edge / duplicate /
-cross-org / unknown-parent validators can run before the check exists).
-Returns `{"valid": true}` or `{"valid": false, "fields": [...]}` with one
-field-level entry per failing validator.
+Request body accepts the same shape as `POST /checks` plus:
+
+| Field | Purpose |
+|---|---|
+| `dependsOn` | slug-keyed edges, so the cycle / self-edge / duplicate / cross-org / unknown-parent validators run before the check exists |
+| `slug` | validated for format **and** for uniqueness against the org's live checks |
+| `regions` | the proposed region set (tunnel region rules, capability hints, and the per-minute projection — a check runs once per region per period) |
+| `period` | the proposed interval (`HH:MM:SS` or a Go duration); unlocks the per-type bounds and the checks-per-minute projection |
+| `enabled` | proposed enabled state, default true; a disabled check draws no rate budget |
+| `excludeCheckUid` | the check being edited, so its own slug is not a collision and the projection REPLACES its stored row |
+
+Returns `{"valid": …, "fields": [...], "warnings": [...]}`. Since spec
+2026-08-26-05 the response reports **every** finding it can compute, not just
+the first, and each entry carries a `severity`
+(`error` | `warning` | `info`, **absent means `error`**) plus a stable machine
+`code`. `valid` is false exactly when `fields` is non-empty — a warning never
+blocks.
+
+Blocking codes: `UNSUPPORTED_TYPE`, `INVALID_CONFIG`, `INVALID_PERIOD`,
+`INVALID_SLUG`, `SLUG_TAKEN`, `INVALID_DEPENDS_ON`. `SLUG_TAKEN` is advisory by
+nature — the value can be claimed between the answer and the save, which is why
+creation still answers `409`.
+
+Advisory codes: `REGION_NO_IPV6` / `REGION_NO_BROWSER` (a selected region's live
+workers advertise no IPv6 egress / no headless Chrome — never a rejection,
+because the advertised capability lags reality and the run-time probe is the
+authority) and `ORG_RATE_OVER_LIMIT` on the `period` field (the proposed
+period × regions would put the org's scheduled checks-per-minute demand over
+its `maxChecksPerMinute` cap, so executions would be skipped; passive types are
+exempt). `ORG_RATE_OVER_LIMIT` is deliberately never blocking — an over-limit
+org has to be able to edit its way back under the cap — and it is the frontend's
+cue to link to the check scheduling page.
+
+**One validator, two callers.** The config-level rules (uniform timeout cap,
+address family, tunnel reference, SMTP send-mode) live in one list that both
+this dry run and the real create/update paths read
+(`Service.configValidationErrors`): the write paths take the first error, this
+endpoint turns every one into a finding. A rule added there is previewed and
+enforced at once, or not at all.
 
 ## Config-as-code: export / import / apply
 
