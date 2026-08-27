@@ -137,6 +137,52 @@ and is likewise uncalled here.
 - **Every heal logs a WARN** naming the provider identity and the dangling
   UID, matching what `resolveLinkedOrganization` already does.
 
+### Call-site audit (proposal point 4)
+
+Every non-test caller of `GetOrganizationProviderByProviderID` /
+`GetUserProviderByProviderID`, and what it does with the row. Recorded so the
+next person does not have to redo the sweep.
+
+**Was unhealed — fixed by this spec**
+
+| Call site | Function | Failure before |
+|---|---|---|
+| `internal/integrations/slack/service.go` | `findOrCreateOrganizationByTeamID` | bare `GetOrganization` → install bricked forever (the reported incident) |
+| `internal/integrations/slack/service.go` | `findOrCreateUser` | stale row took the "already linked" branch → fresh user left with no Slack identity |
+| `internal/integrations/discord/service.go` | `findOrCreateOrganizationByGuildID` | identical bare `GetOrganization` → direct "Add to Server" install bricked forever |
+| `internal/integrations/discord/service.go` | `linkGuildToOrg` | stale row took the "already mapped" branch → an org-scoped install left the guild with no live mapping at all |
+
+All four now route through `auth.ResolveLinkedOrganization` /
+`auth.ResolveLinkedUser`, which were exported for this (import direction is
+one-way, `integrations/*` → `handlers/auth`, so there is no cycle).
+
+**Already healed by spec 2026-08-25-01 — verified, unchanged**
+
+`handlers/auth`: `slack_service.go` (org + user), `discord_service.go`
+(org + user), and the `findOrCreateUser` of `google_service.go`,
+`github_service.go`, `gitlab_service.go`, `microsoft_service.go`,
+`oidc_service.go`, `saml_service.go`, `ldap_service.go` — every one of them
+already dereferences its `user_providers` hit through the helper.
+
+**Sees stale rows but cannot be bricked by one — deliberately not healed**
+
+- `slack.Service.GetConnectionByTeamID` / `discord.Service.GetConnectionByGuildID`:
+  the link is dereferenced with `GetChannelByPropertyForOrg`, not
+  `GetOrganization`. A stale link finds no connection for the dead org and falls
+  through to the documented deterministic fallback. These are the inbound-event
+  hot path; healing there would put a write on every inbound message for no
+  gain.
+- `auth.Service.slackWorkspaceAdmits` (`join_policy.go`): compares
+  `provider.OrganizationUID` against an already-resolved LIVE org and never
+  dereferences. A stale link makes the comparison fail, i.e. it fails closed —
+  the correct outcome for an attestation naming a workspace whose org is gone.
+
+**Observability (proposal point 6)** — `db.CountDanglingOrganizationProviders`
+(both dialects) feeds `auth.Service.ReportDanglingProviderLinks`, called once at
+boot next to `slack.Service.ReportDMCapability`: one WARN line plus the
+`solidping_org_provider_links_dangling` gauge. No data migration; the one row on
+dev is being cleared by hand.
+
 ## Out of scope
 
 - The Slack `im:history` scope gap (a workspace installed before that scope

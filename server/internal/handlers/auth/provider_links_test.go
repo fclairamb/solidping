@@ -92,6 +92,11 @@ func redirectParams(t *testing.T, run func(http.ResponseWriter, *http.Request) e
 // TestDeleteOrgReleasesProviderLinks pins the prevention half of the fix: the
 // soft-deleted org must not leave a live organization_providers row behind, or
 // the very state this spec heals gets re-created on every org deletion.
+//
+// It is deliberately re-asserted per provider type and for an org holding
+// SEVERAL links: releaseOrgProviderLinks loops, and a regression that released
+// only the first row would still pass a single-link test while re-creating the
+// exact field state spec 2026-08-27-02 had to heal by hand.
 func TestDeleteOrgReleasesProviderLinks(t *testing.T) {
 	t.Parallel()
 
@@ -99,14 +104,86 @@ func TestDeleteOrgReleasesProviderLinks(t *testing.T) {
 	svc, dbService, ctx := setupAuthTestService(t)
 	seeded := seedDeletableOrg(ctx, t, dbService, "linked-doomed")
 
-	link := models.NewOrganizationProvider(seeded.org.UID, models.ProviderTypeDiscord, "G-DOOMED")
-	r.NoError(dbService.CreateOrganizationProvider(ctx, link))
+	guildLink := models.NewOrganizationProvider(seeded.org.UID, models.ProviderTypeDiscord, "G-DOOMED")
+	r.NoError(dbService.CreateOrganizationProvider(ctx, guildLink))
+
+	workspaceLink := models.NewOrganizationProvider(seeded.org.UID, models.ProviderTypeSlack, "T0ACME0003")
+	r.NoError(dbService.CreateOrganizationProvider(ctx, workspaceLink))
+
+	// Positive control: a link belonging to ANOTHER org must survive the
+	// deletion — the release is scoped to the org being deleted, not a purge.
+	survivor := seedDeletableOrg(ctx, t, dbService, "linked-keeper")
+	survivorLink := models.NewOrganizationProvider(survivor.org.UID, models.ProviderTypeSlack, "T0ACME0001")
+	r.NoError(dbService.CreateOrganizationProvider(ctx, survivorLink))
 
 	_, err := deleteOrgAsOwner(ctx, t, svc, seeded, seeded.org.Slug)
 	r.NoError(err)
 
 	_, err = dbService.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeDiscord, "G-DOOMED")
 	r.ErrorIs(err, sql.ErrNoRows, "the deleted org must not keep its guild link")
+
+	_, err = dbService.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, "T0ACME0003")
+	r.ErrorIs(err, sql.ErrNoRows, "the deleted org must not keep its workspace link either")
+
+	kept, err := dbService.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, "T0ACME0001")
+	r.NoError(err, "another org's link must be untouched")
+	r.Equal(survivorLink.UID, kept.UID)
+
+	// And with the links released, nothing dangles: the boot-time counter that
+	// makes this failure mode visible reports zero.
+	dangling, err := dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+	r.Zero(dangling, "a released link is not a dangling link")
+}
+
+// TestCountDanglingOrganizationProviders covers the observability half of spec
+// 2026-08-27-02 (its point 6). A dangling link is otherwise completely silent —
+// the healers only fire when somebody trips over one — so this count is the
+// only thing that tells an operator a workspace is bricked before they hear it
+// from the customer.
+func TestCountDanglingOrganizationProviders(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbService, ctx := setupAuthTestService(t)
+
+	live := models.NewOrganization("acme-one", "acme")
+	r.NoError(dbService.CreateOrganization(ctx, live))
+	r.NoError(dbService.CreateOrganizationProvider(
+		ctx, models.NewOrganizationProvider(live.UID, models.ProviderTypeSlack, "T0ACME0001")))
+
+	// Positive control: a live link must never be counted.
+	dangling, err := dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+	r.Zero(dangling)
+
+	doomed := models.NewOrganization("acmecorp2", "acme")
+	r.NoError(dbService.CreateOrganization(ctx, doomed))
+
+	staleLink := models.NewOrganizationProvider(doomed.UID, models.ProviderTypeSlack, "T0ACME0003")
+	r.NoError(dbService.CreateOrganizationProvider(ctx, staleLink))
+
+	// The field state: the org is soft-deleted, the link is not released.
+	r.NoError(dbService.DeleteOrganization(ctx, doomed.UID))
+
+	dangling, err = dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+	r.Equal(1, dangling, "a link pointing at a soft-deleted org is dangling")
+
+	// The reporter reads the same number without touching anything: it counts,
+	// it does not repair.
+	svc.ReportDanglingProviderLinks(ctx)
+
+	stillThere, err := dbService.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, "T0ACME0003")
+	r.NoError(err, "reporting must not heal — the healers own that")
+	r.Equal(staleLink.UID, stillThere.UID)
+
+	// Clearing it (what a heal does) takes it out of the count.
+	r.NoError(dbService.DeleteOrganizationProvider(ctx, staleLink.UID))
+
+	dangling, err = dbService.CountDanglingOrganizationProviders(ctx)
+	r.NoError(err)
+	r.Zero(dangling, "a cleared link is no longer dangling")
 }
 
 // TestEveryProviderHealsStaleUserLinks is the sweep half of spec requirement 2.
