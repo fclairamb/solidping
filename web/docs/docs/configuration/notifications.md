@@ -20,6 +20,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Google Chat | Available | Webhook |
 | Mattermost | Available | Webhook |
 | ntfy | Available | HTTP push |
+| Gotify | Available | HTTP push |
 | Matrix | Available | Client-Server API |
 | PagerDuty | Available | Events API v2 |
 | Pushover | Available | API integration |
@@ -556,6 +557,28 @@ Add a ntfy connection in SolidPing with:
 # Subscribe to notifications
 ntfy subscribe solidping-alerts
 ```
+
+## Gotify
+
+[Gotify](https://gotify.net) is a simple self-hosted push notification server, popular
+alongside ntfy in the homelab/self-hosted crowd. SolidPing posts alerts to a Gotify
+application via its HTTP API.
+
+### Configuration
+
+1. In your Gotify web UI, go to **Apps** and create a new application for SolidPing. Copy
+   the generated application token.
+2. Add a Gotify connection in SolidPing with:
+   - **Server URL**: your Gotify instance's base URL (e.g. `https://gotify.example.com`) —
+     Gotify is always self-hosted, there's no default.
+   - **Application token**: the token from step 1. Treated as a secret — stored encrypted,
+     never shown again after you save it.
+   - **Priority** (optional): the default Gotify priority (0-10) for alerts, default `5`. A
+     resolved incident always sends at a low priority (2) so a recovery doesn't re-buzz your
+     phone the way a page does.
+
+Notifications carry a click-through link to the incident when SolidPing's base URL is
+configured, so tapping the push notification opens the incident directly.
 
 ## Matrix
 
