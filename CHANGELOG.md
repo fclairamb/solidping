@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.0](https://github.com/fclairamb/solidping/compare/v0.18.3...v0.19.0) (2026-08-27)
+
+
+### Bug Fixes
+
+* **slack:** make the install scope request match the app manifests ([#267](https://github.com/fclairamb/solidping/issues/267)) ([a260aca](https://github.com/fclairamb/solidping/commit/a260aca5eff183ee2dfb1d55c05a68a5931e93e2))
+
+
+### Miscellaneous Chores
+
+* release 0.19.0 ([#270](https://github.com/fclairamb/solidping/issues/270)) ([168f5a2](https://github.com/fclairamb/solidping/commit/168f5a27e8f31b1eae8386f99003cfc24a5d8ecf))
+
 ## [0.18.3](https://github.com/fclairamb/solidping/compare/v0.18.2...v0.18.3) (2026-08-26)
 
 
