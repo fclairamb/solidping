@@ -43,7 +43,7 @@ func rtRollup(total, success, minutesAgo int) *models.Result {
 // TestBuildResponseTimeData_PointAvailability pins the phase-2 contract of spec
 // 2026-08-26-10: every response-time point carries the availability of the slice
 // it covers, folded through the canonical engine, so the public strip under the
-// chart can be coloured by availability while staying exactly aligned to the
+// chart can be colored by availability while staying exactly aligned to the
 // chart's own slots.
 //
 // The lifecycle/abandoned cases each sit next to a countable control in the same
@@ -242,7 +242,7 @@ func TestBuildResponseTimeData_HonorsPageThresholds(t *testing.T) {
 	r := require.New(t)
 
 	// 55/60 = 91.67%, with five failed samples so the small-bucket guard (which
-	// only spares a SINGLE failure) is not what decides the colour here.
+	// only spares a SINGLE failure) is not what decides the color here.
 	row := []*models.Result{rtRollup(60, 55, 30)}
 
 	strict := buildResponseTimeData(row, 99.9, 99.0)

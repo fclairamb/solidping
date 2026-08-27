@@ -777,7 +777,7 @@ type ResponseTimePoint struct {
 	// is not 100%.
 	//
 	// It exists so the strip under the public response-time chart can be
-	// coloured by AVAILABILITY while staying aligned to the chart's own slots:
+	// colored by AVAILABILITY while staying aligned to the chart's own slots:
 	// the point IS the slot, so there is nothing left to align (spec
 	// 2026-08-26-10 phase 2).
 	AvailabilityPct *float64 `json:"availabilityPct,omitempty"`
