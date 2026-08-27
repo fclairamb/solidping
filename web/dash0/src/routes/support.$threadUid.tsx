@@ -7,7 +7,9 @@ import { toast } from "sonner";
 
 import {
   SUPPORT_CHANNEL_LABELS,
+  type SupportMessage,
   type SupportThread,
+  useResendSupportReply,
   useSendSupportReply,
   useSupportMessages,
   useSupportThread,
@@ -24,6 +26,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  supportReplyBlockReason,
+  supportReplyBlockTitle,
+} from "@/lib/support-reply-block";
 
 export const Route = createFileRoute("/support/$threadUid")({
   component: SupportThreadPage,
@@ -74,22 +80,79 @@ function SupportThreadView() {
 
       <ThreadHeader thread={thread.data} />
 
-      <Card>
-        <CardContent className="space-y-3 py-4" data-testid="support-messages">
-          {messages.isLoading ? (
-            <Skeleton className="h-24 rounded-lg" />
-          ) : (messages.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("thread.noMessages")}</p>
-          ) : (
-            (messages.data ?? []).map((message) => (
-              <SupportMessageBubble key={message.uid} message={message} />
-            ))
-          )}
-        </CardContent>
-      </Card>
+      <MessageList threadUid={threadUid} loading={messages.isLoading} messages={messages.data ?? []} />
 
       <ReplyBox thread={thread.data} />
     </>
+  );
+}
+
+/**
+ * The conversation, plus the way out of a reply that never left.
+ *
+ * A failed outbound message carries a Resend action: the server re-runs the
+ * routing pre-flight and the send on that same row, so a reply queued while a
+ * Slack workspace was unconnected goes out once it is connected instead of
+ * staying stored-and-unsent forever.
+ */
+function MessageList({
+  threadUid,
+  loading,
+  messages,
+}: {
+  threadUid: string;
+  loading: boolean;
+  messages: SupportMessage[];
+}) {
+  const { t } = useTranslation("support");
+  const resend = useResendSupportReply(threadUid);
+  const [resendingUid, setResendingUid] = useState<string | null>(null);
+
+  const onResend = (messageUid: string) => {
+    setResendingUid(messageUid);
+    resend.mutate(messageUid, {
+      onSuccess: (message) => {
+        setResendingUid(null);
+
+        // A 202 means the provider was tried and refused again — the row is
+        // updated, but claiming success would be a lie.
+        if ((message.delivery?.status as string | undefined) === "failed") {
+          toast.error(t("reply.resendFailed"));
+
+          return;
+        }
+
+        toast.success(t("reply.resent"));
+      },
+      onError: (error) => {
+        setResendingUid(null);
+
+        const detail =
+          error instanceof ApiError ? error.detail || error.message : String(error);
+        toast.error(`${t("reply.resendFailed")}: ${detail}`);
+      },
+    });
+  };
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 py-4" data-testid="support-messages">
+        {loading ? (
+          <Skeleton className="h-24 rounded-lg" />
+        ) : messages.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("thread.noMessages")}</p>
+        ) : (
+          messages.map((message) => (
+            <SupportMessageBubble
+              key={message.uid}
+              message={message}
+              onResend={onResend}
+              resending={resendingUid === message.uid}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -147,27 +210,25 @@ function ThreadHeader({ thread }: { thread: SupportThread }) {
 /**
  * The reply box, and the one piece of UI the spec cares most about.
  *
- * When the channel will not take a free-form reply the box is DISABLED WITH THE
- * REASON SHOWN, rather than left enabled to fail at send time. The window is
- * computed server-side from the last inbound message, so this cannot drift from
- * what the API will actually accept.
+ * When the thread cannot be answered the box is DISABLED WITH THE REASON SHOWN,
+ * rather than left enabled to fail at send time. Both axes — is there a route
+ * back to this specific conversation, and is the channel's free-form window
+ * open — are resolved server-side per thread, so this cannot drift from what
+ * the API will actually accept. The API enforces the same two checks itself:
+ * this is a courtesy, not the gate.
  */
 function ReplyBox({ thread }: { thread: SupportThread }) {
   const { t } = useTranslation("support");
   const [body, setBody] = useState("");
   const send = useSendSupportReply(thread.uid);
 
-  const blockedReason = !thread.canReply
-    ? t("reply.disabledNoAdapter")
-    : !thread.replyWindow.open
-      ? thread.replyWindow.reason || t("window.expired")
-      : "";
+  const blockedReason = supportReplyBlockReason(thread, t);
 
   if (blockedReason) {
     return (
       <Alert variant="destructive" data-testid="support-reply-blocked">
         <Ban className="h-4 w-4" />
-        <AlertTitle>{t("window.expired")}</AlertTitle>
+        <AlertTitle>{supportReplyBlockTitle(thread, t)}</AlertTitle>
         <AlertDescription>{blockedReason}</AlertDescription>
       </Alert>
     );

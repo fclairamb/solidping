@@ -6,8 +6,10 @@ import { test, expect, type Page } from "./fixtures";
  * The API is stubbed with `page.route()` rather than seeded through a real
  * WhatsApp webhook: the interesting behaviour here is the UI's, and the capture
  * path itself is covered by the Go handler tests. What has to hold is the split
- * between the two independent axes (status vs reply window), that an expired
- * WhatsApp thread disables the reply box WITH THE REASON, and that a
+ * between the independent axes (status vs answerability), that an unanswerable
+ * thread disables the reply box WITH THE REASON — whether because a WhatsApp
+ * window lapsed or because there is no route back to the conversation at all
+ * (spec 2026-08-27-03) — that a failed reply can be resent, and that a
  * non-superadmin gets Permission Denied instead of a redirect loop.
  */
 
@@ -55,6 +57,50 @@ const EXPIRED_THREAD = {
   },
   canReply: true,
 };
+
+// Captured fine, impossible to answer: the workspace has the bot installed on
+// Slack's side (so message.im events arrive) but was never installed through
+// SolidPing, so no bot token was ever stored. canReply is resolved PER THREAD
+// and says so (spec 2026-08-27-03).
+const UNROUTABLE_THREAD = {
+  uid: "thread-unroutable",
+  channel: "slack",
+  channelIdentity: "U0ACME1234",
+  subject: "U0ACME1234: can you look at our checks?",
+  status: "open",
+  lastMessageAt: iso(-120_000),
+  lastInboundAt: iso(-120_000),
+  unreadCount: 1,
+  createdAt: iso(-120_000),
+  updatedAt: iso(-120_000),
+  replyWindow: { expires: false, open: true, costsMoney: false },
+  canReply: false,
+  canReplyReason:
+    "SolidPing holds no bot token for this Slack workspace — the app must be " +
+    "installed through SolidPing before replies can be sent",
+};
+
+const FAILED_REPLY_MESSAGES = [
+  {
+    uid: "msg-f1",
+    threadUid: ACTIVE_THREAD.uid,
+    channel: "telegram",
+    direction: "inbound",
+    body: "is the api down for you too?",
+    rawType: "text",
+    createdAt: iso(-60_000),
+  },
+  {
+    uid: "msg-f2",
+    threadUid: ACTIVE_THREAD.uid,
+    channel: "telegram",
+    direction: "outbound",
+    body: "looking into it now",
+    rawType: "text",
+    delivery: { status: "failed", error: "connection not found" },
+    createdAt: iso(-30_000),
+  },
+];
 
 const CLOSED_THREAD = {
   uid: "thread-closed",
@@ -130,6 +176,14 @@ async function stubSupportApi(page: Page, threads: unknown[]) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(EXPIRED_THREAD),
+    });
+  });
+
+  await page.route("**/api/v1/support/threads/thread-unroutable", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(UNROUTABLE_THREAD),
     });
   });
 }
@@ -244,6 +298,95 @@ test.describe("Support inbox", () => {
     await page.goto("support/thread-active");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("support-reply-box")).toBeVisible();
+  });
+
+  test("a thread with no route back disables the box and names the real reason", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await stubSupportApi(page, [ACTIVE_THREAD, UNROUTABLE_THREAD, CLOSED_THREAD]);
+
+    await page.goto("support/thread-unroutable");
+    await page.waitForLoadState("networkidle");
+
+    // The operator is told the workspace was never connected — not a generic
+    // "this channel has no adapter", which would be false (Slack has one) and
+    // would send them looking for the wrong fix.
+    const blocked = page.getByTestId("support-reply-blocked");
+    await expect(blocked).toBeVisible();
+    await expect(blocked).toContainText("no bot token");
+    await expect(blocked).not.toContainText("24-hour");
+
+    await expect(page.getByTestId("support-reply-box")).toHaveCount(0);
+    await expect(page.getByTestId("support-reply-input")).toHaveCount(0);
+
+    // POSITIVE CONTROL: the routable thread on the very same channel-level
+    // adapter still gets a box, so this is per thread, not per channel.
+    await page.goto("support/thread-active");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("support-reply-box")).toBeVisible();
+  });
+
+  test("an unroutable thread is listed as unanswerable, not as active", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await stubSupportApi(page, [ACTIVE_THREAD, UNROUTABLE_THREAD, CLOSED_THREAD]);
+
+    await page.goto("support");
+    await page.waitForLoadState("networkidle");
+
+    const active = page.getByTestId("support-section-active");
+    const unanswerable = page.getByTestId("support-section-expired");
+
+    // Its window is wide open; it is unanswerable for the other reason.
+    await expect(unanswerable).toContainText("can you look at our checks?");
+    await expect(active).not.toContainText("can you look at our checks?");
+    await expect(active).toContainText("is the api down for you too?");
+  });
+
+  test("a failed reply can be resent from the bubble", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await stubSupportApi(page, [ACTIVE_THREAD, UNROUTABLE_THREAD, CLOSED_THREAD]);
+
+    let resent = 0;
+
+    // The thread's messages: one of ours, stored with a failed delivery.
+    await page.route(
+      "**/api/v1/support/threads/thread-active/messages",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: FAILED_REPLY_MESSAGES }),
+        });
+      },
+    );
+
+    await page.route(
+      "**/api/v1/support/threads/thread-active/messages/msg-f2/resend",
+      async (route) => {
+        resent += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...FAILED_REPLY_MESSAGES[1],
+            delivery: { status: "sent" },
+          }),
+        });
+      },
+    );
+
+    await page.goto("support/thread-active");
+    await page.waitForLoadState("networkidle");
+
+    // The operator's own words, stored and unsent — with a way out.
+    const resend = page.getByTestId("support-message-resend");
+    await expect(resend).toBeVisible();
+    await resend.click();
+
+    await expect.poll(() => resent, { timeout: 10_000 }).toBe(1);
   });
 
   test("a non-superadmin gets Permission Denied and is never redirected", async ({
