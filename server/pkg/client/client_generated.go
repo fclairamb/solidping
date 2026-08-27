@@ -6326,9 +6326,12 @@ type SupportReplyWindow struct {
 
 // SupportThread defines model for SupportThread.
 type SupportThread struct {
-	// CanReply Whether an outbound adapter exists for this channel at all.
-	CanReply *bool                `json:"canReply,omitempty"`
-	Channel  SupportThreadChannel `json:"channel"`
+	// CanReply Whether a reply can be routed back to THIS thread right now. Resolved per thread from local routing state — a stored Slack connection for the thread's workspace, a Discord channel id, an SMS sender for the attributed org — never by calling the provider. A registered adapter is not enough: a Slack workspace whose app was installed outside SolidPing sends messages we capture and holds no token we can answer with, and reports false here.
+	CanReply *bool `json:"canReply,omitempty"`
+
+	// CanReplyReason Why canReply is false, in operator-facing terms. Absent when the thread is answerable. The dashboard renders this in place of the reply box.
+	CanReplyReason *string              `json:"canReplyReason,omitempty"`
+	Channel        SupportThreadChannel `json:"channel"`
 
 	// ChannelIdentity E.164 number, Telegram chat id, Slack/Discord user id.
 	ChannelIdentity string     `json:"channelIdentity"`
@@ -10240,7 +10243,7 @@ type ClientInterface interface {
 
 	// CreateSupportMessageWithBody Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -10249,12 +10252,19 @@ type ClientInterface interface {
 
 	// CreateSupportMessage Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
 	CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResendSupportMessage Resend a failed outbound reply
+	//
+	// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+	ResendSupportMessage(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetActivationFunnel Organization activation funnel
 	//
@@ -16128,7 +16138,7 @@ func (c *Client) ListSupportMessages(ctx context.Context, uid string, params *Li
 
 // CreateSupportMessageWithBody Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -16147,13 +16157,30 @@ func (c *Client) CreateSupportMessageWithBody(ctx context.Context, uid string, c
 
 // CreateSupportMessage Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
 func (c *Client) CreateSupportMessage(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateSupportMessageRequest(c.Server, uid, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResendSupportMessage Resend a failed outbound reply
+//
+// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+func (c *Client) ResendSupportMessage(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResendSupportMessageRequest(c.Server, uid, messageUid)
 	if err != nil {
 		return nil, err
 	}
@@ -29207,6 +29234,47 @@ func NewCreateSupportMessageRequestWithBody(server string, uid string, contentTy
 	return req, nil
 }
 
+// NewResendSupportMessageRequest constructs an http.Request for the ResendSupportMessage method
+func NewResendSupportMessageRequest(server string, uid string, messageUid string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "messageUid", messageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/support/threads/%s/messages/%s/resend", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetActivationFunnelRequest constructs an http.Request for the GetActivationFunnel method
 func NewGetActivationFunnelRequest(server string) (*http.Request, error) {
 	var err error
@@ -32826,7 +32894,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSupportMessageWithBodyWithResponse Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -32835,12 +32903,21 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSupportMessageWithResponse Reply to a support thread
 	//
-	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+	// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/support/threads/{uid}/messages (the `CreateSupportMessage` operationId).
 	CreateSupportMessageWithResponse(ctx context.Context, uid string, body CreateSupportMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSupportMessageResult, error)
+
+	// ResendSupportMessageWithResponse Resend a failed outbound reply
+	//
+	// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+	ResendSupportMessageWithResponse(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*ResendSupportMessageResult, error)
 
 	// GetActivationFunnelWithResponse Organization activation funnel
 	//
@@ -46800,6 +46877,82 @@ func (r CreateSupportMessageResult) ContentType() string {
 	return ""
 }
 
+type ResendSupportMessageResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SupportMessage
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *SupportMessage
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResendSupportMessageResult) GetJSON200() *SupportMessage {
+	return r.JSON200
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r ResendSupportMessageResult) GetJSON202() *SupportMessage {
+	return r.JSON202
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ResendSupportMessageResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ResendSupportMessageResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ResendSupportMessageResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ResendSupportMessageResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r ResendSupportMessageResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResendSupportMessageResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResendSupportMessageResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResendSupportMessageResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetActivationFunnelResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -52733,7 +52886,7 @@ func (c *ClientWithResponses) ListSupportMessagesWithResponse(ctx context.Contex
 
 // CreateSupportMessageWithBodyWithResponse Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -52748,7 +52901,7 @@ func (c *ClientWithResponses) CreateSupportMessageWithBodyWithResponse(ctx conte
 
 // CreateSupportMessageWithResponse Reply to a support thread
 //
-// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the channel will not accept a free-form reply right now — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter — which is a refusal we make deliberately rather than a provider error surfaced after the fact. Returns 202 when the row was recorded but the provider send failed, so an operator is never left unsure whether the attempt happened. Super-admin only.
+// Sends the reply through the channel the thread arrived on AND records it. Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp 24-hour window, a channel with no reply adapter, or a thread with no route back (an unconnected Slack workspace, a missing channel id, no SMS sender) — which is a refusal we make deliberately rather than a provider error surfaced after the fact. **Nothing is stored on a 409**: no send was attempted, so there is no attempt to record. Returns 202 when a send WAS attempted and the provider rejected it: that row is recorded with delivery.status = failed, so an operator is never left unsure whether the attempt happened, and it can be retried through the resend endpoint. Super-admin only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -52759,6 +52912,21 @@ func (c *ClientWithResponses) CreateSupportMessageWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseCreateSupportMessageResult(rsp)
+}
+
+// ResendSupportMessageWithResponse Resend a failed outbound reply
+//
+// Re-runs the reply pre-flight (window, then routing) and the provider send for an outbound message whose delivery failed, rewriting that message's delivery record in place rather than appending a second copy. Only a failed outbound message qualifies — resending a delivered reply would send the same text to a customer twice. Returns 409 when the thread still cannot be replied to, and 202 when the provider rejected the retry as well. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/support/threads/{uid}/messages/{messageUid}/resend (the `ResendSupportMessage` operationId).
+func (c *ClientWithResponses) ResendSupportMessageWithResponse(ctx context.Context, uid string, messageUid string, reqEditors ...RequestEditorFn) (*ResendSupportMessageResult, error) {
+	rsp, err := c.ResendSupportMessage(ctx, uid, messageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResendSupportMessageResult(rsp)
 }
 
 // GetActivationFunnelWithResponse Organization activation funnel
@@ -63339,6 +63507,67 @@ func ParseCreateSupportMessageResult(rsp *http.Response) (*CreateSupportMessageR
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResendSupportMessageResult parses an HTTP response from a ResendSupportMessageWithResponse call
+func ParseResendSupportMessageResult(rsp *http.Response) (*ResendSupportMessageResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResendSupportMessageResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest SupportMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
