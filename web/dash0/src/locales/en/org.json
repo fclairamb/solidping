@@ -246,7 +246,7 @@
     "overLimit": "Your organization schedules ~{{demand}} check executions per minute but your plan allows {{limit}}/min — some executions are being skipped.",
     "skippedToday_one": "{{count}} check execution was skipped today because your organization was over its execution rate limit.",
     "skippedToday_other": "{{count}} check executions were skipped today because your organization was over its execution rate limit.",
-    "viewUsage": "Review scheduling",
+    "reviewScheduling": "Review scheduling",
     "upgrade": "Upgrade"
   }
 }

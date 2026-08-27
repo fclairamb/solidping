@@ -107,7 +107,7 @@ describe("CheckRateLimitBanner", () => {
       />,
     );
 
-    const link = screen.getByTestId("check-rate-limit-usage-link");
+    const link = screen.getByTestId("check-rate-limit-scheduling-link");
     expect(link.getAttribute("to")).toBe("/orgs/$org/checks/scheduling");
   });
 
@@ -119,7 +119,9 @@ describe("CheckRateLimitBanner", () => {
         showUsageLink
       />,
     );
-    expect(screen.getByTestId("check-rate-limit-usage-link")).toBeTruthy();
+    expect(
+      screen.getByTestId("check-rate-limit-scheduling-link"),
+    ).toBeTruthy();
 
     // On the scheduling page itself the link would point at the current page.
     rerender(
@@ -128,7 +130,7 @@ describe("CheckRateLimitBanner", () => {
         checksPerMinute={{ demand: 240, limit: 120, skippedToday: 0 }}
       />,
     );
-    expect(screen.queryByTestId("check-rate-limit-usage-link")).toBeNull();
+    expect(screen.queryByTestId("check-rate-limit-scheduling-link")).toBeNull();
   });
 
   it("offers the upgrade CTA only when the deployment configures one", () => {

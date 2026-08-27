@@ -105,7 +105,7 @@ const REQUIRED_PLACEHOLDERS: Record<string, string[]> = {
   overLimit: ["{{demand}}", "{{limit}}"],
   skippedToday_one: ["{{count}}"],
   skippedToday_other: ["{{count}}"],
-  viewUsage: [],
+  reviewScheduling: [],
   upgrade: [],
 };
 

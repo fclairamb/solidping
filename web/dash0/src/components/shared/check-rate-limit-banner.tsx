@@ -84,9 +84,9 @@ export function CheckRateLimitBanner({
                 <Link
                   to="/orgs/$org/checks/scheduling"
                   params={{ org }}
-                  data-testid="check-rate-limit-usage-link"
+                  data-testid="check-rate-limit-scheduling-link"
                 >
-                  {t("org:checkRateLimit.viewUsage")}
+                  {t("org:checkRateLimit.reviewScheduling")}
                 </Link>
               </Button>
             )}
