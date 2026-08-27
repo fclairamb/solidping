@@ -717,12 +717,16 @@ paths:
       summary: Reply to a support thread
       description: >
         Sends the reply through the channel the thread arrived on AND records it.
-        Returns 409 when the channel will not accept a free-form reply right now
-        — a lapsed WhatsApp 24-hour window, or a channel with no reply adapter —
-        which is a refusal we make deliberately rather than a provider error
-        surfaced after the fact. Returns 202 when the row was recorded but the
-        provider send failed, so an operator is never left unsure whether the
-        attempt happened. Super-admin only.
+        Returns 409 when the reply cannot be sent right now — a lapsed WhatsApp
+        24-hour window, a channel with no reply adapter, or a thread with no
+        route back (an unconnected Slack workspace, a missing channel id, no SMS
+        sender) — which is a refusal we make deliberately rather than a provider
+        error surfaced after the fact. **Nothing is stored on a 409**: no send was
+        attempted, so there is no attempt to record. Returns 202 when a send WAS
+        attempted and the provider rejected it: that row is recorded with
+        delivery.status = failed, so an operator is never left unsure whether the
+        attempt happened, and it can be retried through the resend endpoint.
+        Super-admin only.
       operationId: createSupportMessage
       security:
         - bearerAuth: []
@@ -753,6 +757,54 @@ paths:
                 $ref: "#/components/schemas/SupportMessage"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/support/threads/{uid}/messages/{messageUid}/resend:
+    post:
+      tags: [Support]
+      summary: Resend a failed outbound reply
+      description: >
+        Re-runs the reply pre-flight (window, then routing) and the provider send
+        for an outbound message whose delivery failed, rewriting that message's
+        delivery record in place rather than appending a second copy. Only a
+        failed outbound message qualifies — resending a delivered reply would
+        send the same text to a customer twice. Returns 409 when the thread still
+        cannot be replied to, and 202 when the provider rejected the retry as
+        well. Super-admin only.
+      operationId: resendSupportMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: messageUid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reply sent and its delivery record updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+        "202":
+          description: The retry was attempted and the provider rejected it again
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8398,7 +8450,20 @@ components:
           $ref: "#/components/schemas/SupportReplyWindow"
         canReply:
           type: boolean
-          description: Whether an outbound adapter exists for this channel at all.
+          description: >
+            Whether a reply can be routed back to THIS thread right now. Resolved
+            per thread from local routing state — a stored Slack connection for
+            the thread's workspace, a Discord channel id, an SMS sender for the
+            attributed org — never by calling the provider. A registered adapter
+            is not enough: a Slack workspace whose app was installed outside
+            SolidPing sends messages we capture and holds no token we can answer
+            with, and reports false here.
+        canReplyReason:
+          type: string
+          description: >
+            Why canReply is false, in operator-facing terms. Absent when the
+            thread is answerable. The dashboard renders this in place of the
+            reply box.
 
     SupportThreadListResponse:
       type: object
