@@ -2,9 +2,10 @@ import { test, expect, type Page, API_BASE } from "./fixtures";
 
 // --- Helpers for the "Checks at a glance" tests -------------------------------
 // These tests mock the dashboard's data endpoints so the glance card is
-// deterministic regardless of seeded data or background polling. The dashboard
-// issues two /results queries (periodType=day for the KPI, periodType=hour for
-// the uptime strips); we serve both from one route handler.
+// deterministic regardless of seeded data or background polling. The 24h
+// availability KPI comes from GET /checks/stats (availability24h), not from a
+// /results query (spec 2026-08-26-09) — the one /results query left is
+// periodType=hour, which feeds the glance-card uptime strips only.
 
 interface MockCheck {
   uid: string;
@@ -36,11 +37,16 @@ interface MockCheckStats {
   byStatus: Record<string, number>;
   down: number;
   hardDown: number;
+  availability24h: number | null;
 }
 
 // Aggregate the mocked checks the same way the backend's GROUP BY would, so a
 // test that doesn't care about the stats endpoint keeps the counters it always
 // had. Tests that DO care pass an explicit `stats` override.
+//
+// availability24h defaults to null (never a fabricated number) — it comes
+// from a server-side aggregate the mocked `checks` list has no bearing on;
+// tests that care about the KPI/badge pass an explicit override.
 function statsFromChecks(checks: MockCheck[]): MockCheckStats {
   const byStatus: Record<string, number> = {
     created: 0,
@@ -60,6 +66,7 @@ function statsFromChecks(checks: MockCheck[]): MockCheckStats {
     byStatus,
     down: byStatus.down,
     hardDown: byStatus.down,
+    availability24h: null,
   };
 }
 
@@ -135,21 +142,9 @@ async function mockDashboard(
   await page.route("**/api/v1/orgs/*/results*", (route) => {
     const url = route.request().url();
     if (!url.includes("/results")) return route.continue();
-    const isHour = url.includes("periodType=hour");
-    const data = isHour
-      ? opts.checks.flatMap((c) =>
-          hourlyResultsFor(c.uid, c.status === "up" ? 100 : 0),
-        )
-      : opts.checks.map((c) => ({
-          uid: `${c.uid}-day`,
-          checkUid: c.uid,
-          periodType: "day",
-          periodStart: new Date().toISOString(),
-          status: c.status,
-          availabilityPct: c.status === "up" ? 100 : 0,
-          totalChecks: 60,
-          successfulChecks: c.status === "up" ? 60 : 0,
-        }));
+    const data = opts.checks.flatMap((c) =>
+      hourlyResultsFor(c.uid, c.status === "up" ? 100 : 0),
+    );
     return route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -455,6 +450,101 @@ test.describe("Dashboard", () => {
 
     // The card itself still renders only the rows the list returned.
     await expect(page.getByTestId("glance-row")).toHaveCount(3);
+  });
+
+  // --- 24h availability KPI (spec 2026-08-26-09) -----------------------------
+  // The tile used to be fabricated theater: a structurally-dead /results
+  // query always returned zero rows, and the null case rendered the literal
+  // fallback "100%"/"Operational" — for every org, all the time. These tests
+  // pin the fix: the tile and banner read stats.availability24h and are
+  // honest about having no data.
+
+  test("24h availability tile shows an em dash and 'No data' when availability24h is null, never a fabricated 100%", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await mockDashboard(page, {
+      checks: [
+        { uid: "61111111-1111-1111-1111-111111111111", name: "Fresh Check", status: "up" },
+      ],
+      incidents: [],
+      stats: { availability24h: null },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const tile = page.getByTestId("kpi-tile-availability");
+    await expect(tile).toBeVisible({ timeout: 10000 });
+    await expect(tile).toContainText("—");
+    await expect(tile).toContainText("No data");
+    await expect(tile).not.toContainText("100%");
+    await expect(tile).not.toContainText("Operational");
+
+    // The all-green banner must not claim an SLA figure it doesn't have —
+    // the "24h SLA Operational" pill is suppressed entirely when there is no
+    // data (down=0, incidents=0 puts this scenario on the all-green branch).
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).not.toContainText("100%");
+    await expect(banner).not.toContainText("SLA Operational");
+  });
+
+  test("24h availability badge tiers follow the real percentage: Operational / Degraded / Down", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const cases: { pct: number; label: string }[] = [
+      { pct: 99.95, label: "Operational" },
+      { pct: 99.5, label: "Degraded" },
+      { pct: 92, label: "Down" },
+    ];
+
+    for (const { pct, label } of cases) {
+      await mockDashboard(page, {
+        checks: [
+          { uid: "62222222-2222-2222-2222-222222222222", name: "Tiered Check", status: "up" },
+        ],
+        incidents: [],
+        stats: { availability24h: pct },
+      });
+
+      await page.goto("orgs/test");
+      await page.waitForLoadState("networkidle");
+
+      const tile = page.getByTestId("kpi-tile-availability");
+      await expect(tile).toBeVisible({ timeout: 10000 });
+      await expect(tile).toContainText(pct.toFixed(2));
+      await expect(tile).toContainText(label);
+    }
+  });
+
+  test("the all-green banner shows the real availability figure and SLA pill when data exists", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await mockDashboard(page, {
+      checks: [
+        { uid: "63333333-3333-3333-3333-333333333333", name: "Healthy Check", status: "up" },
+      ],
+      incidents: [],
+      stats: { availability24h: 99.97 },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText("99.97");
+    await expect(banner).toContainText("SLA Operational");
+
+    const tile = page.getByTestId("kpi-tile-availability");
+    await expect(tile).toContainText("99.97%");
+    await expect(tile).toContainText("Operational");
   });
 
   test("a down check sorts first with a destructive badge and a since timestamp", async ({
