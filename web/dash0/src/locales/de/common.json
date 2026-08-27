@@ -111,5 +111,9 @@
     "telegram_invalid_chat": "Ungültige Telegram-Chat-ID",
     "telegram_send_failed": "Telegram-Zustellung fehlgeschlagen",
     "telegram_runaway_guard": "Stündliche Telegram-Schutzgrenze erreicht"
+  },
+  "serverVersion": {
+    "reloadAria": "Neu laden, um die neueste Version zu erhalten",
+    "stale": "Server aktualisiert auf {{version}} — neu laden, um die neueste Version zu erhalten."
   }
 }
