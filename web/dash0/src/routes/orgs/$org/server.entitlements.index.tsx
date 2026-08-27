@@ -21,6 +21,7 @@ import { useAdminEntitlementsList } from "@/api/hooks";
 import type { AdminEntitlementsRow } from "@/api/hooks";
 import { formatCheckRateDemand } from "@/lib/check-rate-limit";
 import { formatLimit, provenanceOf } from "@/lib/entitlements-admin";
+import type { Provenance } from "@/lib/entitlements-admin";
 import { useDebounce } from "@/lib/use-debounce";
 
 export const Route = createFileRoute("/orgs/$org/server/entitlements/")({
@@ -121,6 +122,7 @@ function OrgRow({ org, row }: { org: string; row: AdminEntitlementsRow }) {
       : undefined,
   });
 
+
   return (
     <TableRow data-testid={`entitlements-row-${row.slug}`}>
       <TableCell>
@@ -135,7 +137,7 @@ function OrgRow({ org, row }: { org: string; row: AdminEntitlementsRow }) {
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap items-center gap-2">
-          <SourceBadge kind={provenance.kind} />
+          <SourceBadge provenance={provenance} />
           {row.displayName ? (
             <span className="text-xs text-muted-foreground">
               {row.displayEmoji ? `${row.displayEmoji} ` : ""}
@@ -180,22 +182,36 @@ function OrgRow({ org, row }: { org: string; row: AdminEntitlementsRow }) {
   );
 }
 
-function SourceBadge({ kind }: { kind: string }) {
+function SourceBadge({ provenance }: { provenance: Provenance }) {
   const { t } = useTranslation("server");
 
-  if (kind === "admin") {
-    return (
-      <Badge variant="secondary">{t("entitlements.provenance.adminPlain")}</Badge>
-    );
+  switch (provenance.kind) {
+    case "admin":
+      return (
+        <Badge variant="secondary">
+          {t("entitlements.provenance.adminPlain")}
+        </Badge>
+      );
+    case "orgAdmin":
+      return (
+        <Badge variant="outline">
+          {t("entitlements.provenance.orgAdminPlain")}
+        </Badge>
+      );
+    case "billing":
+      return (
+        <Badge variant="outline">
+          {t("entitlements.provenance.billingPlain")}
+        </Badge>
+      );
+    case "default":
+      return (
+        <Badge variant="outline">{t("entitlements.provenance.default")}</Badge>
+      );
+    // An unrecognized source is named, never quietly rendered as "defaults" —
+    // claiming an org is unconfigured when somebody configured it is the one
+    // wrong answer this cell can give.
+    default:
+      return <Badge variant="outline">{provenance.source}</Badge>;
   }
-
-  if (kind === "billing") {
-    return (
-      <Badge variant="outline">
-        {t("entitlements.provenance.billingPlain")}
-      </Badge>
-    );
-  }
-
-  return <Badge variant="outline">{t("entitlements.provenance.default")}</Badge>;
 }

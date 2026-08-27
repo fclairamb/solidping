@@ -461,6 +461,17 @@ function ProvenanceText({
     );
   }
 
+  if (provenance.kind === "orgAdmin") {
+    return provenance.since ? (
+      <>
+        {t("entitlements.provenance.orgAdminPlain")} ·{" "}
+        <TimeAgo date={provenance.since} />
+      </>
+    ) : (
+      <>{t("entitlements.provenance.orgAdminPlain")}</>
+    );
+  }
+
   if (provenance.kind === "billing") {
     return (
       <>

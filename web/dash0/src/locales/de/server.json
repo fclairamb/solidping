@@ -368,7 +368,9 @@
       "billingPlain": "Abrechnung",
       "admin": "Admin-Übersteuerung seit {{since}}",
       "adminPlain": "Admin-Übersteuerung",
-      "other": "Quelle: {{source}}"
+      "other": "Quelle: {{source}}",
+      "orgAdminPlain": "Org-Administrator",
+      "orgAdmin": "Org-Admin-Eintrag seit {{since}}"
     },
     "limits": {
       "maxChecks": "Prüfungen",

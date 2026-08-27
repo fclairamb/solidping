@@ -154,6 +154,7 @@ export type Provenance =
   | { kind: "default" }
   | { kind: "billing"; planName?: string | null; since?: string }
   | { kind: "admin"; since?: string }
+  | { kind: "orgAdmin"; since?: string }
   | { kind: "other"; source: string };
 
 export function provenanceOf(input: {
@@ -165,6 +166,14 @@ export function provenanceOf(input: {
 
   if (source === "admin") {
     return { kind: "admin", since: input.stored?.updatedAt };
+  }
+
+  // `org-admin` is a real stored row written through the org-scoped route. It
+  // is NOT an override — billing still corrects it — but it is emphatically
+  // not "free defaults" either, and showing it as such would tell an operator
+  // the org is unconfigured when somebody configured it.
+  if (source === "org-admin") {
+    return { kind: "orgAdmin", since: input.stored?.updatedAt };
   }
 
   if (source === "billing-service") {

@@ -368,7 +368,9 @@
       "billingPlain": "Billing",
       "admin": "Admin override since {{since}}",
       "adminPlain": "Admin override",
-      "other": "Source: {{source}}"
+      "other": "Source: {{source}}",
+      "orgAdminPlain": "Org admin",
+      "orgAdmin": "Org-admin write since {{since}}"
     },
     "limits": {
       "maxChecks": "Checks",

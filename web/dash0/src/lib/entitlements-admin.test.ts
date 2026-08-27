@@ -172,6 +172,26 @@ describe("provenanceOf", () => {
     });
   });
 
+  it("reads an org-scoped write as its own kind, never as 'defaults'", () => {
+    // `org-admin` is a real stored row: billing still corrects it, but showing
+    // it as "Free defaults" would tell an operator the org is unconfigured
+    // when somebody configured it.
+    expect(
+      provenanceOf({
+        source: "org-admin",
+        stored: { source: "org-admin", updatedAt: "2026-08-26T10:00:00Z" },
+      }),
+    ).toEqual({ kind: "orgAdmin", since: "2026-08-26T10:00:00Z" });
+  });
+
+  it("keeps org-admin distinct from the superadmin override", () => {
+    // The two sources look alike and mean very different things: only `admin`
+    // outranks billing.
+    const orgAdmin = provenanceOf({ source: "org-admin" });
+    const superAdmin = provenanceOf({ source: "admin" });
+    expect(orgAdmin.kind).not.toBe(superAdmin.kind);
+  });
+
   it("falls back to naming an unknown source rather than guessing", () => {
     expect(provenanceOf({ source: "martian" })).toEqual({
       kind: "other",
@@ -248,6 +268,8 @@ const REQUIRED_KEYS: Record<string, string[]> = {
   "provenance.billingPlain": [],
   "provenance.admin": ["{{since}}"],
   "provenance.adminPlain": [],
+  "provenance.orgAdmin": ["{{since}}"],
+  "provenance.orgAdminPlain": [],
   "provenance.other": ["{{source}}"],
   "whiteLabel.default": [],
   "whiteLabel.allowed": [],

@@ -751,7 +751,6 @@ func TestPutBillingOntoAdminRowReportsSuppression(t *testing.T) {
 	r.Equal(5000, *suppressed.Limits.MaxChecks, "the admin override must survive the push")
 }
 
-
 // TestOrgAdminWriteDoesNotOutrankBilling is the security half of the
 // precedence rule, and the reason `org-admin` exists as a separate source.
 //
@@ -768,7 +767,6 @@ func TestPutBillingOntoAdminRowReportsSuppression(t *testing.T) {
 // broken implementation.
 func TestOrgAdminWriteDoesNotOutrankBilling(t *testing.T) {
 	t.Parallel()
-	r := require.New(t)
 
 	t.Run("an org admin's write is corrected by the next billing push", func(t *testing.T) {
 		t.Parallel()
@@ -845,6 +843,4 @@ func TestOrgAdminWriteDoesNotOutrankBilling(t *testing.T) {
 		rr.NotNil(pushed.Limits.MaxChecks)
 		rr.Equal(5000, *pushed.Limits.MaxChecks)
 	})
-
-	r.True(true) // the subtests carry the assertions
 }

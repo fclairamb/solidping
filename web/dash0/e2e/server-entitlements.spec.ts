@@ -70,14 +70,35 @@ async function stubEntitlementsApi(page: Page): Promise<{ put: () => unknown }> 
     });
   });
 
+  // The detail the GET serves. A PUT REPLACES it, the way the real server
+  // does: `admin` rows resolve whole-row, so a cap saved as null comes back as
+  // null rather than being refilled with the deployment default. That round
+  // trip is the thing worth testing — asserting only the request body would
+  // pass just as happily on the bug where the toggle flips itself back off.
+  let detail: Record<string, unknown> = { ...DETAIL };
+
   await page.route("**/api/v1/system/entitlements/acmetech", async (route) => {
     if (route.request().method() === "PUT") {
       putBody = route.request().postDataJSON();
+      const sent = putBody as { limits: Record<string, unknown> };
+
+      detail = {
+        ...DETAIL,
+        limits: sent.limits,
+        source: "admin",
+        stored: {
+          source: "admin",
+          limits: sent.limits,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          limits: DETAIL.limits,
+          limits: sent.limits,
           source: "admin",
           stale: false,
           applied: true,
@@ -90,7 +111,7 @@ async function stubEntitlementsApi(page: Page): Promise<{ put: () => unknown }> 
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(DETAIL),
+      body: JSON.stringify(detail),
     });
   });
 
@@ -159,6 +180,25 @@ test.describe("Superadmin entitlements editor", () => {
           maxChecksPerMinute: null,
         },
       });
+
+    // And it must SURVIVE the refetch. This is the half that caught the real
+    // bug: on SaaS every default is a real number, so a resolver that refilled
+    // the stored null would hand the form the default back, the toggle would
+    // silently flip itself off, and the org would stay capped while the UI
+    // reported the number it had just failed to change.
+    const stillUnlimited = page.getByTestId(
+      "entitlements-unlimited-maxChecksPerMinute",
+    );
+    await expect(stillUnlimited).toHaveAttribute("data-state", "checked");
+    await expect(
+      page.getByTestId("entitlements-input-maxChecksPerMinute"),
+    ).toBeDisabled();
+
+    // Positive control: the cap that was given a NUMBER came back as that
+    // number, so the assertion above is not passing on a form that reset.
+    await expect(page.getByTestId("entitlements-input-maxChecks")).toHaveValue(
+      "5000",
+    );
   });
 
   test("shows a suppressed billing push in the audit trail", async ({

@@ -53,7 +53,14 @@ func TestCLICoverage_Entitlements(t *testing.T) {
 	r.NotNil(setResp.JSON200.DisplayName)
 	r.Equal("Team", *setResp.JSON200.DisplayName)
 
-	// GET after set — persisted, admin-sourced, and usage included via ?with=usage.
+	// GET after set — persisted, ORG-ADMIN-sourced, and usage included via
+	// ?with=usage.
+	//
+	// `org-admin`, not `admin`: this write came through the org-scoped route as
+	// an ordinary org admin. Since spec 2026-08-26-06 only a SUPERADMIN mints
+	// `admin`, because that source now suppresses billing pushes until it is
+	// explicitly released — an org admin must not be able to lock the billing
+	// service out of its own org. Same paid plan weight either way.
 	getResp2, err := apiClient.GetEntitlementsWithResponse(
 		ctx, TestOrgSlug, &client.GetEntitlementsParams{With: ptrOf("usage")})
 	r.NoError(err)
@@ -62,7 +69,7 @@ func TestCLICoverage_Entitlements(t *testing.T) {
 	r.Equal(100, *getResp2.JSON200.Limits.MaxChecks)
 	r.NotNil(getResp2.JSON200.Limits.MaxUsers)
 	r.Equal(50, *getResp2.JSON200.Limits.MaxUsers)
-	r.Equal("admin", getResp2.JSON200.Source)
+	r.Equal("org-admin", getResp2.JSON200.Source)
 	r.NotNil(getResp2.JSON200.Usage)
 
 	// PATCH (partial) — only maxChecks changes; the rest is preserved.
@@ -87,7 +94,8 @@ func TestCLICoverage_Entitlements(t *testing.T) {
 	audits := *auditsResp.JSON200.Data
 	r.GreaterOrEqual(len(audits), 2)
 	r.Contains(audits[0].Actor, "user:")
-	r.Equal("admin", audits[0].Source)
+	r.Equal("org-admin", audits[0].Source,
+		"the audit records the source the server chose, not the one the body asked for")
 }
 
 // TestCLICoverage_Files exercises the listFiles / getFile / downloadFile /

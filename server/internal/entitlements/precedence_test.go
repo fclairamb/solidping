@@ -376,7 +376,7 @@ func TestAdminRowKeepsTheDefaultWhiteLabel(t *testing.T) {
 	r.False(*resolved.Limits.WhiteLabel)
 }
 
-// TestOrgAdminRowStillCountsAsPaid keeps the scheduling behaviour a self-hosted
+// TestOrgAdminRowStillCountsAsPaid keeps the scheduling behavior a self-hosted
 // operator already had: splitting `org-admin` out of `admin` is about who may
 // outrank billing, not about who gets scheduling protection.
 func TestOrgAdminRowStillCountsAsPaid(t *testing.T) {

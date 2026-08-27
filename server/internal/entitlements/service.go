@@ -493,38 +493,45 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 		return out
 	}
 
-	if limits.MaxChecks != nil {
-		out.Limits.MaxChecks = limits.MaxChecks
-	}
-	if limits.MaxUsers != nil {
-		out.Limits.MaxUsers = limits.MaxUsers
-	}
-	if limits.MaxChecksPerMinute != nil {
-		out.Limits.MaxChecksPerMinute = limits.MaxChecksPerMinute
-	}
-	if limits.MaxDeportedAgents != nil {
-		out.Limits.MaxDeportedAgents = limits.MaxDeportedAgents
-	}
-	if limits.MaxCustomDomains != nil {
-		out.Limits.MaxCustomDomains = limits.MaxCustomDomains
-	}
-	if limits.MaxSmsPerMonth != nil {
-		out.Limits.MaxSmsPerMonth = limits.MaxSmsPerMonth
-	}
-	if limits.MaxCallsPerMonth != nil {
-		out.Limits.MaxCallsPerMonth = limits.MaxCallsPerMonth
-	}
-	if limits.MaxWhatsappPerMonth != nil {
-		out.Limits.MaxWhatsappPerMonth = limits.MaxWhatsappPerMonth
-	}
-	if limits.MaxSlos != nil {
-		out.Limits.MaxSlos = limits.MaxSlos
-	}
-	if limits.WhiteLabel != nil {
-		out.Limits.WhiteLabel = limits.WhiteLabel
-	}
+	nullFillLimits(&out.Limits, &limits)
 
 	return out
+}
+
+// nullFillLimits overlays src onto dst, field by field, skipping nils — the
+// "a nil field was not stated, so the default shows through" reading used by
+// every source except the superadmin `admin` override.
+func nullFillLimits(dst, src *Limits) {
+	if src.MaxChecks != nil {
+		dst.MaxChecks = src.MaxChecks
+	}
+	if src.MaxUsers != nil {
+		dst.MaxUsers = src.MaxUsers
+	}
+	if src.MaxChecksPerMinute != nil {
+		dst.MaxChecksPerMinute = src.MaxChecksPerMinute
+	}
+	if src.MaxDeportedAgents != nil {
+		dst.MaxDeportedAgents = src.MaxDeportedAgents
+	}
+	if src.MaxCustomDomains != nil {
+		dst.MaxCustomDomains = src.MaxCustomDomains
+	}
+	if src.MaxSmsPerMonth != nil {
+		dst.MaxSmsPerMonth = src.MaxSmsPerMonth
+	}
+	if src.MaxCallsPerMonth != nil {
+		dst.MaxCallsPerMonth = src.MaxCallsPerMonth
+	}
+	if src.MaxWhatsappPerMonth != nil {
+		dst.MaxWhatsappPerMonth = src.MaxWhatsappPerMonth
+	}
+	if src.MaxSlos != nil {
+		dst.MaxSlos = src.MaxSlos
+	}
+	if src.WhiteLabel != nil {
+		dst.WhiteLabel = src.WhiteLabel
+	}
 }
 
 // isStale returns true if the row is past its sync window. Only billing-

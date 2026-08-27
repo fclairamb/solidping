@@ -368,7 +368,9 @@
       "billingPlain": "Facturation",
       "admin": "Dérogation admin depuis {{since}}",
       "adminPlain": "Dérogation admin",
-      "other": "Source : {{source}}"
+      "other": "Source : {{source}}",
+      "orgAdminPlain": "Admin d'organisation",
+      "orgAdmin": "Écriture admin d'organisation depuis {{since}}"
     },
     "limits": {
       "maxChecks": "Contrôles",

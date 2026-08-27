@@ -368,7 +368,9 @@
       "billingPlain": "Facturación",
       "admin": "Anulación de administrador desde {{since}}",
       "adminPlain": "Anulación de administrador",
-      "other": "Origen: {{source}}"
+      "other": "Origen: {{source}}",
+      "orgAdminPlain": "Administrador de la organización",
+      "orgAdmin": "Escritura de administrador de la organización desde {{since}}"
     },
     "limits": {
       "maxChecks": "Comprobaciones",
