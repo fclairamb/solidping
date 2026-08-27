@@ -53,7 +53,8 @@ Aggregate check counters for the org, computed server-side with one SQL
     "validating": 0, "degraded": 2, "warning": 0, "unknown": 0
   },
   "down": 6,
-  "hardDown": 3
+  "hardDown": 3,
+  "availability24h": 99.97
 }
 ```
 
@@ -73,6 +74,12 @@ Semantics:
 - `down` = status in (`down`, `error`, `timeout`); `hardDown` = status in
   (`down`, `error`). `error`/`timeout` are *result*-level statuses that a
   check-level status never holds, so today both equal `byStatus.down`.
+- `availability24h` — `100 * success / total` over the trailing 24h window of
+  **results**, not checks: combines `hour` rollup rows
+  (`successful_checks`/`total_checks`) and `raw` rows (success = up +
+  warning; excludes lifecycle markers and reaped/abandoned attempts, mirroring
+  `RawAvailability`). `null` when the window has no countable data (an empty
+  or brand-new org) — never a fabricated 100 (spec 2026-08-26-09).
 - **Cached ~1 minute per org, in memory.** The response can lag a check
   create/delete or a status flip by up to the TTL; there is no invalidation.
   Consumers needing an exact, immediately consistent count should read
