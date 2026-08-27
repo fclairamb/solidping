@@ -302,6 +302,8 @@ github.com/dop251/goja v0.0.0-20260806115107-493f22071ef6 h1:Oh2rRG1un7tLlC3/NJD
 github.com/dop251/goja v0.0.0-20260806115107-493f22071ef6/go.mod h1:LiIEzozrcvNXorsG/3+ypGqdTUAqZryhzSsqi0oU/Qg=
 github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230 h1:IbnYnQ6X6nkyeAh08QsmZkObNOh/FVtAAmAOFKZ9wys=
 github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230/go.mod h1:u8yZRUavu+N4EnFFy6J5fVtjE7lEcZ2YyV2GcBXY9c8=
+github.com/dop251/goja v0.0.0-20260826204918-8f1c0696a37b h1:mYHoARbZ0mUYXXsaNeHoDFBft3TK4PpFEe3KU7hdDgg=
+github.com/dop251/goja v0.0.0-20260826204918-8f1c0696a37b/go.mod h1:u8yZRUavu+N4EnFFy6J5fVtjE7lEcZ2YyV2GcBXY9c8=
 github.com/dprotaso/go-yit v0.0.0-20191028211022-135eb7262960/go.mod h1:9HQzr9D/0PGwMEbC3d5AB7oi67+h4TsQqItC1GVYG58=
 github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 h1:PRxIJD8XjimM5aTknUK9w6DHLDox2r2M3DI4i2pnd3w=
 github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936/go.mod h1:ttYvX5qlB+mlV1okblJqcSMtR4c52UKxDiX9GRBS8+Q=
