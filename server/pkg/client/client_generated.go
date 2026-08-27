@@ -60,6 +60,87 @@ func (e AddMemberRequestRole) Valid() bool {
 	}
 }
 
+// Defines values for AdminEntitlementsDetailSource.
+const (
+	AdminEntitlementsDetailSourceAdmin          AdminEntitlementsDetailSource = "admin"
+	AdminEntitlementsDetailSourceBillingService AdminEntitlementsDetailSource = "billing-service"
+	AdminEntitlementsDetailSourceDefault        AdminEntitlementsDetailSource = "default"
+	AdminEntitlementsDetailSourceOrgAdmin       AdminEntitlementsDetailSource = "org-admin"
+	AdminEntitlementsDetailSourceSelfHosted     AdminEntitlementsDetailSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the AdminEntitlementsDetailSource enum.
+func (e AdminEntitlementsDetailSource) Valid() bool {
+	switch e {
+	case AdminEntitlementsDetailSourceAdmin:
+		return true
+	case AdminEntitlementsDetailSourceBillingService:
+		return true
+	case AdminEntitlementsDetailSourceDefault:
+		return true
+	case AdminEntitlementsDetailSourceOrgAdmin:
+		return true
+	case AdminEntitlementsDetailSourceSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdminEntitlementsRowSource.
+const (
+	AdminEntitlementsRowSourceAdmin          AdminEntitlementsRowSource = "admin"
+	AdminEntitlementsRowSourceBillingService AdminEntitlementsRowSource = "billing-service"
+	AdminEntitlementsRowSourceDefault        AdminEntitlementsRowSource = "default"
+	AdminEntitlementsRowSourceOrgAdmin       AdminEntitlementsRowSource = "org-admin"
+	AdminEntitlementsRowSourceSelfHosted     AdminEntitlementsRowSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the AdminEntitlementsRowSource enum.
+func (e AdminEntitlementsRowSource) Valid() bool {
+	switch e {
+	case AdminEntitlementsRowSourceAdmin:
+		return true
+	case AdminEntitlementsRowSourceBillingService:
+		return true
+	case AdminEntitlementsRowSourceDefault:
+		return true
+	case AdminEntitlementsRowSourceOrgAdmin:
+		return true
+	case AdminEntitlementsRowSourceSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdminEntitlementsWriteResponseSource.
+const (
+	AdminEntitlementsWriteResponseSourceAdmin          AdminEntitlementsWriteResponseSource = "admin"
+	AdminEntitlementsWriteResponseSourceBillingService AdminEntitlementsWriteResponseSource = "billing-service"
+	AdminEntitlementsWriteResponseSourceDefault        AdminEntitlementsWriteResponseSource = "default"
+	AdminEntitlementsWriteResponseSourceOrgAdmin       AdminEntitlementsWriteResponseSource = "org-admin"
+	AdminEntitlementsWriteResponseSourceSelfHosted     AdminEntitlementsWriteResponseSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the AdminEntitlementsWriteResponseSource enum.
+func (e AdminEntitlementsWriteResponseSource) Valid() bool {
+	switch e {
+	case AdminEntitlementsWriteResponseSourceAdmin:
+		return true
+	case AdminEntitlementsWriteResponseSourceBillingService:
+		return true
+	case AdminEntitlementsWriteResponseSourceDefault:
+		return true
+	case AdminEntitlementsWriteResponseSourceOrgAdmin:
+		return true
+	case AdminEntitlementsWriteResponseSourceSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdminJobStatus.
 const (
 	AdminJobStatusFailed  AdminJobStatus = "failed"
@@ -132,6 +213,30 @@ func (e ApproveMembershipRequestRequestRole) Valid() bool {
 	case ApproveMembershipRequestRequestRoleUser:
 		return true
 	case ApproveMembershipRequestRequestRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AvailabilityBucketStatus.
+const (
+	AvailabilityBucketStatusDegraded AvailabilityBucketStatus = "degraded"
+	AvailabilityBucketStatusDown     AvailabilityBucketStatus = "down"
+	AvailabilityBucketStatusNoData   AvailabilityBucketStatus = "noData"
+	AvailabilityBucketStatusUp       AvailabilityBucketStatus = "up"
+)
+
+// Valid indicates whether the value is a known member of the AvailabilityBucketStatus enum.
+func (e AvailabilityBucketStatus) Valid() bool {
+	switch e {
+	case AvailabilityBucketStatusDegraded:
+		return true
+	case AvailabilityBucketStatusDown:
+		return true
+	case AvailabilityBucketStatusNoData:
+		return true
+	case AvailabilityBucketStatusUp:
 		return true
 	default:
 		return false
@@ -774,6 +879,33 @@ func (e DiscoveryScanProgressDerivedStatus) Valid() bool {
 	case DiscoveryScanProgressDerivedStatusRunning:
 		return true
 	case DiscoveryScanProgressDerivedStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntitlementsResponseSource.
+const (
+	EntitlementsResponseSourceAdmin          EntitlementsResponseSource = "admin"
+	EntitlementsResponseSourceBillingService EntitlementsResponseSource = "billing-service"
+	EntitlementsResponseSourceDefault        EntitlementsResponseSource = "default"
+	EntitlementsResponseSourceOrgAdmin       EntitlementsResponseSource = "org-admin"
+	EntitlementsResponseSourceSelfHosted     EntitlementsResponseSource = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the EntitlementsResponseSource enum.
+func (e EntitlementsResponseSource) Valid() bool {
+	switch e {
+	case EntitlementsResponseSourceAdmin:
+		return true
+	case EntitlementsResponseSourceBillingService:
+		return true
+	case EntitlementsResponseSourceDefault:
+		return true
+	case EntitlementsResponseSourceOrgAdmin:
+		return true
+	case EntitlementsResponseSourceSelfHosted:
 		return true
 	default:
 		return false
@@ -2547,6 +2679,144 @@ type AddNotificationContactRequest struct {
 	Value string `json:"value"`
 }
 
+// AdminEntitlementsDetail defines model for AdminEntitlementsDetail.
+type AdminEntitlementsDetail struct {
+	// Applied Present on write responses only. False when the precedence rule discarded the write — a billing push onto an admin override is accepted with 200 (billing must not error-loop) but changes nothing.
+	Applied *bool               `json:"applied,omitempty"`
+	Audits  []EntitlementsAudit `json:"audits"`
+
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+
+	// Defaults Per-org numeric limits; null/absent means unlimited
+	Defaults     EntitlementLimits `json:"defaults"`
+	DisplayEmoji *string           `json:"displayEmoji,omitempty"`
+	DisplayName  *string           `json:"displayName,omitempty"`
+	ExpiresAt    *time.Time        `json:"expiresAt,omitempty"`
+	LastSyncedAt *time.Time        `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits EntitlementLimits `json:"limits"`
+
+	// Message Why the write was not applied, in words.
+	Message         *string `json:"message,omitempty"`
+	Name            string  `json:"name"`
+	OrganizationUid string  `json:"organizationUid"`
+	OverCheckRate   *bool   `json:"overCheckRate,omitempty"`
+	Slug            string  `json:"slug"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source AdminEntitlementsDetailSource `json:"source"`
+	Stale  bool                          `json:"stale"`
+
+	// Stored The raw stored org_entitlements row. Absent entirely when the organization has never had one, which is exactly the "resolving to deployment defaults" state.
+	Stored *AdminEntitlementsStoredRow `json:"stored,omitempty"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
+}
+
+// AdminEntitlementsDetailSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type AdminEntitlementsDetailSource string
+
+// AdminEntitlementsListResponse defines model for AdminEntitlementsListResponse.
+type AdminEntitlementsListResponse struct {
+	Data []AdminEntitlementsRow `json:"data"`
+
+	// Total Organizations matching the search, before paging.
+	Total int `json:"total"`
+}
+
+// AdminEntitlementsRow One organization in the super-admin entitlements list.
+type AdminEntitlementsRow struct {
+	// AdminOverrideSince When the current admin override was written. Absent unless the stored row is admin-sourced.
+	AdminOverrideSince *time.Time `json:"adminOverrideSince,omitempty"`
+
+	// Applied Present on write responses only. False when the precedence rule discarded the write — a billing push onto an admin override is accepted with 200 (billing must not error-loop) but changes nothing.
+	Applied *bool `json:"applied,omitempty"`
+
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+	DisplayEmoji    *string                      `json:"displayEmoji,omitempty"`
+	DisplayName     *string                      `json:"displayName,omitempty"`
+	ExpiresAt       *time.Time                   `json:"expiresAt,omitempty"`
+	LastSyncedAt    *time.Time                   `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits EntitlementLimits `json:"limits"`
+
+	// Message Why the write was not applied, in words.
+	Message         *string `json:"message,omitempty"`
+	Name            string  `json:"name"`
+	OrganizationUid string  `json:"organizationUid"`
+
+	// OverCheckRate Scheduled check demand exceeds the resolved MaxChecksPerMinute cap. An unlimited cap is never over.
+	OverCheckRate bool   `json:"overCheckRate"`
+	Slug          string `json:"slug"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source AdminEntitlementsRowSource `json:"source"`
+	Stale  bool                       `json:"stale"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
+}
+
+// AdminEntitlementsRowSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type AdminEntitlementsRowSource string
+
+// AdminEntitlementsStoredRow The raw stored org_entitlements row. Absent entirely when the organization has never had one, which is exactly the "resolving to deployment defaults" state.
+type AdminEntitlementsStoredRow struct {
+	CreatedAt    time.Time  `json:"createdAt"`
+	DisplayEmoji *string    `json:"displayEmoji,omitempty"`
+	DisplayName  *string    `json:"displayName,omitempty"`
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
+	ExternalRef  *string    `json:"externalRef,omitempty"`
+	LastSyncedAt *time.Time `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits    EntitlementLimits `json:"limits"`
+	Source    string            `json:"source"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+}
+
+// AdminEntitlementsWriteResponse defines model for AdminEntitlementsWriteResponse.
+type AdminEntitlementsWriteResponse struct {
+	Applied bool `json:"applied"`
+
+	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
+	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
+	DisplayEmoji    *string                      `json:"displayEmoji,omitempty"`
+	DisplayName     *string                      `json:"displayName,omitempty"`
+	ExpiresAt       *time.Time                   `json:"expiresAt,omitempty"`
+	LastSyncedAt    *time.Time                   `json:"lastSyncedAt,omitempty"`
+
+	// Limits Per-org numeric limits; null/absent means unlimited
+	Limits EntitlementLimits `json:"limits"`
+
+	// Message Why the write was not applied, in words.
+	Message *string `json:"message,omitempty"`
+
+	// Released A stored row was actually removed. False when releasing an organization that had no override.
+	Released *bool `json:"released,omitempty"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source AdminEntitlementsWriteResponseSource `json:"source"`
+	Stale  bool                                 `json:"stale"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
+}
+
+// AdminEntitlementsWriteResponseSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type AdminEntitlementsWriteResponseSource string
+
 // AdminJob A background-jobs queue row as returned by the admin/system views.
 type AdminJob struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
@@ -2623,6 +2893,33 @@ type AuthProvidersResponse struct {
 	PasskeysEnabled     *bool           `json:"passkeysEnabled,omitempty"`
 	RegistrationEnabled *bool           `json:"registrationEnabled,omitempty"`
 }
+
+// AvailabilityBucket defines model for AvailabilityBucket.
+type AvailabilityBucket struct {
+	// AvailabilityPct successfulChecks / totalChecks × 100. Null when totalChecks == 0 — no data is not 100%.
+	AvailabilityPct *float32 `json:"availabilityPct"`
+
+	// HasData False when the cell has no countable probes (then availabilityPct is null).
+	HasData bool `json:"hasData"`
+
+	// PeriodEnd End of the cell (exclusive).
+	PeriodEnd time.Time `json:"periodEnd"`
+
+	// PeriodStart Start of the cell (inclusive).
+	PeriodStart time.Time `json:"periodStart"`
+
+	// Status The shared availability colour vocabulary — the same classifier the public status page and the badge uptime bar use, including the small-bucket guard (a cell with exactly one failed sample is never "down").
+	Status AvailabilityBucketStatus `json:"status"`
+
+	// SuccessfulChecks Probes counted as up (up + warning).
+	SuccessfulChecks int `json:"successfulChecks"`
+
+	// TotalChecks Countable probes in the cell.
+	TotalChecks int `json:"totalChecks"`
+}
+
+// AvailabilityBucketStatus The shared availability colour vocabulary — the same classifier the public status page and the badge uptime bar use, including the small-bucket guard (a cell with exactly one failed sample is never "down").
+type AvailabilityBucketStatus string
 
 // AvailabilityPeriod defines model for AvailabilityPeriod.
 type AvailabilityPeriod struct {
@@ -2813,6 +3110,29 @@ type CheckTracerouteOnFailure string
 
 // CheckType defines model for Check.Type.
 type CheckType string
+
+// CheckAvailabilityBucketsResponse defines model for CheckAvailabilityBucketsResponse.
+type CheckAvailabilityBucketsResponse struct {
+	// BucketSeconds The resolved cell width in seconds (always a multiple of 3600).
+	//
+	// Example: 21600
+	BucketSeconds int `json:"bucketSeconds"`
+
+	// Data The cell series, oldest first, aligned to bucketSeconds boundaries.
+	Data []AvailabilityBucket `json:"data"`
+
+	// Region The region filter, omitted when the read summed every region.
+	Region *string `json:"region,omitempty"`
+
+	// Window The whole-window fold over exactly [from, to) — NOT the sum of the cells, which are aligned outward and can span more time than was requested.
+	Window AvailabilityBucket `json:"window"`
+
+	// WindowEnd The requested window end, echoed back.
+	WindowEnd time.Time `json:"windowEnd"`
+
+	// WindowStart The requested window start, echoed back.
+	WindowStart time.Time `json:"windowStart"`
+}
 
 // CheckAvailabilityResponse defines model for CheckAvailabilityResponse.
 type CheckAvailabilityResponse struct {
@@ -3025,6 +3345,11 @@ type CheckScheduling struct {
 
 // CheckStats defines model for CheckStats.
 type CheckStats struct {
+	// Availability24h 100 * successful / total over the trailing 24h window, combining `hour` rollup rows and `raw` result rows (successful = up + warning; lifecycle markers and reaped/abandoned raw rows are excluded from both sides). `null` when the window has no countable data (an empty or brand-new org) — never a fabricated 100.
+	//
+	// Example: 99.97
+	Availability24h *float32 `json:"availability24h"`
+
 	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
 	//
 	// Example: {"created":2,"degraded":2,"down":6,"unknown":0,"up":240,"validating":0,"warning":0}
@@ -3815,6 +4140,9 @@ type EntitlementsChecksPerMinute struct {
 
 // EntitlementsResponse defines model for EntitlementsResponse.
 type EntitlementsResponse struct {
+	// Applied Present on write responses only. False when the precedence rule discarded the write — a billing push onto an admin override is accepted with 200 (billing must not error-loop) but changes nothing.
+	Applied *bool `json:"applied,omitempty"`
+
 	// ChecksPerMinute The organization's scheduled check-execution rate against its MaxChecksPerMinute cap, plus how many executions the rate gate actually skipped today. Always present (it is not behind `?with=usage`), because it drives the over-limit banner on pages that do not need the full usage roll-up. Omitted only when it could not be computed.
 	ChecksPerMinute *EntitlementsChecksPerMinute `json:"checksPerMinute,omitempty"`
 	DisplayEmoji    *string                      `json:"displayEmoji,omitempty"`
@@ -3825,12 +4153,21 @@ type EntitlementsResponse struct {
 	// Limits Per-org numeric limits; null/absent means unlimited
 	Limits EntitlementLimits `json:"limits"`
 
-	// Source Where the entitlements came from (default, billing, admin)
-	Source     string             `json:"source"`
-	Stale      bool               `json:"stale"`
-	UpgradeUrl *string            `json:"upgradeUrl,omitempty"`
-	Usage      *EntitlementsUsage `json:"usage,omitempty"`
+	// Message Why the write was not applied, in words.
+	Message *string `json:"message,omitempty"`
+
+	// Source Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+	Source EntitlementsResponseSource `json:"source"`
+	Stale  bool                       `json:"stale"`
+
+	// SuppressedBy The entitlement source that won, when `applied` is false. Today always `admin`.
+	SuppressedBy *string            `json:"suppressedBy,omitempty"`
+	UpgradeUrl   *string            `json:"upgradeUrl,omitempty"`
+	Usage        *EntitlementsUsage `json:"usage,omitempty"`
 }
+
+// EntitlementsResponseSource Where the entitlements came from. `default` / `self-hosted` (no stored row), `billing-service`, `org-admin` (org-scoped write by an org admin) or `admin` (superadmin override). An `admin` row resolves WHOLE-ROW — a null cap means unlimited rather than "inherit the deployment default" — and suppresses billing pushes until released.
+type EntitlementsResponseSource string
 
 // EntitlementsUsage defines model for EntitlementsUsage.
 type EntitlementsUsage struct {
@@ -5581,7 +5918,7 @@ type SetEntitlementsRequest struct {
 	Limits   *EntitlementLimits      `json:"limits,omitempty"`
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 
-	// Source Entitlement source (default set server-side)
+	// Source IGNORED for user-driven writes — the server decides the source, because it is an authorization outcome rather than a label. A superadmin write records `admin`, any other authenticated caller records `org-admin`, and a trusted service defaults to `billing-service`.
 	Source *string `json:"source,omitempty"`
 }
 
@@ -6750,6 +7087,21 @@ type GetCheckAvailabilityParams struct {
 	Tz *string `form:"tz,omitempty" json:"tz,omitempty"`
 }
 
+// GetCheckAvailabilityBucketsParams defines parameters for GetCheckAvailabilityBuckets.
+type GetCheckAvailabilityBucketsParams struct {
+	// From Window start (inclusive), RFC3339.
+	From time.Time `form:"from" json:"from"`
+
+	// To Window end (exclusive), RFC3339. Must be after `from`.
+	To time.Time `form:"to" json:"to"`
+
+	// Bucket Cell width as a Go duration. Must be a whole positive multiple of one hour — below an hour a percentage is noise (a 5-minute slice of a 1-minute check quantizes to 0/20/40/…%). At most 200 cells per request. When omitted the server picks the smallest hour-multiple keeping the cell count at or below 60.
+	Bucket *string `form:"bucket,omitempty" json:"bucket,omitempty"`
+
+	// Region Scope the read to one probe region. Omitted sums up/total across every region rather than averaging their percentages.
+	Region *string `form:"region,omitempty" json:"region,omitempty"`
+}
+
 // GetBadgeParams defines parameters for GetBadge.
 type GetBadgeParams struct {
 	// Period Time period for uptime calculation
@@ -7187,6 +7539,22 @@ type ListSystemCheckJobsParams struct {
 	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListAdminEntitlementsParams defines parameters for ListAdminEntitlements.
+type ListAdminEntitlementsParams struct {
+	// Q Case-insensitive substring match on the org slug or name
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (1-200, default 50)
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetAdminEntitlementsParams defines parameters for GetAdminEntitlements.
+type GetAdminEntitlementsParams struct {
+	// Limit Maximum audit entries (1-200, default 50)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListSystemJobsParams defines parameters for ListSystemJobs.
 type ListSystemJobsParams struct {
 	// Status Filter by job status
@@ -7465,6 +7833,9 @@ type UpdateSupportThreadJSONRequestBody = UpdateSupportThreadRequest
 
 // CreateSupportMessageJSONRequestBody defines body for CreateSupportMessage for application/json ContentType.
 type CreateSupportMessageJSONRequestBody = CreateSupportMessageRequest
+
+// SetAdminEntitlementsJSONRequestBody defines body for SetAdminEntitlements for application/json ContentType.
+type SetAdminEntitlementsJSONRequestBody = SetEntitlementsRequest
 
 // SetSystemParameterJSONRequestBody defines body for SetSystemParameter for application/json ContentType.
 type SetSystemParameterJSONRequestBody = SetSystemParameterRequest
@@ -8168,6 +8539,17 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability (the `GetCheckAvailability` operationId).
 	GetCheckAvailability(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckAvailabilityBuckets Bucketed availability over an arbitrary window for a single check
+	//
+	// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+	//
+	// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+	//
+	// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+	GetCheckAvailabilityBuckets(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetBadge Get status badge for a check
 	//
@@ -9921,6 +10303,82 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/system/email-inbox/test (the `TestEmailInbox` operationId).
 	TestEmailInbox(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAdminEntitlements List organizations with their resolved entitlements (super admin)
+	//
+	// One row per organization: resolved limits, their source, plan display
+	// identity, and the checks-per-minute demand/cap pair so orgs currently
+	// over their execution cap can be spotted without opening each one.
+	//
+	// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+	ListAdminEntitlements(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReleaseAdminEntitlements Release an organization back to billing (super admin)
+	//
+	// Drops the stored entitlements row. The organization immediately
+	// resolves to the deployment-mode defaults, and the next billing push is
+	// applied normally. Releasing an organization that has no stored row is a
+	// no-op (`released: false`), not an error.
+	//
+	// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+	ReleaseAdminEntitlements(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAdminEntitlements Get one organization's entitlements and audit trail (super admin)
+	//
+	// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+	GetAdminEntitlements(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAdminEntitlementsWithBody Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlementsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAdminEntitlements Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlements(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSystemJobs List background jobs (all orgs)
 	//
 	// Super-admin list of background jobs across all orgs, including system jobs (null org).
@@ -11550,6 +12008,27 @@ func (c *Client) RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid
 // Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability (the `GetCheckAvailability` operationId).
 func (c *Client) GetCheckAvailability(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCheckAvailabilityRequest(c.Server, org, check, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCheckAvailabilityBuckets Bucketed availability over an arbitrary window for a single check
+//
+// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+//
+// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+//
+// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+func (c *Client) GetCheckAvailabilityBuckets(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckAvailabilityBucketsRequest(c.Server, org, check, params)
 	if err != nil {
 		return nil, err
 	}
@@ -15802,6 +16281,132 @@ func (c *Client) TestEmailInbox(ctx context.Context, reqEditors ...RequestEditor
 	return c.Client.Do(req)
 }
 
+// ListAdminEntitlements List organizations with their resolved entitlements (super admin)
+//
+// One row per organization: resolved limits, their source, plan display
+// identity, and the checks-per-minute demand/cap pair so orgs currently
+// over their execution cap can be spotted without opening each one.
+//
+// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+func (c *Client) ListAdminEntitlements(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAdminEntitlementsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReleaseAdminEntitlements Release an organization back to billing (super admin)
+//
+// Drops the stored entitlements row. The organization immediately
+// resolves to the deployment-mode defaults, and the next billing push is
+// applied normally. Releasing an organization that has no stored row is a
+// no-op (`released: false`), not an error.
+//
+// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+func (c *Client) ReleaseAdminEntitlements(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReleaseAdminEntitlementsRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAdminEntitlements Get one organization's entitlements and audit trail (super admin)
+//
+// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+func (c *Client) GetAdminEntitlements(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAdminEntitlementsRequest(c.Server, org, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAdminEntitlementsWithBody Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *Client) SetAdminEntitlementsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAdminEntitlementsRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetAdminEntitlements Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *Client) SetAdminEntitlements(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAdminEntitlementsRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListSystemJobs List background jobs (all orgs)
 //
 // Super-admin list of background jobs across all orgs, including system jobs (null org).
@@ -18843,6 +19448,102 @@ func NewGetCheckAvailabilityRequest(server string, org OrgPath, check string, pa
 		if params.Tz != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tz", *params.Tz, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckAvailabilityBucketsRequest constructs an http.Request for the GetCheckAvailabilityBuckets method
+func NewGetCheckAvailabilityBucketsRequest(server string, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "check", check, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/availability/buckets", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Bucket != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "bucket", *params.Bucket, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Region != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "region", *params.Region, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -28741,6 +29442,226 @@ func NewTestEmailInboxRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListAdminEntitlementsRequest constructs an http.Request for the ListAdminEntitlements method
+func NewListAdminEntitlementsRequest(server string, params *ListAdminEntitlementsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReleaseAdminEntitlementsRequest constructs an http.Request for the ReleaseAdminEntitlements method
+func NewReleaseAdminEntitlementsRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAdminEntitlementsRequest constructs an http.Request for the GetAdminEntitlements method
+func NewGetAdminEntitlementsRequest(server string, org OrgPath, params *GetAdminEntitlementsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAdminEntitlementsRequest calls the generic SetAdminEntitlements builder with application/json body
+func NewSetAdminEntitlementsRequest(server string, org OrgPath, body SetAdminEntitlementsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAdminEntitlementsRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewSetAdminEntitlementsRequestWithBody constructs an http.Request for the SetAdminEntitlements method, with any body, and a specified content type
+func NewSetAdminEntitlementsRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/entitlements/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListSystemJobsRequest constructs an http.Request for the ListSystemJobs method
 func NewListSystemJobsRequest(server string, params *ListSystemJobsParams) (*http.Request, error) {
 	var err error
@@ -29964,6 +30885,19 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability (the `GetCheckAvailability` operationId).
 	GetCheckAvailabilityWithResponse(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityParams, reqEditors ...RequestEditorFn) (*GetCheckAvailabilityResult, error)
+
+	// GetCheckAvailabilityBucketsWithResponse Bucketed availability over an arbitrary window for a single check
+	//
+	// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+	//
+	// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+	//
+	// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+	GetCheckAvailabilityBucketsWithResponse(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*GetCheckAvailabilityBucketsResult, error)
 
 	// GetBadgeWithResponse Get status badge for a check
 	//
@@ -31968,6 +32902,88 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/system/email-inbox/test (the `TestEmailInbox` operationId).
 	TestEmailInboxWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TestEmailInboxResult, error)
+
+	// ListAdminEntitlementsWithResponse List organizations with their resolved entitlements (super admin)
+	//
+	// One row per organization: resolved limits, their source, plan display
+	// identity, and the checks-per-minute demand/cap pair so orgs currently
+	// over their execution cap can be spotted without opening each one.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+	ListAdminEntitlementsWithResponse(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*ListAdminEntitlementsResult, error)
+
+	// ReleaseAdminEntitlementsWithResponse Release an organization back to billing (super admin)
+	//
+	// Drops the stored entitlements row. The organization immediately
+	// resolves to the deployment-mode defaults, and the next billing push is
+	// applied normally. Releasing an organization that has no stored row is a
+	// no-op (`released: false`), not an error.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+	ReleaseAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ReleaseAdminEntitlementsResult, error)
+
+	// GetAdminEntitlementsWithResponse Get one organization's entitlements and audit trail (super admin)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+	GetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*GetAdminEntitlementsResult, error)
+
+	// SetAdminEntitlementsWithBodyWithResponse Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlementsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error)
+
+	// SetAdminEntitlementsWithResponse Write an organization's entitlements as an admin override (super admin)
+	//
+	// Writes a complete admin-sourced row (whole-row only; there are no
+	// per-field overrides). The request body's `source` is ignored — a super
+	// admin write is always `admin`, so a body claiming to be the billing
+	// service cannot launder itself past the precedence rule.
+	//
+	// Because the row is complete, an `admin` row resolves whole-row: a
+	// `null` cap means **unlimited**, not "inherit the deployment default".
+	// That is what makes the editor's Unlimited switch mean what it says on a
+	// SaaS deployment, where every default is a real number. `whiteLabel` is
+	// the exception — being a boolean, its `null` keeps meaning "use the
+	// deployment default".
+	//
+	// While the stored row is admin-sourced, billing pushes to
+	// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+	// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+	// audit log. Use `DELETE` on this path to release the override.
+	//
+	// An optional `X-Entitlements-Reason` header is stored on the audit row.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+	SetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error)
 
 	// ListSystemJobsWithResponse List background jobs (all orgs)
 	//
@@ -35385,6 +36401,68 @@ func (r GetCheckAvailabilityResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCheckAvailabilityResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCheckAvailabilityBucketsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckAvailabilityBucketsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON200() *CheckAvailabilityBucketsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCheckAvailabilityBucketsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCheckAvailabilityBucketsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckAvailabilityBucketsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckAvailabilityBucketsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCheckAvailabilityBucketsResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -46100,6 +47178,254 @@ func (r TestEmailInboxResult) ContentType() string {
 	return ""
 }
 
+type ListAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAdminEntitlementsResult) GetJSON200() *AdminEntitlementsListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAdminEntitlementsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReleaseAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsWriteResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON200() *AdminEntitlementsWriteResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReleaseAdminEntitlementsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ReleaseAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReleaseAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReleaseAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReleaseAdminEntitlementsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsDetail
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON200() *AdminEntitlementsDetail {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetAdminEntitlementsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAdminEntitlementsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetAdminEntitlementsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminEntitlementsWriteResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON200() *AdminEntitlementsWriteResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r SetAdminEntitlementsResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r SetAdminEntitlementsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAdminEntitlementsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAdminEntitlementsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetAdminEntitlementsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSystemJobsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -48019,6 +49345,25 @@ func (c *ClientWithResponses) GetCheckAvailabilityWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseGetCheckAvailabilityResult(rsp)
+}
+
+// GetCheckAvailabilityBucketsWithResponse Bucketed availability over an arbitrary window for a single check
+//
+// Cuts [from, to) into uniform, hour-aligned availability cells — the data behind the check-detail chart's availability strip. Deliberately a separate route from /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing calendar tokens with a tz, has no from/to at all and is capped at 12 periods.
+//
+// Counting is the shared engine's: lifecycle markers and abandoned attempts are excluded from BOTH numerator and denominator, warning counts as up, and maintenance probes count exactly like any other (maintenance exclusion is SLO-only). A cell with no countable probes has hasData=false, availabilityPct=null and status="noData" — no data is not 100%.
+//
+// Cells are aligned OUTWARD to bucket boundaries, so the series may start before `from` and end after `to`. The `window` object is the exact [from, to) fold (it also includes the month tier, which is deliberately never attributed to a single cell) and is what a client renders when the window is too short for a legible strip.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{check}/availability/buckets (the `GetCheckAvailabilityBuckets` operationId).
+func (c *ClientWithResponses) GetCheckAvailabilityBucketsWithResponse(ctx context.Context, org OrgPath, check string, params *GetCheckAvailabilityBucketsParams, reqEditors ...RequestEditorFn) (*GetCheckAvailabilityBucketsResult, error) {
+	rsp, err := c.GetCheckAvailabilityBuckets(ctx, org, check, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckAvailabilityBucketsResult(rsp)
 }
 
 // GetBadgeWithResponse Get status badge for a check
@@ -51519,6 +52864,118 @@ func (c *ClientWithResponses) TestEmailInboxWithResponse(ctx context.Context, re
 	return ParseTestEmailInboxResult(rsp)
 }
 
+// ListAdminEntitlementsWithResponse List organizations with their resolved entitlements (super admin)
+//
+// One row per organization: resolved limits, their source, plan display
+// identity, and the checks-per-minute demand/cap pair so orgs currently
+// over their execution cap can be spotted without opening each one.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/entitlements (the `ListAdminEntitlements` operationId).
+func (c *ClientWithResponses) ListAdminEntitlementsWithResponse(ctx context.Context, params *ListAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*ListAdminEntitlementsResult, error) {
+	rsp, err := c.ListAdminEntitlements(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAdminEntitlementsResult(rsp)
+}
+
+// ReleaseAdminEntitlementsWithResponse Release an organization back to billing (super admin)
+//
+// Drops the stored entitlements row. The organization immediately
+// resolves to the deployment-mode defaults, and the next billing push is
+// applied normally. Releasing an organization that has no stored row is a
+// no-op (`released: false`), not an error.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/system/entitlements/{org} (the `ReleaseAdminEntitlements` operationId).
+func (c *ClientWithResponses) ReleaseAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ReleaseAdminEntitlementsResult, error) {
+	rsp, err := c.ReleaseAdminEntitlements(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReleaseAdminEntitlementsResult(rsp)
+}
+
+// GetAdminEntitlementsWithResponse Get one organization's entitlements and audit trail (super admin)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/entitlements/{org} (the `GetAdminEntitlements` operationId).
+func (c *ClientWithResponses) GetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, params *GetAdminEntitlementsParams, reqEditors ...RequestEditorFn) (*GetAdminEntitlementsResult, error) {
+	rsp, err := c.GetAdminEntitlements(ctx, org, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAdminEntitlementsResult(rsp)
+}
+
+// SetAdminEntitlementsWithBodyWithResponse Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *ClientWithResponses) SetAdminEntitlementsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error) {
+	rsp, err := c.SetAdminEntitlementsWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAdminEntitlementsResult(rsp)
+}
+
+// SetAdminEntitlementsWithResponse Write an organization's entitlements as an admin override (super admin)
+//
+// Writes a complete admin-sourced row (whole-row only; there are no
+// per-field overrides). The request body's `source` is ignored — a super
+// admin write is always `admin`, so a body claiming to be the billing
+// service cannot launder itself past the precedence rule.
+//
+// Because the row is complete, an `admin` row resolves whole-row: a
+// `null` cap means **unlimited**, not "inherit the deployment default".
+// That is what makes the editor's Unlimited switch mean what it says on a
+// SaaS deployment, where every default is a real number. `whiteLabel` is
+// the exception — being a boolean, its `null` keeps meaning "use the
+// deployment default".
+//
+// While the stored row is admin-sourced, billing pushes to
+// `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+// applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+// audit log. Use `DELETE` on this path to release the override.
+//
+// An optional `X-Entitlements-Reason` header is stored on the audit row.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/system/entitlements/{org} (the `SetAdminEntitlements` operationId).
+func (c *ClientWithResponses) SetAdminEntitlementsWithResponse(ctx context.Context, org OrgPath, body SetAdminEntitlementsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAdminEntitlementsResult, error) {
+	rsp, err := c.SetAdminEntitlements(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAdminEntitlementsResult(rsp)
+}
+
 // ListSystemJobsWithResponse List background jobs (all orgs)
 //
 // Super-admin list of background jobs across all orgs, including system jobs (null org).
@@ -54093,6 +55550,53 @@ func ParseGetCheckAvailabilityResult(rsp *http.Response) (*GetCheckAvailabilityR
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest CheckAvailabilityResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckAvailabilityBucketsResult parses an HTTP response from a GetCheckAvailabilityBucketsWithResponse call
+func ParseGetCheckAvailabilityBucketsResult(rsp *http.Response) (*GetCheckAvailabilityBucketsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckAvailabilityBucketsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckAvailabilityBucketsResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -62136,6 +63640,194 @@ func ParseTestEmailInboxResult(rsp *http.Response) (*TestEmailInboxResult, error
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAdminEntitlementsResult parses an HTTP response from a ListAdminEntitlementsWithResponse call
+func ParseListAdminEntitlementsResult(rsp *http.Response) (*ListAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReleaseAdminEntitlementsResult parses an HTTP response from a ReleaseAdminEntitlementsWithResponse call
+func ParseReleaseAdminEntitlementsResult(rsp *http.Response) (*ReleaseAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReleaseAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsWriteResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAdminEntitlementsResult parses an HTTP response from a GetAdminEntitlementsWithResponse call
+func ParseGetAdminEntitlementsResult(rsp *http.Response) (*GetAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetAdminEntitlementsResult parses an HTTP response from a SetAdminEntitlementsWithResponse call
+func ParseSetAdminEntitlementsResult(rsp *http.Response) (*SetAdminEntitlementsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAdminEntitlementsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminEntitlementsWriteResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	}
 
