@@ -125,28 +125,45 @@ const scopeChatWrite = "chat:write"
 
 //nolint:gochecknoglobals // package-level constant scope lists
 var (
+	// slackBotScopes is the single source of truth at install time:
+	// BuildInstallURL joins it verbatim into the `scope=` parameter. It must stay
+	// equal to `oauth_config.scopes.bot` in wiki/slack/manifest-{dev,prod}.json —
+	// a scope in the manifest but not here is never granted, and a scope here but
+	// not in the manifest makes Slack reject the authorize request outright.
+	// TestBotScopesMatchManifests pins the two together.
+	//
+	// SLACK DOES NOT GRANT NEW SCOPES TO EXISTING INSTALLS. Adding a line here is
+	// a user-visible migration, not a deploy: every workspace connected before it
+	// must re-run the install to gain the capability. Only the im:history case is
+	// surfaced today — models.SlackSettings.DMCaptureAvailable, the reinstall
+	// prompt in the integration UI, and the solidping_support_dm_unavailable
+	// gauge all look at that one scope.
 	slackBotScopes = []string{
 		scopeChatWrite,
 		"chat:write.public",
 		"channels:read",
+		// channels:history / groups:history are what make Slack deliver
+		// message.channels / message.groups, which is how a human reply in the
+		// thread under an incident alert becomes an incident comment
+		// (handleMessage, events.go). Without them the reply never arrives.
+		"channels:history",
 		"groups:read",
+		"groups:history",
+		// im:write opens the DM used for onboarding, setup prompts and support
+		// replies. im:history is what makes Slack deliver the user's side of that
+		// conversation (`message.im`): without it a DM is not ignored, it never
+		// arrives (spec 2026-08-22-02).
+		"im:write",
+		models.SlackScopeIMHistory,
 		"users:read",
 		"users:read.email",
 		"commands",
 		"app_mentions:read",
 		"reactions:write",
+		// links:read delivers link_shared for solidping.io URLs; links:write is
+		// what chat.unfurl needs in order to answer it with a live status preview.
 		"links:read",
-		// im:history is what makes Slack deliver `message.im` — a DM to the
-		// bot. Without it a DM is not ignored, it never arrives (spec
-		// 2026-08-22-02).
-		//
-		// SLACK DOES NOT GRANT NEW SCOPES TO EXISTING INSTALLS. Every workspace
-		// connected before this line existed must re-run the install before its
-		// DMs reach the support inbox. That is a user-visible migration, not a
-		// deploy: models.SlackSettings.DMCaptureAvailable reports the state, the
-		// integration UI shows a reinstall prompt, and
-		// solidping_support_dm_unavailable counts the workspaces still owing one.
-		models.SlackScopeIMHistory,
+		"links:write",
 	}
 	slackUserScopes = []string{
 		"openid",
