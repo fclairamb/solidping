@@ -212,7 +212,8 @@ func TestGotifySender_DefaultPriority(t *testing.T) {
 
 // TestGotifySender_ExtrasClickURL asserts the incident URL is carried in the
 // Gotify "client::notification" extras so the notification deep-links to the
-// incident, mirroring how the ntfy sender enriches its messages.
+// incident, using the same incidentDashURL helper as the rest of the
+// package.
 func TestGotifySender_ExtrasClickURL(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

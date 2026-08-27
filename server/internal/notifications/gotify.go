@@ -177,9 +177,9 @@ func (s *GotifySender) buildMessage(settings *gotifySettings, payload *Payload) 
 }
 
 // buildExtras returns the Gotify "client::notification" extra that deep-links
-// the notification to the incident, mirroring how the ntfy sender enriches
-// its messages with the same incident URL. Nil (omitted) when there's no
-// incident URL to link to.
+// the notification to the incident, using incidentDashURL to build the URL.
+// Nil (omitted, not an empty extras object) when there's no incident URL to
+// link to.
 func (s *GotifySender) buildExtras(payload *Payload) map[string]any {
 	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	if incidentURL == "" {
