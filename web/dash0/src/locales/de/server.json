@@ -14,7 +14,8 @@
     "aggregation": "Aggregation",
     "slack": "Slack",
     "analytics": "Analyse",
-    "discord": "Discord"
+    "discord": "Discord",
+    "entitlements": "Kontingente"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -340,6 +341,91 @@
       "lastError": "Last error",
       "noError": "None",
       "never": "Never"
+    }
+  },
+  "entitlements": {
+    "title": "Kontingente der Organisationen",
+    "description": "Grenzwerte einer Organisation ändern, ohne auf ein Deployment der Abrechnung zu warten. Eine Admin-Übersteuerung gilt, bis sie ausdrücklich freigegeben wird.",
+    "search": "Organisationen suchen…",
+    "empty": "Keine Organisation passt zu dieser Suche.",
+    "loadError": "Organisationen konnten nicht geladen werden.",
+    "unlimited": "Unbegrenzt",
+    "notSet": "Nicht gesetzt",
+    "overLimitBadge": "Über dem Limit",
+    "overLimit": "{{demand}} geplant pro Minute bei einem Limit von {{limit}}",
+    "columns": {
+      "organization": "Organisation",
+      "plan": "Tarif",
+      "source": "Quelle",
+      "maxChecks": "Prüfungen",
+      "maxUsers": "Plätze",
+      "maxChecksPerMinute": "Prüfungen / Min.",
+      "override": "Übersteuerung seit"
+    },
+    "provenance": {
+      "default": "Standardwerte",
+      "billing": "Abrechnung: {{plan}}",
+      "billingPlain": "Abrechnung",
+      "admin": "Admin-Übersteuerung seit {{since}}",
+      "adminPlain": "Admin-Übersteuerung",
+      "other": "Quelle: {{source}}"
+    },
+    "limits": {
+      "maxChecks": "Prüfungen",
+      "maxChecksPerMinute": "Prüfungen pro Minute",
+      "maxUsers": "Plätze",
+      "maxDeportedAgents": "Private Agenten",
+      "maxCustomDomains": "Eigene Domains",
+      "maxSlos": "SLOs",
+      "maxSmsPerMonth": "SMS pro Monat",
+      "maxCallsPerMonth": "Anrufe pro Monat",
+      "maxWhatsappPerMonth": "WhatsApp pro Monat",
+      "whiteLabel": "White-Label"
+    },
+    "whiteLabel": {
+      "default": "Standard des Deployments",
+      "allowed": "Erlaubt",
+      "denied": "Nicht erlaubt"
+    },
+    "detail": {
+      "back": "Zurück zu den Organisationen",
+      "limitsTitle": "Grenzwerte",
+      "limitsDescription": "Ein unbegrenztes Limit ist null auf der Leitung — nutze den Schalter, statt das Feld zu leeren.",
+      "identityTitle": "Tarif-Identität",
+      "identityDescription": "Nur zur Anzeige. Erscheint auf der Nutzungsseite der Organisation.",
+      "displayName": "Anzeigename",
+      "displayEmoji": "Anzeige-Emoji",
+      "reason": "Grund",
+      "reasonPlaceholder": "Wird im Audit-Protokoll festgehalten",
+      "save": "Übersteuerung speichern",
+      "release": "An Abrechnung zurückgeben",
+      "auditTitle": "Audit-Protokoll",
+      "auditEmpty": "Noch keine Änderung an den Kontingenten aufgezeichnet.",
+      "invalid": "Gib eine ganze Zahl ein oder stelle das Limit auf unbegrenzt.",
+      "loadError": "Die Kontingente dieser Organisation konnten nicht geladen werden.",
+      "unlimitedToggle": "Unbegrenzt",
+      "defaultsNote": "Ohne gespeicherten Datensatz gelten für diese Organisation die Standardwerte des Deployments."
+    },
+    "confirmSave": {
+      "title": "Admin-Übersteuerung für {{org}} speichern?",
+      "body": "Damit wird ein Admin-Datensatz geschrieben. Abrechnungs-Pushes für {{org}} werden angenommen, aber ignoriert, solange die Übersteuerung besteht.",
+      "noChanges": "Keine Grenzwerte geändert — nur die Tarif-Identität würde geschrieben.",
+      "confirm": "Speichern"
+    },
+    "confirmRelease": {
+      "title": "{{org}} an die Abrechnung zurückgeben?",
+      "body": "Der gespeicherte Datensatz wird gelöscht. {{org}} fällt sofort auf die Standardwerte zurück, und die nächste Abrechnungs-Synchronisation schreibt ihre eigenen Grenzwerte.",
+      "confirm": "Zurückgeben"
+    },
+    "saved": "Kontingente für {{org}} gespeichert.",
+    "released": "{{org}} an die Abrechnung zurückgegeben.",
+    "notReleased": "{{org}} hatte keine Admin-Übersteuerung zum Freigeben.",
+    "saveError": "Kontingente konnten nicht gespeichert werden.",
+    "audit": {
+      "suppressed": "Abrechnungs-Push ignoriert",
+      "released": "An Abrechnung zurückgegeben",
+      "admin": "Admin-Übersteuerung",
+      "billing": "Abrechnungs-Sync"
     }
   }
 }

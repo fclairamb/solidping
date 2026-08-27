@@ -26,6 +26,7 @@ function ServerLayout() {
     { label: t("tabs.aggregation"), path: "/orgs/$org/server/aggregation" },
     { label: t("tabs.activation", "Activation"), path: "/orgs/$org/server/activation" },
     { label: t("tabs.analytics"), path: "/orgs/$org/server/analytics" },
+    { label: t("tabs.entitlements"), path: "/orgs/$org/server/entitlements" },
   ];
 
   if (isLoading) {

@@ -14,7 +14,8 @@
     "aggregation": "Agregación",
     "slack": "Slack",
     "analytics": "Analítica",
-    "discord": "Discord"
+    "discord": "Discord",
+    "entitlements": "Límites"
   },
   "aggregation": {
     "title": "Agregación",
@@ -340,6 +341,91 @@
       "lastError": "Last error",
       "noError": "None",
       "never": "Never"
+    }
+  },
+  "entitlements": {
+    "title": "Límites de las organizaciones",
+    "description": "Ajusta los límites de una organización sin esperar a un despliegue de facturación. Una anulación de administrador prevalece hasta que se libera de forma explícita.",
+    "search": "Buscar organizaciones…",
+    "empty": "Ninguna organización coincide con esta búsqueda.",
+    "loadError": "No se han podido cargar las organizaciones.",
+    "unlimited": "Ilimitado",
+    "notSet": "Sin definir",
+    "overLimitBadge": "Por encima del tope",
+    "overLimit": "{{demand}} programados por minuto frente a un tope de {{limit}}",
+    "columns": {
+      "organization": "Organización",
+      "plan": "Plan",
+      "source": "Origen",
+      "maxChecks": "Comprobaciones",
+      "maxUsers": "Plazas",
+      "maxChecksPerMinute": "Compr. / min",
+      "override": "Anulación desde"
+    },
+    "provenance": {
+      "default": "Valores por defecto",
+      "billing": "Facturación: {{plan}}",
+      "billingPlain": "Facturación",
+      "admin": "Anulación de administrador desde {{since}}",
+      "adminPlain": "Anulación de administrador",
+      "other": "Origen: {{source}}"
+    },
+    "limits": {
+      "maxChecks": "Comprobaciones",
+      "maxChecksPerMinute": "Comprobaciones por minuto",
+      "maxUsers": "Plazas",
+      "maxDeportedAgents": "Agentes privados",
+      "maxCustomDomains": "Dominios propios",
+      "maxSlos": "SLO",
+      "maxSmsPerMonth": "SMS al mes",
+      "maxCallsPerMonth": "Llamadas al mes",
+      "maxWhatsappPerMonth": "WhatsApp al mes",
+      "whiteLabel": "Marca blanca"
+    },
+    "whiteLabel": {
+      "default": "Valor por defecto del despliegue",
+      "allowed": "Permitida",
+      "denied": "No permitida"
+    },
+    "detail": {
+      "back": "Volver a las organizaciones",
+      "limitsTitle": "Límites",
+      "limitsDescription": "Un tope ilimitado viaja como null — usa el interruptor en lugar de vaciar el campo.",
+      "identityTitle": "Identidad del plan",
+      "identityDescription": "Solo visual. Aparece en la página de uso de la organización.",
+      "displayName": "Nombre mostrado",
+      "displayEmoji": "Emoji mostrado",
+      "reason": "Motivo",
+      "reasonPlaceholder": "Se registra en el historial de auditoría",
+      "save": "Guardar anulación",
+      "release": "Devolver a facturación",
+      "auditTitle": "Historial de auditoría",
+      "auditEmpty": "Todavía no hay cambios de límites registrados.",
+      "invalid": "Introduce un número entero o cambia el tope a ilimitado.",
+      "loadError": "No se han podido cargar los límites de esta organización.",
+      "unlimitedToggle": "Ilimitado",
+      "defaultsNote": "Sin registro almacenado, esta organización usa los valores por defecto del despliegue."
+    },
+    "confirmSave": {
+      "title": "¿Guardar una anulación de administrador para {{org}}?",
+      "body": "Se escribirá un registro de tipo administrador. Los envíos de facturación de {{org}} se aceptarán pero se ignorarán mientras la anulación siga vigente.",
+      "noChanges": "Ningún límite ha cambiado: solo se escribiría la identidad del plan.",
+      "confirm": "Guardar"
+    },
+    "confirmRelease": {
+      "title": "¿Devolver {{org}} a facturación?",
+      "body": "El registro almacenado se elimina. {{org}} vuelve de inmediato a los valores por defecto y la próxima sincronización de facturación escribirá sus propios límites.",
+      "confirm": "Devolver"
+    },
+    "saved": "Límites guardados para {{org}}.",
+    "released": "{{org}} devuelta a facturación.",
+    "notReleased": "{{org}} no tenía ninguna anulación de administrador que liberar.",
+    "saveError": "No se han podido guardar los límites.",
+    "audit": {
+      "suppressed": "Envío de facturación ignorado",
+      "released": "Devuelta a facturación",
+      "admin": "Anulación de administrador",
+      "billing": "Sincronización de facturación"
     }
   }
 }

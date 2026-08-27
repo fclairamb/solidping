@@ -5926,6 +5926,10 @@ export interface EntitlementsLimits {
   maxDeportedAgents?: number | null;
   /** Cap on status pages served on a customer-owned domain. null = unlimited. */
   maxCustomDomains?: number | null;
+  /** Cap on outbound SMS per UTC month. null = unlimited. */
+  maxSmsPerMonth?: number | null;
+  /** Cap on outbound voice calls per UTC month. null = unlimited. */
+  maxCallsPerMonth?: number | null;
   /** Cap on outbound WhatsApp template messages per UTC month. null = unlimited. */
   maxWhatsappPerMonth?: number | null;
   /** Cap on service-level objectives. null = unlimited. */
@@ -6031,6 +6035,162 @@ export function useEntitlements(org: string, opts?: { withUsage?: boolean }) {
       ),
     enabled: !!org,
     staleTime: 60 * 1000,
+  });
+}
+
+// ----- Superadmin entitlements editor (spec 2026-08-26-06) -----
+
+/** One entitlement change, as the audit log records it. */
+export interface EntitlementAudit {
+  uid: string;
+  organizationUid: string;
+  /**
+   * `admin`, `billing-service`, `default` … plus two markers the editor cares
+   * about: `billing-service:suppressed` (a billing push that an admin override
+   * discarded) and `admin:released` (the override was handed back to billing).
+   */
+  source: string;
+  actor: string;
+  beforeSnapshot?: Record<string, unknown> | null;
+  afterSnapshot?: Record<string, unknown>;
+  reason?: string | null;
+  createdAt: string;
+}
+
+/** The stored org_entitlements row; absent when the org has never had one. */
+export interface AdminEntitlementsStored {
+  source: string;
+  limits: EntitlementsLimits;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  externalRef?: string | null;
+  expiresAt?: string | null;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminEntitlementsRow {
+  organizationUid: string;
+  slug: string;
+  name: string;
+  limits: EntitlementsLimits;
+  source: string;
+  stale: boolean;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  lastSyncedAt?: string | null;
+  checksPerMinute?: EntitlementsChecksPerMinute;
+  /** Scheduled demand exceeds the resolved cap. Unlimited is never over. */
+  overCheckRate: boolean;
+  /** When the current admin override was written; absent unless one holds. */
+  adminOverrideSince?: string | null;
+}
+
+export interface AdminEntitlementsListResponse {
+  data: AdminEntitlementsRow[];
+  total: number;
+}
+
+export interface AdminEntitlementsDetail extends AdminEntitlementsRow {
+  stored?: AdminEntitlementsStored | null;
+  /** What this deployment resolves to with no row — where a release lands. */
+  defaults: EntitlementsLimits;
+  audits: EntitlementAudit[];
+}
+
+export function useAdminEntitlementsList(params: {
+  q?: string;
+  limit?: number;
+  enabled?: boolean;
+}) {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.limit) search.set("limit", String(params.limit));
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+
+  return useQuery({
+    queryKey: ["adminEntitlements", params.q ?? "", params.limit ?? 0],
+    queryFn: () =>
+      apiFetch<AdminEntitlementsListResponse>(
+        `/api/v1/system/entitlements${suffix}`,
+      ),
+    enabled: params.enabled !== false,
+  });
+}
+
+export function useAdminEntitlementsDetail(orgSlug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["adminEntitlements", "detail", orgSlug],
+    queryFn: () =>
+      apiFetch<AdminEntitlementsDetail>(
+        `/api/v1/system/entitlements/${orgSlug}`,
+      ),
+    enabled: enabled && !!orgSlug,
+  });
+}
+
+/** What the superadmin PUT / DELETE answer with. */
+export interface AdminEntitlementsWriteResponse {
+  limits: EntitlementsLimits;
+  source: string;
+  stale: boolean;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  /** False only if the precedence rule discarded the write. */
+  applied: boolean;
+  /**
+   * A stored row was actually removed. False when releasing an organization
+   * that had no override — a no-op, not an error.
+   */
+  released?: boolean;
+}
+
+export interface SetAdminEntitlementsRequest {
+  limits: EntitlementsLimits;
+  displayName?: string | null;
+  displayEmoji?: string | null;
+  /** Stored on the audit row; sent as a header, not a body field. */
+  reason?: string;
+}
+
+export function useSetAdminEntitlements(orgSlug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ reason, ...body }: SetAdminEntitlementsRequest) =>
+      apiFetch<AdminEntitlementsWriteResponse>(
+        `/api/v1/system/entitlements/${orgSlug}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(body),
+          headers: reason ? { "X-Entitlements-Reason": reason } : undefined,
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminEntitlements"] });
+      queryClient.invalidateQueries({ queryKey: ["entitlements", orgSlug] });
+    },
+  });
+}
+
+export function useReleaseAdminEntitlements(orgSlug: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (reason?: string) =>
+      apiFetch<AdminEntitlementsWriteResponse>(
+        `/api/v1/system/entitlements/${orgSlug}`,
+        {
+          method: "DELETE",
+          headers: reason ? { "X-Entitlements-Reason": reason } : undefined,
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminEntitlements"] });
+      queryClient.invalidateQueries({ queryKey: ["entitlements", orgSlug] });
+    },
   });
 }
 

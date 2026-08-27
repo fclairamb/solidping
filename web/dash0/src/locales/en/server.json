@@ -14,7 +14,8 @@
     "aggregation": "Aggregation",
     "slack": "Slack",
     "analytics": "Analytics",
-    "discord": "Discord"
+    "discord": "Discord",
+    "entitlements": "Entitlements"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -340,6 +341,91 @@
       "lastError": "Last error",
       "noError": "None",
       "never": "Never"
+    }
+  },
+  "entitlements": {
+    "title": "Organization entitlements",
+    "description": "Raise or lower an organization's limits without waiting for a billing deploy. An admin override wins until it is explicitly released.",
+    "search": "Search organizations…",
+    "empty": "No organization matches this search.",
+    "loadError": "Failed to load organizations.",
+    "unlimited": "Unlimited",
+    "notSet": "Not set",
+    "overLimitBadge": "Over cap",
+    "overLimit": "{{demand}} scheduled per minute against a cap of {{limit}}",
+    "columns": {
+      "organization": "Organization",
+      "plan": "Plan",
+      "source": "Source",
+      "maxChecks": "Checks",
+      "maxUsers": "Seats",
+      "maxChecksPerMinute": "Checks / min",
+      "override": "Override since"
+    },
+    "provenance": {
+      "default": "Free defaults",
+      "billing": "Billing: {{plan}}",
+      "billingPlain": "Billing",
+      "admin": "Admin override since {{since}}",
+      "adminPlain": "Admin override",
+      "other": "Source: {{source}}"
+    },
+    "limits": {
+      "maxChecks": "Checks",
+      "maxChecksPerMinute": "Checks per minute",
+      "maxUsers": "Seats",
+      "maxDeportedAgents": "Private agents",
+      "maxCustomDomains": "Custom domains",
+      "maxSlos": "SLOs",
+      "maxSmsPerMonth": "SMS per month",
+      "maxCallsPerMonth": "Calls per month",
+      "maxWhatsappPerMonth": "WhatsApp per month",
+      "whiteLabel": "White label"
+    },
+    "whiteLabel": {
+      "default": "Deployment default",
+      "allowed": "Allowed",
+      "denied": "Not allowed"
+    },
+    "detail": {
+      "back": "Back to organizations",
+      "limitsTitle": "Limits",
+      "limitsDescription": "An unlimited cap is null on the wire — switch the toggle rather than clearing the box.",
+      "identityTitle": "Plan identity",
+      "identityDescription": "Display-only. Shown on the organization's Usage page.",
+      "displayName": "Display name",
+      "displayEmoji": "Display emoji",
+      "reason": "Reason",
+      "reasonPlaceholder": "Recorded in the audit trail",
+      "save": "Save override",
+      "release": "Release to billing",
+      "auditTitle": "Audit trail",
+      "auditEmpty": "No entitlement change recorded yet.",
+      "invalid": "Enter a whole number, or switch the cap to unlimited.",
+      "loadError": "Failed to load this organization's entitlements.",
+      "unlimitedToggle": "Unlimited",
+      "defaultsNote": "With no stored row this organization resolves to the deployment defaults."
+    },
+    "confirmSave": {
+      "title": "Save an admin override for {{org}}?",
+      "body": "This writes an admin-sourced row. Billing pushes for {{org}} will be accepted but ignored until the override is released.",
+      "noChanges": "No limit changes — only the plan identity would be written.",
+      "confirm": "Save override"
+    },
+    "confirmRelease": {
+      "title": "Release {{org}} to billing?",
+      "body": "The stored row is deleted. {{org}} falls back to the deployment defaults immediately, and the next billing sync writes its own limits.",
+      "confirm": "Release"
+    },
+    "saved": "Entitlements saved for {{org}}.",
+    "released": "{{org}} released to billing.",
+    "notReleased": "{{org}} had no admin override to release.",
+    "saveError": "Failed to save entitlements.",
+    "audit": {
+      "suppressed": "Billing push suppressed",
+      "released": "Released to billing",
+      "admin": "Admin override",
+      "billing": "Billing sync"
     }
   }
 }
