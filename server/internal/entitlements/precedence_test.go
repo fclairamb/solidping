@@ -395,3 +395,90 @@ func TestOrgAdminRowStillCountsAsPaid(t *testing.T) {
 	r.Equal(entitlements.PlanWeightPaid, svc.PlanWeight(ctx, org.UID),
 		"an org-admin row is still a provisioned org")
 }
+
+// TestLegacyPartialRowResolvesToDefaultsAfterRelabel is the pair the migration
+// exists for, asserted at the level an operator actually feels it.
+//
+// The shape is the real one: three caps stated and the rest absent, which is
+// what every pre-spec write produced (the CLI coverage test writes exactly
+// this). Post-migration that row is `org-admin`, so its unset caps still fall
+// back to the deployment defaults.
+//
+// The positive control is the whole point: the SAME partial payload, written
+// through the new superadmin editor as `admin`, resolves whole-row — unlimited.
+// Without it, a migration that relabelled every row on the instance (or a
+// resolver that had quietly lost whole-row mode) would sail through.
+func TestLegacyPartialRowResolvesToDefaultsAfterRelabel(t *testing.T) {
+	t.Parallel()
+
+	// The partial payload both halves share.
+	partial := func() entitlements.Limits {
+		return entitlements.Limits{
+			MaxChecks:          entitlements.Int(100),
+			MaxUsers:           entitlements.Int(50),
+			MaxChecksPerMinute: entitlements.Int(12),
+		}
+	}
+
+	t.Run("a relabelled legacy row keeps the deployment defaults", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, org, _ := saasSetup(t)
+		ctx := t.Context()
+
+		_, err := svc.Apply(ctx, org.UID, entitlements.Entitlements{
+			Source: models.EntitlementSourceOrgAdmin,
+			Limits: partial(),
+		}, "user:bob", "")
+		r.NoError(err)
+
+		resolved, err := svc.Resolve(ctx, org.UID)
+		r.NoError(err)
+
+		// The caps the row never mentioned. Before the migration these would
+		// have read as unlimited — unbounded messaging spend on the instance's
+		// own credentials, and no SLO or agent ceiling at all.
+		r.NotNil(resolved.Limits.MaxSlos)
+		r.Equal(2, *resolved.Limits.MaxSlos)
+		r.NotNil(resolved.Limits.MaxSmsPerMonth)
+		r.Equal(0, *resolved.Limits.MaxSmsPerMonth)
+		r.NotNil(resolved.Limits.MaxCallsPerMonth)
+		r.Equal(0, *resolved.Limits.MaxCallsPerMonth)
+		r.NotNil(resolved.Limits.MaxWhatsappPerMonth)
+		r.Equal(0, *resolved.Limits.MaxWhatsappPerMonth)
+
+		// And the caps it did state are honored, so the row is still doing its job.
+		r.NotNil(resolved.Limits.MaxChecks)
+		r.Equal(100, *resolved.Limits.MaxChecks)
+		r.NotNil(resolved.Limits.MaxChecksPerMinute)
+		r.Equal(12, *resolved.Limits.MaxChecksPerMinute)
+	})
+
+	t.Run("a superadmin override still resolves whole-row", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, org, _ := saasSetup(t)
+		ctx := t.Context()
+
+		_, err := svc.Apply(ctx, org.UID, entitlements.Entitlements{
+			Source: models.EntitlementSourceAdmin,
+			Limits: partial(),
+		}, "superadmin:alice", "")
+		r.NoError(err)
+
+		resolved, err := svc.Resolve(ctx, org.UID)
+		r.NoError(err)
+
+		// Same omissions, opposite reading — because the editor saves a
+		// COMPLETE row, so an absent cap there is a deliberate "unlimited".
+		r.Nil(resolved.Limits.MaxSlos)
+		r.Nil(resolved.Limits.MaxSmsPerMonth)
+		r.Nil(resolved.Limits.MaxCallsPerMonth)
+		r.Nil(resolved.Limits.MaxWhatsappPerMonth)
+
+		r.NotNil(resolved.Limits.MaxChecks)
+		r.Equal(100, *resolved.Limits.MaxChecks)
+	})
+}

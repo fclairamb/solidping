@@ -229,11 +229,8 @@ never by the request body: it is an authorization outcome, so a body asking to
 be recorded as `admin` (or as the billing service) is ignored. A superadmin
 calling the org-scoped route still mints `admin`.
 
-**Migration:** rows already stored as `admin` were written through the
-org-scoped door and will now read as superadmin overrides, i.e. they suppress
-billing. They are listed in the superadmin editor and releasing one is a single
-click, so they are left alone rather than rewritten blind. Recorded in
-`wiki/features/entitlements.md`.
+**Migration:** see decision 4 — leaving those rows alone turned out to be
+unsafe, and they are relabelled instead.
 
 ### 3. Not changed: the `server.tsx` layout gate still redirects
 
@@ -244,3 +241,53 @@ own clause says to follow the existing `server.tsx` gating, and changing the
 shared layout would silently alter all fourteen `/server` tabs. Both new pages
 do render `PermissionDenied` in place on an API 403, with a comment recording
 the split.
+
+### 4. Legacy `admin` rows are relabelled by a migration, not left alone
+
+Caught by the second audit round: my own fix for decision 1 created a
+regression on existing databases.
+
+Decision 2 noted that pre-existing `admin` rows would start suppressing billing
+and judged that acceptable. That judgement was made against an incomplete
+description of the cost, because decision 1 gave `admin` a *second* new power:
+whole-row resolution. Those rows are routinely **partial** — the API has never
+required a complete payload on `PUT`, `mergePartial` only runs on `PATCH`, and
+`toModel` copies `input.Limits` verbatim, nils included. `TestCLICoverage_Entitlements`
+is itself an instance of the shape, writing three caps and leaving six nil.
+
+So on the first resolve after deploy — long before anyone opens the editor —
+every omitted cap on every legacy row would flip from the deployment default to
+**unlimited**: on SaaS `maxChecksPerMinute` 10 → ∞, `maxUsers` 5 → ∞,
+`maxSlos` 2 → ∞, and the three messaging caps 0 → ∞ (unbounded spend on the
+instance's own Twilio/Meta credentials); on self-hosted, where that door is the
+normal one, the 30-seat guard disappears. A release note is not a control for
+something that lands automatically at startup.
+
+Migration `016_v0_19_0` (both dialects; v0.18.3 is released so this cycle opens
+a new consolidated file) relabels `payload.source` from `admin` to `org-admin`.
+Lossless by construction — those rows *were* org-scoped writes — and it
+restores both the old null-fill resolution and the old non-suppressing
+precedence in one statement. Each relabelled org gets one audit row explaining
+it; a superadmin who wants a genuine override re-saves it in the editor.
+
+Two details worth recording:
+
+- **The live source lives in exactly one place**, `org_entitlements.payload`'s
+  `source` key. (`org_entitlement_audits.source` is a different thing: the
+  historical log of what each past write claimed. Nothing reads it for
+  behaviour — it renders as a badge — and it is deliberately *not* rewritten,
+  because falsifying an audit trail to match today's vocabulary is worse than
+  the vocabulary drifting. The audit row the migration inserts bridges the two.)
+- **The `down` maps `org-admin` back to `admin`**, which is the correct inverse
+  rather than a lossy approximation: a downgraded binary has never heard of
+  `org-admin` and would resolve such a row through the default branch, demoting
+  the org to the free tier.
+
+### 5. Not changed: a trusted service may still name its own source
+
+`sourceFor` lets a service principal write `source: "admin"`, so the billing
+service — or anything holding the legacy static bearer — can suppress its own
+future pushes. Pre-existing, matches this spec's "a trusted service keeps the
+old behavior", and no caller does it. Left alone, with a marker comment on
+`sourceFor` and a note in `wiki/features/entitlements.md` naming the one-line
+fix if it ever needs closing.

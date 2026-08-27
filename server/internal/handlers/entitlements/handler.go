@@ -303,8 +303,18 @@ func (h *Handler) write(writer http.ResponseWriter, req *http.Request, partial b
 //   - A trusted service keeps the old behavior (it may name a source; absent,
 //     it is the billing service). Nothing else can reach that branch: the
 //     signature/bypass middleware is what sets it.
+//
+//     FOOTGUN, deliberately left alone: because a service may name its own
+//     source, the billing service — or anything holding the legacy static
+//     bearer — can write `source: "admin"` and thereby suppress its OWN future
+//     pushes until a superadmin releases the org. That is pre-existing
+//     behavior which spec 2026-08-26-06 chose to preserve, and no caller does
+//     it today. If it ever needs closing, the fix is to pin service writes to
+//     billing-service here; it is one line, and this comment is the marker.
+//
 //   - A superadmin on this org-scoped route mints `admin` — same authority as
 //     the dedicated superadmin editor, reached through a different URL.
+//
 //   - Everyone else — including an org OWNER — mints `org-admin`: a real,
 //     paid-tier provisioning row that billing's next reconcile still corrects.
 //     That is exactly what this door did before the precedence rule existed.

@@ -284,11 +284,53 @@ limits *and* stop billing from ever correcting them. Hence the split. Both
 sources carry the same paid plan weight, so self-hosted scheduling behaviour is
 unchanged.
 
-**Migration note.** Rows already stored as `admin` were written through the
-org-scoped door and now read as superadmin overrides — meaning they will
-suppress billing pushes. They are visible in the superadmin editor
-(`/dash0/orgs/<org>/server/entitlements`) and releasing one is a single click,
-so they are left alone rather than rewritten blind.
+**Migration (v0.19.0): legacy `admin` rows are relabelled to `org-admin`.**
+
+Every row that could hold `source = 'admin'` predates the superadmin editor —
+until spec 2026-08-26-06 landed, *every* non-service write got `admin`: org
+admins, self-hosted operators and the CLI alike. Such rows are routinely
+**partial**, because the API has never required a complete payload on `PUT`.
+
+Leaving them would have handed them **both** new powers of `admin`, and the
+second one is the dangerous half:
+
+- they would start suppressing billing pushes, and
+- they would start resolving **whole-row**, so every cap they never mentioned
+  would flip from the deployment default to **unlimited** — on SaaS
+  `maxChecksPerMinute` 10 → ∞ (the very cap this feature exists to manage),
+  `maxUsers` 5 → ∞, `maxSlos` 2 → ∞, and
+  `maxSmsPerMonth`/`maxCallsPerMonth`/`maxWhatsappPerMonth` 0 → ∞, i.e.
+  unbounded spend on the instance's own Twilio/Meta credentials. On
+  self-hosted, where that door is the *normal* one because
+  `entitlements.admin_writes_enabled` defaults to true, `maxUsers` 30 → ∞
+  lifts the seat guard.
+
+That escalation lands on the **first resolve after deploy**, long before any
+operator opens the editor, so a release note would not have been a control.
+Migration `016_v0_19_0` therefore relabels `payload.source` from `admin` to
+`org-admin` in both dialects. It is semantically lossless: by construction
+those rows *were* org-scoped writes, and `org-admin` is the old behaviour under
+a new name.
+
+**What an operator sees.** Nothing changes for a legacy row: same limits, same
+paid plan weight, same null-fill resolution, still overwritten by billing's
+next reconcile. Each relabelled org gains one audit entry (source
+`migration:org-admin-relabel`) explaining the change, visible in the superadmin
+editor. If a row was *meant* to be a genuine override, re-save it from
+**Server → Entitlements** — one click — and it becomes `admin` again, this time
+with the complete payload the whole-row reading assumes.
+
+`org_entitlement_audits.source` is **not** rewritten by the migration. It is
+the historical log of what each past write claimed, is read for display only,
+and falsifying it to match today's vocabulary would be worse than the
+vocabulary drifting. The audit row the migration inserts is what bridges the
+two.
+
+**Known footgun (pre-existing, deliberately unchanged).** A *trusted service*
+may still name its own source, so the billing service — or anything holding the
+legacy static bearer — can write `source: "admin"` and thereby suppress its own
+future pushes until a superadmin releases the org. No caller does this today;
+the marker comment sits on `Handler.sourceFor` if it ever needs closing.
 
 ### Superadmin override lifecycle
 
