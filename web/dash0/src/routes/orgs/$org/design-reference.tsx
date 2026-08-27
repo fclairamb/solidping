@@ -505,10 +505,16 @@ function ExampleRow({
   preview: React.ReactNode;
   importLine: string;
 }) {
+  // Both tracks are minmax(0,…) and both children carry min-w-0: a grid item
+  // defaults to min-width:auto, so without this a preview whose intrinsic
+  // min-content is wider than the column (e.g. a max-w-md card at 375px)
+  // widens the track and overflows the page instead of wrapping.
   return (
-    <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[1fr_minmax(0,1fr)] md:items-start">
-      <div className="flex flex-wrap items-center gap-2">{preview}</div>
-      <CodeSnippet code={importLine} />
+    <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">{preview}</div>
+      <div className="min-w-0">
+        <CodeSnippet code={importLine} />
+      </div>
     </div>
   );
 }
