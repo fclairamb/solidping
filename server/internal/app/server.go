@@ -1518,6 +1518,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEntitlements.PATCH("", entitlementsHandler.Patch)
 	orgEntitlements.GET("/audits", entitlementsHandler.ListAudits)
 
+	// Superadmin entitlements editor (spec 2026-08-26-06). Deliberately NOT
+	// under /orgs/:org: that chain runs RequireOrgAccess, which would pin a
+	// superadmin to the org they happen to be signed into, and the entire
+	// point of this surface is raising SOMEBODY ELSE's limits without a
+	// billing deploy. The gate lives in the handler package next to the
+	// handlers it protects.
+	entitlements.RegisterAdminRoutes(api, authMiddleware, entitlementsHandler)
+
 	// Web Push routes (authentication required).
 	webpushHandler := webpushhandler.NewHandler(s.config)
 	orgWebPush := orgGroup("/orgs/:org/webpush")
