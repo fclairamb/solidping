@@ -150,6 +150,40 @@ Get one result of a check by uid, with the full payload
 ### GET /api/v1/orgs/:org/checks/:check/availability
 Availability (uptime ratio) for a check over a window. Auth: required
 
+### GET /api/v1/orgs/:org/checks/:check/availability/buckets
+Bucketed availability over an **arbitrary** window — the data behind the check
+detail chart's availability strip. Auth: required
+
+| Query | Required | Meaning |
+|---|---|---|
+| `from` / `to` | yes | RFC3339 window bounds, `to > from` |
+| `bucket` | no | Cell width, a Go duration that must be a whole positive multiple of **1h** (max 200 cells). Omitted → the smallest hour-multiple keeping the count ≤ 60 |
+| `region` | no | Scope to one probe region; omitted sums up/total across regions (never averages their percentages) |
+
+Deliberately a separate route from `/availability`: that one speaks trailing
+calendar tokens plus a `tz`, has no `from`/`to`, and caps at 12 periods.
+
+Response: `{ data: [cell…], window, bucketSeconds, windowStart, windowEnd,
+region? }`. Each cell is
+`{ periodStart, periodEnd, hasData, availabilityPct|null, totalChecks,
+successfulChecks, status }` with `status` in `up|degraded|down|noData` — the
+same classifier (and small-bucket guard) the public status page and the badge
+uptime bar use.
+
+Two rules worth knowing before consuming it:
+
+- **Cells are aligned outward** to bucket boundaries, so the series can start
+  before `from` and end after `to` (the engine keys every row on
+  `periodStart.Truncate(bucket)`). `window` is the **exact** `[from, to)` fold —
+  use it, not the sum of the cells, for a single headline figure.
+- **`hasData: false` is a third state**, not zero and not 100. It is what a
+  window reaching past day-tier retention returns, because a month rollup spans
+  many cells and is never attributed to one.
+
+Maintenance probes count exactly like any other probe here, matching the
+availability table, status pages and badges — maintenance exclusion is
+SLO-only.
+
 ## Validation
 
 ### POST /api/v1/orgs/:org/checks/validate

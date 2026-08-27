@@ -2404,6 +2404,95 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/{check}/availability/buckets:
+    get:
+      tags: [Results]
+      summary: Bucketed availability over an arbitrary window for a single check
+      description: >
+        Cuts [from, to) into uniform, hour-aligned availability cells — the data
+        behind the check-detail chart's availability strip. Deliberately a
+        separate route from
+        /api/v1/orgs/{org}/checks/{check}/availability, which speaks trailing
+        calendar tokens with a tz, has no from/to at all and is capped at 12
+        periods.
+
+
+        Counting is the shared engine's: lifecycle markers and abandoned
+        attempts are excluded from BOTH numerator and denominator, warning
+        counts as up, and maintenance probes count exactly like any other
+        (maintenance exclusion is SLO-only). A cell with no countable probes has
+        hasData=false, availabilityPct=null and status="noData" — no data is not
+        100%.
+
+
+        Cells are aligned OUTWARD to bucket boundaries, so the series may start
+        before `from` and end after `to`. The `window` object is the exact
+        [from, to) fold (it also includes the month tier, which is deliberately
+        never attributed to a single cell) and is what a client renders when the
+        window is too short for a legible strip.
+      operationId: getCheckAvailabilityBuckets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check UID (UUID) or slug
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          description: Window start (inclusive), RFC3339.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: Window end (exclusive), RFC3339. Must be after `from`.
+          schema:
+            type: string
+            format: date-time
+        - name: bucket
+          in: query
+          required: false
+          description: >
+            Cell width as a Go duration. Must be a whole positive multiple of
+            one hour — below an hour a percentage is noise (a 5-minute slice of
+            a 1-minute check quantizes to 0/20/40/…%). At most 200 cells per
+            request. When omitted the server picks the smallest hour-multiple
+            keeping the cell count at or below 60.
+          schema:
+            type: string
+          example: "6h"
+        - name: region
+          in: query
+          required: false
+          description: >
+            Scope the read to one probe region. Omitted sums up/total across
+            every region rather than averaging their percentages.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bucketed availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckAvailabilityBucketsResponse"
+        "400":
+          description: Invalid window or bucket parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{check}/results/{uid}:
     get:
       tags: [Results]
@@ -10011,6 +10100,74 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AvailabilityPeriod"
+
+    CheckAvailabilityBucketsResponse:
+      type: object
+      required: [data, window, bucketSeconds, windowStart, windowEnd]
+      properties:
+        data:
+          type: array
+          description: The cell series, oldest first, aligned to bucketSeconds boundaries.
+          items:
+            $ref: "#/components/schemas/AvailabilityBucket"
+        window:
+          allOf:
+            - $ref: "#/components/schemas/AvailabilityBucket"
+          description: >
+            The whole-window fold over exactly [from, to) — NOT the sum of the
+            cells, which are aligned outward and can span more time than was
+            requested.
+        bucketSeconds:
+          type: integer
+          description: The resolved cell width in seconds (always a multiple of 3600).
+          example: 21600
+        windowStart:
+          type: string
+          format: date-time
+          description: The requested window start, echoed back.
+        windowEnd:
+          type: string
+          format: date-time
+          description: The requested window end, echoed back.
+        region:
+          type: string
+          description: The region filter, omitted when the read summed every region.
+
+    AvailabilityBucket:
+      type: object
+      required: [periodStart, periodEnd, hasData, availabilityPct, totalChecks, successfulChecks, status]
+      properties:
+        periodStart:
+          type: string
+          format: date-time
+          description: Start of the cell (inclusive).
+        periodEnd:
+          type: string
+          format: date-time
+          description: End of the cell (exclusive).
+        hasData:
+          type: boolean
+          description: False when the cell has no countable probes (then availabilityPct is null).
+        availabilityPct:
+          type: number
+          nullable: true
+          description: >
+            successfulChecks / totalChecks × 100. Null when totalChecks == 0 —
+            no data is not 100%.
+        totalChecks:
+          type: integer
+          description: Countable probes in the cell.
+        successfulChecks:
+          type: integer
+          description: Probes counted as up (up + warning).
+        status:
+          type: string
+          enum: [up, degraded, down, noData]
+          description: >
+            The shared availability colour vocabulary — the same classifier the
+            public status page and the badge uptime bar use, including the
+            small-bucket guard (a cell with exactly one failed sample is never
+            "down").
 
     AvailabilityPeriod:
       type: object
