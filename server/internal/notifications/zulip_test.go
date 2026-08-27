@@ -223,7 +223,7 @@ func TestZulipSender_SameIncidentProducesIdenticalTopicAcrossEvents(t *testing.T
 		eventTypeIncidentResolved,
 	}
 
-	var topics []string
+	topics := make([]string, 0, len(events))
 
 	for _, eventType := range events {
 		payload := zulipPayload(eventType, 42, settings)

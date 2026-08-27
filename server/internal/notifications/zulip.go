@@ -192,13 +192,13 @@ func (s *ZulipSender) buildContent(payload *Payload) string {
 	_, title := mm.eventColorAndTitle(payload, checkName)
 	fields := mm.buildFields(payload, checkName)
 
-	var b strings.Builder
+	var builder strings.Builder
 
-	fmt.Fprintf(&b, "**%s**\n", title)
+	fmt.Fprintf(&builder, "**%s**\n", title)
 
-	for _, field := range fields {
-		fmt.Fprintf(&b, "* **%s:** %s\n", field.Title, field.Value)
+	for i := range fields {
+		fmt.Fprintf(&builder, "* **%s:** %s\n", fields[i].Title, fields[i].Value)
 	}
 
-	return b.String()
+	return builder.String()
 }
