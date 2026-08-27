@@ -23,11 +23,19 @@ globalThis.ResizeObserver ??= class {
 const mocks = vi.hoisted(() => ({
   useChartWindowResults: vi.fn(),
   useRegions: vi.fn(() => ({ data: { regions: [] } })),
+  // The availability strip's own fetch. This file is about the RESULTS passes,
+  // so it is parked in a settled-empty state: the strip then renders nothing and
+  // cannot change which branch the assertions below are reading.
+  useCheckAvailabilityBuckets: vi.fn(() => ({
+    data: undefined,
+    isLoading: false,
+  })),
 }));
 
 vi.mock("@/api/hooks", () => ({
   useChartWindowResults: mocks.useChartWindowResults,
   useRegions: mocks.useRegions,
+  useCheckAvailabilityBuckets: mocks.useCheckAvailabilityBuckets,
 }));
 
 // The pinned detail box owns a router <Link> and its own query; stub it. What

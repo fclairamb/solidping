@@ -1,4 +1,5 @@
 import type { CheckAvailabilityPeriod } from "@/api/hooks";
+import { formatAvailabilityNumber } from "@/lib/availability-status";
 
 /**
  * Pure mapping from a server-measured {@link CheckAvailabilityPeriod} (or its
@@ -22,11 +23,10 @@ export interface AvailabilityRowView {
 
 const SECONDS_PER_DAY = 86_400;
 
-export function formatAvailabilityPct(pct: number): string {
-  if (pct >= 100) return "100%";
-  if (pct >= 99) return `${pct.toFixed(2)}%`;
-  return `${pct.toFixed(1)}%`;
-}
+/** Re-exported from the shared availability module so the table and the chart
+ * strip sitting above it format the same number identically — they are the two
+ * surfaces spec 2026-08-26-10 exists to line up. */
+export const formatAvailabilityPct = formatAvailabilityNumber;
 
 export function formatDurationSeconds(totalSeconds: number): string {
   if (totalSeconds <= 0) return "0s";

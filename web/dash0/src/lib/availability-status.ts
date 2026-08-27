@@ -84,13 +84,29 @@ export function availabilityStatusLabelKey(status: AvailabilityStatus): string {
 }
 
 /**
- * Formats an availability percentage the way every SolidPing surface does:
- * whole numbers stay whole, everything else gets one decimal. `null`/undefined
- * is the em-dash, never "0%" and never "100%".
+ * The canonical availability percentage format: exactly 100 stays "100%",
+ * anything at or above 99 gets two decimals (99.9% and 99.0% are a factor of
+ * ten apart in downtime and must not collapse to the same string), everything
+ * below gets one.
+ *
+ * The two-decimal band is also what stops a near-perfect number from ROUNDING UP
+ * to "100%" — 99.95% is not 100%, and the whole spec is about not manufacturing
+ * that claim.
+ */
+export function formatAvailabilityNumber(pct: number): string {
+  if (pct >= 100) return "100%";
+  if (pct >= 99) return `${pct.toFixed(2)}%`;
+  return `${pct.toFixed(1)}%`;
+}
+
+/**
+ * `formatAvailabilityNumber` for a value that may be absent. Returns `null` —
+ * never "0%" and never "100%" — so the caller renders its own "no data" label
+ * for the third state.
  */
 export function formatAvailabilityPct(
   pct: number | null | undefined,
 ): string | null {
   if (pct === null || pct === undefined || Number.isNaN(pct)) return null;
-  return `${pct.toFixed(pct % 1 === 0 ? 0 : 1)}%`;
+  return formatAvailabilityNumber(pct);
 }
