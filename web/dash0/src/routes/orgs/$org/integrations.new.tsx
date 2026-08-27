@@ -51,6 +51,7 @@ const ALL_TYPES: ConnectionType[] = [
   "ntfy",
   "gotify",
   "matrix",
+  "zulip",
   "pagerduty",
   "pushover",
   "twilio",

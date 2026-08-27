@@ -36,6 +36,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   ntfy: Bell,
   gotify: Bell,
   matrix: MessageSquareText,
+  zulip: Hash,
   pagerduty: Siren,
   pushover: Bell,
   freebox: Router,
@@ -77,6 +78,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "Gotify";
     case "matrix":
       return "Matrix";
+    case "zulip":
+      return "Zulip";
     case "pagerduty":
       return "PagerDuty";
     case "pushover":

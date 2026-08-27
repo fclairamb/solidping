@@ -31,6 +31,7 @@ const TRANSLATED_CHANNELS = new Set([
   "ntfy",
   "gotify",
   "matrix",
+  "zulip",
   "pagerduty",
   "pushover",
   "slack",

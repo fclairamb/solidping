@@ -524,6 +524,43 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           </div>
         </div>
       );
+    case "zulip":
+      return (
+        <div className="space-y-3">
+          <UrlPanel
+            label={t("form.zulipSiteUrl", "Site URL")}
+            value={(settings.site_url as string) || ""}
+            onChange={(v) => update("site_url", v)}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="ch-zulip-bot-email">
+              {t("form.zulipBotEmail", "Bot email")}
+            </Label>
+            <Input
+              id="ch-zulip-bot-email"
+              type="email"
+              value={(settings.bot_email as string) || ""}
+              onChange={(e) => update("bot_email", e.target.value)}
+              placeholder="solidping-bot@acme.zulipchat.com"
+            />
+          </div>
+          <SecretPanel
+            id="ch-zulip-api-key"
+            label={t("form.zulipApiKey", "API key")}
+            value={(settings.api_key as string) || ""}
+            onChange={(v) => update("api_key", v)}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="ch-zulip-stream">{t("form.zulipStream", "Stream")}</Label>
+            <Input
+              id="ch-zulip-stream"
+              value={(settings.stream as string) || ""}
+              onChange={(e) => update("stream", e.target.value)}
+              placeholder="alerts"
+            />
+          </div>
+        </div>
+      );
     case "pushover":
       return (
         <div className="space-y-3">

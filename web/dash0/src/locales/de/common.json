@@ -74,6 +74,7 @@
     "ntfy": "ntfy",
     "gotify": "Gotify",
     "matrix": "Matrix",
+    "zulip": "Zulip",
     "pagerduty": "PagerDuty",
     "pushover": "Pushover",
     "slack": "Slack",

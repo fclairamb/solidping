@@ -4618,6 +4618,7 @@ export type ConnectionType =
   | "ntfy"
   | "gotify"
   | "matrix"
+  | "zulip"
   | "pagerduty"
   | "pushover"
   | "freebox"
@@ -4650,6 +4651,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   ntfy: NOTIFY,
   gotify: NOTIFY,
   matrix: NOTIFY,
+  zulip: NOTIFY,
   pagerduty: NOTIFY,
   pushover: NOTIFY,
   freebox: SOURCE,
