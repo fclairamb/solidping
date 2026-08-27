@@ -795,7 +795,12 @@ func (s *Service) Resend(
 		Column("delivery", "external_id", "updated_at").
 		WherePK().
 		Exec(ctx); updErr != nil {
-		return nil, updErr
+		// The send may already have reached the customer. Failing the request
+		// here would invite the operator to resend and message the same person
+		// twice, which is worse than a row whose delivery record is stale — so
+		// this is logged loudly and the send's own outcome is what is reported.
+		s.log.WarnContext(ctx, "failed to persist the delivery record after a support resend",
+			"threadUid", thread.UID, "messageUid", msg.UID, "error", updErr)
 	}
 
 	if sendErr != nil {
