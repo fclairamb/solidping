@@ -104,3 +104,82 @@ support can find struggling orgs proactively.
 values and saves a complete admin-sourced row. Partial per-field
 overrides are explicitly out of scope — a follow-up spec if they ever
 matter.
+
+## Implementation Plan
+
+### 1. Precedence rule in the entitlements service (the heart)
+
+- `server/internal/entitlements/precedence.go` (new):
+  - `WriteOutcome{Applied bool, SuppressedBy models.EntitlementSource}`.
+  - `Service.Apply(ctx, orgUID, input, actor, reason) (WriteOutcome, error)` —
+    the single write path both front doors call. When the incoming source is
+    `billing-service` and the **stored** row's source is `admin`, the push is
+    **not** applied: an audit row with source
+    `billing-service:suppressed` (`AuditSourceBillingSuppressed`) is written and
+    the outcome reports `Applied=false, SuppressedBy=admin`. Everything else
+    delegates to the existing `Set`.
+  - `Service.Release(ctx, orgUID, actor, reason) (bool, error)` — drops the
+    admin override by **deleting** the `org_entitlements` row (audited), so
+    resolution falls back to deployment-mode defaults until the next billing
+    push writes a fresh row.
+- `db.Service` gains `CreateOrgEntitlementAudit` (audit-only insert, used by
+  the suppression path) and `DeleteOrgEntitlements` (delete + audit in one tx),
+  implemented for both sqlite and postgres.
+- The existing `PUT/PATCH /api/v1/orgs/:org/entitlements` handler switches from
+  `Set` to `Apply` and reports `applied` / `suppressedBy` / `message` in its
+  200 body. `Set` stays as the raw primitive (used by tests and by `Apply`).
+
+### 2. Superadmin endpoints
+
+New `server/internal/handlers/entitlements/admin.go`, mounted in a
+`RequireAuth + RequireSuperAdmin` group in `server/internal/app/server.go`
+(deliberately under `/api/v1/system/...`, NOT under `/orgs/:org/...`, so no
+`RequireOrgAccess` narrows a superadmin to their own org):
+
+- `GET /api/v1/system/entitlements?q=&limit=&offset=` — one row per org with
+  resolved limits, source, display identity, last-synced, and the
+  checks-per-minute demand/cap pair from spec 2026-08-26-03
+  (`Service.ChecksPerMinuteStatus`) so the list can flag over-limit orgs.
+  Wrapped as `{ "data": [...], "total": n }`.
+- `GET /api/v1/system/entitlements/:org?limit=` — resolved entitlements, the
+  raw stored row (so the UI can tell "stored" from "default-filled"), and the
+  audit trail newest-first.
+- `PUT /api/v1/system/entitlements/:org` — whole-row write forced to
+  `source=admin` (per the resolved question: no per-field overrides), through
+  `Apply`.
+- `DELETE /api/v1/system/entitlements/:org` — release to billing.
+
+### 3. OpenAPI
+
+Document the four endpoints and the new response fields in
+`server/internal/app/openapi/openapi.yaml`.
+
+### 4. Frontend (dash0)
+
+- `web/dash0/src/lib/entitlements-admin.ts` (+ vitest): pure helpers for the
+  nil/unlimited rendering (`formatLimit`, `parseLimitInput`,
+  `limitsDiff`, `provenanceKey`) — this is what the unit tests pin.
+- `web/dash0/src/api/hooks.ts`: `useAdminEntitlementsList`,
+  `useAdminEntitlementsDetail`, `useSetAdminEntitlements`,
+  `useReleaseAdminEntitlements`.
+- Routes, colocated with the existing superadmin surface:
+  - `server.entitlements.index.tsx` — search + table, amber over-limit
+    indicator reusing `isOverCheckRateLimit` / `formatCheckRateDemand`.
+  - `server.entitlements.$targetOrg.tsx` — provenance, editable numeric fields
+    each with an explicit **Unlimited** switch, display name/emoji, audit
+    trail, plus two `AlertDialog` confirmations (save restates the slug and the
+    diff; release restates what the next billing sync will do).
+  - New `Entitlements` tab in `server.tsx` (whose existing gate already keeps
+    non-superadmins out).
+- Locale keys in all four of `en/fr/de/es` `server.json`.
+
+### 5. Tests
+
+- Backend: authz (non-superadmin 403 on all four endpoints; superadmin from
+  org A edits org B), precedence (billing push onto an admin row → 200,
+  limits unchanged, suppression audit written; release → next billing push
+  applies; defaults after release), resolution (`PlanWeight` still paid for an
+  admin row).
+- Frontend: vitest over the pure helpers (unlimited/nil rendering, diffing)
+  plus locale parity across the four locales.
+- E2E: a Playwright spec for the superadmin page.
