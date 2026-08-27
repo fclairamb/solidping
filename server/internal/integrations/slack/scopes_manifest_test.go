@@ -36,7 +36,7 @@ func TestBotScopesMatchManifests(t *testing.T) {
 						Bot  []string `json:"bot"`
 						User []string `json:"user"`
 					} `json:"scopes"`
-				} `json:"oauth_config"`
+				} `json:"oauth_config"` //nolint:tagliatelle // Slack app manifests use snake_case
 			}
 			require.NoError(t, json.Unmarshal(raw, &manifest))
 
