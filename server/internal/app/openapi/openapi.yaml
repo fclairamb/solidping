@@ -7499,6 +7499,147 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Superadmin entitlements editor (spec 2026-08-26-06). Instance-level, NOT
+  # org-scoped: a super admin edits somebody else's limits, so these routes
+  # deliberately sit outside the /orgs/{org} chain (which would pin them to the
+  # organization they happen to be signed into).
+  /api/v1/system/entitlements:
+    get:
+      tags: [Entitlements]
+      summary: List organizations with their resolved entitlements (super admin)
+      operationId: listAdminEntitlements
+      description: |
+        One row per organization: resolved limits, their source, plan display
+        identity, and the checks-per-minute demand/cap pair so orgs currently
+        over their execution cap can be spotted without opening each one.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive substring match on the org slug or name
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size (1-200, default 50)
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Organizations with resolved entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/entitlements/{org}:
+    get:
+      tags: [Entitlements]
+      summary: Get one organization's entitlements and audit trail (super admin)
+      operationId: getAdminEntitlements
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum audit entries (1-200, default 50)
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entitlements detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Entitlements]
+      summary: Write an organization's entitlements as an admin override (super admin)
+      operationId: setAdminEntitlements
+      description: |
+        Writes a complete admin-sourced row (whole-row only; there are no
+        per-field overrides). The request body's `source` is ignored — a super
+        admin write is always `admin`, so a body claiming to be the billing
+        service cannot launder itself past the precedence rule.
+
+        While the stored row is admin-sourced, billing pushes to
+        `PUT /api/v1/orgs/{org}/entitlements` are accepted with 200 but NOT
+        applied (`applied: false`, `suppressedBy: admin`) and recorded in the
+        audit log. Use `DELETE` on this path to release the override.
+
+        An optional `X-Entitlements-Reason` header is stored on the audit row.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEntitlementsRequest"
+      responses:
+        "200":
+          description: Updated entitlements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Entitlements]
+      summary: Release an organization back to billing (super admin)
+      operationId: releaseAdminEntitlements
+      description: |
+        Drops the stored entitlements row. The organization immediately
+        resolves to the deployment-mode defaults, and the next billing push is
+        applied normally. Releasing an organization that has no stored row is a
+        no-op (`released: false`), not an error.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Entitlements after the release
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminEntitlementsWriteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # File storage APIs (org-scoped metadata + content)
   /api/v1/orgs/{org}/files:
     get:
@@ -14500,6 +14641,21 @@ components:
           $ref: "#/components/schemas/EntitlementsChecksPerMinute"
         upgradeUrl:
           type: string
+        applied:
+          type: boolean
+          description: >-
+            Present on write responses only. False when the precedence rule
+            discarded the write — a billing push onto an admin override is
+            accepted with 200 (billing must not error-loop) but changes
+            nothing.
+        suppressedBy:
+          type: string
+          description: >-
+            The entitlement source that won, when `applied` is false. Today
+            always `admin`.
+        message:
+          type: string
+          description: Why the write was not applied, in words.
 
     SetEntitlementsRequest:
       type: object
@@ -14558,6 +14714,114 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntitlementsAudit"
+
+    AdminEntitlementsRow:
+      type: object
+      description: One organization in the super-admin entitlements list.
+      required: [organizationUid, slug, name, limits, source, stale, overCheckRate]
+      allOf:
+        - $ref: "#/components/schemas/EntitlementsResponse"
+        - type: object
+          properties:
+            organizationUid:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+            overCheckRate:
+              type: boolean
+              description: >-
+                Scheduled check demand exceeds the resolved MaxChecksPerMinute
+                cap. An unlimited cap is never over.
+            adminOverrideSince:
+              type: string
+              format: date-time
+              description: >-
+                When the current admin override was written. Absent unless the
+                stored row is admin-sourced.
+
+    AdminEntitlementsListResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminEntitlementsRow"
+        total:
+          type: integer
+          description: Organizations matching the search, before paging.
+
+    AdminEntitlementsStoredRow:
+      type: object
+      description: >-
+        The raw stored org_entitlements row. Absent entirely when the
+        organization has never had one, which is exactly the "resolving to
+        deployment defaults" state.
+      required: [source, limits, createdAt, updatedAt]
+      properties:
+        source:
+          type: string
+        limits:
+          $ref: "#/components/schemas/EntitlementLimits"
+        displayName:
+          type: string
+        displayEmoji:
+          type: string
+        externalRef:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AdminEntitlementsDetail:
+      type: object
+      required: [organizationUid, slug, name, limits, source, stale, defaults, audits]
+      allOf:
+        - $ref: "#/components/schemas/EntitlementsResponse"
+        - type: object
+          properties:
+            organizationUid:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+            overCheckRate:
+              type: boolean
+            stored:
+              $ref: "#/components/schemas/AdminEntitlementsStoredRow"
+            defaults:
+              $ref: "#/components/schemas/EntitlementLimits"
+            audits:
+              type: array
+              items:
+                $ref: "#/components/schemas/EntitlementsAudit"
+
+    AdminEntitlementsWriteResponse:
+      type: object
+      required: [limits, source, stale, applied]
+      allOf:
+        - $ref: "#/components/schemas/EntitlementsResponse"
+        - type: object
+          properties:
+            applied:
+              type: boolean
+            released:
+              type: boolean
+              description: >-
+                A stored row was actually removed. False when releasing an
+                organization that had no override.
 
     # File schemas
     FileResponse:

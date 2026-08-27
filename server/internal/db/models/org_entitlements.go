@@ -58,15 +58,19 @@ func NewOrgEntitlements(orgUID string, source EntitlementSource) *OrgEntitlement
 
 // OrgEntitlementAudit records one write to org_entitlements. The before
 // snapshot is nil on the first row for an org; after is always populated.
+//
+// The JSON tags are load-bearing: this model is serialized straight onto the
+// audit-listing endpoint, and without them Go would emit Go field names while
+// the OpenAPI spec (and the client generated from it) promise camelCase.
 type OrgEntitlementAudit struct {
-	UID             string    `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID string    `bun:"organization_uid,notnull"`
-	Source          string    `bun:"source,notnull"`
-	Actor           string    `bun:"actor,notnull"`
-	BeforeSnapshot  JSONMap   `bun:"before_snapshot,type:jsonb,nullzero"`
-	AfterSnapshot   JSONMap   `bun:"after_snapshot,type:jsonb,notnull"`
-	Reason          *string   `bun:"reason"`
-	CreatedAt       time.Time `bun:"created_at,notnull,default:current_timestamp"`
+	UID             string    `bun:"uid,pk,type:varchar(36)" json:"uid"`
+	OrganizationUID string    `bun:"organization_uid,notnull" json:"organizationUid"`
+	Source          string    `bun:"source,notnull" json:"source"`
+	Actor           string    `bun:"actor,notnull" json:"actor"`
+	BeforeSnapshot  JSONMap   `bun:"before_snapshot,type:jsonb,nullzero" json:"beforeSnapshot,omitempty"`
+	AfterSnapshot   JSONMap   `bun:"after_snapshot,type:jsonb,notnull" json:"afterSnapshot"`
+	Reason          *string   `bun:"reason" json:"reason,omitempty"`
+	CreatedAt       time.Time `bun:"created_at,notnull,default:current_timestamp" json:"createdAt"`
 }
 
 // NewOrgEntitlementAudit builds a fresh audit row.

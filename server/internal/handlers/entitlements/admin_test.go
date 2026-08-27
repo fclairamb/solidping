@@ -255,7 +255,8 @@ func TestAdminGetReturnsStoredDefaultsAndAudits(t *testing.T) {
 			Limits entcore.Limits           `json:"limits"`
 		} `json:"stored"`
 		Audits []struct {
-			Source string `json:"Source"`
+			Source string `json:"source"`
+			Actor  string `json:"actor"`
 		} `json:"audits"`
 	}
 
@@ -266,6 +267,9 @@ func TestAdminGetReturnsStoredDefaultsAndAudits(t *testing.T) {
 	r.NotNil(after.Stored.Limits.MaxChecks)
 	r.Equal(900, *after.Stored.Limits.MaxChecks)
 	r.Len(after.Audits, 1)
+	r.Equal(string(models.EntitlementSourceAdmin), after.Audits[0].Source,
+		"the audit list must be camelCase, as the OpenAPI spec and generated client promise")
+	r.Contains(after.Audits[0].Actor, "superadmin:")
 }
 
 // TestAdminListFlagsOverLimitOrgs covers the resolved open question: the org
