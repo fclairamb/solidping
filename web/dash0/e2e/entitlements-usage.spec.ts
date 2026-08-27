@@ -160,7 +160,24 @@ test.describe("Entitlements usage", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-rate-limit-banner")).toBeVisible();
-    // No self-link on the page the reader is already on.
+    // The remedy link is deliberately ON here, and is no longer a self-link:
+    // spec 2026-08-26-04 retargeted it from Usage to the scheduling page, so
+    // the banner hands the reader the surface that can FIX the overage rather
+    // than one restating the number it just quoted. Assert the destination,
+    // not just the presence, so a future retarget cannot pass silently.
+    const usageRemedy = page.getByTestId("check-rate-limit-usage-link");
+    await expect(usageRemedy).toBeVisible();
+    await expect(usageRemedy).toHaveAttribute(
+      "href",
+      /\/orgs\/test\/checks\/scheduling$/,
+    );
+
+    // Surface 3: the scheduling page — the one surface that must NOT link to
+    // itself. This is the invariant the old (mis-placed) assertion reached for.
+    await page.goto("orgs/test/checks/scheduling");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-rate-limit-banner")).toBeVisible();
     await expect(
       page.getByTestId("check-rate-limit-usage-link"),
     ).toHaveCount(0);
