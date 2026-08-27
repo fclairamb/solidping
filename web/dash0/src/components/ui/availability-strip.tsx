@@ -105,9 +105,13 @@ function StripCell({
               )}
             />
             {headline}
-            <span className="text-muted-foreground font-normal">
-              {statusLabel}
-            </span>
+            {/* Only when there IS data: for a no-data cell the status word is
+                the headline, and printing it twice reads as a bug. */}
+            {cell.hasData && (
+              <span className="text-muted-foreground font-normal">
+                {statusLabel}
+              </span>
+            )}
           </p>
           <p className="text-muted-foreground tabular-nums">
             {formatSpan(cell.periodStart, cell.periodEnd)}

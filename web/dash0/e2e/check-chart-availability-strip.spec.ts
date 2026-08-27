@@ -178,6 +178,42 @@ test.describe("Chart availability strip", () => {
     await expect(header).toContainText("86.7%");
   });
 
+  test("hovering a cell reveals its exact percentage, span and probe counts", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoCheckDetail(page);
+
+    await expect(cells(page)).toHaveCount(6, { timeout: 10000 });
+
+    // The bad cell: 20 of 60 probes up. Tooltips are matched by CONTENT rather
+    // than by position, because Radix leaves the previous tooltip mounted for a
+    // moment after the pointer moves on — `.first()` would then read the cell
+    // we just left.
+    await cells(page).nth(3).hover();
+
+    const tooltip = page.getByRole("tooltip").filter({ hasText: "20 / 60" });
+    await expect(tooltip).toBeVisible({ timeout: 5000 });
+    await expect(tooltip).toContainText("33.3%");
+    await expect(tooltip).toContainText("Down");
+
+    // The no-data cell must offer no percentage at all — a tooltip claiming a
+    // number for a bucket with no probes is the fabricated figure this spec
+    // exists to remove.
+    // Leave the current cell, then hover the next one TWICE: Radix opens on a
+    // pointermove inside the trigger, and the single move Playwright's first
+    // hover() emits lands on the boundary often enough to be flaky.
+    await page.mouse.move(0, 0);
+    await cells(page).nth(5).hover();
+    await cells(page).nth(5).hover();
+
+    const noDataTooltip = page
+      .getByRole("tooltip")
+      .filter({ hasText: "No data" });
+    await expect(noDataTooltip).toBeVisible({ timeout: 5000 });
+    expect(await noDataTooltip.textContent()).not.toContain("%");
+  });
+
   test("re-buckets when the chart range changes", async ({
     authenticatedPage,
   }) => {
