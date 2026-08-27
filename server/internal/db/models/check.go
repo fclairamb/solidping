@@ -357,6 +357,10 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 // measured against MaxChecksPerMinute: they return before the token gate and
 // consume no execution budget (spec 2026-08-26-03).
 type CheckRate struct {
+	// UID identifies the row so a caller can project a hypothetical change:
+	// drop the check being edited out of the sum and add its proposed shape
+	// back (spec 2026-08-26-05's validate-time rate warning).
+	UID     string             `bun:"uid"`
 	Enabled bool               `bun:"enabled"`
 	Period  timeutils.Duration `bun:"period"`
 	Regions []string           `bun:"regions,type:text[],array"`

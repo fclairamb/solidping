@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // ChecksPerMinute answers the two questions an org has when its executions go
@@ -131,4 +132,99 @@ func checksPerMinuteRate(rates []models.CheckRate, excludePassive bool) float64 
 // an org spends a full day back under its cap.
 func dayStart(t time.Time) string {
 	return t.UTC().Format("2006-01-02")
+}
+
+// CheckRateProposal is a not-yet-saved check shape, as the check form has it
+// while the user is still typing. It is what ProjectChecksPerMinute
+// substitutes into the org's live demand so the form can warn BEFORE the save
+// rather than after the first skipped execution.
+type CheckRateProposal struct {
+	// ExcludeCheckUID is the check being edited. Its stored row is dropped
+	// from the sum before the proposal is added, so an edit projects a
+	// replacement rather than a duplicate. Empty for a create.
+	ExcludeCheckUID string
+	// Type decides whether the proposal costs anything at all: passive types
+	// return before the token gate and so never draw execution budget.
+	Type string
+	// Period is the proposed execution interval. Zero or negative means "no
+	// usable period proposed" and the proposal contributes nothing.
+	Period time.Duration
+	// Regions is the proposed region set; each region runs the check every
+	// period, so the cost scales with max(1, len(Regions)).
+	Regions []string
+	// Enabled is the proposed enabled state. A disabled check is scheduled
+	// nowhere and costs nothing.
+	Enabled bool
+}
+
+// ProjectedRate is the answer to "what would my demand be if I saved this?".
+// It deliberately carries no skip counter: a projection is about the future,
+// and today's skips belong to ChecksPerMinuteStatus.
+type ProjectedRate struct {
+	// Demand is the org's per-minute execution rate WITH the proposal applied.
+	Demand float64
+	// Current is the org's demand as it stands today, proposal excluded. Kept
+	// so a caller can tell an edit that already was over the cap from one that
+	// pushes it over.
+	Current float64
+	// Limit is the resolved MaxChecksPerMinute cap. nil = unlimited.
+	Limit *int
+}
+
+// Over reports whether the PROJECTED demand exceeds the cap. Unlimited is
+// never over.
+func (p ProjectedRate) Over() bool {
+	return p.Limit != nil && p.Demand > float64(*p.Limit)
+}
+
+// ProjectChecksPerMinute recomputes the org's checks-per-minute demand with
+// one check replaced (or added) by the caller's proposal.
+//
+// Same formula, same exclusions as ChecksPerMinuteStatus — it literally calls
+// the same summing function — so the number the form warns about and the
+// number the dispatch gate meters can never drift apart.
+//
+// A nil receiver (entitlements disabled) yields a zero projection and no
+// error: there is no cap to be over.
+func (s *Service) ProjectChecksPerMinute(
+	ctx context.Context, orgUID string, proposal CheckRateProposal,
+) (ProjectedRate, error) {
+	if s == nil {
+		return ProjectedRate{}, nil
+	}
+
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return ProjectedRate{}, fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	rates, err := s.db.ListOrgCheckRates(ctx, orgUID)
+	if err != nil {
+		return ProjectedRate{}, fmt.Errorf("list check rates: %w", err)
+	}
+
+	projected := make([]models.CheckRate, 0, len(rates)+1)
+
+	for i := range rates {
+		if proposal.ExcludeCheckUID != "" && rates[i].UID == proposal.ExcludeCheckUID {
+			continue
+		}
+
+		projected = append(projected, rates[i])
+	}
+
+	if proposal.Period > 0 {
+		projected = append(projected, models.CheckRate{
+			Enabled: proposal.Enabled,
+			Period:  timeutils.Duration(proposal.Period),
+			Regions: proposal.Regions,
+			Type:    proposal.Type,
+		})
+	}
+
+	return ProjectedRate{
+		Demand:  checksPerMinuteRate(projected, true),
+		Current: checksPerMinuteRate(rates, true),
+		Limit:   resolved.Limits.MaxChecksPerMinute,
+	}, nil
 }

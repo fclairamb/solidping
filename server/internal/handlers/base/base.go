@@ -147,10 +147,43 @@ type ValidationError struct {
 	Fields []ValidationErrorField `json:"fields"`
 }
 
-// ValidationErrorField represents a single field validation error.
+// ValidationSeverity ranks a single validation finding.
+//
+// The zero value is the empty string, which every consumer must read as
+// SeverityError: the field was added to a wire shape that predates it, and an
+// old producer that omits it is always reporting a blocking error.
+type ValidationSeverity string
+
+const (
+	// SeverityError is a blocking finding: the payload is refused.
+	SeverityError ValidationSeverity = "error"
+	// SeverityWarning is advisory — the payload is accepted, but the caller is
+	// told something about it they probably want to know.
+	SeverityWarning ValidationSeverity = "warning"
+	// SeverityInfo is purely informational and never implies a problem.
+	SeverityInfo ValidationSeverity = "info"
+)
+
+// ValidationErrorField represents a single field validation finding.
+//
+// Severity and Code are optional on the wire and were added by spec
+// 2026-08-26-05. An entry without a Severity is an error (see
+// ValidationSeverity), which keeps every pre-existing producer correct
+// without touching it.
 type ValidationErrorField struct {
 	Name    string `json:"name"`
 	Message string `json:"message"`
+	// Severity ranks the finding. Empty means "error".
+	Severity ValidationSeverity `json:"severity,omitempty"`
+	// Code is a stable, machine-readable identifier for the rule that
+	// produced this finding (e.g. "SLUG_TAKEN"). Empty when the producer
+	// has no code to offer; clients must fall back to Name + Message.
+	Code string `json:"code,omitempty"`
+}
+
+// IsError reports whether the finding blocks. Absent severity means error.
+func (f ValidationErrorField) IsError() bool {
+	return f.Severity == "" || f.Severity == SeverityError
 }
 
 // WriteJSON writes a JSON response with the given status code.
