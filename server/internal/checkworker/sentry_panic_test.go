@@ -37,7 +37,7 @@ func TestRunCheckerGuarded_PanicIsReportedWithCheckTags(t *testing.T) {
 	runner, dbSvc, ctx := setupTestRunner(t)
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	ctx = sentry.SetHubOnContext(ctx, hub)
@@ -81,7 +81,7 @@ func TestRunCheckerGuarded_TargetDownIsNotReported(t *testing.T) {
 	runner, dbSvc, ctx := setupTestRunner(t)
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	hub, transport, err := errorreporttest.NewHub()
+	hub, transport, err := errorreporttest.NewHub(t)
 	r.NoError(err)
 
 	ctx = sentry.SetHubOnContext(ctx, hub)
