@@ -2,6 +2,9 @@ package uptimereport_test
 
 import (
 	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,19 +15,27 @@ import (
 
 func sampleData() *uptimereport.Data {
 	return &uptimereport.Data{
-		OrgName:         "acme",
-		PeriodLabel:     "July 2026",
-		ScopeLabel:      "All checks (2)",
-		Timezone:        "Europe/Paris",
-		HasData:         true,
-		AvailabilityPct: "99.950",
-		CheckCount:      2,
-		IncidentCount:   3,
-		LongestIncident: "42m",
-		TotalDowntime:   "1h 5m",
+		OrgName:           "acme",
+		PeriodLabel:       "July 2026",
+		ScopeLabel:        "All checks (2)",
+		Timezone:          "Europe/Paris",
+		HasData:           true,
+		AvailabilityPct:   "99.950",
+		AvailabilityColor: "#15803d",
+		CheckCount:        2,
+		IncidentCount:     3,
+		LongestIncident:   "42m",
+		TotalDowntime:     "1h 5m",
 		Checks: []uptimereport.CheckRow{
-			{Name: "Production API", HasData: true, AvailabilityPct: "99.980"},
-			{Name: "Marketing site", HasData: false},
+			{
+				Name: "Production API", HasData: true, AvailabilityPct: "99.980",
+				AvailabilityColor: "#15803d",
+				URL:               "https://solidping.example/dash0/orgs/acme/checks/chk-prod-api",
+			},
+			{
+				Name: "Marketing site", HasData: false,
+				URL: "https://solidping.example/dash0/orgs/acme/checks/chk-marketing",
+			},
 		},
 		SLOs: []uptimereport.SLORow{{
 			Name:            "API availability",
@@ -33,6 +44,7 @@ func sampleData() *uptimereport.Data {
 			TargetPct:       "99.900",
 			StateLabel:      "Healthy",
 			BudgetRemaining: "21m 30s",
+			URL:             "https://solidping.example/dash0/orgs/acme/slos/slo-api-availability",
 		}},
 		DashboardURL:   "https://solidping.example/dash0",
 		UnsubscribeURL: "https://solidping.example/unsubscribe?token=abc",
@@ -100,7 +112,110 @@ func TestUptimeReportRendersRealContent(t *testing.T) {
 		r.Contains(body, "42m")
 		// Bulk-mail footer.
 		r.Contains(body, "https://solidping.example/unsubscribe?token=abc")
+		// Check and objective names link to their dash0 pages.
+		r.Contains(body, "https://solidping.example/dash0/orgs/acme/checks/chk-prod-api")
+		r.Contains(body, "https://solidping.example/dash0/orgs/acme/slos/slo-api-availability")
 	}
+}
+
+// TestUptimeReportChecksAndObjectivesLinkToTheirDash0Pages pins the HTML
+// markup: a check/objective with a URL renders an <a href> around its name,
+// and the plain-text part carries the URL as a trailing line rather than
+// silently dropping it.
+func TestUptimeReportChecksAndObjectivesLinkToTheirDash0Pages(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := email.NewFormatter()
+	r.NoError(err)
+
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, sampleData()))
+	r.NoError(err)
+
+	// The formatter's CSS inliner rewrites `.content a` into an inline
+	// style="..." attribute on every <a>, so the tag itself isn't a fixed
+	// string — match loosely around the href and the link text instead.
+	r.True(linksTo(html, "https://solidping.example/dash0/orgs/acme/checks/chk-prod-api", "Production API"))
+	r.True(linksTo(html, "https://solidping.example/dash0/orgs/acme/slos/slo-api-availability", "API availability"))
+
+	// The text part keeps the existing line intact and appends the URL.
+	r.Contains(text, "  - Production API: 99.980%\n    https://solidping.example/dash0/orgs/acme/checks/chk-prod-api")
+	r.Contains(text, "API availability")
+	r.Contains(text, "    https://solidping.example/dash0/orgs/acme/slos/slo-api-availability")
+}
+
+// TestUptimeReportRendersPlainNamesWithoutBaseURL is the negative control: no
+// URL configured (server.BaseURL empty) must never emit a half-built
+// href="" — the name renders as plain text, same as before this change.
+func TestUptimeReportRendersPlainNamesWithoutBaseURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := email.NewFormatter()
+	r.NoError(err)
+
+	data := sampleData()
+	for i := range data.Checks {
+		data.Checks[i].URL = ""
+	}
+
+	for i := range data.SLOs {
+		data.SLOs[i].URL = ""
+	}
+
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	r.NoError(err)
+
+	r.NotContains(html, `href=""`)
+	r.NotContains(html, `<a href="">`)
+	r.Contains(html, "Production API")
+	r.Contains(html, "API availability")
+	r.NotContains(html, `<a href="">Production API</a>`)
+	r.NotContains(html, `<a href="">API availability</a>`)
+	r.Contains(text, "Production API")
+	r.Contains(text, "API availability")
+}
+
+// TestUptimeReportColorsAvailabilityByValue pins the value-cell markup: a
+// check with data carries an inline color style, a no-data check carries
+// none (there is no percentage to color).
+func TestUptimeReportColorsAvailabilityByValue(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := email.NewFormatter()
+	r.NoError(err)
+
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, sampleData()))
+	r.NoError(err)
+
+	r.Contains(html, `style="color: #15803d; font-weight: 600">99.980%</span>`)
+	// The headline metric carries the same treatment. The CSS inliner merges
+	// the .metric-value class rules and this inline color into one style
+	// attribute (dropping the space after the colon in the process), so match
+	// on the merged declaration rather than a standalone style="...".
+	r.Contains(html, "metric-value")
+	r.Contains(html, "color:#15803d")
+	// The no-data check's value cell carries "No data" honestly, and only the
+	// one HasData check row got the colored-value-span treatment — a
+	// per-value color span appearing more than once would mean the no-data
+	// row got colored too.
+	r.Contains(html, "No data")
+	r.Equal(1, strings.Count(html, "font-weight: 600"))
+	// Color is HTML-only.
+	r.NotContains(text, "#15803d")
+}
+
+// linksTo reports whether html contains an <a href="url">...text...</a>
+// anchor. Loose on attributes between href and the closing bracket, since the
+// formatter's CSS inliner adds a style="..." attribute to every anchor.
+func linksTo(html, url, text string) bool {
+	pattern := fmt.Sprintf(`<a href="%s"[^>]*>%s</a>`, regexp.QuoteMeta(url), regexp.QuoteMeta(text))
+
+	return regexp.MustCompile(pattern).MatchString(html)
 }
 
 // The no-data path must say so honestly rather than printing an empty number —
