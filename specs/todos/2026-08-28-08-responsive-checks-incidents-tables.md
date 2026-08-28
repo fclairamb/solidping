@@ -91,3 +91,64 @@ columns go first), so the convention is canonical for follow-up pages.
   nothing changes.
 - No new dash0 ESLint errors (the base already carries pre-existing
   react-hooks debt — scope lint to no *new* findings).
+
+## Implementation Plan
+
+1. **Checks table** (`checks.index.tsx`):
+   - Head row: `type` → `hidden sm:table-cell`, `target` and `status` →
+     `hidden md:table-cell`. Name and response-time heads stay visible; the
+     trailing `w-[50px]` actions head is untouched.
+   - Matching body cells get the same classes. The name cell additionally
+     gets `max-w-0` on the `TableCell` (mirrors the "Truncated cell" pattern
+     already in the design reference) plus `min-w-0`/`truncate` on the inner
+     flex row and name text, so a long check name can't force the page wider
+     once the row is down to 3 visible columns on a phone.
+
+2. **Incidents table** (`incidents.index.tsx`):
+   - Fold the state dot into the first cell, next to the `#number` badge,
+     and drop the dedicated `w-10` head/cell — 6 columns become 5.
+   - Update `GroupHeaderRow`'s `colSpan={6}` to `colSpan={5}` (confirmed via
+     grep this is the only `colSpan` in the file).
+   - Head tiers: incident always visible, check → `hidden md:table-cell`,
+     started always visible, duration → `hidden sm:table-cell`, failures →
+     `hidden md:table-cell`. Matching body cells get the same classes.
+   - Add `flex-wrap` to the badge container in the first cell (`flex
+     items-center gap-2` → `flex items-center gap-2 flex-wrap`).
+   - Give the first cell `max-w-0` and constrain the title `Link` with
+     `truncate` (title is the longest unbounded string in that cell) so it
+     can't force horizontal scroll at 375px once the dot/number/badges share
+     the cell.
+
+3. **Design reference** (`design-reference.tsx`): add a "Responsive table"
+   subsection inside `DataDisplaySection` (after "Truncated cell"), with its
+   own nav entry (`responsive-table` — actually appended as a subsection of
+   the existing `data-display` entry, matching how "Clickable rows" and
+   "Truncated cell" are subsections rather than separate nav ids) showing a
+   small example table with `hidden sm:table-cell` / `hidden md:table-cell`
+   columns, plus a code snippet and prose describing: (a) always apply the
+   class to the `TableHead` AND every matching `TableCell` in that column —
+   a mismatched pair silently shifts every following column at the
+   breakpoint where it applies; (b) tiering principle — identity + the one
+   live signal + row actions stay visible at every width, the widest or most
+   redundant columns fold away first; (c) `hidden <bp>:table-cell` alone
+   doesn't stop overflow — a cell whose content can't shrink (a long name, a
+   UUID) still forces the page wider, so pair it with `max-w-0`/`truncate`
+   on that column, verified against `document.documentElement.scrollWidth
+   <= clientWidth` at 375px.
+
+4. **Tests**:
+   - New Playwright spec (or additions to existing check/incident E2E specs)
+     asserting, at a 375px viewport: no horizontal document scroll on both
+     the checks and incidents list pages with seeded data, and that name,
+     response time (checks), started-at (incidents), and row actions remain
+     visible/interactable.
+   - Confirm existing desktop-viewport selectors (`incident-started-at`,
+     `incident-number`, `change-group-action`) are not hidden at the default
+     desktop viewport — only at `sm`/`md` breakpoints below it, so existing
+     suites stay green untouched.
+   - Local dev server isn't in `SP_RUNMODE=test`, so the new E2E spec is
+     authored but not run locally; report that explicitly.
+
+5. **Gate**: `npx tsc --noEmit`, targeted `eslint`, `vitest run` iteratively;
+   then one full `make build-dash0` + `bun run lint` pass before the
+   "all checks passing" commit.
