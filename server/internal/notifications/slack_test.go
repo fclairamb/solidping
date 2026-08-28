@@ -1115,6 +1115,12 @@ func (m *mockDBService) CreateStatusPage(_ context.Context, _ *models.StatusPage
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateStatusPageWithDefaultSection(
+	_ context.Context, _ *models.StatusPage, _ *models.StatusPageSection, _ []*models.StatusPageResource,
+) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetStatusPage(_ context.Context, _, _ string) (*models.StatusPage, error) {
 	panic("not implemented")
 }
