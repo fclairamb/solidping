@@ -42,6 +42,7 @@
     "showAvailability": "Show Availability",
     "showResponseTime": "Show Response Time",
     "language": "Language",
+    "willInclude": "Will include:",
     "createStatusPage": "Create Status Page",
     "saveChanges": "Save Changes"
   },

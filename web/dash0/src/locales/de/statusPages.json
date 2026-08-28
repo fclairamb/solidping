@@ -42,6 +42,7 @@
     "showAvailability": "Verfügbarkeit anzeigen",
     "showResponseTime": "Antwortzeit anzeigen",
     "language": "Sprache",
+    "willInclude": "Enthält:",
     "createStatusPage": "Statusseite erstellen",
     "saveChanges": "Änderungen speichern"
   },

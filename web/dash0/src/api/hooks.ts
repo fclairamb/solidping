@@ -2619,6 +2619,14 @@ export interface CreateStatusPageRequest {
   autoResolve?: "always" | "if_untouched" | "never";
   customCss?: string;
   customDomain?: string;
+  /**
+   * Optional checks to seed the page with. Every new page always gets a
+   * default "Services" section; each UID here becomes one resource in that
+   * section, in request order. Every UID must resolve to a check in this
+   * org, or the whole request is rejected — nothing is created, including
+   * the page itself.
+   */
+  checkUids?: string[];
 }
 
 export interface UpdateStatusPageRequest {

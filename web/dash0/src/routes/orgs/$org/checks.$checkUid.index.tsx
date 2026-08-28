@@ -11,6 +11,7 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  Globe,
   Loader2,
   Pencil,
   Power,
@@ -1069,6 +1070,28 @@ function CheckDetailPage() {
                 <BadgeCheck className="h-4 w-4 lg:mr-2" />
                 <span className="hidden lg:inline">
                   {t("checks:detail.badges")}
+                </span>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={
+                t("checks:detail.publishOnStatusPage") ??
+                "Publish on a status page"
+              }
+            >
+              <Link
+                to="/orgs/$org/status-pages/new"
+                params={{ org }}
+                search={{ checkUid }}
+                data-testid="publish-status-page-link"
+              >
+                <Globe className="h-4 w-4 lg:mr-2" />
+                <span className="hidden lg:inline">
+                  {t("checks:detail.publishOnStatusPage")}
                 </span>
               </Link>
             </Button>
