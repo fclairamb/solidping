@@ -58,6 +58,10 @@ import {
   normalizeStatusPattern,
 } from "@/lib/http-status";
 import {
+  JsonAssertionEditor,
+  type AssertionNode,
+} from "@/components/checks/json-assertion-editor";
+import {
   CollapsibleCode,
   CopyableCode,
   CopyableInline,
@@ -277,6 +281,7 @@ function DesignReferencePage() {
       <CheckMultiPickerSection />
       <CheckGroupPickerSection />
       <TokenChipsInputSection />
+      <JsonAssertionEditorSection />
       <KpiTileSection />
       <ClickableStatusBannerSection />
       <UptimeStripSection />
@@ -4790,6 +4795,50 @@ function TokenChipsInputSection() {
             normalize={normalizeStatusPattern}
             placeholder="200"
           />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function JsonAssertionEditorSection() {
+  const [empty, setEmpty] = useState<AssertionNode | null>(null);
+  const [single, setSingle] = useState<AssertionNode | null>({
+    type: "assertion",
+    path: "$.status",
+    operator: "eq",
+    value: "ok",
+  });
+  const [group, setGroup] = useState<AssertionNode | null>({
+    type: "and",
+    children: [
+      { type: "assertion", path: "$.status", operator: "eq", value: "ok" },
+      { type: "assertion", path: "$.uptime", operator: "gt", value: "0" },
+    ],
+  });
+
+  return (
+    <Section
+      id="json-assertion-editor"
+      title="JSON assertion editor"
+      description="Recursive editor for the HTTP checker's JSONPath assertion AST — a leaf tests one JSONPath expression against an operator (eq/neq/gt/gte/lt/lte/contains/regex/exists/not_exists), and and/or group nodes nest arbitrarily. value is a required (string) argument, or an empty ready state before the first field is filled in; onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ JsonAssertionEditor }"} from
+        "@/components/checks/json-assertion-editor"
+      </p>
+      <div className="grid gap-4 max-w-2xl">
+        <div className="space-y-2">
+          <Label>Empty — shows the add-assertion button</Label>
+          <JsonAssertionEditor value={empty} onChange={setEmpty} />
+        </div>
+        <div className="space-y-2">
+          <Label>Single leaf assertion</Label>
+          <JsonAssertionEditor value={single} onChange={setSingle} />
+        </div>
+        <div className="space-y-2">
+          <Label>AND group with two assertions</Label>
+          <JsonAssertionEditor value={group} onChange={setGroup} />
         </div>
       </div>
     </Section>
