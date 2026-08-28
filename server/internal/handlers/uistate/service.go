@@ -95,8 +95,13 @@ func isOrgRefShape(s string) bool {
 // dashboard keeps passing the slug it already has in the URL.
 //
 // There is deliberately no membership gate: the row is the caller's own
-// private UI state, it exposes nothing about the organization, and requiring
-// membership would 403 a super admin browsing an org they do not belong to.
+// private UI state, and requiring membership would 403 a super admin browsing
+// an org they do not belong to. Resolving a caller-supplied slug does reveal
+// whether an organization exists (missing resolves to ORGANIZATION_NOT_FOUND),
+// but that is the same distinction RequireOrgAccess already draws platform-wide
+// (404 for missing vs 403 for existing-but-not-a-member), so this adds no new
+// information. A key naming a foreign org only writes the caller's own
+// user-scoped row, which is capped and one-per-org.
 func (s *Service) ResolveKey(ctx context.Context, key string) (string, error) {
 	orgRef, found := strings.CutPrefix(key, KeyPrefixOnboarding)
 	if !found || !isOrgRefShape(orgRef) {
