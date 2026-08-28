@@ -227,6 +227,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "check-group-picker", label: "Check group picker" },
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
+  { id: "clickable-status-banner", label: "Clickable status banner" },
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "availability-strip", label: "Availability strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
@@ -277,6 +278,7 @@ function DesignReferencePage() {
       <CheckGroupPickerSection />
       <TokenChipsInputSection />
       <KpiTileSection />
+      <ClickableStatusBannerSection />
       <UptimeStripSection />
       <AvailabilityStripSection />
       <JobsPrimitivesSection />
@@ -4424,6 +4426,92 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
         </Card>
       </div>
       <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+function ClickableStatusBannerSection() {
+  const { org } = Route.useParams();
+  const snippet = `import { Link } from "@tanstack/react-router";
+import { AlertTriangle } from "lucide-react";
+
+// A full-width status banner that IS the fastest path to acting on the
+// problem it announces, not just a description of it — incidents take
+// priority over a bare down check, since an incident carries the
+// ack/snooze/resolve workflow. Wrap in <Link>, never a div + onClick, so
+// keyboard focus, middle-click and copy-link keep working. The hover
+// affordance (cursor-pointer + a stronger border/background) is what tells
+// the operator the whole card is clickable, not just a decorative alert.
+<Link
+  to="/orgs/$org/incidents"
+  params={{ org }}
+  search={{ state: "active", showSuppressed: undefined, checkUid: undefined }}
+  data-testid="overall-status-banner"
+  className="block"
+>
+  <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-destructive/50 hover:bg-destructive/15">
+    <div className="flex items-center gap-3">
+      <AlertTriangle className="h-4 w-4 text-destructive" />
+      <h2 className="text-sm font-semibold text-destructive">Issues detected</h2>
+      <span className="text-xs text-muted-foreground">1 active incident</span>
+    </div>
+  </div>
+</Link>`;
+  return (
+    <Section
+      id="clickable-status-banner"
+      title="Clickable status banner"
+      description="The org dashboard's full-width status banner (OverallStatusBanner in dashboard-page.tsx): a red or amber alert that is ALSO the fastest path to the list it is complaining about. Link priority is incidents first (an active incident carries the ack/snooze/resolve workflow; a down check without one is just a state), then the checks list filtered to the relevant status. The all-clear green banner stays inert — there's nothing to jump to. Same hover treatment as KPI tiles (cursor-pointer plus a stronger border/background), applied to a banner instead of a tile."
+    >
+      <ExampleRow
+        preview={
+          <div className="w-full max-w-xl space-y-2">
+            <Link
+              to="/orgs/$org/incidents"
+              params={{ org }}
+              search={{
+                state: "active" as const,
+                showSuppressed: undefined,
+                checkUid: undefined,
+              }}
+              data-testid="design-reference-clickable-banner-incidents"
+              className="block"
+            >
+              <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-destructive/50 hover:bg-destructive/15">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  <h2 className="text-sm font-semibold text-destructive">
+                    Issues detected
+                  </h2>
+                  <span className="text-xs text-muted-foreground">
+                    1 active incident
+                  </span>
+                </div>
+              </div>
+            </Link>
+            <Link
+              to="/orgs/$org/checks"
+              params={{ org }}
+              search={{ status: "warning" }}
+              data-testid="design-reference-clickable-banner-checks"
+              className="block"
+            >
+              <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-amber-500/50 hover:bg-amber-500/15">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                  <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                    Some checks degraded
+                  </h2>
+                  <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                    Timeouts detected on 3 checks
+                  </span>
+                </div>
+              </div>
+            </Link>
+          </div>
+        }
+        importLine={snippet}
+      />
     </Section>
   );
 }
