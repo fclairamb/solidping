@@ -3801,7 +3801,13 @@ export function useVersion() {
         gitTime?: string;
         runMode?: string;
       }>("/api/mgmt/version"),
-    staleTime: Infinity,
+    // Poll for server redeploys (spec 2026-08-28-01: dash0 has no way to
+    // tell the user their loaded app is older than the running server).
+    // "always" ignores staleness so a laptop waking from sleep refetches on
+    // focus/visibilitychange immediately instead of waiting out the rest of
+    // the interval.
+    refetchInterval: 15 * 60 * 1000,
+    refetchOnWindowFocus: "always",
   });
 }
 

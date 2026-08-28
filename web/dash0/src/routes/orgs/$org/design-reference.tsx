@@ -90,6 +90,7 @@ import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
 import type { SloBurndown } from "@/api/hooks";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
+import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -1924,6 +1925,36 @@ function ButtonsBadgesSection() {
             </span>
           }
           importLine={`import { LiveStatusDot } from "@/components/layout/live-status-dot";\n\n<LiveStatusDot />`}
+        />
+
+        <h3 className="text-sm font-medium">Server version indicator</h3>
+        <p className="text-sm text-muted-foreground">
+          Also mounted in the sidebar footer utility row (spec
+          2026-08-28-01). Discreet in the common case: just the current
+          server version, small and muted. The loaded version is captured
+          once, from the first{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            /api/mgmt/version
+          </code>{" "}
+          response after boot, and never overwritten —{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            useVersion()
+          </code>{" "}
+          polls the live server every 15 minutes and on window
+          focus/visibilitychange. Since dash0 is embedded in the Go binary,
+          a poll returning a different version than the loaded baseline
+          means the server was redeployed after this page loaded — the row
+          then adds the loaded version and a red reload icon (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            location.reload()
+          </code>
+          ). The live instance below reflects this tab's actual state, so
+          it normally shows the muted form — the icon only appears after a
+          real redeploy.
+        </p>
+        <ExampleRow
+          preview={<ServerVersionIndicator />}
+          importLine={`import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";\n\n<ServerVersionIndicator />`}
         />
 
         <h3 className="text-sm font-medium">Relative time (live)</h3>

@@ -111,5 +111,9 @@
     "telegram_invalid_chat": "Identifiant de conversation Telegram invalide",
     "telegram_send_failed": "Échec de l'envoi Telegram",
     "telegram_runaway_guard": "Garde-fou horaire Telegram atteint"
+  },
+  "serverVersion": {
+    "reloadAria": "Recharger pour obtenir la dernière version",
+    "stale": "Serveur mis à jour vers {{version}} — recharger pour obtenir la dernière version."
   }
 }
