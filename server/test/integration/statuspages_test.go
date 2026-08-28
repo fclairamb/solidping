@@ -282,10 +282,11 @@ func TestStatusPageFullLifecycle(t *testing.T) {
 	r.Equal(http.StatusCreated, status)
 	section2UID := section2.UID
 
-	// Step 8: List sections
+	// Step 8: List sections. CreateStatusPage seeds a default "Services"
+	// section (spec 2026-08-28-16), so this page now carries 3, not 2.
 	sectionsResp, status := doJSON[listSectionsResponse](t, h, "GET", pagePath+"/sections", nil)
 	r.Equal(http.StatusOK, status)
-	r.Len(sectionsResp.Data, 2)
+	r.Len(sectionsResp.Data, 3)
 
 	// Step 9: Add a check as a resource to the first section
 	publicName := "Main API"
@@ -316,7 +317,7 @@ func TestStatusPageFullLifecycle(t *testing.T) {
 	pageWithSections, status := doJSON[statusPageResponse](t, h, "GET", pagePath+"?with=sections", nil)
 	r.Equal(http.StatusOK, status)
 	r.Equal(pageUID, pageWithSections.UID)
-	r.Len(pageWithSections.Sections, 2)
+	r.Len(pageWithSections.Sections, 3)
 
 	// Find the API Services section and check its resources
 	var apiSection *sectionResponse
@@ -336,7 +337,7 @@ func TestStatusPageFullLifecycle(t *testing.T) {
 		"/api/v1/status-pages/"+TestOrgSlug+"/production")
 	r.Equal(http.StatusOK, status)
 	r.Equal("Production Status", publicPage.Name)
-	r.Len(publicPage.Sections, 2)
+	r.Len(publicPage.Sections, 3)
 
 	// Check that live check data is present in the resource
 	var publicAPISection *sectionResponse

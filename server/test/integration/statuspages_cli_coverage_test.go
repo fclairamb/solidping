@@ -115,7 +115,9 @@ func TestCLICoverage_StatusPageSectionsResourcesSubscribers(t *testing.T) {
 	r.Equal(200, listSectionsResp.StatusCode())
 	r.NotNil(listSectionsResp.JSON200)
 	r.NotNil(listSectionsResp.JSON200.Data)
-	r.Len(*listSectionsResp.JSON200.Data, 1)
+	// CreateStatusPage seeds a default "Services" section (spec
+	// 2026-08-28-16), so this page now carries that plus "Core Systems".
+	r.Len(*listSectionsResp.JSON200.Data, 2)
 
 	getSectionResp, err := apiClient.GetStatusPageSectionWithResponse(
 		ctx, TestOrgSlug, pageUID.String(), sectionUID.String())
@@ -132,9 +134,15 @@ func TestCLICoverage_StatusPageSectionsResourcesSubscribers(t *testing.T) {
 	r.NotNil(updateSectionResp.JSON200)
 	r.Equal(renamedSection, updateSectionResp.JSON200.Name)
 
-	// Reordering a single section is a no-op that must still succeed.
+	// Reordering keeping the existing order is a no-op that must still
+	// succeed — the page carries 2 sections now (the seeded default plus
+	// "Core Systems"), and Uids must name every one of them.
+	allSectionUIDs := make([]openapi_types.UUID, 0, len(*listSectionsResp.JSON200.Data))
+	for _, s := range *listSectionsResp.JSON200.Data {
+		allSectionUIDs = append(allSectionUIDs, s.Uid)
+	}
 	reorderSectionsResp, err := apiClient.ReorderStatusPageSectionsWithResponse(ctx, TestOrgSlug, pageUID.String(),
-		client.ReorderStatusPageSectionsJSONRequestBody{Uids: []openapi_types.UUID{sectionUID}})
+		client.ReorderStatusPageSectionsJSONRequestBody{Uids: allSectionUIDs})
 	r.NoError(err)
 	r.Equal(204, reorderSectionsResp.StatusCode())
 
