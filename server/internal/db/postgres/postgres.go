@@ -6222,6 +6222,15 @@ func (s *Service) ListOrgEntitlementAudits(
 		return nil, err
 	}
 
+	// bun leaves the destination slice nil when nothing matched, and this list
+	// is serialized straight onto the API as a JSON array. A nil slice marshals
+	// to `null`, which is not an empty list — it is a value every caller has to
+	// guard before touching `.length`. Hand back an empty slice instead so an
+	// org with no entitlement history is an empty trail, not a missing one.
+	if rows == nil {
+		rows = []*models.OrgEntitlementAudit{}
+	}
+
 	return rows, nil
 }
 

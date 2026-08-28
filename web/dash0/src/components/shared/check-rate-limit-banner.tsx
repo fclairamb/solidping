@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import type { EntitlementsChecksPerMinute } from "@/api/hooks";
 import {
   formatCheckRateDemand,
-  isOverCheckRateLimit,
   shouldWarnAboutCheckRate,
 } from "@/lib/check-rate-limit";
 
@@ -40,7 +39,10 @@ interface CheckRateLimitBannerProps {
  * and carry no information. A warning, never destructive — nothing is lost
  * permanently and the remedy is the customer's to choose.
  *
- * Renders nothing when the org is inside its cap and lost nothing today.
+ * Renders nothing when the org is inside its cap — including right after the
+ * scheduling has been reviewed back under it, even if executions were skipped
+ * earlier today. The warning tracks the live state; the skip count is only
+ * supporting detail while the org is over.
  */
 export function CheckRateLimitBanner({
   org,
@@ -54,21 +56,17 @@ export function CheckRateLimitBanner({
     return null;
   }
 
-  const over = isOverCheckRateLimit(checksPerMinute);
-
   return (
     <Alert variant="warning" data-testid="check-rate-limit-banner">
       <AlertTriangle />
       <AlertTitle>{t("org:checkRateLimit.title")}</AlertTitle>
       <AlertDescription className="space-y-2">
-        {over && (
-          <p>
-            {t("org:checkRateLimit.overLimit", {
-              demand: formatCheckRateDemand(checksPerMinute.demand),
-              limit: checksPerMinute.limit,
-            })}
-          </p>
-        )}
+        <p>
+          {t("org:checkRateLimit.overLimit", {
+            demand: formatCheckRateDemand(checksPerMinute.demand),
+            limit: checksPerMinute.limit,
+          })}
+        </p>
         {checksPerMinute.skippedToday > 0 && (
           <p data-testid="check-rate-limit-skipped">
             {t("org:checkRateLimit.skippedToday", {
@@ -86,9 +84,9 @@ export function CheckRateLimitBanner({
                 <Link
                   to="/orgs/$org/checks/scheduling"
                   params={{ org }}
-                  data-testid="check-rate-limit-usage-link"
+                  data-testid="check-rate-limit-scheduling-link"
                 >
-                  {t("org:checkRateLimit.viewUsage")}
+                  {t("org:checkRateLimit.reviewScheduling")}
                 </Link>
               </Button>
             )}

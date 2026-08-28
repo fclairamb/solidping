@@ -213,6 +213,39 @@ test.describe("Superadmin entitlements editor", () => {
     await expect(page.getByTestId("audit-suppressed")).toBeVisible();
   });
 
+  test("an org with no audit trail renders the editor, not an error boundary", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // `audits: null` is exactly what the server sent for an organization that
+    // had never been edited — which, on a fresh install, is every single one.
+    // The editor read `.length` off it and threw, so the whole page came back
+    // as "Something went wrong". The server no longer sends null, but a single
+    // missing array must not be able to blank the page either.
+    await page.route("**/api/v1/system/entitlements/acmetech", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...DETAIL, audits: null }),
+      });
+    });
+
+    await page.goto("orgs/test/server/entitlements/acmetech");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByText("Something went wrong")).toHaveCount(0);
+
+    // The editor is really there — not merely the absence of the error.
+    await expect(page.getByTestId("entitlements-input-maxChecks")).toHaveValue(
+      "100",
+    );
+    // And the trail reads as empty rather than missing.
+    await expect(
+      page.getByText("No entitlement change recorded yet."),
+    ).toBeVisible();
+  });
+
   test("an API 403 renders Permission Denied in place, never a redirect", async ({
     authenticatedPage,
   }) => {

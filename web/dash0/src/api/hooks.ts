@@ -6198,7 +6198,12 @@ export interface AdminEntitlementsDetail extends AdminEntitlementsRow {
   stored?: AdminEntitlementsStored | null;
   /** What this deployment resolves to with no row — where a release lands. */
   defaults: EntitlementsLimits;
-  audits: EntitlementAudit[];
+  /**
+   * The org's change history, newest first. Optional and nullable on purpose:
+   * an org that has never been edited has no trail, and a server that sends
+   * `null` for that must not be able to blank the page.
+   */
+  audits?: EntitlementAudit[] | null;
 }
 
 export function useAdminEntitlementsList(params: {
