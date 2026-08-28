@@ -89,9 +89,19 @@ test.describe("Checks list (mobile)", () => {
     const row = page.getByRole("row", { name: new RegExp(LONG_CHECK_NAME) });
     await expect(row).toBeVisible();
 
+    // Checked FIRST: this is the invariant the spec exists for. Asserting it
+    // after the per-column locators meant a single ambiguous locator skipped
+    // it entirely (which is exactly what happened on the first CI run).
+    await assertNoHorizontalOverflow(page);
+
     // Always-visible columns: name (with the long, unbroken text truncated
     // rather than overflowing), response time, and the row actions trigger.
-    await expect(row.getByText(LONG_CHECK_NAME)).toBeVisible();
+    // Scoped to the name link: the seeded check's URL also contains this
+    // string, so a bare getByText() also matches the (md-hidden) target
+    // cell and trips strict mode.
+    await expect(
+      row.getByRole("link", { name: LONG_CHECK_NAME }),
+    ).toBeVisible();
     await expect(row.getByText("42ms")).toBeVisible();
     const actionsButton = row.getByRole("button").last();
     await expect(actionsButton).toBeVisible();
@@ -99,8 +109,6 @@ test.describe("Checks list (mobile)", () => {
     // Secondary columns are hidden below their breakpoint.
     await expect(page.getByText("Type", { exact: true })).toBeHidden();
     await expect(page.getByText("Target", { exact: true })).toBeHidden();
-
-    await assertNoHorizontalOverflow(page);
   });
 });
 
@@ -182,6 +190,11 @@ test.describe("Incidents list (mobile)", () => {
     const row = page.getByTestId("incident-row").first();
     await expect(row).toBeVisible();
 
+    // Checked FIRST: this is the invariant the spec exists for. Asserting it
+    // after the per-column locators meant a single ambiguous locator skipped
+    // it entirely (which is exactly what happened on the first CI run).
+    await assertNoHorizontalOverflow(page);
+
     // Always-visible: title (long, unbroken text truncated rather than
     // overflowing) and the started-at timestamp.
     await expect(row.getByText(LONG_INCIDENT_TITLE)).toBeAttached();
@@ -195,8 +208,6 @@ test.describe("Incidents list (mobile)", () => {
     // Secondary columns are hidden below their breakpoint.
     await expect(page.getByText("Check", { exact: true })).toBeHidden();
     await expect(page.getByText("Failures", { exact: true })).toBeHidden();
-
-    await assertNoHorizontalOverflow(page);
   });
 });
 
@@ -250,17 +261,23 @@ test.describe("Members list (mobile)", () => {
     const row = page.getByRole("row", { name: new RegExp(LONG_MEMBER_EMAIL) });
     await expect(row).toBeVisible();
 
+    // Checked FIRST: this is the invariant the spec exists for. Asserting it
+    // after the per-column locators meant a single ambiguous locator skipped
+    // it entirely (which is exactly what happened on the first CI run).
+    await assertNoHorizontalOverflow(page);
+
     // Always-visible columns: member identity (long text truncated rather
     // than overflowing), role, and the row actions.
-    await expect(row.getByText(LONG_MEMBER_EMAIL)).toBeVisible();
+    // The fixture uses the email as the display name on purpose ("long
+    // email-as-name" is the overflow case), so this string appears in both
+    // the name cell and the md-hidden email cell. first() is the name cell.
+    await expect(row.getByText(LONG_MEMBER_EMAIL).first()).toBeVisible();
     await expect(row.getByTestId(`member-role-${LONG_MEMBER_EMAIL}`)).toBeVisible();
     await expect(row.getByRole("button", { name: "Remove" })).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
     await expect(page.getByText("Email", { exact: true })).toBeHidden();
     await expect(page.getByText("Joined", { exact: true })).toBeHidden();
-
-    await assertNoHorizontalOverflow(page);
   });
 });
 
@@ -332,6 +349,11 @@ test.describe("SLOs list (mobile)", () => {
     const row = page.getByTestId("slo-row").first();
     await expect(row).toBeVisible();
 
+    // Checked FIRST: this is the invariant the spec exists for. Asserting it
+    // after the per-column locators meant a single ambiguous locator skipped
+    // it entirely (which is exactly what happened on the first CI run).
+    await assertNoHorizontalOverflow(page);
+
     // Always-visible columns: name (long text truncated rather than
     // overflowing), attainment, state, and the row actions.
     await expect(row.getByTestId("slo-row-name")).toBeVisible();
@@ -344,8 +366,6 @@ test.describe("SLOs list (mobile)", () => {
     await expect(page.getByText("Scope", { exact: true })).toBeHidden();
     await expect(page.getByText("Target", { exact: true })).toBeHidden();
     await expect(page.getByText("Budget remaining", { exact: true })).toBeHidden();
-
-    await assertNoHorizontalOverflow(page);
   });
 });
 
@@ -383,17 +403,22 @@ test.describe("Integrations list (mobile)", () => {
     const row = page.getByRole("row", { name: new RegExp(LONG_INTEGRATION_NAME) });
     await expect(row).toBeVisible();
 
+    // Checked FIRST: this is the invariant the spec exists for. Asserting it
+    // after the per-column locators meant a single ambiguous locator skipped
+    // it entirely (which is exactly what happened on the first CI run).
+    await assertNoHorizontalOverflow(page);
+
     // Always-visible columns: name (long text truncated rather than
     // overflowing), status, and the row actions.
     await expect(row.getByText(LONG_INTEGRATION_NAME)).toBeVisible();
     await expect(row.getByText("Enabled")).toBeVisible();
-    await expect(row.getByRole("button", { name: "Edit" })).toBeVisible();
+    // `<Button asChild>` wrapping a `<Link>` renders an <a>, so the edit
+    // affordance has role "link" despite looking like a button.
+    await expect(row.getByRole("link", { name: "Edit" })).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
     await expect(page.getByText("Type", { exact: true })).toBeHidden();
     await expect(page.getByText("Used by", { exact: true })).toBeHidden();
     await expect(page.getByText("Updated", { exact: true })).toBeHidden();
-
-    await assertNoHorizontalOverflow(page);
   });
 });
