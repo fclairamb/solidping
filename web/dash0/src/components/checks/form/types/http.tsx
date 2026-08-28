@@ -19,6 +19,10 @@ import {
   normalizeStatusPattern,
 } from "@/lib/http-status";
 import { getFieldError } from "@/hooks/use-check-validation";
+import {
+  JsonAssertionEditor,
+  type AssertionNode,
+} from "@/components/checks/json-assertion-editor";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField } from "./common";
@@ -54,6 +58,14 @@ export interface HttpState {
   // carried those values, and set by the inputs' own onChange.
   authDirty: boolean;
   headersDirty: boolean;
+  // The JSONPath assertion AST (assertion leaf or and/or group), or null when
+  // no assertion is configured. Unlike the secret fields above this is a
+  // public config key — it always comes back on GET, so no dirty flag is
+  // needed: toConfig writes it whenever non-null and omits the key otherwise,
+  // and an absent key is what actually clears a stored value (it isn't a
+  // secret field, so the server's PATCH-merge drops any public key missing
+  // from the submitted config — see toConfig below).
+  jsonPathAssertions: AssertionNode | null;
 }
 
 // seedExpectedStatusCodes implements the fromConfig precedence from spec
@@ -72,6 +84,18 @@ function seedExpectedStatusCodes(config: CheckConfig): string[] {
     if (deduped.length > 0) return deduped;
   }
   return ["200"];
+}
+
+// seedJsonPathAssertions reads the assertion tree from config, preferring the
+// canonical camelCase key over the snake_case alias the server also resolves
+// on read (the reverse priority of captureFailureResponse, whose canonical
+// key is snake_case — see HTTPConfig.GetConfig, which only ever emits
+// `jsonPathAssertions`). Anything that isn't a plain object is treated as
+// absent rather than throwing, matching the form's generally lenient seeding.
+function seedJsonPathAssertions(config: CheckConfig): AssertionNode | null {
+  const raw = config.jsonPathAssertions ?? config.json_path_assertions;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as AssertionNode;
 }
 
 function fromConfig(config: CheckConfig): HttpState {
@@ -106,6 +130,7 @@ function fromConfig(config: CheckConfig): HttpState {
     verifySsl,
     followRedirects,
     captureFailureResponse,
+    jsonPathAssertions: seedJsonPathAssertions(config),
     // Seeding matters three ways: a legacy row's username is public and comes
     // back, so it round-trips and folds into `basicAuth` on save; a prefill link
     // (`?username=probe`) must submit what it prefilled; and on a deployment
@@ -156,6 +181,13 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
   if (!state.followRedirects) cfg.followRedirects = false;
   // Written only when opted in, under the canonical snake_case key.
   if (state.captureFailureResponse) cfg.capture_failure_response = true;
+  // Not a secret field (see HttpState.jsonPathAssertions), so — like
+  // expectedStatusCodes above — omitting the key is itself what clears a
+  // stored value: the server's PATCH-merge drops any public key absent from
+  // the submitted config rather than preserving it.
+  if (state.jsonPathAssertions) {
+    cfg.jsonPathAssertions = state.jsonPathAssertions;
+  }
   const errors: FieldErrors = [];
   if (!state.url) errors.push({ name: "url", message: "URL is required" });
   // Invalid chips block save with a field-scoped error, the same mechanism
@@ -400,6 +432,7 @@ export function HttpOptionsFields({
   state,
   onChange,
 }: CheckTypeFieldsProps<HttpState>) {
+  const { t } = useTranslation("checks");
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -462,6 +495,23 @@ export function HttpOptionsFields({
           page.
         </p>
       )}
+      <div className="space-y-2 border-t pt-3">
+        <div>
+          <Label>{t("jsonAssertions")}</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {t(
+              "jsonAssertionsDescription",
+              "Validate fields in the JSON response body against a JSONPath expression.",
+            )}
+          </p>
+        </div>
+        <JsonAssertionEditor
+          value={state.jsonPathAssertions}
+          onChange={(jsonPathAssertions) =>
+            onChange({ ...state, jsonPathAssertions })
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -476,6 +526,7 @@ export function httpOptionsSummary(state: HttpState): {
   if (!state.verifySsl) parts.push("TLS verification off");
   if (!state.followRedirects) parts.push("redirects not followed");
   if (state.captureFailureResponse) parts.push("failure response captured");
+  if (state.jsonPathAssertions) parts.push("JSON assertions");
   return { text: parts.join(" · "), customized: parts.length > 0 };
 }
 
