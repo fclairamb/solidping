@@ -211,6 +211,39 @@ type matrixMessageEvent struct {
 // never fmt.Sprintf directly into markup — so a check name or failure
 // reason cannot inject markup into the room.
 func (s *MatrixSender) buildContent(payload *Payload) (string, string) {
+	title, lines := s.titleAndLines(payload)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
+
+	plain := title
+	if len(lines) > 0 {
+		plain += "\n" + strings.Join(lines, "\n")
+	}
+
+	if incidentURL != "" {
+		plain += "\n" + incidentURL
+	}
+
+	htmlLines := make([]string, len(lines))
+	for i, line := range lines {
+		htmlLines[i] = html.EscapeString(line)
+	}
+
+	formatted := "<strong>" + html.EscapeString(title) + "</strong>"
+	if len(htmlLines) > 0 {
+		formatted += "<br/>" + strings.Join(htmlLines, "<br/>")
+	}
+
+	if incidentURL != "" {
+		formatted += fmt.Sprintf(`<br/><a href="%s">View incident</a>`, html.EscapeString(incidentURL))
+	}
+
+	return plain, formatted
+}
+
+// titleAndLines picks the per-event headline and body lines. Split out of
+// buildContent so the escaping/assembly above stays one readable block as the
+// event list grows.
+func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
 	checkName := getCheckName(payload.Check)
 
 	var title string
@@ -244,32 +277,7 @@ func (s *MatrixSender) buildContent(payload *Payload) (string, string) {
 		lines = []string{"An incident update occurred for " + checkName}
 	}
 
-	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
-
-	plain := title
-	if len(lines) > 0 {
-		plain += "\n" + strings.Join(lines, "\n")
-	}
-
-	if incidentURL != "" {
-		plain += "\n" + incidentURL
-	}
-
-	htmlLines := make([]string, len(lines))
-	for i, line := range lines {
-		htmlLines[i] = html.EscapeString(line)
-	}
-
-	formatted := "<strong>" + html.EscapeString(title) + "</strong>"
-	if len(htmlLines) > 0 {
-		formatted += "<br/>" + strings.Join(htmlLines, "<br/>")
-	}
-
-	if incidentURL != "" {
-		formatted += fmt.Sprintf(`<br/><a href="%s">View incident</a>`, html.EscapeString(incidentURL))
-	}
-
-	return plain, formatted
+	return title, lines
 }
 
 func (s *MatrixSender) downLines(payload *Payload, checkName string) []string {

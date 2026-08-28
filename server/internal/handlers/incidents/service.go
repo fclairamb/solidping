@@ -3026,7 +3026,7 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 
 	// BOTH of the following must run AFTER that sweep, never before: it
 	// soft-deletes every pending job carrying this incident's UID, so a notice
-	// or a resumed escalation step enqueued first would be cancelled by the
+	// or a resumed escalation step enqueued first would be canceled by the
 	// very action that created it.
 	//
 	// Unack was SILENT under spec 2026-08-24-01. That decision is SUPERSEDED

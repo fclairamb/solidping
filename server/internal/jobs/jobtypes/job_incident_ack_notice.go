@@ -182,7 +182,7 @@ func ackAlertParams(
 func telegramAckDetail(cfg *IncidentAckNoticeJobConfig) string {
 	actor := strings.TrimSpace(cfg.ActorName)
 	if actor == "" {
-		actor = "Someone"
+		actor = noticeActorUnknown
 	}
 
 	detail := "acknowledged by " + actor
@@ -390,7 +390,7 @@ func markAckTold(
 ) {
 	orgUID := incident.OrganizationUID
 	ttl := telegramAckedMarkerTTL
-	value := &models.JSONMap{"notifiedAt": time.Now().UTC().Format(time.RFC3339)}
+	value := &models.JSONMap{noticeMarkerNotifiedAtKey: time.Now().UTC().Format(time.RFC3339)}
 
 	if err := jctx.DBService.SetStateEntry(
 		ctx, &orgUID, telegramAckedKey(incident.UID, chatID), value, &ttl,

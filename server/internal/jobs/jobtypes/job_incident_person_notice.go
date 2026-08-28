@@ -59,6 +59,12 @@ const (
 	// personNoticeCommentPreviewMax caps a forwarded comment body. This lands
 	// on a phone, not in a log.
 	personNoticeCommentPreviewMax = 300
+	// noticeActorUnknown is what an unattributed actor renders as. Shared by
+	// every person-notice job so an unresolved name never becomes a blank line.
+	noticeActorUnknown = "Someone"
+	// noticeMarkerNotifiedAtKey is the timestamp field inside a per-chat
+	// delivery marker.
+	noticeMarkerNotifiedAtKey = "notifiedAt"
 )
 
 // ErrPersonNoticeIncomplete marks a run where at least one chat failed with a
@@ -307,7 +313,7 @@ func (r *IncidentPersonNoticeJobRun) detailLine() string {
 	if r.notice.kind == personNoticeKindUnack {
 		actor := strings.TrimSpace(r.notice.actorName)
 		if actor == "" {
-			actor = "Someone"
+			actor = noticeActorUnknown
 		}
 
 		detail := "acknowledgment withdrawn by " + actor
@@ -321,7 +327,7 @@ func (r *IncidentPersonNoticeJobRun) detailLine() string {
 
 	author := strings.TrimSpace(r.notice.authorName)
 	if author == "" {
-		author = "Someone"
+		author = noticeActorUnknown
 	}
 
 	return author + " commented: " + truncateForChat(r.notice.text, personNoticeCommentPreviewMax)
@@ -526,7 +532,7 @@ func (r *IncidentPersonNoticeJobRun) markTold(
 ) {
 	orgUID := incident.OrganizationUID
 	ttl := personNoticeMarkerTTL
-	value := &models.JSONMap{"notifiedAt": time.Now().UTC().Format(time.RFC3339)}
+	value := &models.JSONMap{noticeMarkerNotifiedAtKey: time.Now().UTC().Format(time.RFC3339)}
 
 	if err := jctx.DBService.SetStateEntry(
 		ctx, &orgUID, r.markerKey(incident.UID, chatID), value, &ttl,

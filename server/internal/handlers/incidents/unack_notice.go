@@ -181,7 +181,8 @@ func (s *Service) resumeEscalationAfterUnack(ctx context.Context, incident *mode
 		shift = 0
 	}
 
-	for _, step := range steps {
+	for i := range steps {
+		step := &steps[i]
 		fireAt := step.job.ScheduledAt.Add(shift)
 
 		if _, err := s.jobsSvc.CreateJob(
@@ -204,7 +205,7 @@ func (s *Service) resumeEscalationAfterUnack(ctx context.Context, incident *mode
 
 // canceledEscalationStep pairs a canceled job row with its decoded config. The
 // raw config is kept so the resumed job is created with the ORIGINAL bytes —
-// re-marshalling would silently drop any field this build does not know about.
+// re-marshaling would silently drop any field this build does not know about.
 type canceledEscalationStep struct {
 	job       *models.Job
 	config    jobtypes.EscalationStepJobConfig
