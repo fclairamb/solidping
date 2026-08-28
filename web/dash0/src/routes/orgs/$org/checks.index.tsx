@@ -491,7 +491,7 @@ function CheckRow({
               enabled={check.enabled}
               title={check.enabled === false ? t("checks:detail.disabled") : undefined}
             />
-            <span className="truncate">
+            <span className="min-w-0 truncate">
               {check.name || check.slug || check.uid?.slice(0, 8)}
             </span>
           </Link>
