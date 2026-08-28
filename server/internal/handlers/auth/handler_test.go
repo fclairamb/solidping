@@ -15,7 +15,7 @@ import (
 )
 
 // decodeErrorResponse decodes the standard {title, code, detail} error body.
-func decodeErrorResponse(t *testing.T, rec *httptest.ResponseRecorder) (code, detail string) {
+func decodeErrorResponse(t *testing.T, rec *httptest.ResponseRecorder) (string, string) {
 	t.Helper()
 
 	var payload struct {
