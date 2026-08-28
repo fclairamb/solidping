@@ -82,3 +82,68 @@ truth again. Grouping duplicate rows client-side was considered and dropped —
 it would only be masking state the server should not keep serving. The 7-day
 GC stays as the backstop for fleets with unique per-machine names (fly), whose
 replaced machines never match a newcomer's name.
+
+## Implementation Plan
+
+### 1. Shared, dialect-agnostic helpers — `server/internal/db/agentsupersede.go` (new, package `db`)
+
+`internal/agents` does **not** depend on `internal/db` (verified with
+`go list -deps ./internal/agents`), so package `db` can import it and reuse
+`agents.WorkerSlug` — no cycle, no duplicated slug derivation.
+
+- `SupersededSystemAgentDisconnectWindow = 15 * time.Minute` — the "provably
+  not a live fleet peer" grace, comfortably above the WS heartbeat/reconnect
+  cadence.
+- `SupersedeReplacedSystemAgents(ctx, idb bun.IDB, newAgent *models.Agent, now)`
+  — no-op unless `newAgent.IsSystem()`. Selects the predecessor UIDs
+  (`kind='system'`, same `region`, same `name`, `status='active'`,
+  `deleted_at IS NULL`, `uid <> newAgent.UID`,
+  `(last_seen_at IS NULL OR last_seen_at < now-window)`), then applies the same
+  terminal state as `RetireSystemAgent` (`status=revoked`, `revoked_at`,
+  `deleted_at`, `updated_at`) and calls `RetireAgentWorkerRows` for them.
+  Runs on whatever `bun.IDB` it is handed, so the enrollment path passes its
+  own `bun.Tx` and the whole thing is atomic with the insert.
+- `RetireAgentWorkerRows(ctx, idb, agentUIDs, now)` — soft-deletes the
+  `workers` rows resolved through `agents.WorkerSlug(uid)`. This is the
+  factored-out `cleanupWorkerRow`.
+
+### 2. `db.Service` gains `RetireAgentWorkerRow(ctx, agentUID)`
+
+Declared in `internal/db/service.go`, implemented in
+`internal/db/postgres/agents.go` and `internal/db/sqlite/agents.go` as a
+one-liner over `db.RetireAgentWorkerRows`. `internal/notifications/slack_test.go`'s
+`mockDBService` gets the stub.
+
+### 3. Supersede-on-enroll — both dialects
+
+In `EnrollAgent`, inside the existing transaction and immediately after
+`tx.NewInsert().Model(newAgent)`, call
+`db.SupersedeReplacedSystemAgents(ctx, tx, newAgent, now)`. Org agents are
+untouched: the helper returns early for a non-system newcomer, and its
+predicate is `kind='system'` anyway, so an org agent that happens to share the
+name can never match.
+
+### 4. GC — `server/internal/jobs/jobtypes/job_agent_gc.go`
+
+- `cleanupWorkerRow` delegates to `DBService.RetireAgentWorkerRow` (the shared
+  helper); the local `GetWorkerBySlug`+`DeleteWorker` pair and the
+  `agentcrypto` import go away.
+- `rescheduleSelf` marshals `r.config` into the created job instead of passing
+  `nil`. The zero config marshals to `{}` — byte-identical to what
+  `parseJobConfig(nil)` produces — so the default path's job dedup is
+  unchanged.
+
+### 5. Tests
+
+- `server/internal/db/agent_supersede_test.go` (new, package `db_test`): one
+  body run against **both dialects** — in-memory SQLite, and embedded
+  PostgreSQL on port 15503 (self-skips under `-short`, like every other
+  embedded-PG test). Cases: stale same-(region,name) predecessor retired and
+  its worker row soft-deleted; **same-name predecessor with a fresh
+  `last_seen_at` survives** (the positive control for the guard); a
+  different-name same-region agent survives; a same-region agent with a
+  different region survives; an **org** agent with the same name is never
+  touched; the newcomer itself survives.
+- `server/internal/jobs/jobtypes/job_agent_gc_test.go`: a run created with
+  `{"staleAfterSeconds":…,"revokedPurgeAfterSeconds":…}` produces a follow-up
+  pending job carrying that same config (fails on the `nil` today).
