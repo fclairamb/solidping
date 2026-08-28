@@ -211,6 +211,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
+  { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
@@ -259,6 +260,7 @@ function DesignReferencePage() {
       <LiveDotSection />
       <FormsSection />
       <DataDisplaySection />
+      <ResponsiveTableSection />
       <ListSurfaceSection />
       <CopyableCodeSection />
       <CopyableInlineSection />
@@ -2864,6 +2866,130 @@ function DataDisplaySection() {
       <CodeSnippet
         code={`<TableHead>Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
       />
+    </Section>
+  );
+}
+
+/* Two example tables sharing the same tier logic as the checks and incidents
+ * list pages (spec 2026-08-28-08): identity + the one "live signal" column +
+ * row actions stay visible at every width; the widest or most redundant
+ * columns fold away first via `hidden <bp>:table-cell`. Shrink the browser
+ * window (or the design-reference iframe) to see Type/Target/Status drop off
+ * below `sm`/`md`. */
+function ResponsiveDemoTable() {
+  const rows: {
+    id: string;
+    name: string;
+    type: string;
+    target: string;
+    status: "up" | "warning";
+    response: string;
+  }[] = [
+    {
+      id: "1",
+      name: "api.acme.com health",
+      type: "HTTP",
+      target: "https://api.acme.com/health",
+      status: "up",
+      response: "42ms",
+    },
+    {
+      id: "2",
+      name: "checkout-prod-gateway-eu",
+      type: "TCP",
+      target: "checkout.acme.com:443",
+      status: "warning",
+      response: "812ms",
+    },
+  ];
+
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead className="hidden sm:table-cell">Type</TableHead>
+            <TableHead className="hidden md:table-cell">Target</TableHead>
+            <TableHead className="hidden md:table-cell">Status</TableHead>
+            <TableHead>Response</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
+              <TableCell className="max-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <StatusDot status={row.status} />
+                  <span className="truncate">{row.name}</span>
+                </div>
+              </TableCell>
+              <TableCell className="hidden sm:table-cell">
+                {row.type}
+              </TableCell>
+              <TableCell className="hidden max-w-[220px] truncate font-mono text-xs text-muted-foreground md:table-cell">
+                {row.target}
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
+                <StatusBadge status={row.status} />
+              </TableCell>
+              <TableCell className="font-mono text-xs">
+                {row.response}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ResponsiveTableSection() {
+  return (
+    <Section
+      id="responsive-table"
+      title="Responsive table"
+      description="Hide secondary columns below a breakpoint instead of letting a wide table fall back to horizontal scroll. Used by the checks and incidents list pages (spec 2026-08-28-08); the canonical pattern for any list page with more columns than fit a phone."
+    >
+      <ResponsiveDemoTable />
+      <CodeSnippet
+        code={`<TableHead>Name</TableHead>\n<TableHead className="hidden sm:table-cell">Type</TableHead>\n<TableHead className="hidden md:table-cell">Target</TableHead>\n\n<TableCell className="max-w-0">\n  <div className="flex min-w-0 items-center gap-2">\n    <StatusDot status={row.status} />\n    <span className="truncate">{row.name}</span>\n  </div>\n</TableCell>\n<TableCell className="hidden sm:table-cell">{row.type}</TableCell>\n<TableCell className="hidden md:table-cell">{row.target}</TableCell>`}
+      />
+      <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+        <li>
+          <strong className="text-foreground">Always the head/cell pair.</strong>{" "}
+          Apply the exact same <code>hidden &lt;bp&gt;:table-cell</code> class
+          to the <code>TableHead</code> AND every matching{" "}
+          <code>TableCell</code> in that column. A mismatched pair doesn't
+          error — it silently shifts every following column under the wrong
+          header, and only at the breakpoint where it applies, so it's easy
+          to ship and hard to notice in review.
+        </li>
+        <li>
+          <strong className="text-foreground">Tier by importance, not by width.</strong>{" "}
+          Identity (name/title, ideally with its status dot folded in), the
+          one live/primary signal, and row actions stay visible at every
+          width. The widest or most redundant columns — a status badge next
+          to a dot that already conveys it, a "check" column that duplicates
+          the row's own title — fold away first, at{" "}
+          <code>sm</code> then <code>md</code>.
+        </li>
+        <li>
+          <strong className="text-foreground">
+            Hiding columns alone doesn't stop overflow.
+          </strong>{" "}
+          A remaining cell whose content can't shrink — a long check name, an
+          incident title, a UUID — still forces the page wider even after
+          every secondary column is gone. Give that <code>TableCell</code>{" "}
+          <code>max-w-0</code> and its content <code>truncate</code> (add an
+          explicit <code>max-w-[…]</code> when the cell holds more than one
+          flex child, as in the incidents title cell's dot + badges + title).
+          A badge cluster in the same cell needs <code>flex-wrap</code> too,
+          or a badge-heavy row overflows regardless of column hiding. Verify
+          against <code>document.documentElement.scrollWidth {"<="} clientWidth</code>{" "}
+          at 375px — the real invariant, not just "the columns look hidden."
+        </li>
+      </ul>
     </Section>
   );
 }
