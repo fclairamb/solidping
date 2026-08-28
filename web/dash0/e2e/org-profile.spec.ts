@@ -172,6 +172,24 @@ test.describe("Organization profile", () => {
     await expect(page.getByTestId("org-profile-rename-warning")).toBeVisible();
   });
 
+  // A 1x1 transparent PNG, reused by every logo-upload test below.
+  const PNG_LOGO = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+
+  async function uploadLogo(page: import("@playwright/test").Page) {
+    await page.getByTestId("org-profile-logo-file").setInputFiles({
+      name: "logo.png",
+      mimeType: "image/png",
+      buffer: PNG_LOGO,
+    });
+
+    const preview = page.getByTestId("org-profile-logo-preview");
+    await expect(preview).toBeVisible({ timeout: 15000 });
+    await expect(preview).toHaveAttribute("src", /\/pub\/assets\//);
+  }
+
   test("an owner uploads a logo and it shows in the sidebar", async ({
     page,
   }) => {
@@ -183,26 +201,90 @@ test.describe("Organization profile", () => {
     // Control: no org logo yet, so the sidebar shows the product mark.
     await expect(page.getByTestId("sidebar-org-logo")).toHaveCount(0);
 
-    // A 1x1 transparent PNG.
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-      "base64",
-    );
-
-    await page.getByTestId("org-profile-logo-file").setInputFiles({
-      name: "logo.png",
-      mimeType: "image/png",
-      buffer: png,
-    });
-
-    const preview = page.getByTestId("org-profile-logo-preview");
-    await expect(preview).toBeVisible({ timeout: 15000 });
-    await expect(preview).toHaveAttribute("src", /\/pub\/assets\//);
+    await uploadLogo(page);
 
     // The org identity in the sidebar picks it up too.
     await expect(page.getByTestId("sidebar-org-logo")).toBeVisible({
       timeout: 15000,
     });
+
+    // Spec 2026-08-28-13: the relative /pub/assets path must never land in
+    // the type="url" input — it would trip native constraint validation and
+    // silently block the whole form's submit. Instead the field shows an
+    // "Uploaded file" badge, and the URL input isn't even in the DOM.
+    await expect(page.getByTestId("org-profile-logo-badge")).toBeVisible();
+    await expect(page.getByTestId("org-profile-logo-badge")).toHaveText(
+      "Uploaded file",
+    );
+    await expect(page.getByTestId("org-profile-logo-url")).toHaveCount(0);
+
+    // The uploaded state can be cleared, same as before.
+    await page.getByTestId("org-profile-logo-clear").click();
+    await expect(page.getByTestId("org-profile-logo-badge")).toHaveCount(0, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("org-profile-logo-preview")).toHaveCount(0);
+  });
+
+  test("saving a name change still succeeds after uploading a logo", async ({
+    page,
+  }) => {
+    // This is the regression this spec exists for: before the fix, the
+    // relative /pub/assets path from the upload landed in the type="url"
+    // input, native constraint validation refused to submit the form at
+    // all, and an unrelated name edit could never be saved again.
+    const { orgSlug } = await seedOwnedOrg(page);
+
+    await page.goto(`orgs/${orgSlug}/organization/settings`);
+    await page.waitForLoadState("networkidle");
+
+    await uploadLogo(page);
+
+    await page.getByTestId("org-profile-name").fill("Renamed After Upload");
+    await page.getByTestId("org-profile-save").click();
+
+    await expect(page.getByTestId("org-profile-error")).toHaveCount(0);
+    await expect(page.getByTestId("org-profile-name")).toHaveValue(
+      "Renamed After Upload",
+      { timeout: 15000 },
+    );
+
+    // The logo is untouched by the save — still the uploaded file, not
+    // silently cleared by an omitted/mismatched logoUrl.
+    await expect(page.getByTestId("org-profile-logo-badge")).toBeVisible();
+    await expect(page.getByTestId("org-profile-logo-preview")).toHaveAttribute(
+      "src",
+      /\/pub\/assets\//,
+    );
+  });
+
+  test("switching an uploaded logo to an external URL and saving works", async ({
+    page,
+  }) => {
+    const { orgSlug } = await seedOwnedOrg(page);
+
+    await page.goto(`orgs/${orgSlug}/organization/settings`);
+    await page.waitForLoadState("networkidle");
+
+    await uploadLogo(page);
+
+    await page.getByTestId("org-profile-logo-use-url").click();
+    const urlField = page.getByTestId("org-profile-logo-url");
+    await expect(urlField).toBeVisible();
+    await expect(urlField).toHaveValue("");
+    await expect(page.getByTestId("org-profile-logo-badge")).toHaveCount(0);
+
+    const externalUrl = "https://example.com/acme-logo.png";
+    await urlField.fill(externalUrl);
+    await page.getByTestId("org-profile-save").click();
+
+    await expect(page.getByTestId("org-profile-error")).toHaveCount(0);
+    await expect(urlField).toHaveValue(externalUrl, { timeout: 15000 });
+    await expect(page.getByTestId("org-profile-logo-preview")).toHaveAttribute(
+      "src",
+      externalUrl,
+    );
+    await expect(page.getByTestId("org-profile-logo-badge")).toHaveCount(0);
   });
 
   test("a non-owner admin sees no profile card and is refused by the API", async ({
