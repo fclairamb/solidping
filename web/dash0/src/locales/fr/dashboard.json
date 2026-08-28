@@ -30,11 +30,51 @@
       "ssl": "Domaine pour la vérification SSL"
     }
   },
-  "celebration": {
-    "title": "Premier résultat reçu !",
-    "body": "Nous venons de vérifier {{name}}. Configurez les notifications pour être alerté en cas de panne.",
-    "cta": "Voir la sonde",
-    "dismiss": "Ignorer"
+  "onboarding": {
+    "title": "Pour bien démarrer",
+    "progress": "{{done}} sur {{total}} terminé",
+    "dismiss": "Masquer la liste de démarrage",
+    "doneLabel": "Terminé",
+    "todoLabel": "Pas encore fait",
+    "reenableHint": "Masquée par erreur ? Réaffichez-la depuis Compte → Profil.",
+    "allSet": {
+      "title": "Tout est prêt",
+      "body": "Tout est en place : cette liste ne reviendra pas d'elle-même."
+    },
+    "steps": {
+      "check": {
+        "title": "Créez votre première surveillance",
+        "description": "Choisissez ce que vous voulez surveiller : une URL, un hôte, un certificat.",
+        "cta": "Voir les surveillances"
+      },
+      "alerts": {
+        "title": "Soyez alerté en cas de panne",
+        "description": "Ajoutez un canal de notification pour être prévenu au lieu de découvrir la panne trop tard.",
+        "cta": "Configurer les alertes"
+      },
+      "report": {
+        "title": "Recevez un rapport hebdomadaire",
+        "description": "Un récapitulatif de votre disponibilité, envoyé par e-mail selon une planification.",
+        "cta": "Planifier un rapport"
+      },
+      "statusPage": {
+        "title": "Publiez une page de statut",
+        "description": "Informez vos utilisateurs avant qu'ils n'aient à demander.",
+        "cta": "Créer une page de statut"
+      },
+      "team": {
+        "title": "Invitez un collègue",
+        "description": "Partagez la surveillance — et l'astreinte — avec quelqu'un d'autre.",
+        "cta": "Inviter quelqu'un"
+      }
+    },
+    "testAlert": {
+      "cta": "M'envoyer une alerte de test",
+      "sent": "Alerte de test envoyée",
+      "sentDetail": "Elle devrait arriver dans votre boîte de réception d'ici peu.",
+      "failed": "Échec de l'alerte de test",
+      "failedFallback": "L'alerte n'a pas pu être délivrée. Vérifiez votre configuration e-mail."
+    }
   },
   "banner": {
     "allGreen": "Tous les systèmes opérationnels",

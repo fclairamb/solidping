@@ -189,7 +189,7 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
 // Manual collapse/expand choices for check-group sections, persisted per org
 // so a toggle survives a reload. One JSON map per org: { [groupUid]: boolean }.
 // Mirrors the try/catch-guarded localStorage pattern used elsewhere in dash0
-// (dashboard-page.tsx's FirstResultCelebration, lib/last-auth-method.ts) —
+// (lib/last-auth-method.ts, api/client.ts's setSession) —
 // localStorage can throw in private-browsing mode or when disabled.
 function collapsedGroupsStorageKey(org: string): string {
   return `solidping_collapsed_groups_${org}`;

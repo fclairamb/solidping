@@ -30,11 +30,51 @@
       "ssl": "Domain for SSL check"
     }
   },
-  "celebration": {
-    "title": "First result is in!",
-    "body": "We just checked {{name}}. Hook up notifications so you'll know if it ever goes down.",
-    "cta": "View the check",
-    "dismiss": "Dismiss"
+  "onboarding": {
+    "title": "Getting started",
+    "progress": "{{done}} of {{total}} done",
+    "dismiss": "Hide the getting-started checklist",
+    "doneLabel": "Done",
+    "todoLabel": "Not done yet",
+    "reenableHint": "Hidden it by mistake? Bring it back from Account → Profile.",
+    "allSet": {
+      "title": "You're all set",
+      "body": "Everything is wired up, so this checklist won't come back on its own."
+    },
+    "steps": {
+      "check": {
+        "title": "Create your first check",
+        "description": "Pick something to monitor — a URL, a host, a certificate.",
+        "cta": "View checks"
+      },
+      "alerts": {
+        "title": "Get alerted when something breaks",
+        "description": "Add a notification channel so an outage reaches you instead of waiting to be noticed.",
+        "cta": "Set up alerting"
+      },
+      "report": {
+        "title": "Get a weekly uptime report",
+        "description": "A recap of your availability, emailed on a schedule.",
+        "cta": "Schedule a report"
+      },
+      "statusPage": {
+        "title": "Publish a status page",
+        "description": "Tell your users what's happening before they have to ask.",
+        "cta": "Create a status page"
+      },
+      "team": {
+        "title": "Invite a teammate",
+        "description": "Share the monitoring — and the on-call — with someone else.",
+        "cta": "Invite someone"
+      }
+    },
+    "testAlert": {
+      "cta": "Send me a test alert",
+      "sent": "Test alert sent",
+      "sentDetail": "It should land in your inbox in a moment.",
+      "failed": "Test alert failed",
+      "failedFallback": "The alert could not be delivered. Check your email settings."
+    }
   },
   "banner": {
     "allGreen": "All systems operational",

@@ -30,11 +30,51 @@
       "ssl": "Dominio para SSL"
     }
   },
-  "celebration": {
-    "title": "¡Llegó el primer resultado!",
-    "body": "Acabamos de comprobar {{name}}. Configura las notificaciones para enterarte si alguna vez falla.",
-    "cta": "Ver la comprobación",
-    "dismiss": "Cerrar"
+  "onboarding": {
+    "title": "Primeros pasos",
+    "progress": "{{done}} de {{total}} completado",
+    "dismiss": "Ocultar la lista de primeros pasos",
+    "doneLabel": "Completado",
+    "todoLabel": "Pendiente",
+    "reenableHint": "¿La ocultaste sin querer? Vuelve a mostrarla desde Cuenta → Perfil.",
+    "allSet": {
+      "title": "Todo listo",
+      "body": "Todo está configurado: esta lista no volverá por sí sola."
+    },
+    "steps": {
+      "check": {
+        "title": "Crea tu primera comprobación",
+        "description": "Elige qué monitorizar: una URL, un host, un certificado.",
+        "cta": "Ver comprobaciones"
+      },
+      "alerts": {
+        "title": "Recibe avisos cuando algo falle",
+        "description": "Añade un canal de notificación para enterarte de una caída en lugar de descubrirla tarde.",
+        "cta": "Configurar alertas"
+      },
+      "report": {
+        "title": "Recibe un informe semanal de disponibilidad",
+        "description": "Un resumen de tu disponibilidad, enviado por correo según una planificación.",
+        "cta": "Programar un informe"
+      },
+      "statusPage": {
+        "title": "Publica una página de estado",
+        "description": "Cuenta a tus usuarios qué ocurre antes de que tengan que preguntar.",
+        "cta": "Crear una página de estado"
+      },
+      "team": {
+        "title": "Invita a un compañero",
+        "description": "Comparte la monitorización — y las guardias — con alguien más.",
+        "cta": "Invitar a alguien"
+      }
+    },
+    "testAlert": {
+      "cta": "Enviarme una alerta de prueba",
+      "sent": "Alerta de prueba enviada",
+      "sentDetail": "Debería llegar a tu bandeja de entrada en un momento.",
+      "failed": "La alerta de prueba ha fallado",
+      "failedFallback": "No se pudo entregar la alerta. Revisa tu configuración de correo."
+    }
   },
   "banner": {
     "allGreen": "Todos los sistemas operativos",

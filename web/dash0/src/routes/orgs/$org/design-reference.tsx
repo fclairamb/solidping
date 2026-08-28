@@ -75,6 +75,7 @@ import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-sche
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
+import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
@@ -239,6 +240,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "stats-strip", label: "Stats strip" },
   { id: "swatch-legend-chips", label: "Swatch-legend chips" },
   { id: "paging-coverage", label: "Paging coverage" },
+  { id: "onboarding-checklist", label: "Onboarding checklist" },
 ];
 
 function DesignReferencePage() {
@@ -291,6 +293,7 @@ function DesignReferencePage() {
       <StatsStripSection />
       <SwatchLegendChipsSection />
       <PagingCoverageSection />
+      <OnboardingChecklistSection />
     </div>
   );
 }
@@ -5298,6 +5301,48 @@ const emailOnly = useEmailOnlyUserUids(org);
           </div>
         </div>
       </div>
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+function OnboardingChecklistSection() {
+  const { org } = Route.useParams();
+  const snippet = `import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+
+// Container: derives every step from real resources and reads/writes the
+// per-user dismissal (\`onboarding.<org>\` ui-state) itself.
+<OnboardingChecklist org={org} totalChecks={stats.total} firstCheckUid={checks[0]?.uid} />
+
+// Presentation only, for a surface that already has the data:
+import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
+<OnboardingChecklistCard org={org} steps={steps} allSet={false} onDismiss={hide} />`;
+
+  return (
+    <Section
+      id="onboarding-checklist"
+      title="Onboarding checklist"
+      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back."
+    >
+      <ExampleRow
+        preview={
+          <div className="max-w-2xl">
+            <OnboardingChecklistCard
+              org={org}
+              steps={[
+                { id: "check", done: true },
+                { id: "alerts", done: true },
+                { id: "report", done: false },
+                { id: "statusPage", done: false },
+                { id: "team", done: false },
+              ]}
+              allSet={false}
+              onDismiss={() => {}}
+            />
+          </div>
+        }
+        importLine={'import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";'}
+      />
       <CodeSnippet code={snippet} />
     </Section>
   );

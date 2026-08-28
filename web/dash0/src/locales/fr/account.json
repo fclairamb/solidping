@@ -10,6 +10,14 @@
     "namePlaceholder": "Votre nom",
     "saved": "Profil enregistré."
   },
+  "onboardingChecklist": {
+    "title": "Liste de démarrage",
+    "subtitle": "La liste du tableau de bord qui vous guide vers les alertes, les rapports et les pages de statut. Masquée par organisation, et elle vous suit d'un appareil à l'autre.",
+    "body": "Réafficher la liste de démarrage sur le tableau de bord de {{org}}.",
+    "cta": "Réafficher la liste",
+    "restored": "La liste de démarrage est de retour sur le tableau de bord de {{org}}.",
+    "failed": "Impossible de réafficher la liste de démarrage."
+  },
   "tokens": {
     "title": "Jetons API",
     "subtitle": "Gérez vos jetons d'accès personnels.",

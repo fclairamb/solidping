@@ -6,7 +6,18 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { apiFetch, getToken } from "./client";
+import { ApiError, apiFetch, getToken } from "./client";
+
+/**
+ * Opt-in knobs shared by the plain list hooks. A caller that renders a list
+ * page wants the defaults; a caller that only needs the list to *derive* a
+ * boolean (the getting-started checklist) wants to switch the request off
+ * entirely and to hold the answer for a long time.
+ */
+export interface ListQueryOptions {
+  enabled?: boolean;
+  staleTime?: number;
+}
 import { mergeResultTiers } from "@/lib/result-tiers";
 import {
   chartFetchParamsForWindow,
@@ -3386,11 +3397,13 @@ export interface Invitation {
   expiresAt: string;
 }
 
-export function useInvitations(org: string) {
+export function useInvitations(org: string, opts?: ListQueryOptions) {
   return useQuery({
     queryKey: ["invitations", org],
     queryFn: () =>
       apiFetch<{ data: Invitation[] }>(`/api/v1/orgs/${org}/invitations`),
+    enabled: opts?.enabled ?? true,
+    staleTime: opts?.staleTime,
   });
 }
 
@@ -3565,12 +3578,13 @@ export interface MemberResponse {
   createdAt: string;
 }
 
-export function useMembers(org: string) {
+export function useMembers(org: string, opts?: ListQueryOptions) {
   return useQuery({
     queryKey: ["members", org],
     queryFn: () =>
       apiFetch<{ data: MemberResponse[] }>(`/api/v1/orgs/${org}/members`),
-    enabled: !!org,
+    enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: opts?.staleTime,
   });
 }
 
@@ -4826,7 +4840,7 @@ export interface UpdateIntegrationRequest {
   settings?: Record<string, unknown>;
 }
 
-export function useIntegrations(org: string) {
+export function useIntegrations(org: string, opts?: ListQueryOptions) {
   return useQuery({
     queryKey: ["integrations", org],
     queryFn: async () => {
@@ -4835,7 +4849,8 @@ export function useIntegrations(org: string) {
       );
       return response.data || [];
     },
-    enabled: !!org,
+    enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: opts?.staleTime,
   });
 }
 
@@ -7521,7 +7536,7 @@ export interface CreateReportScheduleRequest {
 
 export type UpdateReportScheduleRequest = Partial<CreateReportScheduleRequest>;
 
-export function useReportSchedules(org: string) {
+export function useReportSchedules(org: string, opts?: ListQueryOptions) {
   return useQuery({
     queryKey: ["reportSchedules", org],
     queryFn: async () => {
@@ -7530,7 +7545,8 @@ export function useReportSchedules(org: string) {
       );
       return response.data ?? [];
     },
-    enabled: !!org,
+    enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: opts?.staleTime,
   });
 }
 
@@ -7596,4 +7612,83 @@ export function useTestReportSchedule(org: string) {
         body: JSON.stringify({}),
       }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Per-user UI state (spec 2026-08-28-17)
+//
+// Small preferences that belong to the *user*, not the org, stored server-side
+// so they follow the user across devices instead of living in one browser's
+// localStorage. The API allowlists the key shape (v1: `onboarding.<org>`) and
+// caps the value size, so this is deliberately not a general key-value store.
+// ---------------------------------------------------------------------------
+
+/** Value stored under `onboarding.<org>` once the checklist is dismissed. */
+export interface OnboardingUiState {
+  dismissedAt?: string;
+}
+
+/** Query key for one ui-state entry, shared by the read and the mutations. */
+function uiStateQueryKey(key: string) {
+  return ["uiState", key] as const;
+}
+
+/**
+ * Reads a ui-state entry. A missing entry is `null`, not an error: the server
+ * answers 404 for "nothing stored", which is the ordinary case.
+ */
+export function useUiState<T = Record<string, unknown>>(
+  key: string,
+  opts?: ListQueryOptions,
+) {
+  return useQuery({
+    queryKey: uiStateQueryKey(key),
+    queryFn: async (): Promise<T | null> => {
+      try {
+        const response = await apiFetch<{ value: T }>(
+          `/api/v1/me/ui-state/${encodeURIComponent(key)}`,
+        );
+        return response.value ?? null;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    enabled: (opts?.enabled ?? true) && !!key,
+    staleTime: opts?.staleTime,
+  });
+}
+
+export function useSetUiState<T = Record<string, unknown>>(key: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (value: T) =>
+      apiFetch<{ value: T }>(`/api/v1/me/ui-state/${encodeURIComponent(key)}`, {
+        method: "PUT",
+        body: JSON.stringify(value),
+      }),
+    onSuccess: (response) => {
+      // Write through rather than invalidate: the card that just dismissed
+      // itself must not flicker back while a refetch is in flight.
+      queryClient.setQueryData(uiStateQueryKey(key), response.value);
+    },
+  });
+}
+
+export function useDeleteUiState(key: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(`/api/v1/me/ui-state/${encodeURIComponent(key)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.setQueryData(uiStateQueryKey(key), null);
+    },
+  });
+}
+
+/** The ui-state key holding a user's getting-started checklist dismissal. */
+export function onboardingUiStateKey(org: string) {
+  return `onboarding.${org}`;
 }

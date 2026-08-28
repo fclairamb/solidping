@@ -69,6 +69,7 @@ import {
 } from "@/components/dashboard/event-display";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 
@@ -432,10 +433,10 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
         <EmptyStateOnboarding org={org} />
       ) : (
         <>
-          <FirstResultCelebration
+          <OnboardingChecklist
             org={org}
-            checks={checks}
             totalChecks={totalChecksCount}
+            firstCheckUid={checks[0]?.uid}
           />
           <OverallStatusBanner
             org={org}
@@ -606,76 +607,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
         </>
       )}
     </div>
-  );
-}
-
-// FirstResultCelebration shows a one-shot banner the first time an org's
-// first check has a result. Persisted in localStorage so it doesn't re-fire
-// across reloads. Quiet on subsequent checks — this is an activation moment,
-// not a per-check toast.
-function FirstResultCelebration({
-  org,
-  checks,
-  totalChecks,
-}: {
-  org: string;
-  checks: Check[];
-  /** Org-wide check count from the stats endpoint, not from `checks.length`. */
-  totalChecks: number;
-}) {
-  const { t } = useTranslation("dashboard");
-  const storageKey = `solidping_celebrated_first_result_${org}`;
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(storageKey) === "1";
-  });
-
-  // Trigger only when there is a single check and it has at least one result
-  // (lastResult is populated by the dashboard's checks-with-last-result query).
-  const trigger =
-    !dismissed && totalChecks === 1 && checks[0]?.lastResult !== undefined;
-  const checkName = checks[0]?.name || "";
-
-  useEffect(() => {
-    if (trigger) {
-      window.localStorage.setItem(storageKey, "1");
-    }
-  }, [trigger, storageKey]);
-
-  if (!trigger) return null;
-
-  return (
-    <Card className="border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40">
-      <CardContent className="pt-6 pb-6 flex items-center gap-4">
-        <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-500 shrink-0" />
-        <div className="flex-1">
-          <h2 className="text-lg font-semibold text-green-900 dark:text-green-100">
-            {t("celebration.title", "First result is in!")}
-          </h2>
-          <p className="text-sm text-green-800/80 dark:text-green-300/80">
-            {t("celebration.body", {
-              defaultValue:
-                "We just checked {{name}}. Hook up notifications so you'll know if it ever goes down.",
-              name: checkName,
-            })}
-          </p>
-        </div>
-        <Button asChild size="sm">
-          <a href={`/dash0/orgs/${org}/checks/${checks[0]?.uid}`}>
-            {t("celebration.cta", "View the check")}
-            <ArrowRight className="ml-1 h-3.5 w-3.5" />
-          </a>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setDismissed(true)}
-          aria-label={t("celebration.dismiss", "Dismiss")}
-        >
-          ×
-        </Button>
-      </CardContent>
-    </Card>
   );
 }
 

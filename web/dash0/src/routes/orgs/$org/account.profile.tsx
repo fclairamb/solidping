@@ -12,9 +12,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertCircle, Check, Loader2 } from "lucide-react";
+import { AlertCircle, Check, ListChecks, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { ApiError } from "@/api/client";
-import { useUpdateProfile } from "@/api/hooks";
+import {
+  onboardingUiStateKey,
+  useDeleteUiState,
+  useUpdateProfile,
+} from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/orgs/$org/account/profile")({
@@ -22,6 +27,15 @@ export const Route = createFileRoute("/orgs/$org/account/profile")({
 });
 
 function ProfilePage() {
+  return (
+    <div className="space-y-6">
+      <ProfileCard />
+      <OnboardingChecklistPreference />
+    </div>
+  );
+}
+
+function ProfileCard() {
   const { t } = useTranslation("account");
   const { t: tc } = useTranslation("common");
   const { user, refreshUser } = useAuth();
@@ -103,6 +117,60 @@ function ProfilePage() {
             )}
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Re-enables the dashboard's getting-started checklist for the organization
+ * currently in the URL (spec 2026-08-28-17).
+ *
+ * The dismissal is a per-user, per-org server-side entry, so this is the one
+ * place that can undo it — clearing browser storage would not, and neither
+ * would signing in elsewhere. Deliberately not a destructive action: it
+ * restores something, so no red, no trash bin.
+ */
+function OnboardingChecklistPreference() {
+  const { t } = useTranslation("account");
+  const { org } = Route.useParams();
+  const resetChecklist = useDeleteUiState(onboardingUiStateKey(org));
+
+  const handleRestore = async () => {
+    try {
+      await resetChecklist.mutateAsync();
+      toast.success(t("onboardingChecklist.restored", { org }));
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t("onboardingChecklist.failed"),
+      );
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("onboardingChecklist.title")}</CardTitle>
+        <CardDescription>{t("onboardingChecklist.subtitle")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          {t("onboardingChecklist.body", { org })}
+        </p>
+        <Button
+          variant="outline"
+          onClick={handleRestore}
+          disabled={resetChecklist.isPending}
+          className="shrink-0"
+          data-testid="restore-onboarding-checklist"
+        >
+          {resetChecklist.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <ListChecks className="mr-2 h-4 w-4" />
+          )}
+          {t("onboardingChecklist.cta")}
+        </Button>
       </CardContent>
     </Card>
   );
