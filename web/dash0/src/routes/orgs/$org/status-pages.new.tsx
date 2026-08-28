@@ -7,9 +7,11 @@ import { StatusPageForm } from "@/components/shared/status-page-form";
 
 export const Route = createFileRoute("/orgs/$org/status-pages/new")({
   // Optional check to pre-attach (spec 2026-08-28-16): reached via the
-  // check detail page's "Publish on a status page" link. Undefined when
-  // absent so a clean URL stays clean, mirroring incidents.index.tsx.
-  validateSearch: (search: Record<string, unknown>) => ({
+  // check detail page's "Publish on a status page" link. The explicit
+  // `checkUid?:` return type (not just `string | undefined`) is what keeps
+  // `search` optional on every other `<Link to="...status-pages/new">` in
+  // the app — mirrors login.tsx / forgot-password.tsx.
+  validateSearch: (search: Record<string, unknown>): { checkUid?: string } => ({
     checkUid:
       typeof search.checkUid === "string" && search.checkUid
         ? search.checkUid

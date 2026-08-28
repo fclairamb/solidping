@@ -76,7 +76,10 @@ test.describe("Status page group resources", () => {
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
     await page.waitForLoadState("networkidle");
 
-    await page.getByRole("button", { name: "Add Component" }).first().click();
+    // CreateStatusPage now seeds a default "Services" section ahead of this
+    // test's own "Core" section (spec 2026-08-28-16), so "Core" is always
+    // the LAST "Add Component" button, not the first.
+    await page.getByRole("button", { name: "Add Component" }).last().click();
     await page.getByTestId("resource-kind-group").click();
     await page.getByTestId("resource-group-select").click();
     await page.getByTestId(`check-group-picker-option-${groupSlug}`).click();
