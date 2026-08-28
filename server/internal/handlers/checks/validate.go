@@ -120,69 +120,106 @@ type requestFieldFinding struct {
 // enforce. ValidateCheck turns every finding into a blocking field; CreateCheck
 // takes only the first and returns its Err — same error values as before this
 // spec, so the write paths' error shape is unchanged.
-func requestFieldFindings(v requestFieldValues) []requestFieldFinding {
+func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
 	var findings []requestFieldFinding
 
 	// `internal` is what exempts a check from the MaxChecks quota (spec
 	// 2026-08-27-01) — nothing else is worth reporting once it's present.
-	if v.Internal != nil {
+	if values.Internal != nil {
 		findings = append(findings, requestFieldFinding{
 			Name: fieldInternal, Code: CodeInternalNotWritable,
 			Message: msgInternalNotWritable, Err: ErrInternalFieldNotWritable,
 		})
 	}
 
-	if v.RegionSpread != nil && *v.RegionSpread != "" {
-		var spread timeutils.Duration
-		if err := spread.Scan(*v.RegionSpread); err != nil {
-			findings = append(findings, requestFieldFinding{
-				Name: fieldRegionSpread, Code: CodeInvalidRegionSpread, Message: err.Error(), Err: err,
-			})
-		} else if err := validateRegionSpread(time.Duration(spread), v.RegionSpreadPeriod); err != nil {
-			findings = append(findings, requestFieldFinding{
-				Name: fieldRegionSpread, Code: CodeInvalidRegionSpread, Message: err.Error(), Err: err,
-			})
-		}
+	findings = appendRegionSpreadFinding(findings, values)
+	findings = appendTracerouteFinding(findings, values)
+	findings = appendFlappingFindings(findings, values)
+	findings = appendIncidentPeriodFindings(findings, values)
+
+	return findings
+}
+
+// appendRegionSpreadFinding checks regionSpread's 0 <= spread < period bound
+// (spec 2026-07-20-05) — split out of requestFieldFindings to keep its
+// cyclomatic complexity down.
+func appendRegionSpreadFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.RegionSpread == nil || *values.RegionSpread == "" {
+		return findings
 	}
 
-	if v.TracerouteOnFailure != nil {
-		if _, ok := parseTraceroutePolicy(*v.TracerouteOnFailure); !ok {
-			findings = append(findings, requestFieldFinding{
-				Name: fieldTracerouteOnFailure, Code: CodeInvalidTracerouteOnFailure,
-				Message: errInvalidTraceroutePolicy.Error(), Err: errInvalidTraceroutePolicy,
-			})
-		}
+	var spread timeutils.Duration
+	if err := spread.Scan(*values.RegionSpread); err != nil {
+		return append(findings, requestFieldFinding{
+			Name: fieldRegionSpread, Code: CodeInvalidRegionSpread, Message: err.Error(), Err: err,
+		})
 	}
 
-	if v.FlappingWindowSeconds != nil && *v.FlappingWindowSeconds < 0 {
+	if err := validateRegionSpread(time.Duration(spread), values.RegionSpreadPeriod); err != nil {
+		return append(findings, requestFieldFinding{
+			Name: fieldRegionSpread, Code: CodeInvalidRegionSpread, Message: err.Error(), Err: err,
+		})
+	}
+
+	return findings
+}
+
+// appendTracerouteFinding checks the tracerouteOnFailure enum (spec
+// 2026-08-21-10).
+func appendTracerouteFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.TracerouteOnFailure == nil {
+		return findings
+	}
+
+	if _, ok := parseTraceroutePolicy(*values.TracerouteOnFailure); !ok {
+		findings = append(findings, requestFieldFinding{
+			Name: fieldTracerouteOnFailure, Code: CodeInvalidTracerouteOnFailure,
+			Message: errInvalidTraceroutePolicy.Error(), Err: errInvalidTraceroutePolicy,
+		})
+	}
+
+	return findings
+}
+
+// appendFlappingFindings checks the three adaptive-recovery knobs' floors
+// (spec 2026-06-30-07).
+func appendFlappingFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.FlappingWindowSeconds != nil && *values.FlappingWindowSeconds < 0 {
 		findings = append(findings, requestFieldFinding{
 			Name: fieldFlappingWindowSeconds, Code: CodeInvalidFlappingField,
 			Message: errFlappingWindowNegative.Error(), Err: errFlappingWindowNegative,
 		})
 	}
-	if v.FlapBackoffFactor != nil && *v.FlapBackoffFactor < 1 {
+	if values.FlapBackoffFactor != nil && *values.FlapBackoffFactor < 1 {
 		findings = append(findings, requestFieldFinding{
 			Name: fieldFlapBackoffFactor, Code: CodeInvalidFlappingField,
 			Message: errFlapBackoffTooSmall.Error(), Err: errFlapBackoffTooSmall,
 		})
 	}
-	if v.MaxRecoveryMultiplier != nil && *v.MaxRecoveryMultiplier < 1 {
+	if values.MaxRecoveryMultiplier != nil && *values.MaxRecoveryMultiplier < 1 {
 		findings = append(findings, requestFieldFinding{
 			Name: fieldMaxRecoveryMultiplier, Code: CodeInvalidFlappingField,
 			Message: errMaxRecoveryMultTooSmall.Error(), Err: errMaxRecoveryMultTooSmall,
 		})
 	}
 
-	if v.ConfirmationPeriodSeconds != nil {
-		if err := validateIncidentPeriod(*v.ConfirmationPeriodSeconds); err != nil {
+	return findings
+}
+
+// appendIncidentPeriodFindings checks confirmationPeriodSeconds and
+// recoveryPeriodSeconds against [0, MaxIncidentPeriodSeconds] (spec
+// 2026-05-08-02).
+func appendIncidentPeriodFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.ConfirmationPeriodSeconds != nil {
+		if err := validateIncidentPeriod(*values.ConfirmationPeriodSeconds); err != nil {
 			findings = append(findings, requestFieldFinding{
 				Name: fieldConfirmationPeriodSeconds, Code: CodeInvalidIncidentPeriod, Message: err.Error(),
 				Err: fmt.Errorf("%s: %w", fieldConfirmationPeriodSeconds, err),
 			})
 		}
 	}
-	if v.RecoveryPeriodSeconds != nil {
-		if err := validateIncidentPeriod(*v.RecoveryPeriodSeconds); err != nil {
+	if values.RecoveryPeriodSeconds != nil {
+		if err := validateIncidentPeriod(*values.RecoveryPeriodSeconds); err != nil {
 			findings = append(findings, requestFieldFinding{
 				Name: fieldRecoveryPeriodSeconds, Code: CodeInvalidIncidentPeriod, Message: err.Error(),
 				Err: fmt.Errorf("%s: %w", fieldRecoveryPeriodSeconds, err),
@@ -461,7 +498,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		regionSpreadPeriod = defaultCheckPeriod
 	}
 
-	for _, f := range requestFieldFindings(requestFieldValues{
+	fieldFindings := requestFieldFindings(requestFieldValues{
 		Internal:                  req.Internal,
 		RegionSpreadPeriod:        regionSpreadPeriod,
 		RegionSpread:              req.RegionSpread,
@@ -471,8 +508,9 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
-	}) {
-		findings.addError(f.Name, f.Code, f.Message)
+	})
+	for i := range fieldFindings {
+		findings.addError(fieldFindings[i].Name, fieldFindings[i].Code, fieldFindings[i].Message)
 	}
 }
 
