@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -189,6 +190,10 @@ func TestOrgsCreatedOutsideCreateOrgGetNoSeededDefaults(t *testing.T) {
 	r.Empty(schedules)
 }
 
+// errForcedFailure is the static error every forced-failure wrapper below
+// returns (err113 requires a wrapped static error, not a dynamic errors.New).
+var errForcedFailure = errors.New("forced failure")
+
 // failingUserLookupDB wraps a real db.Service and forces GetUser to fail, to
 // exercise the best-effort seed contract without disturbing anything else
 // CreateOrg does.
@@ -197,7 +202,7 @@ type failingUserLookupDB struct {
 }
 
 func (f *failingUserLookupDB) GetUser(_ context.Context, _ string) (*models.User, error) {
-	return nil, errors.New("forced failure: user lookup")
+	return nil, fmt.Errorf("user lookup: %w", errForcedFailure)
 }
 
 // failingCreateChannelDB wraps a real db.Service and forces the integration
@@ -208,7 +213,7 @@ type failingCreateChannelDB struct {
 }
 
 func (f *failingCreateChannelDB) CreateChannel(_ context.Context, _ *models.Integration) error {
-	return errors.New("forced failure: create channel")
+	return fmt.Errorf("create channel: %w", errForcedFailure)
 }
 
 // TestCreateOrgSurvivesSeedFailure pins the best-effort posture: a signup
