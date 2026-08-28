@@ -96,7 +96,13 @@ test.describe("Status page group resources", () => {
 
     const publicBody = await publicResp.text();
     const publicJSON = JSON.parse(publicBody);
-    const resources = publicJSON.sections?.[0]?.resources ?? [];
+    // CreateStatusPage now seeds a default "Services" section (spec
+    // 2026-08-28-16), so the group's own "Core" section is no longer
+    // reliably index 0 — find it by slug instead.
+    const coreSection = (publicJSON.sections ?? []).find(
+      (section: { slug?: string }) => section.slug === "core",
+    );
+    const resources = coreSection?.resources ?? [];
     expect(resources).toHaveLength(1);
     expect(resources[0].checkUid).toBeUndefined();
     expect(resources[0].checkGroupUid).toBe(group.uid);
