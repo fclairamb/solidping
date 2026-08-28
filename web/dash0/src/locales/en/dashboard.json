@@ -43,9 +43,10 @@
     "allGreenSubNoData_one": "{{count}} check monitored, no uptime data yet",
     "allGreenSubNoData_other": "{{count}} checks monitored, no uptime data yet",
     "issues": "Issues detected",
-    "issuesSub_zero": "No active incidents",
-    "issuesSub_one": "{{down}} check down, {{incidents}} active incidents",
-    "issuesSub_other": "{{down}} checks down, {{incidents}} active incidents",
+    "issuesSubDown_one": "{{count}} check down",
+    "issuesSubDown_other": "{{count}} checks down",
+    "issuesSubIncidents_one": "{{count}} active incident",
+    "issuesSubIncidents_other": "{{count}} active incidents",
     "warning": "Some checks degraded",
     "warningSub": "Timeouts detected on {{count}} checks"
   },

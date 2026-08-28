@@ -40,6 +40,7 @@ import {
   groupIncidentsByCheckGroup,
   type IncidentGroupRow,
 } from "@/lib/incident-grouping";
+import { formatIssuesSubtitle } from "@/lib/issues-banner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CHECKS_LIST_POLL_MS,
@@ -437,6 +438,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             totalChecks={totalChecksCount}
           />
           <OverallStatusBanner
+            org={org}
             allGreen={downCount === 0 && incidentsCount === 0}
             hardDownCount={hardDownCount}
             timeoutOnlyCount={timeoutOnlyCount}
@@ -693,6 +695,7 @@ function DashboardSkeleton() {
 }
 
 interface OverallStatusBannerProps {
+  org: string;
   allGreen: boolean;
   hardDownCount: number;
   timeoutOnlyCount: number;
@@ -701,7 +704,55 @@ interface OverallStatusBannerProps {
   availabilityPct: number | null;
 }
 
+// Wraps the banner's content in the TanStack Router `<Link>` matching its
+// destination — incidents-first, since an active incident carries the
+// ack/snooze/resolve workflow while a down check without one is just a
+// state. A real `<Link>` (not a `div` + onClick) keeps keyboard focus,
+// middle-click and copy-link working. `data-testid="overall-status-banner"`
+// lives here so existing E2E assertions keep working unchanged.
+function BannerLink({
+  org,
+  target,
+  className,
+  children,
+}: {
+  org: string;
+  target: "incidents-active" | "checks-down" | "checks-warning";
+  className: string;
+  children: React.ReactNode;
+}) {
+  if (target === "incidents-active") {
+    return (
+      <Link
+        to="/orgs/$org/incidents"
+        params={{ org }}
+        search={{
+          state: "active" as const,
+          showSuppressed: undefined,
+          checkUid: undefined,
+        }}
+        data-testid="overall-status-banner"
+        className={className}
+      >
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      to="/orgs/$org/checks"
+      params={{ org }}
+      search={{ status: target === "checks-down" ? "down" : "warning" }}
+      data-testid="overall-status-banner"
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function OverallStatusBanner({
+  org,
   allGreen,
   hardDownCount,
   timeoutOnlyCount,
@@ -753,61 +804,59 @@ function OverallStatusBanner({
 
   if (hardDownCount > 0 || incidentsCount > 0) {
     return (
-      <div
-        data-testid="overall-status-banner"
-        className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm"
+      <BannerLink
+        org={org}
+        target={incidentsCount > 0 ? "incidents-active" : "checks-down"}
+        className="block"
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
-            </span>
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h2 className="text-sm sm:text-base font-semibold text-destructive">
-                {t("banner.issues")}
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                {t("banner.issuesSub", {
-                  count: hardDownCount,
-                  down: hardDownCount,
-                  incidents: incidentsCount,
-                })}
+        <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-destructive/50 hover:bg-destructive/15">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-3 w-3 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
               </span>
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h2 className="text-sm sm:text-base font-semibold text-destructive">
+                  {t("banner.issues")}
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  {formatIssuesSubtitle(t, hardDownCount, incidentsCount)}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/15 px-2.5 py-1 rounded-full border border-destructive/30">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span>Active Outage</span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/15 px-2.5 py-1 rounded-full border border-destructive/30">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            <span>Active Outage</span>
-          </div>
         </div>
-      </div>
+      </BannerLink>
     );
   }
 
   // Only timeouts (degraded but not hard-down).
   return (
-    <div
-      data-testid="overall-status-banner"
-      className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h2 className="text-sm sm:text-base font-semibold text-amber-900 dark:text-amber-100">
-              {t("banner.warning")}
-            </h2>
-            <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
-              {t("banner.warningSub", { count: timeoutOnlyCount })}
-            </span>
+    <BannerLink org={org} target="checks-warning" className="block">
+      <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-amber-500/50 hover:bg-amber-500/15">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h2 className="text-sm sm:text-base font-semibold text-amber-900 dark:text-amber-100">
+                {t("banner.warning")}
+              </h2>
+              <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                {t("banner.warningSub", { count: timeoutOnlyCount })}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-full border border-amber-500/30">
+            <span>Degraded Performance</span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-full border border-amber-500/30">
-          <span>Degraded Performance</span>
-        </div>
       </div>
-    </div>
+    </BannerLink>
   );
 }
 

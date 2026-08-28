@@ -43,9 +43,10 @@
     "allGreenSubNoData_one": "{{count}} sonde surveillée, pas encore de données de disponibilité",
     "allGreenSubNoData_other": "{{count}} sondes surveillées, pas encore de données de disponibilité",
     "issues": "Problèmes détectés",
-    "issuesSub_zero": "Aucun incident actif",
-    "issuesSub_one": "{{down}} sonde en panne, {{incidents}} incidents actifs",
-    "issuesSub_other": "{{down}} sondes en panne, {{incidents}} incidents actifs",
+    "issuesSubDown_one": "{{count}} sonde en panne",
+    "issuesSubDown_other": "{{count}} sondes en panne",
+    "issuesSubIncidents_one": "{{count}} incident actif",
+    "issuesSubIncidents_other": "{{count}} incidents actifs",
     "warning": "Sondes dégradées",
     "warningSub": "Délais d'attente détectés sur {{count}} sondes"
   },

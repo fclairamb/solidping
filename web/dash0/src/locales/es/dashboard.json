@@ -43,9 +43,10 @@
     "allGreenSubNoData_one": "{{count}} comprobación monitoreada, aún sin datos de disponibilidad",
     "allGreenSubNoData_other": "{{count}} comprobaciones monitoreadas, aún sin datos de disponibilidad",
     "issues": "Problemas detectados",
-    "issuesSub_zero": "Sin incidentes activos",
-    "issuesSub_one": "{{down}} comprobación caída, {{incidents}} incidentes activos",
-    "issuesSub_other": "{{down}} comprobaciones caídas, {{incidents}} incidentes activos",
+    "issuesSubDown_one": "{{count}} comprobación caída",
+    "issuesSubDown_other": "{{count}} comprobaciones caídas",
+    "issuesSubIncidents_one": "{{count}} incidente activo",
+    "issuesSubIncidents_other": "{{count}} incidentes activos",
     "warning": "Algunas comprobaciones degradadas",
     "warningSub": "Tiempos de espera detectados en {{count}} comprobaciones"
   },

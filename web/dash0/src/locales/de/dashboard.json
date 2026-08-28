@@ -43,9 +43,10 @@
     "allGreenSubNoData_one": "{{count}} Prüfung überwacht, noch keine Verfügbarkeitsdaten",
     "allGreenSubNoData_other": "{{count}} Prüfungen überwacht, noch keine Verfügbarkeitsdaten",
     "issues": "Probleme erkannt",
-    "issuesSub_zero": "Keine aktiven Vorfälle",
-    "issuesSub_one": "{{down}} Prüfung ausgefallen, {{incidents}} aktive Vorfälle",
-    "issuesSub_other": "{{down}} Prüfungen ausgefallen, {{incidents}} aktive Vorfälle",
+    "issuesSubDown_one": "{{count}} Prüfung ausgefallen",
+    "issuesSubDown_other": "{{count}} Prüfungen ausgefallen",
+    "issuesSubIncidents_one": "{{count}} aktiver Vorfall",
+    "issuesSubIncidents_other": "{{count}} aktive Vorfälle",
     "warning": "Einige Prüfungen beeinträchtigt",
     "warningSub": "Zeitüberschreitungen bei {{count}} Prüfungen erkannt"
   },
