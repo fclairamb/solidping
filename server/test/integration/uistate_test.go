@@ -53,6 +53,17 @@ func uiStateRequest(
 	return resp.StatusCode, out
 }
 
+// uiStateValue pulls the `value` object out of a decoded response body,
+// failing the test rather than panicking when it is not there.
+func uiStateValue(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+
+	value, ok := body["value"].(map[string]any)
+	require.True(t, ok, "response body must carry a `value` object, got %#v", body)
+
+	return value
+}
+
 // seedSecondUser creates a second user with their own PAT so the isolation
 // test speaks over the wire as a genuinely different principal.
 func seedSecondUser(t *testing.T, ts *TestServer) string {
@@ -97,11 +108,11 @@ func TestUIStateRoundTrip(t *testing.T) {
 	status, body := uiStateRequest(t, ts, http.MethodPut, uiStateOnboardingPath, "pat_test",
 		`{"dismissedAt":"2026-08-28T10:00:00Z"}`)
 	r.Equal(http.StatusOK, status)
-	r.Equal("2026-08-28T10:00:00Z", body["value"].(map[string]any)["dismissedAt"])
+	r.Equal("2026-08-28T10:00:00Z", uiStateValue(t, body)["dismissedAt"])
 
 	status, body = uiStateRequest(t, ts, http.MethodGet, uiStateOnboardingPath, "pat_test", "")
 	r.Equal(http.StatusOK, status)
-	r.Equal("2026-08-28T10:00:00Z", body["value"].(map[string]any)["dismissedAt"])
+	r.Equal("2026-08-28T10:00:00Z", uiStateValue(t, body)["dismissedAt"])
 
 	status, _ = uiStateRequest(t, ts, http.MethodDelete, uiStateOnboardingPath, "pat_test", "")
 	r.Equal(http.StatusNoContent, status)
@@ -130,7 +141,7 @@ func TestUIStateKeyIsResolvedToOrgUID(t *testing.T) {
 	byUID := "/api/v1/me/ui-state/onboarding.10000000-0000-0000-0000-000000000001"
 	status, body := uiStateRequest(t, ts, http.MethodGet, byUID, "pat_test", "")
 	r.Equal(http.StatusOK, status)
-	r.Equal("x", body["value"].(map[string]any)["dismissedAt"])
+	r.Equal("x", uiStateValue(t, body)["dismissedAt"])
 }
 
 func TestUIStateRejectsKeysOutsideTheAllowlist(t *testing.T) {
@@ -147,12 +158,12 @@ func TestUIStateRejectsKeysOutsideTheAllowlist(t *testing.T) {
 	for _, key := range []string{"theme", "theme.test-org", "onboarding", "onboarding.a_b"} {
 		path := "/api/v1/me/ui-state/" + key
 
-		status, body := uiStateRequest(t, ts, http.MethodPut, path, "pat_test", `{"a":1}`)
-		r.Equal(http.StatusBadRequest, status, "key %q must be rejected", key)
-		r.Equal("VALIDATION_ERROR", body["code"], "key %q", key)
+		putStatus, putBody := uiStateRequest(t, ts, http.MethodPut, path, "pat_test", `{"a":1}`)
+		r.Equal(http.StatusBadRequest, putStatus, "key %q must be rejected", key)
+		r.Equal("VALIDATION_ERROR", putBody["code"], "key %q", key)
 
-		status, _ = uiStateRequest(t, ts, http.MethodGet, path, "pat_test", "")
-		r.Equal(http.StatusBadRequest, status, "key %q must be rejected on read too", key)
+		getStatus, _ := uiStateRequest(t, ts, http.MethodGet, path, "pat_test", "")
+		r.Equal(http.StatusBadRequest, getStatus, "key %q must be rejected on read too", key)
 	}
 
 	// Well-shaped but naming an organization that does not exist.
@@ -184,7 +195,7 @@ func TestUIStateRejectsOversizedValues(t *testing.T) {
 	// The oversized write must not have replaced the value that was there.
 	status, body = uiStateRequest(t, ts, http.MethodGet, uiStateOnboardingPath, "pat_test", "")
 	r.Equal(http.StatusOK, status)
-	r.Len(body["value"].(map[string]any)["blob"], 4000)
+	r.Len(uiStateValue(t, body)["blob"], 4000)
 }
 
 func TestUIStateIsIsolatedPerUser(t *testing.T) {
@@ -201,7 +212,7 @@ func TestUIStateIsIsolatedPerUser(t *testing.T) {
 	// Positive control: the first user reads their own value back.
 	status, body := uiStateRequest(t, ts, http.MethodGet, uiStateOnboardingPath, "pat_test", "")
 	r.Equal(http.StatusOK, status)
-	r.Equal("first", body["value"].(map[string]any)["owner"])
+	r.Equal("first", uiStateValue(t, body)["owner"])
 
 	// The second user — a member of the same org, so the key resolves
 	// identically — sees nothing.
@@ -214,7 +225,7 @@ func TestUIStateIsIsolatedPerUser(t *testing.T) {
 
 	status, body = uiStateRequest(t, ts, http.MethodGet, uiStateOnboardingPath, "pat_test", "")
 	r.Equal(http.StatusOK, status)
-	r.Equal("first", body["value"].(map[string]any)["owner"])
+	r.Equal("first", uiStateValue(t, body)["owner"])
 
 	// Nor does their delete.
 	status, _ = uiStateRequest(t, ts, http.MethodDelete, uiStateOnboardingPath, secondToken, "")
@@ -222,7 +233,7 @@ func TestUIStateIsIsolatedPerUser(t *testing.T) {
 
 	status, body = uiStateRequest(t, ts, http.MethodGet, uiStateOnboardingPath, "pat_test", "")
 	r.Equal(http.StatusOK, status)
-	r.Equal("first", body["value"].(map[string]any)["owner"])
+	r.Equal("first", uiStateValue(t, body)["owner"])
 }
 
 func TestUIStateRequiresAuthentication(t *testing.T) {

@@ -81,6 +81,22 @@ func (m *mockDBService) DeleteStateEntry(_ context.Context, _ *string, _ string)
 	return true, nil
 }
 
+// User-scoped state entries are the per-user UI-state store; the
+// notifications package never touches them, so these are pure stubs.
+func (m *mockDBService) GetUserStateEntry(_ context.Context, _, _ string) (*models.StateEntry, error) {
+	return nil, nil //nolint:nilnil // Test stub: no entry is not an error
+}
+
+func (m *mockDBService) SetUserStateEntry(
+	_ context.Context, _, _ string, _ *models.JSONMap, _ *time.Duration,
+) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteUserStateEntry(_ context.Context, _, _ string) (bool, error) {
+	return true, nil
+}
+
 func (m *mockDBService) ListStateEntries(_ context.Context, _ *string, _ string) ([]*models.StateEntry, error) {
 	return nil, nil
 }
