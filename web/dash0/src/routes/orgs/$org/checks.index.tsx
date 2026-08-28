@@ -478,20 +478,22 @@ function CheckRow({
 
   return (
     <TableRow className="hover:bg-muted/40 transition-colors">
-      <TableCell>
-        <div className="flex items-center gap-2">
+      <TableCell className="max-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <Link
             to="/orgs/$org/checks/$checkUid"
             params={{ org, checkUid: check.uid }}
             search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
-            className="flex items-center gap-2 hover:underline font-medium"
+            className="flex items-center gap-2 hover:underline font-medium min-w-0"
           >
             <StatusDot
               status={check.status ?? check.lastResult?.status}
               enabled={check.enabled}
               title={check.enabled === false ? t("checks:detail.disabled") : undefined}
             />
-            {check.name || check.slug || check.uid?.slice(0, 8)}
+            <span className="truncate">
+              {check.name || check.slug || check.uid?.slice(0, 8)}
+            </span>
           </Link>
           {tunnelUid && (
             <Tooltip>
@@ -510,7 +512,7 @@ function CheckRow({
           )}
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden sm:table-cell">
         <div className="flex items-center gap-1.5">
           <CheckTypeBadge type={check.type} />
           {check.internal && (
@@ -520,10 +522,10 @@ function CheckRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="text-muted-foreground font-mono text-xs max-w-[280px] truncate">
+      <TableCell className="hidden md:table-cell text-muted-foreground font-mono text-xs max-w-[280px] truncate">
         {renderTarget()}
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden md:table-cell">
         <StatusBadge status={check.status ?? check.lastResult?.status} />
       </TableCell>
       <TableCell>
@@ -626,9 +628,9 @@ function ChecksTable({
       <TableHeader className="bg-muted/30">
         <TableRow>
           <TableHead>{t("table.name")}</TableHead>
-          <TableHead>{t("table.type")}</TableHead>
-          <TableHead>{t("table.target")}</TableHead>
-          <TableHead>{t("table.status")}</TableHead>
+          <TableHead className="hidden sm:table-cell">{t("table.type")}</TableHead>
+          <TableHead className="hidden md:table-cell">{t("table.target")}</TableHead>
+          <TableHead className="hidden md:table-cell">{t("table.status")}</TableHead>
           <TableHead>{t("table.response")}</TableHead>
           <TableHead className="w-[50px]" />
         </TableRow>
