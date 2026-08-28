@@ -26,7 +26,7 @@ provider signature in the request).
 | Page | Contents |
 |------|----------|
 | [management.md](management.md) | Health, version, limits, memory, bug report, feature flags, scheduling cost, email preview |
-| [auth.md](auth.md) | Login, registration, tokens, 2FA, passkeys, OAuth providers, OIDC, SAML |
+| [auth.md](auth.md) | Login, registration, tokens, 2FA, passkeys, per-user UI state, OAuth providers, OIDC, SAML |
 | [orgs.md](orgs.md) | Organizations, settings, org tokens, invitations, members, membership requests |
 | [entitlements.md](entitlements.md) | Per-org limits, the billing-service write API, and the audit log |
 | [checks.md](checks.md) | Checks, validate, export/import/apply, dependencies, clone, labels, check types, groups, severities, badges, availability |
