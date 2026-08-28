@@ -321,6 +321,19 @@ function isDownPoint(payload: ChartPoint | undefined): boolean {
   return !!payload && isFailingStatus(payload.status);
 }
 
+/** Fill color for one chart dot — regular or active, single- or
+ * multi-series. Routes through isFailingStatus() so a hovered/pinned point
+ * never disagrees with the line gradient about what counts as failing
+ * (exported so tests can assert on the exact function the renderers call,
+ * not a re-implementation of it). */
+export function dotFillColor(
+  status: string,
+  downColor: string,
+  neutralColor: string,
+): string {
+  return isFailingStatus(status) ? downColor : neutralColor;
+}
+
 /** Builds per-status gradient stops for one series' real (non-null) points:
  * `neutralColor` everywhere except failing stretches, which use
  * `downColor`. Stop offsets are index fractions over the real points
@@ -1297,9 +1310,7 @@ export function ResponseTimeChart({
                       // Mutating a ref outside the React commit phase is safe —
                       // it doesn't trigger a re-render.
                       dotPositions.current[uid] = { cx, cy };
-                      const fill = isFailingStatus(payload.status)
-                        ? COLOR_DOWN
-                        : COLOR_UP;
+                      const fill = dotFillColor(payload.status, COLOR_DOWN, COLOR_UP);
                       const isSelected = selectedUid === uid;
                       return (
                         <circle
@@ -1337,9 +1348,7 @@ export function ResponseTimeChart({
                       // Always cache the active-dot anchor so the pinned-result box
                       // works even when per-point dots are off.
                       dotPositions.current[uid] = { cx, cy };
-                      const fill = isFailingStatus(payload.status)
-                        ? COLOR_DOWN
-                        : COLOR_UP;
+                      const fill = dotFillColor(payload.status, COLOR_DOWN, COLOR_UP);
                       return (
                         <circle
                           key={reactKey}
@@ -1405,9 +1414,7 @@ export function ResponseTimeChart({
                           // Down results stay visible as red dots on
                           // their line even though the line itself uses
                           // the region color, not the status gradient.
-                          const fill = isFailingStatus(payload.status)
-                            ? COLOR_DOWN
-                            : color;
+                          const fill = dotFillColor(payload.status, COLOR_DOWN, color);
                           const isSelected = selectedUid === uid;
                           return (
                             <circle
@@ -1450,9 +1457,7 @@ export function ResponseTimeChart({
                           }
                           const uid = payload.uid;
                           dotPositions.current[uid] = { cx, cy };
-                          const fill = isFailingStatus(payload.status)
-                            ? COLOR_DOWN
-                            : color;
+                          const fill = dotFillColor(payload.status, COLOR_DOWN, color);
                           return (
                             <circle
                               key={reactKey}
