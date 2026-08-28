@@ -88,7 +88,7 @@ func SupersedeReplacedSystemAgents(
 		Set("revoked_at = ?", now).
 		Set("deleted_at = ?", now).
 		Set("updated_at = ?", now).
-		Where("uid IN (?)", bun.In(uids)).
+		Where("uid IN (?)", bun.List(uids)).
 		Where("kind = ?", models.AgentKindSystem).
 		Where("deleted_at IS NULL").
 		Exec(ctx); err != nil {
@@ -123,7 +123,7 @@ func RetireAgentWorkerRows(ctx context.Context, idb bun.IDB, agentUIDs []string,
 	if _, err := idb.NewUpdate().
 		Model((*models.Worker)(nil)).
 		Set("deleted_at = ?", now).
-		Where("slug IN (?)", bun.In(slugs)).
+		Where("slug IN (?)", bun.List(slugs)).
 		Where("deleted_at IS NULL").
 		Exec(ctx); err != nil {
 		return fmt.Errorf("failed to retire agent worker rows: %w", err)
