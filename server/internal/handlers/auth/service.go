@@ -3039,6 +3039,15 @@ func (s *Service) CreateOrg(
 		models.EventTypeOrgActivationSignupCompleted,
 		activation.SourceRegularForm, userUID)
 
+	// Seed default alerting so a brand-new org isn't silent by default (spec
+	// 2026-08-28-15). Best-effort: a seed failure must never fail org
+	// creation. This only runs for a genuinely self-created org — the
+	// bootstrap default org (job_startup.go) and the test-mode fixtures
+	// (testdata.go) both create organizations by writing rows directly and
+	// never call CreateOrg, so they are excluded structurally rather than by
+	// a special case here.
+	s.seedOrgDefaults(ctx, org, userUID)
+
 	// Mint a session scoped to the new org, exactly like SwitchOrg: a fresh
 	// refresh-token row plus an access token whose orgSlug claim is the new
 	// org's slug. Without this, the caller's existing token (orgSlug "" for
@@ -3059,6 +3068,66 @@ func (s *Service) CreateOrg(
 		ExpiresIn:    session.ExpiresIn,
 		TokenType:    session.TokenType,
 	}, nil
+}
+
+// seedOrgDefaults seeds the convenience rows that make a self-created org
+// alert-capable and report-capable from minute one:
+//
+//   - One enabled, isDefault email integration addressed to the owner. It is
+//     an ordinary integration row — the existing isDefault auto-attach
+//     (checks/service.go's ListDefaultChannels, consulted from CreateCheck)
+//     wires it onto every check the org creates from here on, with no
+//     retro-attach logic needed because the org has zero checks yet.
+//   - One enabled, org-wide weekly ReportSchedule with the owner as
+//     recipient. Both scope slices are left empty (org-wide), so checks
+//     added later are covered automatically; the hourly uptime-report job
+//     picks it up with no further wiring.
+//
+// Both rows are written via s.db directly, exactly like the org and
+// membership just above, rather than through the integrations/reportschedules
+// services — that keeps this seed free of any handler-package dependency
+// (no service→service cycle risk) while still recording the same
+// integration.created audit event CreateIntegration would, so the seeded
+// channel is indistinguishable from a hand-created one in the events feed.
+// ReportSchedule creation has no audit event on the hand-made path either, so
+// a plain db write already gives full parity there.
+//
+// Deliberately best-effort: an error here is logged and swallowed. A signup
+// that 500s because a convenience row could not be written is strictly worse
+// than the org staying silent, which is the bug this closes.
+func (s *Service) seedOrgDefaults(ctx context.Context, org *models.Organization, userUID string) {
+	owner, err := s.db.GetUser(ctx, userUID)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to load org creator for default alerting seed",
+			"error", err, "orgUID", org.UID)
+
+		return
+	}
+
+	// Never log owner.Email below — same PII bar as ReportSchedule.Recipients.
+	integration := models.NewIntegration(org.UID, models.ConnectionTypeEmail, "Email alerts")
+	integration.IsDefault = true
+	integration.Settings["to"] = []string{owner.Email}
+
+	if createIntErr := s.db.CreateChannel(ctx, integration); createIntErr != nil {
+		slog.WarnContext(ctx, "failed to seed default email integration",
+			"error", createIntErr, "orgUID", org.UID)
+	} else {
+		audit.Record(ctx, s.db, org.UID, models.EventTypeIntegrationCreated,
+			audit.Target{Type: "integration", UID: integration.UID, Name: integration.Name},
+			models.JSONMap{
+				"integration_type": string(integration.Type),
+				"enabled":          integration.Enabled,
+			})
+	}
+
+	schedule := models.NewReportSchedule(org.UID, "Weekly uptime report", models.ReportFrequencyWeekly)
+	schedule.Recipients = []string{owner.Email}
+
+	if createSchedErr := s.db.CreateReportSchedule(ctx, schedule); createSchedErr != nil {
+		slog.WarnContext(ctx, "failed to seed default weekly report schedule",
+			"error", createSchedErr, "orgUID", org.UID)
+	}
 }
 
 // InviteRequest contains the request data for creating an invitation.
