@@ -572,6 +572,7 @@
     }
   },
   "jsonAssertions": "Aserciones JSON",
+  "jsonAssertionsDescription": "Valida campos del cuerpo de la respuesta JSON mediante una expresión JSONPath.",
   "addJsonAssertion": "Añadir aserción",
   "addGroup": "Añadir grupo",
   "jsonPath": "JSONPath",

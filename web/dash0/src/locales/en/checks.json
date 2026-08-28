@@ -617,6 +617,7 @@
     }
   },
   "jsonAssertions": "JSON Assertions",
+  "jsonAssertionsDescription": "Validate fields in the JSON response body against a JSONPath expression.",
   "addJsonAssertion": "Add assertion",
   "addGroup": "Add group",
   "jsonPath": "JSONPath",
