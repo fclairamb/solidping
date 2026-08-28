@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -54,17 +55,29 @@ const maxCheckRows = 50
 //
 //nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
 type CheckRow struct {
-	Name            string `json:"Name"`
-	HasData         bool   `json:"HasData"`
+	Name    string `json:"Name"`
+	HasData bool   `json:"HasData"`
+	// URL is the check's dash0 detail page, empty when the server has no
+	// configured base URL — the template falls back to plain text.
+	URL             string `json:"URL,omitempty"`
 	AvailabilityPct string `json:"AvailabilityPct"`
+	// AvailabilityColor is a hex color interpolated from AvailabilityPct
+	// (see availabilityTextColor), filled only when HasData.
+	AvailabilityColor string `json:"AvailabilityColor,omitempty"`
 }
 
 // SLORow is one objective's line in the report.
 //
 //nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
 type SLORow struct {
-	Name            string `json:"Name"`
-	HasData         bool   `json:"HasData"`
+	Name    string `json:"Name"`
+	HasData bool   `json:"HasData"`
+	// URL is the objective's dash0 detail page, empty when the server has no
+	// configured base URL — the template falls back to plain text. There is
+	// deliberately no AvailabilityColor here: SLO rows already carry a
+	// Healthy/At-risk/Breached badge driven by the objective's own target,
+	// which is the right scale for an SLO (see Proposal item 3).
+	URL             string `json:"URL,omitempty"`
 	AttainmentPct   string `json:"AttainmentPct"`
 	TargetPct       string `json:"TargetPct"`
 	StateLabel      string `json:"StateLabel"`
@@ -92,7 +105,10 @@ type Data struct {
 
 	HasData         bool   `json:"HasData"`
 	AvailabilityPct string `json:"AvailabilityPct"`
-	CheckCount      int    `json:"CheckCount"`
+	// AvailabilityColor is the headline metric's interpolated color, filled
+	// only when HasData — see availabilityTextColor.
+	AvailabilityColor string `json:"AvailabilityColor,omitempty"`
+	CheckCount        int    `json:"CheckCount"`
 
 	IncidentCount   int    `json:"IncidentCount"`
 	LongestIncident string `json:"LongestIncident,omitempty"`
@@ -151,8 +167,10 @@ func (b *Builder) Build(
 		CheckCount:  len(checks),
 	}
 
+	baseURL := ""
 	if b.cfg != nil {
 		data.DashboardURL = b.cfg.Server.BaseURL
+		baseURL = b.cfg.Server.BaseURL
 	}
 
 	if len(checks) == 0 {
@@ -184,10 +202,11 @@ func (b *Builder) Build(
 		stats := byCheck[check.UID]
 		overall.Add(stats)
 
-		row := CheckRow{Name: checkDisplayName(check)}
+		row := CheckRow{Name: checkDisplayName(check), URL: checkReportURL(baseURL, org.Slug, check)}
 		if pct, ok := stats.AvailabilityPct(); ok {
 			row.HasData = true
 			row.AvailabilityPct = formatPct(pct)
+			row.AvailabilityColor = availabilityTextColor(pct)
 		}
 
 		rows = append(rows, row)
@@ -204,6 +223,7 @@ func (b *Builder) Build(
 	if pct, ok := overall.AvailabilityPct(); ok {
 		data.HasData = true
 		data.AvailabilityPct = formatPct(pct)
+		data.AvailabilityColor = availabilityTextColor(pct)
 	}
 
 	incidents, err := b.incidentBlock(ctx, org.UID, checkUIDs, window, now)
@@ -221,7 +241,7 @@ func (b *Builder) Build(
 	}
 
 	if schedule.IncludeSLOs {
-		sloRows, sloErr := b.sloRows(ctx, org.UID, schedule, checkUIDs, window, now)
+		sloRows, sloErr := b.sloRows(ctx, org, baseURL, schedule, checkUIDs, window, now)
 		if sloErr != nil {
 			return nil, sloErr
 		}
@@ -330,12 +350,14 @@ func (b *Builder) incidentBlock(
 
 // sloRows evaluates every enabled objective whose scope intersects the report's.
 func (b *Builder) sloRows(
-	ctx context.Context, orgUID string, schedule *models.ReportSchedule,
+	ctx context.Context, org *models.Organization, baseURL string, schedule *models.ReportSchedule,
 	checkUIDs []string, window slo.Window, now time.Time,
 ) ([]SLORow, error) {
 	if b.slos == nil {
 		return nil, nil
 	}
+
+	orgUID := org.UID
 
 	objectives, err := b.db.ListSLOs(ctx, orgUID, models.ListSLOsFilter{EnabledOnly: true})
 	if err != nil {
@@ -369,6 +391,7 @@ func (b *Builder) sloRows(
 		row := SLORow{
 			Name:       objective.Name,
 			HasData:    status.HasData,
+			URL:        sloReportURL(baseURL, org.Slug, objective),
 			TargetPct:  formatPct(status.TargetPct),
 			StateLabel: stateLabel(status.State),
 		}
@@ -407,6 +430,130 @@ func checkDisplayName(check *models.Check) string {
 	}
 
 	return check.UID
+}
+
+// checkReportURL builds the dash0 detail-page URL for a check row, mirroring
+// escalationCheckURL (job_escalation_step.go). Returns "" when any required
+// component is missing, so the template falls back to plain text rather than
+// emitting a half-built href.
+func checkReportURL(baseURL, orgSlug string, check *models.Check) string {
+	if baseURL == "" || orgSlug == "" || check == nil || check.UID == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", strings.TrimRight(baseURL, "/"), orgSlug, check.UID)
+}
+
+// sloReportURL builds the dash0 detail-page URL for an objective row. Returns
+// "" when any required component is missing.
+func sloReportURL(baseURL, orgSlug string, objective *models.SLO) string {
+	if baseURL == "" || orgSlug == "" || objective == nil || objective.UID == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/dash0/orgs/%s/slos/%s", strings.TrimRight(baseURL, "/"), orgSlug, objective.UID)
+}
+
+// availabilityTextColor interpolates a dark, text-safe hex color across the
+// product's existing availability thresholds — NOT linearly over 0–100.
+// Everything interesting in availability lives between 98 and 100, so the
+// ramp is anchored on the same boundaries as the badge scale
+// (badges/service.go's availabilityColor):
+//
+//	>= 99.9 (DefaultAvailabilityThresholdUp)        full green  #15803d
+//	   99.0 (DefaultAvailabilityThresholdDegraded)  amber       #b45309
+//	   98.0                                         orange (blend of red/amber)
+//	<= 95.0                                         full red    #b91c1c
+//
+// Colors come from base.html's dark state-text family (green/amber/red), not
+// the badge SVG fill palette (badges/svg.go's `#4c1`) — a fill color is
+// unreadable as text on the email's white cells. The orange stop is not a
+// fourth hardcoded color: it is a blend between amber and red, so the whole
+// ramp is one continuous gradient anchored on exactly the three colors the
+// rest of the product already uses for state text.
+func availabilityTextColor(pct float64) string {
+	const (
+		green = "#15803d"
+		amber = "#b45309"
+		red   = "#b91c1c"
+
+		orangeMidpoint = 0.5
+		redFloor       = 95.0
+	)
+
+	orange := blendHexColor(red, amber, orangeMidpoint)
+
+	switch {
+	case pct >= models.DefaultAvailabilityThresholdUp:
+		return green
+	case pct >= models.DefaultAvailabilityThresholdDegraded:
+		// [99.0, 99.9) blends amber -> green.
+		degradedFloor := models.DefaultAvailabilityThresholdDegraded
+
+		return blendHexColor(amber, green, fraction(pct, degradedFloor, models.DefaultAvailabilityThresholdUp))
+	case pct >= 98.0:
+		// [98.0, 99.0) blends orange -> amber.
+		return blendHexColor(orange, amber, fraction(pct, 98.0, models.DefaultAvailabilityThresholdDegraded))
+	case pct > redFloor:
+		// (95.0, 98.0) blends red -> orange.
+		return blendHexColor(red, orange, fraction(pct, redFloor, 98.0))
+	default:
+		return red
+	}
+}
+
+// fraction returns how far pct sits between lo and hi, clamped to [0, 1].
+func fraction(pct, lo, hi float64) float64 {
+	if hi <= lo {
+		return 0
+	}
+
+	frac := (pct - lo) / (hi - lo)
+	if frac < 0 {
+		return 0
+	}
+
+	if frac > 1 {
+		return 1
+	}
+
+	return frac
+}
+
+// blendHexColor linearly interpolates between two "#rrggbb" colors at amount
+// in [0, 1] (0 == from, 1 == to).
+func blendHexColor(from, to string, amount float64) string {
+	fromR, fromG, fromB := hexRGB(from)
+	toR, toG, toB := hexRGB(to)
+
+	red := lerpByte(fromR, toR, amount)
+	green := lerpByte(fromG, toG, amount)
+	blue := lerpByte(fromB, toB, amount)
+
+	return fmt.Sprintf("#%02x%02x%02x", red, green, blue)
+}
+
+// hexRGB decodes a "#rrggbb" string into its three byte components. Callers
+// pass only the fixed constants above, so a malformed string returns zeros
+// rather than erroring.
+func hexRGB(hex string) (byte, byte, byte) {
+	if len(hex) != 7 || hex[0] != '#' {
+		return 0, 0, 0
+	}
+
+	var red, green, blue uint64
+
+	_, err := fmt.Sscanf(hex[1:], "%02x%02x%02x", &red, &green, &blue)
+	if err != nil {
+		return 0, 0, 0
+	}
+
+	return byte(red), byte(green), byte(blue)
+}
+
+// lerpByte interpolates one byte channel at amount in [0, 1].
+func lerpByte(from, to byte, amount float64) byte {
+	return byte(math.Round(float64(from) + (float64(to)-float64(from))*amount))
 }
 
 func periodLabel(schedule *models.ReportSchedule, window slo.Window) string {

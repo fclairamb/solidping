@@ -104,12 +104,24 @@ func (s *PagerDutySender) Send(ctx context.Context, _ *jobdef.JobContext, payloa
 		// exactly. It MUST be explicit: the default branch below is `trigger`,
 		// which would re-open a resolved incident on an ack.
 		return s.acknowledge(ctx, settings, payload)
-	case eventTypeIncidentEscalated, eventTypeIncidentComment:
+	case eventTypeIncidentEscalated, eventTypeIncidentComment, eventTypeIncidentUnacknowledged:
 		// Events API v2 has no note/annotation concept, and a `trigger` call
 		// reusing an already-resolved incident's dedup_key would RE-OPEN it.
 		// A comment or an escalation must therefore send NOTHING at all — not
 		// even a best-effort annotation, since this API simply cannot express
 		// one. This drop is deliberate and load-bearing: see spec 2026-08-19-02.
+		//
+		// An UNACKNOWLEDGMENT lands here for a sharper version of the same
+		// reason: `event_action` accepts trigger/acknowledge/resolve and
+		// nothing else, so there is no un-acknowledge to send. `trigger` is
+		// NOT an acceptable stand-in — on PagerDuty it would either re-open a
+		// resolved incident or fire a fresh page at the same on-call rotation
+		// the unack is trying to hand the incident back to. Moving a PD
+		// incident from acknowledged back to triggered is a REST API v2
+		// operation, and this integration holds a routing key, not an API
+		// token; skipping is the honest option and is chosen deliberately
+		// (spec 2026-08-28-07). Note the default branch below is `trigger`,
+		// which is exactly why this case must be listed explicitly.
 		return nil
 	default:
 		return s.trigger(ctx, settings, payload)

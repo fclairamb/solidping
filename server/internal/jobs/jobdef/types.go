@@ -40,6 +40,21 @@ const (
 	// job everyone who was woken up is left assuming the page is still
 	// unclaimed. V1 covers Telegram (spec 2026-08-24-01).
 	JobTypeIncidentAckNotice JobType = "incident_ack_notice"
+	// JobTypeIncidentUnackNotice RETRACTS that with the same people. An
+	// acknowledgment stops the escalation that was waking them, so the ack
+	// notice is what tells them to stand down — and without this job nothing
+	// ever tells them to stand back up. Withdrawing the acknowledgment leaves
+	// four people believing an incident is owned when it is not, which is the
+	// exact wrong belief acknowledgments exist to prevent
+	// (spec 2026-08-28-07, superseding 2026-08-24-01's "unack is silent").
+	JobTypeIncidentUnackNotice JobType = "incident_unack_notice"
+	// JobTypeIncidentCommentNotice forwards ONE incident comment to the people
+	// the escalation policy paged. Channel connections have received comments
+	// since the feature shipped; person contacts never did, so someone woken by
+	// a Telegram page who is on none of the check's channels got the page, the
+	// ack notice and the resolution notice — and never a word of the discussion
+	// in between. Per comment, immediately, no batching (spec 2026-08-28-07).
+	JobTypeIncidentCommentNotice JobType = "incident_comment_notice"
 	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
 	// records suggested checks in the discovered_checks table (grouped by IP) for
 	// operator review and promotion.

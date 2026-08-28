@@ -34,6 +34,7 @@ const (
 	TemplateIncidentBurnCreated     = "incident-burn-created.html"
 	TemplateIncidentBurnResolved    = "incident-burn-resolved.html"
 	TemplateIncidentAcknowledged    = "incident-acknowledged.html"
+	TemplateIncidentUnacknowledged  = "incident-unacknowledged.html"
 	TemplateIncidentComment         = "incident-comment.html"
 	TemplateIncidentCreated         = "incident-created.html"
 	TemplateIncidentEscalated       = "incident-escalated.html"
@@ -78,11 +79,14 @@ const (
 //nolint:gochecknoglobals // package-level classification table
 var supportReplyableTemplates = map[string]bool{
 	// Alerts and notifications — a human replying to these is the whole point.
-	TemplateCustomDomainDemoted:    true,
-	TemplateEscalation:             true,
-	TemplateIncidentBurnCreated:    true,
-	TemplateIncidentBurnResolved:   true,
-	TemplateIncidentAcknowledged:   true,
+	TemplateCustomDomainDemoted:  true,
+	TemplateEscalation:           true,
+	TemplateIncidentBurnCreated:  true,
+	TemplateIncidentBurnResolved: true,
+	TemplateIncidentAcknowledged: true,
+	// The retraction is the most answerable alert there is: it says an open
+	// incident is unowned again and asks someone to take it.
+	TemplateIncidentUnacknowledged: true,
 	TemplateIncidentComment:        true,
 	TemplateIncidentCreated:        true,
 	TemplateIncidentEscalated:      true,

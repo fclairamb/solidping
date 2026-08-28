@@ -187,6 +187,8 @@ func buildWebPushContent(payload *Payload, checkName string) (string, string) {
 		return commentTitle(payload), commentPreview(payload.Comment)
 	case eventTypeIncidentAcknowledged:
 		return ackTitle(payload), ackPlainBody(payload)
+	case eventTypeIncidentUnacknowledged:
+		return unackTitle(payload), unackPlainBody(payload)
 	default:
 		return ref + "[UPDATE] " + checkName,
 			"An incident update occurred for " + checkName

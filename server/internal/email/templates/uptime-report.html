@@ -11,7 +11,7 @@
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center">
-                <span class="metric-value">{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</span>
+                <span class="metric-value"{{if .AvailabilityColor}} style="color: {{.AvailabilityColor}}"{{end}}>{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</span>
                 <span class="metric-label">Availability &middot; {{.PeriodLabel}}</span>
             </td>
         </tr>
@@ -29,7 +29,7 @@
     <h2 class="section-title">Per check</h2>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         {{range .Checks}}
-        <tr><td class="label">{{.Name}}</td><td class="value">{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</td></tr>
+        <tr><td class="label">{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td><td class="value">{{if .HasData}}<span style="color: {{.AvailabilityColor}}; font-weight: 600">{{.AvailabilityPct}}%</span>{{else}}No data{{end}}</td></tr>
         {{end}}
     </table>
     {{end}}
@@ -39,7 +39,7 @@
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         {{range .SLOs}}
         <tr>
-            <td class="label">{{.Name}}</td>
+            <td class="label">{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
             <td class="value">
                 {{if .HasData}}{{.AttainmentPct}}%{{else}}No data{{end}} / target {{.TargetPct}}%
                 <span class="badge {{if eq .StateLabel "Healthy"}}badge-ok{{else if eq .StateLabel "At risk"}}badge-warn{{else if eq .StateLabel "Breached"}}badge-bad{{else}}badge-neutral{{end}}">{{.StateLabel}}</span>
@@ -64,10 +64,12 @@ Incidents: {{.IncidentCount}}{{if .LongestIncident}} (longest {{.LongestIncident
 {{end}}{{if .Checks}}
 Per check:
 {{range .Checks}}  - {{.Name}}: {{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}
-{{end}}{{end}}{{if .SLOs}}
+{{if .URL}}    {{.URL}}
+{{end}}{{end}}{{end}}{{if .SLOs}}
 Objectives:
 {{range .SLOs}}  - {{.Name}}: {{if .HasData}}{{.AttainmentPct}}%{{else}}No data{{end}} / target {{.TargetPct}}% ({{.StateLabel}}){{if .HasData}}, budget remaining {{.BudgetRemaining}}{{end}}
-{{end}}{{end}}
+{{if .URL}}    {{.URL}}
+{{end}}{{end}}{{end}}
 {{if .DashboardURL}}Dashboard: {{.DashboardURL}}
 {{end}}{{if .UnsubscribeURL}}Unsubscribe: {{.UnsubscribeURL}}
 {{end}}{{end}}
