@@ -895,6 +895,10 @@ func (m *mockDBService) RetireSystemAgent(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) RetireAgentWorkerRow(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CheckAndStoreAgentNonce(
 	_ context.Context, _, _ string, _ time.Time, _ time.Duration,
 ) error {

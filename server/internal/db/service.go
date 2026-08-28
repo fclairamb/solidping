@@ -283,6 +283,11 @@ type Service interface {
 	ListStaleSystemAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error)
 	// RetireSystemAgent revokes and soft-deletes one system agent (agent_gc).
 	RetireSystemAgent(ctx context.Context, uid string) error
+	// RetireAgentWorkerRow soft-deletes the workers row an agent's connection
+	// registered, resolved through the deterministic agents.WorkerSlug(uid).
+	// Shared by the agent_gc job and the supersede-on-enroll path — see
+	// RetireAgentWorkerRows.
+	RetireAgentWorkerRow(ctx context.Context, agentUID string) error
 	// CheckAndStoreAgentNonce records a reconnect nonce, returning
 	// ErrAgentNonceReplayed when it was already consumed within retain.
 	CheckAndStoreAgentNonce(ctx context.Context, agentUID, nonce string, now time.Time, retain time.Duration) error
