@@ -2921,7 +2921,7 @@ function ResponsiveDemoTable() {
               <TableCell className="max-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <StatusDot status={row.status} />
-                  <span className="truncate">{row.name}</span>
+                  <span className="min-w-0 truncate">{row.name}</span>
                 </div>
               </TableCell>
               <TableCell className="hidden sm:table-cell">
@@ -2953,7 +2953,7 @@ function ResponsiveTableSection() {
     >
       <ResponsiveDemoTable />
       <CodeSnippet
-        code={`<TableHead>Name</TableHead>\n<TableHead className="hidden sm:table-cell">Type</TableHead>\n<TableHead className="hidden md:table-cell">Target</TableHead>\n\n<TableCell className="max-w-0">\n  <div className="flex min-w-0 items-center gap-2">\n    <StatusDot status={row.status} />\n    <span className="truncate">{row.name}</span>\n  </div>\n</TableCell>\n<TableCell className="hidden sm:table-cell">{row.type}</TableCell>\n<TableCell className="hidden md:table-cell">{row.target}</TableCell>`}
+        code={`<TableHead>Name</TableHead>\n<TableHead className="hidden sm:table-cell">Type</TableHead>\n<TableHead className="hidden md:table-cell">Target</TableHead>\n\n<TableCell className="max-w-0">\n  <div className="flex min-w-0 items-center gap-2">\n    <StatusDot status={row.status} />\n    {/* min-w-0 on the span too — a flex item's default min-width:auto\n        stops "truncate" from ever actually shrinking it below its\n        content size. */}\n    <span className="min-w-0 truncate">{row.name}</span>\n  </div>\n</TableCell>\n<TableCell className="hidden sm:table-cell">{row.type}</TableCell>\n<TableCell className="hidden md:table-cell">{row.target}</TableCell>`}
       />
       <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
         <li>
@@ -2984,8 +2984,14 @@ function ResponsiveTableSection() {
           <code>max-w-0</code> and its content <code>truncate</code> (add an
           explicit <code>max-w-[…]</code> when the cell holds more than one
           flex child, as in the incidents title cell's dot + badges + title).
-          A badge cluster in the same cell needs <code>flex-wrap</code> too,
-          or a badge-heavy row overflows regardless of column hiding. Verify
+          When the truncated element is itself a flex item (inside a{" "}
+          <code>flex</code> row, not just a plain block), it also needs its
+          own <code>min-w-0</code> — a flex item's default{" "}
+          <code>min-width: auto</code> stops <code>truncate</code> from ever
+          shrinking it below its content size, so the class is present but
+          silently does nothing. A badge cluster in the same cell needs{" "}
+          <code>flex-wrap</code> too, or a badge-heavy row overflows
+          regardless of column hiding. Verify
           against <code>document.documentElement.scrollWidth {"<="} clientWidth</code>{" "}
           at 375px — the real invariant, not just "the columns look hidden."
         </li>
