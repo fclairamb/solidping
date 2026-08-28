@@ -316,6 +316,50 @@ func TestResolveDialsWithPassword(t *testing.T) {
 	r.NoError(dialer.TunnelFailure())
 }
 
+// A bastion that advertises only "keyboard-interactive" (the shape sshd's
+// ChallengeResponseAuthentication presents — see the checksftp fix this test
+// accompanies) must still authenticate with a configured password, exactly
+// as a real OpenSSH client would answer the challenge.
+func TestResolveDialsWithKeyboardInteractiveOnlyServer(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := sshtunneltest.StartKeyboardInteractiveOnly(t)
+	target := newEchoTarget(t, srv, "private.invalid:9000")
+
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(baseConfig(srv))}, &stubCreds{})
+
+	dialer, closer, err := resolver(t.Context(), testOrgUID, testCheckUID)
+	r.NoError(err)
+
+	defer func() { _ = closer.Close() }()
+
+	conn, err := dialer.DialContext(t.Context(), "tcp", "private.invalid:9000")
+	r.NoError(err)
+
+	defer func() { _ = conn.Close() }()
+
+	r.Equal(target, readLine(t, conn))
+}
+
+// A wrong password against a keyboard-interactive-only server must still
+// fail — the challenge answer must not silently authenticate.
+func TestResolveRejectsBadPasswordKeyboardInteractiveOnlyServer(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := sshtunneltest.StartKeyboardInteractiveOnly(t)
+
+	config := baseConfig(srv)
+	config["password"] = "wrong"
+
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{})
+
+	_, _, err := resolver(t.Context(), testOrgUID, testCheckUID)
+	r.Error(err)
+	r.True(sshtunnel.IsTunnelError(err))
+}
+
 func TestResolveDialsWithPrivateKey(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
