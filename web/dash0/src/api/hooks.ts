@@ -760,6 +760,29 @@ export function useCheck(
   });
 }
 
+/**
+ * Fetches several individual checks in parallel via `useQueries`, one query
+ * per uid, using the SAME `["check", org, uid]` key and fetch function as
+ * `useCheck` — so a check already resolved elsewhere (list, detail page,
+ * `useCheck` itself) is a cache hit rather than a duplicate request, and vice
+ * versa. Built for `CheckMultiPicker`, which needs to resolve chip labels for
+ * selected uids that fall outside the current search page's result set.
+ *
+ * Returns one `UseQueryResult<Check>` per input uid, same order as `uids`.
+ */
+export function useChecksByUids(org: string, uids: string[]) {
+  return useQueries({
+    queries: uids.map((uid) => ({
+      queryKey: ["check", org, uid],
+      queryFn: async () =>
+        apiFetch<Check>(
+          `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`,
+        ),
+      enabled: !!org && !!uid,
+    })),
+  });
+}
+
 export function useCreateCheck(org: string) {
   const queryClient = useQueryClient();
 
