@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Flame, Layers, Pencil, Plus, Target, Trash2 } from "lucide-react";
+import { FileChartColumn, Flame, Layers, Pencil, Plus, Target, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiError } from "@/api/client";
@@ -165,13 +165,32 @@ function SlosIndexPage() {
         description={t("layout.subtitle")}
         docsHref="/docs/features/slos"
         actions={
-          <Button
-            onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}
-            data-testid="slo-new"
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            {t("list.new")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Uptime reports are the scheduled, emailed companion to these
+                objectives — same availability data, pushed rather than
+                pulled — but they live under Organization, so an operator
+                looking at SLOs has no way to reach them from here. Icon-only
+                below sm, matching the header idiom used elsewhere. */}
+            <Button asChild variant="outline">
+              <Link
+                to="/orgs/$org/organization/report-schedules"
+                params={{ org }}
+                data-testid="slo-uptime-reports-link"
+              >
+                <FileChartColumn className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">
+                  {t("nav:reportSchedules", "Uptime reports")}
+                </span>
+              </Link>
+            </Button>
+            <Button
+              onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}
+              data-testid="slo-new"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              {t("list.new")}
+            </Button>
+          </div>
         }
       />
 

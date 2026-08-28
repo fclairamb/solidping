@@ -12,6 +12,7 @@ import {
   Bot,
   Calendar,
   CalendarClock,
+  FileChartColumn,
   GitBranch,
   Globe,
   Activity,
@@ -91,6 +92,13 @@ const pages: PageEntry[] = [
   },
   { titleKey: "members", path: "/orgs/$org/organization/members", icon: Users, group: "organization" },
   { titleKey: "invitations", path: "/orgs/$org/organization/invitations", icon: Mail, group: "organization" },
+  {
+    titleKey: "reportSchedules",
+    path: "/orgs/$org/organization/report-schedules",
+    icon: FileChartColumn,
+    group: "organization",
+    testId: "command-menu-report-schedules",
+  },
   { titleKey: "settings", path: "/orgs/$org/organization/settings", icon: Settings, group: "organization" },
 ];
 
