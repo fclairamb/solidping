@@ -11926,6 +11926,19 @@ components:
             time. Unknown keys are rejected (VALIDATION_ERROR). The effective
             thresholds (submitted or default) must satisfy
             0 < thresholdDegraded < thresholdUp <= 100.
+        checkUids:
+          type: array
+          items:
+            type: string
+          description: >-
+            Optional checks to seed the page with. Every new page always gets
+            a default "Services" section (position 0, renamable/deletable
+            like any other); each UID here becomes one resource in that
+            section, in request order. Every UID must resolve to a check in
+            this organization, or the WHOLE request is rejected with
+            VALIDATION_ERROR naming the offending UID — page, section, and
+            resources are created atomically, so a rejected request leaves no
+            page behind.
 
     UpdateStatusPageRequest:
       type: object
