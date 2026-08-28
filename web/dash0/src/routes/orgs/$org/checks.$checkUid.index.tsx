@@ -95,6 +95,10 @@ import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import {
+  JsonAssertionResultCard,
+  JSON_ASSERTION_RESULT_OUTPUT_KEY,
+} from "@/components/checks/json-assertion-result-card";
+import {
   ResponseTimeChart,
   formatMs,
 } from "@/components/checks/response-time-chart";
@@ -1450,6 +1454,7 @@ function CheckDetailPage() {
                               key !== "chain" &&
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
+                              key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
                               !(
                                 DNSBL_OUTPUT_KEYS as readonly string[]
                               ).includes(key),
@@ -1497,6 +1502,14 @@ function CheckDetailPage() {
 
       {check.type === "dnsbl" && (
         <DnsblCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "http" && (
+        <JsonAssertionResultCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }
