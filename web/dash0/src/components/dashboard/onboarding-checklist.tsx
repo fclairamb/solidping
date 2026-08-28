@@ -89,7 +89,10 @@ export function OnboardingChecklist({
   firstCheckUid,
 }: OnboardingChecklistProps) {
   const { t } = useTranslation("dashboard");
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  // Listing invitations is admin-only, so only an admin-capable member can
+  // contribute that half of the team step.
+  const isAdmin = Boolean(user?.isAdmin);
 
   const stateKey = onboardingUiStateKey(org);
   const dismissalQuery = useUiState<OnboardingUiState>(stateKey, {
