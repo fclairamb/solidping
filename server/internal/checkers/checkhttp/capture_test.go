@@ -271,7 +271,7 @@ func TestCaptureRedactsSensitiveHeaders(t *testing.T) {
 		h.Set("X-Api-Key", "leaked-api-key")
 		h.Set("X-Amz-Security-Token", "leaked-token")
 		h.Set("X-Client-Secret", "leaked-secret")
-		h.Set("X-Request-Id", "req-42")
+		h.Set("X-Request-ID", "req-42")
 		h.Set("Server", "acme-lb")
 		w.WriteHeader(http.StatusBadGateway)
 		_, _ = w.Write([]byte("bad gateway"))
