@@ -56,18 +56,18 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
 
   return (
     <TableRow className="transition-colors hover:bg-muted/40" data-testid="slo-row">
-      <TableCell>
+      <TableCell className="max-w-0">
         <Link
           to="/orgs/$org/slos/$uid"
           params={{ org, uid: slo.uid }}
-          className="font-medium hover:underline"
+          className="block truncate font-medium hover:underline"
           data-testid="slo-row-name"
         >
           {slo.name}
         </Link>
-        <div className="text-xs text-muted-foreground">{slo.slug}</div>
+        <div className="truncate text-xs text-muted-foreground">{slo.slug}</div>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden md:table-cell">
         <span className="inline-flex items-center gap-1.5 text-sm">
           {slo.checkGroupUid ? (
             <Layers className="h-3.5 w-3.5 text-muted-foreground" />
@@ -79,7 +79,9 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
           </span>
         </span>
       </TableCell>
-      <TableCell className="whitespace-nowrap">{formatTarget(slo.targetPct)}</TableCell>
+      <TableCell className="hidden whitespace-nowrap sm:table-cell">
+        {formatTarget(slo.targetPct)}
+      </TableCell>
       <TableCell className="whitespace-nowrap" data-testid="slo-row-attainment">
         {isLoading ? (
           <Skeleton className="h-4 w-16" />
@@ -88,7 +90,7 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
           (attainment ?? <span className="text-muted-foreground">{t("detail.noData")}</span>)
         )}
       </TableCell>
-      <TableCell className="min-w-[9rem]">
+      <TableCell className="hidden min-w-[9rem] md:table-cell">
         {current ? (
           <div className="space-y-1">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -197,10 +199,16 @@ function SlosIndexPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t("list.columns.name")}</TableHead>
-                <TableHead>{t("list.columns.scope")}</TableHead>
-                <TableHead>{t("list.columns.target")}</TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t("list.columns.scope")}
+                </TableHead>
+                <TableHead className="hidden sm:table-cell">
+                  {t("list.columns.target")}
+                </TableHead>
                 <TableHead>{t("list.columns.attainment")}</TableHead>
-                <TableHead>{t("list.columns.budget")}</TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t("list.columns.budget")}
+                </TableHead>
                 <TableHead>{t("list.columns.state")}</TableHead>
                 <TableHead />
               </TableRow>
