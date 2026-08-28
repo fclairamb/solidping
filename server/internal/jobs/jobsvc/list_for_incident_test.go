@@ -14,17 +14,17 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
-// ListCanceledPendingForIncident is what makes an interrupted escalation cycle
-// recoverable without a new column: the rows the ack's sweep soft-deleted ARE
-// the record of where the cycle stood.
+// ListForIncident is what makes an interrupted escalation cycle recoverable
+// without a new column: the rows the ack's sweep soft-deleted ARE the record of
+// where the cycle stood, and they are only readable because the sweep
+// soft-deletes rather than erasing.
 //
-// The three properties that matter, and each is a way a resume could go wrong:
-//
-//   - a step that ALREADY RAN must not come back (it would replay a page);
-//   - a step that is still LIVE must not come back (it would double-page);
-//   - only the requested job type comes back (a resume must not resurrect the
-//     notification jobs the same sweep canceled).
-func TestListCanceledPendingForIncident(t *testing.T) {
+// It deliberately returns the WHOLE history — every status, canceled rows
+// included — because deciding which rungs may be resumed requires correlating
+// the generations of one rung against each other. That policy lives in
+// incidents.resumableEscalationSteps; this test pins the primitive's contract:
+// nothing is filtered out except the incident and the job type.
+func TestListForIncident(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -85,35 +85,36 @@ func TestListCanceledPendingForIncident(t *testing.T) {
 		stepConfig("step-live"), nil)
 	r.NoError(err)
 
-	got, err := svc.ListCanceledPendingForIncident(
-		ctx, incidentUID, string(jobdef.JobTypeEscalationStep))
+	got, err := svc.ListForIncident(ctx, incidentUID, string(jobdef.JobTypeEscalationStep))
 	r.NoError(err)
-	r.Len(got, 2)
+	r.Len(got, 4, "every generation of every rung comes back, whatever its status")
 
 	uids := map[string]bool{}
 	for _, job := range got {
 		uids[job.UID] = true
 	}
 
-	r.False(uids[fired.UID], "a step that already ran must never be resumed")
-	r.False(uids[live.UID], "a live step must not be duplicated by a resume")
+	// The two rows a canceled-only query would have hidden. Both are exactly
+	// what the caller needs in order to NOT resume a rung: one already ran, the
+	// other is still queued.
+	r.True(uids[fired.UID], "a step that already ran must be visible, so it is never resumed")
+	r.True(uids[live.UID], "a live step must be visible, so it is never duplicated")
 
 	// Ordered oldest-due first, which is what lets the caller shift the whole
 	// remaining cycle as a block.
-	r.False(got[1].ScheduledAt.Before(got[0].ScheduledAt),
-		"canceled steps come back ordered by when they were due")
+	for i := 1; i < len(got); i++ {
+		r.False(got[i].ScheduledAt.Before(got[i-1].ScheduledAt),
+			"steps come back ordered by when they were due")
+	}
 
-	// Positive control: the same sweep canceled a notification job, and asking
-	// for that type finds it — so the empty step results above are the type
-	// filter working, not an empty table.
-	notifications, err := svc.ListCanceledPendingForIncident(
-		ctx, incidentUID, string(jobdef.JobTypeNotification))
+	// The type filter holds: the same sweep canceled a notification job, and it
+	// must not leak into an escalation-step read.
+	notifications, err := svc.ListForIncident(ctx, incidentUID, string(jobdef.JobTypeNotification))
 	r.NoError(err)
 	r.Len(notifications, 1)
 
 	// A different incident sees nothing.
-	other, err := svc.ListCanceledPendingForIncident(
-		ctx, "incident-other", string(jobdef.JobTypeEscalationStep))
+	other, err := svc.ListForIncident(ctx, "incident-other", string(jobdef.JobTypeEscalationStep))
 	r.NoError(err)
 	r.Empty(other)
 }

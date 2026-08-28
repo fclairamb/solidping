@@ -108,7 +108,7 @@ func (f *fakeJobSvc) CancelPendingForIncident(
 	return 0, errNotImplemented
 }
 
-func (f *fakeJobSvc) ListCanceledPendingForIncident(
+func (f *fakeJobSvc) ListForIncident(
 	_ context.Context, _, _ string,
 ) ([]*models.Job, error) {
 	return nil, errNotImplemented

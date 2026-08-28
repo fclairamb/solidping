@@ -86,20 +86,24 @@ type Service interface {
 	// is still open then).
 	CancelPendingForIncident(ctx context.Context, incidentUID string, notBefore *time.Time) (int64, error)
 
-	// ListCanceledPendingForIncident returns the jobs of one type that
-	// CancelPendingForIncident soft-deleted for an incident and that never
-	// ran — status still 'pending', deleted_at set — oldest scheduled_at
-	// first.
+	// ListForIncident returns EVERY job of one type that references the
+	// incident under the "incidentUid" config key — every status, and
+	// soft-deleted rows included — oldest scheduled_at first.
 	//
 	// This is what makes an interrupted escalation cycle recoverable without a
-	// new column: the canceled rows ARE the record of where the cycle was when
-	// the acknowledgment stopped it. Their config still carries stepUid,
+	// new column: the rows ARE the record of where the cycle was when the
+	// acknowledgment stopped it. Their config still carries stepUid,
 	// repeatIndex and isLastStep, and their scheduled_at still carries when
-	// each rung was due, so unack can resume from the step the ack interrupted
-	// instead of replaying the cycle from step 1.
-	ListCanceledPendingForIncident(
-		ctx context.Context, incidentUID, jobType string,
-	) ([]*models.Job, error)
+	// each rung was due.
+	//
+	// It returns the WHOLE history rather than just the canceled rows on
+	// purpose. One incident can accumulate several generations of the same rung
+	// across repeated ack → unack cycles, and deciding whether a rung may be
+	// resumed requires correlating them: a rung whose LATER generation already
+	// fired must never be resurrected from its earlier canceled one. A
+	// canceled-rows-only view cannot express that, so the correlation lives in
+	// the caller with the full history in hand.
+	ListForIncident(ctx context.Context, incidentUID, jobType string) ([]*models.Job, error)
 
 	// GetJobWait waits for and claims the next available job
 	// Uses PostgreSQL LISTEN/NOTIFY for efficient waiting
@@ -479,15 +483,16 @@ func (s *serviceImpl) CancelPendingForIncident(
 	return rows, nil
 }
 
-// ListCanceledPendingForIncident returns the still-pending, soft-deleted jobs
-// of one type for an incident, oldest scheduled_at first.
+// ListForIncident returns every job of one type for an incident — all
+// statuses, soft-deleted rows included — oldest scheduled_at first.
 //
-// Reads exactly what CancelPendingForIncident wrote: status is left at
-// 'pending' by that sweep, so `status = pending AND deleted_at IS NOT NULL` is
-// precisely "was queued, was canceled, never ran". A job that had already
-// fired is in a terminal status and is therefore never returned — which is
-// what keeps a resume from replaying pages that already went out.
-func (s *serviceImpl) ListCanceledPendingForIncident(
+// The deliberate absence of a `deleted_at IS NULL` filter is the point: this is
+// the ONLY read in the codebase that wants canceled rows back, because
+// CancelPendingForIncident soft-deletes rather than erasing and those rows are
+// the record of an interrupted escalation cycle. Statuses are returned
+// unfiltered for the same reason — the caller needs to see which generations
+// of a rung already ran before it can decide which may be resumed.
+func (s *serviceImpl) ListForIncident(
 	ctx context.Context, incidentUID, jobType string,
 ) ([]*models.Job, error) {
 	if incidentUID == "" || jobType == "" {
@@ -506,13 +511,11 @@ func (s *serviceImpl) ListCanceledPendingForIncident(
 	err := s.db.NewSelect().
 		Model(&jobs).
 		Where("type = ?", jobType).
-		Where("status = ?", models.JobStatusPending).
-		Where("deleted_at IS NOT NULL").
 		Where(configExpr, incidentUID).
 		Order("scheduled_at ASC").
 		Scan(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list canceled jobs for incident: %w", err)
+		return nil, fmt.Errorf("failed to list jobs for incident: %w", err)
 	}
 
 	return jobs, nil
