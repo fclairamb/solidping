@@ -465,6 +465,69 @@ func TestStatusPageDuplicateSlug(t *testing.T) {
 		http.StatusUnprocessableEntity)
 }
 
+// statusPageValidationErrorResponse captures the VALIDATION_ERROR fields
+// payload — apiErrorResponse (defined in statuspage_custom_css_test.go) has
+// no Fields, so this test needs its own shape.
+type statusPageValidationErrorResponse struct {
+	Title  string `json:"title"`
+	Code   string `json:"code"`
+	Fields []struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	} `json:"fields"`
+}
+
+// TestStatusPageCreateWithCheckUids_HTTPContract pins the REST contract for
+// spec 2026-08-28-16: checkUids seeds the default "Services" section with one
+// resource per check, and an entry that doesn't resolve to a check in the org
+// rejects the WHOLE request with VALIDATION_ERROR naming the offending UID —
+// with nothing persisted, not even the page.
+func TestStatusPageCreateWithCheckUids_HTTPContract(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newStatusPageTestHelper(t)
+	checkUID := createTestCheck(t, h)
+
+	basePath := "/api/v1/orgs/" + TestOrgSlug + "/status-pages"
+
+	// Happy path: checkUids seeds the default section.
+	page, status := doJSON[statusPageResponse](t, h, "POST", basePath, map[string]any{
+		"name":      "With Checks",
+		"slug":      "with-checks",
+		"checkUids": []string{checkUID},
+	})
+	r.Equal(http.StatusCreated, status)
+
+	pageWithSections, status := doJSON[statusPageResponse](t, h, "GET",
+		basePath+"/"+page.UID+"?with=sections", nil)
+	r.Equal(http.StatusOK, status)
+	r.Len(pageWithSections.Sections, 1)
+	r.Equal("services", pageWithSections.Sections[0].Slug)
+	r.Len(pageWithSections.Sections[0].Resources, 1)
+	r.Equal(checkUID, pageWithSections.Sections[0].Resources[0].CheckUID)
+
+	// Rejection: an unknown checkUid rejects the whole request.
+	const unknownUID = "00000000-0000-0000-0000-000000000000"
+	errBody, status := doJSON[statusPageValidationErrorResponse](t, h, "POST", basePath, map[string]any{
+		"name":      "Rejected",
+		"slug":      "rejected-page",
+		"checkUids": []string{checkUID, unknownUID},
+	})
+	r.Equal(http.StatusUnprocessableEntity, status)
+	r.Equal("VALIDATION_ERROR", errBody.Code)
+	r.Len(errBody.Fields, 1)
+	r.Equal("checkUids", errBody.Fields[0].Name)
+	r.Contains(errBody.Fields[0].Message, unknownUID, "the offending uid must be named")
+
+	// The page must not exist — no half-created page from the rejected request.
+	listResp, status := doJSON[listStatusPagesResponse](t, h, "GET", basePath, nil)
+	r.Equal(http.StatusOK, status)
+	for _, p := range listResp.Data {
+		r.NotEqual("rejected-page", p.Slug, "a rejected create must not leave a page behind")
+	}
+}
+
 func TestStatusPageUnauthorized(t *testing.T) {
 	t.Parallel()
 
