@@ -1,11 +1,12 @@
 import { test, expect, type Page } from "./fixtures";
 
 /**
- * Coverage for spec 2026-08-28-08: the checks and incidents list tables now
- * hide secondary columns below `sm`/`md` instead of side-scrolling on a
- * phone. This is fully mocked (deterministic) rather than relying on
- * whatever the `test` org happens to have seeded, so it can exercise the
- * exact edge cases the fix targets:
+ * Coverage for spec 2026-08-28-08 (checks/incidents) and spec 2026-08-28-09
+ * (members/SLOs/integrations): these list tables hide secondary columns
+ * below `sm`/`md`/`lg` instead of side-scrolling on a phone. This is fully
+ * mocked (deterministic) rather than relying on whatever the `test` org
+ * happens to have seeded, so it can exercise the exact edge cases the fix
+ * targets:
  *   - a check/incident name with no natural break point (the class of string
  *     that forces horizontal overflow if a column relies on wrapping alone)
  *   - an incident with every badge (snoozed/acked/relapse/flapping/rolled-up
@@ -194,6 +195,204 @@ test.describe("Incidents list (mobile)", () => {
     // Secondary columns are hidden below their breakpoint.
     await expect(page.getByText("Check", { exact: true })).toBeHidden();
     await expect(page.getByText("Failures", { exact: true })).toBeHidden();
+
+    await assertNoHorizontalOverflow(page);
+  });
+});
+
+// Spec 2026-08-28-09: same idiom applied to members, SLOs and integrations.
+const LONG_MEMBER_EMAIL =
+  "verylongmemberemailaddresswithoutanyspacesthatcouldwraptoavoidoverflow@example.com";
+const LONG_SLO_NAME =
+  "verylongsloobjectivenamewithoutanyspacesthatcouldwraptoavoidoverflow1234567890";
+const LONG_INTEGRATION_NAME =
+  "verylongintegrationnamewithoutanyspacesthatcouldwraptoavoidoverflow1234567890";
+
+test.describe("Members list (mobile)", () => {
+  test("no horizontal overflow at 375px; member/role/actions stay visible", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    // A member with no display name falls back to the (long, unbroken)
+    // email as the identity cell's text — the exact case the spec calls
+    // out ("long email-as-name") for the max-w-0/truncate treatment.
+    await page.route("**/api/v1/orgs/*/members/coverage", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [] }),
+      }),
+    );
+    await page.route("**/api/v1/orgs/*/members", (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              uid: "e2e-mobile-member-1",
+              userUid: "e2e-mobile-user-1",
+              email: LONG_MEMBER_EMAIL,
+              role: "admin",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("orgs/test/organization/members");
+    await page.waitForLoadState("networkidle");
+
+    const row = page.getByRole("row", { name: new RegExp(LONG_MEMBER_EMAIL) });
+    await expect(row).toBeVisible();
+
+    // Always-visible columns: member identity (long text truncated rather
+    // than overflowing), role, and the row actions.
+    await expect(row.getByText(LONG_MEMBER_EMAIL)).toBeVisible();
+    await expect(row.getByTestId(`member-role-${LONG_MEMBER_EMAIL}`)).toBeVisible();
+    await expect(row.getByRole("button", { name: "Remove" })).toBeVisible();
+
+    // Secondary columns are hidden below their breakpoint.
+    await expect(page.getByText("Email", { exact: true })).toBeHidden();
+    await expect(page.getByText("Joined", { exact: true })).toBeHidden();
+
+    await assertNoHorizontalOverflow(page);
+  });
+});
+
+test.describe("SLOs list (mobile)", () => {
+  test("no horizontal overflow at 375px; name/attainment/state/actions stay visible", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    const SLO_UID = "e2e-mobile-slo-1";
+
+    await page.route("**/api/v1/orgs/*/slos/*/status", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          slo: { uid: SLO_UID, name: LONG_SLO_NAME },
+          current: {
+            window: { start: new Date().toISOString(), end: new Date().toISOString(), label: "This month" },
+            attainmentPct: 99.95,
+            hasData: true,
+            targetPct: 99.9,
+            totalChecks: 1000,
+            successfulChecks: 999,
+            monitoredSeconds: 2_000_000,
+            elapsedSeconds: 2_000_000,
+            budgetTotalSeconds: 2_592_000,
+            budgetConsumedSeconds: 200,
+            budgetRemainingSeconds: 2_591_800,
+            excludedMaintenanceSeconds: 0,
+            burnRate: 0.1,
+            projectedExhaustionAt: null,
+            state: "healthy",
+            partial: false,
+          },
+          incidents: { count: 0 },
+        }),
+      }),
+    );
+    await page.route("**/api/v1/orgs/*/slos", (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              uid: SLO_UID,
+              name: LONG_SLO_NAME,
+              slug: "e2e-mobile-slo-1",
+              checkUid: "e2e-mobile-slo-check-1",
+              checkName: "Mobile SLO Check",
+              targetPct: 99.9,
+              timezone: "UTC",
+              excludeMaintenance: false,
+              enabled: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("orgs/test/slos");
+    await page.waitForLoadState("networkidle");
+
+    const row = page.getByTestId("slo-row").first();
+    await expect(row).toBeVisible();
+
+    // Always-visible columns: name (long text truncated rather than
+    // overflowing), attainment, state, and the row actions.
+    await expect(row.getByTestId("slo-row-name")).toBeVisible();
+    await expect(row.getByTestId("slo-row-name")).toHaveText(LONG_SLO_NAME);
+    await expect(row.getByTestId("slo-row-attainment")).toBeVisible();
+    await expect(row.getByTestId("slo-row-state")).toBeVisible();
+    await expect(row.getByTestId("slo-row-delete")).toBeVisible();
+
+    // Secondary columns are hidden below their breakpoint.
+    await expect(page.getByText("Scope", { exact: true })).toBeHidden();
+    await expect(page.getByText("Target", { exact: true })).toBeHidden();
+    await expect(page.getByText("Budget remaining", { exact: true })).toBeHidden();
+
+    await assertNoHorizontalOverflow(page);
+  });
+});
+
+test.describe("Integrations list (mobile)", () => {
+  test("no horizontal overflow at 375px; name/status/actions stay visible", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    await page.route("**/api/v1/orgs/*/integrations", (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              uid: "e2e-mobile-integration-1",
+              type: "webhook",
+              name: LONG_INTEGRATION_NAME,
+              enabled: true,
+              isDefault: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("orgs/test/integrations");
+    await page.waitForLoadState("networkidle");
+
+    const row = page.getByRole("row", { name: new RegExp(LONG_INTEGRATION_NAME) });
+    await expect(row).toBeVisible();
+
+    // Always-visible columns: name (long text truncated rather than
+    // overflowing), status, and the row actions.
+    await expect(row.getByText(LONG_INTEGRATION_NAME)).toBeVisible();
+    await expect(row.getByText("Enabled")).toBeVisible();
+    await expect(row.getByRole("button", { name: "Edit" })).toBeVisible();
+
+    // Secondary columns are hidden below their breakpoint.
+    await expect(page.getByText("Type", { exact: true })).toBeHidden();
+    await expect(page.getByText("Used by", { exact: true })).toBeHidden();
+    await expect(page.getByText("Updated", { exact: true })).toBeHidden();
 
     await assertNoHorizontalOverflow(page);
   });
