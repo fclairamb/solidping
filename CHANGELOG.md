@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.19.1](https://github.com/fclairamb/solidping/compare/v0.19.0...v0.19.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **config:** bind SP_ENCRYPTION_MASTER_KEY so credentials stop being stored in plaintext ([#276](https://github.com/fclairamb/solidping/issues/276)) ([15615ad](https://github.com/fclairamb/solidping/commit/15615ad9e2744988a112e51c8a8f0ffabb72f557))
+* **deps:** update github.com/dop251/goja digest to 8f1c069 ([#275](https://github.com/fclairamb/solidping/issues/275)) ([550ed79](https://github.com/fclairamb/solidping/commit/550ed79fcf39f5f577d5c41dbddf73191b1c2b4b))
+* **email:** link the check page in incident emails instead of the down host ([#274](https://github.com/fclairamb/solidping/issues/274)) ([0daaf40](https://github.com/fclairamb/solidping/commit/0daaf40dd851b9534d98e6fe0cb37f050ed884b2))
+* name the license file LICENSE so pkg.go.dev detects it ([#272](https://github.com/fclairamb/solidping/issues/272)) ([f11d7b6](https://github.com/fclairamb/solidping/commit/f11d7b6d252ca049dded188bbffb1bce1a165c01))
+
 ## [0.19.0](https://github.com/fclairamb/solidping/compare/v0.18.3...v0.19.0) (2026-08-27)
 
 
