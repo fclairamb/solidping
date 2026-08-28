@@ -720,6 +720,25 @@ type Service interface {
 	// Returns count of deleted entries.
 	DeleteExpiredStateEntries(ctx context.Context) (int64, error)
 
+	// User-scoped state storage (state_entries.user_uid IS NOT NULL). The
+	// org-scoped accessors above cannot serve these: with orgUID == nil they
+	// match on `organization_uid IS NULL` alone, which is every user's row at
+	// once. These three filter on user_uid instead, so one user's UI state is
+	// invisible to another's.
+	//
+	// GetUserStateEntry retrieves a user-scoped entry. Returns nil (not an
+	// error) when there is none.
+	GetUserStateEntry(ctx context.Context, userUID, key string) (*models.StateEntry, error)
+	// SetUserStateEntry creates or updates a user-scoped entry, resurrecting a
+	// previously soft-deleted row for the same (user, key). TTL is optional
+	// (nil = never expires).
+	SetUserStateEntry(
+		ctx context.Context, userUID, key string, value *models.JSONMap, ttl *time.Duration,
+	) error
+	// DeleteUserStateEntry soft-deletes a user-scoped entry, returning whether
+	// a live row existed to delete.
+	DeleteUserStateEntry(ctx context.Context, userUID, key string) (bool, error)
+
 	// Organization Parameter operations (organization_uid IS NOT NULL)
 	// ListOrgParametersByKey returns all org-scoped parameters with a specific key.
 	ListOrgParametersByKey(ctx context.Context, key string) ([]*models.Parameter, error)

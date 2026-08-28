@@ -3947,6 +3947,106 @@ func (s *Service) DeleteStateEntry(ctx context.Context, orgUID *string, key stri
 	return affected > 0, nil
 }
 
+// GetUserStateEntry retrieves a user-scoped state entry by user and key.
+//
+// The org-scoped GetStateEntry above cannot serve this: passing a nil orgUID
+// selects on `organization_uid IS NULL`, which matches every user's row at
+// once. Scoping on user_uid is what makes one user's UI state invisible to
+// another's.
+func (s *Service) GetUserStateEntry(ctx context.Context, userUID, key string) (*models.StateEntry, error) {
+	entry := new(models.StateEntry)
+
+	err := s.db.NewSelect().
+		Model(entry).
+		Where("user_uid = ?", userUID).
+		Where("organization_uid IS NULL").
+		Where("key = ?", key).
+		Where("deleted_at IS NULL").
+		Where("(expires_at IS NULL OR expires_at > NOW())").
+		Scan(ctx)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil //nolint:nilnil // Entry not found is not an error
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user state entry: %w", err)
+	}
+
+	return entry, nil
+}
+
+// SetUserStateEntry creates or updates a user-scoped state entry.
+//
+// The table's only unique constraint is (organization_uid, key), which does
+// not cover user-scoped rows, so ON CONFLICT has nothing to fire on. Mirror
+// the global-entry branch of SetStateEntry: UPDATE first (which also
+// resurrects a soft-deleted row by clearing deleted_at), and INSERT only when
+// no row matched.
+func (s *Service) SetUserStateEntry(
+	ctx context.Context, userUID, key string, value *models.JSONMap, ttl *time.Duration,
+) error {
+	now := time.Now()
+
+	var expiresAt *time.Time
+
+	if ttl != nil {
+		ts := now.Add(*ttl)
+		expiresAt = &ts
+	}
+
+	res, err := s.db.NewUpdate().
+		Model((*models.StateEntry)(nil)).
+		Where("user_uid = ?", userUID).
+		Where("organization_uid IS NULL").
+		Where("key = ?", key).
+		Set("value = ?", value).
+		Set("expires_at = ?", expiresAt).
+		Set("updated_at = ?", now).
+		Set("deleted_at = NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to update user state entry: %w", err)
+	}
+
+	if rows, _ := res.RowsAffected(); rows > 0 {
+		return nil
+	}
+
+	entry := models.NewUserStateEntry(userUID, key)
+	entry.Value = value
+	entry.ExpiresAt = expiresAt
+
+	if _, insertErr := s.db.NewInsert().Model(entry).Exec(ctx); insertErr != nil {
+		return fmt.Errorf("failed to set user state entry: %w", insertErr)
+	}
+
+	return nil
+}
+
+// DeleteUserStateEntry soft-deletes a user-scoped state entry, returning
+// whether a live row existed to delete.
+func (s *Service) DeleteUserStateEntry(ctx context.Context, userUID, key string) (bool, error) {
+	res, err := s.db.NewUpdate().
+		Model((*models.StateEntry)(nil)).
+		Set("deleted_at = ?", time.Now()).
+		Where("user_uid = ?", userUID).
+		Where("organization_uid IS NULL").
+		Where("key = ?", key).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to delete user state entry: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read delete user state entry result: %w", err)
+	}
+
+	return affected > 0, nil
+}
+
 // ListStateEntries returns all entries matching the key prefix.
 func (s *Service) ListStateEntries(
 	ctx context.Context, orgUID *string, keyPrefix string,
