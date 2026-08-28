@@ -214,6 +214,40 @@ test.describe("Chart availability strip", () => {
     expect(await noDataTooltip.textContent()).not.toContain("%");
   });
 
+  test("moving from one cell to the next swaps the tooltip instead of keeping the previous period", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoCheckDetail(page);
+
+    await expect(cells(page)).toHaveCount(6, { timeout: 10000 });
+
+    // Cell 3 is the bad bucket (20 / 60), cell 4 is a healthy one (60 / 60) —
+    // adjacent, so a pointer sweep along the strip crosses straight from one
+    // to the other.
+    await cells(page).nth(3).hover();
+    await expect(
+      page.getByRole("tooltip").filter({ hasText: "20 / 60" }),
+    ).toBeVisible({ timeout: 5000 });
+
+    // Move straight onto the neighbour, with no detour off the strip and no
+    // second nudge. Radix's hoverable-content grace area used to make this the
+    // failing case: leaving an open cell sets a POINTER-IN-TRANSIT flag on the
+    // shared TooltipProvider, and while it is set every other trigger's
+    // onPointerMove is a no-op — so the pointer would land on cell 4 while the
+    // popup still showed cell 3's period. `disableHoverableContent` on the
+    // cell tooltip removes that grace area (see components/ui/availability-strip.tsx).
+    await cells(page).nth(4).hover();
+
+    await expect(
+      page.getByRole("tooltip").filter({ hasText: "60 / 60" }),
+    ).toBeVisible({ timeout: 5000 });
+    // ...and the period we left must be gone, not merely covered.
+    await expect(
+      page.getByRole("tooltip").filter({ hasText: "20 / 60" }),
+    ).toHaveCount(0, { timeout: 5000 });
+  });
+
   test("re-buckets when the chart range changes", async ({
     authenticatedPage,
   }) => {

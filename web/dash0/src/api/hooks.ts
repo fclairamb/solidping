@@ -3801,7 +3801,13 @@ export function useVersion() {
         gitTime?: string;
         runMode?: string;
       }>("/api/mgmt/version"),
-    staleTime: Infinity,
+    // Poll for server redeploys (spec 2026-08-28-01: dash0 has no way to
+    // tell the user their loaded app is older than the running server).
+    // "always" ignores staleness so a laptop waking from sleep refetches on
+    // focus/visibilitychange immediately instead of waiting out the rest of
+    // the interval.
+    refetchInterval: 15 * 60 * 1000,
+    refetchOnWindowFocus: "always",
   });
 }
 
@@ -6192,7 +6198,12 @@ export interface AdminEntitlementsDetail extends AdminEntitlementsRow {
   stored?: AdminEntitlementsStored | null;
   /** What this deployment resolves to with no row — where a release lands. */
   defaults: EntitlementsLimits;
-  audits: EntitlementAudit[];
+  /**
+   * The org's change history, newest first. Optional and nullable on purpose:
+   * an org that has never been edited has no trail, and a server that sends
+   * `null` for that must not be able to blank the page.
+   */
+  audits?: EntitlementAudit[] | null;
 }
 
 export function useAdminEntitlementsList(params: {

@@ -3,11 +3,11 @@
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "comment" "Label" "Comment"}}{{end}}
 {{define "content"}}
-    <h1>New comment on {{.CheckName}}</h1>
+    <h1>New comment on {{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</h1>
     <p><strong>{{.CommentAuthor}}</strong> commented{{if .CommentSource}} {{.CommentSource}}{{end}} on the incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong>.</p>
     <blockquote class="quote">{{.CommentText}}</blockquote>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Check</td><td class="value">{{.CheckName}}</td></tr>
+        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
         <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
@@ -24,7 +24,8 @@
 {{.CommentText}}
 
 Check: {{.CheckName}}
-Type: {{.CheckType}}
+{{if .CheckURL}}Check URL: {{.CheckURL}}
+{{end}}Type: {{.CheckType}}
 Started at: {{.StartedAt}}
 {{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
 {{end}}Incident ID: {{.IncidentUID}}

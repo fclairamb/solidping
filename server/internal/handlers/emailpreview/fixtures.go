@@ -12,6 +12,10 @@ const (
 	fixtureIncidentUID    = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
 	fixtureIncidentNumber = 42
 	fixtureCheckName      = "Production API"
+	// fixtureCheckURL is a UID-shaped check dashboard link — links are built
+	// from the check's UID, not its slug, so a check rename never breaks the
+	// link and the URL never falls back to unlinked text.
+	fixtureCheckURL       = "https://solidping.example/dash0/orgs/acme/checks/3f7a9c2e-6b1d-4e0a-9c8f-1a2b3c4d5e6f"
 	fixtureStatusPageName = "Acme Status"
 
 	keyOrgName      = "OrgName"
@@ -93,7 +97,7 @@ func incidentFixture() map[string]any {
 	return map[string]any{
 		"CheckName":            fixtureCheckName,
 		"CheckType":            "http",
-		"CheckURL":             "https://solidping.example/dash0/orgs/acme/checks/prod-api",
+		"CheckURL":             fixtureCheckURL,
 		"StartedAt":            "2026-07-05 10:00:00 UTC",
 		"IncidentUID":          fixtureIncidentUID,
 		"IncidentNumber":       fixtureIncidentNumber,
@@ -163,7 +167,7 @@ func escalationFixture() map[string]any {
 
 	return map[string]any{
 		"CheckName":      fixtureCheckName,
-		"CheckURL":       "https://solidping.example/dash0/orgs/acme/checks/prod-api",
+		"CheckURL":       fixtureCheckURL,
 		"IncidentNumber": fixtureIncidentNumber,
 		"IncidentURL":    incidentURL,
 		"StartedAt":      "2026-07-05 10:00:00 UTC",

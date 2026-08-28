@@ -50,6 +50,7 @@ import { LanguageSwitcher } from "@/components/shared/language-switcher";
 import { Logo } from "@/components/ui/logo";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
+import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
 
 const navItems = [
   {
@@ -288,6 +289,7 @@ export function AppSidebar() {
               <LanguageSwitcher />
               <ThemeToggle />
               <LiveStatusDot />
+              <ServerVersionIndicator />
             </div>
           </SidebarMenuItem>
           <SidebarMenuItem>

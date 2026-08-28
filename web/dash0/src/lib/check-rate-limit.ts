@@ -19,25 +19,18 @@ export function isOverCheckRateLimit(cpm?: EntitlementsChecksPerMinute | null): 
 /**
  * Whether to warn the org that its check executions are being dropped.
  *
- * Two independent triggers, and both are needed:
- *
- * - **Predictive** — demand is over the cap, so executions are about to be (or
- *   already are) skipped, even if today's counter has not caught up yet.
- * - **Factual** — the rate gate skipped executions today. An org that just
- *   deleted a few checks and dropped back under its cap still has gaps in
- *   today's history, and the banner is the only thing that explains them.
- *
- * The counter resets at UTC midnight, so the factual half clears itself once
- * the org spends a full day under its cap.
+ * Keyed on the live state only: demand over the cap means executions are
+ * being (or are about to be) skipped, and the warning is actionable. The
+ * moment the org brings its scheduling back under the cap — the very thing
+ * the banner asks for — the warning disappears, instead of lingering until
+ * the UTC-midnight counter reset just because `skippedToday` is non-zero.
+ * Today's skip count still appears inside the banner as supporting detail
+ * while it shows.
  */
 export function shouldWarnAboutCheckRate(
   cpm?: EntitlementsChecksPerMinute | null,
 ): boolean {
-  if (!cpm) {
-    return false;
-  }
-
-  return cpm.skippedToday > 0 || isOverCheckRateLimit(cpm);
+  return isOverCheckRateLimit(cpm);
 }
 
 /**
