@@ -252,8 +252,8 @@ notification jobs.
 | `incident.escalated` | `FailureCount ≥ EscalationThreshold` (first time) | yes | (in flight) |
 | `incident.resolved` | `resolveIncident` (recovery elapsed, or manual) | yes | canceled |
 | `incident.reopened` | `reopenIncident` within cooldown, **or** `reEvaluateChild` un-suppresses | yes | does not restart |
-| `incident.acknowledged` | `AcknowledgeIncident` (web/Slack/email magic link) | no | canceled |
-| `incident.unacknowledged` | manual ack clear | no | does not restart |
+| `incident.acknowledged` | `AcknowledgeIncident` (web/Slack/Discord/Telegram/email magic link/phone) | yes — `queueAckNotifications` (spec `2026-08-24-01`) | canceled |
+| `incident.unacknowledged` | `UnacknowledgeIncident` (`POST /incidents/:uid/unack` — dash0, CLI, API) | yes — `queueUnackNotifications` (spec `2026-08-28-07`) | **resumes from the interrupted step** |
 | `incident.snoozed` | `SnoozeIncident` | no | canceled until snooze expires |
 | `incident.unsnoozed` | snooze cleared, or `SweepUnsnooze` (`service.go:2151`) when window closes | no | does not restart |
 | `incident.comment` | `addCommentByOrgUID` (dashboard, API, Slack `/comment`, Telegram `/comment`, Discord `comment`, Slack/Discord thread reply in `all` mode) | yes — see below | — |
@@ -264,9 +264,118 @@ notification jobs.
 
 Full enum: `db/models/event.go:12-56`.
 
-The "no notifications on ack/snooze" decision is intentional: at 3 AM
-you already know you acked your own page; channel members don't need an
-"acked!" buzz. If you need that signal, watch the events stream.
+Snooze and unsnooze stay silent on purpose: at 3 AM you already know you
+snoozed your own page, and channel members do not need a buzz for it. If you
+need that signal, watch the events stream.
+
+**Acknowledgment is the exception, in both directions** — see
+[the ack/unack/comment reach matrix](#ackunackcomment-reach) below.
+
+### Ack/unack/comment reach
+
+Two destination classes, and they are NOT the same set. **Channels** are the
+connections attached to the incident's check (Slack, Discord, email, webhook…).
+**Paged people** are person contacts (Telegram today) that only ever hear from
+an escalation step.
+
+| Event | Check-attached channels | People paged by escalation policy |
+|---|---|---|
+| `incident.acknowledged` | ✅ `queueAckNotifications` | ✅ `incident_ack_notice` job |
+| `incident.unacknowledged` | ✅ `queueUnackNotifications` | ✅ `incident_unack_notice` job |
+| `incident.comment` | ✅ `queueCommentNotifications` | ✅ `incident_comment_notice` job, one per comment |
+| `incident.resolved` | ✅ `queueNotifications` | ✅ `incident_resolution_notice` job |
+
+Everything in the unacknowledged row is spec `2026-08-28-07`; the comment row's
+right-hand column is the same spec closing what the comment fan-out shipped as
+a deliberate v1 gap.
+
+#### Decision `2026-08-24-01` "unack is silent" is SUPERSEDED
+
+Spec `2026-08-24-01` recorded, as a resolved decision, that **unack sends no
+notification of its own** — rationale: "rare operator action". Spec
+`2026-08-28-07` reverses it. Recorded here rather than quietly overwritten,
+because the reasoning is what generalizes:
+
+- Rarity argues for a cheap implementation, not for withholding information. A
+  wrong belief held by five on-call engineers costs the same whether it is
+  created once a month or once a day.
+- The ack fan-out's own doc comment is the argument, inverted: an ack must be
+  announced because otherwise "the four people who were woken up have no way to
+  learn that the fifth already picked it up". Withdrawing that ack leaves four
+  people believing an incident is owned when it is not.
+- The decisive part was never the missing message. Slack and Discord rewrite the
+  incident's **own alert card** in place when it is acked. Silence left that
+  card — the canonical message for the incident, not a notification scrolled out
+  of view — asserting "Acknowledged by Alice" forever.
+
+#### What an unack now does
+
+On a real transition (past the `AcknowledgedAt == nil` early return), and only
+when the incident is still open and paging is not suppressed — the same guards
+as the ack fan-out:
+
+1. **Reverts the in-place rewrites.** Slack `chat.update`s the stored
+   `message_id` and Discord edits the stored `discordKeyMessageID` embed back to
+   an unowned, actionable card with the Acknowledge button restored. No storage
+   change was needed for either: both ids were already persisted for the
+   resolved/reopened edits.
+2. **Fans a notice out** to the same connection set the alerts reached,
+   gated by `notifications.AcceptsEventType`. `incident.unacknowledged` reuses
+   the **existing** `NotifiesAcks` capability flag rather than adding a third
+   one: a channel that opted out of "someone took it" is out of "they gave it
+   back" by the same cost argument, and two flags could drift into a state where
+   a channel hears only one half of the pair.
+3. **Tells the paged people** through an `incident_unack_notice` job, threaded
+   onto the same anchors, read rather than consumed.
+4. **Resumes escalation from the step the ack interrupted** (see below).
+
+There is deliberately **no echo-origin skip**: unack has exactly one entry
+point (`POST /orgs/:org/incidents/:uid/unack`), and no chat platform ships an
+unacknowledge button, so there is no surface whose message was already rewritten
+in place. Adding one later means adding the skip with it.
+
+**PagerDuty sends nothing for an unack.** Events API v2 accepts
+`trigger`/`acknowledge`/`resolve` and nothing else, so there is no
+un-acknowledge to send — and `trigger` is not a stand-in, since it would either
+re-open a resolved PD incident or page the same rotation the unack is handing
+the incident back to. Moving a PD incident from acknowledged back to triggered
+is a REST API v2 operation and this integration holds a routing key, not an API
+token. Note `PagerDutySender.Send`'s default branch IS `trigger`, which is why
+the unack case is listed explicitly rather than left to fall through.
+
+#### Escalation resume — decision `2026-08-28-07`
+
+Three options were on the table: (a) chat notice only, (b) restart the cycle
+from step 1, (c) resume from the step the ack interrupted. **(c) shipped.**
+
+Unack means the incident is genuinely unowned again, so paging must continue —
+announcing "nobody has it" while the system itself has stopped paging converts a
+silent failure into a loud one that still depends on a human noticing a chat
+message. But it resumes rather than restarts, so undoing a mis-click does not
+replay pages that already fired.
+
+The mechanism needs **no new column**. The ack's sweep
+(`jobsvc.CancelPendingForIncident`) SOFT-deletes the pending escalation-step
+jobs, and a soft-deleted row keeps its config (`stepUid`, `repeatIndex`,
+`isLastStep`) and its `scheduled_at`. Those rows already are an exact record of
+where the cycle stood; they were simply never read back.
+`jobsvc.ListCanceledPendingForIncident(incidentUID, jobType)` returns them
+(status still `pending`, `deleted_at` set), oldest due first. A step that had
+already FIRED is in a terminal status and is therefore never in the set — which
+is what makes "no replay" structural rather than a filter someone has to
+remember.
+
+Unack then de-duplicates by `(repeatIndex, stepUid)` — an ack → unack → re-ack
+cycle leaves two canceled generations behind — and re-creates each job with its
+original config verbatim, shifted as a block by
+`max(0, now - earliest due time)`. A rung that fell due during the
+acknowledgment fires immediately; a rung still in the future keeps the wait it
+had left; the policy's own spacing between the remaining rungs is preserved. If
+the canceled set is empty (no policy, or the cycle had run itself out) nothing
+is scheduled: **unack never STARTS an escalation that was not running.**
+
+Call order is load-bearing: the resume and both notices run AFTER
+`cancelPendingNotifications`, or the sweep would cancel what they just created.
 
 ### Comment fan-out (spec `2026-08-15-08`)
 
@@ -306,10 +415,26 @@ The comment body travels in `NotificationJobConfig.Comment`
 re-read from the event row at send time, so a job renders exactly the text that
 was commented. Audit rows are written exactly as for lifecycle events.
 
-**v1 limitation:** comment fan-out reaches **check-attached channels only**.
-The `queueResolutionNotice` person-contact path (Telegram contacts paged by an
-escalation policy) is out of scope — someone paged individually is not
-forwarded comments unless a channel is attached to the check.
+**Comments also reach the people the escalation policy paged** (spec
+`2026-08-28-07`, closing the v1 gap). `queueCommentNotifications` additionally
+queues one **`incident_comment_notice`** job per comment. Before this, someone
+woken by a Telegram page who was on none of the check's channels got the page,
+the ack notice and the resolution notice — and never a word of the discussion in
+between.
+
+**One job per comment, enqueued immediately.** No batching, no coalescing
+window, no throttle. The notification-noise cost the original v1 scope call was
+avoiding is real — a chatty incident does buzz a phone per comment — and was
+accepted deliberately: a merged digest is a different message from the
+conversation people are actually having, and the recipients are the ones the
+system judged important enough to wake up. The bound that does apply is the
+existing hourly Telegram runaway guard inside the job.
+
+The job's per-chat marker is scoped to the COMMENT
+(`telegram_commented:<incidentUID>:<commentEventUID>:<chatID>`), not to the
+incident. An incident-scoped marker — the discipline the ack notice uses — would
+suppress every comment after the first, silently collapsing the feature back
+into "one forwarded comment per incident".
 
 ### Closing the loop with person contacts
 
