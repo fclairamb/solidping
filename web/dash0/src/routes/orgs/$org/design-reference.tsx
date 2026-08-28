@@ -2425,8 +2425,10 @@ function FormsSection() {
           A field that accepts <em>either</em> a pasted URL or an uploaded file
           renders as one row: a fixed-size preview tile with a{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">lucide</code>{" "}
-          placeholder icon, the URL input, an outline <strong>Upload</strong>{" "}
-          button driving a hidden{" "}
+          placeholder icon, then <em>one</em> of two mutually-exclusive
+          affordances for the source, then an outline{" "}
+          <strong>Upload</strong>/<strong>Replace</strong> button driving a
+          hidden{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             &lt;input type="file"&gt;
           </code>
@@ -2437,7 +2439,34 @@ function FormsSection() {
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             min-w-0 flex-1
           </code>{" "}
-          so it never overflows. Shipped in{" "}
+          so it never overflows.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <strong>Never feed a stored value into the URL input sight-unseen.</strong>{" "}
+          If the current value can also come from an upload (a relative,
+          server-generated path rather than a URL the user typed), track the
+          source in state instead of overloading one{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            type="url"
+          </code>{" "}
+          field: an uploaded value renders as a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            Badge variant="secondary"
+          </code>{" "}
+          ("Uploaded file") plus a text{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            variant="link"
+          </code>{" "}
+          button ("Use an external URL instead") that swaps in the input; a
+          typed or empty URL renders the input itself. A relative path landing
+          in a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            type="url"
+          </code>{" "}
+          input fails native constraint validation and silently blocks the
+          whole form's submit — this pattern exists to rule that out
+          structurally. Last-action-wins: a successful upload always switches
+          back to the badge view. Shipped in{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             components/shared/org-profile-card.tsx
           </code>
@@ -2490,44 +2519,67 @@ function FormsSection() {
 
 function ImageFieldExample() {
   const [url, setUrl] = useState("");
+  // Mirrors org-profile-card.tsx: an uploaded value never lands in the
+  // type="url" input — it renders as a badge + "use a URL instead" toggle.
+  const [uploaded, setUploaded] = useState(false);
+  const previewUrl = uploaded ? "/pub/assets/example-uid" : url;
 
   return (
     <ExampleRow
       preview={
         <div className="flex w-full flex-wrap items-center gap-3">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
-            {url ? (
-              <img src={url} alt="" className="h-full w-full object-contain" />
+            {previewUrl ? (
+              <div className="flex h-full w-full items-center justify-center bg-primary/10 text-[10px] font-medium text-primary">
+                IMG
+              </div>
             ) : (
               <Building2 className="h-6 w-6 text-muted-foreground" />
             )}
           </div>
-          <Input
-            type="url"
-            placeholder="https://example.com/logo.png"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="min-w-0 flex-1"
-          />
-          <Button type="button" variant="outline">
+          {uploaded ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+              <Badge variant="secondary">Uploaded file</Badge>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-xs"
+                onClick={() => setUploaded(false)}
+              >
+                Use an external URL instead
+              </Button>
+            </div>
+          ) : (
+            <Input
+              type="url"
+              placeholder="https://example.com/logo.png"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="min-w-0 flex-1"
+            />
+          )}
+          <Button type="button" variant="outline" onClick={() => setUploaded(true)}>
             <Upload className="mr-2 h-4 w-4" />
-            Upload
+            {previewUrl ? "Replace" : "Upload"}
           </Button>
-          {url && (
+          {previewUrl && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="text-destructive"
               aria-label="Remove image"
-              onClick={() => setUrl("")}
+              onClick={() => {
+                setUrl("");
+                setUploaded(false);
+              }}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
         </div>
       }
-      importLine={`const fileInput = useRef<HTMLInputElement>(null);\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n<Input type="url" value={url} onChange={...} className="min-w-0 flex-1" />\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  Upload\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
+      importLine={`const fileInput = useRef<HTMLInputElement>(null);\n// isUploadedLogoPath(value) === !value.startsWith("http") && value !== ""\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {currentUrl ? <img src={currentUrl} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n{showUrlField ? (\n  <Input type="url" value={urlDraft} onChange={...} className="min-w-0 flex-1" />\n) : (\n  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">\n    <Badge variant="secondary">Uploaded file</Badge>\n    <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={() => setShowUrlField(true)}>Use an external URL instead</Button>\n  </div>\n)}\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  {currentUrl ? "Replace" : "Upload"}\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
     />
   );
 }
