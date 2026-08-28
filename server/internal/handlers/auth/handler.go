@@ -437,7 +437,11 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req *http.Request) error
 // Anti-enumeration: both org-not-found and invalid-credentials return the same error code.
 func (h *Handler) handleAuthError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
-	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrOrganizationNotFound):
+	// ErrUserNotFound is folded in here too: SwitchOrg can return it when the
+	// caller's own user row is gone (e.g. deleted between token issuance and
+	// this call), and the same anti-enumeration reasoning applies — don't
+	// distinguish it from any other credential failure.
+	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrOrganizationNotFound), errors.Is(err, ErrUserNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidCredentials, "Invalid credentials", err)
 	default:
@@ -468,6 +472,12 @@ func (h *Handler) handleRefreshError(writer http.ResponseWriter, request *http.R
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusUnauthorized, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+	case errors.Is(err, ErrUserNotFound):
+		// The refresh token is otherwise valid but the user behind it is gone
+		// (deleted between issuance and this call) — treat it as an invalid
+		// token rather than a server fault.
+		return h.WriteErrorErr(
+			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired refresh token", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1115,6 +1125,9 @@ func (h *Handler) handleRegistrationError(writer http.ResponseWriter, request *h
 	case errors.Is(err, ErrRegistrationExpired):
 		return h.WriteErrorErr(writer, request, http.StatusGone, base.ErrorCodeRegistrationExpired,
 			"Registration link has expired or is invalid", err)
+	case errors.Is(err, ErrInvalidCredentials):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
+			err.Error(), err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1141,6 +1154,9 @@ func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *htt
 	case errors.Is(err, entitlements.ErrEntitlementExceeded):
 		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeEntitlementExceeded,
 			"This organization has reached its user limit", err)
+	case errors.Is(err, ErrInvalidCredentials):
+		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
+			err.Error(), err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1305,6 +1321,12 @@ func (h *Handler) handle2FAError(writer http.ResponseWriter, request *http.Reque
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
 	case errors.Is(err, ErrUserNotFound):
 		return h.WriteErrorErr(writer, request, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
+	case errors.Is(err, ErrOrganizationNotFound):
+		// completeLoginAfter2FA can hit this when the temp token's org no
+		// longer resolves (deleted/renamed between the 2FA challenge and its
+		// completion) — a real client-facing condition, not a server fault.
+		return h.WriteErrorErr(
+			writer, request, http.StatusUnauthorized, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
