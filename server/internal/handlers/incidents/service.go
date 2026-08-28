@@ -1387,6 +1387,12 @@ func (s *Service) queueLifecycleNotifications(
 		}
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
+		// Ack and unack DO notify — they simply do not travel through here,
+		// exactly like incident.comment. Their transitions call
+		// queueAckNotifications / queueUnackNotifications directly, because the
+		// fan-out needs the actor attribution this dispatcher never carries and
+		// must be ordered after the cancel sweep. Listing them here is what
+		// stops this branch being re-read as "acknowledgments are silent".
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed,
