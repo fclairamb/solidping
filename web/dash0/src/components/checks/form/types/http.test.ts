@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { httpModule, type HttpState } from "./http";
+import type { AssertionNode } from "@/components/checks/json-assertion-editor";
 
 // Base state for toConfig tests — a valid URL and the implicit ["200"]
 // default, so each test only needs to override what it's exercising.
@@ -17,6 +18,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     captureFailureResponse: false,
     authDirty: false,
     headersDirty: false,
+    jsonPathAssertions: null,
     ...overrides,
   };
 }
@@ -205,5 +207,112 @@ describe("httpModule — captureFailureResponse round-trip", () => {
       baseState({ captureFailureResponse: true }),
     );
     expect(httpModule.fromConfig(config).captureFailureResponse).toBe(true);
+  });
+});
+
+describe("httpModule — jsonPathAssertions round-trip", () => {
+  const leaf: AssertionNode = {
+    type: "assertion",
+    path: "$.status",
+    operator: "eq",
+    value: "ok",
+  };
+  const group: AssertionNode = {
+    type: "and",
+    children: [
+      leaf,
+      { type: "assertion", path: "$.uptime", operator: "gt", value: "0" },
+    ],
+  };
+
+  it("fromConfig defaults to null when absent", () => {
+    const state = httpModule.fromConfig({ url: "https://example.com" });
+    expect(state.jsonPathAssertions).toBeNull();
+  });
+
+  it("fromConfig seeds from the canonical camelCase key", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      jsonPathAssertions: leaf,
+    });
+    expect(state.jsonPathAssertions).toEqual(leaf);
+  });
+
+  it("fromConfig accepts the snake_case alias the server also resolves", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      json_path_assertions: leaf,
+    });
+    expect(state.jsonPathAssertions).toEqual(leaf);
+  });
+
+  it("fromConfig prefers the camelCase key when both are present", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      jsonPathAssertions: leaf,
+      json_path_assertions: group,
+    });
+    expect(state.jsonPathAssertions).toEqual(leaf);
+  });
+
+  it("fromConfig seeds a group tree unchanged", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      jsonPathAssertions: group,
+    });
+    expect(state.jsonPathAssertions).toEqual(group);
+  });
+
+  it("toConfig omits the key when null (default)", () => {
+    const { config } = httpModule.toConfig(baseState());
+    expect(config).not.toHaveProperty("jsonPathAssertions");
+    expect(config).not.toHaveProperty("json_path_assertions");
+  });
+
+  it("toConfig writes the canonical camelCase key when present", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ jsonPathAssertions: leaf }),
+    );
+    expect(config.jsonPathAssertions).toEqual(leaf);
+    expect(config).not.toHaveProperty("json_path_assertions");
+  });
+
+  it("round-trips a leaf assertion unchanged through an edit-and-save with no changes", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      jsonPathAssertions: leaf,
+    });
+    const { config } = httpModule.toConfig(state);
+    expect(httpModule.fromConfig(config).jsonPathAssertions).toEqual(leaf);
+  });
+
+  it("round-trips a group tree unchanged through an edit-and-save with no changes", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      jsonPathAssertions: group,
+    });
+    const { config } = httpModule.toConfig(state);
+    expect(httpModule.fromConfig(config).jsonPathAssertions).toEqual(group);
+  });
+
+  it("clearing the tree (set back to null) omits the key so it clears on save", () => {
+    const seeded = httpModule.fromConfig({
+      url: "https://example.com",
+      jsonPathAssertions: leaf,
+    });
+    const cleared: HttpState = { ...seeded, jsonPathAssertions: null };
+    const { config } = httpModule.toConfig(cleared);
+    expect(config).not.toHaveProperty("jsonPathAssertions");
+    expect(config).not.toHaveProperty("json_path_assertions");
+    // And re-seeding from the cleared config finds nothing to show.
+    expect(httpModule.fromConfig(config).jsonPathAssertions).toBeNull();
+  });
+
+  it("does not affect other config keys' serialization", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ jsonPathAssertions: leaf, verifySsl: false }),
+    );
+    expect(config.jsonPathAssertions).toEqual(leaf);
+    expect(config.verifySsl).toBe(false);
   });
 });
