@@ -252,29 +252,40 @@ So the state does not need a new column — it is already persisted, it was just
 never read back. New `jobsvc` method:
 
 ```go
-ListCanceledPendingForIncident(ctx, incidentUID, jobType string) ([]*models.Job, error)
+ListForIncident(ctx, incidentUID, jobType string) ([]*models.Job, error)
 ```
 
-returning the soft-deleted, still-`pending` jobs of one type for an incident,
-oldest `scheduled_at` first (`WhereAllWithDeleted` + `deleted_at IS NOT NULL`).
+returning **every** job of one type for the incident — all statuses,
+soft-deleted rows included — oldest `scheduled_at` first.
 
 On unack, AFTER the `cancelPendingNotifications` sweep (call order is
 load-bearing, same as the ack notice — a resume enqueued before the sweep would
-cancel itself):
+cancel itself), `resumableEscalationSteps` groups that history into rungs keyed
+by `(stepUid, repeatIndex)` and skips a rung when either:
 
-1. read back the canceled `escalation_step` jobs for the incident;
-2. drop any whose config no longer parses, and de-duplicate by
-   `(repeatIndex, stepUid)` keeping the earliest `scheduled_at` — a re-ack
-   cycle can leave two canceled generations behind;
-3. `shift = max(0, now - earliest scheduled_at)`, then re-create each job with
-   `scheduledAt = original + shift` and its **original config verbatim**.
+1. **some generation of it already ran** — any row that left `pending`
+   (success, failed, retried, running): the page went out; or
+2. **some generation of it is still live** — queued and not canceled, so
+   re-creating it would double-page.
 
-That is what "resume from the step the ack interrupted" means concretely:
-steps that already fired are not in the canceled set, so they are not replayed;
-the remaining steps keep their relative spacing; a step that was overdue at
-unack time fires immediately, a step still in the future keeps its remaining
-wait. `RepeatIndex`/`IsLastStep` ride along untouched, so the repeat chain
-continues from the cycle the ack interrupted rather than from cycle 0.
+Surviving rungs are re-created from their **newest canceled generation**, with
+its **original config verbatim**, shifted as a block by
+`shift = max(0, now - earliest remaining due time)`.
+
+That is what "resume from the step the ack interrupted" means concretely: a
+rung that already paged is never recreated; the remaining rungs keep their
+relative spacing; a rung overdue at unack time fires immediately, one still in
+the future keeps its remaining wait. `RepeatIndex`/`IsLastStep` ride along
+untouched, so the repeat chain continues from the cycle the ack interrupted
+rather than from cycle 0.
+
+**Why the correlation must span generations** (and why the simpler "resume the
+canceled-pending rows" is wrong): after one ack → unack cycle a rung exists as a
+canceled generation 1 *and* a live generation 2. Once generation 2 fires,
+generation 1 is still canceled-and-pending, so a canceled-rows-only resume
+resurrects it on the next unack — and with its due time now in the past it
+fires immediately. That is the option (b) page storm this decision exists to
+avoid. Two ack/unack cycles with one step firing in between reproduce it.
 
 If the canceled set is empty (no policy, or the cycle had already run out)
 nothing is scheduled and a debug line says so — unack never *starts* an
@@ -314,8 +325,13 @@ thread anchors read-not-consumed, audit-row fallback, per-chat marker, runaway
 guard, per-chat failure policy.
 
 Marker discipline differs by kind, on purpose:
-- unack: one marker per incident per chat, cleared implicitly by the ack
-  marker being re-set on a re-ack (`telegram_unacked:<incident>:<chat>`);
+- unack: one marker per incident per chat (`telegram_unacked:<incident>:<chat>`)
+  and **nothing ever clears it** — the FIRST withdrawal on an incident is
+  announced to a given chat and later ones are not. That mirrors the ack
+  notice's own incident-scoped marker exactly (an ack → unack → re-ack cycle is
+  likewise announced once), which is why it is left as-is rather than given a
+  per-transition key. Channels are unaffected: they go through notification
+  jobs, which carry no marker, so every unack reaches them;
 - comment: one marker per **comment** per chat
   (`telegram_commented:<incident>:<commentEventUid>:<chat>`) — per-comment is
   the point, so an incident-scoped marker would suppress every comment after
@@ -362,5 +378,8 @@ reach matrix, and decision `2026-08-24-01` ("unack is silent") is recorded as
   rendering, ack button back);
 - escalation resumes from the **interrupted step** — asserts the recreated
   job's `stepUid`/`repeatIndex` are the interrupted ones, not step 1 / cycle 0;
+- a rung whose LATER generation already fired is never replayed across a second
+  ack/unack cycle, with a positive control that the never-fired rung still is;
+- a rung that is still live is not scheduled a second time;
 - comments forward per comment (two comments → two person-notice jobs);
 - PagerDuty sends nothing for unack.

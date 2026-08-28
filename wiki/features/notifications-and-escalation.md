@@ -359,20 +359,36 @@ The mechanism needs **no new column**. The ack's sweep
 jobs, and a soft-deleted row keeps its config (`stepUid`, `repeatIndex`,
 `isLastStep`) and its `scheduled_at`. Those rows already are an exact record of
 where the cycle stood; they were simply never read back.
-`jobsvc.ListCanceledPendingForIncident(incidentUID, jobType)` returns them
-(status still `pending`, `deleted_at` set), oldest due first. A step that had
-already FIRED is in a terminal status and is therefore never in the set — which
-is what makes "no replay" structural rather than a filter someone has to
-remember.
+`jobsvc.ListForIncident(incidentUID, jobType)` returns the incident's **whole**
+escalation-step history — every status, canceled rows included — oldest due
+first.
 
-Unack then de-duplicates by `(repeatIndex, stepUid)` — an ack → unack → re-ack
-cycle leaves two canceled generations behind — and re-creates each job with its
-original config verbatim, shifted as a block by
+`incidents.resumableEscalationSteps` then decides what may come back. A rung is
+`(stepUid, repeatIndex)`, **not** a job row, and it is skipped when either:
+
+- **some generation of it already ran** — left `pending` for any reason
+  (success, failed, retried, or currently running); or
+- **some generation of it is still live** — queued and not canceled, so it is
+  going to fire anyway.
+
+Otherwise the newest canceled generation is re-created with its original config
+verbatim, and the surviving rungs are shifted as a block by
 `max(0, now - earliest due time)`. A rung that fell due during the
 acknowledgment fires immediately; a rung still in the future keeps the wait it
 had left; the policy's own spacing between the remaining rungs is preserved. If
-the canceled set is empty (no policy, or the cycle had run itself out) nothing
-is scheduled: **unack never STARTS an escalation that was not running.**
+nothing is resumable (no policy, or the cycle had run itself out) nothing is
+scheduled: **unack never STARTS an escalation that was not running.**
+
+**The cross-generation correlation is the load-bearing part, and the obvious
+shortcut is wrong.** "Resume every canceled-and-pending row" (or a de-dup that
+keeps the earliest generation) looks equivalent and is not: after one
+ack → unack cycle a rung exists as a canceled generation 1 AND a live
+generation 2, so once generation 2 fires, generation 1 is still sitting there
+canceled-and-pending. The next unack resurrects it, and because its due time is
+by then in the past it pages **immediately** — a re-page of a rung the on-call
+engineer already heard, which is the option (b) page storm arriving through the
+back door. Two ack/unack cycles with one step firing in between are enough to
+trigger it. `TestUnackNeverReplaysARungFiredByALaterGeneration` pins it.
 
 Call order is load-bearing: the resume and both notices run AFTER
 `cancelPendingNotifications`, or the sweep would cancel what they just created.
