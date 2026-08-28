@@ -4643,6 +4643,34 @@ func (s *Service) CreateStatusPage(ctx context.Context, page *models.StatusPage)
 	return err
 }
 
+// CreateStatusPageWithDefaultSection inserts a status page, its default
+// section, and every initial resource in ONE transaction — see db.Service for
+// the atomicity contract.
+func (s *Service) CreateStatusPageWithDefaultSection(
+	ctx context.Context,
+	page *models.StatusPage,
+	section *models.StatusPageSection,
+	resources []*models.StatusPageResource,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewInsert().Model(page).Exec(ctx); err != nil {
+			return fmt.Errorf("insert status page: %w", err)
+		}
+
+		if _, err := tx.NewInsert().Model(section).Exec(ctx); err != nil {
+			return fmt.Errorf("insert default section: %w", err)
+		}
+
+		for _, resource := range resources {
+			if _, err := tx.NewInsert().Model(resource).Exec(ctx); err != nil {
+				return fmt.Errorf("insert status page resource: %w", err)
+			}
+		}
+
+		return nil
+	})
+}
+
 // GetStatusPage retrieves a status page by UID within an organization.
 func (s *Service) GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error) {
 	page := new(models.StatusPage)

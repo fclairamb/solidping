@@ -54,6 +54,13 @@ const (
 	// generateSlug total.
 	slugFallbackPage    = "status-page"
 	slugFallbackSection = "section"
+
+	// defaultSectionName / defaultSectionSlug name the section every new
+	// status page is seeded with (spec 2026-08-28-16). The slug is a fixed
+	// literal, not generated: it's always the first section on a brand-new
+	// page, so there is nothing to collide with yet.
+	defaultSectionName = "Services"
+	defaultSectionSlug = "services"
 )
 
 // generateSlug derives a slug from a display name. It is TOTAL: every input,
@@ -170,6 +177,11 @@ var (
 	ErrStatusPageSectionNotFound = errors.New("status page section not found")
 	// ErrCheckNotFound is returned when a check is not found.
 	ErrCheckNotFound = errors.New("check not found")
+	// ErrCheckUIDInvalid is returned when an entry in a create-status-page
+	// request's checkUids does not resolve to a check in the org. Always
+	// wrapped with the offending UID via fmt.Errorf("%w: %s", ...) so
+	// err.Error() names it, mirroring ErrSettingsUnknownField.
+	ErrCheckUIDInvalid = errors.New("checkUids contains an unknown check uid")
 	// ErrCheckGroupNotFound is returned when a check group is not found.
 	ErrCheckGroupNotFound = errors.New("check group not found")
 	// ErrResourceTargetInvalid is returned when a resource write sets zero or
@@ -864,6 +876,11 @@ type CreateStatusPageRequest struct {
 	// unknown-key-rejecting decode — NOT by the default request decode (hence
 	// json:"-").
 	Settings *SettingsInput `json:"-"`
+	// CheckUIDs optionally seeds the page's default "Services" section with
+	// one resource per check, in request order (spec 2026-08-28-16). Every
+	// entry must resolve to a check in this org, or the WHOLE request is
+	// rejected — nothing is written, including the page itself.
+	CheckUIDs []string `json:"checkUids,omitempty"`
 }
 
 // UpdateStatusPageRequest represents a request to update a status page.
@@ -1125,6 +1142,31 @@ func validateCreateStatusPage(req *CreateStatusPageRequest) (*string, error) {
 	return resolvePasswordChange(nil, req.Visibility, req.Password)
 }
 
+// resolveCreateCheckUIDs resolves every entry of a create-status-page
+// request's checkUids to a canonical check UID within the org, preserving
+// request order. It is called BEFORE any write so a bad entry rejects the
+// whole request with nothing persisted — see CreateStatusPage.
+func (s *Service) resolveCreateCheckUIDs(
+	ctx context.Context, orgUID string, requested []string,
+) ([]string, error) {
+	if len(requested) == 0 {
+		return nil, nil
+	}
+
+	resolved := make([]string, len(requested))
+
+	for i, uid := range requested {
+		check, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, uid)
+		if err != nil || check == nil {
+			return nil, fmt.Errorf("%w: %s", ErrCheckUIDInvalid, uid)
+		}
+
+		resolved[i] = check.UID
+	}
+
+	return resolved, nil
+}
+
 // CreateStatusPage creates a new status page.
 func (s *Service) CreateStatusPage(
 	ctx context.Context, orgSlug string, req *CreateStatusPageRequest,
@@ -1153,6 +1195,14 @@ func (s *Service) CreateStatusPage(
 		return StatusPageResponse{}, err
 	}
 
+	// Resolve every requested check BEFORE writing anything: an unknown or
+	// foreign-org UID must reject the whole request with nothing persisted,
+	// not even the page (spec 2026-08-28-16).
+	checkUIDs, err := s.resolveCreateCheckUIDs(ctx, org.UID, req.CheckUIDs)
+	if err != nil {
+		return StatusPageResponse{}, err
+	}
+
 	page := models.NewStatusPage(org.UID, req.Name, slug)
 	applyCreateFields(page, req)
 	page.PasswordHash = passwordHash
@@ -1168,7 +1218,18 @@ func (s *Service) CreateStatusPage(
 		page.IsDefault = true
 	}
 
-	if errCreate := s.db.CreateStatusPage(ctx, page); errCreate != nil {
+	// Every new page gets a default "Services" section (spec 2026-08-28-16)
+	// — nobody wants zero sections, and it stays renamable/deletable like any
+	// other. Page + section + any initial resources land in ONE transaction:
+	// no half-created page if a resource insert fails.
+	section := models.NewStatusPageSection(page.UID, defaultSectionName, defaultSectionSlug, 0)
+
+	resources := make([]*models.StatusPageResource, len(checkUIDs))
+	for i, checkUID := range checkUIDs {
+		resources[i] = models.NewStatusPageResource(section.UID, checkUID, i)
+	}
+
+	if errCreate := s.db.CreateStatusPageWithDefaultSection(ctx, page, section, resources); errCreate != nil {
 		return StatusPageResponse{}, errCreate
 	}
 

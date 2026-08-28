@@ -336,13 +336,18 @@ func TestCreateSection_NoRawDatabaseErrorForMissingSlug(t *testing.T) {
 		&CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
 	r.NoError(err)
 
-	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Services"})
+	// CreateStatusPage now seeds a default "Services" section (spec
+	// 2026-08-28-16), so "Core" is used here instead — the regression under
+	// test (no slug supplied still yields a valid, working slug) is
+	// unrelated to the section's name.
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core"})
 	r.NoError(err)
-	r.Equal("services", section.Slug)
+	r.Equal("core", section.Slug)
 
 	// And the row really is readable back through the normal path.
 	sections, err := svc.ListSections(ctx, org.Slug, page.UID)
 	r.NoError(err)
-	r.Len(sections, 1)
+	r.Len(sections, 2)
 	r.Equal("services", sections[0].Slug)
+	r.Equal("core", sections[1].Slug)
 }

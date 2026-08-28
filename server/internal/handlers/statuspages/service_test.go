@@ -85,6 +85,8 @@ func TestCreateResource_AssignsSequentialPositions(t *testing.T) {
 	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
 	r.NoError(err)
 
+	dropDefaultSections(ctx, t, svc, page.UID)
+
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
 
@@ -120,6 +122,8 @@ func TestCreateResource_SwapPositionsReordersList(t *testing.T) {
 	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
 	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
 	r.NoError(err)
+
+	dropDefaultSections(ctx, t, svc, page.UID)
 
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
@@ -165,6 +169,8 @@ func TestReorderResources_RewritesPositionsByUIDOrder(t *testing.T) {
 	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
 	r.NoError(err)
 
+	dropDefaultSections(ctx, t, svc, page.UID)
+
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
 
@@ -202,6 +208,8 @@ func TestReorderResources_RejectsMismatchedUIDList(t *testing.T) {
 	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
 	r.NoError(err)
 
+	dropDefaultSections(ctx, t, svc, page.UID)
+
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
 
@@ -236,6 +244,12 @@ func TestReorderSections_RewritesPositionsByUIDOrder(t *testing.T) {
 	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
 	r.NoError(err)
 
+	// CreateStatusPage seeds a default "Services" section (spec
+	// 2026-08-28-16); it participates in reorder like any other section.
+	defaultSections, err := svc.db.ListStatusPageSections(ctx, page.UID)
+	r.NoError(err)
+	r.Len(defaultSections, 1)
+
 	sections := make([]StatusPageSectionResponse, 4)
 	for i := range sections {
 		sec, errCreate := svc.CreateSection(
@@ -246,12 +260,14 @@ func TestReorderSections_RewritesPositionsByUIDOrder(t *testing.T) {
 		sections[i] = sec
 	}
 
-	newOrder := []string{sections[3].UID, sections[1].UID, sections[0].UID, sections[2].UID}
+	newOrder := []string{
+		sections[3].UID, defaultSections[0].UID, sections[1].UID, sections[0].UID, sections[2].UID,
+	}
 	r.NoError(svc.ReorderSections(ctx, org.Slug, page.UID, newOrder))
 
 	listed, err := svc.db.ListStatusPageSections(ctx, page.UID)
 	r.NoError(err)
-	r.Len(listed, 4)
+	r.Len(listed, 5)
 	for i, uid := range newOrder {
 		r.Equal(uid, listed[i].UID, "position %d should be %s", i+1, uid)
 		r.Equal(i+1, listed[i].Position, "position field should be %d", i+1)
@@ -506,6 +522,8 @@ func TestEnrichHourly_HealthyCheckReads100(t *testing.T) {
 	r.NoError(err)
 	r.Equal("24h", page.HistoryPeriod)
 
+	dropDefaultSections(ctx, t, svc, page.UID)
+
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
 
@@ -557,6 +575,8 @@ func TestEnrichHourly_PreviousHourFilledFromRaw(t *testing.T) {
 	})
 	r.NoError(err)
 
+	dropDefaultSections(ctx, t, svc, page.UID)
+
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
 
@@ -605,6 +625,8 @@ func TestEnrichDaily_RecentDayFilledFromRaw(t *testing.T) {
 		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("7d"),
 	})
 	r.NoError(err)
+
+	dropDefaultSections(ctx, t, svc, page.UID)
 
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
@@ -669,6 +691,8 @@ func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
 		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("24h"),
 	})
 	r.NoError(err)
+
+	dropDefaultSections(ctx, t, svc, page.UID)
 
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
@@ -833,6 +857,8 @@ func TestFetchRecentResults_PerRegionBudgetNotStarved(t *testing.T) {
 	})
 	r.NoError(err)
 
+	dropDefaultSections(ctx, t, svc, page.UID)
+
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)
 
@@ -881,6 +907,8 @@ func TestViewStatusPage_NullRegionSeries(t *testing.T) {
 		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("7d"),
 	})
 	r.NoError(err)
+
+	dropDefaultSections(ctx, t, svc, page.UID)
 
 	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)

@@ -885,6 +885,18 @@ type Service interface {
 
 	// StatusPage operations
 	CreateStatusPage(ctx context.Context, page *models.StatusPage) error
+	// CreateStatusPageWithDefaultSection creates a status page together with
+	// its seeded default section and any initial resources in ONE
+	// transaction: page, section, and every resource land atomically, or
+	// none do. Used by statuspages.Service.CreateStatusPage so a rejected
+	// checkUids entry never leaves a half-created page behind
+	// (spec 2026-08-28-16).
+	CreateStatusPageWithDefaultSection(
+		ctx context.Context,
+		page *models.StatusPage,
+		section *models.StatusPageSection,
+		resources []*models.StatusPageResource,
+	) error
 	GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error)
 	GetStatusPageBySlug(ctx context.Context, orgUID, slug string) (*models.StatusPage, error)
 	GetStatusPageByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.StatusPage, error)
