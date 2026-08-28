@@ -17,6 +17,9 @@ const (
 	// link and the URL never falls back to unlinked text.
 	fixtureCheckURL       = "https://solidping.example/dash0/orgs/acme/checks/3f7a9c2e-6b1d-4e0a-9c8f-1a2b3c4d5e6f"
 	fixtureStatusPageName = "Acme Status"
+	// fixturePersonName is the one human the previews name, so an org member
+	// reads as the same person whether they invited someone or acked an alert.
+	fixturePersonName = "Alice Admin"
 
 	keyOrgName      = "OrgName"
 	keyDashboardURL = "DashboardURL"
@@ -56,6 +59,7 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"membership_request_decision.html": membershipRequestDecisionFixture,
 	"uptime-report.html":               uptimeReportFixture,
 	"incident-acknowledged.html":       acknowledgedIncidentFixture,
+	"incident-unacknowledged.html":     unacknowledgedIncidentFixture,
 	"incident-comment.html":            commentIncidentFixture,
 	"custom-domain-demoted.html":       customDomainDemotedFixture,
 }
@@ -239,7 +243,7 @@ func invitationFixture() map[string]any {
 	return map[string]any{
 		keyOrgName:    fixtureOrgName,
 		"Role":        "admin",
-		"InviterName": "Alice Admin",
+		"InviterName": fixturePersonName,
 		"InviteURL":   "https://solidping.example/dash0/invitations/preview-token",
 		// Dynamic on purpose: the template used to hardcode "7 days" here
 		// regardless of the actual invite TTL. This fixture value is
@@ -325,9 +329,20 @@ func uptimeReportFixture() map[string]any {
 func acknowledgedIncidentFixture() map[string]any {
 	fixture := incidentFixture()
 	fixture["AckURL"] = ""
-	fixture["AckActor"] = "Alice Admin"
+	fixture["AckActor"] = fixturePersonName
 	fixture["AckVia"] = "from the dashboard"
 	fixture["AcknowledgedAt"] = "2026-07-05 10:04:00 UTC"
+
+	return fixture
+}
+
+// unacknowledgedIncidentFixture is the retraction: the incident is open and
+// unowned again, so — unlike the acknowledged fixture — the ack magic link IS
+// present. Taking the incident from this very email is the call to action.
+func unacknowledgedIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["AckActor"] = fixturePersonName
+	fixture["AckVia"] = "from the dashboard"
 
 	return fixture
 }
