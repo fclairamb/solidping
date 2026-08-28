@@ -158,6 +158,10 @@ func (s *NtfySender) buildContent(
 		title = ackTitle(payload)
 		tags = "white_check_mark"
 		body = ackPlainBody(payload)
+	case eventTypeIncidentUnacknowledged:
+		title = unackTitle(payload)
+		tags = "warning"
+		body = unackPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		tags = "bell"

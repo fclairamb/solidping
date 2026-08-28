@@ -188,6 +188,8 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 		return mattermostColorBlue, ":speech_balloon: [COMMENT] " + checkName
 	case eventTypeIncidentAcknowledged:
 		return mattermostColorBlue, ":white_check_mark: [ACKNOWLEDGED] " + checkName
+	case eventTypeIncidentUnacknowledged:
+		return mattermostColorOrange, ":warning: [UNACKNOWLEDGED] " + checkName
 	default:
 		return mattermostColorOrange, "[UPDATE] " + checkName
 	}
@@ -206,14 +208,24 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 		}
 	}
 
-	if payload.EventType == eventTypeIncidentAcknowledged {
+	if payload.EventType == eventTypeIncidentAcknowledged ||
+		payload.EventType == eventTypeIncidentUnacknowledged {
+		label := fieldLabelAcknowledgedBy
+		if payload.EventType == eventTypeIncidentUnacknowledged {
+			label = fieldLabelUnacknowledgedBy
+		}
+
 		fields := []mattermostField{
 			{Short: true, Title: mmFieldCheck, Value: checkName},
-			{Short: true, Title: fieldLabelAcknowledgedBy, Value: ackActor(payload.Acknowledgment)},
+			{Short: true, Title: label, Value: ackActor(payload.Acknowledgment)},
 		}
 
 		if via := ackViaName(payload.Acknowledgment); via != "" {
 			fields = append(fields, mattermostField{Short: true, Title: fieldLabelVia, Value: via})
+		}
+
+		if payload.EventType == eventTypeIncidentUnacknowledged {
+			fields = append(fields, mattermostField{Short: false, Title: "Status", Value: unackCallToAction})
 		}
 
 		return fields

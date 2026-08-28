@@ -34,7 +34,8 @@ type SenderCapabilities struct {
 	// operator note is noise the recipient pays for, in money and in attention.
 	NotifiesComments bool
 	// NotifiesAcks reports whether the channel receives `incident.acknowledged`
-	// fan-out. Same cost argument as comments: a paid text (or a ringing
+	// AND `incident.unacknowledged` fan-out — one flag for both directions of
+	// the same fact. Same cost argument as comments: a paid text (or a ringing
 	// phone) saying "someone took it" is worse than silence, and the person
 	// who acked is usually the person the SMS would reach.
 	NotifiesAcks bool
@@ -77,7 +78,12 @@ func AcceptsEventType(connType models.ConnectionType, eventType string) bool {
 	switch eventType {
 	case eventTypeIncidentComment:
 		return CapabilitiesForSender(connType).NotifiesComments
-	case eventTypeIncidentAcknowledged:
+	case eventTypeIncidentAcknowledged, eventTypeIncidentUnacknowledged:
+		// One flag for both directions of the same fact. A channel that opted
+		// out of "someone took it" has, by the same cost argument, opted out
+		// of "they gave it back" — and a third capability flag would let the
+		// two drift into a state where a channel hears only one half of the
+		// pair, which is strictly worse than hearing neither.
 		return CapabilitiesForSender(connType).NotifiesAcks
 	default:
 		return true

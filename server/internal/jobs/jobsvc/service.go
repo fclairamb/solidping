@@ -86,6 +86,21 @@ type Service interface {
 	// is still open then).
 	CancelPendingForIncident(ctx context.Context, incidentUID string, notBefore *time.Time) (int64, error)
 
+	// ListCanceledPendingForIncident returns the jobs of one type that
+	// CancelPendingForIncident soft-deleted for an incident and that never
+	// ran — status still 'pending', deleted_at set — oldest scheduled_at
+	// first.
+	//
+	// This is what makes an interrupted escalation cycle recoverable without a
+	// new column: the canceled rows ARE the record of where the cycle was when
+	// the acknowledgment stopped it. Their config still carries stepUid,
+	// repeatIndex and isLastStep, and their scheduled_at still carries when
+	// each rung was due, so unack can resume from the step the ack interrupted
+	// instead of replaying the cycle from step 1.
+	ListCanceledPendingForIncident(
+		ctx context.Context, incidentUID, jobType string,
+	) ([]*models.Job, error)
+
 	// GetJobWait waits for and claims the next available job
 	// Uses PostgreSQL LISTEN/NOTIFY for efficient waiting
 	GetJobWait(ctx context.Context) (*models.Job, error)
@@ -462,6 +477,45 @@ func (s *serviceImpl) CancelPendingForIncident(
 	}
 
 	return rows, nil
+}
+
+// ListCanceledPendingForIncident returns the still-pending, soft-deleted jobs
+// of one type for an incident, oldest scheduled_at first.
+//
+// Reads exactly what CancelPendingForIncident wrote: status is left at
+// 'pending' by that sweep, so `status = pending AND deleted_at IS NOT NULL` is
+// precisely "was queued, was canceled, never ran". A job that had already
+// fired is in a terminal status and is therefore never returned — which is
+// what keeps a resume from replaying pages that already went out.
+func (s *serviceImpl) ListCanceledPendingForIncident(
+	ctx context.Context, incidentUID, jobType string,
+) ([]*models.Job, error) {
+	if incidentUID == "" || jobType == "" {
+		return nil, nil
+	}
+
+	var configExpr string
+	if _, isPostgres := s.db.Dialect().(*pgdialect.Dialect); isPostgres {
+		configExpr = "config->>'incidentUid' = ?"
+	} else {
+		configExpr = "json_extract(config, '$.incidentUid') = ?"
+	}
+
+	var jobs []*models.Job
+
+	err := s.db.NewSelect().
+		Model(&jobs).
+		Where("type = ?", jobType).
+		Where("status = ?", models.JobStatusPending).
+		Where("deleted_at IS NOT NULL").
+		Where(configExpr, incidentUID).
+		Order("scheduled_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list canceled jobs for incident: %w", err)
+	}
+
+	return jobs, nil
 }
 
 // IsJobDeleted reports whether the job row has been soft-deleted (canceled).

@@ -342,6 +342,14 @@ func (ds *DiscordSender) sendFollowUp(
 		if err := ds.editOriginal(ctx, client, ref, ds.buildReopenedUpdateMessage(payload)); err != nil {
 			return err
 		}
+	case eventTypeIncidentUnacknowledged:
+		// The message id needed here is ALREADY stored (discordKeyMessageID,
+		// written by storeThreadInfo precisely so the original embed can be
+		// edited) — no storage change was needed for this. Without the edit
+		// the incident's own card keeps asserting an ownership nobody has.
+		if err := ds.editOriginal(ctx, client, ref, ds.buildUnackUpdateMessage(payload)); err != nil {
+			return err
+		}
 	}
 
 	return ds.postThreadReply(ctx, client, ref, payload)
@@ -481,6 +489,8 @@ func (ds *DiscordSender) buildEmbed(payload *Payload) discord.Embed {
 		return ds.buildCommentEmbed(payload)
 	case eventTypeIncidentAcknowledged:
 		return ds.buildAckEmbed(payload)
+	case eventTypeIncidentUnacknowledged:
+		return ds.buildUnackEmbed(payload)
 	default:
 		return ds.buildDefaultEmbed(payload)
 	}
@@ -526,6 +536,42 @@ func (ds *DiscordSender) buildAckEmbed(payload *Payload) discord.Embed {
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
 		Footer:      &discord.Footer{Text: productMonitoring},
+	}
+}
+
+// buildUnackEmbed builds an embed for incident.unacknowledged events.
+//
+// Red, not blue: an unowned open incident is exactly as urgent as it was
+// before anyone touched it, and the card has to read that way at a glance.
+func (ds *DiscordSender) buildUnackEmbed(payload *Payload) discord.Embed {
+	checkName := getCheckName(payload.Check)
+
+	fields := []discord.Field{
+		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: fieldLabelUnacknowledgedBy, Value: ackActor(payload.Acknowledgment), Inline: true},
+	}
+
+	if via := ackViaName(payload.Acknowledgment); via != "" {
+		fields = append(fields, discord.Field{Name: fieldLabelVia, Value: via, Inline: true})
+	}
+
+	return discord.Embed{
+		Title:       unackTitle(payload),
+		Description: unackPlainBody(payload),
+		Color:       discord.ColorRed,
+		Fields:      fields,
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Footer:      &discord.Footer{Text: productMonitoring},
+	}
+}
+
+// buildUnackUpdateMessage is what the ORIGINAL incident message becomes once
+// the acknowledgment is withdrawn: the unowned alert card again, with the
+// Acknowledge button restored so the next person can claim it in place.
+func (ds *DiscordSender) buildUnackUpdateMessage(payload *Payload) *discord.Message {
+	return &discord.Message{
+		Embeds:     []discord.Embed{ds.buildUnackEmbed(payload)},
+		Components: []discord.Component{discord.IncidentActionRow(payload.Incident.UID)},
 	}
 }
 

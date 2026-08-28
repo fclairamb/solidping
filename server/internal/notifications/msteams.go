@@ -198,6 +198,9 @@ func (s *MSTeamsSender) eventTitleAndColor(payload *Payload, checkName string) (
 		return commentTitle(payload), msTeamsColorAccent
 	case eventTypeIncidentAcknowledged:
 		return ackTitle(payload), msTeamsColorAccent
+	case eventTypeIncidentUnacknowledged:
+		// Attention, not accent: the incident is unowned and paging again.
+		return unackTitle(payload), msTeamsColorAttention
 	default:
 		return "[UPDATE] " + checkName, ""
 	}
@@ -219,10 +222,14 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 		return facts
 	}
 
-	if payload.EventType == eventTypeIncidentAcknowledged {
-		facts = append(facts, msTeamsFact{
-			Title: fieldLabelAcknowledgedBy, Value: ackActor(payload.Acknowledgment),
-		})
+	if payload.EventType == eventTypeIncidentAcknowledged ||
+		payload.EventType == eventTypeIncidentUnacknowledged {
+		label := fieldLabelAcknowledgedBy
+		if payload.EventType == eventTypeIncidentUnacknowledged {
+			label = fieldLabelUnacknowledgedBy
+		}
+
+		facts = append(facts, msTeamsFact{Title: label, Value: ackActor(payload.Acknowledgment)})
 
 		if via := ackViaName(payload.Acknowledgment); via != "" {
 			facts = append(facts, msTeamsFact{Title: fieldLabelVia, Value: via})

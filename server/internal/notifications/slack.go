@@ -59,6 +59,15 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return s.handleIncidentReopen(ctx, client, threadEntry, payload)
 	}
 
+	// Handle an unacknowledgment - put the original alert card back to its
+	// unowned rendering AND post a thread reply. The edit is the important
+	// half: without it the incident's own message keeps saying "Acknowledged
+	// by Alice", which is the single most misleading artifact this feature
+	// exists to remove.
+	if payload.EventType == eventTypeIncidentUnacknowledged && threadEntry != nil && threadEntry.Value != nil {
+		return s.handleIncidentUnack(ctx, client, threadEntry, payload)
+	}
+
 	return s.postNewMessage(ctx, jctx, client, payload, channel, stateKey, threadEntry)
 }
 
@@ -83,7 +92,8 @@ func requiresExistingThread(eventType string) bool {
 	return eventType == eventTypeIncidentResolved ||
 		eventType == eventTypeIncidentReopened ||
 		eventType == eventTypeIncidentComment ||
-		eventType == eventTypeIncidentAcknowledged
+		eventType == eventTypeIncidentAcknowledged ||
+		eventType == eventTypeIncidentUnacknowledged
 }
 
 // parseSettings extracts and validates Slack settings from the payload.
@@ -208,6 +218,8 @@ func (s *SlackSender) buildMessage(payload *Payload) *slack.MessageResponse {
 		return s.buildCommentThreadReply(payload)
 	case eventTypeIncidentAcknowledged:
 		return s.buildAckThreadReply(payload)
+	case eventTypeIncidentUnacknowledged:
+		return s.buildUnackThreadReply(payload)
 	default:
 		return s.buildSimpleMessage(payload)
 	}
@@ -568,6 +580,129 @@ func (s *SlackSender) buildAckThreadReply(payload *Payload) *slack.MessageRespon
 	)
 
 	return &slack.MessageResponse{Text: text}
+}
+
+// buildUnackThreadReply builds the retraction posted under the incident's
+// thread. The call to action is the point, not the bookkeeping: the incident
+// is unowned again AND escalation resumes from the step the acknowledgment
+// interrupted, so nobody reads this as "it is on you to notice a chat
+// message".
+func (s *SlackSender) buildUnackThreadReply(payload *Payload) *slack.MessageResponse {
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+
+	text := fmt.Sprintf(
+		":warning: %s%s — %s. %s",
+		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+		unackSentence(payload), unackCallToAction,
+	)
+
+	return &slack.MessageResponse{Text: text}
+}
+
+// handleIncidentUnack reverts the acknowledgment where the ack asserted it:
+// the incident's own alert message, edited in place, plus a thread reply.
+//
+// Modeled on handleIncidentReopen, which has the same job (put a message that
+// says one state back to another state). Failing the edit fails the whole
+// send, deliberately: a thread reply saying "unowned again" under a card that
+// still reads "Acknowledged by Alice" is the contradiction this exists to
+// avoid, so it is better to retry the pair than to half-apply it.
+func (s *SlackSender) handleIncidentUnack(
+	ctx context.Context, client *slack.Client, threadEntry *models.StateEntry, payload *Payload,
+) error {
+	messageID, hasMessageID := (*threadEntry.Value)[slackKeyMessageID].(string)
+	channelID, hasChannelID := (*threadEntry.Value)[slackKeyChannelID].(string)
+	threadTS, hasThreadTS := (*threadEntry.Value)[slackKeyThreadTS].(string)
+
+	if !hasMessageID || messageID == "" || !hasChannelID || channelID == "" {
+		return nil
+	}
+
+	updateOpts := slack.UpdateMessageOptions{
+		Channel: channelID,
+		TS:      messageID,
+		Message: s.buildUnackUpdateMessage(payload),
+	}
+
+	if updateErr := client.UpdateMessage(ctx, updateOpts); updateErr != nil {
+		return fmt.Errorf("updating slack message for unack: %w", updateErr)
+	}
+
+	if hasThreadTS && threadTS != "" {
+		replyOpts := slack.PostMessageOptions{
+			Channel:  channelID,
+			ThreadTS: threadTS,
+			Message:  s.buildUnackThreadReply(payload),
+		}
+
+		if _, postErr := client.PostMessage(ctx, replyOpts); postErr != nil {
+			return fmt.Errorf("posting unack thread reply: %w", postErr)
+		}
+	}
+
+	return nil
+}
+
+// buildUnackUpdateMessage is what the ORIGINAL alert message becomes once the
+// acknowledgment is withdrawn: an active, unowned incident again — red, with
+// the Acknowledge button restored so the next person can claim it from the
+// same message they are already looking at.
+func (s *SlackSender) buildUnackUpdateMessage(payload *Payload) *slack.MessageResponse {
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
+	fallbackText := "Incident for " + checkName + " (acknowledgment withdrawn)"
+
+	blocks := []slack.Block{
+		{
+			Type: slack.BlockTypeHeader,
+			Text: &slack.Text{
+				Type:  slack.BlockTypePlainText,
+				Text:  incidentRefPrefix(payload.Incident) + "Incident for " + checkName,
+				Emoji: true,
+			},
+		},
+		{Type: slack.BlockTypeSection, Fields: s.buildIncidentFields(payload, checkName, checkURL)},
+		{
+			Type: slack.BlockTypeSection,
+			Text: &slack.Text{
+				Type: slack.BlockTypeMrkdwn,
+				Text: ":warning: " + unackHeadline(payload) + ". " + unackCallToAction,
+			},
+		},
+		s.buildIncidentActionButtons(payload.Incident.UID),
+		{
+			Type: slack.BlockTypeContext,
+			Elements: []any{
+				slack.ContextElement{
+					Type: slack.BlockTypeMrkdwn,
+					Text: slackLink(incidentURL, ":warning: Unacknowledged") +
+						"  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
+				},
+			},
+		},
+		{
+			Type: slack.BlockTypeContext,
+			Elements: []any{
+				slack.ContextElement{
+					Type: slack.BlockTypeMrkdwn,
+					Text: "Incident started " + formatTimestamp(payload.Incident.StartedAt),
+				},
+			},
+		},
+	}
+
+	return &slack.MessageResponse{
+		Text: fallbackText,
+		Attachments: []slack.Attachment{
+			{
+				Color:    colorDanger,
+				Fallback: fallbackText,
+				Blocks:   blocks,
+			},
+		},
+	}
 }
 
 // buildIncidentResolvedThreadReply builds a resolved-incident message. The status

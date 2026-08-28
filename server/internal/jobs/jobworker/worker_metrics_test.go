@@ -108,6 +108,12 @@ func (f *fakeJobSvc) CancelPendingForIncident(
 	return 0, errNotImplemented
 }
 
+func (f *fakeJobSvc) ListCanceledPendingForIncident(
+	_ context.Context, _, _ string,
+) ([]*models.Job, error) {
+	return nil, errNotImplemented
+}
+
 func (f *fakeJobSvc) CountQueueDepth(_ context.Context) (map[models.JobStatus]int, error) {
 	return nil, errNotImplemented
 }
