@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AlertCircle, Building2, Loader2, Trash2, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -26,6 +27,12 @@ import { useAuth } from "@/contexts/AuthContext";
 // Mirrors the server allowlist (handlers/orglogo) so the file picker never
 // offers something the upload would reject.
 const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
+
+// The server returns an uploaded logo as a relative /pub/assets/<uid> path
+// (never absolute) and refuses anything else that isn't an absolute http(s)
+// URL (normalizeLogoURL, org_profile.go) — so "not http" reliably means
+// "currently an uploaded file", never a URL the URL field could hold.
+const isUploadedLogoPath = (url: string) => url !== "" && !url.startsWith("http");
 
 interface OrgProfileCardProps {
   org: string;
@@ -56,7 +63,21 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState(org);
+  // `logoUrl` is the authoritative current value (as returned by the server —
+  // either an absolute http(s) URL, a relative /pub/assets/<uid> upload path,
+  // or ""). It drives the preview thumbnail and the clear button, and is
+  // never fed into the type="url" input directly (see isUploadedLogoPath).
   const [logoUrl, setLogoUrl] = useState("");
+  // The URL input's own text, tracked separately so an uploaded path never
+  // lands in a type="url" field and trips native constraint validation.
+  const [logoUrlDraft, setLogoUrlDraft] = useState("");
+  // True once the user has typed into the URL field since the last sync/save
+  // — gates whether logoUrl is sent on submit (see handleSubmit).
+  const [logoUrlTouched, setLogoUrlTouched] = useState(false);
+  // Which affordance is shown: the URL input, or the "Uploaded file" badge
+  // state. Last-action-wins: a successful upload switches to the badge view,
+  // "Use an external URL instead" switches back to the input.
+  const [showLogoUrlField, setShowLogoUrlField] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
@@ -75,11 +96,23 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
   const syncKey = `${org}|${current?.name ?? ""}|${current?.logoUrl ?? ""}`;
   const [syncedFrom, setSyncedFrom] = useState<string | null>(null);
 
+  // Shared by the render-time sync below and by applyResult (after a save,
+  // upload or clear) — both need to re-derive the logo source from a fresh
+  // server value, resetting the draft/touched/mode trio in lockstep so the
+  // URL field can never end up holding an uploaded path.
+  const syncLogoState = (url: string) => {
+    setLogoUrl(url);
+    const uploaded = isUploadedLogoPath(url);
+    setShowLogoUrlField(!uploaded);
+    setLogoUrlDraft(uploaded ? "" : url);
+    setLogoUrlTouched(false);
+  };
+
   if (syncedFrom !== syncKey) {
     setSyncedFrom(syncKey);
     setName(current?.name ?? "");
     setSlug(org);
-    setLogoUrl(current?.logoUrl ?? "");
+    syncLogoState(current?.logoUrl ?? "");
   }
 
   const busy =
@@ -87,7 +120,7 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
   const slugChanged = slug !== org;
 
   const applyResult = async (result: OrgProfileResponse) => {
-    setLogoUrl(result.logoUrl ?? "");
+    syncLogoState(result.logoUrl ?? "");
 
     if (result.accessToken && result.slug !== org) {
       // Swap the session BEFORE navigating: the token in hand is scoped to the
@@ -123,11 +156,15 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
       const result = await updateProfile.mutateAsync({
         name,
         slug,
-        // Send logoUrl only when it is an external URL the user typed. An
-        // uploaded logo is a relative /pub/assets path the endpoint refuses
-        // by design, and re-sending it would clear the upload.
-        ...(logoUrl.startsWith("http") || logoUrl === ""
-          ? { logoUrl: logoUrl === "" ? null : logoUrl }
+        // Send logoUrl only when the user explicitly typed into (or cleared)
+        // the external-URL field this session. An uploaded logo is a
+        // relative /pub/assets path the endpoint refuses by design, and
+        // merely switching the view to "Use an external URL instead" without
+        // typing anything must not clear it — that only happens once the
+        // user has actually edited the field.
+        ...(logoUrlTouched &&
+        (logoUrlDraft.startsWith("http") || logoUrlDraft === "")
+          ? { logoUrl: logoUrlDraft === "" ? null : logoUrlDraft }
           : {}),
       });
       toast.success(t("settings.saved"));
@@ -251,17 +288,49 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
                   <Building2 className="h-6 w-6 text-muted-foreground" />
                 )}
               </div>
-              <Input
-                id="org-profile-logo"
-                type="url"
-                inputMode="url"
-                placeholder="https://example.com/logo.png"
-                value={logoUrl}
-                onChange={(event) => setLogoUrl(event.target.value)}
-                disabled={busy}
-                className="min-w-0 flex-1"
-                data-testid="org-profile-logo-url"
-              />
+              {showLogoUrlField ? (
+                <Input
+                  id="org-profile-logo"
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://example.com/logo.png"
+                  value={logoUrlDraft}
+                  onChange={(event) => {
+                    setLogoUrlDraft(event.target.value);
+                    setLogoUrlTouched(true);
+                  }}
+                  disabled={busy}
+                  className="min-w-0 flex-1"
+                  data-testid="org-profile-logo-url"
+                />
+              ) : (
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                  <Badge
+                    variant="secondary"
+                    data-testid="org-profile-logo-badge"
+                  >
+                    {t("settings.profile.uploadedBadge", "Uploaded file")}
+                  </Badge>
+                  <Button
+                    id="org-profile-logo"
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => {
+                      setShowLogoUrlField(true);
+                      setLogoUrlDraft("");
+                      setLogoUrlTouched(false);
+                    }}
+                    disabled={busy}
+                    data-testid="org-profile-logo-use-url"
+                  >
+                    {t(
+                      "settings.profile.useExternalUrl",
+                      "Use an external URL instead",
+                    )}
+                  </Button>
+                </div>
+              )}
               <input
                 ref={fileInput}
                 type="file"
@@ -282,7 +351,9 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
                 ) : (
                   <Upload className="mr-2 h-4 w-4" />
                 )}
-                {t("settings.profile.upload", "Upload")}
+                {logoUrl
+                  ? t("settings.profile.replace", "Replace")
+                  : t("settings.profile.upload", "Upload")}
               </Button>
               {logoUrl && (
                 <Button
@@ -300,10 +371,15 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              {t(
-                "settings.profile.logoHelp",
-                "Paste an image URL, or upload a PNG, JPEG, WebP, GIF or SVG of up to 1 MB.",
-              )}
+              {showLogoUrlField
+                ? t(
+                    "settings.profile.logoHelp",
+                    "Paste an image URL, or upload a PNG, JPEG, WebP, GIF or SVG of up to 1 MB.",
+                  )
+                : t(
+                    "settings.profile.logoHelpUploaded",
+                    "This logo was uploaded. Upload a new file to replace it, or switch to an external URL.",
+                  )}
             </p>
           </div>
 

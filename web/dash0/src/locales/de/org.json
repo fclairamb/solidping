@@ -13,8 +13,12 @@
       "renameWarning": "Alle URLs dieser Organisation ändern sich — Dashboard-Links, Statusseiten, SVG-Badges und eingebettete Widgets. Bestehende Links funktionieren weiter: Die alte Adresse leitet auf die neue um, aber nur so lange, bis eine andere Organisation sie beansprucht.",
       "logo": "Logo",
       "logoHelp": "Fügen Sie eine Bild-URL ein oder laden Sie ein PNG, JPEG, WebP, GIF oder SVG mit maximal 1 MB hoch.",
+      "logoHelpUploaded": "Dieses Logo wurde hochgeladen. Laden Sie eine neue Datei hoch, um es zu ersetzen, oder wechseln Sie zu einer externen URL.",
       "logoUploaded": "Logo aktualisiert.",
+      "uploadedBadge": "Hochgeladene Datei",
+      "useExternalUrl": "Stattdessen eine externe URL verwenden",
       "upload": "Hochladen",
+      "replace": "Ersetzen",
       "removeLogo": "Logo entfernen"
     },
     "autoJoin": "Automatischer Beitritt",
