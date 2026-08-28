@@ -111,5 +111,9 @@
     "telegram_invalid_chat": "El id de chat de Telegram no es válido",
     "telegram_send_failed": "Fallo al entregar por Telegram",
     "telegram_runaway_guard": "Se alcanzó el límite horario de Telegram"
+  },
+  "serverVersion": {
+    "reloadAria": "Recargar para obtener la última versión",
+    "stale": "Servidor actualizado a {{version}} — recarga para obtener la última versión."
   }
 }

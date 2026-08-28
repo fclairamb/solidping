@@ -111,5 +111,9 @@
     "telegram_invalid_chat": "The Telegram chat id is invalid",
     "telegram_send_failed": "Telegram delivery failed",
     "telegram_runaway_guard": "Hourly Telegram runaway guard reached"
+  },
+  "serverVersion": {
+    "reloadAria": "Reload to get the latest version",
+    "stale": "Server updated to {{version}} — reload to get the latest version."
   }
 }
