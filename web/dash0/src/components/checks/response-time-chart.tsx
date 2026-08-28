@@ -1297,11 +1297,9 @@ export function ResponseTimeChart({
                       // Mutating a ref outside the React commit phase is safe —
                       // it doesn't trigger a re-render.
                       dotPositions.current[uid] = { cx, cy };
-                      const fill =
-                        payload.status === "unknown" ||
-                        statusStyle(payload.status).isDown
-                          ? COLOR_DOWN
-                          : COLOR_UP;
+                      const fill = isFailingStatus(payload.status)
+                        ? COLOR_DOWN
+                        : COLOR_UP;
                       const isSelected = selectedUid === uid;
                       return (
                         <circle
@@ -1339,11 +1337,9 @@ export function ResponseTimeChart({
                       // Always cache the active-dot anchor so the pinned-result box
                       // works even when per-point dots are off.
                       dotPositions.current[uid] = { cx, cy };
-                      const fill =
-                        payload.status === "down" ||
-                        payload.status === "unknown"
-                          ? COLOR_DOWN
-                          : COLOR_UP;
+                      const fill = isFailingStatus(payload.status)
+                        ? COLOR_DOWN
+                        : COLOR_UP;
                       return (
                         <circle
                           key={reactKey}
@@ -1409,11 +1405,9 @@ export function ResponseTimeChart({
                           // Down results stay visible as red dots on
                           // their line even though the line itself uses
                           // the region color, not the status gradient.
-                          const fill =
-                            payload.status === "unknown" ||
-                            statusStyle(payload.status).isDown
-                              ? COLOR_DOWN
-                              : color;
+                          const fill = isFailingStatus(payload.status)
+                            ? COLOR_DOWN
+                            : color;
                           const isSelected = selectedUid === uid;
                           return (
                             <circle
@@ -1456,11 +1450,9 @@ export function ResponseTimeChart({
                           }
                           const uid = payload.uid;
                           dotPositions.current[uid] = { cx, cy };
-                          const fill =
-                            payload.status === "down" ||
-                            payload.status === "unknown"
-                              ? COLOR_DOWN
-                              : color;
+                          const fill = isFailingStatus(payload.status)
+                            ? COLOR_DOWN
+                            : color;
                           return (
                             <circle
                               key={reactKey}
