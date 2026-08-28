@@ -406,7 +406,7 @@ function IncidentsIndexPage() {
                           }}
                           className="hover:underline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          {incident.checkSlug || incident.checkName}
+                          {incident.checkName || incident.checkSlug}
                         </Link>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground font-mono">
