@@ -223,3 +223,144 @@ thread-info entry.
   already covered by the incident's thread anchors).
 - **Comment forwarding volume (B)**: per-comment, or coalesced over a short
   window?
+
+## Implementation Plan
+
+Authoritative source for this plan is `## Resolved open questions`, not the older
+`## Proposal` text. Where they disagree the Resolved section wins: escalation
+**resumes from the interrupted step** (not "chat notice only"), and comments are
+forwarded **per comment, immediately** (no batching, no coalescing window).
+
+### 0. What unack can be triggered from (verified)
+
+`POST /orgs/:org/incidents/:uid/unack` (dash0, CLI, API) is the ONLY entry
+point — there is no Slack/Discord "unacknowledge" button. So `via` is always
+`web`, and there is no echo-origin surface to skip. `isUnackEchoOrigin` from
+A.2 is therefore deliberately NOT implemented: it would be dead code guarding a
+case that cannot arise, and the surface that would have needed it (a chat
+unack) does not exist. If one is ever added, it must ship with the skip.
+
+### 1. Escalation resume (the part the spec does not spell out)
+
+Ack cancels pending escalation-step jobs via `jobsvc.CancelPendingForIncident`,
+which **soft-deletes** them (`deleted_at`, status stays `pending`). Those rows
+are the record of exactly where the cycle was interrupted: config carries
+`StepUID`, `RepeatIndex`, `IsLastStep`, and the row carries the `scheduled_at`
+the step was due at.
+
+So the state does not need a new column — it is already persisted, it was just
+never read back. New `jobsvc` method:
+
+```go
+ListCanceledPendingForIncident(ctx, incidentUID, jobType string) ([]*models.Job, error)
+```
+
+returning the soft-deleted, still-`pending` jobs of one type for an incident,
+oldest `scheduled_at` first (`WhereAllWithDeleted` + `deleted_at IS NOT NULL`).
+
+On unack, AFTER the `cancelPendingNotifications` sweep (call order is
+load-bearing, same as the ack notice — a resume enqueued before the sweep would
+cancel itself):
+
+1. read back the canceled `escalation_step` jobs for the incident;
+2. drop any whose config no longer parses, and de-duplicate by
+   `(repeatIndex, stepUid)` keeping the earliest `scheduled_at` — a re-ack
+   cycle can leave two canceled generations behind;
+3. `shift = max(0, now - earliest scheduled_at)`, then re-create each job with
+   `scheduledAt = original + shift` and its **original config verbatim**.
+
+That is what "resume from the step the ack interrupted" means concretely:
+steps that already fired are not in the canceled set, so they are not replayed;
+the remaining steps keep their relative spacing; a step that was overdue at
+unack time fires immediately, a step still in the future keeps its remaining
+wait. `RepeatIndex`/`IsLastStep` ride along untouched, so the repeat chain
+continues from the cycle the ack interrupted rather than from cycle 0.
+
+If the canceled set is empty (no policy, or the cycle had already run out)
+nothing is scheduled and a debug line says so — unack never *starts* an
+escalation that was not running.
+
+### 2. A.1 — revert the in-place rewrites
+
+New notifications event type `incident.unacknowledged`.
+
+- **Slack** (`notifications/slack.go`): `handleIncidentUnack`, modeled on
+  `handleIncidentReopen` — `chat.update` the stored `message_id` back to an
+  active, unowned rendering (`buildUnackUpdateMessage`, with the Acknowledge
+  button restored) and post `buildUnackThreadReply` under the stored thread.
+  `requiresExistingThread` includes unack: without the incident's own alert in
+  the channel a bare "acknowledgment withdrawn" is a context-free orphan and
+  would claim the incident's thread mapping.
+- **Discord** (`notifications/discord.go`): `sendFollowUp` gains an
+  `editOriginal(buildUnackUpdateMessage)` case, reusing the **existing**
+  thread-info entry (`discordKeyMessageID`) — no storage change, per the
+  resolved question.
+
+### 3. A.2 — fan-out
+
+`registry.go AcceptsEventType` maps `incident.unacknowledged` onto the existing
+`NotifiesAcks` flag (no third capability flag). `queueUnackNotifications` in
+`ack_notice.go` mirrors `queueAckNotifications` exactly, including the
+`PagingSuppressed || resolved` guard, and reuses `AckInfo` for attribution.
+Every sender that renders `incident.acknowledged` explicitly gains the unack
+counterpart so no channel falls back to a bare "Incident update".
+
+### 4. A.3 — tell the paged people
+
+New job type `incident_unack_notice`, and (piece B) `incident_comment_notice`,
+both implemented over ONE shared Telegram person-notice traversal
+(`job_incident_person_notice.go`) modeled on `job_incident_ack_notice.go`:
+thread anchors read-not-consumed, audit-row fallback, per-chat marker, runaway
+guard, per-chat failure policy.
+
+Marker discipline differs by kind, on purpose:
+- unack: one marker per incident per chat, cleared implicitly by the ack
+  marker being re-set on a re-ack (`telegram_unacked:<incident>:<chat>`);
+- comment: one marker per **comment** per chat
+  (`telegram_commented:<incident>:<commentEventUid>:<chat>`) — per-comment is
+  the point, so an incident-scoped marker would suppress every comment after
+  the first.
+
+### 5. A.4 — wording
+
+`notifications/unack.go`, reusing `AckInfo`:
+
+> ⚠️ Acknowledgment withdrawn by {actor} — this incident is unowned again and
+> escalation resumes.
+
+The second clause is required by the resolved decision. Wording that implies
+paging has stopped is wrong.
+
+### 6. A.5 — PagerDuty
+
+Events API v2 has no un-acknowledge; `event_action` is
+trigger/acknowledge/resolve only, and `PagerDutySender.Send`'s **default branch
+is `trigger`** — so leaving unack unhandled would page PagerDuty again. Unack
+therefore joins the explicit "send nothing" branch alongside
+`incident.escalated` / `incident.comment`, with a test asserting zero HTTP
+calls. Skipping is the honest option: the only API that could move a PD
+incident back to `triggered` is REST v2, and this integration holds a routing
+key, not an API token.
+
+### 7. B — comments to paged people
+
+`queueCommentNotifications` gains a `queueCommentPersonNotice` call: one
+`incident_comment_notice` job per comment, immediately, no throttle. Gated on
+`PagingSuppressed` (never paged) and on `resolved` (the all-clear already
+closed that conversation).
+
+### 8. C — documentation
+
+`wiki/features/notifications-and-escalation.md` gains the ack/unack/comment
+reach matrix, and decision `2026-08-24-01` ("unack is silent") is recorded as
+**superseded** with the reason.
+
+### Tests
+
+- unack fans out; skipped when `PagingSuppressed`; skipped when resolved;
+- Slack + Discord alert messages reverted in place (message id, active
+  rendering, ack button back);
+- escalation resumes from the **interrupted step** — asserts the recreated
+  job's `stepUid`/`repeatIndex` are the interrupted ones, not step 1 / cycle 0;
+- comments forward per comment (two comments → two person-notice jobs);
+- PagerDuty sends nothing for unack.
