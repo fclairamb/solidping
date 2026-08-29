@@ -77,5 +77,29 @@
   "unlockPasswordLabel": "Mot de passe",
   "unlockSubmit": "Voir la page de statut",
   "unlockSubmitting": "Vérification…",
-  "unlockGenericError": "Impossible de vérifier le mot de passe. Veuillez réessayer."
+  "unlockGenericError": "Impossible de vérifier le mot de passe. Veuillez réessayer.",
+  "tv": {
+    "stale": "Données indisponibles",
+    "staleSince": "Aucune mise à jour reçue depuis {{time}}",
+    "updatedAt": "mis à jour à {{time}}",
+    "ongoingFor": "en cours depuis {{duration}}",
+    "resolvedIn": "résolu en {{duration}}",
+    "durationMinutes": "{{minutes}} min",
+    "durationHoursMinutes": "{{hours}} h {{minutes}} min",
+    "durationDaysHours": "{{days}} j {{hours}} h",
+    "daysSinceLastIncident_one": "{{count}} jour depuis le dernier incident",
+    "daysSinceLastIncident_other": "{{count}} jours depuis le dernier incident",
+    "noIncidentsRecorded": "Aucun incident enregistré",
+    "cycling": "Défilement de {{count}} incidents actifs",
+    "lockedTitle": "Cet écran nécessite un jeton kiosque",
+    "lockedDescription": "Ouvrez la page de statut dans le tableau de bord, générez un jeton mode TV, puis utilisez l'URL fournie.",
+    "pickAPageTitle": "Le mode TV nécessite une page de statut",
+    "pickAPageDescription": "Utilisez /{organisation}/tv pour la page par défaut, ou /{organisation}/{page}/tv pour une page précise.",
+    "uptimeWindow": {
+      "24h": "disponibilité sur 24 h",
+      "7d": "disponibilité sur 7 jours",
+      "30d": "disponibilité sur 30 jours",
+      "90d": "disponibilité sur 90 jours"
+    }
+  }
 }

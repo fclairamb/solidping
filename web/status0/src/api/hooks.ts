@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ApiError, NetworkError, apiFetch } from "./client";
+import { withKiosk } from "@/lib/kiosk";
 
 export interface ResourceCheckInfo {
   name?: string;
@@ -195,6 +196,14 @@ export interface StatusPage {
    */
   activeIncidents?: PublicIncident[];
   /**
+   * PAGE-level uptime over `historyPeriod` (spec 2026-08-29-08): the mean of
+   * the per-resource `availability.overallAvailabilityPct` values, resources
+   * with no data excluded. Absent when the page hides availability or nothing
+   * has reported — in which case the TV board shows no number at all rather
+   * than a plausible-looking zero.
+   */
+  overallAvailabilityPct?: number;
+  /**
    * Incident auto-publication settings. Operator-facing, echoed publicly so the
    * dashboard preview and the live page agree.
    */
@@ -222,22 +231,59 @@ export interface AvailabilityThresholds {
  * Public incident history for a page — the resolved ones the live payload's
  * activeIncidents deliberately omits.
  */
-export function usePublicIncidentHistory(org: string, slug: string) {
+/**
+ * Options shared by the public read hooks, for the surfaces that need more
+ * than the defaults — today that is TV mode (spec 2026-08-29-08), which polls
+ * on its own cadence and may hold a kiosk token.
+ *
+ * The token is part of the QUERY KEY, not just the URL. Two different tokens
+ * (or token vs none) can legitimately produce different answers for the same
+ * page — one renders, the other 401s — so sharing a cache entry between them
+ * would let a revoked screen keep showing a cached page.
+ */
+export interface PublicReadOptions {
+  kioskToken?: string;
+  refetchInterval?: number;
+}
+
+export function usePublicIncidentHistory(
+  org: string,
+  slug: string,
+  options?: PublicReadOptions,
+) {
   return useQuery<{ data: PublicIncident[] }>({
-    queryKey: ["public-incident-history", org, slug],
+    queryKey: [
+      "public-incident-history",
+      org,
+      slug,
+      options?.kioskToken ?? null,
+    ],
     queryFn: () =>
       apiFetch<{ data: PublicIncident[] }>(
-        `/api/v1/status-pages/${org}/${slug}/incidents`,
+        withKiosk(
+          `/api/v1/status-pages/${org}/${slug}/incidents`,
+          options?.kioskToken,
+        ),
       ),
+    refetchInterval: options?.refetchInterval,
     enabled: !!org && !!slug,
   });
 }
 
-export function usePublicStatusPage(org: string, slug: string) {
+export function usePublicStatusPage(
+  org: string,
+  slug: string,
+  options?: PublicReadOptions,
+) {
   return useQuery<StatusPage>({
-    queryKey: ["public-status-page", org, slug],
-    queryFn: () => apiFetch<StatusPage>(`/api/v1/status-pages/${org}/${slug}`),
-    refetchInterval: 30_000, // Refresh every 30 seconds
+    queryKey: ["public-status-page", org, slug, options?.kioskToken ?? null],
+    queryFn: () =>
+      apiFetch<StatusPage>(
+        withKiosk(`/api/v1/status-pages/${org}/${slug}`, options?.kioskToken),
+      ),
+    // Refresh every 30 seconds by default; TV mode tightens this during an
+    // incident.
+    refetchInterval: options?.refetchInterval ?? 30_000,
     enabled: !!org && !!slug,
   });
 }
@@ -349,11 +395,19 @@ export function useUnlockStatusPage(org: string, slug?: string) {
   });
 }
 
-export function useDefaultStatusPage(org: string) {
+export function useDefaultStatusPage(org: string, options?: PublicReadOptions) {
   return useQuery<StatusPage>({
-    queryKey: ["public-status-page", org, "__default__"],
-    queryFn: () => apiFetch<StatusPage>(`/api/v1/status-pages/${org}`),
-    refetchInterval: 30_000,
+    queryKey: [
+      "public-status-page",
+      org,
+      "__default__",
+      options?.kioskToken ?? null,
+    ],
+    queryFn: () =>
+      apiFetch<StatusPage>(
+        withKiosk(`/api/v1/status-pages/${org}`, options?.kioskToken),
+      ),
+    refetchInterval: options?.refetchInterval ?? 30_000,
     enabled: !!org,
   });
 }
