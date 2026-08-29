@@ -4822,8 +4822,8 @@ paths:
       summary: Mint or regenerate a status page's kiosk (TV mode) token
       description: >-
         Mints the page's single kiosk token — a long-lived, revocable, per-page
-        secret a wallboard presents as `?kiosk=<token>` so an office TV can
-        render a `password` or `private` page unattended. It grants READ-ONLY
+        secret a wallboard presents as a `kiosk` query parameter so an office
+        TV can render a `password` or `private` page unattended. It grants READ-ONLY
         view of this one page and nothing else.
 
 
@@ -4850,7 +4850,7 @@ paths:
                     type: string
                     description: >-
                       The plaintext kiosk token. Append it to the TV URL as
-                      `?kiosk=<token>`.
+                      the `kiosk` query parameter.
                   hasKioskToken:
                     type: boolean
         "401":

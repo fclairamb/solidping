@@ -168,6 +168,17 @@ Two things worth knowing:
 Wrong-password attempts are rate-limited, so the password does not have to be
 long enough to survive a brute-force script on its own.
 
+## TV mode
+
+Any status page can be put on an office television by adding `/tv` to its URL:
+a single non-scrolling view with big type, one dominant state signal, a live
+uptime number and ticking incident durations. Nothing to configure — it reuses
+this page's curation, branding and thresholds.
+
+A non-public page needs a **kiosk token** so an unattended screen can render it
+(the 12-hour password unlock cannot survive a night; a private page 404s). See
+[TV Mode](status-page-tv-mode.md).
+
 ## Caching
 
 A **public** page is served with `Cache-Control: public, max-age=60` (the Atom
