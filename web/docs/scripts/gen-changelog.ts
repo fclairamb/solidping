@@ -54,9 +54,17 @@ async function main() {
     "sidebar_position: 1000",
     // Compiled as CommonMark, not MDX — this page is generated from prose
     // nobody proofreads for MDX-safety (stray `<name>` / `{...}` are
-    // routine in release notes), so it must be immune to that by
+    // routine in release notes — CHANGELOG.md already has a literal
+    // `"{emoji} {name}"` in the wild), so it must be immune to that by
     // construction rather than by convention.
-    "format: md",
+    //
+    // This MUST be nested under `mdx:`, not a bare top-level `format:` key
+    // — @docusaurus/mdx-loader's format override only reads
+    // `frontMatter.mdx.format` (see MDXFrontMatterSchema in
+    // @docusaurus/mdx-loader/lib/frontMatter.js). A flat `format: md` is
+    // silently ignored and the page still compiles as MDX.
+    "mdx:",
+    "  format: md",
     "---",
     "",
   ].join("\n");
