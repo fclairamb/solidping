@@ -29,11 +29,23 @@ function MaintenanceWindowEditPage() {
 
   const {
     data: window,
-    isLoading,
+    isLoading: isWindowLoading,
     error,
     refetch,
   } = useMaintenanceWindow(org, maintenanceWindowUid);
-  const { data: checks } = useMaintenanceWindowChecks(org, maintenanceWindowUid);
+  const { data: checks, isLoading: areChecksLoading } =
+    useMaintenanceWindowChecks(org, maintenanceWindowUid);
+
+  // The window's own fields and its check/group associations are two
+  // independent queries. MaintenanceWindowForm seeds its checkUids/
+  // checkGroupUids state from `initialChecks` only once, at mount (a plain
+  // useState initializer, not synced on prop changes) — so the form must not
+  // mount until BOTH queries have resolved. Gating on `isWindowLoading`
+  // alone let the form mount with an empty selection whenever the checks
+  // query was still in flight (most visible under load, e.g. right after a
+  // burst of check creations), permanently dropping the persisted checks
+  // from the picker until a full page reload.
+  const isLoading = isWindowLoading || areChecksLoading;
 
   const updateWindow = useUpdateMaintenanceWindow(org, maintenanceWindowUid);
   const setChecks = useSetMaintenanceWindowChecks(org, maintenanceWindowUid);
