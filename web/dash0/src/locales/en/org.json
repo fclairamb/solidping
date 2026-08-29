@@ -13,8 +13,12 @@
       "renameWarning": "Every URL of this organization changes — dashboard links, status pages, SVG badges and embedded widgets. Existing links keep working: the old address redirects to the new one, but only until another organization claims it.",
       "logo": "Logo",
       "logoHelp": "Paste an image URL, or upload a PNG, JPEG, WebP, GIF or SVG of up to 1 MB.",
+      "logoHelpUploaded": "This logo was uploaded. Upload a new file to replace it, or switch to an external URL.",
       "logoUploaded": "Logo updated.",
+      "uploadedBadge": "Uploaded file",
+      "useExternalUrl": "Use an external URL instead",
       "upload": "Upload",
+      "replace": "Replace",
       "removeLogo": "Remove logo"
     },
     "autoJoin": "Auto-join",

@@ -165,8 +165,8 @@ func TestPreview_IncidentUIDIsAReferenceNotAFact(t *testing.T) {
 
 	incidentTemplates := []string{
 		"incident-created.html", "incident-resolved.html", "incident-acknowledged.html",
-		"incident-comment.html", "incident-escalated.html", "incident-reopened.html",
-		"incident-burn-created.html", "incident-burn-resolved.html",
+		"incident-unacknowledged.html", "incident-comment.html", "incident-escalated.html",
+		"incident-reopened.html", "incident-burn-created.html", "incident-burn-resolved.html",
 	}
 
 	for _, tmpl := range incidentTemplates {

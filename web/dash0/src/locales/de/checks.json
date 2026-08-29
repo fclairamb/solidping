@@ -486,6 +486,7 @@
     "delete": "Löschen",
     "clone": "Klonen",
     "badges": "Badges",
+    "publishOnStatusPage": "Auf einer Statusseite veröffentlichen",
     "refresh": "Aktualisieren",
     "moreActions": "Weitere Aktionen",
     "cloned": "Prüfung geklont — bereit zum Bearbeiten",
@@ -572,6 +573,7 @@
     }
   },
   "jsonAssertions": "JSON-Assertions",
+  "jsonAssertionsDescription": "Prüft Felder im JSON-Antwortkörper anhand eines JSONPath-Ausdrucks.",
   "addJsonAssertion": "Assertion hinzufügen",
   "addGroup": "Gruppe hinzufügen",
   "jsonPath": "JSONPath",

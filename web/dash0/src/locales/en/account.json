@@ -63,6 +63,14 @@
     "namePlaceholder": "Your name",
     "saved": "Profile saved."
   },
+  "onboardingChecklist": {
+    "title": "Getting started checklist",
+    "subtitle": "The dashboard checklist that walks you through alerting, reports and status pages. Hidden per organization, and it follows you across devices.",
+    "body": "Show the getting-started checklist again on the {{org}} dashboard.",
+    "cta": "Show the checklist",
+    "restored": "The getting-started checklist is back on the {{org}} dashboard.",
+    "failed": "Could not restore the getting-started checklist."
+  },
   "tokens": {
     "title": "API Tokens",
     "subtitle": "Manage your personal access tokens.",

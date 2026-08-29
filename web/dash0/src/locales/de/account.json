@@ -10,6 +10,14 @@
     "namePlaceholder": "Ihr Name",
     "saved": "Profil gespeichert."
   },
+  "onboardingChecklist": {
+    "title": "Erste-Schritte-Liste",
+    "subtitle": "Die Liste auf dem Dashboard, die durch Benachrichtigungen, Berichte und Statusseiten führt. Pro Organisation ausgeblendet – und geräteübergreifend.",
+    "body": "Die Erste-Schritte-Liste im Dashboard von {{org}} wieder einblenden.",
+    "cta": "Liste wieder einblenden",
+    "restored": "Die Erste-Schritte-Liste ist im Dashboard von {{org}} wieder da.",
+    "failed": "Die Erste-Schritte-Liste konnte nicht wiederhergestellt werden."
+  },
   "tokens": {
     "title": "API-Tokens",
     "subtitle": "Verwalten Sie Ihre persönlichen Zugangstokens.",

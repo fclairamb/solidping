@@ -531,6 +531,7 @@
     "delete": "Delete",
     "clone": "Clone",
     "badges": "Badges",
+    "publishOnStatusPage": "Publish on a status page",
     "refresh": "Refresh",
     "moreActions": "More actions",
     "cloned": "Check cloned — ready to edit",
@@ -617,6 +618,7 @@
     }
   },
   "jsonAssertions": "JSON Assertions",
+  "jsonAssertionsDescription": "Validate fields in the JSON response body against a JSONPath expression.",
   "addJsonAssertion": "Add assertion",
   "addGroup": "Add group",
   "jsonPath": "JSONPath",

@@ -17,6 +17,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
 
 var errFingerprintMismatch = errors.New("fingerprint mismatch")
@@ -266,7 +267,7 @@ func (c *SSHChecker) executeWithAuth(
 	var authMethods []ssh.AuthMethod
 
 	if cfg.Password != "" {
-		authMethods = append(authMethods, ssh.Password(cfg.Password))
+		authMethods = append(authMethods, sshauth.PasswordMethods(cfg.Password)...)
 	} else if cfg.PrivateKey != "" {
 		signer, err := ssh.ParsePrivateKey([]byte(cfg.PrivateKey))
 		if err != nil {

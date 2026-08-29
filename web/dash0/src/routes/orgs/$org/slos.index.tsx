@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Flame, Layers, Pencil, Plus, Target, Trash2 } from "lucide-react";
+import { FileChartColumn, Flame, Layers, Pencil, Plus, Target, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiError } from "@/api/client";
@@ -56,18 +56,18 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
 
   return (
     <TableRow className="transition-colors hover:bg-muted/40" data-testid="slo-row">
-      <TableCell>
+      <TableCell className="max-w-0">
         <Link
           to="/orgs/$org/slos/$uid"
           params={{ org, uid: slo.uid }}
-          className="font-medium hover:underline"
+          className="block truncate font-medium hover:underline"
           data-testid="slo-row-name"
         >
           {slo.name}
         </Link>
-        <div className="text-xs text-muted-foreground">{slo.slug}</div>
+        <div className="truncate text-xs text-muted-foreground">{slo.slug}</div>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden md:table-cell">
         <span className="inline-flex items-center gap-1.5 text-sm">
           {slo.checkGroupUid ? (
             <Layers className="h-3.5 w-3.5 text-muted-foreground" />
@@ -79,7 +79,9 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
           </span>
         </span>
       </TableCell>
-      <TableCell className="whitespace-nowrap">{formatTarget(slo.targetPct)}</TableCell>
+      <TableCell className="hidden whitespace-nowrap sm:table-cell">
+        {formatTarget(slo.targetPct)}
+      </TableCell>
       <TableCell className="whitespace-nowrap" data-testid="slo-row-attainment">
         {isLoading ? (
           <Skeleton className="h-4 w-16" />
@@ -88,7 +90,7 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
           (attainment ?? <span className="text-muted-foreground">{t("detail.noData")}</span>)
         )}
       </TableCell>
-      <TableCell className="min-w-[9rem]">
+      <TableCell className="hidden min-w-[9rem] md:table-cell">
         {current ? (
           <div className="space-y-1">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -163,13 +165,32 @@ function SlosIndexPage() {
         description={t("layout.subtitle")}
         docsHref="/docs/features/slos"
         actions={
-          <Button
-            onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}
-            data-testid="slo-new"
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            {t("list.new")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Uptime reports are the scheduled, emailed companion to these
+                objectives — same availability data, pushed rather than
+                pulled — but they live under Organization, so an operator
+                looking at SLOs has no way to reach them from here. Icon-only
+                below sm, matching the header idiom used elsewhere. */}
+            <Button asChild variant="outline">
+              <Link
+                to="/orgs/$org/organization/report-schedules"
+                params={{ org }}
+                data-testid="slo-uptime-reports-link"
+              >
+                <FileChartColumn className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">
+                  {t("nav:reportSchedules", "Uptime reports")}
+                </span>
+              </Link>
+            </Button>
+            <Button
+              onClick={() => navigate({ to: "/orgs/$org/slos/new", params: { org } })}
+              data-testid="slo-new"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              {t("list.new")}
+            </Button>
+          </div>
         }
       />
 
@@ -197,10 +218,16 @@ function SlosIndexPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t("list.columns.name")}</TableHead>
-                <TableHead>{t("list.columns.scope")}</TableHead>
-                <TableHead>{t("list.columns.target")}</TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t("list.columns.scope")}
+                </TableHead>
+                <TableHead className="hidden sm:table-cell">
+                  {t("list.columns.target")}
+                </TableHead>
                 <TableHead>{t("list.columns.attainment")}</TableHead>
-                <TableHead>{t("list.columns.budget")}</TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t("list.columns.budget")}
+                </TableHead>
                 <TableHead>{t("list.columns.state")}</TableHead>
                 <TableHead />
               </TableRow>

@@ -2,6 +2,7 @@ package jobtypes_test
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
@@ -331,4 +332,81 @@ func countPendingAgentGCJobs(ctx context.Context, dbSvc db.Service) (int, error)
 		Where("status = ?", models.JobStatusPending).
 		Where("deleted_at IS NULL").
 		Count(ctx)
+}
+
+// TestAgentGCRescheduleKeepsConfig covers the second half of spec
+// 2026-08-28-04: the sweep used to reschedule itself with a nil config, so an
+// operator override of the windows survived exactly one run and then silently
+// reverted to the 7-day / 2-day defaults.
+func TestAgentGCRescheduleKeepsConfig(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	jctx, dbSvc, _ := newAgentGCTestContext(t)
+	ctx := t.Context()
+
+	def := &jobtypes.AgentGCJobDefinition{}
+	runner, err := def.CreateJobRun([]byte(`{"staleAfterSeconds":60,"revokedPurgeAfterSeconds":120}`))
+	r.NoError(err)
+	r.NoError(runner.Run(ctx, jctx))
+
+	var followUp models.Job
+	r.NoError(dbSvc.DB().NewSelect().
+		Model(&followUp).
+		Where("type = ?", string(jobdef.JobTypeAgentGC)).
+		Where("status = ?", models.JobStatusPending).
+		Where("deleted_at IS NULL").
+		Scan(ctx), "the sweep must schedule a follow-up run")
+
+	r.EqualValues(60, followUp.Config["staleAfterSeconds"],
+		"the follow-up run must inherit the configured stale window")
+	r.EqualValues(120, followUp.Config["revokedPurgeAfterSeconds"],
+		"the follow-up run must inherit the configured revoked-purge window")
+
+	// And the configured windows still apply after that hop: running the
+	// follow-up's own runner retires an agent the defaults would have spared.
+	tenMinutesAgo := time.Now().Add(-10 * time.Minute)
+	agent := models.NewSystemAgent("eu-west-1", "fly-machine", "ed-1", "x-1", "fp-1")
+	seedAgent(t, dbSvc, agent, &tenMinutesAgo, time.Hour)
+
+	config, err := json.Marshal(followUp.Config)
+	r.NoError(err)
+
+	next, err := def.CreateJobRun(config)
+	r.NoError(err)
+	r.NoError(next.Run(ctx, jctx))
+
+	_, live := liveAgent(t, dbSvc, agent.UID)
+	r.False(live, "the config must still be in force one reschedule later")
+}
+
+// TestAgentGCRescheduleDefaultConfigStaysEmpty guards the dedup contract: the
+// zero config must serialize to exactly what the job service derives from a
+// nil config, or every sweep would queue a second, differently-configured
+// pending job instead of updating the existing one.
+func TestAgentGCRescheduleDefaultConfigStaysEmpty(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	jctx, dbSvc, _ := newAgentGCTestContext(t)
+	ctx := t.Context()
+
+	def := &jobtypes.AgentGCJobDefinition{}
+	runner, err := def.CreateJobRun(nil)
+	r.NoError(err)
+	r.NoError(runner.Run(ctx, jctx))
+	r.NoError(runner.Run(ctx, jctx))
+
+	pending, err := countPendingAgentGCJobs(ctx, dbSvc)
+	r.NoError(err)
+	r.Equal(1, pending, "a default-config sweep must keep bouncing the same pending job")
+
+	var followUp models.Job
+	r.NoError(dbSvc.DB().NewSelect().
+		Model(&followUp).
+		Where("type = ?", string(jobdef.JobTypeAgentGC)).
+		Where("status = ?", models.JobStatusPending).
+		Where("deleted_at IS NULL").
+		Scan(ctx))
+	r.Empty(followUp.Config, "the default config must stay an empty map")
 }

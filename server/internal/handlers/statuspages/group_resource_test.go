@@ -57,6 +57,23 @@ func seedGroup(
 	return group
 }
 
+// dropDefaultSections removes every section a page was seeded with by
+// CreateStatusPage (the default "Services" section, spec 2026-08-28-16), the
+// same way an operator would before adding their own. Shared by tests that
+// want an exact, predictable section list.
+func dropDefaultSections(ctx context.Context, t *testing.T, svc *Service, pageUID string) {
+	t.Helper()
+
+	r := require.New(t)
+
+	sections, err := svc.db.ListStatusPageSections(ctx, pageUID)
+	r.NoError(err)
+
+	for _, section := range sections {
+		r.NoError(svc.db.DeleteStatusPageSection(ctx, section.UID))
+	}
+}
+
 // seedPageWithSection creates a page + one section and returns both.
 func seedPageWithSection(
 	ctx context.Context, t *testing.T, svc *Service, orgSlug string, historyPeriod string,
@@ -72,6 +89,9 @@ func seedPageWithSection(
 
 	page, err := svc.CreateStatusPage(ctx, orgSlug, req)
 	r.NoError(err)
+
+	// These tests want exactly one section of their own naming.
+	dropDefaultSections(ctx, t, svc, page.UID)
 
 	section, err := svc.CreateSection(ctx, orgSlug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
 	r.NoError(err)

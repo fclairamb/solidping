@@ -211,36 +211,7 @@ type matrixMessageEvent struct {
 // never fmt.Sprintf directly into markup — so a check name or failure
 // reason cannot inject markup into the room.
 func (s *MatrixSender) buildContent(payload *Payload) (string, string) {
-	checkName := getCheckName(payload.Check)
-
-	var title string
-
-	var lines []string
-
-	switch payload.EventType {
-	case eventTypeIncidentCreated:
-		title = "[DOWN] " + checkName
-		lines = s.downLines(payload, checkName)
-	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
-		lines = s.resolvedLines(payload, checkName)
-	case eventTypeIncidentEscalated:
-		title = "[ESCALATED] " + checkName
-		lines = s.escalatedLines(payload, checkName)
-	case eventTypeIncidentReopened:
-		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
-		lines = s.downLines(payload, checkName)
-	case eventTypeIncidentComment:
-		title = commentTitle(payload)
-		lines = []string{commentPlainBody(payload)}
-	case eventTypeIncidentAcknowledged:
-		title = ackTitle(payload)
-		lines = []string{ackPlainBody(payload), "Escalation has stopped; the incident is still open."}
-	default:
-		title = "[UPDATE] " + checkName
-		lines = []string{"An incident update occurred for " + checkName}
-	}
-
+	title, lines := s.titleAndLines(payload)
 	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 
 	plain := title
@@ -267,6 +238,46 @@ func (s *MatrixSender) buildContent(payload *Payload) (string, string) {
 	}
 
 	return plain, formatted
+}
+
+// titleAndLines picks the per-event headline and body lines. Split out of
+// buildContent so the escaping/assembly above stays one readable block as the
+// event list grows.
+func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
+	checkName := getCheckName(payload.Check)
+
+	var title string
+
+	var lines []string
+
+	switch payload.EventType {
+	case eventTypeIncidentCreated:
+		title = "[DOWN] " + checkName
+		lines = s.downLines(payload, checkName)
+	case eventTypeIncidentResolved:
+		title = "[RECOVERED] " + checkName
+		lines = s.resolvedLines(payload, checkName)
+	case eventTypeIncidentEscalated:
+		title = "[ESCALATED] " + checkName
+		lines = s.escalatedLines(payload, checkName)
+	case eventTypeIncidentReopened:
+		title = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
+		lines = s.downLines(payload, checkName)
+	case eventTypeIncidentComment:
+		title = commentTitle(payload)
+		lines = []string{commentPlainBody(payload)}
+	case eventTypeIncidentAcknowledged:
+		title = ackTitle(payload)
+		lines = []string{ackPlainBody(payload), "Escalation has stopped; the incident is still open."}
+	case eventTypeIncidentUnacknowledged:
+		title = unackTitle(payload)
+		lines = []string{unackHeadline(payload) + ".", unackCallToAction}
+	default:
+		title = "[UPDATE] " + checkName
+		lines = []string{"An incident update occurred for " + checkName}
+	}
+
+	return title, lines
 }
 
 func (s *MatrixSender) downLines(payload *Payload, checkName string) []string {

@@ -1387,6 +1387,12 @@ func (s *Service) queueLifecycleNotifications(
 		}
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
+		// Ack and unack DO notify — they simply do not travel through here,
+		// exactly like incident.comment. Their transitions call
+		// queueAckNotifications / queueUnackNotifications directly, because the
+		// fan-out needs the actor attribution this dispatcher never carries and
+		// must be ordered after the cancel sweep. Listing them here is what
+		// stops this branch being re-read as "acknowledgments are silent".
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed,
@@ -2756,7 +2762,7 @@ func (s *Service) addCommentByOrgUID(
 	// exactly like the lifecycle events: a comment that was recorded but not
 	// broadcast is a missed message; a comment that failed to record is lost
 	// operator knowledge, and the caller has already been told it succeeded.
-	s.queueCommentNotifications(ctx, orgUID, incident, req, text, author)
+	s.queueCommentNotifications(ctx, orgUID, incident, req, event, text, author)
 
 	return event, nil
 }
@@ -2844,17 +2850,24 @@ func (s *Service) commentAuthorName(ctx context.Context, req *AddCommentRequest)
 //     typed them in. (Distinct from the bot_id ingest guard, which stops the
 //     re-posted message from being re-ingested; both are needed.)
 //
-// v1 scope: check-attached channels only. People paged through an escalation
-// policy are not forwarded comments — see wiki/features/incident-comments.md.
+// The v1 scope was check-attached channels ONLY, which left an asymmetry with
+// acknowledgments: someone woken by a Telegram page who is on none of the
+// check's channels got the page, the ack notice and the resolution notice —
+// and never a word of the discussion in between. queueCommentPersonNotice
+// closes that (spec 2026-08-28-07).
 func (s *Service) queueCommentNotifications(
 	ctx context.Context, orgUID string, incident *models.Incident,
-	req *AddCommentRequest, text, author string,
+	req *AddCommentRequest, event *models.Event, text, author string,
 ) {
 	comment := &notifications.CommentInfo{
 		Text:       text,
 		AuthorName: author,
 		Source:     req.Source,
 	}
+
+	// People paged over a person contact (Telegram today) are reached by their
+	// own job, exactly as the ack and resolution notices do.
+	s.queueCommentPersonNotice(ctx, orgUID, incident, event, text, author)
 
 	for _, conn := range s.commentFanoutConnections(ctx, incident) {
 		if !conn.Enabled {
@@ -3013,13 +3026,21 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 	// channel hearing "Alice acknowledged this" seconds after the ack was
 	// undone is worse than never hearing it, because it stops other people
 	// from picking the incident up. Ack already swept everything else pending
-	// for this incident and unack does not resume escalation on its own, so
-	// this sweep can only reach notices the ack itself queued.
-	//
-	// Unack is otherwise SILENT by decision (spec 2026-08-24-01): no
-	// notification of its own. The cleared state is visible on the incident
-	// row and the API response.
+	// for this incident, so this sweep can only reach notices the ack itself
+	// queued.
 	s.cancelPendingNotifications(ctx, incident.UID, nil)
+
+	// BOTH of the following must run AFTER that sweep, never before: it
+	// soft-deletes every pending job carrying this incident's UID, so a notice
+	// or a resumed escalation step enqueued first would be canceled by the
+	// very action that created it.
+	//
+	// Unack was SILENT under spec 2026-08-24-01. That decision is SUPERSEDED
+	// (spec 2026-08-28-07): silence left four people believing an incident was
+	// owned when it was not, with the incident's own Slack/Discord alert card
+	// still reading "Acknowledged by Alice".
+	s.resumeEscalationAfterUnack(ctx, incident)
+	s.queueUnackNotifications(ctx, orgUID, incident, actorUID, via)
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnacknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID

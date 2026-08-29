@@ -60,6 +60,34 @@ degrades instead.
 ### PATCH /api/v1/auth/me
 Update the current user's profile (name, password, etc.). Auth: required
 
+### GET /api/v1/me/ui-state/:key
+### PUT /api/v1/me/ui-state/:key
+### DELETE /api/v1/me/ui-state/:key
+Small per-user, per-organization UI preferences (spec 2026-08-28-17). Auth:
+required. Deliberately not under `/orgs/:org` — the entry belongs to the
+authenticated **user**, and the organization it is about is part of the key.
+
+`GET` answers `{ "value": { … } }`, or `404` when nothing is stored (the
+ordinary case, not an error). `PUT` takes a JSON **object** and echoes it back.
+`DELETE` answers `204`, and is idempotent — removing an absent entry succeeds.
+
+Two constraints keep this from becoming a general-purpose key-value store, and
+both are `VALIDATION_ERROR` (`400`) when violated:
+
+- **Key allowlist.** v1 accepts `onboarding.<org>` only, where `<org>` is an
+  organization slug or UID. The reference is resolved server-side and the entry
+  is stored under the org's **UID**, so a rename does not orphan a preference
+  while callers keep passing the slug they already have. An org that does not
+  resolve answers `404 ORGANIZATION_NOT_FOUND`.
+- **Size cap.** The body is read through a 4 KiB limit.
+
+Entries are user-scoped rows in `state_entries`; one user can never read,
+overwrite or delete another user's entry, even for the same organization.
+
+Today's only consumer is the dashboard's getting-started checklist, which
+stores `{ "dismissedAt": "<ISO8601>" }` and offers a re-enable control on
+`/orgs/:org/account/profile`.
+
 ### GET /api/v1/auth/tokens
 List all personal access tokens for the current user across all organizations. Auth: required
 

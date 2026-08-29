@@ -283,6 +283,11 @@ type Service interface {
 	ListStaleSystemAgents(ctx context.Context, cutoff time.Time) ([]*models.Agent, error)
 	// RetireSystemAgent revokes and soft-deletes one system agent (agent_gc).
 	RetireSystemAgent(ctx context.Context, uid string) error
+	// RetireAgentWorkerRow soft-deletes the workers row an agent's connection
+	// registered, resolved through the deterministic agents.WorkerSlug(uid).
+	// Shared by the agent_gc job and the supersede-on-enroll path — see
+	// RetireAgentWorkerRows.
+	RetireAgentWorkerRow(ctx context.Context, agentUID string) error
 	// CheckAndStoreAgentNonce records a reconnect nonce, returning
 	// ErrAgentNonceReplayed when it was already consumed within retain.
 	CheckAndStoreAgentNonce(ctx context.Context, agentUID, nonce string, now time.Time, retain time.Duration) error
@@ -715,6 +720,25 @@ type Service interface {
 	// Returns count of deleted entries.
 	DeleteExpiredStateEntries(ctx context.Context) (int64, error)
 
+	// User-scoped state storage (state_entries.user_uid IS NOT NULL). The
+	// org-scoped accessors above cannot serve these: with orgUID == nil they
+	// match on `organization_uid IS NULL` alone, which is every user's row at
+	// once. These three filter on user_uid instead, so one user's UI state is
+	// invisible to another's.
+	//
+	// GetUserStateEntry retrieves a user-scoped entry. Returns nil (not an
+	// error) when there is none.
+	GetUserStateEntry(ctx context.Context, userUID, key string) (*models.StateEntry, error)
+	// SetUserStateEntry creates or updates a user-scoped entry, resurrecting a
+	// previously soft-deleted row for the same (user, key). TTL is optional
+	// (nil = never expires).
+	SetUserStateEntry(
+		ctx context.Context, userUID, key string, value *models.JSONMap, ttl *time.Duration,
+	) error
+	// DeleteUserStateEntry soft-deletes a user-scoped entry, returning whether
+	// a live row existed to delete.
+	DeleteUserStateEntry(ctx context.Context, userUID, key string) (bool, error)
+
 	// Organization Parameter operations (organization_uid IS NOT NULL)
 	// ListOrgParametersByKey returns all org-scoped parameters with a specific key.
 	ListOrgParametersByKey(ctx context.Context, key string) ([]*models.Parameter, error)
@@ -880,6 +904,18 @@ type Service interface {
 
 	// StatusPage operations
 	CreateStatusPage(ctx context.Context, page *models.StatusPage) error
+	// CreateStatusPageWithDefaultSection creates a status page together with
+	// its seeded default section and any initial resources in ONE
+	// transaction: page, section, and every resource land atomically, or
+	// none do. Used by statuspages.Service.CreateStatusPage so a rejected
+	// checkUids entry never leaves a half-created page behind
+	// (spec 2026-08-28-16).
+	CreateStatusPageWithDefaultSection(
+		ctx context.Context,
+		page *models.StatusPage,
+		section *models.StatusPageSection,
+		resources []*models.StatusPageResource,
+	) error
 	GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error)
 	GetStatusPageBySlug(ctx context.Context, orgUID, slug string) (*models.StatusPage, error)
 	GetStatusPageByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.StatusPage, error)

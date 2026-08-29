@@ -208,10 +208,16 @@ function IntegrationsListPage() {
                 <TableHeader className="bg-muted/30">
                   <TableRow>
                     <TableHead>{t("col.name", "Name")}</TableHead>
-                    <TableHead>{t("col.type", "Type")}</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      {t("col.type", "Type")}
+                    </TableHead>
                     <TableHead>{t("col.status", "Status")}</TableHead>
-                    <TableHead>{t("col.usedBy", "Used by")}</TableHead>
-                    <TableHead>{t("col.updated", "Updated")}</TableHead>
+                    <TableHead className="hidden md:table-cell">
+                      {t("col.usedBy", "Used by")}
+                    </TableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      {t("col.updated", "Updated")}
+                    </TableHead>
                     <TableHead className="w-[100px] text-right" />
                   </TableRow>
                 </TableHeader>
@@ -285,19 +291,19 @@ function Row({ org, integration, onDelete }: RowProps) {
 
   return (
     <TableRow className="hover:bg-muted/40 transition-colors">
-      <TableCell>
+      <TableCell className="max-w-0">
         <Link
           to="/orgs/$org/integrations/$integrationUid"
           params={{ org, integrationUid: integration.uid }}
-          className="flex items-center gap-2.5 font-medium text-foreground hover:text-primary hover:underline transition-colors"
+          className="flex min-w-0 items-center gap-2.5 font-medium text-foreground hover:text-primary hover:underline transition-colors"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted/60">
             <IntegrationIcon type={integration.type} className="h-4 w-4" />
           </div>
-          {integration.name}
+          <span className="min-w-0 truncate">{integration.name}</span>
         </Link>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden sm:table-cell">
         <Badge variant="outline" className="font-mono text-xs font-normal">
           {integrationLabel(integration.type)}
         </Badge>
@@ -321,8 +327,10 @@ function Row({ org, integration, onDelete }: RowProps) {
           )}
         </div>
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground font-mono">—</TableCell>
-      <TableCell className="text-xs text-muted-foreground font-mono">
+      <TableCell className="hidden text-xs text-muted-foreground font-mono md:table-cell">
+        —
+      </TableCell>
+      <TableCell className="hidden text-xs text-muted-foreground font-mono lg:table-cell">
         {new Date(integration.updatedAt).toLocaleDateString()}
       </TableCell>
       <TableCell className="text-right">

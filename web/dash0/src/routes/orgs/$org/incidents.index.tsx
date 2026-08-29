@@ -127,7 +127,7 @@ function GroupHeaderRow({ row }: { row: IncidentGroupRow }) {
       data-testid="incident-group-header"
       data-check-group-uid={row.group!.uid}
     >
-      <TableCell colSpan={6} className="py-2">
+      <TableCell colSpan={5} className="py-2">
         <div className="flex items-center gap-2 text-sm">
           <Layers className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="font-semibold">
@@ -291,11 +291,16 @@ function IncidentsIndexPage() {
             <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>{t("table.incident")}</TableHead>
-                <TableHead>{t("table.check")}</TableHead>
-                <TableHead className="w-10"></TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t("table.check")}
+                </TableHead>
                 <TableHead>{t("table.started")}</TableHead>
-                <TableHead>{t("table.duration")}</TableHead>
-                <TableHead>{t("table.failures")}</TableHead>
+                <TableHead className="hidden sm:table-cell">
+                  {t("table.duration")}
+                </TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t("table.failures")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -309,11 +314,25 @@ function IncidentsIndexPage() {
                       data-incident-uid={incident.uid}
                       className="hover:bg-muted/40 transition-colors"
                     >
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="max-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {incident.state === "active" ? (
+                            <span
+                              title={t("active")}
+                              className="relative flex h-3 w-3 shrink-0"
+                            >
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
+                            </span>
+                          ) : (
+                            <span
+                              title={t("resolved")}
+                              className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0"
+                            />
+                          )}
                           {incident.number ? (
                             <span
-                              className="font-mono text-xs text-muted-foreground font-semibold px-1.5 py-0.5 rounded bg-muted"
+                              className="font-mono text-xs text-muted-foreground font-semibold px-1.5 py-0.5 rounded bg-muted shrink-0"
                               data-testid="incident-number"
                             >
                               #{incident.number}
@@ -322,7 +341,7 @@ function IncidentsIndexPage() {
                           <Link
                             to="/orgs/$org/incidents/$incidentUid"
                             params={{ org, incidentUid: incident.uid! }}
-                            className="font-medium text-foreground hover:text-primary hover:underline transition-colors"
+                            className="font-medium text-foreground hover:text-primary hover:underline transition-colors truncate max-w-[55vw] sm:max-w-none"
                           >
                             {incident.title ||
                               incident.checkName ||
@@ -376,7 +395,7 @@ function IncidentsIndexPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <Link
                           to="/orgs/$org/checks/$checkUid"
                           params={{ org, checkUid: incident.checkUid! }}
@@ -387,24 +406,8 @@ function IncidentsIndexPage() {
                           }}
                           className="hover:underline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          {incident.checkSlug || incident.checkName}
+                          {incident.checkName || incident.checkSlug}
                         </Link>
-                      </TableCell>
-                      <TableCell>
-                        {incident.state === "active" ? (
-                          <span
-                            title={t("active")}
-                            className="relative flex h-3 w-3"
-                          >
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
-                          </span>
-                        ) : (
-                          <span
-                            title={t("resolved")}
-                            className="flex h-2.5 w-2.5 rounded-full bg-emerald-500"
-                          />
-                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground font-mono">
                         {incident.startedAt ? (
@@ -416,10 +419,10 @@ function IncidentsIndexPage() {
                           "-"
                         )}
                       </TableCell>
-                      <TableCell className="text-xs font-mono font-medium">
+                      <TableCell className="hidden sm:table-cell text-xs font-mono font-medium">
                         <IncidentDuration incident={incident} />
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono tabular-nums">
+                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground font-mono tabular-nums">
                         {incident.failureCount ?? "-"}
                       </TableCell>
                     </TableRow>

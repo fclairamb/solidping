@@ -64,6 +64,33 @@ type ValidateCheckRequest struct {
 	// a check's own slug, and the rate projection must REPLACE its stored row
 	// rather than add a second one. Empty for a create.
 	ExcludeCheckUID string `json:"excludeCheckUid,omitempty"`
+
+	// The fields below mirror CreateCheckRequest's request-level guards (spec
+	// 2026-08-28-14), so a payload validate accepts is a payload create
+	// accepts too. Each is decoded only so it can be checked against the same
+	// rule CreateCheck enforces — see requestFieldFindings in validate.go.
+
+	// Internal is DECODED ONLY SO IT CAN BE REFUSED, exactly like
+	// CreateCheckRequest.Internal (spec 2026-08-27-01). Any non-nil value —
+	// including an explicit `false` — is a blocking finding.
+	Internal *bool `json:"internal,omitempty"`
+	// RegionSpread is the proposed inter-region scheduling offset (spec
+	// 2026-07-20-05). Checked against 0 <= regionSpread < period, using the
+	// proposed Period above when given, else the same 1-minute default
+	// CreateCheck falls back to.
+	RegionSpread *string `json:"regionSpread,omitempty"`
+	// ConfirmationPeriodSeconds / RecoveryPeriodSeconds are the wall-clock
+	// incident-tracking periods (spec 2026-05-08-02), checked against
+	// [0, MaxIncidentPeriodSeconds].
+	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
+	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
+	// TracerouteOnFailure is the per-check path-trace policy (spec
+	// 2026-08-21-10): `inherit`, `on` or `off`.
+	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// Adaptive resolution / flapping settings (spec 2026-06-30-07).
+	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor     *int `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier *int `json:"maxRecoveryMultiplier,omitempty"`
 }
 
 // ValidateCheckResponse is the response body for the validate check endpoint.
@@ -1201,9 +1228,11 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// `internal` is never writable from a request (spec 2026-08-27-01): it is
 	// what exempts a check from the quota below, so accepting it here would
-	// hand every caller a quota bypass.
-	if req.Internal != nil {
-		return CheckResponse{}, ErrInternalFieldNotWritable
+	// hand every caller a quota bypass. Routed through the shared
+	// requestFieldFindings (spec 2026-08-28-14) — same function ValidateCheck
+	// uses — so this and the dry-run endpoint can never disagree about it.
+	if findings := requestFieldFindings(requestFieldValues{Internal: req.Internal}); len(findings) > 0 {
+		return CheckResponse{}, findings[0].Err
 	}
 
 	// Enforce the MaxChecks quota before doing any work. Nothing reaching this
@@ -1358,15 +1387,31 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.Period = duration
 	}
 
-	// Set the optional inter-region spread override (spec 2026-07-20-05),
-	// validated against the effective period. Empty string = default.
+	// The remaining request-level guards — regionSpread's bound, the
+	// tracerouteOnFailure enum, the flapping knobs' floors, and the incident
+	// periods' bound — run through the same shared requestFieldFindings
+	// ValidateCheck uses (spec 2026-08-28-14), in the order they've always
+	// been checked in. Only the first finding is used here; the field is then
+	// set from the (now known-valid) request below.
+	if findings := requestFieldFindings(requestFieldValues{
+		RegionSpreadPeriod:        time.Duration(check.Period),
+		RegionSpread:              req.RegionSpread,
+		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
+		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+		TracerouteOnFailure:       req.TracerouteOnFailure,
+		FlappingWindowSeconds:     req.FlappingWindowSeconds,
+		FlapBackoffFactor:         req.FlapBackoffFactor,
+		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+	}); len(findings) > 0 {
+		return CheckResponse{}, findings[0].Err
+	}
+
+	// Set the optional inter-region spread override (spec 2026-07-20-05).
+	// Empty string = default. Bound already checked above.
 	if req.RegionSpread != nil && *req.RegionSpread != "" {
 		var spread timeutils.Duration
 		if err := spread.Scan(*req.RegionSpread); err != nil { //nolint:govet
 			return CheckResponse{}, err
-		}
-		if vErr := validateRegionSpread(time.Duration(spread), time.Duration(check.Period)); vErr != nil {
-			return CheckResponse{}, vErr
 		}
 		check.RegionSpread = &spread
 	}
@@ -1375,19 +1420,11 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	check.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 
 	if req.TracerouteOnFailure != nil {
-		value, ok := parseTraceroutePolicy(*req.TracerouteOnFailure)
-		if !ok {
-			return CheckResponse{}, errInvalidTraceroutePolicy
-		}
-
+		// Enum already checked above; ok is always true here.
+		value, _ := parseTraceroutePolicy(*req.TracerouteOnFailure)
 		check.TracerouteOnFailure = value
 	}
 
-	if vErr := validateFlappingFields(
-		req.FlappingWindowSeconds, req.FlapBackoffFactor, req.MaxRecoveryMultiplier,
-	); vErr != nil {
-		return CheckResponse{}, vErr
-	}
 	if req.FlappingWindowSeconds != nil {
 		check.FlappingWindowSeconds = *req.FlappingWindowSeconds
 	}
@@ -1399,15 +1436,9 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	}
 
 	if req.ConfirmationPeriodSeconds != nil {
-		if vErr := validateIncidentPeriod(*req.ConfirmationPeriodSeconds); vErr != nil {
-			return CheckResponse{}, fmt.Errorf("confirmationPeriodSeconds: %w", vErr)
-		}
 		check.ConfirmationPeriodSeconds = *req.ConfirmationPeriodSeconds
 	}
 	if req.RecoveryPeriodSeconds != nil {
-		if vErr := validateIncidentPeriod(*req.RecoveryPeriodSeconds); vErr != nil {
-			return CheckResponse{}, fmt.Errorf("recoveryPeriodSeconds: %w", vErr)
-		}
 		check.RecoveryPeriodSeconds = *req.RecoveryPeriodSeconds
 	}
 

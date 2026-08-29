@@ -76,7 +76,10 @@ test.describe("Status page group resources", () => {
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
     await page.waitForLoadState("networkidle");
 
-    await page.getByRole("button", { name: "Add Component" }).first().click();
+    // CreateStatusPage now seeds a default "Services" section ahead of this
+    // test's own "Core" section (spec 2026-08-28-16), so "Core" is always
+    // the LAST "Add Component" button, not the first.
+    await page.getByRole("button", { name: "Add Component" }).last().click();
     await page.getByTestId("resource-kind-group").click();
     await page.getByTestId("resource-group-select").click();
     await page.getByTestId(`check-group-picker-option-${groupSlug}`).click();
@@ -96,7 +99,13 @@ test.describe("Status page group resources", () => {
 
     const publicBody = await publicResp.text();
     const publicJSON = JSON.parse(publicBody);
-    const resources = publicJSON.sections?.[0]?.resources ?? [];
+    // CreateStatusPage now seeds a default "Services" section (spec
+    // 2026-08-28-16), so the group's own "Core" section is no longer
+    // reliably index 0 — find it by slug instead.
+    const coreSection = (publicJSON.sections ?? []).find(
+      (section: { slug?: string }) => section.slug === "core",
+    );
+    const resources = coreSection?.resources ?? [];
     expect(resources).toHaveLength(1);
     expect(resources[0].checkUid).toBeUndefined();
     expect(resources[0].checkGroupUid).toBe(group.uid);

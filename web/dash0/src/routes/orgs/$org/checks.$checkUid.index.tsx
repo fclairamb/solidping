@@ -11,6 +11,7 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  Globe,
   Loader2,
   Pencil,
   Power,
@@ -94,6 +95,10 @@ import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
+import {
+  JsonAssertionResultCard,
+  JSON_ASSERTION_RESULT_OUTPUT_KEY,
+} from "@/components/checks/json-assertion-result-card";
 import {
   ResponseTimeChart,
   formatMs,
@@ -1069,6 +1074,28 @@ function CheckDetailPage() {
               </Link>
             </Button>
             <Button
+              asChild
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={
+                t("checks:detail.publishOnStatusPage") ??
+                "Publish on a status page"
+              }
+            >
+              <Link
+                to="/orgs/$org/status-pages/new"
+                params={{ org }}
+                search={{ checkUid }}
+                data-testid="publish-status-page-link"
+              >
+                <Globe className="h-4 w-4 lg:mr-2" />
+                <span className="hidden lg:inline">
+                  {t("checks:detail.publishOnStatusPage")}
+                </span>
+              </Link>
+            </Button>
+            <Button
               variant="outline"
               size="icon"
               className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
@@ -1450,6 +1477,7 @@ function CheckDetailPage() {
                               key !== "chain" &&
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
+                              key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
                               !(
                                 DNSBL_OUTPUT_KEYS as readonly string[]
                               ).includes(key),
@@ -1497,6 +1525,14 @@ function CheckDetailPage() {
 
       {check.type === "dnsbl" && (
         <DnsblCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "http" && (
+        <JsonAssertionResultCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }

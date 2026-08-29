@@ -25,9 +25,15 @@ const unsubscribeTokenTTL = 90 * 24 * time.Hour
 // canAckEvent reports whether the event type produces an actionable incident
 // in the dashboard — only those events get a magic-link "acknowledge" button
 // in the email body. A resolved incident has nothing to ack.
+//
+// An UNACKNOWLEDGED incident is the most actionable state there is: it is open
+// and nobody owns it, so the retraction email carries the button too. Offering
+// it here is the whole point of the message — a reader who wants to take the
+// incident should not have to go find the original page to do it.
 func canAckEvent(eventType string) bool {
 	switch eventType {
-	case eventTypeIncidentCreated, eventTypeIncidentEscalated, eventTypeIncidentReopened:
+	case eventTypeIncidentCreated, eventTypeIncidentEscalated, eventTypeIncidentReopened,
+		eventTypeIncidentUnacknowledged:
 		return true
 	default:
 		return false
@@ -43,7 +49,8 @@ func canAckEvent(eventType string) bool {
 func isModeledIncidentEvent(eventType string) bool {
 	switch eventType {
 	case eventTypeIncidentCreated, eventTypeIncidentResolved, eventTypeIncidentEscalated,
-		eventTypeIncidentReopened, eventTypeIncidentComment, eventTypeIncidentAcknowledged:
+		eventTypeIncidentReopened, eventTypeIncidentComment, eventTypeIncidentAcknowledged,
+		eventTypeIncidentUnacknowledged:
 		return true
 	default:
 		return false
@@ -95,6 +102,11 @@ const (
 	// paged: without it a teammate taking the incident is invisible to every
 	// channel except the one the button lived in.
 	eventTypeIncidentAcknowledged = "incident.acknowledged"
+	// eventTypeIncidentUnacknowledged retracts that: the acknowledgment was
+	// withdrawn, the incident is unowned again and escalation resumes. Without
+	// it the ack announcement stands forever and — worse — the incident's own
+	// alert card in Slack/Discord keeps asserting an ownership nobody has.
+	eventTypeIncidentUnacknowledged = "incident.unacknowledged"
 )
 
 // incidentTemplateForEvent maps an event type to its embedded template name.
@@ -115,6 +127,8 @@ func incidentTemplateForEvent(eventType string) (string, bool) {
 		return "incident-comment.html", true
 	case eventTypeIncidentAcknowledged:
 		return "incident-acknowledged.html", true
+	case eventTypeIncidentUnacknowledged:
+		return "incident-unacknowledged.html", true
 	default:
 		return "", false
 	}
@@ -612,7 +626,11 @@ func (s *EmailSender) buildIncidentViewModel(
 		viewModel["CommentSource"] = commentSourceLabel(payload.Comment)
 	}
 
-	if payload.EventType == eventTypeIncidentAcknowledged {
+	// Both halves of the acknowledgment pair render the same attribution: the
+	// unack template says "Withdrawn by" where the ack template says
+	// "Acknowledged by", but the value comes from the same resolver.
+	if payload.EventType == eventTypeIncidentAcknowledged ||
+		payload.EventType == eventTypeIncidentUnacknowledged {
 		viewModel["AckActor"] = ackActor(payload.Acknowledgment)
 		viewModel["AckVia"] = ackViaLabel(payload.Acknowledgment)
 	}

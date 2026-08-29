@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AlertCircle, Building2, Loader2, Trash2, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -26,6 +27,12 @@ import { useAuth } from "@/contexts/AuthContext";
 // Mirrors the server allowlist (handlers/orglogo) so the file picker never
 // offers something the upload would reject.
 const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
+
+// The server returns an uploaded logo as a relative /pub/assets/<uid> path
+// (never absolute) and refuses anything else that isn't an absolute http(s)
+// URL (normalizeLogoURL, org_profile.go) — so "not http" reliably means
+// "currently an uploaded file", never a URL the URL field could hold.
+const isUploadedLogoPath = (url: string) => url !== "" && !url.startsWith("http");
 
 interface OrgProfileCardProps {
   org: string;
@@ -56,7 +63,30 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState(org);
+  // True once the user has typed into name/slug since the last sync/save —
+  // guards the render-time reseed below from clobbering an in-progress edit
+  // when a save's background /auth/me refresh (AuthContext.refreshUser)
+  // lands late and changes `current` out from under the user (spec
+  // 2026-08-28-13 audit: reproduced by editing the slug immediately after
+  // saving the name).
+  const [nameTouched, setNameTouched] = useState(false);
+  const [slugTouched, setSlugTouched] = useState(false);
+  // `logoUrl` is the authoritative current value (as returned by the server —
+  // either an absolute http(s) URL, a relative /pub/assets/<uid> upload path,
+  // or ""). It drives the preview thumbnail and the clear button, and is
+  // never fed into the type="url" input directly (see isUploadedLogoPath).
   const [logoUrl, setLogoUrl] = useState("");
+  // The URL input's own text, tracked separately so an uploaded path never
+  // lands in a type="url" field and trips native constraint validation.
+  const [logoUrlDraft, setLogoUrlDraft] = useState("");
+  // True once the user has typed into the URL field since the last sync/save
+  // — gates whether logoUrl is sent on submit (see handleSubmit), and guards
+  // the same render-time reseed race as nameTouched/slugTouched above.
+  const [logoUrlTouched, setLogoUrlTouched] = useState(false);
+  // Which affordance is shown: the URL input, or the "Uploaded file" badge
+  // state. Last-action-wins: a successful upload switches to the badge view,
+  // "Use an external URL instead" switches back to the input.
+  const [showLogoUrlField, setShowLogoUrlField] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
@@ -69,25 +99,86 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
   // server-side identity actually changes (a different org, or a save that
   // came back with new values). Adjusting state during render rather than in
   // an effect is the documented pattern for "reset state when a prop changes"
-  // — an effect here would cascade an extra render on every org load. The sync
-  // key is deliberately narrow, so a user mid-edit is never clobbered by an
-  // unrelated /me refresh.
+  // — an effect here would cascade an extra render on every org load.
+  //
+  // Two distinct triggers share this block, and only one of them may
+  // override an in-progress edit:
+  //  - `org` itself changing is a genuine navigation to a different
+  //    organization (this component is never remounted for that — see
+  //    organization.settings.tsx, no `key={org}`) — any unsaved edits for
+  //    the org being left are stale and always discarded.
+  //  - `current` changing while `org` stays the same is typically the
+  //    background /auth/me refresh that follows a save (applyResult below
+  //    awaits AuthContext.refreshUser()). That refresh can land well after
+  //    the save, so it must never clobber a field the user has since
+  //    started editing — each field's own *Touched flag gates it. Without
+  //    this guard, saving the name and then immediately editing the slug
+  //    silently reverts the slug once the refresh lands (spec
+  //    2026-08-28-13 audit — reproduced 17/20 runs before this fix).
   const syncKey = `${org}|${current?.name ?? ""}|${current?.logoUrl ?? ""}`;
   const [syncedFrom, setSyncedFrom] = useState<string | null>(null);
+  const [syncedOrg, setSyncedOrg] = useState<string | null>(null);
+  const orgChanged = syncedOrg !== org;
 
-  if (syncedFrom !== syncKey) {
+  // Shared by the render-time sync below and by applyResult (after a save,
+  // upload or clear) — both need to re-derive the logo source from a fresh
+  // server value, resetting the draft/touched/mode trio in lockstep so the
+  // URL field can never end up holding an uploaded path. `force` bypasses
+  // the touched guard: applyResult always forces, since it reflects the
+  // user's own just-completed action, not a stale background refresh.
+  const syncLogoState = (url: string, force = false) => {
+    setLogoUrl(url);
+    if (!force && logoUrlTouched) return;
+    const uploaded = isUploadedLogoPath(url);
+    setShowLogoUrlField(!uploaded);
+    setLogoUrlDraft(uploaded ? "" : url);
+    setLogoUrlTouched(false);
+  };
+
+  if (orgChanged) {
+    setSyncedOrg(org);
     setSyncedFrom(syncKey);
     setName(current?.name ?? "");
     setSlug(org);
-    setLogoUrl(current?.logoUrl ?? "");
+    setNameTouched(false);
+    setSlugTouched(false);
+    syncLogoState(current?.logoUrl ?? "", true);
+  } else if (syncedFrom !== syncKey) {
+    setSyncedFrom(syncKey);
+    if (!nameTouched) setName(current?.name ?? "");
+    if (!slugTouched) setSlug(org);
+    syncLogoState(current?.logoUrl ?? "");
   }
 
   const busy =
     updateProfile.isPending || uploadLogo.isPending || clearLogo.isPending;
   const slugChanged = slug !== org;
 
-  const applyResult = async (result: OrgProfileResponse) => {
-    setLogoUrl(result.logoUrl ?? "");
+  // `savedProfile` is true only when this result came from the name/slug
+  // form submitting (handleSubmit) — the one flow where the user has just
+  // explicitly confirmed both fields, so it's safe to adopt them synchronously
+  // and mark them clean immediately. Doing that here, rather than waiting for
+  // the refreshUser() round trip below to update `current` and flow through
+  // the render-time reseed, closes the exact race the audit reproduced
+  // 17/20 runs: without it, a slug edit typed in the gap between the save
+  // and refreshUser's response would still be live (touched) when the
+  // refresh landed, but nothing had cleared the *previous* save's touched
+  // flag yet from that later, slower path. Upload/clear (handleFile,
+  // handleClearLogo) never confirm name/slug, so they must NOT sync or
+  // untouch those fields — any concurrent name/slug edit stays exactly as
+  // the user left it, protected by the render-time reseed's own touched
+  // guard once refreshUser eventually resolves.
+  const applyResult = async (
+    result: OrgProfileResponse,
+    savedProfile = false,
+  ) => {
+    if (savedProfile) {
+      setName(result.name);
+      setNameTouched(false);
+      setSlug(result.slug);
+      setSlugTouched(false);
+    }
+    syncLogoState(result.logoUrl ?? "", true);
 
     if (result.accessToken && result.slug !== org) {
       // Swap the session BEFORE navigating: the token in hand is scoped to the
@@ -123,15 +214,19 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
       const result = await updateProfile.mutateAsync({
         name,
         slug,
-        // Send logoUrl only when it is an external URL the user typed. An
-        // uploaded logo is a relative /pub/assets path the endpoint refuses
-        // by design, and re-sending it would clear the upload.
-        ...(logoUrl.startsWith("http") || logoUrl === ""
-          ? { logoUrl: logoUrl === "" ? null : logoUrl }
+        // Send logoUrl only when the user explicitly typed into (or cleared)
+        // the external-URL field this session. An uploaded logo is a
+        // relative /pub/assets path the endpoint refuses by design, and
+        // merely switching the view to "Use an external URL instead" without
+        // typing anything must not clear it — that only happens once the
+        // user has actually edited the field.
+        ...(logoUrlTouched &&
+        (logoUrlDraft.startsWith("http") || logoUrlDraft === "")
+          ? { logoUrl: logoUrlDraft === "" ? null : logoUrlDraft }
           : {}),
       });
       toast.success(t("settings.saved"));
-      await applyResult(result);
+      await applyResult(result, true);
     } catch (err) {
       reportError(err);
     }
@@ -203,7 +298,10 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
                 // Renaming it is an explicit act, never a side effect of
                 // retitling the org — unlike the create form on /no-org, where
                 // auto-slugify is the right default.
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameTouched(true);
+                }}
                 disabled={busy}
                 data-testid="org-profile-name"
               />
@@ -215,7 +313,10 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
               <Input
                 id="org-profile-slug"
                 value={slug}
-                onChange={(event) => setSlug(event.target.value)}
+                onChange={(event) => {
+                  setSlug(event.target.value);
+                  setSlugTouched(true);
+                }}
                 disabled={busy}
                 data-testid="org-profile-slug"
               />
@@ -251,17 +352,49 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
                   <Building2 className="h-6 w-6 text-muted-foreground" />
                 )}
               </div>
-              <Input
-                id="org-profile-logo"
-                type="url"
-                inputMode="url"
-                placeholder="https://example.com/logo.png"
-                value={logoUrl}
-                onChange={(event) => setLogoUrl(event.target.value)}
-                disabled={busy}
-                className="min-w-0 flex-1"
-                data-testid="org-profile-logo-url"
-              />
+              {showLogoUrlField ? (
+                <Input
+                  id="org-profile-logo"
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://example.com/logo.png"
+                  value={logoUrlDraft}
+                  onChange={(event) => {
+                    setLogoUrlDraft(event.target.value);
+                    setLogoUrlTouched(true);
+                  }}
+                  disabled={busy}
+                  className="min-w-0 flex-1"
+                  data-testid="org-profile-logo-url"
+                />
+              ) : (
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                  <Badge
+                    variant="secondary"
+                    data-testid="org-profile-logo-badge"
+                  >
+                    {t("settings.profile.uploadedBadge", "Uploaded file")}
+                  </Badge>
+                  <Button
+                    id="org-profile-logo"
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => {
+                      setShowLogoUrlField(true);
+                      setLogoUrlDraft("");
+                      setLogoUrlTouched(false);
+                    }}
+                    disabled={busy}
+                    data-testid="org-profile-logo-use-url"
+                  >
+                    {t(
+                      "settings.profile.useExternalUrl",
+                      "Use an external URL instead",
+                    )}
+                  </Button>
+                </div>
+              )}
               <input
                 ref={fileInput}
                 type="file"
@@ -282,7 +415,9 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
                 ) : (
                   <Upload className="mr-2 h-4 w-4" />
                 )}
-                {t("settings.profile.upload", "Upload")}
+                {logoUrl
+                  ? t("settings.profile.replace", "Replace")
+                  : t("settings.profile.upload", "Upload")}
               </Button>
               {logoUrl && (
                 <Button
@@ -300,10 +435,15 @@ export function OrgProfileCard({ org }: OrgProfileCardProps) {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              {t(
-                "settings.profile.logoHelp",
-                "Paste an image URL, or upload a PNG, JPEG, WebP, GIF or SVG of up to 1 MB.",
-              )}
+              {showLogoUrlField
+                ? t(
+                    "settings.profile.logoHelp",
+                    "Paste an image URL, or upload a PNG, JPEG, WebP, GIF or SVG of up to 1 MB.",
+                  )
+                : t(
+                    "settings.profile.logoHelpUploaded",
+                    "This logo was uploaded. Upload a new file to replace it, or switch to an external URL.",
+                  )}
             </p>
           </div>
 

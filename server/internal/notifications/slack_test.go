@@ -81,6 +81,22 @@ func (m *mockDBService) DeleteStateEntry(_ context.Context, _ *string, _ string)
 	return true, nil
 }
 
+// User-scoped state entries are the per-user UI-state store; the
+// notifications package never touches them, so these are pure stubs.
+func (m *mockDBService) GetUserStateEntry(_ context.Context, _, _ string) (*models.StateEntry, error) {
+	return nil, nil //nolint:nilnil // Test stub: no entry is not an error
+}
+
+func (m *mockDBService) SetUserStateEntry(
+	_ context.Context, _, _ string, _ *models.JSONMap, _ *time.Duration,
+) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteUserStateEntry(_ context.Context, _, _ string) (bool, error) {
+	return true, nil
+}
+
 func (m *mockDBService) ListStateEntries(_ context.Context, _ *string, _ string) ([]*models.StateEntry, error) {
 	return nil, nil
 }
@@ -895,6 +911,10 @@ func (m *mockDBService) RetireSystemAgent(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) RetireAgentWorkerRow(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CheckAndStoreAgentNonce(
 	_ context.Context, _, _ string, _ time.Time, _ time.Duration,
 ) error {
@@ -1108,6 +1128,12 @@ func (m *mockDBService) ListChannelsByProperty(
 }
 
 func (m *mockDBService) CreateStatusPage(_ context.Context, _ *models.StatusPage) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateStatusPageWithDefaultSection(
+	_ context.Context, _ *models.StatusPage, _ *models.StatusPageSection, _ []*models.StatusPageResource,
+) error {
 	panic("not implemented")
 }
 

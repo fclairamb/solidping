@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronDown, X } from "lucide-react";
 
-import { useChecks, useCheckGroups } from "@/api/hooks";
+import { useChecks, useChecksByUids, useCheckGroups } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,10 +72,25 @@ export function CheckMultiPicker({
       .map((g) => ({ uid: g.uid, label: g.name, secondary: g.slug }));
   }, [kind, checkMatches, groups, debouncedQuery]);
 
-  // Resolve the selected UIDs to display labels for the chips. For checks the
-  // current search result may not contain a previously selected uid, so fall
-  // back to the uid itself.
-  const labelFor = useMemo(() => {
+  // Selected checks that the current search page doesn't cover (an edit form
+  // loading a persisted selection, or a narrowed search that excludes a
+  // previously-shown chip). Resolved individually below, mirroring
+  // CheckPicker's single-uid fallback (check-picker.tsx:64-100). Not
+  // applicable to "groups": groups are fetched whole, so `groups` above
+  // already contains every uid.
+  const unresolvedCheckUids = useMemo(() => {
+    if (kind !== "checks") return [];
+    const known = new Set(checkMatches.filter((c) => c.uid).map((c) => c.uid));
+    return value.filter((uid) => uid && !known.has(uid));
+  }, [kind, value, checkMatches]);
+
+  // One query per unresolved uid, sharing useCheck's cache key/fetch so this
+  // is a no-op request whenever the check was already fetched elsewhere.
+  const resolvedQueries = useChecksByUids(org, unresolvedCheckUids);
+
+  // Every label knowable from THIS render's own data: current search page,
+  // the full group list, and any individually-resolved checks.
+  const liveLabels = useMemo(() => {
     const map = new Map<string, string>();
     for (const o of options) map.set(o.uid, o.label);
     if (kind === "groups") {
@@ -84,9 +99,52 @@ export function CheckMultiPicker({
       for (const c of checkMatches) {
         if (c.uid) map.set(c.uid, c.name || c.slug || c.uid);
       }
+      unresolvedCheckUids.forEach((uid, i) => {
+        const check = resolvedQueries[i]?.data;
+        if (check) map.set(uid, check.name || check.slug || uid);
+      });
     }
     return map;
-  }, [options, groups, checkMatches, kind]);
+  }, [options, groups, kind, checkMatches, unresolvedCheckUids, resolvedQueries]);
+
+  // Sticky label cache: once a uid resolves to a real name it must never
+  // regress — not even to the "…" placeholder — when a later, narrower
+  // search excludes it from `checkMatches`. Adjusted directly in the render
+  // body (React's documented "adjust state while rendering" pattern —
+  // guarded by the identity check below, so it only re-renders when a label
+  // actually changed) rather than in an effect: this repo's react-compiler
+  // lint config (react-hooks/set-state-in-render's sibling
+  // set-state-in-effect) flags a synchronous setState inside a bare effect
+  // as a cascading-render anti-pattern. `nextStickyLabels` (this render's
+  // merged value, not the possibly-stale `stickyLabels` state) is what
+  // `labelForChip` reads below, so a label resolving THIS render is still
+  // reflected in THIS paint.
+  const [stickyLabels, setStickyLabels] = useState<Map<string, string>>(new Map());
+  let nextStickyLabels = stickyLabels;
+  for (const [uid, label] of liveLabels) {
+    if (nextStickyLabels.get(uid) !== label) {
+      if (nextStickyLabels === stickyLabels) nextStickyLabels = new Map(stickyLabels);
+      nextStickyLabels.set(uid, label);
+    }
+  }
+  if (nextStickyLabels !== stickyLabels) setStickyLabels(nextStickyLabels);
+
+  // Display label for a chip: live data wins when available, then the
+  // sticky cache; while a "checks" uid is still being individually
+  // resolved, show a placeholder; if that fetch failed (deleted/inaccessible
+  // check), fall back to the raw uid so the chip stays visible and
+  // removable — matching check-picker.tsx:93-96.
+  const labelForChip = (uid: string): string => {
+    const live = liveLabels.get(uid);
+    if (live) return live;
+    const sticky = nextStickyLabels.get(uid);
+    if (sticky) return sticky;
+    if (kind === "checks") {
+      const idx = unresolvedCheckUids.indexOf(uid);
+      if (idx !== -1) return resolvedQueries[idx]?.isError ? uid : "…";
+    }
+    return uid;
+  };
 
   const selectedSet = useMemo(() => new Set(value), [value]);
 
@@ -179,7 +237,7 @@ export function CheckMultiPicker({
         <div className="flex flex-wrap gap-1.5">
           {value.map((uid) => (
             <Badge key={uid} variant="secondary" className="gap-1 pr-1">
-              <span className="truncate max-w-[12rem]">{labelFor.get(uid) ?? uid}</span>
+              <span className="truncate max-w-[12rem]">{labelForChip(uid)}</span>
               <button
                 type="button"
                 onClick={() => remove(uid)}

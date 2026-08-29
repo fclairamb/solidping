@@ -504,7 +504,7 @@ func markResolutionTold(
 ) {
 	orgUID := incident.OrganizationUID
 	ttl := telegramResolvedMarkerTTL
-	value := &models.JSONMap{"notifiedAt": time.Now().UTC().Format(time.RFC3339)}
+	value := &models.JSONMap{noticeMarkerNotifiedAtKey: time.Now().UTC().Format(time.RFC3339)}
 
 	if err := jctx.DBService.SetStateEntry(
 		ctx, &orgUID, telegramResolvedKey(incident.UID, chatID), value, &ttl,

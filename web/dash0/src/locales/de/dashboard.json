@@ -30,11 +30,51 @@
       "ssl": "Domain für SSL-Prüfung"
     }
   },
-  "celebration": {
-    "title": "Erstes Ergebnis ist da!",
-    "body": "Wir haben gerade {{name}} geprüft. Richten Sie Benachrichtigungen ein, um bei Ausfällen sofort informiert zu werden.",
-    "cta": "Prüfung ansehen",
-    "dismiss": "Schließen"
+  "onboarding": {
+    "title": "Erste Schritte",
+    "progress": "{{done}} von {{total}} erledigt",
+    "dismiss": "Die Erste-Schritte-Liste ausblenden",
+    "doneLabel": "Erledigt",
+    "todoLabel": "Noch offen",
+    "reenableHint": "Versehentlich ausgeblendet? Unter Konto → Profil wieder einblenden.",
+    "allSet": {
+      "title": "Alles eingerichtet",
+      "body": "Alles ist verbunden – diese Liste kommt von selbst nicht zurück."
+    },
+    "steps": {
+      "check": {
+        "title": "Ersten Check anlegen",
+        "description": "Wählen Sie, was überwacht werden soll – eine URL, einen Host, ein Zertifikat.",
+        "cta": "Checks ansehen"
+      },
+      "alerts": {
+        "title": "Bei Störungen benachrichtigt werden",
+        "description": "Fügen Sie einen Benachrichtigungskanal hinzu, damit ein Ausfall Sie auch erreicht.",
+        "cta": "Benachrichtigungen einrichten"
+      },
+      "report": {
+        "title": "Wöchentlichen Verfügbarkeitsbericht erhalten",
+        "description": "Eine Zusammenfassung Ihrer Verfügbarkeit, planmäßig per E-Mail.",
+        "cta": "Bericht planen"
+      },
+      "statusPage": {
+        "title": "Statusseite veröffentlichen",
+        "description": "Informieren Sie Ihre Nutzer, bevor sie nachfragen müssen.",
+        "cta": "Statusseite erstellen"
+      },
+      "team": {
+        "title": "Teammitglied einladen",
+        "description": "Teilen Sie die Überwachung – und die Rufbereitschaft – mit jemandem.",
+        "cta": "Jemanden einladen"
+      }
+    },
+    "testAlert": {
+      "cta": "Testbenachrichtigung an mich senden",
+      "sent": "Testbenachrichtigung gesendet",
+      "sentDetail": "Sie sollte gleich in Ihrem Postfach ankommen.",
+      "failed": "Testbenachrichtigung fehlgeschlagen",
+      "failedFallback": "Die Benachrichtigung konnte nicht zugestellt werden. Prüfen Sie Ihre E-Mail-Einstellungen."
+    }
   },
   "banner": {
     "allGreen": "Alle Systeme betriebsbereit",
@@ -43,9 +83,10 @@
     "allGreenSubNoData_one": "{{count}} Prüfung überwacht, noch keine Verfügbarkeitsdaten",
     "allGreenSubNoData_other": "{{count}} Prüfungen überwacht, noch keine Verfügbarkeitsdaten",
     "issues": "Probleme erkannt",
-    "issuesSub_zero": "Keine aktiven Vorfälle",
-    "issuesSub_one": "{{down}} Prüfung ausgefallen, {{incidents}} aktive Vorfälle",
-    "issuesSub_other": "{{down}} Prüfungen ausgefallen, {{incidents}} aktive Vorfälle",
+    "issuesSubDown_one": "{{count}} Prüfung ausgefallen",
+    "issuesSubDown_other": "{{count}} Prüfungen ausgefallen",
+    "issuesSubIncidents_one": "{{count}} aktiver Vorfall",
+    "issuesSubIncidents_other": "{{count}} aktive Vorfälle",
     "warning": "Einige Prüfungen beeinträchtigt",
     "warningSub": "Zeitüberschreitungen bei {{count}} Prüfungen erkannt"
   },

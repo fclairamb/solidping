@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle } from "lucide-react";
 
-interface AssertionResult {
+export interface AssertionResult {
   type: "assertion" | "and" | "or";
   pass: boolean;
   path?: string;

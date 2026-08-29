@@ -215,12 +215,18 @@ function MembersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("members.column.member")}</TableHead>
-                  <TableHead>{t("members.column.email")}</TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    {t("members.column.email")}
+                  </TableHead>
                   <TableHead>{t("members.column.role")}</TableHead>
                   {isAdmin && (
-                    <TableHead>{t("members.column.coverage")}</TableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      {t("members.column.coverage")}
+                    </TableHead>
                   )}
-                  <TableHead>{t("members.column.joinedAt")}</TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    {t("members.column.joinedAt")}
+                  </TableHead>
                   <TableHead className="w-[120px]" />
                 </TableRow>
               </TableHeader>
@@ -230,9 +236,9 @@ function MembersPage() {
                   const joined = member.joinedAt || member.createdAt;
                   return (
                     <TableRow key={member.uid}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                      <TableCell className="max-w-0">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                             {member.avatarUrl ? (
                               <img
                                 src={member.avatarUrl}
@@ -243,12 +249,12 @@ function MembersPage() {
                               initialsFor(member)
                             )}
                           </span>
-                          <span className="font-medium">
+                          <span className="min-w-0 truncate font-medium">
                             {member.name || member.email}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="hidden text-muted-foreground md:table-cell">
                         {member.email}
                       </TableCell>
                       <TableCell>
@@ -307,13 +313,13 @@ function MembersPage() {
                         )}
                       </TableCell>
                       {isAdmin && (
-                        <TableCell>
+                        <TableCell className="hidden lg:table-cell">
                           <PagingCoverageCell
                             coverage={coverageByUser.get(member.userUid)}
                           />
                         </TableCell>
                       )}
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">
                         {new Date(joined).toLocaleDateString()}
                       </TableCell>
                       <TableCell>

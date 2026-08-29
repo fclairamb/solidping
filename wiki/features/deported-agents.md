@@ -423,6 +423,21 @@ and the sample is floored at 0.
 (6 h, self-rescheduling) retires `kind='system'` agents unheard-from past a
 configurable window (default 7 days), soft-deletes their `workers` rows, and
 prunes consumed reconnect nonces. Org agents are user-managed and never touched.
+The job now carries its own config across its self-reschedule — it used to pass
+`nil`, so an operator override of the windows survived exactly one sweep.
+
+**Supersede on enroll** (spec `2026-08-28-04`). The 7-day window is the backstop,
+not the primary cleanup: a fixed-name deployment (k8s `SP_AGENT_NAME`) that is
+not pinned with `SP_AGENT_KEYS` used to leave one row per restart for a week —
+production showed seven live-looking rows for one agent. The enrollment
+transaction now retires, atomically with the insert, every other `kind='system'`
+row with the same `(region, name)` that is `active` and **provably not a live
+fleet peer**: `last_seen_at` NULL or older than
+`db.SupersededSystemAgentDisconnectWindow` (15 min, well above the WS heartbeat
+cadence). Their `workers` rows go with them, through the same
+`db.RetireAgentWorkerRows` helper the GC uses. Org agents are never candidates,
+and fleets with per-machine names (fly machine IDs) never match a newcomer's
+name — they stay the GC's business. See `server/internal/db/agentsupersede.go`.
 
 **Shared nonce store.** The reconnect-replay guard moved from per-instance
 memory to the `agent_nonces` table (`agents.NonceGuard` is the seam;

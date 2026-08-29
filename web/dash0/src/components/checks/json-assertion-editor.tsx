@@ -11,7 +11,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Plus, Trash2 } from "lucide-react";
 
-interface AssertionNode {
+export interface AssertionNode {
   type: "assertion" | "and" | "or";
   path?: string;
   operator?: string;
@@ -96,13 +96,17 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
           value={node.path ?? ""}
           onChange={(e) => onChange({ ...node, path: e.target.value })}
           placeholder="$.path"
-          className="w-40 font-mono text-sm"
+          className="w-full font-mono text-sm sm:w-40"
+          data-testid="json-assertion-path"
         />
         <Select
           value={node.operator ?? "eq"}
           onValueChange={(op) => onChange({ ...node, operator: op })}
         >
-          <SelectTrigger className="w-32">
+          <SelectTrigger
+            className="w-32"
+            data-testid="json-assertion-operator"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -118,7 +122,8 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
             value={node.value ?? ""}
             onChange={(e) => onChange({ ...node, value: e.target.value })}
             placeholder={t("expectedValue")}
-            className="w-40 text-sm"
+            className="w-full text-sm sm:w-40"
+            data-testid="json-assertion-value"
           />
         )}
         <Button
@@ -127,6 +132,7 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
           size="icon"
           onClick={onRemove}
           className="h-8 w-8"
+          data-testid="json-assertion-remove"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -145,7 +151,10 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
             onChange({ ...node, type: t as "and" | "or" })
           }
         >
-          <SelectTrigger className="w-20">
+          <SelectTrigger
+            className="w-20"
+            data-testid="json-assertion-group-type"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -159,6 +168,7 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
           size="icon"
           onClick={onRemove}
           className="h-8 w-8"
+          data-testid="json-assertion-remove-group"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -203,6 +213,7 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
                 ],
               })
             }
+            data-testid="json-assertion-add-in-group"
           >
             <Plus className="mr-1 h-3 w-3" />
             {t("addJsonAssertion")}
@@ -230,6 +241,7 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
                 ],
               })
             }
+            data-testid="json-assertion-add-group"
           >
             <Plus className="mr-1 h-3 w-3" />
             {t("addGroup")}

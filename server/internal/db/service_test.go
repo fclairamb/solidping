@@ -83,6 +83,10 @@ func testService(t *testing.T, svc db.Service) {
 		testStateEntries(ctx, t, svc)
 	})
 
+	t.Run("UserStateEntries", func(t *testing.T) {
+		testUserStateEntries(ctx, t, svc)
+	})
+
 	t.Run("StatusPageSubscribers", func(t *testing.T) {
 		testStatusPageSubscribers(ctx, t, svc)
 	})
@@ -1863,6 +1867,121 @@ func testStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
 
 		key = models.StateKey()
 		r.Empty(key)
+	})
+}
+
+// testUserStateEntries covers the user-scoped state accessors added for the
+// per-user UI-state API (spec 2026-08-28-17). The isolation subtest is the
+// important one: the org-scoped accessors with a nil orgUID match on
+// `organization_uid IS NULL` alone, which is every user's row at once, so a
+// user-scoped read that is not filtered on user_uid silently leaks.
+func testUserStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	alice := models.NewUser("alice-uistate@acme.com")
+	require.NoError(t, svc.CreateUser(ctx, alice))
+
+	bob := models.NewUser("bob-uistate@acme.com")
+	require.NoError(t, svc.CreateUser(ctx, bob))
+
+	t.Run("SetGetUpdateDelete", func(t *testing.T) {
+		r := require.New(t)
+
+		key := "onboarding.org-uid-1"
+
+		missing, err := svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.Nil(missing, "nothing stored yet")
+
+		r.NoError(svc.SetUserStateEntry(ctx, alice.UID, key, &models.JSONMap{"dismissedAt": "t1"}, nil))
+
+		got, err := svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.NotNil(got)
+		r.Equal("t1", (*got.Value)["dismissedAt"])
+		r.NotNil(got.UserUID)
+		r.Equal(alice.UID, *got.UserUID)
+		r.Nil(got.OrganizationUID, "a user entry carries no organization")
+
+		// Upsert, not a second row.
+		r.NoError(svc.SetUserStateEntry(ctx, alice.UID, key, &models.JSONMap{"dismissedAt": "t2"}, nil))
+
+		got, err = svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.NotNil(got)
+		r.Equal("t2", (*got.Value)["dismissedAt"])
+
+		deleted, err := svc.DeleteUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.True(deleted)
+
+		gone, err := svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.Nil(gone)
+
+		// Deleting again reports "nothing live to delete" rather than erroring.
+		deleted, err = svc.DeleteUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.False(deleted)
+
+		// Re-setting after a soft delete resurrects the row instead of
+		// leaving the entry invisible forever.
+		r.NoError(svc.SetUserStateEntry(ctx, alice.UID, key, &models.JSONMap{"dismissedAt": "t3"}, nil))
+
+		back, err := svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.NotNil(back, "a re-set entry must be readable again")
+		r.Equal("t3", (*back.Value)["dismissedAt"])
+	})
+
+	t.Run("OneUserCannotReadAnother", func(t *testing.T) {
+		r := require.New(t)
+
+		key := "onboarding.org-uid-shared"
+
+		r.NoError(svc.SetUserStateEntry(ctx, alice.UID, key, &models.JSONMap{"owner": "alice"}, nil))
+
+		// Positive control: alice sees her own entry under this exact key, so
+		// the nil below is about the user scope and not about the key.
+		mine, err := svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.NotNil(mine)
+		r.Equal("alice", (*mine.Value)["owner"])
+
+		theirs, err := svc.GetUserStateEntry(ctx, bob.UID, key)
+		r.NoError(err)
+		r.Nil(theirs, "bob must not see alice's entry")
+
+		// Bob writing the same key creates his own row and leaves alice's
+		// value untouched.
+		r.NoError(svc.SetUserStateEntry(ctx, bob.UID, key, &models.JSONMap{"owner": "bob"}, nil))
+
+		mine, err = svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.NotNil(mine)
+		r.Equal("alice", (*mine.Value)["owner"])
+
+		// And bob deleting his own entry does not delete alice's.
+		deleted, err := svc.DeleteUserStateEntry(ctx, bob.UID, key)
+		r.NoError(err)
+		r.True(deleted)
+
+		mine, err = svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.NotNil(mine, "alice's entry must survive bob's delete")
+	})
+
+	t.Run("ExpiredEntryReadsAsAbsent", func(t *testing.T) {
+		r := require.New(t)
+
+		key := "onboarding.org-uid-ttl"
+		ttl := -1 * time.Minute
+
+		r.NoError(svc.SetUserStateEntry(ctx, alice.UID, key, &models.JSONMap{"x": "1"}, &ttl))
+
+		got, err := svc.GetUserStateEntry(ctx, alice.UID, key)
+		r.NoError(err)
+		r.Nil(got, "an already-expired entry is not returned")
 	})
 }
 

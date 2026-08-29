@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
 
 // SFTPChecker implements the Checker interface for SFTP checks.
@@ -82,7 +83,7 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	var authMethods []ssh.AuthMethod
 
 	if cfg.Password != "" {
-		authMethods = append(authMethods, ssh.Password(cfg.Password))
+		authMethods = append(authMethods, sshauth.PasswordMethods(cfg.Password)...)
 	} else if cfg.PrivateKey != "" {
 		signer, parseErr := ssh.ParsePrivateKey([]byte(cfg.PrivateKey))
 		if parseErr != nil {

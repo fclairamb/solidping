@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { slugify } from "@/lib/utils";
 import {
   Select,
@@ -61,15 +62,32 @@ export function StatusPageForm({
   isPending,
   onSubmit,
   onCancel,
+  initialName,
+  prefilledCheckName,
 }: {
   mode: "create" | "edit";
   initialData?: StatusPage;
   isPending: boolean;
   onSubmit: (data: StatusPageFormData) => Promise<void>;
   onCancel: () => void;
+  /**
+   * Seeds the Name field on a fresh create form (e.g. the org's name, when
+   * arriving from a check's "Publish on a status page" link). Never
+   * overwrites a name the operator already typed.
+   */
+  initialName?: string;
+  /**
+   * When set, renders a non-editable "Will include: <name>" line — the check
+   * this create-from-check flow is about to attach to the page's default
+   * section.
+   */
+  prefilledCheckName?: string;
 }) {
   const { t } = useTranslation("statusPages");
-  const [name, setName] = useState(initialData?.name || "");
+  // initialName (e.g. the org's name, when arriving from a check's
+  // "Publish on a status page" link) is read from context synchronously —
+  // no query in flight — so seeding it here is safe and needs no effect.
+  const [name, setName] = useState(initialData?.name || initialName || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
   const [description, setDescription] = useState(initialData?.description || "");
@@ -188,6 +206,18 @@ export function StatusPageForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {prefilledCheckName && (
+            <div
+              className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2"
+              data-testid="status-page-prefilled-check"
+            >
+              <span className="text-sm text-muted-foreground">
+                {t("form.willInclude")}
+              </span>
+              <Badge variant="secondary">{prefilledCheckName}</Badge>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input

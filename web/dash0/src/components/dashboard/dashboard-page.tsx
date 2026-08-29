@@ -40,6 +40,7 @@ import {
   groupIncidentsByCheckGroup,
   type IncidentGroupRow,
 } from "@/lib/incident-grouping";
+import { formatIssuesSubtitle } from "@/lib/issues-banner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   CHECKS_LIST_POLL_MS,
@@ -68,6 +69,7 @@ import {
 } from "@/components/dashboard/event-display";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 
@@ -431,12 +433,13 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
         <EmptyStateOnboarding org={org} />
       ) : (
         <>
-          <FirstResultCelebration
+          <OnboardingChecklist
             org={org}
-            checks={checks}
             totalChecks={totalChecksCount}
+            firstCheckUid={checks[0]?.uid}
           />
           <OverallStatusBanner
+            org={org}
             allGreen={downCount === 0 && incidentsCount === 0}
             hardDownCount={hardDownCount}
             timeoutOnlyCount={timeoutOnlyCount}
@@ -607,76 +610,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   );
 }
 
-// FirstResultCelebration shows a one-shot banner the first time an org's
-// first check has a result. Persisted in localStorage so it doesn't re-fire
-// across reloads. Quiet on subsequent checks — this is an activation moment,
-// not a per-check toast.
-function FirstResultCelebration({
-  org,
-  checks,
-  totalChecks,
-}: {
-  org: string;
-  checks: Check[];
-  /** Org-wide check count from the stats endpoint, not from `checks.length`. */
-  totalChecks: number;
-}) {
-  const { t } = useTranslation("dashboard");
-  const storageKey = `solidping_celebrated_first_result_${org}`;
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(storageKey) === "1";
-  });
-
-  // Trigger only when there is a single check and it has at least one result
-  // (lastResult is populated by the dashboard's checks-with-last-result query).
-  const trigger =
-    !dismissed && totalChecks === 1 && checks[0]?.lastResult !== undefined;
-  const checkName = checks[0]?.name || "";
-
-  useEffect(() => {
-    if (trigger) {
-      window.localStorage.setItem(storageKey, "1");
-    }
-  }, [trigger, storageKey]);
-
-  if (!trigger) return null;
-
-  return (
-    <Card className="border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40">
-      <CardContent className="pt-6 pb-6 flex items-center gap-4">
-        <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-500 shrink-0" />
-        <div className="flex-1">
-          <h2 className="text-lg font-semibold text-green-900 dark:text-green-100">
-            {t("celebration.title", "First result is in!")}
-          </h2>
-          <p className="text-sm text-green-800/80 dark:text-green-300/80">
-            {t("celebration.body", {
-              defaultValue:
-                "We just checked {{name}}. Hook up notifications so you'll know if it ever goes down.",
-              name: checkName,
-            })}
-          </p>
-        </div>
-        <Button asChild size="sm">
-          <a href={`/dash0/orgs/${org}/checks/${checks[0]?.uid}`}>
-            {t("celebration.cta", "View the check")}
-            <ArrowRight className="ml-1 h-3.5 w-3.5" />
-          </a>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setDismissed(true)}
-          aria-label={t("celebration.dismiss", "Dismiss")}
-        >
-          ×
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
@@ -693,6 +626,7 @@ function DashboardSkeleton() {
 }
 
 interface OverallStatusBannerProps {
+  org: string;
   allGreen: boolean;
   hardDownCount: number;
   timeoutOnlyCount: number;
@@ -701,7 +635,55 @@ interface OverallStatusBannerProps {
   availabilityPct: number | null;
 }
 
+// Wraps the banner's content in the TanStack Router `<Link>` matching its
+// destination — incidents-first, since an active incident carries the
+// ack/snooze/resolve workflow while a down check without one is just a
+// state. A real `<Link>` (not a `div` + onClick) keeps keyboard focus,
+// middle-click and copy-link working. `data-testid="overall-status-banner"`
+// lives here so existing E2E assertions keep working unchanged.
+function BannerLink({
+  org,
+  target,
+  className,
+  children,
+}: {
+  org: string;
+  target: "incidents-active" | "checks-down" | "checks-warning";
+  className: string;
+  children: React.ReactNode;
+}) {
+  if (target === "incidents-active") {
+    return (
+      <Link
+        to="/orgs/$org/incidents"
+        params={{ org }}
+        search={{
+          state: "active" as const,
+          showSuppressed: undefined,
+          checkUid: undefined,
+        }}
+        data-testid="overall-status-banner"
+        className={className}
+      >
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      to="/orgs/$org/checks"
+      params={{ org }}
+      search={{ status: target === "checks-down" ? "down" : "warning" }}
+      data-testid="overall-status-banner"
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function OverallStatusBanner({
+  org,
   allGreen,
   hardDownCount,
   timeoutOnlyCount,
@@ -753,61 +735,59 @@ function OverallStatusBanner({
 
   if (hardDownCount > 0 || incidentsCount > 0) {
     return (
-      <div
-        data-testid="overall-status-banner"
-        className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm"
+      <BannerLink
+        org={org}
+        target={incidentsCount > 0 ? "incidents-active" : "checks-down"}
+        className="block"
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
-            </span>
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h2 className="text-sm sm:text-base font-semibold text-destructive">
-                {t("banner.issues")}
-              </h2>
-              <span className="text-xs text-muted-foreground">
-                {t("banner.issuesSub", {
-                  count: hardDownCount,
-                  down: hardDownCount,
-                  incidents: incidentsCount,
-                })}
+        <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-destructive/50 hover:bg-destructive/15">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-3 w-3 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
               </span>
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h2 className="text-sm sm:text-base font-semibold text-destructive">
+                  {t("banner.issues")}
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  {formatIssuesSubtitle(t, hardDownCount, incidentsCount)}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/15 px-2.5 py-1 rounded-full border border-destructive/30">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span>Active Outage</span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/15 px-2.5 py-1 rounded-full border border-destructive/30">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            <span>Active Outage</span>
-          </div>
         </div>
-      </div>
+      </BannerLink>
     );
   }
 
   // Only timeouts (degraded but not hard-down).
   return (
-    <div
-      data-testid="overall-status-banner"
-      className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h2 className="text-sm sm:text-base font-semibold text-amber-900 dark:text-amber-100">
-              {t("banner.warning")}
-            </h2>
-            <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
-              {t("banner.warningSub", { count: timeoutOnlyCount })}
-            </span>
+    <BannerLink org={org} target="checks-warning" className="block">
+      <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-amber-500/50 hover:bg-amber-500/15">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h2 className="text-sm sm:text-base font-semibold text-amber-900 dark:text-amber-100">
+                {t("banner.warning")}
+              </h2>
+              <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                {t("banner.warningSub", { count: timeoutOnlyCount })}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-full border border-amber-500/30">
+            <span>Degraded Performance</span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-full border border-amber-500/30">
-          <span>Degraded Performance</span>
-        </div>
       </div>
-    </div>
+    </BannerLink>
   );
 }
 

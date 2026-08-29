@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -200,22 +199,15 @@ func (r *AgentGCJobRun) purge(ctx context.Context, jctx *jobdef.JobContext, agen
 // retired/purged agent, resolved through the same deterministic slug the WS
 // handler registers it under, so a row that was adopted by slug (rather than
 // created with the agent's UID) is still found.
+//
+// The resolution and the soft delete live in db.RetireAgentWorkerRows, shared
+// with the supersede-on-enroll path so the two cannot drift. An agent that
+// enrolled and never connected has no workers row at all; that is a no-op, not
+// an error.
 func (r *AgentGCJobRun) cleanupWorkerRow(ctx context.Context, jctx *jobdef.JobContext, agent *models.Agent) {
-	log := jctx.Logger
-
-	worker, err := jctx.DBService.GetWorkerBySlug(ctx, agentcrypto.WorkerSlug(agent.UID))
-	switch {
-	case err != nil:
-		// Already gone, or never registered (an agent that enrolled and never
-		// connected has no workers row at all) — nothing left to clean.
-		return
-	case worker == nil:
-		return
-	}
-
-	if delErr := jctx.DBService.DeleteWorker(ctx, worker.UID); delErr != nil {
-		log.WarnContext(ctx, "Failed to delete agent's worker row",
-			"agent", agent.UID, "worker", worker.UID, "error", delErr)
+	if err := jctx.DBService.RetireAgentWorkerRow(ctx, agent.UID); err != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to delete agent's worker row",
+			"agent", agent.UID, "error", err)
 	}
 }
 
@@ -246,10 +238,22 @@ func (r *AgentGCJobRun) rescheduleSelf(ctx context.Context, jctx *jobdef.JobCont
 
 	scheduledAt := time.Now().Add(agentGCInterval)
 
-	_, err := jctx.Services.Jobs.CreateJob(
-		ctx, "", string(jobdef.JobTypeAgentGC), nil, &jobsvc.JobOptions{ScheduledAt: &scheduledAt},
-	)
+	// Carry this run's configuration into the follow-up run. Passing nil here
+	// made an operator override of StaleAfterSeconds /
+	// RevokedPurgeAfterSeconds survive exactly one sweep before silently
+	// reverting to the defaults. The zero config marshals to `{}`, which is
+	// byte-identical to what the job service derives from a nil config, so the
+	// default path's pending-job dedup is unchanged.
+	config, err := json.Marshal(r.config)
 	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to marshal agent GC config", "error", err)
+
+		config = nil
+	}
+
+	if _, err := jctx.Services.Jobs.CreateJob(
+		ctx, "", string(jobdef.JobTypeAgentGC), config, &jobsvc.JobOptions{ScheduledAt: &scheduledAt},
+	); err != nil {
 		jctx.Logger.WarnContext(ctx, "Failed to reschedule agent GC", "error", err)
 	}
 }

@@ -63,6 +63,7 @@ type Server struct {
 }
 
 // Start brings up a bastion on localhost and tears it down with the test.
+// It accepts both password and public-key auth.
 func Start(t *testing.T) *Server {
 	t.Helper()
 
@@ -98,25 +99,74 @@ func Start(t *testing.T) *Server {
 	}
 	config.AddHostKey(hostSigner)
 
+	srv.start(t, config)
+
+	return srv
+}
+
+// StartKeyboardInteractiveOnly brings up a bastion that advertises ONLY
+// "keyboard-interactive" (no "password", no public key) — the shape a
+// sshd ChallengeResponseAuthentication configuration presents. It accepts
+// the single challenge answered with Password, mirroring what a real such
+// server does when it wraps password auth this way.
+func StartKeyboardInteractiveOnly(t *testing.T) *Server {
+	t.Helper()
+
+	hostSigner, _ := newSigner(t)
+
+	srv := &Server{
+		Host:        "127.0.0.1",
+		Fingerprint: checkssh.Fingerprint(hostSigner.PublicKey()),
+		Username:    "bastion",
+		Password:    "s3cret",
+		forwards:    map[string]string{},
+		rejections:  map[string]Rejection{},
+	}
+
+	config := &ssh.ServerConfig{
+		KeyboardInteractiveCallback: func(
+			meta ssh.ConnMetadata, challenge ssh.KeyboardInteractiveChallenge,
+		) (*ssh.Permissions, error) {
+			answers, err := challenge("", "", []string{"Password: "}, []bool{false})
+			if err != nil {
+				return nil, err
+			}
+
+			if meta.User() != srv.Username || len(answers) != 1 || answers[0] != srv.Password {
+				return nil, errAuthFailed
+			}
+
+			return &ssh.Permissions{}, nil
+		},
+	}
+	config.AddHostKey(hostSigner)
+
+	srv.start(t, config)
+
+	return srv
+}
+
+// start brings the listener up and begins accepting connections under config.
+func (s *Server) start(t *testing.T, config *ssh.ServerConfig) {
+	t.Helper()
+
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 
-	srv.listener = listener
+	s.listener = listener
 
 	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		t.Fatalf("unexpected listener address type %T", listener.Addr())
 	}
 
-	srv.Port = tcpAddr.Port
+	s.Port = tcpAddr.Port
 
-	go srv.acceptLoop(config)
+	go s.acceptLoop(config)
 
 	t.Cleanup(func() { _ = listener.Close() })
-
-	return srv
 }
 
 // Forward makes the bastion connect `requested` (the address the check asks

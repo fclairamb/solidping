@@ -127,13 +127,18 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 // showing the incident's own state, so neither may overwrite it.
 func isCardReplyEvent(eventType string) bool {
 	return eventType == eventTypeIncidentComment ||
-		eventType == eventTypeIncidentAcknowledged
+		eventType == eventTypeIncidentAcknowledged ||
+		eventType == eventTypeIncidentUnacknowledged
 }
 
 // cardReplyText renders the one-line body of such a reply.
 func cardReplyText(payload *Payload) string {
 	if payload.EventType == eventTypeIncidentAcknowledged {
 		return ackEmoji + " " + ackPlainBody(payload)
+	}
+
+	if payload.EventType == eventTypeIncidentUnacknowledged {
+		return unackEmoji + " " + unackPlainBody(payload)
 	}
 
 	return commentEmoji + " " + commentPlainBody(payload)

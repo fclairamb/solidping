@@ -103,6 +103,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
 	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
+	"github.com/fclairamb/solidping/server/internal/handlers/uistate"
 	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
@@ -714,6 +715,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
 	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
 	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
+
+	// Per-user UI preferences (spec 2026-08-28-17). Deliberately NOT under
+	// /orgs/:org: the entry belongs to the authenticated user, and the
+	// organization it is about is part of the key. The key allowlist and the
+	// value size cap live in the service, so the store cannot grow into a
+	// general-purpose per-user blob dump.
+	uiStateHandler := uistate.NewHandler(uistate.NewService(s.dbService), s.config)
+	meUIState := api.NewGroup("/me/ui-state").Use(authMiddleware.RequireAuth)
+	meUIState.GET("/:key", uiStateHandler.Get)
+	meUIState.PUT("/:key", uiStateHandler.Put)
+	meUIState.DELETE("/:key", uiStateHandler.Delete)
 
 	// orgGroup builds an org-scoped route group guarded by RequireAuth +
 	// RequireOrgAccess. Every /orgs/:org/* group MUST be created through this

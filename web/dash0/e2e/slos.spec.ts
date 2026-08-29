@@ -245,8 +245,12 @@ test.describe("SLOs", () => {
 
       await page.waitForURL(new RegExp(`/slos/${slo.uid}$`), { timeout: 10000 });
       await expect(page.getByTestId("slo-form")).toHaveCount(0);
-      // PageHeader title and the status card both echo the SLO's name.
-      await expect(page.getByRole("heading", { name: newName })).toBeVisible();
+      // PageHeader renders the name as the page's h1. The status card's
+      // CardTitle (h3) echoes it too, but only once the SLO has a computed
+      // attainment window — scope to level 1 so this holds either way.
+      await expect(
+        page.getByRole("heading", { name: newName, level: 1 }),
+      ).toBeVisible();
     } finally {
       await deleteSloViaApi(page, token, slo.uid);
     }

@@ -157,6 +157,15 @@ func (s *Service) EnrollAgent(
 			return fmt.Errorf("failed to create agent: %w", err)
 		}
 
+		// A system agent that reappears with the same (region, name) is a
+		// machine replacement, not a fleet peer: retire the row it replaces
+		// here rather than leaving it to the agent_gc job's 7-day silence
+		// window. Inside the transaction on purpose — the newcomer's row and
+		// the retirement of its predecessors must commit together.
+		if _, err := db.SupersedeReplacedSystemAgents(ctx, tx, newAgent, now); err != nil {
+			return err
+		}
+
 		agent = newAgent
 
 		return nil
@@ -463,6 +472,13 @@ func (s *Service) RetireSystemAgent(ctx context.Context, uid string) error {
 	}
 
 	return nil
+}
+
+// RetireAgentWorkerRow soft-deletes the workers row an agent's connection
+// registered, resolved through the deterministic agents.WorkerSlug(uid). The
+// agent_gc job and the supersede-on-enroll path share this one implementation.
+func (s *Service) RetireAgentWorkerRow(ctx context.Context, agentUID string) error {
+	return db.RetireAgentWorkerRows(ctx, s.db, []string{agentUID}, time.Now())
 }
 
 // CheckAndStoreAgentNonce records (agentUID, nonce) as consumed, returning

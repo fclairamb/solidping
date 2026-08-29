@@ -38,10 +38,197 @@ const (
 	// frontend's pointer to the check scheduling page: a client that sees this
 	// code renders the "review scheduling" link, without parsing the message.
 	CodeOrgRateOverLimit = "ORG_RATE_OVER_LIMIT"
+	// CodeInternalNotWritable is the machine code for the internal-field
+	// refusal (spec 2026-08-27-01 / 2026-08-28-14).
+	CodeInternalNotWritable = "INTERNAL_NOT_WRITABLE"
+	// CodeInvalidRegionSpread covers a malformed or out-of-bound regionSpread.
+	CodeInvalidRegionSpread = "INVALID_REGION_SPREAD"
+	// CodeInvalidTracerouteOnFailure is an unrecognized tracerouteOnFailure value.
+	CodeInvalidTracerouteOnFailure = "INVALID_TRACEROUTE_POLICY"
+	// CodeInvalidFlappingField covers the three flapping knobs' floors.
+	CodeInvalidFlappingField = "INVALID_FLAPPING_FIELD"
+	// CodeInvalidIncidentPeriod covers confirmationPeriodSeconds /
+	// recoveryPeriodSeconds falling outside [0, MaxIncidentPeriodSeconds].
+	CodeInvalidIncidentPeriod = "INVALID_INCIDENT_PERIOD"
 )
 
 // fieldPeriod is the JSON/validation field name for the check period.
 const fieldPeriod = "period"
+
+// Field names for the request-level guards shared by CreateCheck and
+// ValidateCheck (spec 2026-08-28-14) — mirror the JSON tags of both request
+// structs exactly, since these are the same field on either shape.
+const (
+	fieldRegionSpread              = "regionSpread"
+	fieldConfirmationPeriodSeconds = "confirmationPeriodSeconds"
+	fieldRecoveryPeriodSeconds     = "recoveryPeriodSeconds"
+	fieldTracerouteOnFailure       = "tracerouteOnFailure"
+	fieldFlappingWindowSeconds     = "flappingWindowSeconds"
+	fieldFlapBackoffFactor         = "flapBackoffFactor"
+	fieldMaxRecoveryMultiplier     = "maxRecoveryMultiplier"
+)
+
+// defaultCheckPeriod mirrors models.NewCheck's default Period. CreateCheck
+// resolves the check's effective period to this before validating
+// regionSpread whenever the request doesn't propose one; ValidateCheck must
+// resolve the same fallback or a bare regionSpread (no period proposed) would
+// be checked against 0 and rejected as a false positive.
+const defaultCheckPeriod = time.Minute
+
+// requestFieldValues is the request-level field set both CreateCheck and
+// ValidateCheck check for exactly the same rules (spec 2026-08-28-14). Every
+// rule here is decidable from the request alone — no DB lookup, no write —
+// which is what makes sharing one function safe: a caller learns from
+// validate exactly what create will refuse.
+//
+// Fields intentionally NOT here (checkGroupUid, escalationPolicyUid, name,
+// description, labels, reopenCooldownMultiplier) have no create-time rule
+// that rejects any value — see the spec's Decisions section.
+type requestFieldValues struct {
+	// Internal is checked first, mirroring CreateCheck's own gate (spec
+	// 2026-08-27-01): any non-nil value is refused outright.
+	Internal *bool
+
+	// RegionSpreadPeriod is the period regionSpread is measured against —
+	// the request's own proposed period when given, else defaultCheckPeriod,
+	// exactly as CreateCheck resolves check.Period before validating
+	// regionSpread today.
+	RegionSpreadPeriod time.Duration
+	RegionSpread       *string
+
+	ConfirmationPeriodSeconds *int
+	RecoveryPeriodSeconds     *int
+	TracerouteOnFailure       *string
+	FlappingWindowSeconds     *int
+	FlapBackoffFactor         *int
+	MaxRecoveryMultiplier     *int
+}
+
+// requestFieldFinding is one request-level guard's outcome: enough to build
+// either a validate response field (Name/Code/Message) or, for the first one
+// in the list, CreateCheck's typed error (Err) — so mapping back never has to
+// re-derive it from the message.
+type requestFieldFinding struct {
+	Name    string
+	Code    string
+	Message string
+	Err     error
+}
+
+// requestFieldFindings runs, in the fixed order CreateCheck has always
+// checked them in, every request-level (non-config) guard the write paths
+// enforce. ValidateCheck turns every finding into a blocking field; CreateCheck
+// takes only the first and returns its Err — same error values as before this
+// spec, so the write paths' error shape is unchanged.
+func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
+	var findings []requestFieldFinding
+
+	// `internal` is what exempts a check from the MaxChecks quota (spec
+	// 2026-08-27-01) — nothing else is worth reporting once it's present.
+	if values.Internal != nil {
+		findings = append(findings, requestFieldFinding{
+			Name: fieldInternal, Code: CodeInternalNotWritable,
+			Message: msgInternalNotWritable, Err: ErrInternalFieldNotWritable,
+		})
+	}
+
+	findings = appendRegionSpreadFinding(findings, values)
+	findings = appendTracerouteFinding(findings, values)
+	findings = appendFlappingFindings(findings, values)
+	findings = appendIncidentPeriodFindings(findings, values)
+
+	return findings
+}
+
+// appendRegionSpreadFinding checks regionSpread's 0 <= spread < period bound
+// (spec 2026-07-20-05) — split out of requestFieldFindings to keep its
+// cyclomatic complexity down.
+func appendRegionSpreadFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.RegionSpread == nil || *values.RegionSpread == "" {
+		return findings
+	}
+
+	var spread timeutils.Duration
+	if err := spread.Scan(*values.RegionSpread); err != nil {
+		return append(findings, requestFieldFinding{
+			Name: fieldRegionSpread, Code: CodeInvalidRegionSpread, Message: err.Error(), Err: err,
+		})
+	}
+
+	if err := validateRegionSpread(time.Duration(spread), values.RegionSpreadPeriod); err != nil {
+		return append(findings, requestFieldFinding{
+			Name: fieldRegionSpread, Code: CodeInvalidRegionSpread, Message: err.Error(), Err: err,
+		})
+	}
+
+	return findings
+}
+
+// appendTracerouteFinding checks the tracerouteOnFailure enum (spec
+// 2026-08-21-10).
+func appendTracerouteFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.TracerouteOnFailure == nil {
+		return findings
+	}
+
+	if _, ok := parseTraceroutePolicy(*values.TracerouteOnFailure); !ok {
+		findings = append(findings, requestFieldFinding{
+			Name: fieldTracerouteOnFailure, Code: CodeInvalidTracerouteOnFailure,
+			Message: errInvalidTraceroutePolicy.Error(), Err: errInvalidTraceroutePolicy,
+		})
+	}
+
+	return findings
+}
+
+// appendFlappingFindings checks the three adaptive-recovery knobs' floors
+// (spec 2026-06-30-07).
+func appendFlappingFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.FlappingWindowSeconds != nil && *values.FlappingWindowSeconds < 0 {
+		findings = append(findings, requestFieldFinding{
+			Name: fieldFlappingWindowSeconds, Code: CodeInvalidFlappingField,
+			Message: errFlappingWindowNegative.Error(), Err: errFlappingWindowNegative,
+		})
+	}
+	if values.FlapBackoffFactor != nil && *values.FlapBackoffFactor < 1 {
+		findings = append(findings, requestFieldFinding{
+			Name: fieldFlapBackoffFactor, Code: CodeInvalidFlappingField,
+			Message: errFlapBackoffTooSmall.Error(), Err: errFlapBackoffTooSmall,
+		})
+	}
+	if values.MaxRecoveryMultiplier != nil && *values.MaxRecoveryMultiplier < 1 {
+		findings = append(findings, requestFieldFinding{
+			Name: fieldMaxRecoveryMultiplier, Code: CodeInvalidFlappingField,
+			Message: errMaxRecoveryMultTooSmall.Error(), Err: errMaxRecoveryMultTooSmall,
+		})
+	}
+
+	return findings
+}
+
+// appendIncidentPeriodFindings checks confirmationPeriodSeconds and
+// recoveryPeriodSeconds against [0, MaxIncidentPeriodSeconds] (spec
+// 2026-05-08-02).
+func appendIncidentPeriodFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+	if values.ConfirmationPeriodSeconds != nil {
+		if err := validateIncidentPeriod(*values.ConfirmationPeriodSeconds); err != nil {
+			findings = append(findings, requestFieldFinding{
+				Name: fieldConfirmationPeriodSeconds, Code: CodeInvalidIncidentPeriod, Message: err.Error(),
+				Err: fmt.Errorf("%s: %w", fieldConfirmationPeriodSeconds, err),
+			})
+		}
+	}
+	if values.RecoveryPeriodSeconds != nil {
+		if err := validateIncidentPeriod(*values.RecoveryPeriodSeconds); err != nil {
+			findings = append(findings, requestFieldFinding{
+				Name: fieldRecoveryPeriodSeconds, Code: CodeInvalidIncidentPeriod, Message: err.Error(),
+				Err: fmt.Errorf("%s: %w", fieldRecoveryPeriodSeconds, err),
+			})
+		}
+	}
+
+	return findings
+}
 
 // validateFindings accumulates one validate pass.
 //
@@ -176,6 +363,7 @@ func (s *Service) ValidateCheck(
 	effective := s.validateConfigFindings(ctx, orgUID, req, checker, findings)
 	period := s.validatePeriodFindings(req, effective, findings)
 	s.validateSlugFindings(ctx, orgUID, req, findings)
+	validateRequestFieldFindings(req, period, findings)
 
 	depFields, depErr := s.validateDependsOn(ctx, orgSlug, req.Slug, req.DependsOn)
 	if depErr != nil {
@@ -296,6 +484,34 @@ func (s *Service) validateSlugFindings(
 	}
 
 	findings.addError(fieldSlug, CodeSlugTaken, msgSlugConflictOrg)
+}
+
+// validateRequestFieldFindings runs the request-level guards CreateCheck
+// enforces (spec 2026-08-28-14) — internal, regionSpread's bound, the
+// tracerouteOnFailure enum, the flapping knobs' floors, and the incident
+// periods' bound — reporting EVERY finding as blocking, unlike CreateCheck
+// which stops at the first. period is the proposed period parsed by
+// validatePeriodFindings (0 when none was proposed).
+func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duration, findings *validateFindings) {
+	regionSpreadPeriod := period
+	if period == 0 {
+		regionSpreadPeriod = defaultCheckPeriod
+	}
+
+	fieldFindings := requestFieldFindings(requestFieldValues{
+		Internal:                  req.Internal,
+		RegionSpreadPeriod:        regionSpreadPeriod,
+		RegionSpread:              req.RegionSpread,
+		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
+		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
+		TracerouteOnFailure:       req.TracerouteOnFailure,
+		FlappingWindowSeconds:     req.FlappingWindowSeconds,
+		FlapBackoffFactor:         req.FlapBackoffFactor,
+		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+	})
+	for i := range fieldFindings {
+		findings.addError(fieldFindings[i].Name, fieldFindings[i].Code, fieldFindings[i].Message)
+	}
 }
 
 // orgRateWarning projects the org's checks-per-minute demand with this check's

@@ -58,6 +58,10 @@ import {
   normalizeStatusPattern,
 } from "@/lib/http-status";
 import {
+  JsonAssertionEditor,
+  type AssertionNode,
+} from "@/components/checks/json-assertion-editor";
+import {
   CollapsibleCode,
   CopyableCode,
   CopyableInline,
@@ -71,6 +75,7 @@ import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-sche
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
+import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
@@ -211,6 +216,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
+  { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
@@ -226,6 +232,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "check-group-picker", label: "Check group picker" },
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
+  { id: "clickable-status-banner", label: "Clickable status banner" },
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "availability-strip", label: "Availability strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
@@ -233,6 +240,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "stats-strip", label: "Stats strip" },
   { id: "swatch-legend-chips", label: "Swatch-legend chips" },
   { id: "paging-coverage", label: "Paging coverage" },
+  { id: "onboarding-checklist", label: "Onboarding checklist" },
 ];
 
 function DesignReferencePage() {
@@ -259,6 +267,7 @@ function DesignReferencePage() {
       <LiveDotSection />
       <FormsSection />
       <DataDisplaySection />
+      <ResponsiveTableSection />
       <ListSurfaceSection />
       <CopyableCodeSection />
       <CopyableInlineSection />
@@ -274,7 +283,9 @@ function DesignReferencePage() {
       <CheckMultiPickerSection />
       <CheckGroupPickerSection />
       <TokenChipsInputSection />
+      <JsonAssertionEditorSection />
       <KpiTileSection />
+      <ClickableStatusBannerSection />
       <UptimeStripSection />
       <AvailabilityStripSection />
       <JobsPrimitivesSection />
@@ -282,6 +293,7 @@ function DesignReferencePage() {
       <StatsStripSection />
       <SwatchLegendChipsSection />
       <PagingCoverageSection />
+      <OnboardingChecklistSection />
     </div>
   );
 }
@@ -2416,8 +2428,10 @@ function FormsSection() {
           A field that accepts <em>either</em> a pasted URL or an uploaded file
           renders as one row: a fixed-size preview tile with a{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">lucide</code>{" "}
-          placeholder icon, the URL input, an outline <strong>Upload</strong>{" "}
-          button driving a hidden{" "}
+          placeholder icon, then <em>one</em> of two mutually-exclusive
+          affordances for the source, then an outline{" "}
+          <strong>Upload</strong>/<strong>Replace</strong> button driving a
+          hidden{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             &lt;input type="file"&gt;
           </code>
@@ -2428,7 +2442,34 @@ function FormsSection() {
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             min-w-0 flex-1
           </code>{" "}
-          so it never overflows. Shipped in{" "}
+          so it never overflows.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <strong>Never feed a stored value into the URL input sight-unseen.</strong>{" "}
+          If the current value can also come from an upload (a relative,
+          server-generated path rather than a URL the user typed), track the
+          source in state instead of overloading one{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            type="url"
+          </code>{" "}
+          field: an uploaded value renders as a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            Badge variant="secondary"
+          </code>{" "}
+          ("Uploaded file") plus a text{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            variant="link"
+          </code>{" "}
+          button ("Use an external URL instead") that swaps in the input; a
+          typed or empty URL renders the input itself. A relative path landing
+          in a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            type="url"
+          </code>{" "}
+          input fails native constraint validation and silently blocks the
+          whole form's submit — this pattern exists to rule that out
+          structurally. Last-action-wins: a successful upload always switches
+          back to the badge view. Shipped in{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             components/shared/org-profile-card.tsx
           </code>
@@ -2481,44 +2522,67 @@ function FormsSection() {
 
 function ImageFieldExample() {
   const [url, setUrl] = useState("");
+  // Mirrors org-profile-card.tsx: an uploaded value never lands in the
+  // type="url" input — it renders as a badge + "use a URL instead" toggle.
+  const [uploaded, setUploaded] = useState(false);
+  const previewUrl = uploaded ? "/pub/assets/example-uid" : url;
 
   return (
     <ExampleRow
       preview={
         <div className="flex w-full flex-wrap items-center gap-3">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
-            {url ? (
-              <img src={url} alt="" className="h-full w-full object-contain" />
+            {previewUrl ? (
+              <div className="flex h-full w-full items-center justify-center bg-primary/10 text-[10px] font-medium text-primary">
+                IMG
+              </div>
             ) : (
               <Building2 className="h-6 w-6 text-muted-foreground" />
             )}
           </div>
-          <Input
-            type="url"
-            placeholder="https://example.com/logo.png"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="min-w-0 flex-1"
-          />
-          <Button type="button" variant="outline">
+          {uploaded ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+              <Badge variant="secondary">Uploaded file</Badge>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-xs"
+                onClick={() => setUploaded(false)}
+              >
+                Use an external URL instead
+              </Button>
+            </div>
+          ) : (
+            <Input
+              type="url"
+              placeholder="https://example.com/logo.png"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="min-w-0 flex-1"
+            />
+          )}
+          <Button type="button" variant="outline" onClick={() => setUploaded(true)}>
             <Upload className="mr-2 h-4 w-4" />
-            Upload
+            {previewUrl ? "Replace" : "Upload"}
           </Button>
-          {url && (
+          {previewUrl && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="text-destructive"
               aria-label="Remove image"
-              onClick={() => setUrl("")}
+              onClick={() => {
+                setUrl("");
+                setUploaded(false);
+              }}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
         </div>
       }
-      importLine={`const fileInput = useRef<HTMLInputElement>(null);\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {url ? <img src={url} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n<Input type="url" value={url} onChange={...} className="min-w-0 flex-1" />\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  Upload\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
+      importLine={`const fileInput = useRef<HTMLInputElement>(null);\n// isUploadedLogoPath(value) === !value.startsWith("http") && value !== ""\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {currentUrl ? <img src={currentUrl} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n{showUrlField ? (\n  <Input type="url" value={urlDraft} onChange={...} className="min-w-0 flex-1" />\n) : (\n  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">\n    <Badge variant="secondary">Uploaded file</Badge>\n    <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={() => setShowUrlField(true)}>Use an external URL instead</Button>\n  </div>\n)}\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  {currentUrl ? "Replace" : "Upload"}\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
     />
   );
 }
@@ -2864,6 +2928,136 @@ function DataDisplaySection() {
       <CodeSnippet
         code={`<TableHead>Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
       />
+    </Section>
+  );
+}
+
+/* Two example tables sharing the same tier logic as the checks and incidents
+ * list pages (spec 2026-08-28-08): identity + the one "live signal" column +
+ * row actions stay visible at every width; the widest or most redundant
+ * columns fold away first via `hidden <bp>:table-cell`. Shrink the browser
+ * window (or the design-reference iframe) to see Type/Target/Status drop off
+ * below `sm`/`md`. */
+function ResponsiveDemoTable() {
+  const rows: {
+    id: string;
+    name: string;
+    type: string;
+    target: string;
+    status: "up" | "warning";
+    response: string;
+  }[] = [
+    {
+      id: "1",
+      name: "api.acme.com health",
+      type: "HTTP",
+      target: "https://api.acme.com/health",
+      status: "up",
+      response: "42ms",
+    },
+    {
+      id: "2",
+      name: "checkout-prod-gateway-eu",
+      type: "TCP",
+      target: "checkout.acme.com:443",
+      status: "warning",
+      response: "812ms",
+    },
+  ];
+
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead className="hidden sm:table-cell">Type</TableHead>
+            <TableHead className="hidden md:table-cell">Target</TableHead>
+            <TableHead className="hidden md:table-cell">Status</TableHead>
+            <TableHead>Response</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
+              <TableCell className="max-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <StatusDot status={row.status} />
+                  <span className="min-w-0 truncate">{row.name}</span>
+                </div>
+              </TableCell>
+              <TableCell className="hidden sm:table-cell">
+                {row.type}
+              </TableCell>
+              <TableCell className="hidden max-w-[220px] truncate font-mono text-xs text-muted-foreground md:table-cell">
+                {row.target}
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
+                <StatusBadge status={row.status} />
+              </TableCell>
+              <TableCell className="font-mono text-xs">
+                {row.response}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ResponsiveTableSection() {
+  return (
+    <Section
+      id="responsive-table"
+      title="Responsive table"
+      description="Hide secondary columns below a breakpoint instead of letting a wide table fall back to horizontal scroll. Used by the checks and incidents list pages (spec 2026-08-28-08); the canonical pattern for any list page with more columns than fit a phone."
+    >
+      <ResponsiveDemoTable />
+      <CodeSnippet
+        code={`<TableHead>Name</TableHead>\n<TableHead className="hidden sm:table-cell">Type</TableHead>\n<TableHead className="hidden md:table-cell">Target</TableHead>\n\n<TableCell className="max-w-0">\n  <div className="flex min-w-0 items-center gap-2">\n    <StatusDot status={row.status} />\n    {/* min-w-0 on the span too — a flex item's default min-width:auto\n        stops "truncate" from ever actually shrinking it below its\n        content size. */}\n    <span className="min-w-0 truncate">{row.name}</span>\n  </div>\n</TableCell>\n<TableCell className="hidden sm:table-cell">{row.type}</TableCell>\n<TableCell className="hidden md:table-cell">{row.target}</TableCell>`}
+      />
+      <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+        <li>
+          <strong className="text-foreground">Always the head/cell pair.</strong>{" "}
+          Apply the exact same <code>hidden &lt;bp&gt;:table-cell</code> class
+          to the <code>TableHead</code> AND every matching{" "}
+          <code>TableCell</code> in that column. A mismatched pair doesn't
+          error — it silently shifts every following column under the wrong
+          header, and only at the breakpoint where it applies, so it's easy
+          to ship and hard to notice in review.
+        </li>
+        <li>
+          <strong className="text-foreground">Tier by importance, not by width.</strong>{" "}
+          Identity (name/title, ideally with its status dot folded in), the
+          one live/primary signal, and row actions stay visible at every
+          width. The widest or most redundant columns — a status badge next
+          to a dot that already conveys it, a "check" column that duplicates
+          the row's own title — fold away first, at{" "}
+          <code>sm</code> then <code>md</code>.
+        </li>
+        <li>
+          <strong className="text-foreground">
+            Hiding columns alone doesn't stop overflow.
+          </strong>{" "}
+          A remaining cell whose content can't shrink — a long check name, an
+          incident title, a UUID — still forces the page wider even after
+          every secondary column is gone. Give that <code>TableCell</code>{" "}
+          <code>max-w-0</code> and its content <code>truncate</code> (add an
+          explicit <code>max-w-[…]</code> when the cell holds more than one
+          flex child, as in the incidents title cell's dot + badges + title).
+          When the truncated element is itself a flex item (inside a{" "}
+          <code>flex</code> row, not just a plain block), it also needs its
+          own <code>min-w-0</code> — a flex item's default{" "}
+          <code>min-width: auto</code> stops <code>truncate</code> from ever
+          shrinking it below its content size, so the class is present but
+          silently does nothing. A badge cluster in the same cell needs{" "}
+          <code>flex-wrap</code> too, or a badge-heavy row overflows
+          regardless of column hiding. Verify
+          against <code>document.documentElement.scrollWidth {"<="} clientWidth</code>{" "}
+          at 375px — the real invariant, not just "the columns look hidden."
+        </li>
+      </ul>
     </Section>
   );
 }
@@ -4296,6 +4490,92 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
   );
 }
 
+function ClickableStatusBannerSection() {
+  const { org } = Route.useParams();
+  const snippet = `import { Link } from "@tanstack/react-router";
+import { AlertTriangle } from "lucide-react";
+
+// A full-width status banner that IS the fastest path to acting on the
+// problem it announces, not just a description of it — incidents take
+// priority over a bare down check, since an incident carries the
+// ack/snooze/resolve workflow. Wrap in <Link>, never a div + onClick, so
+// keyboard focus, middle-click and copy-link keep working. The hover
+// affordance (cursor-pointer + a stronger border/background) is what tells
+// the operator the whole card is clickable, not just a decorative alert.
+<Link
+  to="/orgs/$org/incidents"
+  params={{ org }}
+  search={{ state: "active", showSuppressed: undefined, checkUid: undefined }}
+  data-testid="overall-status-banner"
+  className="block"
+>
+  <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-destructive/50 hover:bg-destructive/15">
+    <div className="flex items-center gap-3">
+      <AlertTriangle className="h-4 w-4 text-destructive" />
+      <h2 className="text-sm font-semibold text-destructive">Issues detected</h2>
+      <span className="text-xs text-muted-foreground">1 active incident</span>
+    </div>
+  </div>
+</Link>`;
+  return (
+    <Section
+      id="clickable-status-banner"
+      title="Clickable status banner"
+      description="The org dashboard's full-width status banner (OverallStatusBanner in dashboard-page.tsx): a red or amber alert that is ALSO the fastest path to the list it is complaining about. Link priority is incidents first (an active incident carries the ack/snooze/resolve workflow; a down check without one is just a state), then the checks list filtered to the relevant status. The all-clear green banner stays inert — there's nothing to jump to. Same hover treatment as KPI tiles (cursor-pointer plus a stronger border/background), applied to a banner instead of a tile."
+    >
+      <ExampleRow
+        preview={
+          <div className="w-full max-w-xl space-y-2">
+            <Link
+              to="/orgs/$org/incidents"
+              params={{ org }}
+              search={{
+                state: "active" as const,
+                showSuppressed: undefined,
+                checkUid: undefined,
+              }}
+              data-testid="design-reference-clickable-banner-incidents"
+              className="block"
+            >
+              <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-destructive/50 hover:bg-destructive/15">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  <h2 className="text-sm font-semibold text-destructive">
+                    Issues detected
+                  </h2>
+                  <span className="text-xs text-muted-foreground">
+                    1 active incident
+                  </span>
+                </div>
+              </div>
+            </Link>
+            <Link
+              to="/orgs/$org/checks"
+              params={{ org }}
+              search={{ status: "warning" }}
+              data-testid="design-reference-clickable-banner-checks"
+              className="block"
+            >
+              <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-amber-500/50 hover:bg-amber-500/15">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                  <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                    Some checks degraded
+                  </h2>
+                  <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                    Timeouts detected on 3 checks
+                  </span>
+                </div>
+              </div>
+            </Link>
+          </div>
+        }
+        importLine={snippet}
+      />
+    </Section>
+  );
+}
+
 function UptimeStripSection() {
   // 24 hourly buckets, oldest → newest. A mix of full uptime, a partial hour,
   // a down hour, and a couple of no-data hours to exercise every cell color.
@@ -4570,6 +4850,50 @@ function TokenChipsInputSection() {
             normalize={normalizeStatusPattern}
             placeholder="200"
           />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function JsonAssertionEditorSection() {
+  const [empty, setEmpty] = useState<AssertionNode | null>(null);
+  const [single, setSingle] = useState<AssertionNode | null>({
+    type: "assertion",
+    path: "$.status",
+    operator: "eq",
+    value: "ok",
+  });
+  const [group, setGroup] = useState<AssertionNode | null>({
+    type: "and",
+    children: [
+      { type: "assertion", path: "$.status", operator: "eq", value: "ok" },
+      { type: "assertion", path: "$.uptime", operator: "gt", value: "0" },
+    ],
+  });
+
+  return (
+    <Section
+      id="json-assertion-editor"
+      title="JSON assertion editor"
+      description="Recursive editor for the HTTP checker's JSONPath assertion AST — a leaf tests one JSONPath expression against an operator (eq/neq/gt/gte/lt/lte/contains/regex/exists/not_exists), and and/or group nodes nest arbitrarily. value is a required (string) argument, or an empty ready state before the first field is filled in; onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ JsonAssertionEditor }"} from
+        "@/components/checks/json-assertion-editor"
+      </p>
+      <div className="grid gap-4 max-w-2xl">
+        <div className="space-y-2">
+          <Label>Empty — shows the add-assertion button</Label>
+          <JsonAssertionEditor value={empty} onChange={setEmpty} />
+        </div>
+        <div className="space-y-2">
+          <Label>Single leaf assertion</Label>
+          <JsonAssertionEditor value={single} onChange={setSingle} />
+        </div>
+        <div className="space-y-2">
+          <Label>AND group with two assertions</Label>
+          <JsonAssertionEditor value={group} onChange={setGroup} />
         </div>
       </div>
     </Section>
@@ -4977,6 +5301,48 @@ const emailOnly = useEmailOnlyUserUids(org);
           </div>
         </div>
       </div>
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+function OnboardingChecklistSection() {
+  const { org } = Route.useParams();
+  const snippet = `import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+
+// Container: derives every step from real resources and reads/writes the
+// per-user dismissal (\`onboarding.<org>\` ui-state) itself.
+<OnboardingChecklist org={org} totalChecks={stats.total} firstCheckUid={checks[0]?.uid} />
+
+// Presentation only, for a surface that already has the data:
+import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
+<OnboardingChecklistCard org={org} steps={steps} allSet={false} onDismiss={hide} />`;
+
+  return (
+    <Section
+      id="onboarding-checklist"
+      title="Onboarding checklist"
+      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back."
+    >
+      <ExampleRow
+        preview={
+          <div className="max-w-2xl">
+            <OnboardingChecklistCard
+              org={org}
+              steps={[
+                { id: "check", done: true },
+                { id: "alerts", done: true },
+                { id: "report", done: false },
+                { id: "statusPage", done: false },
+                { id: "team", done: false },
+              ]}
+              allSet={false}
+              onDismiss={() => {}}
+            />
+          </div>
+        }
+        importLine={'import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";'}
+      />
       <CodeSnippet code={snippet} />
     </Section>
   );

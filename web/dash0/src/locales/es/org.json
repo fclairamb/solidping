@@ -13,8 +13,12 @@
       "renameWarning": "Todas las URL de esta organización cambian: enlaces del panel, páginas de estado, insignias SVG y widgets integrados. Los enlaces existentes siguen funcionando: la dirección antigua redirige a la nueva, pero solo hasta que otra organización la reclame.",
       "logo": "Logotipo",
       "logoHelp": "Pegue la URL de una imagen o suba un PNG, JPEG, WebP, GIF o SVG de hasta 1 MB.",
+      "logoHelpUploaded": "Este logotipo se subió como archivo. Suba un archivo nuevo para reemplazarlo, o cambie a una URL externa.",
       "logoUploaded": "Logotipo actualizado.",
+      "uploadedBadge": "Archivo subido",
+      "useExternalUrl": "Usar una URL externa en su lugar",
       "upload": "Subir",
+      "replace": "Reemplazar",
       "removeLogo": "Quitar logotipo"
     },
     "autoJoin": "Adhesión automática",

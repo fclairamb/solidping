@@ -6,7 +6,7 @@
 //   - Email+password → "password"
 //
 // Guards mirror the existing storage helpers (getToken/setSession in
-// api/client.ts, FirstResultCelebration in components/dashboard/dashboard-page.tsx):
+// api/client.ts, the collapsed-groups map in routes/orgs/$org/checks.index.tsx):
 // SSR-safe via a typeof-window check, and every access is wrapped in try/catch
 // because localStorage can throw in private mode or when storage is disabled.
 

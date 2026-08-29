@@ -39,6 +39,7 @@ const (
 	fieldCustomCSS      = "customCss"
 	fieldCheckUID       = "checkUid"
 	fieldCheckGroupUID  = "checkGroupUid"
+	fieldCheckUIDs      = "checkUids"
 	fieldSettings       = "settings"
 	respKeyData         = "data"
 	msgInvalidJSON      = "Invalid JSON format"
@@ -884,6 +885,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, request *htt
 	case errors.Is(err, ErrInvalidHistoryPeriod):
 		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
 			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
+		})
+	case errors.Is(err, ErrCheckUIDInvalid):
+		return h.WriteValidationError(writer, "Invalid check uid", []base.ValidationErrorField{
+			{Name: fieldCheckUIDs, Message: err.Error()},
 		})
 	default:
 		return h.WriteInternalError(writer, request, err)

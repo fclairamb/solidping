@@ -841,4 +841,171 @@ test.describe("Dashboard", () => {
       { headers: { Authorization: `Bearer ${token}` } },
     );
   });
+
+  // --- Clickable status banner (spec 2026-08-28-10) --------------------------
+  // The banner used to be a dead end: an operator who saw "Issues detected"
+  // had to hunt through the sidebar for the incidents page or the checks
+  // list. It is now a real <Link>, with incidents taking priority over a
+  // bare down check (an active incident carries the ack/snooze/resolve
+  // workflow; a down check without one is just a state).
+
+  test("with an active incident, the red banner links to the incidents list filtered to active", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await mockDashboard(page, {
+      checks: [
+        { uid: "a1111111-1111-1111-1111-111111111111", name: "Payments API", status: "down" },
+      ],
+      incidents: [
+        {
+          uid: "a2222222-2222-2222-2222-222222222222",
+          title: "Payments API is down",
+          state: "active",
+          startedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+        },
+      ],
+      stats: { down: 1, hardDown: 1 },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText("Issues detected");
+
+    await banner.click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toMatch(/\/orgs\/test\/incidents\?state=active/);
+  });
+
+  test("with only a down check (no active incident), the red banner links to the checks list filtered to down", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await mockDashboard(page, {
+      checks: [
+        { uid: "a3333333-3333-3333-3333-333333333333", name: "Payments API", status: "down" },
+      ],
+      incidents: [],
+      stats: { down: 1, hardDown: 1 },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(banner).toBeVisible({ timeout: 10000 });
+
+    await banner.click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toMatch(/\/orgs\/test\/checks\?status=down/);
+  });
+
+  test("the amber degraded banner links to the checks list filtered to warning", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Timeouts only: down > 0 but hardDown = 0 keeps the banner on the amber
+    // "Degraded Performance" branch (dashboard-page.tsx's
+    // timeoutOnlyCount = downCount - hardDownCount).
+    await mockDashboard(page, {
+      checks: [
+        { uid: "a4444444-4444-4444-4444-444444444444", name: "Slow API", status: "warning" },
+      ],
+      incidents: [],
+      stats: { down: 1, hardDown: 0 },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText("Some checks degraded");
+
+    await banner.click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toMatch(/\/orgs\/test\/checks\?status=warning/);
+  });
+
+  test("recovered check but open incident: subtitle names the incident and never claims 'No active incidents'", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // The exact regression from the spec: hardDownCount = 0 (the check
+    // recovered) but incidentsCount > 0 (the incident is still open) --
+    // exactly the state that keeps the RED branch alive via
+    // `hardDownCount > 0 || incidentsCount > 0`. Before the fix, a single
+    // `count: hardDownCount` selector picked `issuesSub_zero`, "No active
+    // incidents", flatly contradicting the banner firing because of that
+    // incident.
+    await mockDashboard(page, {
+      checks: [
+        { uid: "a5555555-5555-5555-5555-555555555555", name: "Payments API", status: "up" },
+      ],
+      incidents: [
+        {
+          uid: "a6666666-6666-6666-6666-666666666666",
+          title: "Payments API had an outage",
+          state: "active",
+          startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        },
+      ],
+      stats: { down: 0, hardDown: 0 },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText("Issues detected");
+    await expect(banner).toContainText("1 active incident");
+    await expect(banner).not.toContainText("No active incident");
+    await expect(banner).not.toContainText("check down");
+
+    // Still links to the incidents list, since incidentsCount > 0.
+    await banner.click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toMatch(/\/orgs\/test\/incidents\?state=active/);
+  });
+
+  test("with both a down check and an active incident, each subtitle fragment pluralizes on its own count", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const incidents = Array.from({ length: 1 }, (_, i) => ({
+      uid: `a777777${i}-7777-7777-7777-777777777777`,
+      title: `Incident ${i}`,
+      state: "active",
+      startedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    }));
+
+    await mockDashboard(page, {
+      checks: [
+        { uid: "a8888888-8888-8888-8888-888888888881", name: "API One", status: "down" },
+        { uid: "a8888888-8888-8888-8888-888888888882", name: "API Two", status: "down" },
+      ],
+      incidents,
+      stats: { down: 2, hardDown: 2 },
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const banner = page.getByTestId("overall-status-banner");
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    // "2 checks down" (plural) AND "1 active incident" (singular) -- each
+    // fragment reflects its OWN count, not a single shared selector.
+    await expect(banner).toContainText("2 checks down");
+    await expect(banner).toContainText("1 active incident");
+    await expect(banner).not.toContainText("1 active incidents");
+  });
 });

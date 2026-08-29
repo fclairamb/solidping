@@ -107,9 +107,17 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(input).toBeVisible({ timeout: 3000 });
 
     // Verify pages group is shown
+    // "Checks" alone is anchored: the palette also lists seeded CHECK
+    // entities, whose item text is name+slug concatenated. A check named
+    // "Screenshot Check" with slug "shot-check" renders "Screenshot
+    // Checkshot-check", which CONTAINS "Checks" — so a plain substring filter
+    // trips strict mode or passes purely on the luck of the org's seed data.
+    // The others stay substring matches on purpose: a string `hasText` is
+    // case-insensitive, which is what lets "Tokens" match the item "API
+    // tokens". Anchoring them all breaks exactly that.
     await expect(page.getByText("Pages", { exact: true })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Dashboard" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Checks" })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: /^Checks$/i })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Events" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
@@ -198,6 +206,33 @@ test.describe("Command Menu (Cmd+K)", () => {
 
     await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
     expect(page.url()).toContain("/organization/members");
+    await expect(input).not.toBeVisible();
+  });
+
+  test("should offer the uptime report and navigate to it", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // The page lives under Organization and is otherwise only reachable by
+    // clicking through the org tab bar, which is the point of listing it here.
+    await expect(
+      page.getByTestId("command-menu-report-schedules"),
+    ).toBeVisible();
+
+    await input.pressSequentially("uptime", { delay: 50 });
+    await expect(
+      page.getByTestId("command-menu-report-schedules"),
+    ).toBeVisible();
+    await page.keyboard.press("Enter");
+
+    await page.waitForURL(/\/organization\/report-schedules/, { timeout: 5000 });
+    expect(page.url()).toContain("/organization/report-schedules");
     await expect(input).not.toBeVisible();
   });
 

@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
 
 const (
@@ -304,7 +305,7 @@ func Dial(ctx context.Context, cfg *checkssh.SSHConfig) (*Dialer, io.Closer, err
 		port = defaultSSHPort
 	}
 
-	authMethod, err := authMethodFor(cfg)
+	authMethods, err := authMethodsFor(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -333,7 +334,7 @@ func Dial(ctx context.Context, cfg *checkssh.SSHConfig) (*Dialer, io.Closer, err
 
 	clientConfig := &ssh.ClientConfig{
 		User:            cfg.Username,
-		Auth:            []ssh.AuthMethod{authMethod},
+		Auth:            authMethods,
 		HostKeyCallback: fixedFingerprintCallback(cfg.ExpectedFingerprint),
 		Timeout:         timeout,
 	}
@@ -359,18 +360,18 @@ func Dial(ctx context.Context, cfg *checkssh.SSHConfig) (*Dialer, io.Closer, err
 	return &Dialer{client: client}, client, nil
 }
 
-func authMethodFor(cfg *checkssh.SSHConfig) (ssh.AuthMethod, error) {
+func authMethodsFor(cfg *checkssh.SSHConfig) ([]ssh.AuthMethod, error) {
 	if cfg.PrivateKey != "" {
 		signer, err := ssh.ParsePrivateKey([]byte(cfg.PrivateKey))
 		if err != nil {
 			return nil, wrapErr("credentials", fmt.Errorf("%w: %w", ErrNoCredentials, err))
 		}
 
-		return ssh.PublicKeys(signer), nil
+		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
 	}
 
 	if cfg.Password != "" {
-		return ssh.Password(cfg.Password), nil
+		return sshauth.PasswordMethods(cfg.Password), nil
 	}
 
 	return nil, wrapErr("credentials", ErrNoCredentials)

@@ -10,6 +10,14 @@
     "namePlaceholder": "Su nombre",
     "saved": "Perfil guardado."
   },
+  "onboardingChecklist": {
+    "title": "Lista de primeros pasos",
+    "subtitle": "La lista del panel que te guía por las alertas, los informes y las páginas de estado. Se oculta por organización y te sigue entre dispositivos.",
+    "body": "Vuelve a mostrar la lista de primeros pasos en el panel de {{org}}.",
+    "cta": "Mostrar la lista",
+    "restored": "La lista de primeros pasos ha vuelto al panel de {{org}}.",
+    "failed": "No se ha podido restaurar la lista de primeros pasos."
+  },
   "tokens": {
     "title": "Tokens de API",
     "subtitle": "Gestione sus tokens de acceso personal.",
