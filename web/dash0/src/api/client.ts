@@ -69,6 +69,17 @@ export function setSession(
   refreshToken?: string,
   expiresIn?: number
 ): void {
+  // Defense in depth (spec 2026-08-29-06): a login-shaped response missing
+  // its access token must never reach here — every caller is expected to
+  // treat that as its own error path — but if one ever does, silently
+  // writing the literal string "undefined" into localStorage is worse than
+  // refusing outright: it looks like a session, sends
+  // `Authorization: Bearer undefined` on the next request, and gets the
+  // user logged out with no indication anything went wrong.
+  if (!accessToken) {
+    console.error("setSession called with no access token — refusing to persist a session");
+    return;
+  }
   localStorage.setItem(TOKEN_KEY, accessToken);
   if (refreshToken) {
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);

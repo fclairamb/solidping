@@ -3304,9 +3304,12 @@ export function useConfirmRegistration() {
       // Login-shaped response — the backend mints a full session (refresh
       // token + expiry included) just like password/OAuth login, so both
       // fields must be captured here and passed to setSession, not dropped
-      // (2026-07-08 funnel audit).
+      // (2026-07-08 funnel audit). accessToken is optional in the type
+      // (not just in practice): applyConfirmRegistrationHandoff treats its
+      // absence as a failure path rather than assuming the string always
+      // shows up (spec 2026-08-29-06).
       apiFetch<{
-        accessToken: string;
+        accessToken?: string;
         refreshToken?: string;
         expiresIn?: number;
         user: {

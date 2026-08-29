@@ -1,6 +1,60 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, handleResponse } from "./client";
+import { ApiError, getToken, handleResponse, setSession } from "./client";
+
+// Regression test for spec 2026-08-29-06: a login-shaped response missing
+// its access token (the confirm-registration zero-org bug) used to reach
+// here and get `localStorage.setItem(TOKEN_KEY, undefined)`, which
+// JavaScript coerces to the literal string "undefined" — a session that
+// LOOKS present but sends `Authorization: Bearer undefined` on every
+// request and gets the user logged straight back out.
+describe("setSession", () => {
+  let store: Record<string, string>;
+
+  beforeEach(() => {
+    store = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("persists a real access token normally", () => {
+    setSession("at-1", "rt-1", 3600);
+
+    expect(getToken()).toBe("at-1");
+  });
+
+  it("refuses to persist a falsy access token instead of writing the string \"undefined\"", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // @ts-expect-error — exercising the runtime guard against a caller that
+    // ignores the type system (exactly what used to happen here).
+    setSession(undefined, "rt-1", 3600);
+
+    expect(getToken()).toBeNull();
+    expect(store["solidping_session_token"]).not.toBe("undefined");
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("refuses to persist an empty-string access token", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    setSession("", "rt-1", 3600);
+
+    expect(getToken()).toBeNull();
+  });
+});
 
 // handleResponse must tolerate an empty body under *any* successful status,
 // not just 204 — see specs/todos/2026-08-21-04-test-report-send-202-empty-body.md.
