@@ -2430,11 +2430,16 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	// Try to resolve an org for login response
 	members, _ := s.db.ListMembersByUser(ctx, user.UID)
 	if len(members) == 0 {
-		// No org to login to - return minimal response
-		return &LoginResponse{
-			TokenType: tokenTypeBearer,
-			User:      newUserInfo(user, ""),
-		}, nil
+		// No org to join yet — mint an org-less session (access token only,
+		// no refresh token) rather than a bare user payload, mirroring
+		// completeLogin's resolvedOrg==nil branch, so the frontend lands on
+		// /no-org still authenticated instead of bouncing to login with a
+		// stray "undefined" token (spec 2026-08-29-06). Consistent with
+		// Login's no-org branch: the access token's lifetime is long enough
+		// to create an org.
+		authContext := contextFromRequestMeta(ctx, Context{})
+
+		return s.completeLogin(ctx, user, nil, "", LoginActionNoOrg, nil, AuthMethodRegistration, authContext)
 	}
 
 	// Get the first org
