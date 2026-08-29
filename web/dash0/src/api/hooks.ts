@@ -2709,7 +2709,7 @@ export interface UpdateResourceRequest {
 }
 
 // Status Page hooks
-export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
+export function useStatusPages(org: string, opts?: ListQueryOptions) {
   return useQuery({
     queryKey: ["statusPages", org],
     queryFn: async () => {
@@ -2719,6 +2719,7 @@ export function useStatusPages(org: string, opts?: { enabled?: boolean }) {
       return response.data || [];
     },
     enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: opts?.staleTime,
   });
 }
 
@@ -4670,7 +4671,7 @@ export interface UpdateEscalationPolicyRequest {
 
 export function useEscalationPolicies(
   org: string,
-  opts?: { enabled?: boolean },
+  opts?: ListQueryOptions,
 ) {
   return useQuery({
     queryKey: ["escalationPolicies", org],
@@ -4681,6 +4682,7 @@ export function useEscalationPolicies(
       return response.data || [];
     },
     enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: opts?.staleTime,
   });
 }
 
@@ -7290,7 +7292,7 @@ export type UpdateSloRequest = Partial<CreateSloRequest>;
 
 export function useSlos(
   org: string,
-  params?: { checkUid?: string; enabled?: boolean },
+  params?: { checkUid?: string; enabled?: boolean; staleTime?: number },
 ) {
   return useQuery({
     queryKey: ["slos", org, { checkUid: params?.checkUid }],
@@ -7304,6 +7306,7 @@ export function useSlos(
       return response.data ?? [];
     },
     enabled: (params?.enabled ?? true) && !!org,
+    staleTime: params?.staleTime,
   });
 }
 

@@ -161,10 +161,24 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
   // client-side. Gate these queries on the palette being open AND the
   // search text being non-empty so opening ⌘K alone never fans out three
   // extra requests.
+  //
+  // staleTime: 0 forces a fresh fetch every time, rather than trusting
+  // whatever another consumer of the same query key (e.g. the dashboard's
+  // getting-started checklist, which also calls useStatusPages) happened to
+  // cache under the app's default 60s staleTime. Without it, a status page
+  // created moments ago — via the API, another tab, or the create flow
+  // itself — could stay invisible to search for up to a minute even though
+  // it already exists server-side.
   const entitySearchEnabled = open && debouncedSearch.length > 0;
-  const { data: statusPages } = useStatusPages(org, { enabled: entitySearchEnabled });
-  const { data: escalationPolicies } = useEscalationPolicies(org, { enabled: entitySearchEnabled });
-  const { data: slos } = useSlos(org, { enabled: entitySearchEnabled });
+  const { data: statusPages } = useStatusPages(org, {
+    enabled: entitySearchEnabled,
+    staleTime: 0,
+  });
+  const { data: escalationPolicies } = useEscalationPolicies(org, {
+    enabled: entitySearchEnabled,
+    staleTime: 0,
+  });
+  const { data: slos } = useSlos(org, { enabled: entitySearchEnabled, staleTime: 0 });
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
