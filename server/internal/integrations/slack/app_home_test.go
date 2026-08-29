@@ -44,15 +44,15 @@ func TestBuildAppHomeView_OnDispatchEventHandler(t *testing.T) {
 	}
 }
 
-// TestBuildAppHomeView_DoesNotAdvertiseSlashSolidping guards against the
-// failure this area already has once: both manifests and the landing page
-// advertise /solidping subcommands that DispatchCommand has no case for
-// (commands.go handles only /check and /comment), so they answer
-// "Unknown command: /solidping". App Home must not repeat that claim.
-//
-// Delete this test in the spec that adds the handler —
-// specs/todos/2026-08-29-02-slack-slash-command-namespace.md.
-func TestBuildAppHomeView_DoesNotAdvertiseSlashSolidping(t *testing.T) {
+// TestBuildAppHomeView_AdvertisesSolidpingCheckNotBareCheck pins the flip
+// side of the invariant TestBuildAppHomeView_DoesNotAdvertiseSlashSolidping
+// used to guard (deleted by
+// specs/todos/2026-08-29-02-slack-slash-command-namespace.md, which gave
+// /solidping a real handler): App Home's quick-start hint must point at the
+// command that now actually works, `/solidping check`, and never at the
+// retired standalone `/check`, which now only answers with a moved-command
+// notice.
+func TestBuildAppHomeView_AdvertisesSolidpingCheckNotBareCheck(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -61,7 +61,9 @@ func TestBuildAppHomeView_DoesNotAdvertiseSlashSolidping(t *testing.T) {
 	handler := &Handler{svc: svc}
 	encoded, err := json.Marshal(handler.buildAppHomeView(t.Context(), "T012345").Blocks)
 	r.NoError(err)
+	rendered := string(encoded)
 
-	r.NotContains(string(encoded), "/solidping",
-		"App Home advertises /solidping, which DispatchCommand does not handle")
+	r.Contains(rendered, "/solidping check")
+	r.NotContains(rendered, "`/check ",
+		"App Home must not advertise the retired standalone /check command")
 }

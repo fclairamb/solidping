@@ -30,14 +30,21 @@ func DispatchCommand(ctx context.Context, svc *Service, cmd *Command) (*MessageR
 	dispatcher := &Handler{svc: svc}
 
 	switch cmd.Command {
+	case "/solidping":
+		return dispatcher.handleSolidpingCommand(ctx, cmd)
 	case "/check":
-		return dispatcher.handleCheckCommand(ctx, cmd)
+		// Retired standalone command — kept registered (not deleted) because a
+		// workspace that installed the old manifest keeps it registered with
+		// Slack until it re-authorizes; see legacyMovedNotice.
+		return legacyMovedNotice("/check", "/solidping check <url>"), nil
 	case "/comment":
-		return dispatcher.handleCommentCommand(ctx, cmd)
+		return legacyMovedNotice("/comment", "/solidping comment [#N] <text>"), nil
 	default:
 		return &MessageResponse{
 			ResponseType: ResponseTypeEphemeral,
-			Text:         "Unknown command: " + cmd.Command,
+			Text: fmt.Sprintf(
+				"Unknown command: %s. Type `/solidping help` for available commands.", cmd.Command,
+			),
 		}, nil
 	}
 }

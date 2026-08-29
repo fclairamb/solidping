@@ -215,7 +215,7 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 				Elements: []any{
 					ContextElement{
 						Type: BlockTypeMrkdwn,
-						Text: "Use `/check <url>` to quickly create a new check",
+						Text: "Use `/solidping check <url>` to quickly create a new check",
 					},
 				},
 			},

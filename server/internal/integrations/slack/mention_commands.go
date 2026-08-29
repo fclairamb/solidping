@@ -554,8 +554,14 @@ func (h *Handler) handleHelpCommand(ctx context.Context, event *Event) error {
 	return h.sendMentionResponse(ctx, event, msg)
 }
 
-// sendMentionResponse sends a response to a mention, in a thread.
+// sendMentionResponse sends a response to a mention, in a thread — or, when
+// h.respond is set (the /solidping slash-command adapter), hands the reply
+// to that func instead of posting to Slack. See Handler.respond.
 func (h *Handler) sendMentionResponse(ctx context.Context, event *Event, msg *MessageResponse) error {
+	if h.respond != nil {
+		return h.respond(msg)
+	}
+
 	client, err := h.svc.GetClient(ctx, event.TeamID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)

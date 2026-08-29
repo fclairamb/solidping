@@ -25,17 +25,24 @@ func extractSlackLinks(text string) string {
 	return slackLinkRegex.ReplaceAllString(text, "$1")
 }
 
+// preprocessCommandText strips a leading bot mention — present on the
+// app_mention transport, absent (so a no-op) on slash-command text — and
+// unwraps Slack's auto-formatted links, so both transports parse identically
+// from this point on. Shared by ParseMentionText and the /solidping slash
+// adapter (solidping_command.go), which needs the same normalization before
+// splitting off its own first word for `check`/`comment`.
+func preprocessCommandText(text string) string {
+	text = mentionRegex.ReplaceAllString(text, "")
+	text = extractSlackLinks(text)
+
+	return strings.TrimSpace(text)
+}
+
 // ParseMentionText extracts a command from a mention message.
 // Input: "<@U123ABC> checks add https://example.com -slug mycheck".
 // Output: ParsedCommand{Command: "checks", Subcommand: "add", Args: [...], Flags: {...}}.
 func ParseMentionText(text string) *ParsedCommand {
-	// Strip the bot mention from the start
-	text = mentionRegex.ReplaceAllString(text, "")
-
-	// Extract URLs from Slack's auto-formatted links <https://url|display>
-	text = extractSlackLinks(text)
-
-	text = strings.TrimSpace(text)
+	text = preprocessCommandText(text)
 
 	if text == "" {
 		return &ParsedCommand{

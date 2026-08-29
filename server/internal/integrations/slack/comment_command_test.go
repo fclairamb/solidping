@@ -254,22 +254,49 @@ func TestCommentCommand_EmptyTextShowsUsage(t *testing.T) {
 	r.Empty(fake.commandComments)
 }
 
-// TestDispatchCommand_RoutesComment asserts the slash command is wired into
-// the transport-agnostic dispatcher, so it works over HTTP and Socket Mode
-// alike.
-func TestDispatchCommand_RoutesComment(t *testing.T) {
+// TestDispatchCommand_RoutesSolidpingComment asserts `/solidping comment` is
+// wired into the transport-agnostic dispatcher, so it works over HTTP and
+// Socket Mode alike. This is the successor of the retired standalone
+// `/comment` command — see TestDispatchCommand_LegacyCommentReturnsMovedNotice
+// below for that command's new (notice-only) behaviour.
+func TestDispatchCommand_RoutesSolidpingComment(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	_, svc, org, fake := commentSetup(t)
 	incident := openIncident(t, svc, org.UID, "api is down", "1700000005.000001")
 
-	resp, err := DispatchCommand(t.Context(), svc, commentCmd("dispatched"))
+	cmd := commentCmd("dispatched")
+	cmd.Command = "/solidping"
+	cmd.Text = "comment dispatched"
+
+	resp, err := DispatchCommand(t.Context(), svc, cmd)
 	r.NoError(err)
 	r.NotNil(resp)
 	r.NotContains(resp.Text, "Unknown command")
+	r.Equal(ResponseTypeEphemeral, resp.ResponseType)
 	r.Len(fake.commandComments, 1)
 	r.Equal(incident.UID, fake.commandComments[0].incidentUID)
+}
+
+// TestDispatchCommand_LegacyCommentReturnsMovedNotice pins the retired
+// standalone `/comment` command's new behaviour: it must not silently keep
+// creating comments (a workspace that installed the old manifest keeps `/comment`
+// registered with Slack until it re-authorizes), but it must not act on them
+// either — only point at `/solidping comment`.
+func TestDispatchCommand_LegacyCommentReturnsMovedNotice(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	_, svc, org, fake := commentSetup(t)
+	openIncident(t, svc, org.UID, "api is down", "1700000006.000001")
+
+	resp, err := DispatchCommand(t.Context(), svc, commentCmd("dispatched"))
+	r.NoError(err)
+	r.NotNil(resp)
+	r.Equal(ResponseTypeEphemeral, resp.ResponseType)
+	r.Contains(resp.Text, "/solidping comment")
+	r.Empty(fake.commandComments, "the retired /comment must not create a comment anymore")
 }
 
 // itoa avoids importing strconv in the test for a single call.
