@@ -407,7 +407,7 @@ test.describe("Command Menu (Cmd+K)", () => {
     ).toBeVisible();
   });
 
-  test("exposes the Organization entry, findable by 'organization', → parent redirects to invitations", async ({
+  test("exposes the Organization entry, findable by 'organization', → parent redirects to members", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -425,10 +425,12 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(orgItem).toContainText("Organization");
 
     // Selecting it navigates to the parent route, whose index redirects to
-    // the current default child (invitations).
+    // the current default child. Members, not Invitations, since
+    // organization.index.tsx's default was changed (see that route's own
+    // history) — this test just fell out of sync with it.
     await orgItem.click();
-    await page.waitForURL(/\/organization\/invitations/, { timeout: 5000 });
-    expect(page.url()).toContain("/organization/invitations");
+    await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
+    expect(page.url()).toContain("/organization/members");
     await expect(input).not.toBeVisible();
   });
 
