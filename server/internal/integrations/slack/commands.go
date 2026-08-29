@@ -49,7 +49,8 @@ func DispatchCommand(ctx context.Context, svc *Service, cmd *Command) (*MessageR
 	}
 }
 
-// handleCheckCommand handles the /check command.
+// handleCheckCommand handles the `check` subcommand of `/solidping`
+// (reached via handleSolidpingCommand in solidping_command.go).
 //
 //nolint:funlen // This handler has clear sequential steps, splitting would reduce readability.
 func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*MessageResponse, error) {
@@ -59,7 +60,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 	if text == "" || text == cmdHelp {
 		return &MessageResponse{
 			ResponseType: ResponseTypeEphemeral,
-			Text:         "*Usage:* `/check <url>`\n\nExample: `/check https://example.com`",
+			Text:         "*Usage:* `/solidping check <url>`\n\nExample: `/solidping check https://example.com`",
 		}, nil
 	}
 
@@ -77,7 +78,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		//nolint:nilerr // Intentionally returning user-friendly message without error
 		return &MessageResponse{
 			ResponseType: ResponseTypeEphemeral,
-			Text:         "Invalid URL. Please provide a valid HTTP or HTTPS URL.\n\nExample: `/check https://example.com`",
+			Text:         "Invalid URL. Please provide a valid HTTP or HTTPS URL.\n\nExample: `/solidping check https://example.com`",
 		}, nil
 	}
 

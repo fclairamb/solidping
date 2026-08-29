@@ -10,10 +10,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// commentUsage is shown for `/comment` with no text, and alongside every
-// resolution failure, so the user never has to guess the shape.
-const commentUsage = "*Usage:* `/comment [#N] <text>`\n\n" +
-	"Examples:\n• `/comment I think the central DNS is down`\n• `/comment #42 restarting the pod`"
+// commentUsage is shown for `/solidping comment` with no text, and alongside
+// every resolution failure, so the user never has to guess the shape.
+const commentUsage = "*Usage:* `/solidping comment [#N] <text>`\n\n" +
+	"Examples:\n• `/solidping comment I think the central DNS is down`\n" +
+	"• `/solidping comment #42 restarting the pod`"
 
 // settingsKeyTeamID is the Slack integration settings key holding the
 // workspace id. Named once so the writer (install flow), the lookup
@@ -25,7 +26,9 @@ const settingsKeyTeamID = "team_id"
 // help — the user should name the incident.
 const maxCommentCandidates = 10
 
-// handleCommentCommand implements `/comment [#N] <text>`.
+// handleCommentCommand implements the `comment` subcommand of `/solidping`
+// (`/solidping comment [#N] <text>`, reached via handleSolidpingCommand in
+// solidping_command.go).
 //
 // Why a slash command and not a thread reply: Slack's client intercepts any
 // message starting with `/`, so the text never posts. And a registered slash

@@ -24,21 +24,7 @@
         "command": "/solidping",
         "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
         "description": "Manage your SolidPing monitoring",
-        "usage_hint": "[setup|create|list|config|incidents|ack|help]",
-        "should_escape": false
-      },
-      {
-        "command": "/comment",
-        "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
-        "description": "Comment on a SolidPing incident",
-        "usage_hint": "[#42] I think the central DNS is down",
-        "should_escape": false
-      },
-      {
-        "command": "/check",
-        "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
-        "description": "Quick shortcut to create a check",
-        "usage_hint": "https://example.com",
+        "usage_hint": "[check|comment|create|list|config|incidents|help]",
         "should_escape": false
       }
     ],

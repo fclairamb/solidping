@@ -13,20 +13,37 @@ Slack app config UI, or manage via the App Manifest API):
 
 ## Slash commands
 
-The manifests register two commands, both routed to
+The manifests register a single command, `/solidping`, routed to
 `/api/v1/integrations/slack/command` and dispatched by
 `slack.DispatchCommand` — the transport-agnostic entry point, so HTTP and
-Socket Mode behave identically:
+Socket Mode behave identically. `handleSolidpingCommand`
+(`server/internal/integrations/slack/solidping_command.go`) reuses the
+`@solidping` app_mention parser and router, adapted to answer **ephemerally**
+(spec `2026-08-29-02`) instead of posting in-channel:
 
-- `/check <url>` — creates an HTTP check.
-- `/comment [#42] <text>` — appends an incident comment (spec `2026-08-15-08`).
+- `/solidping check <url>` — creates an HTTP check (in-channel confirmation,
+  same as the retired standalone `/check`).
+- `/solidping comment [#42] <text>` — appends an incident comment, ephemeral
+  (spec `2026-08-15-08`).
+- `/solidping list` / `/solidping create <url>` — aliases for `checks list` /
+  `checks add`.
+- `/solidping config`, `/solidping incidents`, `/solidping help` — same
+  subcommands `@solidping` already supported.
+
+**`/check` and `/comment` as standalone commands are retired.** `DispatchCommand`
+keeps a `case "/check"` / `case "/comment"` arm that answers with an ephemeral
+"this command moved to `/solidping check`" notice and performs no action — kept
+only because a workspace that installed the old manifest keeps those commands
+registered with Slack until it re-authorizes. Both are gone from the manifests,
+so a fresh install never sees them.
 
 A slash command's payload does **not** carry `thread_ts`, which is why
-`/comment` resolves its incident from the channel (explicit `#42` → the single
-active tracked incident in the channel → an ephemeral error listing the
-candidates) rather than from the thread it was typed in. It answers ephemerally
-and does NOT suppress the origin workspace on fan-out: the command posts nothing
-visible, so the channel that asked for the comment must still receive it.
+`/solidping comment` resolves its incident from the channel (explicit `#42` →
+the single active tracked incident in the channel → an ephemeral error listing
+the candidates) rather than from the thread it was typed in. Comment creation
+itself does NOT suppress the origin workspace on fan-out: the command's
+ephemeral reply is invisible to the rest of the channel, so the channel that
+asked for the comment must still receive the resulting notification.
 
 ## Inbound thread replies → incident comments
 
@@ -38,7 +55,7 @@ under the bot's incident message and record them on the incident timeline.
 
 | Value | Behavior |
 |---|---|
-| `explicit` (default; also the meaning of an absent key) | Plain thread replies are ignored; only `/comment` creates a comment. |
+| `explicit` (default; also the meaning of an absent key) | Plain thread replies are ignored; only `/solidping comment` creates a comment. |
 | `all` | Every human thread reply under a tracked incident thread is ingested — the pre-2026-08-15 behavior. |
 
 The mode is read per inbound message via `GetConnectionByTeamID` and **fails
