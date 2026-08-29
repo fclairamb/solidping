@@ -220,6 +220,32 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       // Navigating back to the dashboard: the org now has a check, so the
       // empty-state hero must be gone (replaced by the regular dashboard /
       // onboarding-checklist view) — the behavior the old assertion covered.
+      //
+      // `isEmptyOrg` (dashboard-page.tsx) keys off GET checks/stats, which
+      // the server caches per-org for a full minute with no write-path
+      // invalidation (server/internal/handlers/checks/stats.go, spec
+      // 2026-08-02-06 — deliberate, out of scope here). The dashboard visit
+      // above already primed that cache with `total: 0` for this org, so an
+      // unstubbed reload right after create would still read the stale
+      // zero — not a rendering bug, just the real cache window. Stub the
+      // stats response for this one reload to a post-create shape (mirrors
+      // gotoEmptyDashboard's stats stub above) so the assertion exercises
+      // `isEmptyOrg`'s rendering branch instead of racing a real minute-long
+      // cache.
+      await page.route(`**/api/v1/orgs/${orgSlug}/checks/stats*`, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            total: 1,
+            enabled: 1,
+            disabled: 0,
+            byStatus: {},
+            down: 0,
+            hardDown: 0,
+          }),
+        }),
+      );
       await page.goto(`orgs/${orgSlug}`);
       await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("quick-start-input")).not.toBeVisible();
