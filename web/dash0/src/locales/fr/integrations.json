@@ -246,5 +246,11 @@
       "none": "Les appels d'alerte ne sont pas disponibles — aucun fournisseur vocal n'est configuré."
     },
     "addOwn": "Utiliser mon propre compte Twilio"
+  },
+  "wand": {
+    "createEmailAlerts": "Configurer les alertes email pour moi",
+    "defaultName": "Alertes email",
+    "created": "Alertes email créées",
+    "createFailed": "Échec de la configuration des alertes email"
   }
 }

@@ -195,6 +195,12 @@
       "cancel": "Cancelar",
       "deleted": "Informe programado eliminado",
       "failed": "No se pudo eliminar el informe programado"
+    },
+    "wand": {
+      "create": "Crear un informe semanal de disponibilidad por mí",
+      "defaultName": "Informe semanal de disponibilidad",
+      "created": "Informe semanal de disponibilidad creado",
+      "createFailed": "No se pudo crear el informe semanal de disponibilidad"
     }
   }
 }

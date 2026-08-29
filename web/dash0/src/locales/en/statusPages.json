@@ -44,7 +44,8 @@
     "language": "Language",
     "willInclude": "Will include:",
     "createStatusPage": "Create Status Page",
-    "saveChanges": "Save Changes"
+    "saveChanges": "Save Changes",
+    "removeCheck": "Remove"
   },
   "detail": {
     "configuration": "Configuration",
@@ -289,5 +290,9 @@
     "passwordPlaceholder": "At least 6 characters",
     "passwordKeepPlaceholder": "Leave empty to keep the current password",
     "passwordFieldHint": "Share this with the people who should see the page. Changing it signs everyone out immediately."
+  },
+  "wand": {
+    "prefill": "Prefill for me",
+    "loadChecksFailed": "Couldn't load the full check list"
   }
 }

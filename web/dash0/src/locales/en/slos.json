@@ -195,6 +195,12 @@
       "cancel": "Cancel",
       "deleted": "Report schedule deleted",
       "failed": "Failed to delete the report schedule"
+    },
+    "wand": {
+      "create": "Create a weekly uptime report for me",
+      "defaultName": "Weekly uptime report",
+      "created": "Weekly uptime report created",
+      "createFailed": "Failed to create the weekly uptime report"
     }
   }
 }

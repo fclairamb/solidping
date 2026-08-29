@@ -44,7 +44,8 @@
     "language": "Idioma",
     "willInclude": "Incluirá:",
     "createStatusPage": "Crear página de estado",
-    "saveChanges": "Guardar cambios"
+    "saveChanges": "Guardar cambios",
+    "removeCheck": "Quitar"
   },
   "detail": {
     "configuration": "Configuración",
@@ -289,5 +290,9 @@
     "passwordPlaceholder": "Al menos 6 caracteres",
     "passwordKeepPlaceholder": "Déjalo vacío para conservar la contraseña actual",
     "passwordFieldHint": "Compártela con quienes deban ver la página. Cambiarla cierra el acceso a todos de inmediato."
+  },
+  "wand": {
+    "prefill": "Rellenar por mí",
+    "loadChecksFailed": "No se pudo cargar la lista completa de comprobaciones"
   }
 }

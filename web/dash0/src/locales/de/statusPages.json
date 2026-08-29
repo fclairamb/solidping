@@ -44,7 +44,8 @@
     "language": "Sprache",
     "willInclude": "Enthält:",
     "createStatusPage": "Statusseite erstellen",
-    "saveChanges": "Änderungen speichern"
+    "saveChanges": "Änderungen speichern",
+    "removeCheck": "Entfernen"
   },
   "detail": {
     "configuration": "Konfiguration",
@@ -289,5 +290,9 @@
     "passwordPlaceholder": "Mindestens 6 Zeichen",
     "passwordKeepPlaceholder": "Leer lassen, um das aktuelle Passwort zu behalten",
     "passwordFieldHint": "Teilen Sie es mit den Berechtigten. Eine Änderung sperrt sofort alle aus."
+  },
+  "wand": {
+    "prefill": "Für mich vorausfüllen",
+    "loadChecksFailed": "Die vollständige Liste der Prüfungen konnte nicht geladen werden"
   }
 }

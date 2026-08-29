@@ -44,7 +44,8 @@
     "language": "Langue",
     "willInclude": "Inclura :",
     "createStatusPage": "Créer la page de statut",
-    "saveChanges": "Enregistrer les modifications"
+    "saveChanges": "Enregistrer les modifications",
+    "removeCheck": "Retirer"
   },
   "detail": {
     "configuration": "Configuration",
@@ -289,5 +290,9 @@
     "passwordPlaceholder": "6 caractères minimum",
     "passwordKeepPlaceholder": "Laisser vide pour conserver le mot de passe actuel",
     "passwordFieldHint": "Partagez-le avec les personnes autorisées. Le modifier déconnecte immédiatement tout le monde."
+  },
+  "wand": {
+    "prefill": "Préremplir pour moi",
+    "loadChecksFailed": "Impossible de charger la liste complète des contrôles"
   }
 }

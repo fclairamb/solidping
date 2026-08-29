@@ -225,5 +225,11 @@
       "none": "Alarmanrufe sind nicht verfügbar — es ist kein Sprachanbieter konfiguriert."
     },
     "addOwn": "Mein eigenes Twilio-Konto verwenden"
+  },
+  "wand": {
+    "createEmailAlerts": "E-Mail-Benachrichtigungen für mich einrichten",
+    "defaultName": "E-Mail-Benachrichtigungen",
+    "created": "E-Mail-Benachrichtigungen erstellt",
+    "createFailed": "Einrichtung der E-Mail-Benachrichtigungen fehlgeschlagen"
   }
 }

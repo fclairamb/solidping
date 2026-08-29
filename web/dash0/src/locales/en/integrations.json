@@ -250,5 +250,11 @@
       "none": "Alert calls are not available — no voice provider is configured."
     },
     "addOwn": "Use my own Twilio account"
+  },
+  "wand": {
+    "createEmailAlerts": "Set up email alerts for me",
+    "defaultName": "Email alerts",
+    "created": "Email alerts created",
+    "createFailed": "Failed to set up email alerts"
   }
 }
