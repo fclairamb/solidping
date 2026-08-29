@@ -76,6 +76,7 @@ Project-wide standards and naming rules.
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 - [conventions/files.md](conventions/files.md) — File storage seam: backends (local FS, S3), signed URLs, group conventions
 - [conventions/generated-client.md](conventions/generated-client.md) — `pkg/client` regeneration cadence (once per batch/release) and ownership; how CI catches a regeneration that doesn't compile
+- [conventions/changelog.md](conventions/changelog.md) — Writing CHANGELOG.md entries as user-facing prose for the generated `/docs/changelog` page; the scope-label lookup table; checking the render before a release ships
 
 ## Runbooks
 
