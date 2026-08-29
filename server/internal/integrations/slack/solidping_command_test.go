@@ -1,7 +1,9 @@
 package slack
 
 import (
-	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -84,6 +86,12 @@ func TestSolidpingCommand_HelpListsExistingSubcommands(t *testing.T) {
 	for _, mustNot := range []string{"setup", "`ack`"} {
 		r.NotContains(body, mustNot)
 	}
+
+	// /solidping help must show /solidping-syntax examples, not the
+	// app_mention transport's @solidping mention syntax — a Marketplace
+	// reviewer (and any real user) types this in the first five seconds.
+	r.Contains(body, "`/solidping checks add")
+	r.NotContains(body, "@solidping")
 }
 
 func TestSolidpingCommand_UnknownSubcommandNamesHelp(t *testing.T) {
@@ -114,16 +122,16 @@ func TestSolidpingCommand_CheckWithNoArgumentReturnsUsageNotError(t *testing.T) 
 	r.Contains(resp.Text, "/solidping check")
 }
 
-// TestSolidpingCommand_CheckCreatesCheck covers both URL shapes the spec
-// calls out: an explicit scheme, and a bare host that handleCheckCommand
-// normalizes by prefixing https://. handleCheckCommand posts its
-// confirmation via a real Slack API call (unchanged production behavior —
-// this spec only moves /check's entry point, not its internals), which has
-// no reachable target in this test environment; a bounded context keeps that
-// attempt from stalling the test, and the assertion is the side effect that
-// matters here — the check actually landing in the database — not the exact
-// shape of the (network-dependent) reply.
-func TestSolidpingCommand_CheckCreatesCheck(t *testing.T) {
+// TestSolidpingCommand_CheckWithNoResponseURLFallsBackSynchronously covers
+// both URL shapes the spec calls out (an explicit scheme, and a bare host
+// that normalizeCheckURL prefixes with https://) through the defensive
+// synchronous fallback: solidpingCmd sets no ResponseURL, so
+// handleCheckCommand cannot ACK-then-follow-up and does the work inline
+// instead. This path makes no outbound network call (the old bot-token
+// chat.postMessage confirmation was replaced by the response_url follow-up —
+// see TestSolidpingCommand_CheckAsyncFollowUp — and the fallback used here
+// skips that mechanism entirely), so it is fully deterministic.
+func TestSolidpingCommand_CheckWithNoResponseURLFallsBackSynchronously(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -139,17 +147,120 @@ func TestSolidpingCommand_CheckCreatesCheck(t *testing.T) {
 
 			h, svc, org := solidpingSetup(t)
 
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-
-			_, err := h.handleSolidpingCommand(ctx, solidpingCmd(tc.text))
+			resp, err := h.handleSolidpingCommand(t.Context(), solidpingCmd(tc.text))
 			r.NoError(err)
+			r.NotNil(resp)
+			r.Equal(ResponseTypeInChannel, resp.ResponseType)
+			r.Contains(resp.Text, "Check created")
 
 			listed, err := svc.checksService.ListChecks(t.Context(), org.Slug, checks.ListChecksOptions{})
 			r.NoError(err)
-			r.Len(listed.Data, 1, "check must be created regardless of whether the confirmation post reaches Slack")
+			r.Len(listed.Data, 1)
 		})
 	}
+}
+
+// responseURLRecorder starts an httptest server standing in for Slack's
+// response_url and hands back every posted MessageResponse over a channel,
+// so a test can block on the async follow-up without polling or a fixed
+// sleep. Slack's real response_url needs no auth — this fake doesn't check
+// for any, matching production.
+func responseURLRecorder(t *testing.T) (string, chan *MessageResponse) {
+	t.Helper()
+
+	received := make(chan *MessageResponse, 4)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var msg MessageResponse
+		if err := json.NewDecoder(req.Body).Decode(&msg); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
+
+		received <- &msg
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	return server.URL, received
+}
+
+// TestSolidpingCommand_CheckAsyncFollowUp is the coordinator-flagged
+// regression test: Slack's 3-second ACK budget requires `/solidping check`
+// (a DB write, formerly followed by a synchronous outbound Slack API call)
+// to ACK immediately and report the real outcome — success or failure —
+// via response_url afterward, never a fake "it worked" swallowing a later
+// failure.
+func TestSolidpingCommand_CheckAsyncFollowUp(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		h, svc, org := solidpingSetup(t)
+		responseURL, received := responseURLRecorder(t)
+
+		cmd := solidpingCmd("check https://example.com")
+		cmd.ResponseURL = responseURL
+
+		start := time.Now()
+		ack, err := h.handleSolidpingCommand(t.Context(), cmd)
+		elapsed := time.Since(start)
+
+		r.NoError(err)
+		r.NotNil(ack)
+		r.Equal(ResponseTypeEphemeral, ack.ResponseType)
+		r.Less(elapsed, time.Second, "the ACK must return immediately, not wait on the DB write")
+
+		var followUp *MessageResponse
+		select {
+		case followUp = <-received:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for the response_url follow-up")
+		}
+
+		r.Equal(ResponseTypeInChannel, followUp.ResponseType)
+		r.Contains(followUp.Text, "Check created")
+
+		listed, err := svc.checksService.ListChecks(t.Context(), org.Slug, checks.ListChecksOptions{})
+		r.NoError(err)
+		r.Len(listed.Data, 1)
+	})
+
+	t.Run("failure is reported, not swallowed", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		// setupSlackService without solidpingSetup's org/connection: the
+		// workspace is unrecognized, so CreateCheck fails at
+		// GetConnectionByTeamID.
+		_, svc := setupSlackService(t)
+		svc.checksService = checks.NewService(svc.db, nil, nil, nil)
+		h := &Handler{svc: svc}
+
+		responseURL, received := responseURLRecorder(t)
+
+		cmd := solidpingCmd("check https://example.com")
+		cmd.ResponseURL = responseURL
+
+		ack, err := h.handleSolidpingCommand(t.Context(), cmd)
+		r.NoError(err)
+		r.NotNil(ack)
+		r.Equal(ResponseTypeEphemeral, ack.ResponseType)
+
+		var followUp *MessageResponse
+		select {
+		case followUp = <-received:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for the response_url follow-up")
+		}
+
+		r.Equal(ResponseTypeEphemeral, followUp.ResponseType,
+			"a failure must be reported ephemerally, never as a cheerful in-channel success")
+		r.Contains(followUp.Text, "not connected")
+	})
 }
 
 func TestSolidpingCommand_CommentSingleTrackedIncident(t *testing.T) {

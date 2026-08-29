@@ -58,11 +58,12 @@ func (h *Handler) handleSolidpingCommand(ctx context.Context, cmd *Command) (*Me
 	switch lower {
 	case "check":
 		return h.handleCheckCommand(ctx, &Command{
-			TeamID:    cmd.TeamID,
-			ChannelID: cmd.ChannelID,
-			UserID:    cmd.UserID,
-			ThreadTS:  cmd.ThreadTS,
-			Text:      rest,
+			TeamID:      cmd.TeamID,
+			ChannelID:   cmd.ChannelID,
+			UserID:      cmd.UserID,
+			ThreadTS:    cmd.ThreadTS,
+			ResponseURL: cmd.ResponseURL,
+			Text:        rest,
 		})
 	case "comment":
 		return h.handleCommentCommand(ctx, &Command{

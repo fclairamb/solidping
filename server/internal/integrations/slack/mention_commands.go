@@ -519,6 +519,17 @@ func parseChannelReference(ref string) string {
 
 // handleHelpCommand sends help information.
 func (h *Handler) handleHelpCommand(ctx context.Context, event *Event) error {
+	// The examples' invocation prefix depends on transport: h.respond is set
+	// only by the /solidping slash-command adapter (solidping_command.go),
+	// never on the real app_mention path — see Handler.respond. Without this,
+	// `/solidping help` would show mention-syntax (`@solidping ...`)
+	// examples, which is exactly the kind of first-five-seconds confusion
+	// this spec exists to remove.
+	prefix := "@solidping"
+	if h.respond != nil {
+		prefix = "/solidping"
+	}
+
 	helpText := "*Available Commands:*\n\n" +
 		"*Checks*\n" +
 		"- `checks add <url>` - Add a new check\n" +
@@ -532,11 +543,11 @@ func (h *Handler) handleHelpCommand(ctx context.Context, event *Event) error {
 		"*Configuration*\n" +
 		"- `config default-channel [#channel]` - Set default notification channel (uses current channel if omitted)\n\n" +
 		"*Examples:*\n" +
-		"`@solidping checks add https://example.com`\n" +
-		"`@solidping checks list`\n" +
-		"`@solidping results -check my-check`\n" +
-		"`@solidping config default-channel` - Use current channel\n" +
-		"`@solidping config default-channel #alerts` - Use specific channel"
+		"`" + prefix + " checks add https://example.com`\n" +
+		"`" + prefix + " checks list`\n" +
+		"`" + prefix + " results -check my-check`\n" +
+		"`" + prefix + " config default-channel` - Use current channel\n" +
+		"`" + prefix + " config default-channel #alerts` - Use specific channel"
 
 	msg := &MessageResponse{
 		Text: "SolidPing Help",
