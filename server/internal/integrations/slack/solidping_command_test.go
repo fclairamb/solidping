@@ -74,8 +74,11 @@ func TestSolidpingCommand_HelpListsExistingSubcommands(t *testing.T) {
 	r.NotNil(resp.Blocks[0].Text)
 	body := resp.Blocks[0].Text.Text
 
-	for _, want := range []string{"checks add", "checks list", "checks rm", "results", "incidents list", "config default-channel"} {
-		r.Contains(body, want)
+	want := []string{
+		"checks add", "checks list", "checks rm", "results", "incidents list", "config default-channel",
+	}
+	for _, w := range want {
+		r.Contains(body, w)
 	}
 
 	for _, mustNot := range []string{"setup", "`ack`"} {
@@ -169,7 +172,7 @@ func TestSolidpingCommand_CommentSingleTrackedIncident(t *testing.T) {
 
 // TestSolidpingCommand_CommentAmbiguousPath pins that the disambiguation
 // behavior is unchanged under the new /solidping prefix (spec Testing
-// section: "the ambiguous-incident path -> unchanged behaviour").
+// section: "the ambiguous-incident path -> unchanged behavior").
 func TestSolidpingCommand_CommentAmbiguousPath(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

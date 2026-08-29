@@ -78,7 +78,8 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		//nolint:nilerr // Intentionally returning user-friendly message without error
 		return &MessageResponse{
 			ResponseType: ResponseTypeEphemeral,
-			Text:         "Invalid URL. Please provide a valid HTTP or HTTPS URL.\n\nExample: `/solidping check https://example.com`",
+			Text: "Invalid URL. Please provide a valid HTTP or HTTPS URL.\n\n" +
+				"Example: `/solidping check https://example.com`",
 		}, nil
 	}
 

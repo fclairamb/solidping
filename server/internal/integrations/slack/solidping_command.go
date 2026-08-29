@@ -20,6 +20,8 @@ import (
 // commands `list`/`create` alias to — kept dispatchable directly too, for
 // parity with the app_mention transport, even though the short usage hint in
 // the manifests only advertises the friendlier aliases.
+//
+//nolint:gochecknoglobals // single source of truth shared between dispatch and the manifest-drift test
 var solidpingKnownSubcommands = map[string]bool{
 	"":           true,
 	cmdHelp:      true,
@@ -144,7 +146,7 @@ func applySolidpingAliases(cmd *ParsedCommand) {
 // handlers parse the remainder themselves (handleCheckCommand normalizes a
 // bare host into a URL; handleCommentCommand's parseCommentArgs looks for a
 // leading `#N`) and must see it verbatim, not rebuilt from re-joined tokens.
-func splitFirstWord(text string) (word, rest string) {
+func splitFirstWord(text string) (string, string) {
 	if text == "" {
 		return "", ""
 	}

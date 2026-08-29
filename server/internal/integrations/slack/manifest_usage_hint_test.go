@@ -35,8 +35,8 @@ func TestSolidpingUsageHintSubcommandsHaveHandlers(t *testing.T) {
 				Features struct {
 					SlashCommands []struct {
 						Command   string `json:"command"`
-						UsageHint string `json:"usage_hint"`
-					} `json:"slash_commands"`
+						UsageHint string `json:"usage_hint"` //nolint:tagliatelle // Slack app manifests use snake_case
+					} `json:"slash_commands"` //nolint:tagliatelle // Slack app manifests use snake_case
 				} `json:"features"`
 			}
 			require.NoError(t, json.Unmarshal(raw, &manifest))

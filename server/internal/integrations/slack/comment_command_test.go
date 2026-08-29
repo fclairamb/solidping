@@ -258,7 +258,7 @@ func TestCommentCommand_EmptyTextShowsUsage(t *testing.T) {
 // wired into the transport-agnostic dispatcher, so it works over HTTP and
 // Socket Mode alike. This is the successor of the retired standalone
 // `/comment` command — see TestDispatchCommand_LegacyCommentReturnsMovedNotice
-// below for that command's new (notice-only) behaviour.
+// below for that command's new (notice-only) behavior.
 func TestDispatchCommand_RoutesSolidpingComment(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -280,7 +280,7 @@ func TestDispatchCommand_RoutesSolidpingComment(t *testing.T) {
 }
 
 // TestDispatchCommand_LegacyCommentReturnsMovedNotice pins the retired
-// standalone `/comment` command's new behaviour: it must not silently keep
+// standalone `/comment` command's new behavior: it must not silently keep
 // creating comments (a workspace that installed the old manifest keeps `/comment`
 // registered with Slack until it re-authorizes), but it must not act on them
 // either — only point at `/solidping comment`.
