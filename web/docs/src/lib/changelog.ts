@@ -85,16 +85,20 @@ export function transformHeading(
   return { version, date, anchor: version.replace(/\./g, ""), diffUrl };
 }
 
-// release-please renders reference clutter as one or more parenthesized,
-// comma-separated groups of `[label](url)` items at the very end of a
-// bullet — e.g. ` ([#279](url)) ([4cbcc29](url), [#283](url))`. A PR ref's
-// label is `#<digits>`; a commit ref's label is a hex hash. The two kinds
-// can share a single `(...)` group (as in that example), so a naive
-// "each ref has its own enclosing parens" assumption misses the second
-// PR link — hence matching the whole trailing cluster as one unit below.
+// release-please renders reference clutter as one or more parenthesized
+// groups of `[label](url)` items at the very end of a bullet, with items
+// (within a group) and groups (between each other) both separated by some
+// mix of ", " and " " — e.g. ` ([#279](url)) ([4cbcc29](url), [#283](url))`
+// or, equally real, ` ([#170](url)) ([1184b15](url)), ([#175](url)) ([9ffd436](url))`
+// where the comma falls *between* two groups instead of inside one. A PR
+// ref's label is `#<digits>`; a commit ref's label is a hex hash. Since
+// items and groups can blur into each other like this, the whole trailing
+// cluster is matched as one unit — loose on the separators between pieces,
+// strict on each piece being a real `[label](url)` — rather than assuming
+// any particular grouping.
 const REF_ITEM = String.raw`\[(?:#\d+|[0-9a-f]{7,40})]\((?:https?:\/\/[^)\s]+)\)`;
 const REF_GROUP = String.raw`\((?:${REF_ITEM})(?:,\s*(?:${REF_ITEM}))*\)`;
-const TRAILING_REF_CLUSTER_RE = new RegExp(String.raw`(?:\s*(?:${REF_GROUP}))+$`);
+const TRAILING_REF_CLUSTER_RE = new RegExp(String.raw`(?:[\s,]*(?:${REF_GROUP}))+$`);
 const PR_REF_RE = /\[#(\d+)]\((https?:\/\/[^)\s]+)\)/g;
 const SCOPE_PREFIX_RE = /^\* \*\*([^*]+):\*\*\s?(.*)$/;
 

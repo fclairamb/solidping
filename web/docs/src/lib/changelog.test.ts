@@ -44,6 +44,17 @@ describe("transformBullet — reference clutter", () => {
     );
   });
 
+  test("groups separated by a comma (not just whitespace) are still stripped in full", () => {
+    // Real shape seen in CHANGELOG.md: the comma falls *between* two
+    // parenthesized groups rather than between items inside one group.
+    const input =
+      "* **auth:** custom domains are now single-CNAME ([#170](https://github.com/fclairamb/solidping/issues/170)) ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3)), ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))";
+
+    expect(transformBullet(input)).toBe(
+      "* **Authentication:** custom domains are now single-CNAME ([#170](https://github.com/fclairamb/solidping/issues/170), [#175](https://github.com/fclairamb/solidping/issues/175))",
+    );
+  });
+
   test("a repeated PR number across pairs is de-duplicated to a single link", () => {
     const input =
       "* **checks:** did a thing ([#100](https://github.com/fclairamb/solidping/issues/100)) ([abc1234](https://github.com/fclairamb/solidping/commit/abc1234def), [#100](https://github.com/fclairamb/solidping/issues/100))";
