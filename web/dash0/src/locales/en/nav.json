@@ -155,9 +155,11 @@
     "groupStatusPages": "Status pages",
     "groupEscalationPolicies": "Escalation policies",
     "groupSlos": "SLOs",
+    "groupSwitchOrg": "Switch organization",
     "newCheck": "New Check",
     "newCheckDescription": "Create a new monitoring check",
-    "aiDescription": "Connect AI assistants via MCP"
+    "aiDescription": "Connect AI assistants via MCP",
+    "organizationSettings": "Organization Settings"
   },
   "slos": "SLOs",
   "reportSchedules": "Uptime reports",

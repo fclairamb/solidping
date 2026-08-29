@@ -152,9 +152,11 @@
     "groupStatusPages": "Statusseiten",
     "groupEscalationPolicies": "Eskalationsrichtlinien",
     "groupSlos": "SLOs",
+    "groupSwitchOrg": "Organisation wechseln",
     "newCheck": "Neue Prüfung",
     "newCheckDescription": "Eine neue Monitoring-Prüfung erstellen",
-    "aiDescription": "KI-Assistenten über MCP verbinden"
+    "aiDescription": "KI-Assistenten über MCP verbinden",
+    "organizationSettings": "Organisationseinstellungen"
   },
   "security": "Sicherheit",
   "slos": "SLOs",

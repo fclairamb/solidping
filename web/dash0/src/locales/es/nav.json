@@ -152,9 +152,11 @@
     "groupStatusPages": "Páginas de estado",
     "groupEscalationPolicies": "Políticas de escalada",
     "groupSlos": "SLO",
+    "groupSwitchOrg": "Cambiar de organización",
     "newCheck": "Nueva comprobación",
     "newCheckDescription": "Crear una nueva comprobación de monitorización",
-    "aiDescription": "Conectar asistentes de IA vía MCP"
+    "aiDescription": "Conectar asistentes de IA vía MCP",
+    "organizationSettings": "Configuración de la organización"
   },
   "security": "Seguridad",
   "slos": "SLO",
