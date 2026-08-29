@@ -243,7 +243,6 @@ function CheckGroupEditForm({
           {t("groupForm.title")}
         </h1>
         <div className="ml-auto flex items-center gap-2">
-          <DocsLink href="/docs/features/check-groups" />
           <Button
             type="button"
             variant="destructive"
@@ -254,6 +253,7 @@ function CheckGroupEditForm({
             <Trash2 className="sm:mr-2 h-4 w-4" />
             <span className="hidden sm:inline">{t("menu.deleteGroup")}</span>
           </Button>
+          <DocsLink href="/docs/features/check-groups" />
         </div>
       </div>
 
