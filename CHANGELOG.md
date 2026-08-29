@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.20.0](https://github.com/fclairamb/solidping/compare/v0.19.1...v0.20.0) (2026-08-29)
+
+
+### Features
+
+* onboarding checklist, default email alerts, and one-step status pages ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#279](https://github.com/fclairamb/solidping/issues/279)) ([4cbcc29](https://github.com/fclairamb/solidping/commit/4cbcc29206ee201276f15f01b695b43c19bbf381))
+* **deps:** update go dependencies (non-major) ([#283](https://github.com/fclairamb/solidping/issues/283)) ([9709152](https://github.com/fclairamb/solidping/commit/970915284d9af2b905439e45f8ec5aa8818b03d1))
+
 ## [0.19.1](https://github.com/fclairamb/solidping/compare/v0.19.0...v0.19.1) (2026-08-28)
 
 
