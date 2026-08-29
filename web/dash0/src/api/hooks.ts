@@ -1804,7 +1804,8 @@ export function useChartWindowResults(
      * see spec 2026-08-25-03. Once both passes have genuinely settled with
      * nothing, this is `false` and the empty state is honest.
      */
-    isEmptyPending: data.data.length === 0 && (rollup.isPending || raw.isPending),
+    isEmptyPending:
+      data.data.length === 0 && (rollup.isPending || raw.isPending),
   };
 }
 
@@ -2555,6 +2556,12 @@ export interface StatusPage {
   whiteLabelAllowed?: boolean;
   /** True when the page is password-protected. The hash is never returned. */
   hasPassword?: boolean;
+  /**
+   * Whether a kiosk (TV mode) token is minted for this page (spec
+   * 2026-08-29-08). Admin payloads only — the public views strip it, and the
+   * token itself is only ever returned by the POST that mints it.
+   */
+  hasKioskToken?: boolean;
   // Custom-domain fields are only present on the authenticated org endpoints.
   customDomain?: string;
   customDomainStatus?: CustomDomainStatus;
@@ -2768,6 +2775,54 @@ export function useUpdateStatusPage(org: string, uid: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
       queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+    },
+  });
+}
+
+/**
+ * The one and only time a kiosk token is readable (spec 2026-08-29-08). Only
+ * its sha256 is stored, so an operator who loses it regenerates rather than
+ * recovers — the same contract as an API token.
+ */
+export interface KioskTokenResponse {
+  token: string;
+  hasKioskToken: boolean;
+}
+
+/**
+ * Mints or REGENERATES the page's kiosk token. Regenerating replaces the
+ * stored hash, so the screen still using the old URL stops working the moment
+ * this resolves — which is why the UI asks before calling it on a page that
+ * already has one.
+ */
+export function useGenerateKioskToken(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<KioskTokenResponse>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/kiosk-token`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
+/** Revokes the page's kiosk token. Idempotent server-side. */
+export function useRevokeKioskToken(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(`/api/v1/orgs/${org}/status-pages/${uid}/kiosk-token`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
     },
   });
 }
@@ -4672,10 +4727,7 @@ export interface UpdateEscalationPolicyRequest {
   steps?: EscalationPolicyStep[];
 }
 
-export function useEscalationPolicies(
-  org: string,
-  opts?: ListQueryOptions,
-) {
+export function useEscalationPolicies(org: string, opts?: ListQueryOptions) {
   return useQuery({
     queryKey: ["escalationPolicies", org],
     queryFn: async () => {

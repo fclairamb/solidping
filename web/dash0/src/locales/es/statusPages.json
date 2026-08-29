@@ -294,5 +294,23 @@
   "wand": {
     "prefill": "Rellenar por mí",
     "loadChecksFailed": "No se pudo cargar la lista completa de comprobaciones"
+  },
+  "tvMode": {
+    "title": "Modo TV",
+    "description": "Una presentación a pantalla completa de esta página para un televisor de oficina: una sola vista sin desplazamiento, tipografía grande y ningún elemento interactivo.",
+    "publicNote": "Esta página es pública, así que la URL del modo TV funciona tal cual: apunte una pantalla a ella y déjela funcionando.",
+    "restrictedNote": "Esta página no es pública, por lo que una pantalla no puede abrirla sin intervención. Genere un token de quiosco para dar a una pantalla acceso de solo lectura; omite la petición de contraseña y hace visible una página privada.",
+    "generate": "Generar token de quiosco",
+    "regenerate": "Regenerar",
+    "revoke": "Revocar",
+    "tokenLabel": "token de quiosco",
+    "tokenShownOnce": "Cópielo ahora: se muestra una sola vez y no se puede recuperar después.",
+    "tokenGenerated": "Token de quiosco generado",
+    "tokenRevoked": "Token de quiosco revocado",
+    "tokenFailed": "No se pudo actualizar el token de quiosco",
+    "regenerateTitle": "¿Regenerar el token de quiosco?",
+    "regenerateDescription": "Cualquier pantalla que siga usando la URL actual dejará de funcionar de inmediato. Tendrá que actualizarla con la nueva.",
+    "revokeTitle": "¿Revocar el token de quiosco?",
+    "revokeDescription": "Todas las pantallas que lo usen dejarán de funcionar de inmediato, y esta página volverá a sus reglas de visibilidad normales."
   }
 }

@@ -294,5 +294,23 @@
   "wand": {
     "prefill": "Préremplir pour moi",
     "loadChecksFailed": "Impossible de charger la liste complète des contrôles"
+  },
+  "tvMode": {
+    "title": "Mode TV",
+    "description": "Un affichage plein écran de cette page pour un écran de bureau : une seule vue sans défilement, en grands caractères, sans aucun élément interactif.",
+    "publicNote": "Cette page est publique : l'URL du mode TV fonctionne telle quelle — dirigez un écran dessus et laissez-le tourner.",
+    "restrictedNote": "Cette page n'est pas publique : un écran ne peut pas l'ouvrir sans intervention. Générez un jeton kiosque pour donner à un écran un accès en lecture seule ; il contourne la demande de mot de passe et rend visible une page privée.",
+    "generate": "Générer un jeton kiosque",
+    "regenerate": "Régénérer",
+    "revoke": "Révoquer",
+    "tokenLabel": "jeton kiosque",
+    "tokenShownOnce": "Copiez-le maintenant : il n'est affiché qu'une fois et ne peut pas être récupéré ensuite.",
+    "tokenGenerated": "Jeton kiosque généré",
+    "tokenRevoked": "Jeton kiosque révoqué",
+    "tokenFailed": "Impossible de mettre à jour le jeton kiosque",
+    "regenerateTitle": "Régénérer le jeton kiosque ?",
+    "regenerateDescription": "Tout écran utilisant l'URL actuelle cessera immédiatement de fonctionner. Vous devrez le mettre à jour avec la nouvelle.",
+    "revokeTitle": "Révoquer le jeton kiosque ?",
+    "revokeDescription": "Tous les écrans qui l'utilisent cesseront immédiatement de fonctionner, et cette page reviendra à ses règles de visibilité normales."
   }
 }

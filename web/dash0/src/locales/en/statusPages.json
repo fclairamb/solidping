@@ -294,5 +294,23 @@
   "wand": {
     "prefill": "Prefill for me",
     "loadChecksFailed": "Couldn't load the full check list"
+  },
+  "tvMode": {
+    "title": "TV mode",
+    "description": "A full-screen wallboard rendering of this page for an office TV: one non-scrolling view, big type, and no interactive elements.",
+    "publicNote": "This page is public, so the TV URL works as-is — point a screen at it and leave it there.",
+    "restrictedNote": "This page is not public, so a screen cannot open it unattended. Generate a kiosk token to grant one screen read-only access; it bypasses the password prompt and makes a private page viewable.",
+    "generate": "Generate kiosk token",
+    "regenerate": "Regenerate",
+    "revoke": "Revoke",
+    "tokenLabel": "kiosk token",
+    "tokenShownOnce": "Copy this now — it is shown once and cannot be retrieved later.",
+    "tokenGenerated": "Kiosk token generated",
+    "tokenRevoked": "Kiosk token revoked",
+    "tokenFailed": "Could not update the kiosk token",
+    "regenerateTitle": "Regenerate the kiosk token?",
+    "regenerateDescription": "Any screen still using the current URL stops working immediately. You will need to update it with the new one.",
+    "revokeTitle": "Revoke the kiosk token?",
+    "revokeDescription": "Every screen using it stops working immediately, and this page goes back to its normal visibility rules."
   }
 }

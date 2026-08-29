@@ -294,5 +294,23 @@
   "wand": {
     "prefill": "Für mich vorausfüllen",
     "loadChecksFailed": "Die vollständige Liste der Prüfungen konnte nicht geladen werden"
+  },
+  "tvMode": {
+    "title": "TV-Modus",
+    "description": "Eine bildschirmfüllende Wandtafel-Darstellung dieser Seite für einen Büro-Fernseher: eine einzige Ansicht ohne Scrollen, große Schrift, keine interaktiven Elemente.",
+    "publicNote": "Diese Seite ist öffentlich, die TV-URL funktioniert also unverändert — richten Sie einen Bildschirm darauf und lassen Sie ihn laufen.",
+    "restrictedNote": "Diese Seite ist nicht öffentlich, ein Bildschirm kann sie also nicht unbeaufsichtigt öffnen. Erzeugen Sie ein Kiosk-Token, um einem Bildschirm Lesezugriff zu geben; es umgeht die Passwortabfrage und macht eine private Seite sichtbar.",
+    "generate": "Kiosk-Token erzeugen",
+    "regenerate": "Neu erzeugen",
+    "revoke": "Widerrufen",
+    "tokenLabel": "Kiosk-Token",
+    "tokenShownOnce": "Jetzt kopieren — es wird nur einmal angezeigt und kann später nicht abgerufen werden.",
+    "tokenGenerated": "Kiosk-Token erzeugt",
+    "tokenRevoked": "Kiosk-Token widerrufen",
+    "tokenFailed": "Kiosk-Token konnte nicht aktualisiert werden",
+    "regenerateTitle": "Kiosk-Token neu erzeugen?",
+    "regenerateDescription": "Jeder Bildschirm, der die aktuelle URL noch verwendet, funktioniert sofort nicht mehr. Sie müssen ihn mit der neuen URL aktualisieren.",
+    "revokeTitle": "Kiosk-Token widerrufen?",
+    "revokeDescription": "Alle Bildschirme, die es verwenden, funktionieren sofort nicht mehr, und für diese Seite gelten wieder ihre normalen Sichtbarkeitsregeln."
   }
 }
