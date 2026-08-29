@@ -67,7 +67,8 @@ func TestConfirmRegistrationNoOrgMintsSession(t *testing.T) {
 
 	// The actual assertion: a usable, org-less session was minted.
 	r.NotEmpty(resp.AccessToken, "confirming registration with no matching org must still mint an access token")
-	r.Empty(resp.RefreshToken, "the no-org branch issues no refresh token, consistent with Login's resolvedOrg==nil branch")
+	r.Empty(resp.RefreshToken,
+		"the no-org branch issues no refresh token, consistent with Login's resolvedOrg==nil branch")
 	r.Positive(resp.ExpiresIn)
 	r.Equal(LoginActionNoOrg, resp.LoginAction)
 	r.Equal(email, resp.User.Email)
