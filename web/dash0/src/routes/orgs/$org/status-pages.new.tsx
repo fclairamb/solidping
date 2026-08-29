@@ -1,7 +1,13 @@
+import { useEffect, useMemo } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { useCreateStatusPage, useCheck } from "@/api/hooks";
+import {
+  useCreateStatusPage,
+  useCheck,
+  useInfiniteChecks,
+  type Check,
+} from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusPageForm } from "@/components/shared/status-page-form";
 
@@ -30,12 +36,66 @@ function StatusPageNewPage() {
   const prefilledCheck = useCheck(org, checkUid ?? "", {});
   const orgName = organizations.find((entry) => entry.slug === org)?.name;
 
+  // Full check list, for the "Prefill for me" wand (attach every check) and
+  // to resolve attached-check badge names. Same auto-page-through pattern as
+  // checks.scheduling.tsx's auto-rebalance — the whole point is the ORG
+  // total, so stopping at the list endpoint's first 100-row page would
+  // quietly under-attach an org with more checks than that.
+  const {
+    data: checksPages,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isLoading: isLoadingChecks,
+    isError: isChecksError,
+  } = useInfiniteChecks(org, { limit: 100 });
+
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  useEffect(() => {
+    if (isChecksError) {
+      toast.error(t("wand.loadChecksFailed", "Couldn't load the full check list"));
+    }
+  }, [isChecksError, t]);
+
+  const allChecks: Check[] = useMemo(
+    () => (checksPages?.pages ?? []).flatMap((page) => page.data ?? []),
+    [checksPages],
+  );
+  // Loaded means "no more pages to fetch" — an error stops the retry loop
+  // too, so the wand still becomes usable with whatever was fetched so far
+  // rather than spinning forever.
+  const allChecksLoaded =
+    !isLoadingChecks && (hasNextPage === false || isChecksError);
+
+  const checkNamesByUid = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const check of allChecks) {
+      map.set(check.uid, check.name ?? check.uid);
+    }
+    if (prefilledCheck.data) {
+      map.set(
+        prefilledCheck.data.uid,
+        prefilledCheck.data.name ?? prefilledCheck.data.uid,
+      );
+    }
+    return map;
+  }, [allChecks, prefilledCheck.data]);
+
   return (
     <StatusPageForm
       mode="create"
       isPending={createStatusPage.isPending}
       initialName={checkUid ? orgName : undefined}
-      prefilledCheckName={checkUid ? prefilledCheck.data?.name : undefined}
+      initialCheckUids={checkUid ? [checkUid] : undefined}
+      checkNamesByUid={checkNamesByUid}
+      orgName={orgName}
+      allChecks={allChecks}
+      allChecksLoaded={allChecksLoaded}
       onCancel={() => navigate({ to: "/orgs/$org/status-pages", params: { org } })}
       onSubmit={async (data) => {
         const page = await createStatusPage.mutateAsync({
@@ -52,7 +112,7 @@ function StatusPageNewPage() {
           autoPublish: data.autoPublish,
           autoPublishDelaySeconds: data.autoPublishDelaySeconds,
           autoResolve: data.autoResolve,
-          checkUids: checkUid ? [checkUid] : undefined,
+          checkUids: data.checkUids.length > 0 ? data.checkUids : undefined,
         });
         toast.success(t("toast.created"));
         navigate({

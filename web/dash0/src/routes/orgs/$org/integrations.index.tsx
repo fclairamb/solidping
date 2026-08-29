@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Bell, Pencil, Plus, RefreshCw, Search, Star, Trash2 } from "lucide-react";
+import {
+  Bell,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Star,
+  Trash2,
+  Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +46,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   useIntegrations,
+  useCreateIntegration,
   useDeleteIntegration,
   type Integration,
   type ConnectionType,
@@ -46,6 +57,9 @@ import {
 } from "@/components/integrations/integration-icon";
 import { SMSModePanel } from "@/components/integrations/sms-mode-panel";
 import { useDebounce } from "@/lib/use-debounce";
+import { useAuth } from "@/contexts/AuthContext";
+import { hasNotifiableIntegration } from "@/lib/onboarding-checklist";
+import { buildEmailAlertsWandPayload } from "@/lib/onboarding-wand";
 
 interface IntegrationsIndexSearch {
   q?: string;
@@ -68,6 +82,8 @@ function IntegrationsListPage() {
     refetch,
   } = useIntegrations(org);
   const deleteMutation = useDeleteIntegration(org);
+  const createIntegration = useCreateIntegration(org);
+  const { user } = useAuth();
 
   const { q: qParam } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -119,6 +135,20 @@ function IntegrationsListPage() {
   const showEmptyState =
     !isLoading && integrations && integrations.length === 0;
 
+  // Visible only once we know the org actually lacks a notifiable channel —
+  // guarding on isLoading avoids a flash-then-disappear for an org that
+  // already has one.
+  const showWand = !isLoading && !hasNotifiableIntegration(integrations);
+
+  const onWandClick = () => {
+    if (!user?.email) return;
+    createIntegration.mutate(buildEmailAlertsWandPayload(t, user.email), {
+      onSuccess: () => toast.success(t("wand.created", "Email alerts created")),
+      onError: () =>
+        toast.error(t("wand.createFailed", "Failed to set up email alerts")),
+    });
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -130,14 +160,34 @@ function IntegrationsListPage() {
         )}
         docsHref="/docs/configuration/notifications"
         actions={
-          <Button asChild aria-label={t("new", "New integration")}>
-            <Link to="/orgs/$org/integrations/new" params={{ org }}>
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">
-                {t("new", "New integration")}
-              </span>
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {showWand && (
+              <Button
+                variant="outline"
+                onClick={onWandClick}
+                disabled={createIntegration.isPending}
+                data-testid="wand-create-email-alerts"
+                aria-label={t("wand.createEmailAlerts", "Set up email alerts for me")}
+              >
+                {createIntegration.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                ) : (
+                  <Wand2 className="h-4 w-4 sm:mr-2" />
+                )}
+                <span className="hidden sm:inline">
+                  {t("wand.createEmailAlerts", "Set up email alerts for me")}
+                </span>
+              </Button>
+            )}
+            <Button asChild aria-label={t("new", "New integration")}>
+              <Link to="/orgs/$org/integrations/new" params={{ org }}>
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {t("new", "New integration")}
+                </span>
+              </Link>
+            </Button>
+          </div>
         }
         className="flex-wrap"
       />
