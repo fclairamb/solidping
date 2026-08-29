@@ -115,6 +115,21 @@ describe("transformBullet — robustness", () => {
   test("a non-bullet line is returned untouched", () => {
     expect(transformBullet("not a bullet at all")).toBe("not a bullet at all");
   });
+
+  test("unescaped MDX-shaped braces outside a code span survive verbatim too", () => {
+    // The real regression case: CHANGELOG.md line ~613 has a bullet with
+    // literal `"{emoji} {name}"` in plain prose, not inside backticks. The
+    // transform must never try to "fix" this — MDX-safety for a shape like
+    // this is the generated page's frontmatter (`mdx: format: md` — see
+    // gen-changelog.ts), not a content rewrite here.
+    const input =
+      '* **admin:** region slugs resolve to friendly "{emoji} {name}" labels ([#215](https://github.com/fclairamb/solidping/issues/215)) ([abc1234](https://github.com/fclairamb/solidping/commit/abc1234def))';
+
+    // "admin" isn't in SCOPE_LABELS, so it passes through unchanged too.
+    expect(transformBullet(input)).toBe(
+      '* **admin:** region slugs resolve to friendly "{emoji} {name}" labels ([#215](https://github.com/fclairamb/solidping/issues/215))',
+    );
+  });
 });
 
 describe("transformChangelog", () => {
