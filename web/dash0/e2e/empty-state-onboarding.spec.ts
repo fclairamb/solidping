@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, API_BASE, type Page } from "./fixtures";
 
 // Covers the empty-state onboarding hero (EmptyStateOnboarding, rendered on
 // /orgs/$org when the org has zero checks) and specifically the 2026-07-11
@@ -115,5 +115,115 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     expect(formBox).toBeTruthy();
     expect(mcpBox).toBeTruthy();
     expect(formBox!.y).toBeLessThan(mcpBox!.y);
+  });
+
+  // Spec 2026-08-29-07: submitting the quick-create form used to just clear
+  // the input and let the dashboard re-render into the regular view once the
+  // checks list refetched. It now navigates straight to the new check's own
+  // page instead — the moment of highest engagement right after creating a
+  // first check. This needs a genuinely empty org (not the shared `test` org
+  // stubbed empty above): the earlier tests' route stubs intercept every
+  // request to `**/api/v1/orgs/test/checks*`, method included, so a real
+  // quick-create POST through them would be swallowed by the `{data: []}`
+  // GET stub instead of returning the created check. A fresh org sidesteps
+  // that and also gives a clean, unshared checks list to assert against.
+  test.describe("quick-create redirect (needs a real empty org)", () => {
+    /** Creates a fresh org with zero checks, authenticated as its owner. */
+    async function seedEmptyOrg(page: Page): Promise<string> {
+      const stamp = Date.now() + Math.floor(Math.random() * 1000);
+      const email = `quickcreate-${stamp}@unknown.example`;
+      const password = "Strong-Pass-123!";
+
+      const createUserResp = await page.request.post(
+        `${API_BASE}/api/v1/test/users`,
+        { data: { email, password, name: "Quick Create Owner" } },
+      );
+      if (createUserResp.status() !== 201) {
+        test.skip(
+          true,
+          `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${createUserResp.status()}`,
+        );
+      }
+
+      const loginResp = await page.request.post(
+        `${API_BASE}/api/v1/auth/login`,
+        { data: { email, password } },
+      );
+      expect(loginResp.status()).toBe(200);
+      const session = (await loginResp.json()) as { accessToken: string };
+
+      const slug = `qc-${stamp.toString(36)}`;
+      const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+        data: { name: `Acme Quick Create ${stamp}`, slug },
+      });
+      expect(createOrgResp.status()).toBe(201);
+      const org = (await createOrgResp.json()) as {
+        slug: string;
+        accessToken: string;
+        refreshToken?: string;
+        expiresIn?: number;
+      };
+
+      await page.addInitScript(
+        ({ accessToken, refreshToken, expiresIn, orgSlug }) => {
+          localStorage.setItem("solidping_session_token", accessToken as string);
+          if (refreshToken) {
+            localStorage.setItem(
+              "solidping_refresh_token",
+              refreshToken as string,
+            );
+          }
+          if (expiresIn) {
+            localStorage.setItem(
+              "solidping_expires_at",
+              String(Date.now() + Number(expiresIn) * 1000),
+            );
+            localStorage.setItem("solidping_expires_in", String(expiresIn));
+          }
+          localStorage.setItem("solidping_org", orgSlug as string);
+        },
+        {
+          accessToken: org.accessToken,
+          refreshToken: org.refreshToken ?? "",
+          expiresIn: org.expiresIn ?? 0,
+          orgSlug: org.slug,
+        },
+      );
+
+      return org.slug;
+    }
+
+    test("navigates to the new check's page, and the hero is gone on return", async ({
+      page,
+    }) => {
+      const orgSlug = await seedEmptyOrg(page);
+
+      await page.goto(`orgs/${orgSlug}`);
+      await page.waitForLoadState("networkidle");
+
+      // Confirms the "dashboard switches out of the empty state" coverage
+      // this test replaces: the hero is present before create.
+      await expect(page.getByTestId("quick-start-input")).toBeVisible();
+
+      await page.getByTestId("quick-start-input").fill("https://acme.com");
+      await page.getByTestId("quick-start-submit").click();
+
+      // Lands on the check detail route, not back on the dashboard.
+      await page.waitForURL(
+        new RegExp(`/orgs/${orgSlug}/checks/[^/]+/?$`),
+      );
+      await expect(
+        page.locator('[data-testid="check-detail-header"] h1'),
+      ).toContainText("HTTP — acme.com");
+
+      // Navigating back to the dashboard: the org now has a check, so the
+      // empty-state hero must be gone (replaced by the regular dashboard /
+      // onboarding-checklist view) — the behavior the old assertion covered.
+      await page.goto(`orgs/${orgSlug}`);
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByTestId("quick-start-input")).not.toBeVisible();
+      await expect(page.getByTestId("quick-start-submit")).not.toBeVisible();
+    });
   });
 });
