@@ -130,6 +130,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
+	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -766,7 +767,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// orgGroup by design. These are exactly the URLs customers paste into
 	// their own sites (status pages, SVG badges, the /embed/v1 widget's
 	// summary endpoint), so they are the ones a rename must not break.
-	publicOrgAPI := api.Use(orgSlugRedirect.Middleware, statusPageUnlockGrant)
+	publicOrgAPI := api.Use(orgSlugRedirect.Middleware, statusPageUnlockGrant, statusPageKioskGrant)
 
 	// Org creation (protected). Any authenticated user may create an org; the
 	// creator becomes its owner (spec 2026-08-08-11).
@@ -1658,6 +1659,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.DELETE("/:statusPageUid/logo", statusPageAssetsHandler.DeleteLogo)
 	orgStatusPages.POST("/:statusPageUid/favicon", statusPageAssetsHandler.UploadFavicon)
 	orgStatusPages.DELETE("/:statusPageUid/favicon", statusPageAssetsHandler.DeleteFavicon)
+	// Kiosk token for wallboard/TV mode (spec 2026-08-29-08). POST mints or
+	// regenerates (invalidating the previous one), DELETE revokes. The
+	// plaintext token exists only in the POST response.
+	orgStatusPages.POST("/:statusPageUid/kiosk-token", statusPagesHandler.GenerateKioskToken)
+	orgStatusPages.DELETE("/:statusPageUid/kiosk-token", statusPagesHandler.RevokeKioskToken)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
 	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)
@@ -3748,5 +3754,19 @@ func readMasterKeyFile(path string) (string, error) {
 func statusPageUnlockGrant(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
 		return next(writer, statuspagelock.WithRequestGrant(req))
+	}
+}
+
+// statusPageKioskGrant installs the request's own kiosk-token decision on its
+// context (spec 2026-08-29-08).
+//
+// Mounted alongside statusPageUnlockGrant, and for the same reason: the gate
+// belongs at ONE place, next to the visibility check. It only READS
+// `?kiosk=<token>`; whether that token means anything is decided per page by
+// statuspagekiosk.Decide, so an unmounted middleware locks pages rather than
+// exposing them.
+func statusPageKioskGrant(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		return next(writer, statuspagekiosk.WithRequestGrant(req))
 	}
 }

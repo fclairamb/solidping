@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -643,6 +644,17 @@ type StatusPageResponse struct {
 	// only. Every field on them is operator-authored or templated from the
 	// page's own public resource names; no probe diagnostics can reach here.
 	ActiveIncidents []PublicIncident `json:"activeIncidents,omitempty"`
+	// OverallAvailabilityPct is the PAGE-level uptime over the page's own
+	// history period (spec 2026-08-29-08) — the mean of the per-resource
+	// `availability.overallAvailabilityPct` values, resources with no data
+	// excluded. Omitted when `showAvailability` is off, and when no resource
+	// has any data at all. Public view paths only, like OverallStatus.
+	OverallAvailabilityPct *float64 `json:"overallAvailabilityPct,omitempty"`
+	// HasKioskToken reports that a kiosk token is minted for this page (spec
+	// 2026-08-29-08). ADMIN payloads only: it says something about how the
+	// page is reachable, and the token itself is never serialized after the
+	// mint call that created it.
+	HasKioskToken bool `json:"hasKioskToken,omitempty"`
 }
 
 // StatusCountsResponse mirrors models.PageStatusCounts on the wire (spec
@@ -672,6 +684,11 @@ type StatusPageSummary struct {
 	// decide who may cache the response, which depends on the page rather than
 	// on whether this particular caller was let in (spec 2026-08-22-06).
 	Visibility string
+	// OverallAvailabilityPct is the page-level uptime over the page's history
+	// period (spec 2026-08-29-08), or nil when the page hides availability,
+	// nothing has data, or the caller asked for the cheap variant (the SVG
+	// badge, which has nowhere to render a percentage).
+	OverallAvailabilityPct *float64
 }
 
 // AvailabilitySettingsResponse mirrors models.AvailabilitySettings on the
@@ -2005,9 +2022,30 @@ func (s *Service) enrichAdminBranding(resp *StatusPageResponse, allowed bool) {
 func (s *Service) resolvePublicBranding(ctx context.Context, orgUID string, resp *StatusPageResponse) {
 	resp.HideBranding = resp.HideBranding && s.whiteLabelAllowed(ctx, orgUID)
 	resp.WhiteLabelAllowed = nil
+	// Strip the admin-only kiosk flag (spec 2026-08-29-08). Whether a page has
+	// a wallboard token is operator information: publishing it would tell an
+	// anonymous reader that a second way in exists and is worth guessing at.
+	resp.HasKioskToken = false
 }
 
 // --- Public view ---
+
+// publicAccessError maps the shared public-access gate onto this package's
+// errors. It exists so ViewStatusPage and ViewStatusPageSummary cannot drift
+// apart on who may read a page — and so the kiosk token, the unlock cookie and
+// the visibility column are all considered in ONE place.
+func publicAccessError(ctx context.Context, page *models.StatusPage) error {
+	switch statuspagekiosk.Decide(ctx, page) {
+	case statuspagekiosk.DecisionNotFound:
+		return ErrStatusPageNotFound
+	case statuspagekiosk.DecisionLocked:
+		return statuspagelock.ErrLocked
+	case statuspagekiosk.DecisionAllow:
+		return nil
+	default:
+		return ErrStatusPageNotFound
+	}
+}
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
 func (s *Service) ViewStatusPage(
@@ -2023,15 +2061,13 @@ func (s *Service) ViewStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	if !statuspagelock.Visible(page) {
-		return StatusPageResponse{}, ErrStatusPageNotFound
-	}
-
-	// A `password` page is KNOWN to exist and answers 401, unlike `private`,
-	// which 404s. The distinction is the whole product difference between
-	// "hidden from everyone" and "shared with our customers".
-	if !statuspagelock.Allows(ctx, page) {
-		return StatusPageResponse{}, statuspagelock.ErrLocked
+	// One gate for every public surface (statuspagekiosk.Decide): disabled or
+	// `private` is indistinguishable from not existing, a `password` page is
+	// KNOWN to exist and answers 401, and a valid kiosk token overrides both
+	// for the one screen holding it. An invalid token is byte-identical to no
+	// token.
+	if err := publicAccessError(ctx, page); err != nil {
+		return StatusPageResponse{}, err
 	}
 
 	response := convertPageToResponse(page)
@@ -2057,6 +2093,15 @@ func (s *Service) ViewStatusPage(
 	// Enrich resources with availability data
 	if page.ShowAvailability || page.ShowResponseTime {
 		s.enrichWithAvailability(ctx, org.UID, page, sections)
+	}
+
+	// Page-level uptime for the same window (spec 2026-08-29-08). Derived from
+	// the per-resource numbers just computed, so it is free here and can never
+	// disagree with the rows it summarizes. Gated on ShowAvailability: a page
+	// whose operator chose not to publish per-resource uptime must not publish
+	// the aggregate either.
+	if page.ShowAvailability {
+		response.OverallAvailabilityPct = meanResourceAvailability(sections)
 	}
 
 	response.Sections = sections
@@ -2150,6 +2195,22 @@ func (s *Service) ViewDefaultStatusPage(
 func (s *Service) ViewStatusPageSummary(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageSummary, error) {
+	return s.viewStatusPageSummary(ctx, orgSlug, slug, true)
+}
+
+// viewStatusPageSummary is ViewStatusPageSummary with one extra knob:
+// withAvailability decides whether the page-level uptime percentage (spec
+// 2026-08-29-08) is computed.
+//
+// It is a knob rather than an unconditional addition because the aggregate is
+// NOT free — it costs the same bucket query the full page view pays — and the
+// summary has a second consumer with nowhere to put a percentage: the SVG
+// badge (GenerateBadge), which is embedded in READMEs and is the hottest
+// caller of this method. So the JSON summary endpoint asks for it and the
+// badge does not.
+func (s *Service) viewStatusPageSummary(
+	ctx context.Context, orgSlug, slug string, withAvailability bool,
+) (StatusPageSummary, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return StatusPageSummary{}, ErrOrganizationNotFound
@@ -2160,12 +2221,8 @@ func (s *Service) ViewStatusPageSummary(
 		return StatusPageSummary{}, ErrStatusPageNotFound
 	}
 
-	if !statuspagelock.Visible(page) {
-		return StatusPageSummary{}, ErrStatusPageNotFound
-	}
-
-	if !statuspagelock.Allows(ctx, page) {
-		return StatusPageSummary{}, statuspagelock.ErrLocked
+	if err := publicAccessError(ctx, page); err != nil {
+		return StatusPageSummary{}, err
 	}
 
 	sections, err := s.loadSectionsWithResources(ctx, page.UID)
@@ -2181,13 +2238,40 @@ func (s *Service) ViewStatusPageSummary(
 	}
 
 	return StatusPageSummary{
-		Status:       status,
-		Counts:       counts,
-		PageName:     page.Name,
-		PageSlug:     page.Slug,
-		CustomDomain: customDomain,
-		Visibility:   page.Visibility,
+		Status:                 status,
+		Counts:                 counts,
+		PageName:               page.Name,
+		PageSlug:               page.Slug,
+		CustomDomain:           customDomain,
+		Visibility:             page.Visibility,
+		OverallAvailabilityPct: s.summaryAvailability(ctx, org.UID, page, sections, withAvailability),
 	}, nil
+}
+
+// summaryAvailability computes the page-level uptime for the summary endpoint.
+//
+// It runs the SAME enrichment the full page view runs, with response time
+// forced off, and then the SAME mean. Reimplementing a cheaper aggregate here
+// is exactly how two numbers on two surfaces start disagreeing about the same
+// page, so the duplication is avoided rather than optimized.
+func (s *Service) summaryAvailability(
+	ctx context.Context, orgUID string, page *models.StatusPage,
+	sections []StatusPageSectionResponse, withAvailability bool,
+) *float64 {
+	if !withAvailability || !page.ShowAvailability {
+		return nil
+	}
+
+	// A shallow copy: enrichWithAvailability reads ShowResponseTime twice, and
+	// the summary has no chart to feed — fetching a hundred raw result rows per
+	// (check, region) for a number nobody renders is the one part of the full
+	// view worth skipping here.
+	lean := *page
+	lean.ShowResponseTime = false
+
+	s.enrichWithAvailability(ctx, orgUID, &lean, sections)
+
+	return meanResourceAvailability(sections)
 }
 
 // --- Badge (spec 2026-08-08-07) ---
@@ -2248,7 +2332,9 @@ func pageBadgeColor(status models.PageStatus) string {
 // Rendering itself reuses badges.GenerateSVG/ComposeBadgeSVG rather than a
 // second SVG renderer.
 func (s *Service) GenerateBadge(ctx context.Context, orgSlug, slug string, opts BadgeOptions) (Badge, error) {
-	summary, err := s.ViewStatusPageSummary(ctx, orgSlug, slug)
+	// withAvailability=false: a badge is "name | status" and has nowhere to put
+	// a percentage, so it must not pay for one.
+	summary, err := s.viewStatusPageSummary(ctx, orgSlug, slug, false)
 	if err != nil {
 		return Badge{}, err
 	}
@@ -2453,6 +2539,52 @@ func (s *Service) enrichWithAvailability(
 			resource.Availability = availData
 		}
 	}
+}
+
+// meanResourceAvailability is the PAGE-level uptime number (spec
+// 2026-08-29-08): the arithmetic mean of the per-resource
+// `overallAvailabilityPct` values already computed for this page's history
+// period.
+//
+// The mean, not a time-weighted union of every probe. Both are defensible; the
+// mean wins on the one property that matters for a number printed a metre high
+// on an office wall — a reader can verify it. Every per-resource percentage is
+// on the page directly under it, and their average is a sum a person can do in
+// their head. A union ("any resource down = the page is down") is stricter and
+// arguably truer to how customers experience an outage, but it cannot be
+// reconciled with the rows above it without explaining probe weighting, so it
+// would read as a number that disagrees with the page it sits on. The docs
+// (web/docs/docs/features/status-page-tv-mode.md) state the definition.
+//
+// Resources with NO data are EXCLUDED rather than counted as 0 % or 100 %:
+// a check that has never reported is not an outage, and it is not perfect
+// uptime either. Returns nil when nothing has data — the caller omits the
+// field, and the board shows no number rather than a confident lie.
+func meanResourceAvailability(sections []StatusPageSectionResponse) *float64 {
+	var (
+		sum   float64
+		count int
+	)
+
+	for i := range sections {
+		for j := range sections[i].Resources {
+			avail := sections[i].Resources[j].Availability
+			if avail == nil || avail.OverallAvailabilityPct == nil {
+				continue
+			}
+
+			sum += *avail.OverallAvailabilityPct
+			count++
+		}
+	}
+
+	if count == 0 {
+		return nil
+	}
+
+	mean := sum / float64(count)
+
+	return &mean
 }
 
 // resourceRecentResults returns the per-region response-time results for a
@@ -3308,6 +3440,7 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		CustomCSS:               page.CustomCSS,
 		HideBranding:            page.Settings.HideBranding(),
 		HasPassword:             page.PasswordHash != nil && *page.PasswordHash != "",
+		HasKioskToken:           page.KioskTokenHash != nil && *page.KioskTokenHash != "",
 		LogoURL:                 statuspageassets.PublicURL(page.Settings.LogoFileUID()),
 		FaviconURL:              statuspageassets.PublicURL(page.Settings.FaviconFileUID()),
 		CreatedAt:               &page.CreatedAt,

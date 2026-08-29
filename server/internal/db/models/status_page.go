@@ -159,6 +159,21 @@ type StatusPage struct {
 	// It is NEVER serialized onto any response — reads expose `hasPassword`
 	// only. nil on public/private pages.
 	PasswordHash *string `bun:"password_hash"`
+	// KioskTokenHash is the sha256 hex of the page's kiosk token (spec
+	// 2026-08-29-08) — the long-lived, revocable, read-only grant a wallboard
+	// screen presents as `?kiosk=<token>` so it can render a `password` or
+	// `private` page unattended.
+	//
+	// sha256 rather than the argon2id used for PasswordHash, and that is a
+	// deliberate difference rather than an inconsistency: the token is 32
+	// bytes of CSPRNG output with no dictionary to slow down, and a TV
+	// re-presents it every 15-30 s, so a memory-hard verification per request
+	// would buy nothing and cost a lot.
+	//
+	// Like PasswordHash it is NEVER serialized — reads expose `hasKioskToken`
+	// only, and the plaintext token is shown exactly once, at mint time. nil
+	// means the page has no kiosk token.
+	KioskTokenHash *string `bun:"kiosk_token_hash"`
 	// Settings holds per-page display customization — availability color
 	// thresholds and the page's brand identity (logo, favicon, white-label
 	// opt-in) — typed rather than a free-form map so keys stay discoverable
@@ -231,6 +246,11 @@ type StatusPageUpdate struct {
 	// protected); a nil pointer leaves it untouched, which is what keeps an
 	// unrelated PATCH from silently unlocking a page.
 	PasswordHash *string
+	// KioskTokenHash writes the page's kiosk token hash. Same three-state
+	// convention as PasswordHash: nil leaves it untouched, a pointer to the
+	// empty string CLEARS it (revoke), and a value replaces it — which is what
+	// makes "regenerate" invalidate the previous token with no extra bookkeeping.
+	KioskTokenHash *string
 	// Settings overwrites the whole settings column when non-nil (the caller
 	// — statuspages.Service — has already applied the no-deep-merge
 	// section-replace-or-reset semantics against the current value). A nil

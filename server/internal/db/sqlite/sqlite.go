@@ -4860,6 +4860,8 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 func applyStatusPageAccessColumns(
 	query *bun.UpdateQuery, update *models.StatusPageUpdate,
 ) *bun.UpdateQuery {
+	query = applyStatusPageKioskColumn(query, update)
+
 	if update.PasswordHash == nil {
 		return query
 	}
@@ -4872,6 +4874,25 @@ func applyStatusPageAccessColumns(
 	}
 
 	return query.Set("password_hash = ?", *update.PasswordHash)
+}
+
+// applyStatusPageKioskColumn writes the kiosk token hash (spec 2026-08-29-08).
+// Same three-state contract as the password hash above, and NULL for the empty
+// string for the same reason: a ” hash would match nothing yet read back as
+// "this page has a kiosk token", leaving an operator staring at a revoke
+// button for a credential that does not exist.
+func applyStatusPageKioskColumn(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) *bun.UpdateQuery {
+	if update.KioskTokenHash == nil {
+		return query
+	}
+
+	if *update.KioskTokenHash == "" {
+		return query.Set("kiosk_token_hash = NULL")
+	}
+
+	return query.Set("kiosk_token_hash = ?", *update.KioskTokenHash)
 }
 
 // UpdateStatusPage updates a status page by UID.

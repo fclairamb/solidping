@@ -597,10 +597,15 @@ func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Re
 // StatusPageSummaryResponse is the lightweight "is it up?" public response
 // (spec 2026-08-08-06).
 type StatusPageSummaryResponse struct {
-	Status      string                    `json:"status"`
-	Counts      StatusCountsResponse      `json:"counts"`
-	Page        StatusPageSummaryPageInfo `json:"page"`
-	GeneratedAt time.Time                 `json:"generatedAt"`
+	Status string               `json:"status"`
+	Counts StatusCountsResponse `json:"counts"`
+	// OverallAvailabilityPct is the page-level uptime over the page's own
+	// history period (spec 2026-08-29-08): the mean of the per-resource
+	// percentages, resources with no data excluded. Omitted when the page
+	// hides availability or nothing has reported yet.
+	OverallAvailabilityPct *float64                  `json:"overallAvailabilityPct,omitempty"`
+	Page                   StatusPageSummaryPageInfo `json:"page"`
+	GeneratedAt            time.Time                 `json:"generatedAt"`
 }
 
 // StatusPageSummaryPageInfo identifies the page a summary belongs to.
@@ -637,6 +642,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 			Maintenance: summary.Counts.Maintenance,
 			Unknown:     summary.Counts.Unknown,
 		},
+		OverallAvailabilityPct: summary.OverallAvailabilityPct,
 		Page: StatusPageSummaryPageInfo{
 			Name: summary.PageName,
 			Slug: summary.PageSlug,
