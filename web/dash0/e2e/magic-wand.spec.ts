@@ -164,24 +164,35 @@ test.describe("Magic wand defaults", () => {
     await expect(wand).toHaveCount(0);
 
     // The created integration is addressed to the signed-in user, exactly
-    // like seedOrgDefaults would have written.
+    // like seedOrgDefaults would have written. The LIST endpoint deliberately
+    // omits `settings` (server internal/handlers/integrations/service.go's
+    // toResponse(conn, includeSettings) — only the single-item GET includes
+    // it), so the recipient check needs the individual GET.
     const resp = await page.request.get(
       `${API_BASE}/api/v1/orgs/${orgSlug}/integrations`,
       { headers: auth },
     );
     const items = ((await resp.json()) as {
       data?: {
+        uid: string;
         type: string;
         name: string;
         isDefault: boolean;
-        settings?: { to?: string[] };
       }[];
     }).data ?? [];
     expect(items).toHaveLength(1);
     expect(items[0].type).toBe("email");
     expect(items[0].name).toBe("Email alerts");
     expect(items[0].isDefault).toBe(true);
-    expect(items[0].settings?.to).toEqual([email]);
+
+    const detailResp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/integrations/${items[0].uid}`,
+      { headers: auth },
+    );
+    const detail = (await detailResp.json()) as {
+      settings?: { to?: string[] };
+    };
+    expect(detail.settings?.to).toEqual([email]);
 
     // The Getting Started `alerts` step reads this same query key, so it
     // flips with no extra plumbing.
@@ -297,8 +308,12 @@ test.describe("Magic wand defaults", () => {
     await page.waitForLoadState("networkidle");
     const pageUid = page.url().split("/status-pages/")[1];
 
+    // Sections/resources are only embedded with ?with=sections (server
+    // internal/handlers/statuspages/handler.go's GetStatusPageOptions) —
+    // the from-check e2e spec sidesteps this by reading the PUBLIC endpoint
+    // instead, which always includes them.
     const detailResp = await page.request.get(
-      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}`,
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}?with=sections`,
       { headers: auth },
     );
     expect(detailResp.status()).toBe(200);
@@ -333,10 +348,17 @@ test.describe("Magic wand defaults", () => {
     const badges = page.getByTestId("status-page-attached-check");
     await expect(badges).toHaveCount(2);
 
-    // Remove the first badge (the "x" button inside it).
+    // Remove the first badge (the "x" button inside it). The check list
+    // does not come back in creation order (default sort is created_at
+    // DESC), so capture which one this actually was rather than assuming
+    // index 0 is checkNames[0].
+    const removedText = (await badges.first().textContent())?.trim() ?? "";
+    expect(checkNames).toContain(removedText);
     await badges.first().getByRole("button").click();
     await expect(badges).toHaveCount(1);
-    await expect(badges).toHaveText(new RegExp(checkNames[1]));
+    const remainingText = (await badges.first().textContent())?.trim() ?? "";
+    expect(remainingText).not.toBe(removedText);
+    expect(checkNames).toContain(remainingText);
 
     const suffix = Date.now().toString().slice(-9);
     await page.locator("#slug").fill(`e2e-wand-rm-${suffix}`.slice(0, 40));
@@ -347,7 +369,7 @@ test.describe("Magic wand defaults", () => {
     const pageUid = page.url().split("/status-pages/")[1];
 
     const detailResp = await page.request.get(
-      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}`,
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}?with=sections`,
       { headers: auth },
     );
     const detail = (await detailResp.json()) as {
