@@ -41,7 +41,7 @@ import {
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, isSwitchOrgInFlight } from "@/contexts/AuthContext";
 import {
   useBackgroundJob,
   useCheck,
@@ -1006,6 +1006,14 @@ function OrgLayout() {
     }
     // Already switching for, or already gave up on, this exact org.
     if (switchingForOrgRef.current === org || orgSwitchFailed === org) return;
+    // A switcher UI (AppSidebar, CommandMenu, the organizations page) is
+    // already mid-`switchOrg()` — its own state update can transiently make
+    // this guard see a mismatch against the URL it hasn't navigated away
+    // from yet. Firing here would race with (and can revert) that in-flight
+    // switch; see isSwitchOrgInFlight's doc comment in AuthContext.tsx. Skip
+    // — the caller's own navigate() will bring the URL in line once it
+    // finishes, at which point needsOrgSwitch naturally re-evaluates false.
+    if (isSwitchOrgInFlight()) return;
     switchingForOrgRef.current = org;
     // On success, auth.org updates and needsOrgSwitch flips false, clearing the
     // gate below. On failure (transient/race), record it so we fall through to

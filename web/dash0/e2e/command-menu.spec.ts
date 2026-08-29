@@ -213,8 +213,13 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.getByTestId("command-menu-ai")).toBeVisible();
     await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
 
-    // Verify Organization group (same heading/entry-title collision as above).
-    await expect(page.locator("[cmdk-group-heading]", { hasText: "Organization" })).toBeVisible();
+    // Verify Organization group. Anchored (not a plain substring) because
+    // the new "Switch organization" group heading also contains
+    // "Organization" as a substring — test@test.com belongs to 3 orgs
+    // (test, test2, test3), so that group renders here too.
+    await expect(
+      page.locator("[cmdk-group-heading]", { hasText: /^Organization$/ }),
+    ).toBeVisible();
     await expect(page.getByTestId("command-menu-organization")).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
