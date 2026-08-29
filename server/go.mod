@@ -3,7 +3,7 @@ module github.com/fclairamb/solidping/server
 go 1.26.0
 
 require (
-	filippo.io/age v1.3.1
+	filippo.io/age v1.3.2
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
 	github.com/IBM/sarama v1.60.2
 	github.com/SherClockHolmes/webpush-go v1.4.0
@@ -280,9 +280,9 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.5 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
-	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/mod v0.39.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	golang.org/x/tools v0.48.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
