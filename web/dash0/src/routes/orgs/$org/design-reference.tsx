@@ -22,6 +22,7 @@ import {
   Building2,
   KeyRound,
   Layers,
+  Loader2,
   LogOut,
   Moon,
   Monitor,
@@ -38,6 +39,7 @@ import {
   Sun,
   Trash2,
   Upload,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -241,6 +243,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "swatch-legend-chips", label: "Swatch-legend chips" },
   { id: "paging-coverage", label: "Paging coverage" },
   { id: "onboarding-checklist", label: "Onboarding checklist" },
+  { id: "magic-wand", label: "Magic wand" },
 ];
 
 function DesignReferencePage() {
@@ -294,6 +297,7 @@ function DesignReferencePage() {
       <SwatchLegendChipsSection />
       <PagingCoverageSection />
       <OnboardingChecklistSection />
+      <MagicWandSection />
     </div>
   );
 }
@@ -5343,6 +5347,65 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
         }
         importLine={'import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";'}
       />
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+function MagicWandSection() {
+  const snippet = `import { Wand2 } from "lucide-react";
+
+// One-click sensible default, next to the page's primary "New …" action.
+// Visible only while the derivation helper says the step is unsatisfied —
+// it disappears the instant the resource it offers to create exists.
+<Button
+  variant="outline"
+  onClick={onWandClick}
+  disabled={createMutation.isPending}
+  data-testid="wand-create-email-alerts"
+  aria-label={t("wand.createEmailAlerts")}
+>
+  {createMutation.isPending ? (
+    <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+  ) : (
+    <Wand2 className="h-4 w-4 sm:mr-2" />
+  )}
+  <span className="hidden sm:inline">{t("wand.createEmailAlerts")}</span>
+</Button>`;
+
+  return (
+    <Section
+      id="magic-wand"
+      title="Magic wand"
+      description="One-click sensible default for a Getting Started step (spec 2026-08-29-03). Two flavors: DIRECT CREATE for a private, reversible resource whose default is exactly what the backend already seeds (alerts, report) — one click and the resource exists; PREFILL ONLY for a public-facing artifact with a slug (the status page) — the wand fills the form and the operator still clicks Create. Always outline variant with the Wand2 icon, icon-only on mobile. Visibility is derived the same way the checklist itself derives step completion — never a stored flag — so the wand vanishes the moment its step is satisfied, from any source (wand click, manual creation, or an org that was seeded from the start)."
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Direct create (enabled, ready to click)
+          </p>
+          <Button variant="outline" data-testid="wand-create-email-alerts">
+            <Wand2 className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Set up email alerts for me</span>
+          </Button>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Pending (mutation in flight)</p>
+          <Button variant="outline" disabled>
+            <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+            <span className="hidden sm:inline">Set up email alerts for me</span>
+          </Button>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Prefill only (status page — form still needs Create)
+          </p>
+          <Button variant="outline" data-testid="wand-prefill-status-page">
+            <Wand2 className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Prefill for me</span>
+          </Button>
+        </div>
+      </div>
       <CodeSnippet code={snippet} />
     </Section>
   );
