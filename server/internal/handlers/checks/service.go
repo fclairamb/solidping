@@ -4246,6 +4246,12 @@ func (s *Service) applyConfigUpdate(
 	oldSealed := check.ConfigSealed
 	oldPrivateKeys := check.ConfigPrivateKeys
 
+	// Sealed-only (spec 2026-07-16-02): the server cannot decrypt this row's
+	// secrets, so loadDecryptedConfig below returns the public config only and
+	// `merged` will lack them too. Captured now, before applyEncryption
+	// changes check.ConfigPrivate — see validatePatchedConfig.
+	wasSealedOnly := oldSealed != nil && check.ConfigPrivate == nil
+
 	merged, mergeErr := s.applyConfigPatch(ctx, check, patch)
 	if mergeErr != nil {
 		return mergeErr
@@ -4253,12 +4259,19 @@ func (s *Service) applyConfigUpdate(
 
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
-	// wholesale and wipe unrelated keys. This is also the only validation the
-	// config gets on the PATCH path (UpdateCheck never calls checker.Validate),
-	// so its *ConfigError surfaces as a 400.
+	// wholesale and wipe unrelated keys.
 	merged, normErr := normalizeCheckConfig(check.Type, merged)
 	if normErr != nil {
 		return normErr
+	}
+
+	// The checker's own Validate — the same per-type structural rules create
+	// and the dry-run validate endpoint enforce (e.g. HTTP's
+	// expectedStatusCodes must be strings, method must be a known verb).
+	// Runs first so a malformed type never reaches the shared validators
+	// below. See validatePatchedConfig for the sealed-only handling.
+	if cfgErr := s.validatePatchedConfig(check.Type, merged, wasSealedOnly, oldPrivateKeys); cfgErr != nil {
+		return cfgErr
 	}
 
 	// The shared config validators — the uniform timeout cap, the
@@ -4299,6 +4312,106 @@ func (s *Service) applyConfigUpdate(
 	}
 
 	return nil
+}
+
+// placeholderSecretValue stands in for an ordinary secret field (password,
+// token, apiKey, a basicAuth blob, …) that a sealed-only check's merged
+// config can't carry — see validatePatchedConfig. It is a plain non-empty
+// string, so it satisfies both a "must be a string" type check and a
+// "must be non-empty" presence check. It is only ever fed to a throwaway
+// checker.Validate call on a deep copy — never persisted.
+const placeholderSecretValue = "solidping-sealed-secret-placeholder"
+
+// placeholderPrivateKeyPEM stands in for a config key literally named
+// "private_key". checksftp and checkssh's Validate (via their shared
+// validatePrivateKey helper in config.go) runs pem.Decode on it and rejects
+// with "invalid PEM format" when that fails — the generic string placeholder
+// above would trip that and falsely reject an unrelated PATCH on a
+// sealed-only check whose secret is a private key rather than a password.
+// Once pem.Decode succeeds, both checkers swallow every further x509 parse
+// failure ("Accept anyway — golang.org/x/crypto/ssh can parse OpenSSH format
+// keys") and return nil regardless of the key's actual content, so a
+// syntactically valid but content-empty PEM block is enough — it never needs
+// to look like a real key, and real key parsing only happens later, at
+// Execute, on the real (non-placeholder) secret.
+const placeholderPrivateKeyPEM = "-----BEGIN PLACEHOLDER-----\n" +
+	"c29saWRwaW5nLXNlYWxlZC1zZWNyZXQtcGxhY2Vob2xkZXI=\n" +
+	"-----END PLACEHOLDER-----\n"
+
+// validatePatchedConfig runs the checker's own Validate against a PATCH's
+// merged effective config — the validation applyConfigUpdate used to skip
+// entirely (this is the fix). Unknown check types pass through unchanged:
+// the registry doesn't know them, so there is nothing to validate, same as
+// today's behavior.
+//
+// The checker gets a deep copy, never merged itself: HTTP autogenerates
+// name/slug from the URL and heartbeat/email autogenerate a token when
+// absent, and none of that may leak into the stored row — mirrors the
+// offline document validator's use of deepCopyConfig.
+//
+// wasSealedOnly gates placeholder injection: a sealed-only check's merged
+// config is missing its own secret values (the server cannot decrypt what it
+// never held — spec 2026-07-16-02), so every name in oldPrivateKeys absent
+// from the copy gets a placeholder, letting an unrelated PATCH (rename,
+// timeout bump) pass the checker's presence/type checks without the real
+// secret. This must NOT run for a plaintext/AES-envelope row: there, a
+// secret key absent from merged means the request explicitly cleared it
+// (mergePatchConfig honors an explicit null/empty), and a real "is required"
+// rejection is the correct outcome — injecting a placeholder there would
+// silently mask it.
+func (s *Service) validatePatchedConfig(
+	checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
+) error {
+	checker, ok := registry.GetChecker(checkerdef.CheckType(checkType))
+	if !ok {
+		return nil
+	}
+
+	configCopy, copyErr := deepCopyConfig(merged)
+	if copyErr != nil {
+		return fmt.Errorf("deep copy config for validation: %w", copyErr)
+	}
+
+	if wasSealedOnly {
+		injectSecretPlaceholders(configCopy, parseConfigPrivateKeys(oldPrivateKeys))
+	}
+
+	return checker.Validate(&checkerdef.CheckSpec{Config: configCopy})
+}
+
+// parseConfigPrivateKeys decodes the ConfigPrivateKeys JSON-array-of-strings
+// column, returning nil on an absent or unparsable value (never an error —
+// this only widens or narrows which keys get a validation placeholder, it is
+// not itself a source of truth for what's stored).
+func parseConfigPrivateKeys(configPrivateKeys *string) []string {
+	if configPrivateKeys == nil || *configPrivateKeys == "" {
+		return nil
+	}
+
+	var keys []string
+	if err := json.Unmarshal([]byte(*configPrivateKeys), &keys); err != nil {
+		return nil
+	}
+
+	return keys
+}
+
+// injectSecretPlaceholders fills in a placeholder value, in place, for every
+// key that's absent from config — see validatePatchedConfig for when this is
+// safe to call.
+func injectSecretPlaceholders(config map[string]any, keys []string) {
+	for _, key := range keys {
+		if _, present := config[key]; present {
+			continue
+		}
+
+		if key == "private_key" {
+			config[key] = placeholderPrivateKeyPEM
+			continue
+		}
+
+		config[key] = placeholderSecretValue
+	}
 }
 
 // applyRegionSealing implements phase 2 of spec 2026-07-16-02. When the check
