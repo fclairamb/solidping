@@ -650,6 +650,164 @@ func TestSelector_MatchTotalIsAdminOnly(t *testing.T) {
 	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
 	r.NoError(err)
 	r.Zero(public.Sections[0].SelectorMatchTotal)
+	r.Zero(public.Sections[0].SelectorClaimedElsewhere)
+	r.Empty(public.Sections[0].SelectorClaimedSectionName)
+}
+
+// TestSelector_ClaimedElsewhere_FullyClaimed pins spec 2026-08-31-01: a
+// selector section whose matches are ALL claimed by an earlier section must
+// say so, rather than rendering an unexplained empty section that looks like
+// a broken label rule.
+func TestSelector_ClaimedElsewhere_FullyClaimed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	r.NoError(err)
+	dropDefaultSections(ctx, t, svc, page.UID)
+
+	all, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "All services", Slug: "all-services",
+		Selector: selectorRaw(t, models.SectionSelector{All: true}),
+	})
+	r.NoError(err)
+
+	claude, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "Claude", Slug: "claude",
+		Selector: selectorRaw(t, models.SectionSelector{Labels: map[string]string{"company": "claude"}}),
+	})
+	r.NoError(err)
+
+	one := seedLabeledCheck(ctx, t, svc, org.UID, "One", map[string]string{"company": "claude"})
+	two := seedLabeledCheck(ctx, t, svc, org.UID, "Two", map[string]string{"company": "claude"})
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	// Precondition: "All services", being earlier by position, swept both
+	// checks, leaving the labels section with nothing of its own.
+	allUIDs, _ := sectionCheckUIDs(ctx, t, svc, all.UID)
+	sort.Strings(allUIDs)
+	expected := []string{one.UID, two.UID}
+	sort.Strings(expected)
+	r.Equal(expected, allUIDs)
+
+	claudeUIDs, _ := sectionCheckUIDs(ctx, t, svc, claude.UID)
+	r.Empty(claudeUIDs, "precondition: the labels section itself shows nothing")
+
+	sections, err := svc.ListSections(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Len(sections, 2)
+
+	r.Equal(2, sections[1].SelectorMatchTotal)
+	r.Equal(2, sections[1].SelectorClaimedElsewhere)
+	r.Equal("All services", sections[1].SelectorClaimedSectionName)
+
+	// The earlier section claims nothing FROM anyone else.
+	r.Zero(sections[0].SelectorClaimedElsewhere)
+	r.Empty(sections[0].SelectorClaimedSectionName)
+
+	// Admin-only: the public payload never carries the hint.
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	r.NoError(err)
+	r.Len(public.Sections, 2)
+	r.Zero(public.Sections[1].SelectorClaimedElsewhere)
+	r.Empty(public.Sections[1].SelectorClaimedSectionName)
+}
+
+// TestSelector_ClaimedElsewhere_PartialOverlap pins the partial case: a
+// selector section that shows SOME of its own matches must still report the
+// ones an earlier section already claimed, so the count on screen ("showing 2
+// of 3") has an explanation for the missing one.
+func TestSelector_ClaimedElsewhere_PartialOverlap(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	r.NoError(err)
+	dropDefaultSections(ctx, t, svc, page.UID)
+
+	pinned, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "Pinned", Slug: "pinned",
+		Selector: selectorRaw(t, models.SectionSelector{Labels: map[string]string{"pinned": "true"}}),
+	})
+	r.NoError(err)
+
+	claude, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "Claude", Slug: "claude",
+		Selector: selectorRaw(t, models.SectionSelector{Labels: map[string]string{"company": "claude"}}),
+	})
+	r.NoError(err)
+
+	// `shared` matches BOTH selectors and is claimed by "Pinned" (earlier by
+	// position); `alone1`/`alone2` match only "Claude" and stay there.
+	shared := seedLabeledCheck(ctx, t, svc, org.UID, "Shared",
+		map[string]string{"pinned": "true", "company": "claude"})
+	alone1 := seedLabeledCheck(ctx, t, svc, org.UID, "Alone one", map[string]string{"company": "claude"})
+	alone2 := seedLabeledCheck(ctx, t, svc, org.UID, "Alone two", map[string]string{"company": "claude"})
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	pinnedUIDs, _ := sectionCheckUIDs(ctx, t, svc, pinned.UID)
+	r.Equal([]string{shared.UID}, pinnedUIDs)
+
+	claudeUIDs, _ := sectionCheckUIDs(ctx, t, svc, claude.UID)
+	sort.Strings(claudeUIDs)
+	expected := []string{alone1.UID, alone2.UID}
+	sort.Strings(expected)
+	r.Equal(expected, claudeUIDs, "precondition: the two unclaimed matches still show up here")
+
+	sections, err := svc.ListSections(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Len(sections, 2)
+
+	r.Equal(3, sections[1].SelectorMatchTotal)
+	r.Equal(1, sections[1].SelectorClaimedElsewhere)
+	r.Equal("Pinned", sections[1].SelectorClaimedSectionName)
+}
+
+// TestSelector_ClaimedElsewhere_ManualRowClaims pins that a plain MANUAL
+// placement claims a check just as effectively as an earlier selector
+// section, and is named the same way.
+func TestSelector_ClaimedElsewhere_ManualRowClaims(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	r.NoError(err)
+	dropDefaultSections(ctx, t, svc, page.UID)
+
+	curated, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	claude, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "Claude", Slug: "claude",
+		Selector: selectorRaw(t, models.SectionSelector{Labels: map[string]string{"company": "claude"}}),
+	})
+	r.NoError(err)
+
+	pinned := seedLabeledCheck(ctx, t, svc, org.UID, "Pinned", map[string]string{"company": "claude"})
+
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, curated.UID, CreateResourceRequest{CheckUID: pinned.UID})
+	r.NoError(err)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	claudeUIDs, _ := sectionCheckUIDs(ctx, t, svc, claude.UID)
+	r.Empty(claudeUIDs, "precondition: the manually placed check must not also appear in the selector section")
+
+	sections, err := svc.ListSections(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Len(sections, 2)
+
+	r.Equal(1, sections[1].SelectorMatchTotal)
+	r.Equal(1, sections[1].SelectorClaimedElsewhere)
+	r.Equal("Core", sections[1].SelectorClaimedSectionName)
 }
 
 // TestSelector_ManagedRowsRenderLikeManualOnes pins spec §5: status0 needs no
