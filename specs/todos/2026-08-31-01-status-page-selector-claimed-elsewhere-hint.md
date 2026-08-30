@@ -101,3 +101,96 @@ sections or manual rows say so, e.g. **"2 matching checks are already shown in
 
 - No change to which section wins a claim, to `maxManagedResourcesPerSection`
   truncation, or to the public status-page payload.
+
+## Implementation Plan
+
+### Backend
+
+1. `server/internal/handlers/statuspages/service.go` — add two admin-only
+   fields to `StatusPageSectionResponse`, next to `SelectorMatchTotal` /
+   `SelectorTruncated`:
+   - `SelectorClaimedElsewhere int json:"selectorClaimedElsewhere,omitempty"`
+   - `SelectorClaimedSectionName string json:"selectorClaimedSectionName,omitempty"`
+   Keeping to a single name field (rather than the `[]{uid,name}` variant the
+   spec also allows) matches "keep the payload minimal — at most one claimant
+   name plus a count."
+2. `server/internal/handlers/statuspages/service.go` — change
+   `enrichSelectorCounts` to accept the page's full `[]sectionState` (from
+   `loadPageState`, already declared in `selector.go`) alongside the section
+   being enriched. It already calls `ListChecks` indirectly via
+   `countSelectorMatches`; switch to calling `s.db.ListChecks` directly so we
+   keep both the total count AND the actual matched check list (needed to
+   intersect against other sections' rows). `Filter()` sets `Limit: 0` (no
+   limit) so this is the same unbounded query `countSelectorMatches` already
+   ran — no new semantics, just reusing the result.
+3. Add a new pure helper `claimedElsewhereBySection(states []sectionState,
+   sectionUID string, matched []*models.Check) (count int, claimantName
+   string)` in `selector.go` (co-located with `sectionState`/`loadPageState`):
+   - Build a `checkUID -> section index` map from every resource row in
+     `states`, first section by position order wins a given check (mirrors
+     reconciliation's own precedence — a check normally has only one owning
+     row anyway).
+   - For each matched check, if its owning section is a DIFFERENT section
+     than `sectionUID`, tally it under that owning section's index.
+   - Return the total tally and the name of the section with the highest
+     per-section tally (ties broken by earliest position/index), or `(0, "")`
+     when nothing is claimed elsewhere.
+4. Update all three call sites of `enrichSelectorCounts` to load
+   `[]sectionState` once per request and pass it through:
+   - `ListSections` — replace the existing `s.db.ListStatusPageSections`
+     call with `s.loadPageState(ctx, page.UID)` (removes a redundant query,
+     reuses the same states for every section in the loop).
+   - `GetSection` — call `s.loadPageState(ctx, page.UID)` once, pass to
+     `enrichSelectorCounts`.
+   - `UpdateSection` — same as `GetSection`, after re-fetching the updated
+     section.
+   A `loadPageState` failure is logged and enrichment is skipped (fields stay
+   zero), matching the existing best-effort contract — it must never fail the
+   page/section load.
+5. No changes to `reconcileSection`, `desiredChecks`, `materialize`, or any
+   claim/dedup semantics.
+
+### Frontend
+
+6. `web/dash0/src/api/hooks.ts` — add `selectorClaimedElsewhere?: number` and
+   `selectorClaimedSectionName?: string` to the section type at line ~2608.
+7. `web/dash0/src/routes/orgs/$org/status-pages.$statusPageUid.index.tsx` —
+   next to the existing `selectorTruncated` notice (~line 1139), render a
+   second informational notice (reusing the same Alert/notice primitive) when
+   `selectorClaimedElsewhere > 0`:
+   - Fully claimed (`section.resources` empty after selector materialization,
+     i.e. the section shows zero components): full explanation copy with
+     `{{count}}` and `{{section}}`.
+   - Partially claimed (section has some resources but
+     `selectorClaimedElsewhere > 0`): lighter "N more matching checks are
+     already shown elsewhere" copy, no section name needed (spec explicitly
+     drops the name in the partial case).
+8. Add `sections.membership.claimedElsewhere.full_one` /
+   `_other` and `sections.membership.claimedElsewhere.partial_one` / `_other`
+   keys to `web/dash0/src/locales/{de,en,es,fr}/statusPages.json`, next to
+   `sections.membership.truncated`.
+
+### Tests
+
+9. Backend, in `server/internal/handlers/statuspages/selector_test.go`
+   (mirroring `TestSelector_MatchTotalIsAdminOnly` /
+   `TestSelector_OverlappingSectionsDoNotDuplicate`):
+   - `TestSelector_ClaimedElsewhere_FullyClaimed` — `{"all":true}` section at
+     position 1, labels section at position 2 whose 2 matches are both
+     claimed by position 1 → position 2's response has
+     `SelectorClaimedElsewhere == 2` and `SelectorClaimedSectionName` equal
+     to the `{"all":true}` section's name; also assert the public payload
+     never carries the field (`r.Zero`/`r.Empty`, mirroring
+     `TestSelector_MatchTotalIsAdminOnly`).
+   - `TestSelector_ClaimedElsewhere_PartialOverlap` — labels section matches
+     3 checks, 1 claimed by an earlier section → `SelectorClaimedElsewhere
+     == 1`, the section itself still shows the other 2.
+   - `TestSelector_ClaimedElsewhere_ManualRowClaims` — a manual resource row
+     (not a selector section) claims one of the labels section's matches →
+     same count/name semantics, naming the section that holds the manual
+     row.
+10. Frontend unit test (Vitest, colocated with the existing tests for this
+    route/component) asserting the hint renders with the right count/section
+    name in the fully-claimed case and is absent when
+    `selectorClaimedElsewhere` is 0/absent. `bun run test:unit` also verifies
+    locale-key parity across all four locales, covering item 8.
