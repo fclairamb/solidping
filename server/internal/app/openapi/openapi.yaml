@@ -12141,6 +12141,25 @@ components:
           type: string
         position:
           type: integer
+        selector:
+          allOf:
+            - $ref: "#/components/schemas/StatusPageSectionSelector"
+          description: >-
+            The section's dynamic-membership rule, absent on a hand-curated
+            section. Returned on AUTHENTICATED responses only — the public page
+            payload omits it, since a selector spells out the organization's
+            internal label taxonomy.
+        selectorMatchTotal:
+          type: integer
+          description: >-
+            How many checks the selector matches in total. Authenticated
+            responses only.
+        selectorTruncated:
+          type: boolean
+          description: >-
+            True when the match count exceeds the per-section cap (200) and the
+            section is therefore showing a stable alphabetical prefix.
+            Authenticated responses only.
         resources:
           type: array
           items:
@@ -12148,6 +12167,38 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    StatusPageSectionSelector:
+      type: object
+      description: >-
+        A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of
+        `all` / `labels` is set; `{}` and an empty `labels` object are both
+        rejected, because "select everything" has to be typed out rather than
+        implied. Unknown keys are rejected too: a mistyped rule that silently
+        matches nothing forever is the exact failure dynamic sections exist to
+        remove.
+
+        The system MATERIALIZES the matching checks as real resources
+        (`managedBySelector: true`), so a check created later appears with no
+        manual action, and one that stops matching is removed. Internal checks
+        are never matched. A check already placed MANUALLY anywhere on the same
+        page is skipped — manual placement always wins.
+
+        On a `public` page this means every current AND future matching check
+        becomes publicly visible. Prefer a label opt-in such as
+        `{"labels": {"public": "true"}}`, which puts the publish decision on the
+        check itself.
+      properties:
+        all:
+          type: boolean
+          description: Select every non-internal check in the organization.
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: >-
+            Select checks carrying ALL of these exact key=value labels (AND).
+            Values are exact — there is no existence-only ("*") matching.
 
     StatusPageSectionListResponse:
       type: object
@@ -12173,6 +12224,12 @@ components:
             collision returns VALIDATION_ERROR instead.
         position:
           type: integer
+        selector:
+          allOf:
+            - $ref: "#/components/schemas/StatusPageSectionSelector"
+          description: >-
+            Optional dynamic-membership rule. Omit it for a normal hand-curated
+            section — a selector is never a default.
 
     UpdateStatusPageSectionRequest:
       type: object
@@ -12183,6 +12240,15 @@ components:
           type: string
         position:
           type: integer
+        selector:
+          allOf:
+            - $ref: "#/components/schemas/StatusPageSectionSelector"
+          nullable: true
+          description: >-
+            Three-state. Omit the key to leave the membership rule alone, send
+            an object to replace it, or send `null` to clear it — which turns
+            the section back into a hand-curated one and removes the resources
+            the selector owned.
 
     StatusPageResource:
       type: object
@@ -12218,6 +12284,14 @@ components:
             page setting", which is NOT the same as an explicit false — a page
             can therefore be flipped on or off without rewriting every
             resource's intent.
+        managedBySelector:
+          type: boolean
+          description: >-
+            True when the row was materialized by the section's selector and is
+            owned by it (spec 2026-08-29-11). Such a row cannot be deleted or
+            re-targeted through the API — change the selector instead, or add
+            the check manually, which always wins. Absent means a normal manual
+            resource.
         position:
           type: integer
         createdAt:

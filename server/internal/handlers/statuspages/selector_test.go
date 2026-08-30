@@ -11,6 +11,7 @@ package statuspages
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -672,4 +673,71 @@ func TestSelector_ManagedRowsRenderLikeManualOnes(t *testing.T) {
 	r.Equal("http", resource.Check.Type)
 	r.True(resource.ManagedBySelector)
 	r.Equal(string(models.PageStatusDown), view.OverallStatus)
+}
+
+// TestSelector_CapsManagedRowsPerSection pins the blast-radius limit.
+//
+// It is not a micro-optimisation: a public page carries a full availability
+// series per resource, measured at ~8 KB each on the default 90-day window, so
+// 150 rows is already a ~1.2 MB payload. `{"all":true}` in a large org would
+// otherwise put every check on one page. The cap keeps the payload bounded,
+// takes a STABLE alphabetical prefix rather than an arbitrary subset, and
+// reports the overflow so the dashboard can say "and N more" instead of
+// quietly showing part of the truth.
+func TestSelector_CapsManagedRowsPerSection(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, section := seedSelectorPage(ctx, t, svc, org, models.SectionSelector{All: true})
+
+	const overflow = 5
+
+	names := make([]string, 0, maxManagedResourcesPerSection+overflow)
+
+	for i := range maxManagedResourcesPerSection + overflow {
+		name := fmt.Sprintf("service-%04d", i)
+		names = append(names, name)
+
+		check := models.NewCheck(org.UID, name, "http")
+		check.Name = &name
+		r.NoError(svc.db.CreateCheck(ctx, check))
+	}
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	resources, err := svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(resources, maxManagedResourcesPerSection)
+
+	// The kept rows are the alphabetical prefix — deterministic, so two
+	// reconciles cannot swap which checks are shown.
+	byUID := make(map[string]struct{}, len(resources))
+	for _, resource := range resources {
+		byUID[*resource.CheckUID] = struct{}{}
+	}
+
+	sort.Strings(names)
+	kept := names[:maxManagedResourcesPerSection]
+	dropped := names[maxManagedResourcesPerSection:]
+
+	for _, name := range kept {
+		check, getErr := svc.db.GetCheckByUidOrSlug(ctx, org.UID, name)
+		r.NoError(getErr)
+		r.Contains(byUID, check.UID, name)
+	}
+
+	for _, name := range dropped {
+		check, getErr := svc.db.GetCheckByUidOrSlug(ctx, org.UID, name)
+		r.NoError(getErr)
+		r.NotContains(byUID, check.UID, name)
+	}
+
+	// The overflow is reported, not hidden.
+	sections, err := svc.ListSections(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Len(sections, 1)
+	r.True(sections[0].SelectorTruncated)
+	r.Equal(maxManagedResourcesPerSection+overflow, sections[0].SelectorMatchTotal)
 }
