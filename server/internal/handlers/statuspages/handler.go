@@ -31,6 +31,7 @@ const visibilityPublic = "public"
 
 const (
 	fieldSlug           = "slug"
+	fieldSelector       = "selector"
 	fieldBody           = "body"
 	fieldCustomDomain   = "customDomain"
 	fieldVisibility     = "visibility"
@@ -982,6 +983,8 @@ func (h *Handler) handleCreateSectionError(writer http.ResponseWriter, request *
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case selectorValidationError(err):
+		return h.writeSelectorError(writer, err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1006,6 +1009,8 @@ func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, request *
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case selectorValidationError(err):
+		return h.writeSelectorError(writer, err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1030,9 +1035,25 @@ func (h *Handler) handleResourceError(writer http.ResponseWriter, request *http.
 			writer, request, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
 	case errors.Is(err, ErrResourceTargetInvalid):
 		return h.writeResourceTargetError(writer)
+	case errors.Is(err, ErrResourceManagedBySelector):
+		return h.WriteErrorErr(
+			writer, request, http.StatusConflict, base.ErrorCodeConflict,
+			"This component is managed by the section's selector. "+
+				"Change the section's membership rule, or add the check manually — a manual entry always wins.",
+			err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// writeSelectorError renders a rejected section selector as a
+// VALIDATION_ERROR on the `selector` field. Every selector failure is a client
+// mistake, and a mistyped rule has to be loud: a selector that quietly matches
+// nothing is the very silent-omission failure dynamic sections exist to remove.
+func (h *Handler) writeSelectorError(writer http.ResponseWriter, err error) error {
+	return h.WriteValidationError(writer, "Invalid section selector", []base.ValidationErrorField{
+		{Name: fieldSelector, Message: err.Error()},
+	})
 }
 
 // resourceTargetMsg names BOTH fields so the caller can see which pair is

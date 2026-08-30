@@ -4,6 +4,7 @@ package statuspages
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -219,6 +220,19 @@ var (
 	// section within it) contains a key that doesn't match the typed struct —
 	// DisallowUnknownFields catches typos instead of silently dropping them.
 	ErrSettingsUnknownField = errors.New("settings contains an unknown field")
+	// ErrSelectorInvalid is returned when a section `selector` is not valid
+	// JSON or carries a key the SectionSelector struct does not define.
+	// Strict on purpose: a lenient decode would turn `{"lables":{...}}` into a
+	// selector that silently matches nothing forever, which is the exact
+	// failure mode dynamic sections exist to remove (spec 2026-08-29-11).
+	ErrSelectorInvalid = errors.New("selector is not a valid membership rule")
+	// ErrResourceManagedBySelector is returned when an operator tries to delete
+	// or re-target a resource the section's selector owns. The selector is the
+	// source of truth for those rows: allowing the delete would look like it
+	// worked and then silently undo itself on the next reconcile, which is a
+	// worse answer than refusing. Editing the selector (or adding the check
+	// manually, which always wins) is the way to change the membership.
+	ErrResourceManagedBySelector = errors.New("resource is managed by the section selector")
 )
 
 // MaxCustomCSSBytes caps a status page's custom stylesheet. 64 KB is far more
@@ -398,6 +412,10 @@ type Service struct {
 	// by the synchronous Verify button. nil (the MCP handler, most tests) still
 	// records the audit event — only the mail is skipped.
 	jobs jobsvc.Service
+	// reconcileMarks rate-limits the page-view backstop reconcile of selector
+	// sections (spec 2026-08-29-11). Process-local: it only throttles an
+	// idempotent operation, so replicas converge on the same rows regardless.
+	reconcileMarks selectorReconcileMarks
 }
 
 // SetJobsService wires the job queue used to deliver the custom-domain
@@ -712,12 +730,26 @@ type AvailabilityThresholdsResponse struct {
 
 // StatusPageSectionResponse represents a section in API responses.
 type StatusPageSectionResponse struct {
-	UID       string                       `json:"uid"`
-	Name      string                       `json:"name"`
-	Slug      string                       `json:"slug"`
-	Position  int                          `json:"position"`
-	Resources []StatusPageResourceResponse `json:"resources,omitempty"`
-	CreatedAt *time.Time                   `json:"createdAt,omitempty"`
+	UID      string `json:"uid"`
+	Name     string `json:"name"`
+	Slug     string `json:"slug"`
+	Position int    `json:"position"`
+	// Selector is the section's dynamic-membership rule (spec 2026-08-29-11),
+	// absent on a hand-curated section.
+	//
+	// ADMIN RESPONSES ONLY. The public payload strips it: a selector spells out
+	// the org's internal label taxonomy ("env=prod", "tier=internal"), which is
+	// exactly the kind of topology hint every other field on this struct is
+	// careful not to leak.
+	Selector *models.SectionSelector `json:"selector,omitempty"`
+	// SelectorMatchTotal is how many checks the selector matches in total, and
+	// SelectorTruncated says whether that exceeded maxManagedResourcesPerSection
+	// so the section is showing a prefix. Admin-only, like Selector; they exist
+	// so the dashboard can say "and N more" instead of quietly showing a subset.
+	SelectorMatchTotal int                          `json:"selectorMatchTotal,omitempty"`
+	SelectorTruncated  bool                         `json:"selectorTruncated,omitempty"`
+	Resources          []StatusPageResourceResponse `json:"resources,omitempty"`
+	CreatedAt          *time.Time                   `json:"createdAt,omitempty"`
 }
 
 // StatusPageResourceResponse represents a resource in API responses. Exactly
@@ -736,11 +768,16 @@ type StatusPageResourceResponse struct {
 	// AutoPublish is the per-resource auto-publication override (spec
 	// 2026-08-19-08). Three-state: absent/null means "inherit the page", which
 	// is NOT the same as an explicit false.
-	AutoPublish  *bool                     `json:"autoPublish,omitempty"`
-	Position     int                       `json:"position"`
-	Check        *ResourceCheckInfo        `json:"check,omitempty"`
-	Availability *ResourceAvailabilityData `json:"availability,omitempty"`
-	CreatedAt    *time.Time                `json:"createdAt,omitempty"`
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+	// ManagedBySelector marks a row materialized and owned by the section's
+	// selector (spec 2026-08-29-11). The dashboard renders those with an "auto"
+	// badge and without a delete control — the selector decides, not the
+	// operator. Absent (false) means a normal manual row.
+	ManagedBySelector bool                      `json:"managedBySelector,omitempty"`
+	Position          int                       `json:"position"`
+	Check             *ResourceCheckInfo        `json:"check,omitempty"`
+	Availability      *ResourceAvailabilityData `json:"availability,omitempty"`
+	CreatedAt         *time.Time                `json:"createdAt,omitempty"`
 }
 
 // ResourceCheckInfo contains live data for a resource. For a group resource it
@@ -953,6 +990,12 @@ type CreateSectionRequest struct {
 	Name     string `json:"name"`
 	Slug     string `json:"slug"`
 	Position *int   `json:"position,omitempty"`
+	// Selector optionally makes the section dynamic (spec 2026-08-29-11):
+	// {"all":true} or {"labels":{k:v,...}}. Omitted — the default, and what the
+	// seeded "Services" section keeps — means hand-curated. Raw so the decode
+	// can be STRICT: a mistyped key must be a 400, not a selector that silently
+	// matches nothing forever.
+	Selector json.RawMessage `json:"selector,omitempty"`
 }
 
 // UpdateSectionRequest represents a request to update a section.
@@ -960,6 +1003,10 @@ type UpdateSectionRequest struct {
 	Name     *string `json:"name,omitempty"`
 	Slug     *string `json:"slug,omitempty"`
 	Position *int    `json:"position,omitempty"`
+	// Selector is three-state, which json.RawMessage gives for free: nil means
+	// the key was absent (leave the rule alone), the literal `null` means clear
+	// it (back to hand-curated), and an object replaces it.
+	Selector json.RawMessage `json:"selector,omitempty"`
 }
 
 // CreateResourceRequest represents a request to add a check OR a check group to
@@ -1312,7 +1359,12 @@ func (s *Service) GetStatusPage(
 	s.enrichAdminBranding(&response, s.whiteLabelAllowed(ctx, org.UID))
 
 	if opts.IncludeSections {
-		sections, err := s.loadSectionsWithResources(ctx, page.UID)
+		// The dashboard's own page view is a fine backstop moment: it is not a
+		// hot path, and an operator opening the page is exactly when a stale
+		// section would be noticed.
+		s.maybeReconcileOnView(ctx, org.UID, page.UID)
+
+		sections, err := s.loadSectionsWithResources(ctx, page.UID, true)
 		if err != nil {
 			return StatusPageResponse{}, err
 		}
@@ -1575,12 +1627,41 @@ func (s *Service) ListSections(
 		return nil, err
 	}
 
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
 	responses := make([]StatusPageSectionResponse, len(sections))
 	for i, section := range sections {
-		responses[i] = convertSectionToResponse(section)
+		responses[i] = convertSectionToAdminResponse(section)
+		s.enrichSelectorCounts(ctx, org.UID, &responses[i], section)
 	}
 
 	return responses, nil
+}
+
+// enrichSelectorCounts fills the admin-only match total / truncation flags on a
+// dynamic section, so the dashboard can warn "showing 200 of 431" rather than
+// silently rendering a prefix. Best-effort: a failed count leaves the counters
+// at zero rather than failing the page load.
+func (s *Service) enrichSelectorCounts(
+	ctx context.Context, orgUID string, response *StatusPageSectionResponse, section *models.StatusPageSection,
+) {
+	if section.Selector == nil {
+		return
+	}
+
+	total, err := s.countSelectorMatches(ctx, orgUID, section.Selector)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to count status page selector matches",
+			"error", err, "orgUid", orgUID, "sectionUid", section.UID)
+
+		return
+	}
+
+	response.SelectorMatchTotal = total
+	response.SelectorTruncated = total > maxManagedResourcesPerSection
 }
 
 // resolveSectionPosition picks the position for a new section: the caller's
@@ -1642,13 +1723,26 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
+	selector, err := parseSelector(req.Selector)
+	if err != nil {
+		return StatusPageSectionResponse{}, err
+	}
+
 	section := models.NewStatusPageSection(page.UID, req.Name, slug, position)
+	section.Selector = selector
 
 	if errCreate := s.db.CreateStatusPageSection(ctx, section); errCreate != nil {
 		return StatusPageSectionResponse{}, errCreate
 	}
 
-	return convertSectionToResponse(section), nil
+	// A dynamic section must be populated by the time the operator looks at
+	// it. Best-effort: the section was created either way, and the page-view
+	// backstop will fill it in if this fails.
+	if selector != nil {
+		s.reconcilePageBestEffort(ctx, page.OrganizationUID, page.UID)
+	}
+
+	return convertSectionToAdminResponse(section), nil
 }
 
 // GetSection retrieves a single section.
@@ -1665,7 +1759,10 @@ func (s *Service) GetSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	return convertSectionToResponse(section), nil
+	response := convertSectionToAdminResponse(section)
+	s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, section)
+
+	return response, nil
 }
 
 // UpdateSection updates an existing section.
@@ -1702,6 +1799,19 @@ func (s *Service) UpdateSection(
 		Position: req.Position,
 	}
 
+	// An absent `selector` key leaves the membership rule alone; an explicit
+	// null clears it and turns the section back into a hand-curated one, which
+	// is why presence has to be tracked separately from the value.
+	if req.Selector != nil {
+		selector, errSel := parseSelector(req.Selector)
+		if errSel != nil {
+			return StatusPageSectionResponse{}, errSel
+		}
+
+		update.SetSelector = true
+		update.Selector = selector
+	}
+
 	if errUpdate := s.db.UpdateStatusPageSection(ctx, section.UID, &update); errUpdate != nil {
 		return StatusPageSectionResponse{}, errUpdate
 	}
@@ -1711,7 +1821,17 @@ func (s *Service) UpdateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	return convertSectionToResponse(updated), nil
+	// Clearing a selector has to remove the rows it owned just as promptly as
+	// setting one has to create them — otherwise a page keeps showing checks
+	// whose rule no longer exists.
+	if update.SetSelector {
+		s.reconcilePageBestEffort(ctx, page.OrganizationUID, page.UID)
+	}
+
+	response := convertSectionToAdminResponse(updated)
+	s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, updated)
+
+	return response, nil
 }
 
 // DeleteSection soft-deletes a section.
@@ -1837,6 +1957,11 @@ func (s *Service) CreateResource(
 		return StatusPageResourceResponse{}, fmt.Errorf("failed to create resource: %w", err)
 	}
 
+	// Manual placement wins: if a selector had already materialized this check
+	// somewhere on the page, the reconcile below drops that managed row so the
+	// component is not listed twice.
+	s.reconcilePageBestEffort(ctx, org.UID, page.UID)
+
 	return convertResourceToResponse(resource), nil
 }
 
@@ -1871,6 +1996,13 @@ func (s *Service) UpdateResource(
 	}
 
 	if req.CheckUID != nil || req.CheckGroupUID != nil {
+		// Re-targeting a selector-owned row would be undone on the next
+		// reconcile, so it is refused rather than silently reverted.
+		existing, errGet := s.db.GetStatusPageResource(ctx, section.UID, resourceUID)
+		if errGet == nil && existing != nil && existing.ManagedBySelector {
+			return StatusPageResourceResponse{}, ErrResourceManagedBySelector
+		}
+
 		checkUID, groupUID, errTarget := s.resolveResourceTarget(
 			ctx, org.UID, derefOrEmpty(req.CheckUID), derefOrEmpty(req.CheckGroupUID),
 		)
@@ -1983,11 +2115,25 @@ func (s *Service) DeleteResource(
 		return err
 	}
 
-	if _, err := s.resolveSection(ctx, page.UID, sectionIdentifier); err != nil {
+	section, err := s.resolveSection(ctx, page.UID, sectionIdentifier)
+	if err != nil {
 		return err
 	}
 
-	return s.db.DeleteStatusPageResource(ctx, resourceUID)
+	resource, err := s.db.GetStatusPageResource(ctx, section.UID, resourceUID)
+	if err == nil && resource != nil && resource.ManagedBySelector {
+		return ErrResourceManagedBySelector
+	}
+
+	if err := s.db.DeleteStatusPageResource(ctx, resourceUID); err != nil {
+		return err
+	}
+
+	// Removing the MANUAL row releases the check back to the selectors: if one
+	// of them matches it, the next reconcile re-adopts it as a managed row.
+	s.reconcilePageBestEffort(ctx, page.OrganizationUID, page.UID)
+
+	return nil
 }
 
 // --- White label (spec 2026-08-21-07) ---
@@ -2073,7 +2219,14 @@ func (s *Service) ViewStatusPage(
 	response := convertPageToResponse(page)
 	s.resolvePublicBranding(ctx, org.UID, &response)
 
-	sections, err := s.loadSectionsWithResources(ctx, page.UID)
+	// Backstop (spec 2026-08-29-11): even if every write-path trigger were
+	// missed — a direct database edit, a crashed process, a replica that was
+	// down — a selector section cannot stay stale for longer than
+	// selectorBackstopInterval. Rate-limited, so a hot page pays this at most
+	// once a minute, and best-effort, so it can never take the page down.
+	s.maybeReconcileOnView(ctx, org.UID, page.UID)
+
+	sections, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageResponse{}, err
 	}
@@ -2225,7 +2378,12 @@ func (s *Service) viewStatusPageSummary(
 		return StatusPageSummary{}, accessErr
 	}
 
-	sections, err := s.loadSectionsWithResources(ctx, page.UID)
+	// Same backstop as the full view — the summary and the badge are often the
+	// ONLY thing anyone looks at (a README badge, a wallboard tile), so a page
+	// nobody opens in full must still self-heal.
+	s.maybeReconcileOnView(ctx, org.UID, page.UID)
+
+	sections, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageSummary{}, err
 	}
@@ -3208,8 +3366,14 @@ func (s *Service) clearDefaultStatusPage(ctx context.Context, orgUID string) err
 	return nil
 }
 
+// loadSectionsWithResources reads a page's sections and their resources.
+//
+// includeSelector picks the conversion: the authenticated dashboard sees the
+// membership rule, every PUBLIC surface does not — a selector spells out the
+// org's internal label taxonomy, which the public payload is otherwise careful
+// never to hint at.
 func (s *Service) loadSectionsWithResources(
-	ctx context.Context, pageUID string,
+	ctx context.Context, pageUID string, includeSelector bool,
 ) ([]StatusPageSectionResponse, error) {
 	sections, err := s.db.ListStatusPageSections(ctx, pageUID)
 	if err != nil {
@@ -3218,7 +3382,11 @@ func (s *Service) loadSectionsWithResources(
 
 	responses := make([]StatusPageSectionResponse, len(sections))
 	for i, section := range sections {
-		responses[i] = convertSectionToResponse(section)
+		if includeSelector {
+			responses[i] = convertSectionToAdminResponse(section)
+		} else {
+			responses[i] = convertSectionToResponse(section)
+		}
 
 		resources, err := s.db.ListStatusPageResources(ctx, section.UID)
 		if err != nil {
@@ -3468,6 +3636,8 @@ func convertSettingsToResponse(settings models.StatusPageSettings) *SettingsResp
 	}
 }
 
+// convertSectionToResponse renders a section for a PUBLIC payload: the
+// selector is deliberately omitted (see StatusPageSectionResponse.Selector).
 func convertSectionToResponse(section *models.StatusPageSection) StatusPageSectionResponse {
 	return StatusPageSectionResponse{
 		UID:       section.UID,
@@ -3478,16 +3648,26 @@ func convertSectionToResponse(section *models.StatusPageSection) StatusPageSecti
 	}
 }
 
+// convertSectionToAdminResponse is convertSectionToResponse plus the selector.
+// Only reachable from authenticated org-scoped endpoints.
+func convertSectionToAdminResponse(section *models.StatusPageSection) StatusPageSectionResponse {
+	response := convertSectionToResponse(section)
+	response.Selector = section.Selector
+
+	return response
+}
+
 func convertResourceToResponse(resource *models.StatusPageResource) StatusPageResourceResponse {
 	return StatusPageResourceResponse{
-		UID:           resource.UID,
-		CheckUID:      resource.CheckUID,
-		CheckGroupUID: resource.CheckGroupUID,
-		PublicName:    resource.PublicName,
-		Explanation:   resource.Explanation,
-		AutoPublish:   resource.AutoPublish,
-		Position:      resource.Position,
-		CreatedAt:     &resource.CreatedAt,
+		UID:               resource.UID,
+		CheckUID:          resource.CheckUID,
+		CheckGroupUID:     resource.CheckGroupUID,
+		PublicName:        resource.PublicName,
+		Explanation:       resource.Explanation,
+		AutoPublish:       resource.AutoPublish,
+		ManagedBySelector: resource.ManagedBySelector,
+		Position:          resource.Position,
+		CreatedAt:         &resource.CreatedAt,
 	}
 }
 
