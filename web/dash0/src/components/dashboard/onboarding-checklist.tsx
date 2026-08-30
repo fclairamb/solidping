@@ -252,7 +252,10 @@ export function OnboardingChecklistCard({
   const done = completedStepCount(steps);
 
   return (
-    <Card data-testid="onboarding-checklist">
+    <Card
+      data-testid="onboarding-checklist"
+      className="border-primary/30 bg-primary/5"
+    >
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
         <div className="min-w-0">
           <CardTitle className="text-base">{t("onboarding.title")}</CardTitle>
@@ -328,7 +331,7 @@ function OnboardingStepRow({
 
   return (
     <div
-      className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:gap-3"
+      className="relative flex cursor-pointer flex-col gap-2 rounded-md border p-3 hover:bg-muted/50 sm:flex-row sm:items-center sm:gap-3"
       data-testid={`onboarding-step-${step.id}`}
       data-done={step.done ? "true" : "false"}
     >
@@ -367,6 +370,7 @@ function OnboardingStepRow({
         {step.id === "alerts" && onTestAlert ? (
           <Button
             size="sm"
+            className="relative z-10"
             onClick={onTestAlert}
             disabled={testAlertPending}
             data-testid="onboarding-test-alert"
@@ -414,6 +418,11 @@ function OnboardingStepLink({
           // Pre-attaches the org's first check to the new page (spec
           // 2026-08-28-16), so the shortest path from here is one form.
           search={firstCheckUid ? { checkUid: firstCheckUid } : {}}
+          // Stretches over the whole row via the `after` pseudo-element
+          // (positioned against the row's `relative` ancestor), so the
+          // entire step row is one click/keyboard target instead of only
+          // this small CTA — without nesting a second interactive element.
+          className="after:absolute after:inset-0"
           data-testid={testId}
         >
           {label}
@@ -431,7 +440,12 @@ function OnboardingStepLink({
 
   return (
     <Button asChild size="sm" variant={variant}>
-      <Link to={to} params={{ org }} data-testid={testId}>
+      <Link
+        to={to}
+        params={{ org }}
+        className="after:absolute after:inset-0"
+        data-testid={testId}
+      >
         {label}
       </Link>
     </Button>
