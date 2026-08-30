@@ -58,5 +58,57 @@ test.describe("Email template preview", () => {
     const pre = page.getByTestId("email-preview-text");
     await expect(pre).toBeVisible();
     await expect(pre).not.toContainText("{{");
+
+    // The scheme toggle is HTML-only — the plaintext part has no styling to
+    // switch, so offering the choice there would be a dead control.
+    await expect(page.getByTestId("email-preview-scheme-dark")).toBeHidden();
+  });
+
+  test("previews the dark rendering and keeps it in the URL", async ({
+    authenticatedPage: page,
+  }) => {
+    await page.goto("orgs/test/test/emails?template=incident-created.html");
+
+    const frame = page.getByTestId("email-preview-frame");
+    await expect(frame).toHaveAttribute("data-scheme", "light");
+    await expect(frame).not.toHaveAttribute("src", /colorScheme/);
+
+    await page.getByTestId("email-preview-scheme-dark").click();
+
+    await expect(frame).toHaveAttribute("src", /colorScheme=dark/);
+    await expect(frame).toHaveAttribute("data-scheme", "dark");
+    await expect(page).toHaveURL(/colorScheme=dark/);
+
+    // The iframe really applied the dark palette: the media query is gone (an
+    // iframe can never report prefers-color-scheme: dark on its own) and the
+    // dark card surface is the one that ends up computed on .container.
+    const framed = page.frameLocator('[data-testid="email-preview-frame"]');
+    const card = framed.locator("table.container");
+    await expect(card).toBeVisible();
+    await expect
+      .poll(() => card.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe("rgb(20, 30, 40)");
+
+    // Going back to Light drops the param entirely, so the light URL stays the
+    // untouched one the mailer sends.
+    await page.getByTestId("email-preview-scheme-light").click();
+    await expect(frame).not.toHaveAttribute("src", /colorScheme/);
+    await expect(page).not.toHaveURL(/colorScheme/);
+  });
+
+  test("deep-links straight into the dark preview", async ({
+    authenticatedPage: page,
+  }) => {
+    await page.goto(
+      "orgs/test/test/emails?template=incident-created.html&colorScheme=dark",
+    );
+
+    const frame = page.getByTestId("email-preview-frame");
+    await expect(frame).toHaveAttribute("data-scheme", "dark");
+    await expect(frame).toHaveAttribute("src", /colorScheme=dark/);
+    await expect(page.getByTestId("email-preview-scheme-dark")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });
