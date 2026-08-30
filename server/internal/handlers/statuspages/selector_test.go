@@ -563,6 +563,9 @@ func TestSelector_PublicPayloadHidesSelector(t *testing.T) {
 	r.Nil(public.Sections[0].Selector)
 	r.NotContains(mustMarshalJSON(t, public), "\"selector\"")
 	r.NotContains(mustMarshalJSON(t, public), "env")
+	// Nor does it say HOW a component got there — a materialized row renders
+	// exactly like a manual one.
+	r.NotContains(mustMarshalJSON(t, public), "managedBySelector")
 
 	admin, err := svc.GetStatusPage(ctx, org.Slug, page.UID, GetStatusPageOptions{IncludeSections: true})
 	r.NoError(err)
@@ -671,7 +674,7 @@ func TestSelector_ManagedRowsRenderLikeManualOnes(t *testing.T) {
 	r.NotNil(resource.Check)
 	r.Equal("Checkout", *resource.Check.Name)
 	r.Equal("http", resource.Check.Type)
-	r.True(resource.ManagedBySelector)
+	r.False(resource.ManagedBySelector, "the public payload hides how a row got there")
 	r.Equal(string(models.PageStatusDown), view.OverallStatus)
 }
 

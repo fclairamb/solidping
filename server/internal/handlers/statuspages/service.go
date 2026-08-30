@@ -3396,6 +3396,13 @@ func (s *Service) loadSectionsWithResources(
 		resourceResponses := make([]StatusPageResourceResponse, len(resources))
 		for j, resource := range resources {
 			resourceResponses[j] = convertResourceToResponse(resource)
+			// A materialized row renders publicly EXACTLY like a manual one
+			// (spec 2026-08-29-11 §5). How a component got onto the page is
+			// operator context, and the public payload keeps none of it — the
+			// same reason it carries no selector and no group membership.
+			if !includeSelector {
+				resourceResponses[j].ManagedBySelector = false
+			}
 		}
 		responses[i].Resources = resourceResponses
 	}

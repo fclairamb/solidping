@@ -12291,7 +12291,9 @@ components:
             owned by it (spec 2026-08-29-11). Such a row cannot be deleted or
             re-targeted through the API — change the selector instead, or add
             the check manually, which always wins. Absent means a normal manual
-            resource.
+            resource. AUTHENTICATED responses only — the public payload omits
+            it, because a materialized component renders exactly like a manual
+            one and how it got there is operator context.
         position:
           type: integer
         createdAt:
