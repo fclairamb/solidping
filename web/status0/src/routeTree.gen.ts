@@ -15,7 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrgIndexRouteImport } from './routes/$org.index'
 import { Route as OrgTvRouteImport } from './routes/$org.tv'
 import { Route as OrgSlugRouteImport } from './routes/$org.$slug'
-import { Route as OrgSlugTvRouteImport } from './routes/$org.$slug.tv'
+import { Route as OrgSlugTvRouteImport } from './routes/$org.$slug_.tv'
 
 const TvRoute = TvRouteImport.update({
   id: '/tv',
@@ -48,16 +48,16 @@ const OrgSlugRoute = OrgSlugRouteImport.update({
   getParentRoute: () => OrgRoute,
 } as any)
 const OrgSlugTvRoute = OrgSlugTvRouteImport.update({
-  id: '/tv',
-  path: '/tv',
-  getParentRoute: () => OrgSlugRoute,
+  id: '/$slug_/tv',
+  path: '/$slug/tv',
+  getParentRoute: () => OrgRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$org': typeof OrgRouteWithChildren
   '/tv': typeof TvRoute
-  '/$org/$slug': typeof OrgSlugRouteWithChildren
+  '/$org/$slug': typeof OrgSlugRoute
   '/$org/tv': typeof OrgTvRoute
   '/$org/': typeof OrgIndexRoute
   '/$org/$slug/tv': typeof OrgSlugTvRoute
@@ -65,7 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/tv': typeof TvRoute
-  '/$org/$slug': typeof OrgSlugRouteWithChildren
+  '/$org/$slug': typeof OrgSlugRoute
   '/$org/tv': typeof OrgTvRoute
   '/$org': typeof OrgIndexRoute
   '/$org/$slug/tv': typeof OrgSlugTvRoute
@@ -75,10 +75,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$org': typeof OrgRouteWithChildren
   '/tv': typeof TvRoute
-  '/$org/$slug': typeof OrgSlugRouteWithChildren
+  '/$org/$slug': typeof OrgSlugRoute
   '/$org/tv': typeof OrgTvRoute
   '/$org/': typeof OrgIndexRoute
-  '/$org/$slug/tv': typeof OrgSlugTvRoute
+  '/$org/$slug_/tv': typeof OrgSlugTvRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -100,7 +100,7 @@ export interface FileRouteTypes {
     | '/$org/$slug'
     | '/$org/tv'
     | '/$org/'
-    | '/$org/$slug/tv'
+    | '/$org/$slug_/tv'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -153,37 +153,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugRouteImport
       parentRoute: typeof OrgRoute
     }
-    '/$org/$slug/tv': {
-      id: '/$org/$slug/tv'
-      path: '/tv'
+    '/$org/$slug_/tv': {
+      id: '/$org/$slug_/tv'
+      path: '/$slug/tv'
       fullPath: '/$org/$slug/tv'
       preLoaderRoute: typeof OrgSlugTvRouteImport
-      parentRoute: typeof OrgSlugRoute
+      parentRoute: typeof OrgRoute
     }
   }
 }
 
-interface OrgSlugRouteChildren {
+interface OrgRouteChildren {
+  OrgSlugRoute: typeof OrgSlugRoute
+  OrgTvRoute: typeof OrgTvRoute
+  OrgIndexRoute: typeof OrgIndexRoute
   OrgSlugTvRoute: typeof OrgSlugTvRoute
 }
 
-const OrgSlugRouteChildren: OrgSlugRouteChildren = {
-  OrgSlugTvRoute: OrgSlugTvRoute,
-}
-
-const OrgSlugRouteWithChildren =
-  OrgSlugRoute._addFileChildren(OrgSlugRouteChildren)
-
-interface OrgRouteChildren {
-  OrgSlugRoute: typeof OrgSlugRouteWithChildren
-  OrgTvRoute: typeof OrgTvRoute
-  OrgIndexRoute: typeof OrgIndexRoute
-}
-
 const OrgRouteChildren: OrgRouteChildren = {
-  OrgSlugRoute: OrgSlugRouteWithChildren,
+  OrgSlugRoute: OrgSlugRoute,
   OrgTvRoute: OrgTvRoute,
   OrgIndexRoute: OrgIndexRoute,
+  OrgSlugTvRoute: OrgSlugTvRoute,
 }
 
 const OrgRouteWithChildren = OrgRoute._addFileChildren(OrgRouteChildren)

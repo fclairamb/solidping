@@ -135,7 +135,7 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
   if (isLockedError(pageQuery.error)) {
     return (
       <TvShell>
-        <div>
+        <div data-testid="tv-locked">
           <h1 className="text-4xl font-bold">{t("tv.lockedTitle")}</h1>
           <p className="mt-3 text-2xl opacity-75">
             {t("tv.lockedDescription")}
@@ -152,7 +152,7 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
   if (page === undefined) {
     return (
       <TvShell>
-        <div>
+        <div data-testid="tv-not-found">
           <h1 className="text-4xl font-bold">{t("statusPageNotFound")}</h1>
           <p className="mt-3 text-2xl opacity-75">
             {t("statusPageNotFoundDescription")}
