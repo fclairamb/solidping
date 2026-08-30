@@ -141,3 +141,59 @@ each rewrite the CSS differently.
 - Per-org brand colors or dark logo variants (org branding is logo/name/hide
   only, and logos render on the always-dark navy header).
 - The plaintext part, and Outlook-for-Windows forced inversion.
+
+## Implementation Plan
+
+1. **`base.html` dark block.** Append a `@media (prefers-color-scheme: dark)`
+   block at the end of the `<style>` (after the existing `max-width: 480px`
+   block), overriding only the class tokens listed in the Proposal:
+   `body` / `.wrapper` / `.container`, `.content` (+ `h1`/`h2`/`a`/`.eyebrow`/
+   `.section-title`), `.quote`, `.btn-secondary`, `.details-table` (borders,
+   `td.label` + its gradient, `td.value`, `th`), `.metric` (+ `-value`,
+   `-label`, the three state colors lightened for dark), `.badge-*`,
+   `.mono`, `.fallback`, `.meta`, `.footnote`, `.footer` (+ `a`, `-brand`).
+   Explicitly NOT touched: `.header*`, `.accent-bar`, `.status-*`,
+   `.btn-primary`, `.btn-success`, `.cta*`.
+   Every `background-image: linear-gradient(...)` inside the block keeps its
+   paired `background-color`. Update the two head comments (lines 11–17 and
+   22–29) so they describe the new reality: the light pin stays, and the dark
+   block is additive for clients that evaluate the media query. Add the
+   Word-engine Outlook note.
+   **The light-pin trio (two `<meta>` + the `:root` rule) is not touched.**
+
+2. **`emailpreview` handler.** `Preview` reads `?colorScheme=`; `""`/`light`
+   serve today's bytes verbatim, `dark` rewrites
+   `@media (prefers-color-scheme: dark)` → `@media all` in the rendered HTML
+   (HTML format only; any other value is a 400, mirroring `format`). The
+   rewrite is a plain string replacement on the premailer output, so the
+   preview is the shipped CSS, not a second palette.
+
+3. **Backend tests** (`rendering_test.go` / `handler_test.go`):
+   - dark block exists in the rendered `<style>` for every shipped template;
+   - `?colorScheme=dark` ⇒ `@media all` present, `prefers-color-scheme`
+     absent; no param and `colorScheme=light` ⇒ untouched (`prefers-color-scheme`
+     present, no `@media all`); `colorScheme=dark&format=text` ⇒ plaintext
+     unchanged; bad value ⇒ 400.
+   - extend `TestPreview_PinsLightRendering` with the negative: no
+     `light dark` meta / `:root` declaration anywhere.
+   - a source-level check that every gradient inside the dark block carries a
+     `background-color` (the existing gradient test only sees inlined style
+     attributes, and media-block rules are never inlined).
+
+4. **dash0 preview page.** Add a `PreviewScheme = "light" | "dark"` search
+   param + `SegmentedControl` (testids `email-preview-scheme-light` /
+   `email-preview-scheme-dark`) next to the format control, shown for the HTML
+   format only. `previewUrl()` appends `&colorScheme=dark` when dark. The
+   iframe surround flips from `bg-white` to a dark slate. New locale keys
+   (`schemeLabel`, `schemeLight`, `schemeDark`) in all four locales.
+
+5. **Playwright** (`e2e/email-preview.spec.ts`): a test that toggles to Dark,
+   asserts the iframe `src` gained `colorScheme=dark`, asserts the URL search
+   param persists, and that toggling back to Light drops it.
+
+6. **Wiki** `wiki/features/email-dark-mode.md`: client support matrix, what the
+   designed dark block covers, the Gmail decision aid (what the flip is, the
+   exact one-line change, the fragile elements, the go/no-go criteria) and the
+   empty device-matrix table for the human follow-up. Linked from
+   `wiki/README.md`. `wiki/api-specification/management.md` gains the
+   `colorScheme` query param.
