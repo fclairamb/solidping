@@ -374,8 +374,13 @@ test.describe("Getting-started checklist", () => {
     // The "team" step's own CTA links to the members page; clicking the
     // row's status icon (well away from the CTA button) must navigate the
     // same way the CTA itself would, proving the whole row is one stretched
-    // click target rather than just the small button on the right.
-    await page.getByTestId("onboarding-step-team-status").click();
+    // click target rather than just the small button on the right. `force`
+    // is required and is itself part of the proof: Playwright's
+    // actionability check reports that the CTA link's stretched overlay is
+    // exactly what receives the hit-test at this point (not the status
+    // icon) — that is the click-through mechanism working as designed, not
+    // an accidental cover-up.
+    await page.getByTestId("onboarding-step-team-status").click({ force: true });
     await expect(page).toHaveURL(/\/organization\/members$/);
   });
 
