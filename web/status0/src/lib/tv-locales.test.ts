@@ -54,6 +54,8 @@ describe("TV mode locale parity", () => {
       "tv.cycling",
       "tv.affectedTitle",
       "tv.affectedCycling",
+      "tv.failingFor",
+      "tv.failingSectionFor",
       "tv.lockedTitle",
       "tv.lockedDescription",
       "tv.pickAPageTitle",

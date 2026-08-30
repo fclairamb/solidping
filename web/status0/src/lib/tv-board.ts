@@ -257,6 +257,12 @@ export interface FailingResource {
   section: string;
   /** Raw check status, rendered through statusStyle() for its label. */
   status: string;
+  /**
+   * RFC3339 instant this resource entered its current status, when the server
+   * knows it. Absent for group resources — the board then names the component
+   * without a duration rather than inventing one.
+   */
+  since?: string;
 }
 
 /**
@@ -320,6 +326,7 @@ export function failingResources(
           name: resource.publicName || resource.check?.name || "",
           section: section.name,
           status,
+          since: resource.check?.statusChangedAt,
         },
       });
     }

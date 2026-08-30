@@ -409,6 +409,36 @@ describe("failingResources", () => {
     ]);
   });
 
+  // The duration the board renders "down for 12m" from.
+  test("carries statusChangedAt through as `since`", () => {
+    const page = pageWith([
+      "Core",
+      [
+        resource("a", "down", {
+          publicName: "Checkout",
+          check: {
+            type: "http",
+            status: "down",
+            statusChangedAt: "2026-08-30T09:00:00Z",
+          },
+        }),
+      ],
+    ]);
+
+    expect(failingResources(page)[0].since).toBe("2026-08-30T09:00:00Z");
+  });
+
+  // A group rolls up from a count map with no timestamps, so the server omits
+  // the field; the board must render the row anyway, just without a duration.
+  test("a resource with no statusChangedAt yields an undefined `since`", () => {
+    const page = pageWith([
+      "Core",
+      [resource("g", "down", { publicName: "Group" })],
+    ]);
+
+    expect(failingResources(page)[0].since).toBeUndefined();
+  });
+
   test("an absent page, absent sections and absent resources are all empty", () => {
     expect(failingResources(undefined)).toEqual([]);
     expect(failingResources({} as StatusPage)).toEqual([]);

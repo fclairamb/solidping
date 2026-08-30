@@ -9,6 +9,11 @@ export interface ResourceCheckInfo {
   // True when the check is inside an active maintenance window right now, so
   // the public page shows a "Scheduled Maintenance" badge instead of raw status.
   inMaintenance?: boolean;
+  // RFC3339 instant the check entered its CURRENT status — how the TV board
+  // says "down for 12m" rather than just "down". CHECK resources only: a group
+  // rolls its status up from a count map with no timestamps, so the server
+  // omits this rather than guessing, and the board omits the duration in turn.
+  statusChangedAt?: string;
 }
 
 // AvailabilityPoint is a single bucket: a day in daily mode, an hour in 24h

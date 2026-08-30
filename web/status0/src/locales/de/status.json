@@ -94,6 +94,8 @@
     "cycling": "Wechselt zwischen {{count}} aktiven Vorfällen",
     "affectedTitle": "Betroffene Dienste",
     "affectedCycling": "Wechselt durch {{count}} betroffene Dienste",
+    "failingFor": "seit {{duration}}",
+    "failingSectionFor": "{{section}} · seit {{duration}}",
     "lockedTitle": "Dieser Bildschirm benötigt ein Kiosk-Token",
     "lockedDescription": "Öffnen Sie die Statusseite im Dashboard, erzeugen Sie ein TV-Modus-Token und verwenden Sie die angezeigte URL.",
     "pickAPageTitle": "Der TV-Modus benötigt eine Statusseite",

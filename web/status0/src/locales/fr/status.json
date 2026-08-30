@@ -94,6 +94,8 @@
     "cycling": "Défilement de {{count}} incidents actifs",
     "affectedTitle": "Services affectés",
     "affectedCycling": "Défilement de {{count}} services affectés",
+    "failingFor": "depuis {{duration}}",
+    "failingSectionFor": "{{section}} · depuis {{duration}}",
     "lockedTitle": "Cet écran nécessite un jeton kiosque",
     "lockedDescription": "Ouvrez la page de statut dans le tableau de bord, générez un jeton mode TV, puis utilisez l'URL fournie.",
     "pickAPageTitle": "Le mode TV nécessite une page de statut",

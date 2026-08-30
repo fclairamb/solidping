@@ -193,6 +193,46 @@ test.describe("TV mode — explaining a non-green board", () => {
     await expect(page.getByTestId("tv-failing-resources")).toHaveCount(0);
   });
 
+  // "Checkout API — OUTAGE" says what broke, not whether it broke a minute ago
+  // or overnight. The clock is frozen so the elapsed value is exact.
+  test("names how long the outage has been going on", async ({ page }) => {
+    await page.clock.install({
+      time: new Date("2026-08-30T12:00:00Z").getTime(),
+    });
+    await mock(page, {
+      overallStatus: "down",
+      sections: section([
+        resource("r1", "Checkout API", "down", {
+          statusChangedAt: "2026-08-30T09:15:00Z",
+        }),
+      ]),
+    });
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+
+    const row = page.getByTestId("tv-failing-resource");
+    await expect(row).toContainText("Checkout API");
+    // Section and elapsed time on one line, 2h 45m after it went down.
+    await expect(row).toContainText("Core · for 2h 45m");
+  });
+
+  // A group resource has no statusChangedAt: the row must still render.
+  test("a resource with no timestamp still renders, just without a duration", async ({
+    page,
+  }) => {
+    await mock(page, {
+      overallStatus: "down",
+      sections: section([resource("r1", "Aggregated group", "down")]),
+    });
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+
+    const row = page.getByTestId("tv-failing-resource");
+    await expect(row).toContainText("Aggregated group");
+    await expect(row).toContainText("Core");
+    await expect(row).not.toContainText("for ");
+  });
+
   test("worst first when several checks are failing", async ({ page }) => {
     await mock(
       page,

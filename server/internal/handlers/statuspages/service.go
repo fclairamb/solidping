@@ -795,6 +795,16 @@ type ResourceCheckInfo struct {
 	// time, so the public page can show a "Scheduled Maintenance" badge instead
 	// of a raw up/down state.
 	InMaintenance bool `json:"inMaintenance"`
+	// StatusChangedAt is when the check entered its CURRENT status, so a
+	// reader can tell how long this has been going on. Without it a wallboard
+	// naming a failing component can say what broke but not whether it broke a
+	// minute ago or last night.
+	//
+	// CHECK RESOURCES ONLY. A group's status is rolled up from a status→count
+	// map that carries no timestamps, so filling this for a group would mean an
+	// extra per-group query on a public, polled endpoint. Absent rather than
+	// guessed: the board simply omits the duration it does not know.
+	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
 }
 
 // ResourceAvailabilityData contains availability and performance data for public display.
@@ -3631,10 +3641,11 @@ func (s *Service) getCheckInfo(
 	}
 
 	return &ResourceCheckInfo{
-		Name:          check.Name,
-		Type:          check.Type,
-		Status:        publicCheckStatus(check.Status),
-		InMaintenance: inMaintenance,
+		Name:            check.Name,
+		Type:            check.Type,
+		Status:          publicCheckStatus(check.Status),
+		InMaintenance:   inMaintenance,
+		StatusChangedAt: check.StatusChangedAt,
 	}, check.Status, nil
 }
 

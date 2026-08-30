@@ -240,13 +240,22 @@ function ActiveIncidentCard({
  */
 function FailingResourceRow({
   resource,
+  now,
   cardClass,
+  formatDuration,
 }: {
   resource: FailingResource;
+  now: number;
   cardClass: string;
+  formatDuration: (ms: number) => string;
 }) {
   const { t } = useTranslation();
   const style = statusStyle(resource.status);
+  // How long this has been going on. "Checkout API — OUTAGE" says what broke;
+  // it does not say whether it broke a minute ago or overnight, which is the
+  // first thing anyone walking up to the board asks.
+  const ongoing =
+    resource.since === undefined ? null : elapsedMs(resource.since, now);
 
   return (
     <article
@@ -261,11 +270,16 @@ function FailingResourceRow({
         >
           {resource.name || t("unknown")}
         </h3>
-        {resource.section && (
-          <p className="truncate text-lg opacity-70 sm:text-xl">
-            {resource.section}
-          </p>
-        )}
+        <p className="truncate text-lg opacity-70 sm:text-xl">
+          {ongoing === null
+            ? resource.section
+            : resource.section
+              ? t("tv.failingSectionFor", {
+                  section: resource.section,
+                  duration: formatDuration(ongoing),
+                })
+              : t("tv.failingFor", { duration: formatDuration(ongoing) })}
+        </p>
       </div>
       <span
         className="shrink-0 rounded-full border border-current/30 px-3 py-0.5 text-base font-medium uppercase tracking-wide opacity-90 sm:text-lg"
@@ -436,7 +450,9 @@ export function TvBoard({
               <FailingResourceRow
                 key={resource.uid}
                 resource={resource}
+                now={now}
                 cardClass={style.tvCard}
+                formatDuration={formatDuration}
               />
             ))}
             {failingCycling && (

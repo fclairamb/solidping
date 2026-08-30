@@ -94,6 +94,8 @@
     "cycling": "Cycling through {{count}} active incidents",
     "affectedTitle": "Affected services",
     "affectedCycling": "Cycling through {{count}} affected services",
+    "failingFor": "for {{duration}}",
+    "failingSectionFor": "{{section}} · for {{duration}}",
     "lockedTitle": "This screen needs a kiosk token",
     "lockedDescription": "Open the status page in the dashboard, generate a TV mode token, and use the URL it gives you.",
     "pickAPageTitle": "TV mode needs a status page",
