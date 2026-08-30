@@ -1,6 +1,6 @@
 ---
-model: opus
-effort: high
+model: sonnet
+effort: medium
 ---
 
 # Opening an invitation link reports "invalid or expired" (at least locally)
@@ -102,3 +102,72 @@ inspection — this spec is investigation-shaped.
 - The invalid/expired card appears only for a genuinely unknown or expired
   token; transient errors render a different, retryable state.
 - E2E exercises the full create → open → accept flow.
+
+
+## Resolved open questions
+
+Answered by the reporter on 2026-08-31. **There is no product defect** — the
+invitation flow works. The investigation half of this spec (Proposal items 1
+and 2) is therefore CLOSED as "not reproducible / reporter error", and this
+spec falls through to **Proposal item 5**: land items 3 and 4, which stand on
+their own, and record the finding.
+
+> Which DB dialect was the failing local run on (Postgres via docker-compose,
+> or SQLite)?
+
+**Resolved:** Moot. The reporter confirms the link works; there was no failing
+run to attribute to a dialect. Do NOT go hunting the SQLite `expires_at`
+string-comparison theory or the Postgres `NOW()` skew theory — both were
+hypotheses for a defect that does not exist. Do not change any DB comparison
+logic.
+
+> Was the link opened from the invitation email or copied from the invitations
+> page?
+
+**Resolved:** Copied from the invitations page — and it worked.
+
+> Was the invite fresh (minutes old) or near/past its chosen expiration?
+
+**Resolved:** Moot, per the above.
+
+> Does `GET /api/v1/auth/invite/<token>` itself return 404, or does it return
+> 200 while the page still shows the error card?
+
+**Resolved:** Moot — the endpoint behaves correctly.
+
+### What this spec is now, precisely
+
+Implement ONLY these, and do not modify `Service.CreateInvitation`,
+`Service.GetInviteInfo`, `GetStateEntry`, or any expiry comparison:
+
+1. **Proposal item 3 — stop conflating errors on the invite page.**
+   `web/dash0/src/routes/invite.$token.tsx:93` renders the
+   `auth:invite.invalidDescription` "invalid or expired" card for *any* error
+   from `useInviteInfo`. Only a 404 / `NOT_FOUND` (and an explicit expired
+   signal, if one exists) may render that card. A 429, a 5xx, or a network
+   failure must render a **distinct, retryable** state — a different message
+   plus a retry affordance — because telling someone their perfectly valid
+   invitation has expired when the server merely rate-limited them is a
+   dead end they cannot recover from. New copy goes in all four locales
+   (`web/dash0/src/locales/*/auth.json`: `de`, `en`, `es`, `fr` — there are
+   FOUR, not six).
+
+2. **Proposal item 4 — close the E2E gap.**
+   `web/dash0/e2e/invitations.spec.ts` asserts the `inviteUrl` shape but never
+   opens the link. Add: create invite → open `/dash0/invite/<token>` logged
+   out → see the join card (org name, role, masked email) → accept as a new
+   user → land in the org. Plus the negative: a bogus token shows the invalid
+   card. This coverage is the actual value of this spec — it is what would
+   have answered the original report in seconds.
+
+3. **Record the finding in `wiki/`** (Proposal item 5): a short note that the
+   "invite link invalid or expired" report of 2026-08-31 was investigated and
+   found to be reporter error, that the flow works on both dialects, and that
+   the lasting fixes were the error-conflation split and the new E2E coverage.
+   This is so the next person who sees the same card does not re-open the same
+   hunt.
+
+**Acceptance, revised:** the first bullet of the original Acceptance criteria
+("a freshly created invitation link opens to the join/accept page locally on
+both dialects") is satisfied by the reporter's confirmation and needs no new
+work. The other two stand as written.
