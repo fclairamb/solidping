@@ -131,7 +131,7 @@ func TestPreview_PinsLightRendering(t *testing.T) {
 	require.Contains(t, body, "color-scheme: light only")
 
 	// The negative half, and the point of this test now that base.html also
-	// ships a designed dark palette: shipping dark styles is NOT a licence to
+	// ships a designed dark palette: shipping dark styles is NOT a license to
 	// un-pin. Flipping any of the three declarations to "light dark" hands the
 	// mail to Gmail's auto-darkening algorithm — a separate, human-gated
 	// decision written up in wiki/features/email-dark-mode.md. The trio is one
