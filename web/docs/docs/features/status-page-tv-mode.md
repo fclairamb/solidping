@@ -148,6 +148,23 @@ Other properties worth knowing:
   not unlock the ordinary page route — `/{org}/{page}?kiosk=…` still shows the
   password prompt.
 
+## A wallboard nobody maintains
+
+TV mode reuses the page's curation, which means it inherits its blind spots
+too: a check nobody attached is a service the board silently claims is fine.
+
+The combination that removes that is a **private** page, a section set to **all
+checks** ([dynamic sections](status-pages.md#dynamic-sections)), and a kiosk
+token on the television. Every check the team creates appears on the screen from
+the moment it exists, with nothing to remember and nothing to configure per
+service.
+
+"All checks" is the right rule here precisely *because* the page is private —
+there is no audience to disclose anything to. On a **public** page the same rule
+publishes every future check to the internet, which is why the dashboard warns
+about it there and why a `public=true` label opt-in is the recommendation
+instead.
+
 ## Notes and limits
 
 - **An org page slugged `tv` collides with the default-page URL.** `/acme/tv`
