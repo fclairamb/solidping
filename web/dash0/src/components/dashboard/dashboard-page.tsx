@@ -433,11 +433,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
         <EmptyStateOnboarding org={org} />
       ) : (
         <>
-          <OnboardingChecklist
-            org={org}
-            totalChecks={totalChecksCount}
-            firstCheckUid={checks[0]?.uid}
-          />
+          <OnboardingChecklist org={org} totalChecks={totalChecksCount} />
           <OverallStatusBanner
             org={org}
             allGreen={downCount === 0 && incidentsCount === 0}

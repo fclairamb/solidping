@@ -64,8 +64,6 @@ interface OnboardingChecklistProps {
   org: string;
   /** Org-wide check count from the stats endpoint. */
   totalChecks: number;
-  /** Pre-attached to a new status page by the create-from-check flow. */
-  firstCheckUid?: string;
 }
 
 /**
@@ -86,7 +84,6 @@ interface OnboardingChecklistProps {
 export function OnboardingChecklist({
   org,
   totalChecks,
-  firstCheckUid,
 }: OnboardingChecklistProps) {
   const { t } = useTranslation("dashboard");
   const { user } = useAuth();
@@ -215,7 +212,6 @@ export function OnboardingChecklist({
     <OnboardingChecklistCard
       org={org}
       steps={steps}
-      firstCheckUid={firstCheckUid}
       allSet={allSet}
       onDismiss={handleDismiss}
       onTestAlert={testAlertIntegration ? handleTestAlert : undefined}
@@ -227,7 +223,6 @@ export function OnboardingChecklist({
 export interface OnboardingChecklistCardProps {
   org: string;
   steps: OnboardingStep[];
-  firstCheckUid?: string;
   allSet: boolean;
   onDismiss?: () => void;
   /** Omitted when the org has no email channel to send a test alert through. */
@@ -242,7 +237,6 @@ export interface OnboardingChecklistCardProps {
 export function OnboardingChecklistCard({
   org,
   steps,
-  firstCheckUid,
   allSet,
   onDismiss,
   onTestAlert,
@@ -297,7 +291,6 @@ export function OnboardingChecklistCard({
               <OnboardingStepRow
                 org={org}
                 step={step}
-                firstCheckUid={firstCheckUid}
                 onTestAlert={onTestAlert}
                 testAlertPending={testAlertPending}
               />
@@ -316,13 +309,11 @@ export function OnboardingChecklistCard({
 function OnboardingStepRow({
   org,
   step,
-  firstCheckUid,
   onTestAlert,
   testAlertPending,
 }: {
   org: string;
   step: OnboardingStep;
-  firstCheckUid?: string;
   onTestAlert?: () => void;
   testAlertPending: boolean;
 }) {
@@ -383,11 +374,7 @@ function OnboardingStepRow({
             {t("onboarding.testAlert.cta")}
           </Button>
         ) : null}
-        <OnboardingStepLink
-          org={org}
-          step={step}
-          firstCheckUid={firstCheckUid}
-        />
+        <OnboardingStepLink org={org} step={step} />
       </div>
     </div>
   );
@@ -396,11 +383,9 @@ function OnboardingStepRow({
 function OnboardingStepLink({
   org,
   step,
-  firstCheckUid,
 }: {
   org: string;
   step: OnboardingStep;
-  firstCheckUid?: string;
 }) {
   const { t } = useTranslation("dashboard");
   const label = t(`onboarding.steps.${step.id}.cta`);
@@ -409,40 +394,31 @@ function OnboardingStepLink({
   // test-alert case) and once the step is done.
   const variant = step.done || step.id === "alerts" ? "outline" : "default";
 
-  if (step.id === "statusPage") {
-    return (
-      <Button asChild size="sm" variant={variant}>
-        <Link
-          to="/orgs/$org/status-pages/new"
-          params={{ org }}
-          // Pre-attaches the org's first check to the new page (spec
-          // 2026-08-28-16), so the shortest path from here is one form.
-          search={firstCheckUid ? { checkUid: firstCheckUid } : {}}
-          // Stretches over the whole row via the `after` pseudo-element
-          // (positioned against the row's `relative` ancestor), so the
-          // entire step row is one click/keyboard target instead of only
-          // this small CTA — without nesting a second interactive element.
-          className="after:absolute after:inset-0"
-          data-testid={testId}
-        >
-          {label}
-        </Link>
-      </Button>
-    );
-  }
-
+  // The statusPage step used to land on the blank create form (pre-attaching
+  // the org's first check via ?checkUid=, spec 2026-08-28-16). It now lands
+  // on the list instead (spec 2026-08-30-10): once the list carries its own
+  // "create a page for me" wand, dropping the user into a blank form skips
+  // the better entry point — the list is where they choose between the wand
+  // and the manual form. The ?checkUid= prefill on the new-page route itself
+  // stays; other callers (e.g. a check's "Publish on a status page" link)
+  // still use it.
   const to = {
     check: "/orgs/$org/checks",
     alerts: "/orgs/$org/integrations",
     report: "/orgs/$org/organization/report-schedules",
+    statusPage: "/orgs/$org/status-pages",
     team: "/orgs/$org/organization/members",
-  }[step.id as Exclude<OnboardingStepId, "statusPage">];
+  }[step.id];
 
   return (
     <Button asChild size="sm" variant={variant}>
       <Link
         to={to}
         params={{ org }}
+        // Stretches over the whole row via the `after` pseudo-element
+        // (positioned against the row's `relative` ancestor), so the entire
+        // step row is one click/keyboard target instead of only this small
+        // CTA — without nesting a second interactive element.
         className="after:absolute after:inset-0"
         data-testid={testId}
       >

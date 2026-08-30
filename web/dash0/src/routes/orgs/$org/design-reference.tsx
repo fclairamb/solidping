@@ -5412,7 +5412,7 @@ function OnboardingChecklistSection() {
 
 // Container: derives every step from real resources and reads/writes the
 // per-user dismissal (\`onboarding.<org>\` ui-state) itself.
-<OnboardingChecklist org={org} totalChecks={stats.total} firstCheckUid={checks[0]?.uid} />
+<OnboardingChecklist org={org} totalChecks={stats.total} />
 
 // Presentation only, for a surface that already has the data:
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
