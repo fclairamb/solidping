@@ -1208,6 +1208,10 @@ func (m *mockDBService) ListStatusPageSections(_ context.Context, _ string) ([]*
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListSelectorSectionPageUIDs(_ context.Context, _ string) ([]string, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) MaxStatusPageSectionPosition(_ context.Context, _ string) (int, error) {
 	panic("not implemented")
 }

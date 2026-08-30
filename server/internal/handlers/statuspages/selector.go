@@ -241,12 +241,12 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) err
 // dynamic section, or leftover managed rows from one that was cleared. A fully
 // hand-curated page therefore costs one sections read and nothing else.
 func needsReconcile(states []sectionState) bool {
-	for _, state := range states {
-		if state.section.Selector != nil {
+	for i := range states {
+		if states[i].section.Selector != nil {
 			return true
 		}
 
-		for _, resource := range state.resources {
+		for _, resource := range states[i].resources {
 			if resource.ManagedBySelector {
 				return true
 			}
@@ -279,8 +279,8 @@ func (s *Service) dropManagedRows(ctx context.Context, state *sectionState) erro
 func manualCheckUIDs(states []sectionState) map[string]struct{} {
 	claimed := make(map[string]struct{})
 
-	for _, state := range states {
-		for _, resource := range state.resources {
+	for i := range states {
+		for _, resource := range states[i].resources {
 			if resource.ManagedBySelector || resource.CheckUID == nil {
 				continue
 			}
@@ -394,7 +394,7 @@ func (s *Service) materialize(
 // Matching is delegated to ListChecks with the selector's own ListChecksFilter
 // — the very query the checks list uses — so there is exactly one place where
 // "does this check match these labels" is decided. That also inherits the
-// filter's default of EXCLUDING internal checks, which is the behaviour we
+// filter's default of EXCLUDING internal checks, which is the behavior we
 // want: an internal plumbing probe must never be swept onto a status page.
 //
 // The order is alphabetical by display name, with the UID as a final
@@ -435,8 +435,8 @@ func (s *Service) desiredChecks(
 	}
 
 	uids := make([]string, len(candidates))
-	for i, cand := range candidates {
-		uids[i] = cand.uid
+	for i := range candidates {
+		uids[i] = candidates[i].uid
 	}
 
 	return uids, nil

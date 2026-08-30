@@ -10,7 +10,7 @@ package incidentpublications_test
 //
 // What that buys, and what this test pins, is that a PAST publication's
 // affectedResources display cannot behave differently depending on how the row
-// went away. The test does not assume what the behaviour is; it MEASURES the
+// went away. The test does not assume what the behavior is; it MEASURES the
 // manual path and requires the managed path to match it exactly. If a future
 // change makes resource removal retain names on past publications, this test
 // keeps passing — and keeps the two paths honest.
@@ -32,7 +32,7 @@ func affectedAfter(
 	t *testing.T,
 	attach func(ctx context.Context, setup *pubSetup, svc *statuspages.Service),
 	remove func(ctx context.Context, setup *pubSetup, svc *statuspages.Service),
-) (before, after []string) {
+) ([]string, []string) {
 	t.Helper()
 
 	r := require.New(t)
@@ -60,7 +60,7 @@ func affectedAfter(
 	r.NoError(err)
 	r.Len(incidents, 1, "precondition: the incident must have published")
 
-	before = incidents[0].AffectedResources
+	before := incidents[0].AffectedResources
 
 	remove(ctx, setup, pagesSvc)
 
@@ -132,7 +132,7 @@ func TestAffectedResources_ManagedRemovalMirrorsManualRemoval(t *testing.T) {
 	// resolved at READ time from live rows, so removing a component drops it
 	// from past publications too — for manual and managed removals alike. That
 	// is stated as an observation, not baked into the assertion: the test
-	// compares the two paths, so it stays correct if the behaviour changes.
+	// compares the two paths, so it stays correct if the behavior changes.
 	r.Equal(manualAfter, managedAfter,
 		"a selector-driven removal must leave a past publication in exactly the state a manual delete does")
 }

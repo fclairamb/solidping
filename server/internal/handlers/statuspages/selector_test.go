@@ -25,7 +25,7 @@ import (
 // --- helpers ---
 
 // seedLabeledCheck creates an http check with the given DISPLAY NAME and
-// labels. The name matters: it is the key the reconciler alphabetises managed
+// labels. The name matters: it is the key the reconciler alphabetizes managed
 // rows by, so a test that cares about order has to set it (models.NewCheck's
 // second argument is the slug, not the name).
 func seedLabeledCheck(
@@ -255,7 +255,7 @@ func TestCreateSection_RejectsInvalidSelector(t *testing.T) {
 	}
 }
 
-// --- Reconciliation behaviour ---
+// --- Reconciliation behavior ---
 
 // TestSelector_LabelRoundTrip is the headline requirement: a check created
 // AFTER the page was built, carrying the right label, appears with no manual
@@ -269,11 +269,11 @@ func TestSelector_LabelRoundTrip(t *testing.T) {
 	_, section := seedSelectorPage(ctx, t, svc, org,
 		models.SectionSelector{Labels: map[string]string{"public": "true"}})
 
-	// Nothing labelled yet.
+	// Nothing labeled yet.
 	uids, _ := sectionCheckUIDs(ctx, t, svc, section.UID)
 	r.Empty(uids)
 
-	// A brand-new labelled check — created long after the page.
+	// A brand-new labeled check — created long after the page.
 	check := seedLabeledCheck(ctx, t, svc, org.UID, "API", map[string]string{"public": "true"})
 	svc.ReconcileOrgSelectors(ctx, org.UID)
 
@@ -314,11 +314,11 @@ func TestSelector_AndSemantics(t *testing.T) {
 	r.Equal([]string{both.UID}, uids)
 }
 
-// TestSelector_AllPicksUpUnlabelledCheckAndSkipsInternal pins two things about
+// TestSelector_AllPicksUpUnlabeledCheckAndSkipsInternal pins two things about
 // `{"all":true}`: it adopts a brand-new check that carries no labels at all,
 // and it never adopts an INTERNAL check. The second is a disclosure guarantee
 // — internal probes are the org's own plumbing and must not reach a page.
-func TestSelector_AllPicksUpUnlabelledCheckAndSkipsInternal(t *testing.T) {
+func TestSelector_AllPicksUpUnlabeledCheckAndSkipsInternal(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
