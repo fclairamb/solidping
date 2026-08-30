@@ -478,6 +478,12 @@ export function TvBoard({
               incident.resolvedAt === undefined
                 ? null
                 : elapsedMs(incident.startedAt, incident.resolvedAt);
+            // How long ago it STARTED. "resolved in 8m" on its own tells the
+            // room how bad it was but not whether it happened over lunch or
+            // last Tuesday — and a wallboard is read by someone who was not
+            // watching when it happened. Start + duration pins the whole event
+            // down, and the end is the sum of the two.
+            const ago = elapsedMs(incident.startedAt, now);
 
             return (
               <article
@@ -489,9 +495,14 @@ export function TvBoard({
                   {incident.title}
                 </h4>
                 <p className="text-base opacity-70 sm:text-lg" translate="no">
-                  {took === null
+                  {ago === null
                     ? ""
-                    : t("tv.resolvedIn", { duration: formatDuration(took) })}
+                    : took === null
+                      ? t("tv.resolvedAgo", { ago: formatDuration(ago) })
+                      : t("tv.resolvedAgoFor", {
+                          ago: formatDuration(ago),
+                          duration: formatDuration(took),
+                        })}
                 </p>
               </article>
             );

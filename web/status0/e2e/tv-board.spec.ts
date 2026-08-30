@@ -212,3 +212,58 @@ test.describe("TV mode — explaining a non-green board", () => {
     ).toHaveText(["Dead service", "Slow service"]);
   });
 });
+
+/**
+ * The resolved strip must say WHEN, not just how long.
+ *
+ * "resolved in 8m" alone tells the room how bad it was but not whether it
+ * happened over lunch or last Tuesday — and a wallboard is read by someone who
+ * was not watching when it happened.
+ *
+ * The clock is frozen so the relative "ago" is exact rather than drifting a
+ * minute mid-assertion.
+ */
+test.describe("TV mode — the recently-resolved strip", () => {
+  const NOW = new Date("2026-08-30T12:00:00Z").getTime();
+
+  test("names when it started and how long it lasted", async ({ page }) => {
+    await page.clock.install({ time: NOW });
+    await mock(page, { overallStatus: "operational" }, [
+      {
+        uid: "r1",
+        title: "1.1.1.1 is experiencing issues",
+        state: "resolved",
+        // Started 3h before the frozen now, resolved 8 minutes later.
+        startedAt: "2026-08-30T09:00:00Z",
+        resolvedAt: "2026-08-30T09:08:00Z",
+      },
+    ]);
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+
+    const card = page.getByTestId("tv-resolved-incident");
+    await expect(card).toHaveCount(1);
+    // Both facts, in one line: when it began and how long it ran.
+    await expect(card).toContainText("3h 0m ago");
+    await expect(card).toContainText("lasted 8m");
+  });
+
+  test("a multi-day-old incident still reads in days", async ({ page }) => {
+    await page.clock.install({ time: NOW });
+    await mock(page, { overallStatus: "operational" }, [
+      {
+        uid: "r1",
+        title: "Old outage",
+        state: "resolved",
+        startedAt: "2026-08-28T10:00:00Z",
+        resolvedAt: "2026-08-28T12:30:00Z",
+      },
+    ]);
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+
+    const card = page.getByTestId("tv-resolved-incident");
+    await expect(card).toContainText("2d 2h ago");
+    await expect(card).toContainText("lasted 2h 30m");
+  });
+});
