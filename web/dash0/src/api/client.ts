@@ -183,11 +183,17 @@ export function isOrgDeleted(org: string | null): boolean {
 
 /**
  * Sends the browser to the org login page with `session_expired=true` and a
- * `returnTo` back to the current page. Idempotent (no-ops if already on a
- * public org route — login or register) so it's safe to call from multiple
- * failure paths without coordinating who "owns" the redirect — both
- * `handleResponse` below and token-refresh.ts's immediate-escalation cases
- * call this.
+ * `returnTo` back to the current page. Idempotent — no-ops on any route that
+ * already shows (or is about to show) a login/register surface: the two
+ * org-level public routes (`/orgs/:org/login`, `/orgs/:org/register`, via
+ * `isOrgPublicRoute`) AND the separate root `/login` route
+ * (`src/routes/login.tsx`, which just redirects on to an org's login page).
+ * That's a union, not a superset in either direction — `isOrgPublicRoute`
+ * alone misses root `/login`, and a bare `endsWith("/login")` alone misses
+ * `/orgs/:org/register` (the bug this guard exists to not reintroduce). So
+ * it's safe to call from multiple failure paths without coordinating who
+ * "owns" the redirect — both `handleResponse` below and
+ * token-refresh.ts's immediate-escalation cases call this.
  *
  * Defense in depth: this is not the fix for a stray authenticated call firing
  * on a public route (that call should simply be gated with `enabled`, e.g.
@@ -202,7 +208,7 @@ export function isOrgDeleted(org: string | null): boolean {
  */
 export function redirectToExpiredLogin(): void {
   const currentPath = window.location.pathname;
-  if (isOrgPublicRoute(currentPath)) return;
+  if (currentPath.endsWith("/login") || isOrgPublicRoute(currentPath)) return;
 
   const basepath = import.meta.env.VITE_BASE_URL || "";
   const pathOrg = extractOrgFromPath(currentPath);
