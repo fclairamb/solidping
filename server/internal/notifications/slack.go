@@ -758,9 +758,11 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 		)}
 	}
 
+	refLink := incidentRefLink(payload.Incident, incidentURL)
+	nameLink := checkNameLink(checkURL, incidentURL, checkName, payload.Incident)
 	text := fmt.Sprintf(
 		":large_green_circle: %s%s — incident resolved after %s.",
-		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident), duration,
+		refLink, nameLink, duration,
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -873,10 +875,12 @@ func (s *SlackSender) buildCommentThreadReply(payload *Payload) *slack.MessageRe
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	author := commentAuthor(payload.Comment)
+	refLink := incidentRefLink(payload.Incident, incidentURL)
+	nameLink := checkNameLink(checkURL, incidentURL, checkName, payload.Incident)
 
 	header := fmt.Sprintf(
 		":speech_balloon: *%s* commented on %s%s",
-		author, incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
+		author, refLink, nameLink,
 	)
 
 	if label := commentSourceLabel(payload.Comment); label != "" {
