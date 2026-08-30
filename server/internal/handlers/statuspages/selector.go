@@ -204,6 +204,73 @@ func (s *Service) loadPageState(ctx context.Context, pageUID string) ([]sectionS
 	return states, nil
 }
 
+// claimedElsewhereBySection reports, among a selector's matched checks, how
+// many are displayed by resource rows OUTSIDE the section being enriched, and
+// names the section holding the most of them (spec 2026-08-31-01).
+//
+// This is purely explanatory: it must never influence reconciliation, and it
+// doesn't — it reads the page's CURRENT resource rows (already the product of
+// reconcileSection's claim/dedup rule) and never writes anything. Manual rows
+// and earlier selector sections are indistinguishable here on purpose: the
+// spec that motivates this treats them the same, because the reader doesn't
+// care HOW a check ended up elsewhere, only THAT it did.
+func claimedElsewhereBySection(
+	states []sectionState, sectionUID string, matched []*models.Check,
+) (count int, claimantName string) {
+	if len(matched) == 0 || len(states) == 0 {
+		return 0, ""
+	}
+
+	// checkUID -> owning section index. First section by position wins a
+	// given check, mirroring reconcileSection's own precedence — in practice a
+	// check only ever has one live resource row anyway (a partial unique index
+	// enforces that), so this is a stable tiebreaker rather than a load-bearing
+	// choice.
+	ownerIndex := make(map[string]int, len(matched))
+
+	for i := range states {
+		for _, resource := range states[i].resources {
+			if resource.CheckUID == nil {
+				continue
+			}
+
+			if _, seen := ownerIndex[*resource.CheckUID]; !seen {
+				ownerIndex[*resource.CheckUID] = i
+			}
+		}
+	}
+
+	claimsPerSection := make(map[int]int)
+
+	for _, check := range matched {
+		idx, found := ownerIndex[check.UID]
+		if !found || states[idx].section.UID == sectionUID {
+			continue
+		}
+
+		claimsPerSection[idx]++
+	}
+
+	if len(claimsPerSection) == 0 {
+		return 0, ""
+	}
+
+	total := 0
+	bestIdx := -1
+	bestCount := -1
+
+	for idx, claimCount := range claimsPerSection {
+		total += claimCount
+
+		if claimCount > bestCount || (claimCount == bestCount && idx < bestIdx) {
+			bestCount = claimCount
+			bestIdx = idx
+		}
+	}
+
+	return total, states[bestIdx].section.Name
+}
+
 // ReconcilePage brings one page's selector sections in sync. Exported for the
 // tests that pin idempotence and ordering; production callers go through
 // ReconcileOrgSelectors / reconcilePageBestEffort / maybeReconcileOnView.
@@ -466,19 +533,6 @@ func checkSortName(check *models.Check) string {
 	}
 
 	return check.UID
-}
-
-// countSelectorMatches reports how many checks a selector matches in total,
-// used to tell the dashboard how many rows the cap is hiding.
-func (s *Service) countSelectorMatches(
-	ctx context.Context, orgUID string, selector *models.SectionSelector,
-) (int, error) {
-	_, total, err := s.db.ListChecks(ctx, orgUID, selector.Filter())
-	if err != nil {
-		return 0, err
-	}
-
-	return int(total), nil
 }
 
 // selectorValidationError reports whether err is one of the selector

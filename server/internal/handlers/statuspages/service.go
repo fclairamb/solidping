@@ -746,10 +746,22 @@ type StatusPageSectionResponse struct {
 	// SelectorTruncated says whether that exceeded maxManagedResourcesPerSection
 	// so the section is showing a prefix. Admin-only, like Selector; they exist
 	// so the dashboard can say "and N more" instead of quietly showing a subset.
-	SelectorMatchTotal int                          `json:"selectorMatchTotal,omitempty"`
-	SelectorTruncated  bool                         `json:"selectorTruncated,omitempty"`
-	Resources          []StatusPageResourceResponse `json:"resources,omitempty"`
-	CreatedAt          *time.Time                   `json:"createdAt,omitempty"`
+	SelectorMatchTotal int  `json:"selectorMatchTotal,omitempty"`
+	SelectorTruncated  bool `json:"selectorTruncated,omitempty"`
+	// SelectorClaimedElsewhere is how many of the selector's matched checks are
+	// already displayed by resource rows OUTSIDE this section — earlier
+	// selector sections and manual rows both count (spec
+	// 2026-08-31-01: a section that renders empty or partial because every
+	// match was claimed elsewhere used to give the operator no way to tell
+	// that apart from a broken label rule). SelectorClaimedSectionName names
+	// the section holding the most of them, so the dashboard can say "already
+	// shown in '{{name}}'" — kept to a single name rather than a full list to
+	// keep the payload minimal. Admin-only, like SelectorMatchTotal; a failed
+	// lookup leaves both fields zero rather than failing the page load.
+	SelectorClaimedElsewhere   int                          `json:"selectorClaimedElsewhere,omitempty"`
+	SelectorClaimedSectionName string                       `json:"selectorClaimedSectionName,omitempty"`
+	Resources                  []StatusPageResourceResponse `json:"resources,omitempty"`
+	CreatedAt                  *time.Time                   `json:"createdAt,omitempty"`
 }
 
 // StatusPageResourceResponse represents a resource in API responses. Exactly
@@ -1632,7 +1644,11 @@ func (s *Service) ListSections(
 		return nil, err
 	}
 
-	sections, err := s.db.ListStatusPageSections(ctx, page.UID)
+	// loadPageState (not a plain ListStatusPageSections) so every section's
+	// resource rows are already in hand for enrichSelectorCounts's
+	// claimed-elsewhere tally below — one query set for the whole page rather
+	// than one per section.
+	states, err := s.loadPageState(ctx, page.UID)
 	if err != nil {
 		return nil, err
 	}
@@ -1642,27 +1658,37 @@ func (s *Service) ListSections(
 		return nil, ErrOrganizationNotFound
 	}
 
-	responses := make([]StatusPageSectionResponse, len(sections))
-	for i, section := range sections {
-		responses[i] = convertSectionToAdminResponse(section)
-		s.enrichSelectorCounts(ctx, org.UID, &responses[i], section)
+	responses := make([]StatusPageSectionResponse, len(states))
+	for i := range states {
+		responses[i] = convertSectionToAdminResponse(states[i].section)
+		s.enrichSelectorCounts(ctx, org.UID, &responses[i], states[i].section, states)
 	}
 
 	return responses, nil
 }
 
-// enrichSelectorCounts fills the admin-only match total / truncation flags on a
-// dynamic section, so the dashboard can warn "showing 200 of 431" rather than
-// silently rendering a prefix. Best-effort: a failed count leaves the counters
-// at zero rather than failing the page load.
+// enrichSelectorCounts fills the admin-only match-total / truncation /
+// claimed-elsewhere fields on a dynamic section, so the dashboard can warn
+// "showing 200 of 431" and explain a section that renders empty or partial
+// because every match is already shown elsewhere on the page (spec
+// 2026-08-31-01). `states` is the target page's full section+resource state
+// (from loadPageState) so the claimed-elsewhere tally can see every other
+// section's rows; a nil/empty slice just yields zero claims. Best-effort: a
+// failed lookup leaves every counter at zero rather than failing the page
+// load.
 func (s *Service) enrichSelectorCounts(
-	ctx context.Context, orgUID string, response *StatusPageSectionResponse, section *models.StatusPageSection,
+	ctx context.Context, orgUID string, response *StatusPageSectionResponse,
+	section *models.StatusPageSection, states []sectionState,
 ) {
 	if section.Selector == nil {
 		return
 	}
 
-	total, err := s.countSelectorMatches(ctx, orgUID, section.Selector)
+	// Unbounded query: Filter() sets no Limit, so `matched` and `total` cover
+	// every match, not just a page. Called directly (rather than through a
+	// count-only helper) because, unlike the truncation notice, the
+	// claimed-elsewhere tally needs the actual matched UIDs.
+	matched, total, err := s.db.ListChecks(ctx, orgUID, section.Selector.Filter())
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to count status page selector matches",
 			"error", err, "orgUid", orgUID, "sectionUid", section.UID)
@@ -1670,8 +1696,12 @@ func (s *Service) enrichSelectorCounts(
 		return
 	}
 
-	response.SelectorMatchTotal = total
-	response.SelectorTruncated = total > maxManagedResourcesPerSection
+	response.SelectorMatchTotal = int(total)
+	response.SelectorTruncated = int(total) > maxManagedResourcesPerSection
+
+	claimedElsewhere, claimantName := claimedElsewhereBySection(states, section.UID, matched)
+	response.SelectorClaimedElsewhere = claimedElsewhere
+	response.SelectorClaimedSectionName = claimantName
 }
 
 // resolveSectionPosition picks the position for a new section: the caller's
@@ -1770,7 +1800,18 @@ func (s *Service) GetSection(
 	}
 
 	response := convertSectionToAdminResponse(section)
-	s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, section)
+
+	// Only a dynamic section needs the rest of the page's state — a
+	// hand-curated one has no claimed-elsewhere tally to compute.
+	if section.Selector != nil {
+		states, stateErr := s.loadPageState(ctx, page.UID)
+		if stateErr != nil {
+			slog.ErrorContext(ctx, "Failed to load page state for selector enrichment",
+				"error", stateErr, "orgUid", page.OrganizationUID, "statusPageUid", page.UID)
+		} else {
+			s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, section, states)
+		}
+	}
 
 	return response, nil
 }
@@ -1839,7 +1880,16 @@ func (s *Service) UpdateSection(
 	}
 
 	response := convertSectionToAdminResponse(updated)
-	s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, updated)
+
+	if updated.Selector != nil {
+		states, stateErr := s.loadPageState(ctx, page.UID)
+		if stateErr != nil {
+			slog.ErrorContext(ctx, "Failed to load page state for selector enrichment",
+				"error", stateErr, "orgUid", page.OrganizationUID, "statusPageUid", page.UID)
+		} else {
+			s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, updated, states)
+		}
+	}
 
 	return response, nil
 }
