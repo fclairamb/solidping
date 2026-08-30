@@ -208,7 +208,7 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) err
 		return err
 	}
 
-	if !anySelector(states) {
+	if !needsReconcile(states) {
 		return nil
 	}
 
@@ -217,7 +217,15 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) err
 	claimed := manualCheckUIDs(states)
 
 	for i := range states {
+		// A section whose selector was CLEARED still owns managed rows from
+		// when it had one. Reconciling it against the empty desired set is
+		// what removes them — skipping selector-less sections here would leave
+		// a page advertising checks under a rule that no longer exists.
 		if states[i].section.Selector == nil {
+			if err := s.dropManagedRows(ctx, &states[i]); err != nil {
+				return err
+			}
+
 			continue
 		}
 
@@ -229,16 +237,39 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) err
 	return nil
 }
 
-// anySelector reports whether the page has any dynamic section at all, so a
-// fully hand-curated page costs one sections read and nothing else.
-func anySelector(states []sectionState) bool {
+// needsReconcile reports whether the page has anything to reconcile — a
+// dynamic section, or leftover managed rows from one that was cleared. A fully
+// hand-curated page therefore costs one sections read and nothing else.
+func needsReconcile(states []sectionState) bool {
 	for _, state := range states {
 		if state.section.Selector != nil {
 			return true
 		}
+
+		for _, resource := range state.resources {
+			if resource.ManagedBySelector {
+				return true
+			}
+		}
 	}
 
 	return false
+}
+
+// dropManagedRows removes every selector-owned row from a section that has no
+// selector any more. Manual rows in the same section are untouched.
+func (s *Service) dropManagedRows(ctx context.Context, state *sectionState) error {
+	for _, resource := range state.resources {
+		if !resource.ManagedBySelector {
+			continue
+		}
+
+		if err := s.db.DeleteStatusPageResource(ctx, resource.UID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // manualCheckUIDs collects every check the operator placed by hand anywhere on
